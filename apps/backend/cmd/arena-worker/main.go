@@ -51,6 +51,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/bil24wire"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/contactform"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/convertjob"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customerimport"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
@@ -252,6 +253,7 @@ func run() error {
 	registerMediaGCHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerOpsWatchdogHandler(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerEventWatchHandler(registry, pool.Pool, cfg, salesNotifier, logger)
+	registerContactFormHandler(registry, pool.Pool, cfg, salesNotifier, logger)
 	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 
@@ -303,6 +305,10 @@ func run() error {
 	if err := onboarding.ScheduleInitialSweep(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: reminders and expiry of onboarding drafts run a little later.
 		logger.Warn("could not schedule initial onboarding sweep job", "error", err.Error())
+	}
+	if err := contactform.ScheduleInitialPurge(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: old contact-form messages are deleted a little later.
+		logger.Warn("could not schedule initial contact form purge job", "error", err.Error())
 	}
 	if err := eventwatch.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the operator hears about an event a little later.
@@ -690,6 +696,27 @@ func registerEventWatchHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *co
 		"interval", eventwatch.DefaultInterval.String(), "stable_for", eventwatch.DefaultStableFor.String())
 }
 
+// registerContactFormHandler registers contact.organizer_message and
+// contact.purge. contact.organizer_message is a buyer's
+// message from the hosted page's "Write to the organizer" form, mailed to the
+// channel's public e-mail (Reply-To = the buyer) and, when the organization
+// keeps the switch on, posted to its own sales chat.
+func registerContactFormHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier *salesnotify.Dispatcher, logger *slog.Logger) {
+	var announcer contactform.Announcer
+	if notifier != nil {
+		announcer = notifier
+	}
+	reg.Register(contactform.JobType, contactform.New(contactform.Options{
+		Pool:      pool,
+		Sender:    buildEmailSender(cfg, logger),
+		Announcer: announcer,
+		Logger:    logger,
+	}).Handle)
+	// contact.purge deletes messages older than 90 days every hour, so a page
+	// that stops receiving messages does not keep old ones forever.
+	reg.Register(contactform.PurgeJobType, contactform.NewPurgeHandler(pool, logger))
+}
+
 // buildSalesNotifier builds the outbox leg that posts sales and refunds to
 // organizers' Telegram groups. Without SALES_TELEGRAM_BOT_TOKEN it is a no-op.
 func buildSalesNotifier(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) *salesnotify.Dispatcher {
@@ -778,6 +805,7 @@ func buildDeliveryHandlerOptions(cfg *config.Config, queries *gen.Queries, media
 		Sender:             buildEmailSender(cfg, logger),
 		FromAddress:        coalesce(getEmailFrom(cfg), "tickets@arena.example.com"),
 		Media:              media,
+		TicketsBaseURL:     cfg.PublicTicketsBaseURL,
 		Logger:             logger,
 	}
 }

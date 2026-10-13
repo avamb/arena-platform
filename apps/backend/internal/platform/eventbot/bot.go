@@ -121,6 +121,9 @@ type Bot struct {
 	// feed remembers which of the bot's messages still carry buttons, per
 	// private chat (feed.go): a press on any other message is refused.
 	feed *feedMemory
+	// menuKB remembers the chats that got the "☰ Menu" keyboard
+	// (menu_keyboard.go).
+	menuKB *menuShown
 }
 
 // bgGroup is the WaitGroup of the background work. Once Run starts waiting
@@ -249,6 +252,7 @@ func New(opts Options) (*Bot, error) {
 		siteButton:     opts.SiteButton,
 		onbForms:       &onbFormCache{m: map[string]onbFormEntry{}},
 		feed:           newFeedMemory(),
+		menuKB:         newMenuShown(),
 	}
 	b.sessions = newSessionDialogs(b.dialogs)
 	b.onb = newOnbDialogs(b.dialogs)
@@ -336,6 +340,7 @@ func (b *Bot) publishCommands(ctx context.Context) {
 	for _, locale := range SupportedLocales {
 		cmds := []models.BotCommand{
 			{Command: "start", Description: b.texts.T(locale, "bot.cmd_start", nil)},
+			{Command: "menu", Description: b.texts.T(locale, "bot.cmd_menu", nil)},
 			{Command: "events", Description: b.texts.T(locale, "bot.cmd_events", nil)},
 			{Command: "new", Description: b.texts.T(locale, "bot.cmd_new", nil)},
 			{Command: "team", Description: b.texts.T(locale, "bot.cmd_team", nil)},
@@ -438,11 +443,22 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	// Whatever the bot answers is a new message; a new keyboard then takes
 	// the buttons from the older screens (feed.go).
 	ctx = withFeedAction(ctx, textAction(chatID))
+	if b.isMenuButton(text) {
+		// The "☰ Menu" button under the message field (menu_keyboard.go).
+		b.openMenu(ctx, chatID, from, false)
+		return
+	}
 	if strings.HasPrefix(text, "/") {
 		cmd, arg, _ := strings.Cut(text, " ")
 		cmd = strings.ToLower(strings.TrimSpace(cmd))
 		if i := strings.Index(cmd, "@"); i > 0 {
 			cmd = cmd[:i]
+		}
+		if b.menuCommand(ctx, cmd, strings.TrimSpace(arg), from) {
+			// /menu and a plain /start leave every dialog themselves, and
+			// ask first when a refund waits for its confirmation.
+			b.openMenu(ctx, chatID, from, cmd == "/start")
+			return
 		}
 		if cmd != "/events" {
 			b.leaveEvents(ctx, from.ID) // a command ends the events list's search
@@ -453,6 +469,7 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		b.leavePromo(ctx, from.ID)      // and a promo-code question (EC-11)
 		b.leaveIdleRefund(ctx, from.ID) // and a refund question: its word is never an answer after a command (EC-21)
 		b.leaveScanExc(ctx, from.ID)    // and the operator's scan exception reason
+		b.leaveOrgData(ctx, from.ID)    // and an organization data question (HP-4a)
 		switch cmd {
 		case "/start":
 			arg = strings.TrimSpace(arg)
@@ -525,6 +542,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	if text != "" && b.categoryText(ctx, chatID, from, text) {
 		return
 	}
+	if text != "" && b.orgDataText(ctx, chatID, from, text) {
+		return
+	}
 	if text != "" && b.ordersText(ctx, chatID, from, text) {
 		return
 	}
@@ -594,6 +614,9 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	if parts[0] != "ct" { // and the category dialog (EC-15)
 		b.leaveCategories(ctx, from.ID)
 	}
+	if parts[0] != "og" { // and the organization data question (HP-4a)
+		b.leaveOrgData(ctx, from.ID)
+	}
 	switch parts[0] {
 	case "el":
 		b.eventsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "el:"))
@@ -611,9 +634,13 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.promoterCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pr:"))
 	case "ct":
 		b.categoryCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ct:"))
+	case "og":
+		b.orgDataCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "og:"))
 	case "home":
 		b.clearTeamDialog(ctx, from.ID)
 		b.showHome(ctx, chatID, &msgID, from, "")
+	case menuCallback:
+		b.menuPress(ctx, chatID, from, strings.TrimPrefix(cq.Data, menuCallback+":"))
 	case "help":
 		b.showHelp(ctx, chatID, &msgID, from)
 	case "scanner":
@@ -774,6 +801,8 @@ func (b *Bot) showHome(ctx context.Context, chatID int64, editMsgID *int, from *
 		b.replyIdentityError(ctx, chatID, from, err)
 		return
 	}
+	// A linked person always has the "☰ Menu" button (menu_keyboard.go).
+	b.ensureMenuKeyboard(ctx, chatID, id.Locale(), false)
 	if id.Current == nil {
 		b.showOrgChooserFor(ctx, chatID, editMsgID, id)
 		return
@@ -805,6 +834,9 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 		rows = append(rows, row)
 	}
 	if row := b.promoterMenuRow(loc, id); row != nil { // promoters (EC-14)
+		rows = append(rows, row)
+	}
+	if row := b.orgDataMenuRow(loc, id); row != nil { // organization data (HP-4a)
 		rows = append(rows, row)
 	}
 	if isOwner(id) {
@@ -908,6 +940,9 @@ func (b *Bot) switchLang(ctx context.Context, chatID int64, editMsgID *int, from
 	locale := NormalizeLocale(raw)
 	if err := b.queries.UpdateBotTelegramLinkLocale(ctx, from.ID, locale); err != nil {
 		b.logger.Error("eventbot: set locale failed", slog.String("error", err.Error()))
+	} else {
+		// The menu button carries its label: send it in the new language.
+		b.ensureMenuKeyboard(ctx, chatID, locale, true)
 	}
 	b.showHome(ctx, chatID, editMsgID, from, b.texts.T(locale, "bot.lang_set", nil)+"\n\n")
 }

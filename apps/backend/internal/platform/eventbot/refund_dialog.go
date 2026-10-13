@@ -141,6 +141,23 @@ type refundDialog struct {
 	// at the gate; a platform superadmin sees a button to allow one refund
 	// of each (refund_scan_exception.go).
 	Scanned []scanExcTicket `json:"scanned,omitempty"`
+	// Attempted: this operation (its Key) went to the server and no answer
+	// came back (a timeout, a server error, a restart). The refund may have
+	// started, so the dialog and its key are kept until the person decides:
+	// sending again with the same key replays, it never refunds twice.
+	Attempted bool `json:"attempted,omitempty"`
+	// Parked: the person left an attempted operation for another screen
+	// (menu_keyboard.go). It keeps its key but takes no typed text until a
+	// refund button of THAT order brings it back.
+	Parked bool `json:"parked,omitempty"`
+}
+
+// mayHaveStarted reports a dialog whose operation may already be with the
+// payment provider although the bot has no answer: its key must survive.
+func (d refundDialog) mayHaveStarted(step string) bool {
+	// A dialog stored in "sending" went to the server (or was about to) even
+	// when it predates the Attempted flag.
+	return step == refStepSending || (d.Attempted && step == refStepFinal)
 }
 
 // sendingNow reports a dialog whose operation is with the server right now:
@@ -310,6 +327,15 @@ func (b *Bot) leaveIdleRefund(ctx context.Context, tg int64) {
 	if err == nil && found && b.sendingNow(step, st) {
 		return
 	}
+	if err == nil && found && st.mayHaveStarted(step) {
+		// The operation may have started: its key stays, the dialog only
+		// stops taking typed text.
+		if !st.Parked {
+			st.Parked = true
+			b.saveRefund(ctx, tg, st, step)
+		}
+		return
+	}
 	b.leaveRefund(ctx, tg)
 }
 
@@ -356,6 +382,13 @@ func (b *Bot) refundCallback(ctx context.Context, chatID int64, msgID int, from 
 		if err != nil {
 			return
 		}
+		if found && st.OrderID == target && st.OrgID == id.Current.OrgID && st.mayHaveStarted(step) {
+			// This order's refund may have started: the same operation
+			// (same key) comes back instead of a new one.
+			st.Parked = false
+			b.showRefundFinal(ctx, chatID, &msgID, id, st, b.texts.T(loc, "bot.ref.maybe_started", nil)+"\n\n")
+			return
+		}
 		b.startRefund(ctx, chatID, &msgID, from, id, jwt, target)
 		return
 	}
@@ -363,6 +396,7 @@ func (b *Bot) refundCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.resendGone(ctx, chatID, &msgID, loc, expired)
 		return
 	}
+	st.Parked = false // a refund button brings a left operation back
 	if step == refStepSending {
 		// A send lost to a restart: confirm again; the same key replays the
 		// operation the server may already have started.
@@ -384,6 +418,17 @@ func (b *Bot) refundCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.showRefundPick(ctx, chatID, &msgID, id, st, "")
 	case "b":
 		b.showRefundPick(ctx, chatID, &msgID, id, st, "")
+	case "cur":
+		// "Back to the refund" of the menu's leave question
+		// (menu_keyboard.go): the screen the dialog stopped at, same key.
+		switch step {
+		case refStepWord:
+			b.showRefundWord(ctx, chatID, &msgID, id, st, "")
+		case refStepFinal:
+			b.showRefundFinal(ctx, chatID, &msgID, id, st, "")
+		default:
+			b.showRefundPick(ctx, chatID, &msgID, id, st, "")
+		}
 	case "p":
 		if sel := st.selected(); st.Partial && len(sel) == 1 {
 			st.MsgID = msgID
@@ -410,7 +455,7 @@ func (b *Bot) refundCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.reason_text_ask", nil), b.refundBackKeyboard(loc))
 	case "nt":
 		st.NoLetter = !st.NoLetter
-		st.Key = "" // the summary changed: a new operation
+		st.Key, st.Attempted = "", false // the summary changed: a new operation
 		b.showRefundWord(ctx, chatID, &msgID, id, st, "")
 	case "ok":
 		// The one press that sends money back. Only valid on the final
@@ -512,7 +557,7 @@ func (b *Bot) showRefundPick(ctx context.Context, chatID int64, editMsgID *int, 
 	if editMsgID != nil {
 		st.MsgID = *editMsgID
 	}
-	st.Key = ""
+	st.Key, st.Attempted = "", false // a new pick is a new operation
 	b.saveRefund(ctx, id.Link.TelegramUserID, st, refStepPick)
 	var rows [][]models.InlineKeyboardButton
 	var row []models.InlineKeyboardButton
@@ -653,8 +698,10 @@ func (b *Bot) showRefundFinal(ctx context.Context, chatID int64, editMsgID *int,
 // answer is in, so no press can change or repeat it.
 func (b *Bot) startSendRefund(ctx context.Context, chatID int64, msgID int, from *models.User, id *Identity, st refundDialog) {
 	loc := id.Locale()
+	attempted := st.Attempted
 	st.SendingAt = time.Now().UTC()
 	st.RunID = b.runID
+	st.Attempted, st.Parked = true, false
 	st.RestartNoticed = false
 	st.MsgID = msgID
 	if !b.saveRefund(ctx, from.ID, st, refStepSending) {
@@ -681,7 +728,7 @@ func (b *Bot) startSendRefund(ctx context.Context, chatID int64, msgID int, from
 	if !started {
 		// The bot is shutting down: nothing was sent. The dialog goes back to
 		// the final screen with the same key (this handler holds the turn).
-		st.SendingAt = time.Time{}
+		st.SendingAt, st.Attempted = time.Time{}, attempted
 		b.saveRefund(ctx, from.ID, st, refStepFinal)
 		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.err_unavailable", nil), b.resendResultKeyboard(loc, st.OrderID))
 	}
@@ -954,7 +1001,7 @@ func (b *Bot) refundText(ctx context.Context, chatID int64, from *models.User, t
 	}
 	// A refund with the server waits for buttons only: a typed text then
 	// belongs to whatever other dialog asked for it.
-	if !found || (step != refStepAmount && step != refStepReasonTxt && step != refStepWord && step != refStepFinal) {
+	if !found || st.Parked || (step != refStepAmount && step != refStepReasonTxt && step != refStepWord && step != refStepFinal) {
 		return false
 	}
 	id, _, err := b.resolveIdentity(ctx, from.ID)

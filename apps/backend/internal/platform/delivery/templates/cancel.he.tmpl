@@ -25,7 +25,7 @@
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>הודעה מהמארגן:</strong></p>
     <p style="margin:0;white-space:pre-line">{{.}}</p>
   </div>{{end}}
-  <p style="margin:0 0 12px 0;">אנא כתבו למארגן{{with .Change.ContactName}} ({{.}}){{end}} בכתובת <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{with .Change.ContactPhone}}, טלפון {{.}}{{end}}, כדי לברר מהם הצעדים הבאים.</p>
+  <p style="margin:0 0 12px 0;">אנא כתבו למארגן{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}בכתובת <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else}}דרך <a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">הטופס בדף המכירה</a>{{end}}{{with .Change.ContactPhone}}, טלפון {{.}}{{end}}, כדי לברר מהם הצעדים הבאים.</p>
   <p style="font-size:12px;color:#666">מזהה כרטיס: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">נשלח אל: {{.RecipientEmail}}</p>
   </td></tr>
@@ -37,7 +37,8 @@
     {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
-    {{with .Branding.ContactEmail}}<br>יצירת קשר: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>יצירת קשר: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>יצירת קשר: <a href="{{.}}" style="color:#666">כתיבה למארגן</a>{{end}}{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — שליחה אוטומטית</p>
   </td></tr>
@@ -65,7 +66,7 @@
 הודעה מהמארגן:
 {{.}}
 {{end}}
-אנא כתבו למארגן{{with .Change.ContactName}} ({{.}}){{end}} בכתובת {{.Change.ContactEmail}}{{with .Change.ContactPhone}}, טלפון {{.}}{{end}}, כדי לברר מהם הצעדים הבאים.
+אנא כתבו למארגן{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}בכתובת {{.Change.ContactEmail}}{{else}}דרך הטופס בדף המכירה: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, טלפון {{.}}{{end}}, כדי לברר מהם הצעדים הבאים.
 
 מזהה כרטיס: {{.TicketID}}
 נשלח אל: {{.RecipientEmail}}
@@ -77,7 +78,9 @@
 {{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
 {{else}}{{with .Branding.LegalAddressCity}}{{.}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}יצירת קשר: {{.}}
-{{end}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}יצירת קשר: {{.}}
+{{end}}{{end}}
 Arena Platform — שליחה אוטומטית
 {{end}}

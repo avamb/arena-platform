@@ -1897,6 +1897,14 @@ components:
             tax forms. NULL until the organization completes its legal
             self-service profile.
           example: "ACME Tickets GmbH"
+        legal_form:
+          type: [string, "null"]
+          description: |
+            Legal form of the entity as the owner wrote it ("S.L.", "s.r.o.",
+            "autónomo"), at most 80 characters (migration 0146). Answered by
+            GET /v1/organizations/{id} and PATCH /v1/organizations/{id} only;
+            the list and create routes answer null.
+          example: "GmbH"
         tax_id:
           type: [string, "null"]
           description: |
@@ -2120,6 +2128,13 @@ components:
             value. Required (non-empty) when this same body sets
             `kyb_status` to `pending` or `verified`.
           example: "ACME Tickets GmbH"
+        legal_form:
+          type: [string, "null"]
+          description: |
+            New legal form, 1-80 characters on one line (400
+            `org.invalid_legal_form` otherwise). Absent keeps the stored
+            value, `null` or an empty string clears it.
+          example: "GmbH"
         tax_id:
           type: string
           description: New tax registration identifier (empty string clears).
@@ -3784,8 +3799,16 @@ components:
       allOf:
         - $ref: "#/components/schemas/OrderSummary"
         - type: object
-          required: [event_name, session_start_at, session_timezone]
+          required: [event_name, session_start_at, session_timezone, letter_failed]
           properties:
+            letter_failed:
+              type: boolean
+              description: |
+                True when the buyer did not get a letter: a ticket whose
+                letter failed (bounced, blocked, refused by the relay), or a
+                change, cancellation or refund letter that failed and was not
+                followed by a newer one of the same kind. Details on the
+                order card (letters).
             event_name:
               type: string
               description: Name of the event the order's session belongs to.
@@ -4059,6 +4082,98 @@ components:
             page); otherwise `widget` (public_feed / checkout_api /
             complimentary on a plain channel).
 
+    OrderLetter:
+      type: object
+      required: [id, kind, status, recipient, ticket_ids, queued_at, sent_at, delivered_at,
+                 proxy_opened_at, opened_at, clicked_at, deferred_at, failed_at, failure_event,
+                 failure_reason, stuck]
+      description: |
+        One buyer letter of an order and its delivery status, from Brevo's
+        transactional webhook. Ticket letters come first, grouped the way
+        they went out (one entry per sent letter, one for the tickets still
+        queued, one for those the mail relay refused, one for tickets sent
+        before letters were recorded), then the change, cancellation and
+        refund letters, oldest first. Times are UTC; a step that has not
+        happened is null. About "opened": Brevo learns of an open when the
+        letter's images are fetched. Apple Mail Privacy Protection fetches
+        them on delivery through Apple's proxy whether anybody reads the
+        letter or not; Brevo reports that as a proxy open, which arena
+        records as proxy_opened_at (proof of delivery, NOT of reading). An
+        opened_at can still be a mail client that loads images by itself.
+      properties:
+        id:
+          type: [string, "null"]
+          format: uuid
+          description: Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
+        kind:
+          type: string
+          description: ticket, change, cancel or refund. Invitation letters have no order and are not listed on an order.
+        status:
+          type: string
+          description: |
+            queued (the delivery job waits), sent (the mail relay accepted
+            the letter), delayed (the recipient's server asked Brevo to try
+            again later; Brevo keeps retrying), delivered (the recipient's
+            server accepted it, or a mail proxy fetched it, or a link was
+            clicked), opened, failed (bounced, blocked, invalid address,
+            provider error, or the relay refused it). A failure is final
+            unless a later delivery is reported.
+        recipient:
+          type: string
+          description: Address the letter was sent to.
+        ticket_ids:
+          type: array
+          description: Tickets the letter carries (empty for change, cancellation and refund letters).
+          items:
+            type: string
+            format: uuid
+            description: Ticket id.
+        queued_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the delivery job was queued (queued and send_failed entries only).
+        sent_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the mail relay accepted the letter.
+        delivered_at:
+          type: [string, "null"]
+          format: date-time
+          description: When Brevo reported the letter delivered.
+        proxy_opened_at:
+          type: [string, "null"]
+          format: date-time
+          description: When a mail proxy (Apple Mail Privacy Protection, image proxies) first fetched the letter. Proof of delivery, not of reading.
+        opened_at:
+          type: [string, "null"]
+          format: date-time
+          description: When Brevo first reported an open.
+        clicked_at:
+          type: [string, "null"]
+          format: date-time
+          description: First click on a link of the letter (for example the ticket download). Proves delivery; not counted as reading, mail security scanners follow links too.
+        deferred_at:
+          type: [string, "null"]
+          format: date-time
+          description: When Brevo first reported the letter deferred (the recipient's server asked it to retry later). Stays set after a later delivery.
+        failed_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the failure that decided the status was reported.
+        failure_event:
+          type: [string, "null"]
+          description: hard_bounce, soft_bounce, invalid_email, blocked, error, or send_failed (the relay refused the letter).
+        failure_reason:
+          type: [string, "null"]
+          description: The provider's reason, with e-mail addresses, IP addresses and host names removed.
+        stuck:
+          type: boolean
+          description: |
+            True when the letter has been sent or delayed for more than six
+            hours with no delivery while the webhook kept reporting on other
+            letters: the buyer most likely has no letter. letter_failed is
+            also true then.
+
     OrderDetail:
       description: |
         Order detail returned by GET
@@ -4069,7 +4184,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/OrderSummary"
         - type: object
-          required: [items, tickets, events, delivery, delivery_state, payment, unpaid_reason, channel]
+          required: [items, tickets, events, delivery, delivery_state, payment, unpaid_reason, channel, letters, letter_failed]
           properties:
             items:
               type: array
@@ -4128,6 +4243,14 @@ components:
               description: The sales channel of the order and how the buyer reached the checkout.
               allOf:
                 - $ref: "#/components/schemas/OrderChannelSummary"
+            letters:
+              type: array
+              description: The buyer letters of the order with their delivery status (see OrderLetter).
+              items:
+                $ref: "#/components/schemas/OrderLetter"
+            letter_failed:
+              type: boolean
+              description: True when one of the letters failed (status failed).
 
     SessionPlaceCounts:
       type: object
@@ -6393,12 +6516,74 @@ components:
       properties:
         email:
           type: string
-          description: Public contact e-mail.
+          description: |
+            Never answered since the contact form (2026-10-13): buyers write
+            through `contact_form`, the address only receives the messages.
+            Kept in the schema for older clients.
           example: "tickets@example.com"
         phone:
           type: string
           description: Public contact phone number.
           example: "+34 600 000 000"
+
+    HostedPageContactForm:
+      type: object
+      required: [available]
+      description: The "Write to the organizer" form of a hosted page.
+      properties:
+        available:
+          type: boolean
+          description: Always true when the block is present.
+        turnstile_site_key:
+          type: string
+          description: Cloudflare Turnstile site key for the form; omitted when the deployment runs without a captcha (never in production).
+          example: "0x4AAAAAAAxxxxxxxxxxxxxx"
+        privacy_url:
+          type: string
+          description: The privacy policy the form's consent links to (ONBOARDING_PRIVACY_URL, else the site's /legal/privacy); omitted when none is configured.
+          example: "https://arenasoldout.com/legal/privacy"
+
+    OrganizerContactRequest:
+      type: object
+      additionalProperties: false
+      required: [name, email, message, consent]
+      description: A buyer's message to the organizer of a hosted page.
+      properties:
+        name:
+          type: string
+          description: Sender's name, 1-100 characters.
+          example: "Anna"
+        email:
+          type: string
+          description: Sender's e-mail; the organizer's reply goes there (Reply-To).
+          example: "anna@example.com"
+        message:
+          type: string
+          description: The message, 10-2000 characters.
+          example: "Is the venue accessible by wheelchair?"
+        consent:
+          type: boolean
+          description: Must be true; the buyer agrees that the message is passed to the organizer.
+        turnstile_token:
+          type: string
+          description: Cloudflare Turnstile response token.
+        feed_token:
+          type: string
+          description: The event page's feed token; empty on the promoter landing page.
+        locale:
+          type: string
+          description: Page language of the sender.
+          example: "es"
+
+    OrganizerContactAccepted:
+      type: object
+      required: [status]
+      description: The message is stored and queued for delivery.
+      properties:
+        status:
+          type: string
+          description: Always "queued".
+          example: "queued"
 
     HostedPageSeller:
       type: object
@@ -6413,6 +6598,10 @@ components:
           type: string
           description: Registered legal name; the organization name when none is stored.
           example: "Teatro Ejemplo S.L."
+        legal_form:
+          type: string
+          description: Legal form as the owner wrote it; omitted when none is stored.
+          example: "S.L."
         tax_id:
           type: string
           description: Tax or VAT identifier.
@@ -6437,6 +6626,174 @@ components:
           description: The channel's published contact; omitted when the channel sets none.
           allOf:
             - $ref: "#/components/schemas/HostedPageSellerContact"
+
+    SellerProfileContact:
+      type: object
+      description: |
+        The contact a hosted-page channel publishes
+        (`settings.hosted_page.public_contact`). Unset keys are omitted.
+      properties:
+        email:
+          type: string
+          description: Public role e-mail of the channel.
+          example: "tickets@example.com"
+        phone:
+          type: string
+          description: Public phone number of the channel.
+          example: "+34 600 000 000"
+
+    SellerProfileChannel:
+      type: object
+      required: [id, name, show_seller, public_contact, email_looks_personal, missing]
+      description: One channel of the organization that runs a hosted sales page.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Sales channel id.
+        name:
+          type: string
+          description: Sales channel name.
+          example: "Hosted page"
+        show_seller:
+          type: boolean
+          description: Whether the sales page of this channel shows the seller block (`settings.hosted_page.show_seller`).
+        public_contact:
+          description: The channel's published contact, null when it has none.
+          oneOf:
+            - $ref: "#/components/schemas/SellerProfileContact"
+            - type: "null"
+        email_looks_personal:
+          type: boolean
+          description: |
+            True when the public e-mail is at a free mailbox provider (gmail.com,
+            inbox.ru, outlook.com, ...). A hint for the owner to use a role
+            address; it never blocks a save.
+        missing:
+          type: array
+          description: |
+            Required data still empty before `show_seller` may be turned on, in a
+            stable order: legal_name, tax_id, address_line1, address_city,
+            address_postal_code, public_email. Empty when the block may be shown.
+          items:
+            type: string
+            description: Name of a missing field.
+
+    SellerProfile:
+      type: object
+      required: [org_id, org_name, country, missing, channels]
+      description: |
+        The owner's "Organization data": the legal data the sales page prints in
+        its seller block, and every hosted-page channel with its block settings.
+        Legal fields are changed through PATCH /v1/organizations/{id}.
+      properties:
+        org_id:
+          type: string
+          format: uuid
+          description: Organization id.
+        org_name:
+          type: string
+          description: Display name of the organization.
+        country:
+          type: string
+          description: Country of the organization (stands in for the address country on the page).
+          example: "ES"
+        legal_name:
+          type: [string, "null"]
+          description: Registered legal name.
+        legal_form:
+          type: [string, "null"]
+          description: Legal form as the owner wrote it.
+        registration_number:
+          type: [string, "null"]
+          description: Company registration number.
+        tax_id_scheme:
+          type: [string, "null"]
+          description: Scheme of tax_id (eu_vat, gb_vat, il_vat, us_ein or other).
+        tax_id:
+          type: [string, "null"]
+          description: Tax or VAT identifier.
+        legal_address_line1:
+          type: [string, "null"]
+          description: Registered address, street line.
+        legal_address_line2:
+          type: [string, "null"]
+          description: Registered address, second line.
+        legal_address_postal_code:
+          type: [string, "null"]
+          description: Registered address, postal code.
+        legal_address_city:
+          type: [string, "null"]
+          description: Registered address, city.
+        legal_address_country:
+          type: [string, "null"]
+          description: Registered address, ISO 3166-1 alpha-2 country.
+        missing:
+          type: array
+          description: Required organization fields still empty (the channel list adds public_email per channel).
+          items:
+            type: string
+            description: Name of a missing field.
+        channels:
+          type: array
+          description: The organization's hosted-page channels, oldest first.
+          items:
+            $ref: "#/components/schemas/SellerProfileChannel"
+        contact_form_to_telegram:
+          type: boolean
+          description: Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true).
+
+    SellerProfileEnvelope:
+      type: object
+      required: [seller_profile]
+      description: Envelope of the seller-profile routes.
+      properties:
+        seller_profile:
+          description: The profile as stored after the call.
+          allOf:
+            - $ref: "#/components/schemas/SellerProfile"
+
+    UpdateSellerProfileRequest:
+      type: object
+      additionalProperties: false
+      required: [contact_form_to_telegram]
+      description: The organization-wide switch of the contact form's Telegram leg.
+      properties:
+        contact_form_to_telegram:
+          type: boolean
+          description: Post buyers' messages to the organization's sales Telegram chat too.
+
+    SellerDisplayContactPatch:
+      type: object
+      additionalProperties: false
+      description: Tri-state contact change; an absent key keeps, null or "" clears.
+      properties:
+        email:
+          type: [string, "null"]
+          description: Public role e-mail (400 `seller.invalid_email` when malformed).
+          example: "tickets@example.com"
+        phone:
+          type: [string, "null"]
+          description: Public phone, 6-15 digits (400 `seller.invalid_phone` when malformed).
+          example: "+34 600 000 000"
+
+    UpdateSellerDisplayRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Change of one hosted-page channel's seller block. Absent members keep
+        the stored value. `show_seller: true` is refused with 422
+        `seller.incomplete` (details.missing) while required data is empty, and
+        so is clearing the e-mail of a channel that keeps the block on.
+      properties:
+        show_seller:
+          type: boolean
+          description: Show the seller block on this channel's sales page.
+        public_contact:
+          description: The published contact; null removes it.
+          oneOf:
+            - $ref: "#/components/schemas/SellerDisplayContactPatch"
+            - type: "null"
 
     HostedPagePromoter:
       type: object
@@ -6489,6 +6846,15 @@ components:
             present and the event has a promoter.
           allOf:
             - $ref: "#/components/schemas/HostedPagePromoter"
+        contact_form:
+          description: |
+            Present when the page offers the "Write to the organizer" form: the
+            channel has a public e-mail or the organization has its own
+            contact e-mail (a private recipient), and the deployment can check
+            the captcha. No address is ever answered. Ticket letters of a page
+            without a public e-mail link this form as <page>#contact.
+          allOf:
+            - $ref: "#/components/schemas/HostedPageContactForm"
 
     HostedPromoterPageResponse:
       type: object
@@ -6537,6 +6903,15 @@ components:
             present and the slug names a promoter rather than the organization.
           allOf:
             - $ref: "#/components/schemas/HostedPagePromoter"
+        contact_form:
+          description: |
+            Present when the page offers the "Write to the organizer" form: the
+            channel has a public e-mail or the organization has its own
+            contact e-mail (a private recipient), and the deployment can check
+            the captcha. No address is ever answered. Ticket letters of a page
+            without a public e-mail link this form as <page>#contact.
+          allOf:
+            - $ref: "#/components/schemas/HostedPageContactForm"
 
     CreateEventRequest:
       type: object
@@ -18454,6 +18829,18 @@ paths:
         Applies a partial update to an active organization. Empty or omitted fields
         leave the existing value unchanged. Requires JWT authentication and "org.update"
         permission. Returns 409 if the new name or slug conflicts with another active org.
+
+        An organization API key may not send the fields of the legal identity
+        and the contact (`legal_name`, `legal_form`, `tax_id`, `tax_id_scheme`,
+        `registration_number`, `legal_address_*`, `contact_email`,
+        `contact_phone`): 403 `org.identity_fields_api_key_forbidden`, with the
+        refused fields in `error.details.fields`.
+
+        The row, its legal form and the seller block are written in one
+        transaction: when the update leaves a field the sales page's seller
+        block requires empty (legal name, tax number, street, city, postal
+        code), the block is turned off on every channel that showed it and the
+        answer lists those channels in `seller_display_hidden`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -18482,6 +18869,12 @@ paths:
                 properties:
                   organization:
                     $ref: "#/components/schemas/OrganizationItem"
+                  seller_display_hidden:
+                    type: array
+                    description: Channels whose seller block was turned off because a required legal field is now empty. Omitted when none.
+                    items:
+                      type: string
+                      format: uuid
         "400":
           description: Request body missing, not valid JSON, or id path parameter invalid
           content:
@@ -18495,7 +18888,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor does not hold the required permission (org.update)
+          description: Actor does not hold the required permission (org.update), or an API key sent a legal identity or contact field (`org.identity_fields_api_key_forbidden`)
           content:
             application/json:
               schema:
@@ -25173,6 +25566,205 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
           description: The new name (or restoring) collides with an active promoter (`promoter.duplicate_name`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/seller-profile:
+    get:
+      operationId: getSellerProfile
+      summary: Read the organization's seller data and its sales-page channels
+      description: |
+        The owner's "Organization data" (HP-4a): the legal data the hosted sales
+        page prints in its seller block, every hosted-page channel with
+        `show_seller` and its public contact, and what is still missing before
+        the block may be shown. Requires `org.update` in the organization (the
+        owner; the manager does not hold it).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SellerProfileEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such organization (`org.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    patch:
+      operationId: updateSellerProfile
+      summary: Switch the Telegram leg of the sales page's contact form
+      description: |
+        `contact_form_to_telegram` decides whether buyers' messages from the
+        sales page's contact form also go to the organization's own sales
+        Telegram chat (the e-mail always goes). Requires `org.update`.
+        Audited as `v1.organization.contact_form_update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSellerProfileRequest"
+      responses:
+        "200":
+          description: Saved; the profile as stored now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SellerProfileEnvelope"
+        "400":
+          description: Invalid body (`seller.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` in the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such organization (`org.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/channels/{channel_id}/seller-display:
+    patch:
+      operationId: updateSellerDisplay
+      summary: Switch the seller block and set the public contact of a sales-page channel
+      description: |
+        Writes `settings.hosted_page.show_seller` and
+        `settings.hosted_page.public_contact` of one hosted-page channel of the
+        organization; every other setting is kept. Requires `org.update` in the
+        organization. A channel of another organization, or one without a hosted
+        page, answers 404 `seller.channel_not_found`. Audited as
+        `v1.channel.seller_display_update` without the addresses.
+
+        This is the only route that writes these two keys: the generic channel
+        create and PATCH keep the stored values whatever `settings` they are
+        sent, and an organization API key is refused here.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: channel_id
+          in: path
+          required: true
+          description: UUID of the sales channel.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSellerDisplayRequest"
+      responses:
+        "200":
+          description: Saved; the profile as stored now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SellerProfileEnvelope"
+        "400":
+          description: Invalid body (`seller.invalid_body`), e-mail (`seller.invalid_email`) or phone (`seller.invalid_phone`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such sales-page channel in this organization (`seller.channel_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The block cannot be shown yet (`seller.incomplete`, details.missing lists the empty fields).
           content:
             application/json:
               schema:
@@ -34131,6 +34723,88 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/public/organizer-contact/{org_slug}:
+    post:
+      operationId: sendOrganizerContact
+      summary: Send a buyer's message to the organizer of a hosted page
+      description: |
+        The "Write to the organizer" form of the hosted sales page. The page
+        never publishes the organizer's e-mail: the message is stored and a
+        worker mails it to the channel's public e-mail (else to the
+        organization's own contact e-mail, never shown) with Reply-To set to
+        the buyer, and posts it to the organization's sales Telegram chat when
+        its switch is on. Protected by Cloudflare Turnstile (production
+        without a secret answers 503), a per-IP limit (5 an hour) and a
+        per-page limit (30 an hour) counted in the database, and a 16 KiB body
+        cap. No JWT. An unknown slug, a page whose messages would reach
+        nobody and a feed token of another organization answer the same 404.
+        The token must carry the Turnstile action "contact". The answer
+        never carries the organizer's address.
+      tags: [v1]
+      security: []
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          description: The page's first path segment (organization or promoter slug).
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizerContactRequest"
+      responses:
+        "202":
+          description: Stored and queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizerContactAccepted"
+        "400":
+          description: Invalid name, e-mail, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The captcha was not passed (`contact.captcha_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The page has no contact form (`contact.not_available`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: The body is larger than 16 KiB (`contact.too_large`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many messages from this IP or to this page (`contact.rate_limited`, Retry-After).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The message could not be stored (`contact.send_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable, or the captcha is not configured or cannot be checked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/public/checkout/{checkout_token}/recover:
     post:
       operationId: recoverPublicCheckout
@@ -36810,6 +37484,180 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/webhooks/brevo:
+    post:
+      operationId: brevoDeliveryStatusWebhookBearer
+      summary: Receive Brevo transactional delivery events
+      description: |
+        Brevo's transactional webhook: what happened to the buyer letters
+        arena sent (ticket letter, invitation, session change or
+        cancellation, refund). Mounted only when BREVO_WEBHOOK_TOKEN is set.
+        This route takes the token from "Authorization: Bearer <token>"
+        (a webhook created through Brevo's API with an auth object), so
+        the token never appears in a URL. BREVO_WEBHOOK_TOKEN_PREVIOUS is
+        accepted too during a rotation; tokens are compared in
+        constant time. The body is one Brevo event object or an array of
+        them, capped at 1 MiB (never by the number of events). Events of
+        messages arena did not send (the Brevo account may be shared with
+        other sites) and event types arena does not model (unsubscribed,
+        spam, list addition) are acknowledged with 200 and ignored. Setup:
+        docs/ops/brevo_delivery_status_webhook_ru.md.
+      tags: [v1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: One Brevo transactional event object, or an array of them.
+              oneOf:
+                - type: object
+                  description: One Brevo event (event, message-id, ts_epoch, reason, X-Mailin-custom and more).
+                  additionalProperties: true
+                - type: array
+                  description: A batch of Brevo events.
+                  items:
+                    type: object
+                    description: One Brevo event.
+                    additionalProperties: true
+      responses:
+        "200":
+          description: Events acknowledged.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [acknowledged, received, applied]
+                properties:
+                  acknowledged:
+                    type: boolean
+                    description: Always true.
+                  received:
+                    type: integer
+                    description: Events in the body.
+                  applied:
+                    type: integer
+                    description: Events that belonged to a letter arena sent and were recorded.
+        "400":
+          description: Malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or unknown bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Body larger than 1 MiB.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many requests from this address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: An event could not be stored; Brevo delivers it again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/webhooks/brevo/{token}:
+    post:
+      operationId: brevoDeliveryStatusWebhook
+      summary: Receive Brevo transactional delivery events
+      description: |
+        Brevo's transactional webhook: what happened to the buyer letters
+        arena sent (ticket letter, invitation, session change or
+        cancellation, refund). Mounted only when BREVO_WEBHOOK_TOKEN is set.
+        The token in the path is the credential, for a webhook created in
+        Brevo's web form, which takes only a URL; prefer POST
+        /v1/webhooks/brevo with a bearer header. BREVO_WEBHOOK_TOKEN_PREVIOUS
+        is accepted too during a rotation; tokens are compared in
+        constant time. The body is one Brevo event object or an array of
+        them, capped at 1 MiB (never by the number of events). Events of
+        messages arena did not send (the Brevo account may be shared with
+        other sites) and event types arena does not model (unsubscribed,
+        spam, list addition) are acknowledged with 200 and ignored. Setup:
+        docs/ops/brevo_delivery_status_webhook_ru.md.
+      tags: [v1]
+      parameters:
+        - name: token
+          description: The webhook token (BREVO_WEBHOOK_TOKEN). Never logged.
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: One Brevo transactional event object, or an array of them.
+              oneOf:
+                - type: object
+                  description: One Brevo event (event, message-id, ts_epoch, reason, X-Mailin-custom and more).
+                  additionalProperties: true
+                - type: array
+                  description: A batch of Brevo events.
+                  items:
+                    type: object
+                    description: One Brevo event.
+                    additionalProperties: true
+      responses:
+        "200":
+          description: Events acknowledged.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [acknowledged, received, applied]
+                properties:
+                  acknowledged:
+                    type: boolean
+                    description: Always true.
+                  received:
+                    type: integer
+                    description: Events in the body.
+                  applied:
+                    type: integer
+                    description: Events that belonged to a letter arena sent and were recorded.
+        "400":
+          description: Malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unknown webhook token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Body larger than 1 MiB.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many requests from this address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: An event could not be stored; Brevo delivers it again.
           content:
             application/json:
               schema:

@@ -92,11 +92,52 @@ RETURNING id, display_number, name, slug, country, default_locale, reservation_t
 -- name: GetOrgBrandingByTicketID :one
 -- Returns org branding fields for the organization that owns a ticket.
 -- Used by delivery enqueueing to populate the org fields in the worker payload.
+-- contact_email is the public e-mail of the sales page the ticket was sold
+-- through (settings.hosted_page.public_contact.email) when it has one; NULL
+-- for a hosted page without one (the letter links the page's contact form,
+-- GetTicketContactRoute); else the organization's contact_email (HP-4b). registration_number, tax_id and
+-- tax_id_scheme are printed in the letter footer and on the PDF.
 SELECT o.name, o.website_url, o.legal_name, o.legal_address_line1, o.legal_address_line2,
        o.legal_address_postal_code, o.legal_address_city, o.legal_address_country,
-       o.contact_email, o.logo_media_id, o.sender_email, o.sender_verification_status
+       CASE WHEN NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') IS NOT NULL
+                 THEN btrim(sc.settings #>> '{hosted_page,public_contact,email}')
+            WHEN CASE WHEN sc.id IS NOT NULL THEN COALESCE(sc.settings #> '{hosted_page,enabled}' = 'true'::jsonb, false)
+                 ELSE EXISTS (SELECT 1 FROM sales_channels h WHERE h.org_id = o.id AND h.deleted_at IS NULL
+                              AND h.settings #> '{hosted_page,enabled}' = 'true'::jsonb) END THEN NULL
+            ELSE o.contact_email END AS contact_email,
+       o.logo_media_id, o.sender_email, o.sender_verification_status,
+       o.registration_number, o.tax_id, o.tax_id_scheme
 FROM   tickets t
 JOIN   sessions s ON s.id = t.session_id
 JOIN   events   e ON e.id = s.event_id
 JOIN   organizations o ON o.id = e.org_id
+LEFT JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
+LEFT JOIN sales_channels sc ON sc.id = cs.channel_id AND sc.org_id = o.id
+WHERE  t.id = $1;
+
+-- name: GetTicketContactRoute :one
+-- Where a letter about this ticket sends the buyer to reach the organizer
+-- (owner rule 2026-10-13: personal addresses are never published). The
+-- sales page's public e-mail when it has one; else, when the ticket was sold
+-- through a page with a hosted page (or, without a channel, when the
+-- organization has one), the page's "Write to the organizer" form - the
+-- page slug is the event's active promoter's when it has one, else the
+-- organization's; else the organization's contact_email (today's
+-- behaviour for channels without a hosted page).
+SELECT NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') AS public_email,
+       CASE WHEN sc.id IS NOT NULL THEN COALESCE(sc.settings #> '{hosted_page,enabled}' = 'true'::jsonb, false)
+            ELSE EXISTS (SELECT 1 FROM sales_channels h WHERE h.org_id = o.id AND h.deleted_at IS NULL
+                         AND h.settings #> '{hosted_page,enabled}' = 'true'::jsonb) END AS hosted_page,
+       NULLIF(btrim(o.contact_email), '') AS org_email,
+       COALESCE(op.slug, o.slug) AS page_slug,
+       e.slug AS event_slug
+FROM   tickets t
+JOIN   sessions s ON s.id = t.session_id
+JOIN   events   e ON e.id = s.event_id
+JOIN   organizations o ON o.id = e.org_id
+LEFT JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
+LEFT JOIN sales_channels sc ON sc.id = cs.channel_id AND sc.org_id = o.id
+LEFT JOIN event_promoters ep ON ep.event_id = e.id AND ep.org_id = o.id
+LEFT JOIN org_promoters op ON op.id = ep.promoter_id AND op.org_id = o.id
+                          AND op.archived_at IS NULL AND NULLIF(btrim(op.slug), '') IS NOT NULL
 WHERE  t.id = $1;

@@ -305,8 +305,16 @@ type Config struct {
 	SMTPUseTLS   bool      `env:"SMTP_USE_TLS"  required:"false" default:"true"`
 	// BrevoAPIKey is used only to query domain verification state; it is never
 	// an organizer credential and must be stored as a platform secret.
-	BrevoAPIKey                    string        `env:"BREVO_API_KEY" required:"false" default:""`
-	BrevoAPIBaseURL                string        `env:"BREVO_API_BASE_URL" required:"false" default:"https://api.brevo.com"`
+	BrevoAPIKey     string `env:"BREVO_API_KEY" required:"false" default:""`
+	BrevoAPIBaseURL string `env:"BREVO_API_BASE_URL" required:"false" default:"https://api.brevo.com"`
+	// BrevoWebhookToken authenticates Brevo's transactional webhook
+	// (POST /v1/webhooks/brevo/{token}, the delivery status of buyer
+	// letters). Empty = the route is not mounted at all. In production it
+	// must be a random value of at least 32 characters.
+	BrevoWebhookToken string `env:"BREVO_WEBHOOK_TOKEN" required:"false" default:""`
+	// BrevoWebhookTokenPrevious is accepted alongside BrevoWebhookToken
+	// while a token is being rotated; leave it empty otherwise.
+	BrevoWebhookTokenPrevious      string        `env:"BREVO_WEBHOOK_TOKEN_PREVIOUS" required:"false" default:""`
 	SenderVerificationPollInterval time.Duration `env:"SENDER_VERIFICATION_POLL_INTERVAL" required:"false" default:"15m"`
 
 	// -------------------------------------------------------------------------
@@ -437,6 +445,14 @@ type Config struct {
 	// verifies the first step and the "send me the link" request. Empty is
 	// accepted outside production only; in production the routes answer 503.
 	OnboardingTurnstileSecret string `env:"ONBOARDING_TURNSTILE_SECRET" required:"false" default:""`
+	// ContactFormTurnstileSecret / ContactFormTurnstileSiteKey protect the
+	// "Write to the organizer" form of the hosted sales page. The secret falls
+	// back to ONBOARDING_TURNSTILE_SECRET when empty (one Turnstile widget may
+	// list both hostnames); the site key is public and handed to the page in
+	// the hosted-page response. In production a page offers the form only when
+	// both are set, and the send route answers 503 without a secret.
+	ContactFormTurnstileSecret  string `env:"CONTACT_FORM_TURNSTILE_SECRET" required:"false" default:""`
+	ContactFormTurnstileSiteKey string `env:"CONTACT_FORM_TURNSTILE_SITE_KEY" required:"false" default:""`
 	// BotArenaAPIURL is where the bot process reaches arena-api
 	// (http://api:8080 inside compose).
 	BotArenaAPIURL string `env:"BOT_ARENA_API_URL" required:"false" default:"http://localhost:8080"`
@@ -623,6 +639,9 @@ func Load() (*Config, error) {
 		BrevoAPIKey:     getenv("BREVO_API_KEY", ""),
 		BrevoAPIBaseURL: getenv("BREVO_API_BASE_URL", "https://api.brevo.com"),
 
+		BrevoWebhookToken:         strings.TrimSpace(getenv("BREVO_WEBHOOK_TOKEN", "")),
+		BrevoWebhookTokenPrevious: strings.TrimSpace(getenv("BREVO_WEBHOOK_TOKEN_PREVIOUS", "")),
+
 		StripeWebhookSecret: getenv("STRIPE_WEBHOOK_SECRET", ""),
 		AllPayWebhookSecret: getenv("ALLPAY_WEBHOOK_SECRET", ""),
 
@@ -641,18 +660,20 @@ func Load() (*Config, error) {
 
 		SalesTelegramBotToken: getenv("SALES_TELEGRAM_BOT_TOKEN", ""),
 
-		EventsTelegramBotToken:    getenv("EVENTS_TELEGRAM_BOT_TOKEN", ""),
-		EventsTelegramBotUsername: getenv("EVENTS_TELEGRAM_BOT_USERNAME", ""),
-		BotServiceToken:           getenv("BOT_SERVICE_TOKEN", ""),
-		BotArenaAPIURL:            getenv("BOT_ARENA_API_URL", "http://localhost:8080"),
-		OnboardingSiteURL:         strings.TrimRight(getenv("ONBOARDING_SITE_URL", "https://arenasoldout.com"), "/"),
-		OnboardingTermsURL:        strings.TrimSpace(getenv("ONBOARDING_TERMS_URL", "")),
-		OnboardingPrivacyURL:      strings.TrimSpace(getenv("ONBOARDING_PRIVACY_URL", "")),
-		OnboardingTurnstileSecret: getenv("ONBOARDING_TURNSTILE_SECRET", ""),
-		BotMetricsAddr:            getenv("BOT_METRICS_ADDR", ":9092"),
-		PosterLLMAPIKey:           getenv("POSTER_LLM_API_KEY", ""),
-		PosterLLMModel:            getenv("POSTER_LLM_MODEL", "claude-sonnet-5"),
-		PosterLLMBaseURL:          getenv("POSTER_LLM_BASE_URL", "https://api.anthropic.com"),
+		EventsTelegramBotToken:      getenv("EVENTS_TELEGRAM_BOT_TOKEN", ""),
+		EventsTelegramBotUsername:   getenv("EVENTS_TELEGRAM_BOT_USERNAME", ""),
+		BotServiceToken:             getenv("BOT_SERVICE_TOKEN", ""),
+		BotArenaAPIURL:              getenv("BOT_ARENA_API_URL", "http://localhost:8080"),
+		OnboardingSiteURL:           strings.TrimRight(getenv("ONBOARDING_SITE_URL", "https://arenasoldout.com"), "/"),
+		OnboardingTermsURL:          strings.TrimSpace(getenv("ONBOARDING_TERMS_URL", "")),
+		OnboardingPrivacyURL:        strings.TrimSpace(getenv("ONBOARDING_PRIVACY_URL", "")),
+		OnboardingTurnstileSecret:   getenv("ONBOARDING_TURNSTILE_SECRET", ""),
+		ContactFormTurnstileSecret:  getenv("CONTACT_FORM_TURNSTILE_SECRET", ""),
+		ContactFormTurnstileSiteKey: strings.TrimSpace(getenv("CONTACT_FORM_TURNSTILE_SITE_KEY", "")),
+		BotMetricsAddr:              getenv("BOT_METRICS_ADDR", ":9092"),
+		PosterLLMAPIKey:             getenv("POSTER_LLM_API_KEY", ""),
+		PosterLLMModel:              getenv("POSTER_LLM_MODEL", "claude-sonnet-5"),
+		PosterLLMBaseURL:            getenv("POSTER_LLM_BASE_URL", "https://api.anthropic.com"),
 
 		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
 	}
@@ -1409,8 +1430,26 @@ func (c *Config) validateProduction() []error {
 		))
 	}
 
+	// 17. BREVO_WEBHOOK_TOKEN is the only thing that authenticates the
+	// delivery-status webhook: a short or well-known value would let anyone
+	// mark buyers' letters delivered or bounced.
+	for _, tok := range []struct{ name, value string }{
+		{"BREVO_WEBHOOK_TOKEN", c.BrevoWebhookToken},
+		{"BREVO_WEBHOOK_TOKEN_PREVIOUS", c.BrevoWebhookTokenPrevious},
+	} {
+		if tok.value != "" && (len(tok.value) < MinBrevoWebhookTokenLen || isKnownDevSecret(tok.value)) {
+			errs = append(errs, fmt.Errorf(
+				"%s must be a random value of at least %d characters in production",
+				tok.name, MinBrevoWebhookTokenLen))
+		}
+	}
+
 	return errs
 }
+
+// MinBrevoWebhookTokenLen is the shortest BREVO_WEBHOOK_TOKEN production
+// accepts.
+const MinBrevoWebhookTokenLen = 32
 
 // Warnings returns non-fatal configuration warnings. Unlike Validate errors,
 // warnings do not prevent the process from starting but indicate suboptimal or
@@ -1442,6 +1481,11 @@ func (c *Config) Warnings() []string {
 				c.OTLPEndpoint,
 			))
 		}
+	}
+
+	if c.AppEnv == EnvProduction && c.BrevoWebhookToken == "" {
+		w = append(w, "BREVO_WEBHOOK_TOKEN is empty: the Brevo delivery-status webhook is not mounted,"+
+			" so organizers see buyer letters only as sent (docs/ops/brevo_delivery_status_webhook_ru.md)")
 	}
 
 	return w
@@ -1685,4 +1729,16 @@ func redactURL(u string) string {
 		return ""
 	}
 	return redactDSN(u)
+}
+
+// ContactFormSecret is the Turnstile secret of the hosted page's contact
+// form: its own, else the onboarding one.
+func (c *Config) ContactFormSecret() string {
+	if c == nil {
+		return ""
+	}
+	if s := strings.TrimSpace(c.ContactFormTurnstileSecret); s != "" {
+		return s
+	}
+	return strings.TrimSpace(c.OnboardingTurnstileSecret)
 }

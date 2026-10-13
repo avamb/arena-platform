@@ -40,7 +40,9 @@ func TestRefundText_LeavesTextAloneWhileSending(t *testing.T) {
 
 // A send started by an earlier bot process (it was restarted mid-call) is not
 // "being sent" any more: its dialog does not hold the person for the rest of
-// the send window, and leaving the screen ends it.
+// the send window. The refund may have started, so leaving the screen parks
+// the dialog with its key (a later send replays, never refunds twice) and it
+// takes no typed text.
 func TestRefundSending_AnEarlierProcessDoesNotHoldTheDialog(t *testing.T) {
 	b, _ := newRefundSendingBot(t)
 	ctx := context.Background()
@@ -51,8 +53,11 @@ func TestRefundSending_AnEarlierProcessDoesNotHoldTheDialog(t *testing.T) {
 	}
 	b.leaveIdleRefund(ctx, 42)
 	var st refundDialog
-	if _, found, _, err := b.dialogs.Load(ctx, 42, refundDialogKind, &st); err != nil || found {
-		t.Fatalf("a send of an earlier process still holds the dialog (found=%v, err=%v)", found, err)
+	if _, found, _, err := b.dialogs.Load(ctx, 42, refundDialogKind, &st); err != nil || !found || !st.Parked || st.Key != "tg-k" {
+		t.Fatalf("a send that may have started must be parked with its key (found=%v, parked=%v, key=%q, err=%v)", found, st.Parked, st.Key, err)
+	}
+	if b.refundText(ctx, 42, &models.User{ID: 42}, "PROMO10") {
+		t.Fatal("a parked refund took a typed text")
 	}
 }
 

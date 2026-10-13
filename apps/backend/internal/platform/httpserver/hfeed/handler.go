@@ -111,6 +111,22 @@ type Handler struct {
 	// item label. Optional: a lookup failure degrades to a generic label
 	// rather than failing the sale.
 	eventQueries *gen.Queries
+	// contactFormReady / contactFormSiteKey: whether this deployment can take
+	// the hosted page's contact form (a Turnstile secret, or not production)
+	// and the public site key handed to the page.
+	contactFormReady      bool
+	contactFormSiteKey    string
+	contactFormPrivacyURL string
+}
+
+// WithContactForm configures the hosted page's "Write to the organizer" form:
+// whether it is offered, its Turnstile site key and the privacy policy its
+// consent links to.
+func (h *Handler) WithContactForm(ready bool, siteKey, privacyURL string) *Handler {
+	h.contactFormReady = ready
+	h.contactFormSiteKey = siteKey
+	h.contactFormPrivacyURL = privacyURL
+	return h
 }
 
 // WithPayments wires the hosted-payment dependencies. Returns the receiver

@@ -14,9 +14,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -26,6 +26,7 @@ import (
 	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/geoslug"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
@@ -51,6 +52,7 @@ type WorkspaceInput struct {
 	// LegalName and the fields below are copied onto the organization; empty
 	// strings are stored as NULL.
 	LegalName          string
+	LegalForm          string // migration 0146; longer than 80 runes is dropped
 	Country            string
 	Locale             string
 	TaxID              string
@@ -132,12 +134,13 @@ UPDATE organizations SET
     legal_name = $2, tax_id = $3, tax_id_scheme = $4, registration_number = $5,
     legal_address_line1 = $6, legal_address_postal_code = $7, legal_address_city = $8,
     legal_address_country = $9, contact_email = $10, contact_phone = $11, website_url = $12,
+    legal_form = $13,
     updated_at = now()
 WHERE id = $1`,
 		org.ID, nullable(in.LegalName), nullable(taxNumber), nullable(taxScheme),
 		nullable(in.RegistrationNumber), nullable(in.AddressLine1), nullable(in.AddressPostalCode),
 		nullable(in.AddressCity), nullable(in.AddressCountry), nullable(in.ContactEmail),
-		nullable(in.ContactPhone), nullable(in.Website),
+		nullable(in.ContactPhone), nullable(in.Website), legalForm(in.LegalForm),
 	); err != nil {
 		return ws, fmt.Errorf("provisioning: set legal fields: %w", err)
 	}
@@ -250,17 +253,11 @@ func freeSlug(ctx context.Context, q *gen.Queries, name string) (string, error) 
 	return "", errors.New("provisioning: no free slug")
 }
 
-// The per-scheme formats below mirror the ones PATCH /v1/organizations/{id}
-// enforces (httpserver/hiam/orgs.go). An organization saved with a number its
+// The per-scheme formats are sellerinfo's, the same ones PATCH
+// /v1/organizations/{id} enforces. An organization saved with a number its
 // own scheme rejects could never be edited again: every later save of the legal
 // block answered 400 invalid_tax_id (an Italian codice fiscale filed as an EU
 // VAT number, 2026-10-08).
-var (
-	orgEUVAT = regexp.MustCompile(`^[A-Z]{2}[A-Z0-9]{2,12}$`)
-	orgGBVAT = regexp.MustCompile(`^GB(?:[0-9]{9}|[0-9]{12}|GD[0-9]{3}|HA[0-9]{3})$`)
-	orgILVAT = regexp.MustCompile(`^[0-9]{9}$`)
-	orgUSEIN = regexp.MustCompile(`^[0-9]{2}-?[0-9]{7}$`)
-)
 
 // OrgTax maps the form's tax-number type onto the values the organizations
 // table accepts (eu_vat, gb_vat, il_vat, us_ein, other) and returns the number
@@ -272,32 +269,43 @@ func OrgTax(formScheme, country, taxID string) (scheme, number string) {
 	if formScheme == "" || taxID == "" {
 		return "", taxID
 	}
-	var re *regexp.Regexp
 	switch formScheme {
 	case "vat":
 		switch strings.ToUpper(country) {
 		case "GB":
-			scheme, re = "gb_vat", orgGBVAT
+			scheme = sellerinfo.SchemeGBVAT
 		case "IL":
-			scheme, re = "il_vat", orgILVAT
+			scheme = sellerinfo.SchemeILVAT
 		default:
-			scheme, re = "eu_vat", orgEUVAT
+			scheme = sellerinfo.SchemeEUVAT
 		}
 	case "ein":
-		scheme, re = "us_ein", orgUSEIN
+		scheme = sellerinfo.SchemeUSEIN
 	default:
-		return "other", taxID
+		return sellerinfo.SchemeOther, taxID
 	}
 	// The save endpoint upper-cases a VAT number but does not strip spaces,
 	// so a "ES B-123 4567" typed into the form is stored without the noise.
 	candidate := taxID
-	if scheme != "us_ein" && scheme != "il_vat" {
-		candidate = strings.ToUpper(strings.NewReplacer(" ", "", ".", "", "-", "", "/", "").Replace(taxID))
+	if scheme != sellerinfo.SchemeUSEIN && scheme != sellerinfo.SchemeILVAT {
+		candidate = sellerinfo.NormalizeTaxID(scheme, taxID)
 	}
-	if re.MatchString(candidate) {
+	if sellerinfo.ValidTaxID(scheme, candidate) {
 		return scheme, candidate
 	}
 	return "other", taxID
+}
+
+// legalForm is the application's legal form as the organizations column
+// accepts it (1-80 characters, migration 0146). The form allows 80 too, so a
+// longer value only comes from an edited row: it is dropped, never truncated
+// into something the applicant did not write.
+func legalForm(s string) *string {
+	v := nullable(s)
+	if v != nil && utf8.RuneCountInString(*v) > sellerinfo.MaxLegalFormRunes {
+		return nil
+	}
+	return v
 }
 
 func botLocale(l string) string {

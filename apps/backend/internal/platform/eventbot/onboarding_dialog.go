@@ -337,6 +337,7 @@ func (b *Bot) onbCollect(ctx context.Context, chatID int64, from *models.User, d
 		}
 		d.phone, d.step = phone, onbEmail
 		b.sendMarkup(ctx, chatID, b.texts.T(loc, "bot.onb.ask_email", nil), &models.ReplyKeyboardRemove{RemoveKeyboard: true})
+		b.menuKB.set(chatID, false) // the keyboard is gone: a later menu sends it again
 	case onbEmail:
 		if !looksLikeEmail(text) {
 			b.send(ctx, chatID, b.texts.T(loc, "bot.onb.email_invalid", nil), nil)
@@ -360,6 +361,7 @@ func (b *Bot) onbCollect(ctx context.Context, chatID int64, from *models.User, d
 }
 
 func (b *Bot) askPhone(ctx context.Context, chatID int64, loc string) {
+	b.menuKB.set(chatID, false) // the contact button replaces any other reply keyboard
 	b.sendMarkup(ctx, chatID, b.texts.T(loc, "bot.onb.ask_phone", nil), &models.ReplyKeyboardMarkup{
 		Keyboard:        [][]models.KeyboardButton{{{Text: b.texts.T(loc, "bot.onb.share_phone_btn", nil), RequestContact: true}}},
 		ResizeKeyboard:  true,

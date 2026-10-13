@@ -14,6 +14,7 @@ package httpserver
 //	  go test -tags integration ./apps/backend/internal/platform/httpserver/ -run BotE2E
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -41,6 +42,9 @@ type stubTelegram struct {
 	updates chan json.RawMessage
 	mu      sync.Mutex
 	sent    []string
+	// sentIDs is the message id behind each entry of sent (0 for a
+	// document).
+	sentIDs []int
 	nextID  int64
 	msgSeq  int
 	// calls counts every Bot API method the bot called, for the methods whose
@@ -71,6 +75,9 @@ type stubMessage struct {
 	text   string
 	markup json.RawMessage // the reply_markup as sent; nil when it has none
 	data   []string        // callback data of its buttons
+	// replyKB is a reply keyboard (the one under the message field) the
+	// message carried, as sent; nil for an inline keyboard or none.
+	replyKB json.RawMessage
 }
 
 // document returns the bytes of a document the bot sent, by file name.
@@ -146,6 +153,7 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 			seq = s.msgSeq
 			s.remember(seq, p)
 			s.sent = append(s.sent, p.Text)
+			s.sentIDs = append(s.sentIDs, seq)
 		case p.retires():
 			// An old message losing its keyboard (feed.go): no new text.
 			if m := s.msgs[seq]; m != nil {
@@ -161,6 +169,7 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		default:
 			s.remember(seq, p)
 			s.sent = append(s.sent, p.Text)
+			s.sentIDs = append(s.sentIDs, seq)
 		}
 		s.mu.Unlock()
 		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":1700000000,"chat":{"id":%d,"type":"private"},"text":%q}}`, seq, p.chat(), p.Text)
@@ -216,6 +225,7 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		s.mu.Lock()
 		s.sent = append(s.sent, "[document "+name+"] "+caption)
+		s.sentIDs = append(s.sentIDs, 0)
 		s.msgSeq++
 		seq := s.msgSeq
 		s.mu.Unlock()
@@ -271,6 +281,9 @@ func (s *stubTelegram) remember(id int, p stubSent) {
 		s.msgs = map[int]*stubMessage{}
 	}
 	m := &stubMessage{chat: p.chat(), text: p.Text}
+	if bytes.Contains(p.ReplyMarkup, []byte(`"keyboard"`)) || bytes.Contains(p.ReplyMarkup, []byte(`"remove_keyboard"`)) {
+		m.replyKB = p.ReplyMarkup
+	}
 	var kb struct {
 		InlineKeyboard [][]struct {
 			CallbackData string `json:"callback_data"`
@@ -693,4 +706,32 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("bot did not stop after cancel")
 	}
+}
+
+// stubReplyKeyboard is a reply keyboard as the bot sent it.
+type stubReplyKeyboard struct {
+	Keyboard [][]struct {
+		Text string `json:"text"`
+	} `json:"keyboard"`
+	IsPersistent   bool `json:"is_persistent"`
+	ResizeKeyboard bool `json:"resize_keyboard"`
+	RemoveKeyboard bool `json:"remove_keyboard"`
+}
+
+// replyKeyboardSince is the reply keyboard of the first message sent after
+// mark that carried one, and that message's text; ok is false when none did.
+func (s *stubTelegram) replyKeyboardSince(mark int) (kb stubReplyKeyboard, text string, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := mark; i < len(s.sentIDs); i++ {
+		m := s.msgs[s.sentIDs[i]]
+		if m == nil || m.replyKB == nil {
+			continue
+		}
+		if json.Unmarshal(m.replyKB, &kb) != nil {
+			return kb, m.text, false
+		}
+		return kb, m.text, true
+	}
+	return kb, "", false
 }

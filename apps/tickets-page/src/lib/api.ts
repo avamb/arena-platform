@@ -57,7 +57,9 @@ export interface HostedPageSellerAddress {
   country?: string | null;
 }
 
-/** Public contact details of the seller. Both parts are optional. */
+/** Public contact details of the seller. Both parts are optional. Since the
+ * contact form (2026-10-13) the API never answers `email`: buyers write
+ * through the form instead. */
 export interface HostedPageSellerContact {
   email?: string | null;
   phone?: string | null;
@@ -79,6 +81,17 @@ export interface HostedPageSeller {
   public_contact?: HostedPageSellerContact | null;
 }
 
+/** The "Write to the organizer" form. Present only when the page offers it;
+ * the organizer's address itself is never sent to the page. */
+export interface HostedPageContactForm {
+  available: boolean;
+  /** Cloudflare Turnstile site key; absent when the deployment runs without
+   * a captcha (never in production). */
+  turnstile_site_key?: string;
+  /** The privacy policy the consent links to; absent when none is configured. */
+  privacy_url?: string;
+}
+
 /** The event's promoter, shown next to the seller (event page only). */
 export interface HostedPagePromoter {
   name: string;
@@ -91,6 +104,7 @@ export interface HostedPageResponse {
   default_locale: string;
   seller?: HostedPageSeller | null;
   promoter?: HostedPagePromoter | null;
+  contact_form?: HostedPageContactForm | null;
 }
 
 export interface HostedPromoterPageResponse {
@@ -98,6 +112,7 @@ export interface HostedPromoterPageResponse {
   default_locale: string;
   events: HostedPageEvent[];
   seller?: HostedPageSeller | null;
+  contact_form?: HostedPageContactForm | null;
 }
 
 /** ApiError carries the HTTP status so callers can distinguish "not found"
