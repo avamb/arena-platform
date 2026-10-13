@@ -1,5 +1,5 @@
 {
   "resultCode": 101,
-  "description": "Seat Parter-3-12 is already taken",
+  "description": "Seat Parter-3-12 is already taken. Choose another seat.",
   "command": "RESERVATION"
 }
