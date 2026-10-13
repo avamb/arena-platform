@@ -264,7 +264,7 @@ func (b *Bot) orgDataCallback(ctx context.Context, chatID int64, msgID int, from
 			return
 		}
 		st.Field, st.Scheme, st.ChannelID = "tax", arg, nil
-		b.orgRenderAskTax(ctx, chatID, &msgID, id, st, p, "")
+		b.orgRenderAskTax(ctx, chatID, &msgID, id, st, "")
 	case "tx":
 		b.orgApplyLegal(ctx, chatID, &msgID, id, jwt, st, map[string]any{"tax_id": nil, "tax_id_scheme": nil}, "bot.og.cleared")
 	case "cv", "ce", "cp", "cxe", "cxp", "on", "off":
@@ -280,7 +280,7 @@ func (b *Bot) orgDataCallback(ctx context.Context, chatID int64, msgID int, from
 			return
 		}
 		st.ChannelID = &ch.Id
-		b.orgChannelPress(ctx, chatID, &msgID, id, jwt, st, p, ch, kind)
+		b.orgChannelPress(ctx, chatID, &msgID, id, jwt, st, ch, kind)
 	}
 }
 
@@ -294,7 +294,7 @@ func orgChannel(p openapi.SellerProfile, id uuid.UUID) (openapi.SellerProfileCha
 	return openapi.SellerProfileChannel{}, false
 }
 
-func (b *Bot) orgChannelPress(ctx context.Context, chatID int64, msgID *int, id *Identity, jwt string, st orgDataDialog, p openapi.SellerProfile, ch openapi.SellerProfileChannel, kind string) {
+func (b *Bot) orgChannelPress(ctx context.Context, chatID int64, msgID *int, id *Identity, jwt string, st orgDataDialog, ch openapi.SellerProfileChannel, kind string) {
 	loc := id.Locale()
 	switch kind {
 	case "cv":
@@ -330,7 +330,7 @@ func (b *Bot) orgApplyLegal(ctx context.Context, chatID int64, msgID *int, id *I
 			p, perr := b.arena.SellerProfile(ctx, jwt, orgID)
 			if perr == nil {
 				if st.Field == "tax" {
-					b.orgRenderAskTax(ctx, chatID, msgID, id, st, p, b.texts.T(loc, key, nil)+"\n\n")
+					b.orgRenderAskTax(ctx, chatID, msgID, id, st, b.texts.T(loc, key, nil)+"\n\n")
 					return
 				}
 				if f, ok := orgFieldByCode(st.Field); ok {
@@ -594,7 +594,7 @@ func (b *Bot) orgRenderSchemes(ctx context.Context, chatID int64, msgID *int, id
 }
 
 // orgRenderAskTax asks for the number of the chosen scheme.
-func (b *Bot) orgRenderAskTax(ctx context.Context, chatID int64, msgID *int, id *Identity, st orgDataDialog, p openapi.SellerProfile, prefix string) {
+func (b *Bot) orgRenderAskTax(ctx context.Context, chatID int64, msgID *int, id *Identity, st orgDataDialog, prefix string) {
 	loc := id.Locale()
 	st.Field, st.ChannelID = "tax", nil
 	if msgID != nil {
@@ -682,7 +682,7 @@ func (b *Bot) orgDataText(ctx context.Context, chatID int64, from *models.User, 
 	case "tax":
 		value, errKey := parseOrgTax(st.Scheme, text)
 		if errKey != "" {
-			b.orgRenderAskTax(ctx, chatID, edit, id, st, p, b.texts.T(loc, errKey, nil)+"\n\n")
+			b.orgRenderAskTax(ctx, chatID, edit, id, st, b.texts.T(loc, errKey, nil)+"\n\n")
 			return true
 		}
 		b.orgApplyLegal(ctx, chatID, edit, id, jwt, st, map[string]any{"tax_id_scheme": st.Scheme, "tax_id": value}, "bot.og.saved")
