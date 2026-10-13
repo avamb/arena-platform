@@ -44,8 +44,8 @@ type DashboardRefund struct {
 	// Parked: the payment was already fully refunded; the refund was written
 	// in manual_review for an operator and nothing else moved.
 	Parked bool
-	// LegacyParked: refunds of the payment parked before the refund engine
-	// existed, which this dashboard refund may duplicate (an alert is owed).
+	// LegacyParked: refunds of the payment parked without a provider, which
+	// this dashboard refund may duplicate (an alert is owed).
 	LegacyParked []uuid.UUID
 	// Unconfirmed: the refund belongs to a payment of this organization but
 	// could not be read back from the provider after MaxDashboardConfirmAttempts
@@ -284,7 +284,7 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 		}
 		// An alert is owed when the row is capped, when it is smaller than
 		// the payment (tickets go under review hold) or when a parked
-		// pre-engine refund may be the same money. failure_code says which,
+		// refund without a provider may be the same money. failure_code says which,
 		// so the alert says what actually happened.
 		r, err := scanRefund(tx.QueryRow(ctx, `
 			INSERT INTO refunds (payment_intent_id, org_id, order_id, amount, currency, reason, requested_by,

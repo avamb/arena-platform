@@ -605,7 +605,7 @@ func alertText(r Refund, ticketStatus string) string {
 		case DashboardOverPayment:
 			return head + fmt.Sprintf(" after the payment was already fully refunded; nothing was applied and it is parked for review. Check the provider dashboard: the buyer may have been refunded twice. Order %s.", uuidString(r.OrderID))
 		case DashboardLegacyParked:
-			return head + fmt.Sprintf(" while the same payment has a refund parked for review from before the refund engine. They may be the same money: check the provider dashboard and resolve the parked refund accordingly. Order %s.", uuidString(r.OrderID))
+			return head + fmt.Sprintf(" while the same payment has a refund parked for review without a provider. They may be the same money: check the provider dashboard and resolve the parked refund accordingly. Order %s.", uuidString(r.OrderID))
 		}
 		return head + fmt.Sprintf(" and does not cover the whole payment. The order's tickets are on review hold: decide which tickets it covers. Order %s.", uuidString(r.OrderID))
 	}

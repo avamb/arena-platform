@@ -92,3 +92,46 @@ func TestRefundResolve_BeyondPaymentAnnouncesNothing(t *testing.T) {
 			events, settled, ticketStatus)
 	}
 }
+
+// A parked row without a provider (migration 0138 moved such rows to
+// manual_review, and the flat approve route can still park one) is closed by
+// a platform superadmin, either way, with a note.
+func TestRefundResolve_ParkedRowWithoutProvider(t *testing.T) {
+	e := newSec1Env(t)
+	org := e.org(t, "RESOLVE")
+	_, super := e.superadmin(t)
+	f := newPay03Order(t, e.srv.pgxPool, org, "stripe")
+	ctx := context.Background()
+	legacy := func(reason string) string {
+		t.Helper()
+		var id string
+		if err := e.srv.pgxPool.QueryRow(ctx, `INSERT INTO refunds (payment_intent_id, org_id, amount, currency, reason,
+			state, settlement, provider_attempts)
+			VALUES ($1, $2, 1000, 'EUR', $3, 'manual_review', 'provider', 0) RETURNING id::text`, f.pay, org, reason).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	base := "/v1/organizations/" + org.String() + "/refunds/"
+	byHand, never := legacy("returned by hand"), legacy("never sent")
+
+	e.expect(t, http.StatusOK, http.MethodPost, base+byHand+"/resolve", super, "checked the dashboard", `{"outcome":"refunded","note":"returned by hand on 1 Oct"}`)
+	e.expect(t, http.StatusOK, http.MethodPost, base+never+"/resolve", super, "checked the dashboard", `{"outcome":"not_refunded","note":"nothing at stripe"}`)
+	for id, want := range map[string]string{byHand: "succeeded", never: "failed"} {
+		var state string
+		if err := e.srv.pgxPool.QueryRow(ctx, `SELECT state FROM refunds WHERE id = $1`, id).Scan(&state); err != nil {
+			t.Fatal(err)
+		}
+		if state != want {
+			t.Errorf("row without a provider %s = %s; want %s", id, state, want)
+		}
+	}
+	var audits int
+	if err := e.srv.pgxPool.QueryRow(ctx, `SELECT count(*) FROM audit_events WHERE action = 'v1.refund.resolve'
+		AND resource_id IN ($1, $2) AND metadata->>'note' <> ''`, byHand, never).Scan(&audits); err != nil {
+		t.Fatal(err)
+	}
+	if audits != 2 {
+		t.Errorf("audit rows with a note = %d; want 2", audits)
+	}
+}

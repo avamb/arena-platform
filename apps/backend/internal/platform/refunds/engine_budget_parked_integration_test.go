@@ -4,10 +4,7 @@ package refunds_test
 
 import (
 	"context"
-	"errors"
 	"testing"
-
-	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
@@ -88,32 +85,6 @@ func TestEngine_PreEngineManualReviewRowStillCountsAgainstThePayment(t *testing.
 	e := f.engine(&fakeModule{partial: true, answers: []func(payments.RefundRequest) (payments.RefundResult, error){succeeded}}, true)
 	if _, err := e.CreateBatch(ctx, f.batch("k-legacy-review-budget", true, refunds.Item{TicketID: f.tickets[0]})); err == nil {
 		t.Fatal("CreateBatch refunded a ticket whose payment is fully taken by a pre-engine manual_review row")
-	}
-}
-
-// A pre-engine row (no provider) is closed by hand by the owner, never through
-// the resolve route: the route answers 409 and the row stays as it was.
-func TestEngine_ResolveRefusesAPreEngineRow(t *testing.T) {
-	f := newFixture(t, testPool(t), "pay03fake")
-	ctx := context.Background()
-	var id uuid.UUID
-	if err := f.pool.QueryRow(ctx, `INSERT INTO refunds (payment_intent_id, org_id, amount, currency, reason, state, settlement,
-		provider_attempts)
-		SELECT id, org_id, amount, currency, 'moved by 0138', 'manual_review', 'provider', 0
-		FROM payment_intents WHERE id = $1 RETURNING id`, f.payment).Scan(&id); err != nil {
-		t.Fatal(err)
-	}
-	e := f.engine(&fakeModule{partial: true}, true)
-	for _, outcome := range []string{refunds.ResolveRefunded, refunds.ResolveNotRefunded} {
-		_, err := e.Resolve(ctx, refunds.ResolveInput{OrgID: f.org, RefundID: id, Outcome: outcome, Note: "checked",
-			Actor: refunds.Actor{Type: "user", ID: uuid.NewString()}, Via: "admin_web"})
-		var re *refunds.Error
-		if !errors.As(err, &re) || re.Code != refunds.CodeNotInReview {
-			t.Fatalf("Resolve(%s) of a pre-engine row: %v; want %s", outcome, err, refunds.CodeNotInReview)
-		}
-	}
-	if got := f.refundState(t, id); got.State != refunds.StateManualReview {
-		t.Errorf("pre-engine row state = %s; want manual_review (untouched)", got.State)
 	}
 }
 

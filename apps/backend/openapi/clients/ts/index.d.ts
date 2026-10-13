@@ -6526,8 +6526,8 @@ export interface paths {
          *     refund (its ticket is cancelled only when the refund was meant to
          *     cancel it). Outcome `refunded_beyond_payment` records a refund whose
          *     money really went back although the payment was already covered (the
-         *     buyer was refunded twice): it becomes succeeded and cancels nothing.
-         *     Outcome `not_refunded` is only for a refund the provider dashboard
+         *     buyer was refunded twice): it becomes succeeded and cancels,
+         *     announces and mails nothing. Outcome `not_refunded` is only for a refund the provider dashboard
          *     shows did NOT go through (failed or canceled there): it becomes failed
          *     and its ticket can be refunded again, which sends a NEW refund to the
          *     provider, so choosing it for a refund that did go through returns the
@@ -6536,7 +6536,8 @@ export interface paths {
          *     the payment's refunds above what was paid (refund.over_budget). A note
          *     is required and is kept in the audit trail only; the refund keeps the
          *     reason it was parked with, except that one closed as refunded carries
-         *     no failure. Platform superadmin only, with X-Admin-Reason.
+         *     no failure. A parked refund without a provider is closed as
+         *     `refunded` or `not_refunded` exactly as stated and settles nothing. Platform superadmin only, with X-Admin-Reason.
          */
         post: operations["postV1OrganizationsOrgIdRefundsRefundIdResolve"];
         delete?: never;

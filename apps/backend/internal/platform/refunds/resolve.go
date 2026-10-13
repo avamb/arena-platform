@@ -91,14 +91,23 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 		if err != nil {
 			return err
 		}
-		if cur.Provider == nil || cur.State != StateManualReview {
+		if cur.State != StateManualReview {
 			return refusal(http.StatusConflict, CodeNotInReview, "only a refund waiting for manual review can be resolved",
 				map[string]any{"state": cur.State})
 		}
 		if pay, err = getPayment(ctx, tx, *piID); err != nil {
 			return err
 		}
-		if in.Outcome == ResolveRefunded || in.Outcome == ResolveRefundedBeyondPayment {
+		// A parked row without a provider never went through the engine (the
+		// rows migration 0138 moved to manual_review, or a partial refund the
+		// flat approve route parked for review): nothing about it is known but
+		// what the operator checked, so it is closed as stated and nothing
+		// settles. Left open it would hold the payment's budget for good.
+		noProvider := cur.Provider == nil
+		if noProvider && in.Outcome == ResolveRefundedBeyondPayment {
+			return bad("a refund without a provider is closed as refunded or not_refunded")
+		}
+		if !noProvider && (in.Outcome == ResolveRefunded || in.Outcome == ResolveRefundedBeyondPayment) {
 			// Nothing was sent: the money cannot have gone back through this
 			// row. (If the buyer was refunded by hand at the provider, that
 			// refund is its own row - the dashboard webhook records it.)
@@ -122,7 +131,7 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 					map[string]any{"refunds_total": live, "paid": pay.Amount})
 			}
 		}
-		if in.Outcome == ResolveRefunded {
+		if in.Outcome == ResolveRefunded && !noProvider {
 			// Settling puts the amount into the payment's live sum: under the
 			// lock, it must still fit what was paid.
 			var live int64
@@ -156,7 +165,7 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 			buyer_notified_at = CASE WHEN $4 THEN COALESCE(buyer_notified_at, now()) ELSE buyer_notified_at END,
 			alert_due_at = NULL, updated_at = now()
 			WHERE id = $1 AND state = 'manual_review' RETURNING `+refundColumns, in.RefundID, state, clearFailure,
-			in.Outcome == ResolveRefundedBeyondPayment))
+			in.Outcome == ResolveRefundedBeyondPayment || noProvider))
 		if err != nil {
 			return err
 		}
@@ -169,7 +178,8 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 		return e.writeAudit(ctx, tx, audit.Event{ActorType: in.Actor.Type, ActorID: in.Actor.ID,
 			Action: "v1.refund.resolve", ResourceType: "refund", ResourceID: out.ID.String(),
 			Metadata: map[string]any{"outcome": in.Outcome, "state": state, "via": in.Via, "note": note,
-				"previous_failure_code": deref(cur.FailureCode), "previous_failure_reason": deref(cur.FailureReason)}})
+				"previous_failure_code": deref(cur.FailureCode), "previous_failure_reason": deref(cur.FailureReason),
+				"no_provider": noProvider}})
 	})
 	if err != nil {
 		return Refund{}, err
@@ -177,8 +187,8 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 	// A refund beyond the payment changes no ticket and owes no announcement:
 	// it is stamped settled, published and buyer-notified above, so neither
 	// this call nor the sweep's repair or letter pass cancels, announces or
-	// mails anything for it.
-	if out.State == StateSucceeded && in.Outcome != ResolveRefundedBeyondPayment {
+	// mails anything for it. A row without a provider settles nothing either.
+	if out.State == StateSucceeded && in.Outcome != ResolveRefundedBeyondPayment && out.Provider != nil {
 		e.settle(ctx, out, pay)
 	}
 	return out, nil

@@ -263,9 +263,10 @@ func (e *Engine) parkOverBudget(ctx context.Context, tx pgx.Tx, id uuid.UUID, pa
 // may have moved money and keeps counting. The exclusion holds only while the
 // row is still parked: once an operator resolves it (to succeeded, say) it
 // counts again. gen.SumNonFailedRefundsByIntent, the flat routes' sum, carries
-// the same rule. A row without a provider was never the engine's (migration
-// 0138 moved the pre-engine rows to manual_review): it may stand for money
-// returned by hand, so it keeps counting until an operator closes it.
+// the same rule. A row without a provider was never the engine's (the rows
+// migration 0138 moved to manual_review, or a partial refund the flat approve
+// route parked): it may stand for money returned by hand, so it keeps
+// counting until an operator closes it through Resolve.
 // A refund the provider reversed after it had succeeded, or reported failed
 // after it had accepted it as pending (both confirmed by the provider), moved
 // no money either and leaves the budget while it is parked.
