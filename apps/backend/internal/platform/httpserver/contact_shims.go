@@ -21,15 +21,11 @@ func (s *Server) contactFormSiteKey() string {
 	return strings.TrimSpace(s.cfg.ContactFormTurnstileSiteKey)
 }
 
-// contactFormReady reports whether the page may offer the form: outside
-// production always (the captcha is then optional), in production only with
-// both a secret and a site key — a form the server would refuse with 503 is
-// never shown.
+// contactFormReady reports whether the page may offer the form
+// (config.ContactFormReady, shared with arena-worker's letters) — a form the
+// server would refuse with 503 is never shown.
 func (s *Server) contactFormReady() bool {
-	if s.cfg == nil || !s.cfg.IsProduction() {
-		return true
-	}
-	return s.cfg.ContactFormSecret() != "" && s.contactFormSiteKey() != ""
+	return s.cfg.ContactFormReady()
 }
 
 func (s *Server) contactHandler() *hcontact.Handler {

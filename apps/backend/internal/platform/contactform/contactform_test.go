@@ -51,7 +51,7 @@ func TestFormatTelegram_EscapesAndClipsWithinTheTelegramLimit(t *testing.T) {
 		strings.Repeat("😀", 2000), // two UTF-16 units each
 		strings.Repeat("&😀", 1000),
 	} {
-		msg := FormatTelegram("Org & Co", "org", "<Ann>", "a@b.example", body, true)
+		msg := FormatTelegram("Org & Co", "org", "<Ann>", "a@b.example", body, EmailMailed)
 		if strings.Contains(msg, "<Ann>") || strings.Contains(msg, "Org & Co") {
 			t.Errorf("unescaped values in %q", msg[:120])
 		}
@@ -65,16 +65,20 @@ func TestFormatTelegram_EscapesAndClipsWithinTheTelegramLimit(t *testing.T) {
 			t.Error("the closing line is never cut")
 		}
 	}
-	short := FormatTelegram("Org", "org", "Ann", "a@b.example", "Hello there!", true)
+	short := FormatTelegram("Org", "org", "Ann", "a@b.example", "Hello there!", EmailMailed)
 	if strings.Contains(short, "…") || !strings.Contains(short, "Hello there!") {
 		t.Errorf("a short message is kept whole: %q", short)
 	}
 }
 
 func TestFormatTelegram_SaysWhenTheEmailDidNotGoOut(t *testing.T) {
-	msg := FormatTelegram("Org", "org", "Ann", "a@b.example", "Hello there!", false)
+	msg := FormatTelegram("Org", "org", "Ann", "a@b.example", "Hello there!", EmailNoAddress)
 	if strings.Contains(msg, "went to your e-mail") || !strings.Contains(msg, "was not e-mailed") {
 		t.Errorf("the post must not claim an e-mail that was not sent: %q", msg)
+	}
+	msg = FormatTelegram("Org", "org", "Ann", "a@b.example", "Hello there!", EmailRetrying)
+	if strings.Contains(msg, "went to your e-mail") || strings.Contains(msg, "no e-mail address") || !strings.Contains(msg, "keeps trying") {
+		t.Errorf("a failing e-mail is said to be retried, not missing: %q", msg)
 	}
 }
 

@@ -340,6 +340,7 @@ func runDeliveryWithMedia(ctx context.Context, t *testing.T, pool *pgxpool.Pool,
 		Sender:             buildSMTPSender(smtp.Addr),
 		Media:              media,
 		TicketsBaseURL:     testTicketsBaseURL,
+		ContactFormEnabled: true,
 		Logger:             testLogger(),
 	})
 	body := mustJSON(t, p)

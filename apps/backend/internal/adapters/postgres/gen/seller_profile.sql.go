@@ -116,9 +116,7 @@ const getContactFormTarget = `-- name: GetContactFormTarget :one
 SELECT sc.id,
        COALESCE(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') <> ''
          OR COALESCE(btrim(o.contact_email), '') <> ''
-         OR EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
-                    WHERE m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
-                      AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> '') AS has_email
+         OR ` + ownerReachableSQL + ` AS has_email
 FROM sales_channels sc
 JOIN organizations o ON o.id = sc.org_id
 JOIN agent_feed_tokens ft ON ft.sales_channel_id = sc.id
@@ -151,20 +149,36 @@ func (q *Queries) GetContactFormToTelegram(ctx context.Context, orgID uuid.UUID)
 	return v, err
 }
 
-// OwnerRecipientSQL selects the account e-mail of the organization's owner
-// (alias o): the oldest active org_admin membership whose account is neither
-// deactivated nor anonymized. It is the last private recipient of the contact
-// form (owner decision 2026-10-13) and is never published.
+// OwnerRecipientWhereSQL is the ONE rule for "the organization's owner whose
+// account e-mail may receive the contact form's messages" (membership alias
+// m, user alias u, organization alias o): an active org_admin membership, an
+// account neither deactivated nor anonymized, a non-blank e-mail, and never a
+// platform superadmin - the operator is an org_admin of organizations it set
+// up, and a buyer's message must reach the organizer, not the platform. Every
+// query that asks for this recipient builds on it
+// (TestOwnerRecipientRule_OneCopyEverywhere); the mirrors in queries/*.sql
+// repeat it literally.
+const OwnerRecipientWhereSQL = `m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
+                 AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
+                 AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                                 WHERE ur.user_id = u.id AND ur.org_id IS NULL
+                                   AND r.org_id IS NULL AND r.name = 'platform_superadmin')`
+
+// ownerReachableSQL answers whether such an owner exists - a boolean, never
+// the address.
+const ownerReachableSQL = `EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
+               WHERE ` + OwnerRecipientWhereSQL + `)`
+
+// OwnerRecipientSQL selects the account e-mail of that owner (the oldest
+// membership first). It is the last private recipient of the contact form
+// (owner decision 2026-10-13) and is never published.
 const OwnerRecipientSQL = `(SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id
-  WHERE m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
-    AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
+  WHERE ` + OwnerRecipientWhereSQL + `
   ORDER BY m.joined_at, u.id LIMIT 1)`
 
 const orgHasPrivateRecipient = `-- name: OrgHasPrivateRecipient :one
 SELECT COALESCE(btrim(o.contact_email), '') <> ''
-    OR EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
-               WHERE m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
-                 AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> '')
+    OR ` + ownerReachableSQL + `
 FROM organizations o WHERE o.id = $1 AND o.deleted_at IS NULL`
 
 // OrgHasPrivateRecipient reports whether the contact form of a page without a

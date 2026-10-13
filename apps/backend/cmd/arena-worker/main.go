@@ -253,7 +253,7 @@ func run() error {
 	registerMediaGCHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerOpsWatchdogHandler(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerEventWatchHandler(registry, pool.Pool, cfg, salesNotifier, logger)
-	registerContactFormHandler(registry, pool.Pool, cfg, salesNotifier, logger)
+	registerContactFormHandler(registry, pool.Pool, cfg, salesNotifier, opsNotifier, logger)
 	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 
@@ -530,6 +530,13 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	deliveryOpts := buildDeliveryHandlerOptions(
 		cfg, queries, buildDeliveryMediaResolver(mediaRepo, cfg, logger), logger,
 	)
+	if !deliveryOpts.ContactFormEnabled {
+		// arena-api and this worker must share the Turnstile keys: without
+		// them here, letters of hosted pages without a public e-mail carry
+		// no organizer contact at all.
+		logger.Warn("contact form keys are not set: letters will not link the hosted page's contact form",
+			"env", "CONTACT_FORM_TURNSTILE_SECRET/CONTACT_FORM_TURNSTILE_SITE_KEY")
+	}
 	reg.Register(delivery.JobType, delivery.NewHandler(deliveryOpts))
 	// session.change_email is the letter Arena writes to a buyer whose session
 	// moved or was cancelled (sessionchange.Apply queues it in the move's own
@@ -701,7 +708,7 @@ func registerEventWatchHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *co
 // message from the hosted page's "Write to the organizer" form, mailed to the
 // channel's public e-mail (Reply-To = the buyer) and, when the organization
 // keeps the switch on, posted to its own sales chat.
-func registerContactFormHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier *salesnotify.Dispatcher, logger *slog.Logger) {
+func registerContactFormHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier *salesnotify.Dispatcher, ops opsalert.Notifier, logger *slog.Logger) {
 	var announcer contactform.Announcer
 	if notifier != nil {
 		announcer = notifier
@@ -710,6 +717,7 @@ func registerContactFormHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *c
 		Pool:      pool,
 		Sender:    buildEmailSender(cfg, logger),
 		Announcer: announcer,
+		Ops:       ops,
 		Logger:    logger,
 	}).Handle)
 	// contact.purge deletes messages older than 90 days every hour, so a page
@@ -806,6 +814,7 @@ func buildDeliveryHandlerOptions(cfg *config.Config, queries *gen.Queries, media
 		FromAddress:        coalesce(getEmailFrom(cfg), "tickets@arena.example.com"),
 		Media:              media,
 		TicketsBaseURL:     cfg.PublicTicketsBaseURL,
+		ContactFormEnabled: cfg.ContactFormReady(),
 		Logger:             logger,
 	}
 }

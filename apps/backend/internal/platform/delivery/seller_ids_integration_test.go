@@ -63,7 +63,7 @@ func TestDeliverySellerIDs_PublicContactAndNumbers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := ContactRouteFor(route, testTicketsBaseURL); got.Email != personalEmail || got.FormURL != "" {
+	if got := ContactRouteFor(route, testTicketsBaseURL, true); got.Email != personalEmail || got.FormURL != "" {
 		t.Errorf("route without a hosted page = %+v", got)
 	}
 
