@@ -79,6 +79,8 @@ func seedRefundableOrder(t *testing.T, pool *pgxpool.Pool, orgID uuid.UUID, seed
 		for _, sql := range []string{
 			`UPDATE tickets SET refund_id = NULL WHERE order_id = $1`,
 			`DELETE FROM refunds WHERE order_id = $1`,
+			`DELETE FROM worker_jobs WHERE job_type = 'refund.buyer_email'
+				AND payload->>'batch_id' IN (SELECT id::text FROM refund_batches WHERE order_id = $1)`,
 			`DELETE FROM refund_batches WHERE order_id = $1`,
 			`DELETE FROM worker_jobs WHERE payload->>'ticket_id' = ANY($2)`,
 			`DELETE FROM outbox_events WHERE aggregate_id = ANY($2)`,
