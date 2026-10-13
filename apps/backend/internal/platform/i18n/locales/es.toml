@@ -3308,3 +3308,6 @@ other = "No parece una dirección de correo. Revísala, por ejemplo tickets@tu-w
 
 ["bot.og.err_phone"]
 other = "No parece un número de teléfono. Usa cifras con el prefijo del país, por ejemplo +34 600 000 000."
+
+["bot.og.block_hidden"]
+other = "⚠️ Un campo obligatorio está vacío, así que los datos del vendedor se ocultaron en las páginas de venta: {{.N}}. Rellena el campo y vuelve a activar los datos del vendedor en la ficha de la página."
