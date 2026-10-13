@@ -15,7 +15,7 @@ type idLabels struct {
 var idLabelsByLocale = map[string]idLabels{
 	"en": {Registration: "Registration no.", Tax: "Tax ID", VAT: "VAT ID", EIN: "EIN"},
 	"ru": {Registration: "Регистрационный номер", Tax: "Налоговый номер", VAT: "Номер плательщика НДС", EIN: "EIN"},
-	"cs": {Registration: "Registrační číslo", Tax: "DIČ", VAT: "DIČ", EIN: "EIN"},
+	"cs": {Registration: "IČO", Tax: "Daňové číslo", VAT: "DIČ", EIN: "EIN"},
 	"he": {Registration: "מספר רישום", Tax: "מזהה מס", VAT: "מספר עוסק במע״מ", EIN: "EIN"},
 	"es": {Registration: "N.º de registro", Tax: "ID fiscal", VAT: "ID de IVA", EIN: "EIN"},
 	"de": {Registration: "Registernummer", Tax: "Steuernummer", VAT: "USt-IdNr.", EIN: "EIN"},

@@ -10,7 +10,8 @@ func TestIDsLine(t *testing.T) {
 		{"en", "", "12-3456789", "us_ein", "EIN 12-3456789"},
 		{"en", " 7 ", "", "", "Registration no. 7"},
 		{"es-ES", "", "X1", "other", "ID fiscal X1"},
-		{"cs", "123", "CZ123", "eu_vat", "Registrační číslo 123 · DIČ CZ123"},
+		{"cs", "12345678", "CZ12345678", "eu_vat", "IČO 12345678 · DIČ CZ12345678"},
+		{"cs", "", "X1", "other", "Daňové číslo X1"}, // never the VAT label twice
 		{"xx", "1", "", "", "Registration no. 1"},
 		{"ru", "", "", "eu_vat", ""},
 		{"de", "", "DE1", "gb_vat", "USt-IdNr. DE1"},
