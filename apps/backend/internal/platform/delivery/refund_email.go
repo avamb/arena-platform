@@ -37,6 +37,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
@@ -199,7 +200,8 @@ func (h *refundEmail) handle(ctx context.Context, payload []byte) error {
 		h.release(ctx, ids)
 		return err
 	}
-	if sendErr := h.opts.Sender.Send(ctx, msg); sendErr != nil {
+	letter := emailstatus.NewLetter{OrgID: orgID, OrderID: &orderID, Kind: emailstatus.KindRefund, Recipient: recipient.Email}
+	if sendErr := sendRecorded(ctx, h.opts.Sender, h.opts.DB, h.logger, letter, msg, nil); sendErr != nil {
 		h.release(ctx, ids)
 		h.logger.Warn("delivery: refund e-mail send failed; worker will retry", slog.String("batch_id", batchID.String()))
 		return fmt.Errorf("delivery: send refund e-mail for batch %s: %w", batchID, sendErr)

@@ -8466,6 +8466,12 @@ type OrderDetail struct {
 	// Items Line items of the order.
 	Items []OrderItemSummary `json:"items"`
 
+	// LetterFailed True when one of the letters failed (status failed).
+	LetterFailed bool `json:"letter_failed"`
+
+	// Letters The buyer letters of the order with their delivery status (see OrderLetter).
+	Letters []OrderLetter `json:"letters"`
+
 	// OrgId Owning organization.
 	OrgId openapi_types.UUID `json:"org_id"`
 
@@ -8574,6 +8580,63 @@ type OrderItemSummary struct {
 	UnitPrice int `json:"unit_price"`
 }
 
+// OrderLetter One buyer letter of an order and its delivery status, from Brevo's
+// transactional webhook. Ticket letters come first, grouped the way
+// they went out (one entry per sent letter, one for the tickets still
+// queued, one for those the mail relay refused, one for tickets sent
+// before letters were recorded), then the change, cancellation and
+// refund letters, oldest first. Times are UTC; a step that has not
+// happened is null. About "opened": Brevo learns of an open when the
+// letter's images are fetched. Apple Mail Privacy Protection fetches
+// them on delivery through Apple's proxy whether anybody reads the
+// letter or not; Brevo reports that as a proxy open, which arena
+// records as proxy_opened_at (proof of delivery, NOT of reading). An
+// opened_at can still be a mail client that loads images by itself.
+type OrderLetter struct {
+	// DeliveredAt When Brevo reported the letter delivered.
+	DeliveredAt *time.Time `json:"delivered_at"`
+
+	// FailedAt When the failure that decided the status was reported.
+	FailedAt *time.Time `json:"failed_at"`
+
+	// FailureEvent hard_bounce, soft_bounce, invalid_email, blocked, error, or send_failed (the relay refused the letter).
+	FailureEvent *string `json:"failure_event"`
+
+	// FailureReason The provider's reason, addresses removed.
+	FailureReason *string `json:"failure_reason"`
+
+	// Id Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
+	Id *openapi_types.UUID `json:"id"`
+
+	// Kind ticket, invitation, change, cancel or refund.
+	Kind string `json:"kind"`
+
+	// OpenedAt When Brevo first reported an open.
+	OpenedAt *time.Time `json:"opened_at"`
+
+	// ProxyOpenedAt When a mail proxy (Apple Mail Privacy Protection, image proxies) first fetched the letter. Proof of delivery, not of reading.
+	ProxyOpenedAt *time.Time `json:"proxy_opened_at"`
+
+	// QueuedAt When the delivery job was queued (queued and send_failed entries only).
+	QueuedAt *time.Time `json:"queued_at"`
+
+	// Recipient Address the letter was sent to.
+	Recipient string `json:"recipient"`
+
+	// SentAt When the mail relay accepted the letter.
+	SentAt *time.Time `json:"sent_at"`
+
+	// Status queued (the delivery job waits), sent (the mail relay accepted
+	// the letter), delivered (the recipient's server accepted it, or a
+	// mail proxy fetched it), opened, failed (bounced, blocked,
+	// invalid address, provider error, or the relay refused it). A
+	// failure is final unless a later delivery is reported.
+	Status string `json:"status"`
+
+	// TicketIds Tickets the letter carries (empty for change, cancellation and refund letters).
+	TicketIds []openapi_types.UUID `json:"ticket_ids"`
+}
+
 // OrderListItem defines model for OrderListItem.
 type OrderListItem struct {
 	// BuyerEmail Buyer's email, if captured.
@@ -8626,6 +8689,13 @@ type OrderListItem struct {
 
 	// Id UUIDv7 primary key of the order row.
 	Id openapi_types.UUID `json:"id"`
+
+	// LetterFailed True when the buyer did not get a letter: a ticket whose
+	// letter failed (bounced, blocked, refused by the relay), or a
+	// change, cancellation or refund letter that failed and was not
+	// followed by a newer one of the same kind. Details on the
+	// order card (letters).
+	LetterFailed bool `json:"letter_failed"`
 
 	// OrgId Owning organization.
 	OrgId openapi_types.UUID `json:"org_id"`
@@ -14713,6 +14783,17 @@ type GetTicketCredentialParams struct {
 	Type *string `form:"type,omitempty" json:"type,omitempty"`
 }
 
+// BrevoDeliveryStatusWebhookJSONBody defines parameters for BrevoDeliveryStatusWebhook.
+type BrevoDeliveryStatusWebhookJSONBody struct {
+	union json.RawMessage
+}
+
+// BrevoDeliveryStatusWebhookJSONBody0 defines parameters for BrevoDeliveryStatusWebhook.
+type BrevoDeliveryStatusWebhookJSONBody0 map[string]interface{}
+
+// BrevoDeliveryStatusWebhookJSONBody1 defines parameters for BrevoDeliveryStatusWebhook.
+type BrevoDeliveryStatusWebhookJSONBody1 = []map[string]interface{}
+
 // UpdateWebhookSubscriberJSONBody defines parameters for UpdateWebhookSubscriber.
 type UpdateWebhookSubscriberJSONBody struct {
 	// Active Pause (`false`) or resume (`true`) delivery to this
@@ -15140,6 +15221,9 @@ type CancelTicketJSONRequestBody = CancelTicketRequest
 
 // CreateSeatingPlanJSONRequestBody defines body for CreateSeatingPlan for application/json ContentType.
 type CreateSeatingPlanJSONRequestBody = CreateSeatingPlanRequest
+
+// BrevoDeliveryStatusWebhookJSONRequestBody defines body for BrevoDeliveryStatusWebhook for application/json ContentType.
+type BrevoDeliveryStatusWebhookJSONRequestBody BrevoDeliveryStatusWebhookJSONBody
 
 // RegisterWebhookSubscriberJSONRequestBody defines body for RegisterWebhookSubscriber for application/json ContentType.
 type RegisterWebhookSubscriberJSONRequestBody = RegisterWebhookSubscriberRequest

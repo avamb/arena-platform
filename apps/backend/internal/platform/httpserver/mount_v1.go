@@ -55,6 +55,7 @@ func (s *Server) mountV1Routes() {
 		s.mountPricingRoutes(r)
 		s.mountCheckoutRoutes(r)
 		s.mountPaymentIntentRoutes(r)
+		s.mountBrevoWebhookRoutes(r)
 		s.mountStripeConnectRoutes(r)
 		s.mountTicketRoutes(r)
 		s.mountCredentialRoutes(r)

@@ -53,6 +53,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -605,7 +606,29 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		// ── 11. Send via real SMTP ────────────────────────────────────────────
 		// opts.Sender is guaranteed non-nil and non-dev-only at this point
 		// (the guard at step 2 would have returned early otherwise).
-		if sendErr := opts.Sender.Send(ctx, msg); sendErr != nil {
+		// The letter is recorded around the send (letter_status.go) so its
+		// delivery status can follow from the provider's webhook.
+		var letterDB emailstatus.DB
+		letter := emailstatus.NewLetter{Kind: emailstatus.KindTicket, Recipient: recipientEmail}
+		if kind == templates.TemplateKindInvitation {
+			letter.Kind = emailstatus.KindInvitation
+		}
+		var letterJobs []uuid.UUID
+		if opts.DeliveryJobQueries != nil {
+			letterDB = opts.DeliveryJobQueries.DB()
+			orgID, orderID, lErr := ticketLetterContext(ctx, letterDB, ticketID)
+			if lErr != nil {
+				logger.Warn("delivery: letter context lookup failed; sending without a delivery status",
+					slog.String("ticket_id", ticketID.String()), slog.String("error", lErr.Error()))
+			}
+			letter.OrgID, letter.OrderID = orgID, orderID
+			for _, m := range members {
+				if m.jobID != uuid.Nil {
+					letterJobs = append(letterJobs, m.jobID)
+				}
+			}
+		}
+		if sendErr := sendRecorded(ctx, opts.Sender, letterDB, logger, letter, msg, letterJobs); sendErr != nil {
 			// The send failed, so nothing was delivered: hand every claimed
 			// delivery_jobs row back to 'pending' so the worker's retry can
 			// claim them again.

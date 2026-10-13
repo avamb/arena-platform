@@ -178,9 +178,11 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	failedLetters := h.failedLetterOrders(r.Context(), rows)
 	out := make([]map[string]any, 0, len(rows))
 	for _, o := range rows {
 		m := orderSummary(o.OrderRow)
+		m["letter_failed"] = failedLetters[o.ID]
 		m["event_name"] = o.EventName
 		m["session_start_at"] = o.SessionStartAt.UTC().Format(time.RFC3339)
 		m["session_timezone"] = o.SessionTimezone
@@ -298,6 +300,8 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 	resp["payment"] = extras.payment
 	resp["unpaid_reason"] = extras.reason
 	resp["channel"] = extras.channel
+	resp["letters"] = extras.letters
+	resp["letter_failed"] = anyLetterFailed(extras.letters)
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 

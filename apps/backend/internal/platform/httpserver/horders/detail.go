@@ -13,6 +13,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 )
 
@@ -280,6 +281,7 @@ type detailExtras struct {
 	payment  map[string]any
 	reason   string
 	channel  map[string]any
+	letters  []emailstatus.LetterView
 }
 
 // loadDetailExtras runs the three detail lookups. Tickets are required;
@@ -308,6 +310,8 @@ func (h *Handler) loadDetailExtras(ctx context.Context, order gen.OrderRow) (det
 	pi := pickPaymentIntent(intents)
 	ex.payment = paymentEntry(pi)
 	ex.reason = unpaidReason(order.Status, pi)
+
+	ex.letters = h.orderLetters(ctx, order.ID)
 
 	ch, err := h.queries.GetSalesChannelByID(ctx, order.ChannelID, order.OrgID)
 	switch {
@@ -347,4 +351,51 @@ func (h *Handler) orgOwnsEvent(ctx context.Context, orgID, eventID uuid.UUID) (b
 		return false, err
 	}
 	return row.OrgID == orgID, nil
+}
+
+// orderLetters reads the delivery status of the order's buyer letters
+// (emailstatus.OrderLetters). A failed lookup degrades to an empty list with
+// a log line: the card still renders.
+func (h *Handler) orderLetters(ctx context.Context, orderID uuid.UUID) []emailstatus.LetterView {
+	db := h.queries.DB()
+	if db == nil {
+		return []emailstatus.LetterView{}
+	}
+	letters, err := emailstatus.OrderLetters(ctx, db, orderID)
+	if err != nil {
+		h.logger.Warn("horders: letter status lookup failed",
+			slog.String("order_id", orderID.String()), slog.Any("error", err))
+		return []emailstatus.LetterView{}
+	}
+	return letters
+}
+
+// anyLetterFailed reports whether a letter of the card failed: the same
+// test the list's letter_failed applies.
+func anyLetterFailed(letters []emailstatus.LetterView) bool {
+	for _, l := range letters {
+		if l.Status == emailstatus.StatusFailed {
+			return true
+		}
+	}
+	return false
+}
+
+// failedLetterOrders flags the listed orders whose buyer letter failed. A
+// failed lookup flags nothing (logged): the list still renders.
+func (h *Handler) failedLetterOrders(ctx context.Context, rows []gen.OrderListRow) map[uuid.UUID]bool {
+	db := h.queries.DB()
+	if db == nil || len(rows) == 0 {
+		return map[uuid.UUID]bool{}
+	}
+	ids := make([]uuid.UUID, len(rows))
+	for i, o := range rows {
+		ids[i] = o.ID
+	}
+	failed, err := emailstatus.FailedLetterOrders(ctx, db, ids)
+	if err != nil {
+		h.logger.Warn("horders: failed-letter lookup failed", slog.Any("error", err))
+		return map[uuid.UUID]bool{}
+	}
+	return failed
 }

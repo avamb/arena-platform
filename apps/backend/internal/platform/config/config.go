@@ -305,8 +305,13 @@ type Config struct {
 	SMTPUseTLS   bool      `env:"SMTP_USE_TLS"  required:"false" default:"true"`
 	// BrevoAPIKey is used only to query domain verification state; it is never
 	// an organizer credential and must be stored as a platform secret.
-	BrevoAPIKey                    string        `env:"BREVO_API_KEY" required:"false" default:""`
-	BrevoAPIBaseURL                string        `env:"BREVO_API_BASE_URL" required:"false" default:"https://api.brevo.com"`
+	BrevoAPIKey     string `env:"BREVO_API_KEY" required:"false" default:""`
+	BrevoAPIBaseURL string `env:"BREVO_API_BASE_URL" required:"false" default:"https://api.brevo.com"`
+	// BrevoWebhookToken authenticates Brevo's transactional webhook
+	// (POST /v1/webhooks/brevo/{token}, the delivery status of buyer
+	// letters). Empty = the route is not mounted at all. In production it
+	// must be a random value of at least 32 characters.
+	BrevoWebhookToken              string        `env:"BREVO_WEBHOOK_TOKEN" required:"false" default:""`
 	SenderVerificationPollInterval time.Duration `env:"SENDER_VERIFICATION_POLL_INTERVAL" required:"false" default:"15m"`
 
 	// -------------------------------------------------------------------------
@@ -622,6 +627,8 @@ func Load() (*Config, error) {
 		SMTPFrom:        getenv("SMTP_FROM", ""),
 		BrevoAPIKey:     getenv("BREVO_API_KEY", ""),
 		BrevoAPIBaseURL: getenv("BREVO_API_BASE_URL", "https://api.brevo.com"),
+
+		BrevoWebhookToken: strings.TrimSpace(getenv("BREVO_WEBHOOK_TOKEN", "")),
 
 		StripeWebhookSecret: getenv("STRIPE_WEBHOOK_SECRET", ""),
 		AllPayWebhookSecret: getenv("ALLPAY_WEBHOOK_SECRET", ""),
@@ -1409,8 +1416,21 @@ func (c *Config) validateProduction() []error {
 		))
 	}
 
+	// 17. BREVO_WEBHOOK_TOKEN is the only thing that authenticates the
+	// delivery-status webhook: a short or well-known value would let anyone
+	// mark buyers' letters delivered or bounced.
+	if t := c.BrevoWebhookToken; t != "" && (len(t) < MinBrevoWebhookTokenLen || isKnownDevSecret(t)) {
+		errs = append(errs, fmt.Errorf(
+			"BREVO_WEBHOOK_TOKEN must be a random value of at least %d characters in production",
+			MinBrevoWebhookTokenLen))
+	}
+
 	return errs
 }
+
+// MinBrevoWebhookTokenLen is the shortest BREVO_WEBHOOK_TOKEN production
+// accepts.
+const MinBrevoWebhookTokenLen = 32
 
 // Warnings returns non-fatal configuration warnings. Unlike Validate errors,
 // warnings do not prevent the process from starting but indicate suboptimal or
@@ -1442,6 +1462,11 @@ func (c *Config) Warnings() []string {
 				c.OTLPEndpoint,
 			))
 		}
+	}
+
+	if c.AppEnv == EnvProduction && c.BrevoWebhookToken == "" {
+		w = append(w, "BREVO_WEBHOOK_TOKEN is empty: the Brevo delivery-status webhook is not mounted,"+
+			" so organizers see buyer letters only as sent (docs/ops/brevo_delivery_status_webhook_ru.md)")
 	}
 
 	return w

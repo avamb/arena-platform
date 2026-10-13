@@ -5921,6 +5921,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/webhooks/brevo/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive Brevo transactional delivery events
+         * @description Brevo's transactional webhook: what happened to the buyer letters
+         *     arena sent (ticket letter, invitation, session change or
+         *     cancellation, refund). Mounted only when BREVO_WEBHOOK_TOKEN is set;
+         *     the token in the path is the only credential and is compared in
+         *     constant time. The body is one Brevo event object or an array of at
+         *     most 100. Events of messages arena did not send (the Brevo account
+         *     may be shared with other sites) and event types arena does not
+         *     model (click, deferred, unsubscribed, spam, list addition) are
+         *     acknowledged with 200 and ignored. Setup:
+         *     docs/ops/brevo_delivery_status_webhook_ru.md.
+         */
+        post: operations["brevoDeliveryStatusWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/billing/usage": {
         parameters: {
             query?: never;
@@ -10459,6 +10488,14 @@ export interface components {
          *     second call.
          */
         OrderListItem: components["schemas"]["OrderSummary"] & {
+            /**
+             * @description True when the buyer did not get a letter: a ticket whose
+             *     letter failed (bounced, blocked, refused by the relay), or a
+             *     change, cancellation or refund letter that failed and was not
+             *     followed by a newer one of the same kind. Details on the
+             *     order card (letters).
+             */
+            letter_failed: boolean;
             /** @description Name of the event the order's session belongs to. */
             event_name: string;
             /**
@@ -10670,6 +10707,75 @@ export interface components {
             kind: string;
         };
         /**
+         * @description One buyer letter of an order and its delivery status, from Brevo's
+         *     transactional webhook. Ticket letters come first, grouped the way
+         *     they went out (one entry per sent letter, one for the tickets still
+         *     queued, one for those the mail relay refused, one for tickets sent
+         *     before letters were recorded), then the change, cancellation and
+         *     refund letters, oldest first. Times are UTC; a step that has not
+         *     happened is null. About "opened": Brevo learns of an open when the
+         *     letter's images are fetched. Apple Mail Privacy Protection fetches
+         *     them on delivery through Apple's proxy whether anybody reads the
+         *     letter or not; Brevo reports that as a proxy open, which arena
+         *     records as proxy_opened_at (proof of delivery, NOT of reading). An
+         *     opened_at can still be a mail client that loads images by itself.
+         */
+        OrderLetter: {
+            /**
+             * Format: uuid
+             * @description Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
+             */
+            id: string | null;
+            /** @description ticket, invitation, change, cancel or refund. */
+            kind: string;
+            /**
+             * @description queued (the delivery job waits), sent (the mail relay accepted
+             *     the letter), delivered (the recipient's server accepted it, or a
+             *     mail proxy fetched it), opened, failed (bounced, blocked,
+             *     invalid address, provider error, or the relay refused it). A
+             *     failure is final unless a later delivery is reported.
+             */
+            status: string;
+            /** @description Address the letter was sent to. */
+            recipient: string;
+            /** @description Tickets the letter carries (empty for change, cancellation and refund letters). */
+            ticket_ids: string[];
+            /**
+             * Format: date-time
+             * @description When the delivery job was queued (queued and send_failed entries only).
+             */
+            queued_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the mail relay accepted the letter.
+             */
+            sent_at: string | null;
+            /**
+             * Format: date-time
+             * @description When Brevo reported the letter delivered.
+             */
+            delivered_at: string | null;
+            /**
+             * Format: date-time
+             * @description When a mail proxy (Apple Mail Privacy Protection, image proxies) first fetched the letter. Proof of delivery, not of reading.
+             */
+            proxy_opened_at: string | null;
+            /**
+             * Format: date-time
+             * @description When Brevo first reported an open.
+             */
+            opened_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the failure that decided the status was reported.
+             */
+            failed_at: string | null;
+            /** @description hard_bounce, soft_bounce, invalid_email, blocked, error, or send_failed (the relay refused the letter). */
+            failure_event: string | null;
+            /** @description The provider's reason, addresses removed. */
+            failure_reason: string | null;
+        };
+        /**
          * @description Order detail returned by GET
          *     /v1/organizations/{org_id}/orders/{id} (feature #489, W1-A6d, spec
          *     §14.2; EC-05, spec 35 §5.6): the order fields plus its line items,
@@ -10712,6 +10818,10 @@ export interface components {
             unpaid_reason: string;
             /** @description The sales channel of the order and how the buyer reached the checkout. */
             channel: components["schemas"]["OrderChannelSummary"];
+            /** @description The buyer letters of the order with their delivery status (see OrderLetter). */
+            letters: components["schemas"]["OrderLetter"][];
+            /** @description True when one of the letters failed (status failed). */
+            letter_failed: boolean;
         };
         /** @description Places of a session, or of one category, by status. */
         SessionPlaceCounts: {
@@ -41725,6 +41835,89 @@ export interface operations {
             };
             /** @description Database unavailable. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    brevoDeliveryStatusWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The webhook token (BREVO_WEBHOOK_TOKEN). Never logged. */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                } | {
+                    [key: string]: unknown;
+                }[];
+            };
+        };
+        responses: {
+            /** @description Events acknowledged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Always true. */
+                        acknowledged: boolean;
+                        /** @description Events in the body. */
+                        received: number;
+                        /** @description Events that belonged to a letter arena sent and were recorded. */
+                        applied: number;
+                    };
+                };
+            };
+            /** @description Malformed body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown webhook token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Body larger than 256 KiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An event could not be stored; Brevo delivers it again. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
