@@ -496,8 +496,12 @@ func TestEngine_PendingThatFailsLaterGoesToManualReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := e.GetRefund(context.Background(), res.Refunds[0].ID)
-	if got.State != refunds.StateManualReview || deref(got.FailureCode) != "insufficient_funds" {
-		t.Fatalf("refund = %s %s; want manual_review (the ticket is already cancelled)", got.State, deref(got.FailureCode))
+	// The stable code keeps it out of the budget; the provider's own code
+	// stays in the reason.
+	if got.State != refunds.StateManualReview || deref(got.FailureCode) != "failed_after_acceptance" ||
+		!strings.Contains(deref(got.FailureReason), "insufficient_funds") {
+		t.Fatalf("refund = %s %s %q; want manual_review failed_after_acceptance with the provider's code (the ticket is already cancelled)",
+			got.State, deref(got.FailureCode), deref(got.FailureReason))
 	}
 	// PAY-03 review M1: accepted, then failed — the money did not go back
 	// and the ticket is gone. An operator is told once, ids and amount only.

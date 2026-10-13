@@ -625,6 +625,10 @@ func alertText(r Refund, ticketStatus string) string {
 		if code == failureFailedAfterAcceptance {
 			text = fmt.Sprintf("Refund %s (%d %s via %s) was accepted by the provider and then failed: the money did not go back to the buyer. Order %s.",
 				r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), uuidString(r.OrderID))
+			// The provider's own code and message, so the operator knows why.
+			if why := deref(r.FailureReason); why != "" {
+				text += " Details: " + esc(why) + "."
+			}
 			if r.TicketID != nil {
 				text += fmt.Sprintf(" Ticket %s is %s.", r.TicketID, esc(ticketStatusWord(ticketStatus)))
 			}
@@ -826,7 +830,7 @@ func (e *Engine) applyStatus(ctx context.Context, id uuid.UUID, pay Payment, res
 			// (alertReviews), review M1.
 			sql = `UPDATE refunds SET state = 'manual_review', provider_status = $2, failure_code = $3,
 			       failure_reason = $4, ` + reviewAlertSQL + `, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
-			reason := "the provider reported the refund failed after accepting it (the ticket is already cancelled, the money did not go back)"
+			reason := "the provider reported the refund failed after accepting it"
 			if res.FailureCode != "" {
 				reason += " (" + res.FailureCode + ")"
 			}
