@@ -35,8 +35,10 @@ func (s *Server) handleOrgMe(w http.ResponseWriter, r *http.Request) {
 		resolver = res
 	}
 	var q hiam.OrgMeQuerier
+	var isMember hiam.MemberCheck
 	if s.membershipQueries != nil {
 		q = s.membershipQueries
+		isMember = hiam.MembershipCheck(s.membershipQueries)
 	}
-	hiam.HandleOrgMe(q, resolver, s.logger)(w, r)
+	hiam.HandleOrgMe(q, isMember, resolver, s.logger)(w, r)
 }

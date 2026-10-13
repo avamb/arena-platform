@@ -78,10 +78,34 @@ func newOrgMeFixture() orgMeFixture {
 	return f
 }
 
+// memberOf is the test stand-in for MembershipCheck: an active,
+// non-platform membership row of the fake querier.
+func memberOf(q OrgMeQuerier) MemberCheck {
+	if q == nil {
+		return nil
+	}
+	return func(ctx context.Context, org uuid.UUID) (bool, error) {
+		rows, err := q.ListMembershipsByUser(ctx, uuid.Nil)
+		if err != nil {
+			return false, err
+		}
+		for _, m := range rows {
+			if m.OrgID == org && m.Status == "active" && !platformRoles[m.Role] {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+}
+
 func callOrgMe(t *testing.T, q OrgMeQuerier, res permissions.OrgEffectiveResolver, ctx context.Context, org string) (int, orgMeResponse, string) {
 	t.Helper()
 	r := chi.NewRouter()
-	r.Get("/organizations/{org_id}/me", HandleOrgMe(q, res, nil))
+	var check MemberCheck
+	if q != nil {
+		check = memberOf(q)
+	}
+	r.Get("/organizations/{org_id}/me", HandleOrgMe(q, check, res, nil))
 	req := httptest.NewRequest(http.MethodGet, "/organizations/"+org+"/me", nil).WithContext(ctx)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
@@ -186,6 +210,22 @@ func TestOrgMe_EdgeCases(t *testing.T) {
 	broken.err = errors.New("db down")
 	if code, _, _ := callOrgMe(t, broken, f.res, userCtx(f.user), f.orgA.String()); code != http.StatusInternalServerError {
 		t.Errorf("db error: %d; want 500", code)
+	}
+}
+
+// A platform role in a membership row grants nothing (the checker reads
+// platform roles from user_roles only), so it is neither a membership nor
+// listed in membership_roles.
+func TestOrgMe_PlatformRoleRowIsNotAMembership(t *testing.T) {
+	f := newOrgMeFixture()
+	f.q.memberships = append(f.q.memberships, gen.MembershipRow{OrgID: f.orgC, Role: "platform_superadmin", Status: "active"})
+	if code, _, errCode := callOrgMe(t, f.q, f.res, userCtx(f.user), f.orgC.String()); code != http.StatusForbidden || errCode != "org.access_denied" {
+		t.Fatalf("platform row only: %d %s; want 403", code, errCode)
+	}
+	f.q.memberships = append(f.q.memberships, gen.MembershipRow{OrgID: f.orgA, Role: "platform_operator", Status: "active"})
+	_, a, _ := callOrgMe(t, f.q, f.res, userCtx(f.user), f.orgA.String())
+	if !reflect.DeepEqual(a.MembershipRoles, []string{"agent"}) {
+		t.Errorf("membership_roles = %v; want the platform role left out", a.MembershipRoles)
 	}
 }
 
