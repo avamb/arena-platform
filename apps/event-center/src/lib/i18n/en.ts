@@ -24,6 +24,8 @@ export const en = {
   "common.error.network": "We could not reach the server. Check your connection and press «Try again».",
   "common.error.generic": "We could not load this page. Press «Try again». If it fails again, write to support.",
   "common.error.forbidden": "You have no access to this in {org}. Ask the owner of the organization to give you the manager role.",
+  "common.error.forbiddenHere": "You have no access to this. Ask the owner of the organization to give you the manager role.",
+  "common.backToList": "Back to the list of events",
   "common.error.notFound": "We could not find this page. It was deleted, or it belongs to another organization.",
   "common.download.csv": "Download CSV",
   "common.download.working": "Preparing the file…",

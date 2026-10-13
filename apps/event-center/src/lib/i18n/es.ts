@@ -24,6 +24,8 @@ export const es: Record<MessageKey, string> = {
   "common.error.network": "No pudimos conectar con el servidor. Revisa tu conexión y pulsa «Reintentar».",
   "common.error.generic": "No pudimos cargar esta página. Pulsa «Reintentar». Si vuelve a fallar, escribe a soporte.",
   "common.error.forbidden": "No tienes acceso a esto en {org}. Pide a la persona propietaria de la organización el rol de gestor.",
+  "common.error.forbiddenHere": "No tienes acceso a esto. Pide a la persona propietaria de la organización el rol de gestor.",
+  "common.backToList": "Volver a la lista de eventos",
   "common.error.notFound": "No encontramos esta página. Se eliminó o pertenece a otra organización.",
   "common.download.csv": "Descargar CSV",
   "common.download.working": "Preparando el archivo…",

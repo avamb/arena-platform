@@ -3,7 +3,7 @@ import { Link, Outlet, useParams } from "@tanstack/react-router";
 import { organizationsOf, rememberOrg, useAuth, useMe, useOrgAccess, type OrgAccess } from "@/lib/auth";
 import { ApiError } from "@/lib/api/http";
 import { useI18n } from "@/lib/i18n";
-import { ErrorBox, Loading } from "@/components/ui";
+import { ErrorBox, ErrorScope, Loading } from "@/components/ui";
 import { RequireSignIn } from "@/screens/RequireSignIn";
 import { LanguageSelect } from "@/screens/LanguageSelect";
 import { roleKey } from "@/screens/OrgsScreen";
@@ -74,42 +74,44 @@ function OrgShell() {
   const orgName = access.data.org_name;
   return (
     <OrgCtx.Provider value={{ orgId, orgName, access }}>
-      <header className="topbar">
-        <div className="topbar-org">
-          <span className="brand">{t("app.name")}</span>
-          <span className="org-name" data-testid="org-name">
-            {orgName}
-          </span>
-          <span className="muted">{t(roleKey(access.data.role))}</span>
-        </div>
-        <nav aria-label={t("nav.main")} className="topnav">
-          <Link to="/o/$orgId/events" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
-            {t("nav.events")}
-          </Link>
-          {access.can("order.read") && (
-            <Link to="/o/$orgId/orders" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
-              {t("nav.orders")}
+      <ErrorScope.Provider value={{ orgId, orgName }}>
+        <header className="topbar">
+          <div className="topbar-org">
+            <span className="brand">{t("app.name")}</span>
+            <span className="org-name" data-testid="org-name">
+              {orgName}
+            </span>
+            <span className="muted">{t(roleKey(access.data.role))}</span>
+          </div>
+          <nav aria-label={t("nav.main")} className="topnav">
+            <Link to="/o/$orgId/events" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
+              {t("nav.events")}
             </Link>
-          )}
-          <Link
-            to="/o/$orgId/notifications"
-            params={{ orgId }}
-            activeProps={{ "aria-current": "page", className: "active" }}
-          >
-            {t("nav.notifications")}
-          </Link>
-          {orgCount > 1 && <Link to="/orgs">{t("nav.switchOrg")}</Link>}
-        </nav>
-        <div className="topbar-tools">
-          <LanguageSelect />
-          <button type="button" className="btn btn-link" onClick={() => void logout()} data-testid="logout">
-            {t("nav.logout")}
-          </button>
-        </div>
-      </header>
-      <main id="main" className="page">
-        <Outlet />
-      </main>
+            {access.can("order.read") && (
+              <Link to="/o/$orgId/orders" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
+                {t("nav.orders")}
+              </Link>
+            )}
+            <Link
+              to="/o/$orgId/notifications"
+              params={{ orgId }}
+              activeProps={{ "aria-current": "page", className: "active" }}
+            >
+              {t("nav.notifications")}
+            </Link>
+            {orgCount > 1 && <Link to="/orgs">{t("nav.switchOrg")}</Link>}
+          </nav>
+          <div className="topbar-tools">
+            <LanguageSelect />
+            <button type="button" className="btn btn-link" onClick={() => void logout()} data-testid="logout">
+              {t("nav.logout")}
+            </button>
+          </div>
+        </header>
+        <main id="main" className="page">
+          <Outlet />
+        </main>
+      </ErrorScope.Provider>
     </OrgCtx.Provider>
   );
 }

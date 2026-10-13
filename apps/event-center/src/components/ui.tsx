@@ -3,7 +3,8 @@
  * (spec section 9): a state is never colour only (a badge carries a word),
  * loading and errors are announced, every action is a real button or link.
  */
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { errorKey } from "@/lib/errors";
 import type { DownloadedFile } from "@/lib/api/http";
@@ -18,6 +19,12 @@ export function Loading({ label }: { label?: string }) {
   );
 }
 
+/**
+ * The organization a screen works in, for the 403 texts ("no access in
+ * {org}") and their way back (spec 5.6). OrgLayout provides it.
+ */
+export const ErrorScope = createContext<{ orgId: string; orgName: string } | null>(null);
+
 export function ErrorBox({
   error,
   onRetry,
@@ -28,13 +35,24 @@ export function ErrorBox({
   params?: Record<string, string>;
 }) {
   const { t } = useI18n();
+  const scope = useContext(ErrorScope);
+  const key = errorKey(error);
+  const forbidden = key === "common.error.forbidden";
   return (
     <div className="notice notice-bad" role="alert" data-testid="error">
-      <p>{t(errorKey(error), params)}</p>
-      {onRetry !== undefined && (
-        <button type="button" className="btn" onClick={onRetry}>
-          {t("common.retry")}
-        </button>
+      <p>{t(forbidden && scope === null ? "common.error.forbiddenHere" : key, { org: scope?.orgName ?? "", ...params })}</p>
+      {forbidden && scope !== null ? (
+        <p>
+          <Link to="/o/$orgId/events" params={{ orgId: scope.orgId }} data-testid="back-to-list">
+            {t("common.backToList")}
+          </Link>
+        </p>
+      ) : (
+        onRetry !== undefined && (
+          <button type="button" className="btn" onClick={onRetry}>
+            {t("common.retry")}
+          </button>
+        )
       )}
     </div>
   );
@@ -78,6 +96,7 @@ export function DownloadButton({
   testId?: string;
 }) {
   const { t } = useI18n();
+  const scope = useContext(ErrorScope);
   const [state, setState] = useState<{ busy: boolean; message: string | null; bad: boolean }>({
     busy: false,
     message: null,
@@ -91,9 +110,10 @@ export function DownloadButton({
       setState({ busy: false, message: t("common.download.done", { name: file.filename }), bad: false });
     } catch (err) {
       const key = errorKey(err);
+      const shown = key === "common.error.generic" ? "common.download.failed" : key === "common.error.forbidden" && scope === null ? "common.error.forbiddenHere" : key;
       setState({
         busy: false,
-        message: t(key === "common.error.generic" ? "common.download.failed" : key),
+        message: t(shown, { org: scope?.orgName ?? "" }),
         bad: true,
       });
     }

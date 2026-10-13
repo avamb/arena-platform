@@ -130,6 +130,13 @@ test.describe("R1 read-only event center", () => {
     await expect(page.getByTestId("event-row").first()).toBeVisible();
     await expect(page.getByTestId("sales-figures")).toHaveCount(0);
     expect(state.requests.some((r) => r.includes(`/organizations/${ORG_B}/events/`) && r.includes("/summary"))).toBe(false);
+    // Review finding M2: a 403 names the organization and leads back.
+    await page.goto(`/o/${ORG_B}/orders`);
+    const error = page.getByTestId("error");
+    await expect(error).toContainText("You have no access to this in Vino & Co.");
+    await expect(error).not.toContainText("{org}");
+    await error.getByTestId("back-to-list").click();
+    await expect(page).toHaveURL(new RegExp(`/o/${ORG_B}/events$`));
   });
 
   test("a foreign organization says how to get access", async ({ page }) => {
