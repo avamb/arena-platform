@@ -138,6 +138,7 @@ func TestSellerAccess_APIKeyIsRefusedEverywhere(t *testing.T) {
 		status                         int
 	}{
 		{"read profile", http.MethodGet, base + "/seller-profile", "", "seller.api_key_forbidden", http.StatusForbidden},
+		{"telegram switch", http.MethodPatch, base + "/seller-profile", `{"contact_form_to_telegram":false}`, "seller.api_key_forbidden", http.StatusForbidden},
 		{"public contact", http.MethodPatch, base + "/channels/" + f.channel.String() + "/seller-display",
 			`{"public_contact":{"email":"attacker@evil.example"}}`, "seller.api_key_forbidden", http.StatusForbidden},
 		{"legal name", http.MethodPatch, base, `{"legal_name":"Evil Ltd"}`, "org.identity_fields_api_key_forbidden", http.StatusForbidden},

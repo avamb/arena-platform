@@ -461,7 +461,7 @@ func (h *Handler) writeFailed(w http.ResponseWriter, r *http.Request, orgID uuid
 // the organization-wide switch of the contact form's Telegram leg,
 // {"contact_form_to_telegram": bool}.
 func (h *Handler) HandlePatchProfile(w http.ResponseWriter, r *http.Request) {
-	if !h.ready(w, r) || h.pool == nil {
+	if !personOnly(w, r) || !h.ready(w, r) || h.pool == nil {
 		return
 	}
 	ctx := r.Context()
