@@ -132,8 +132,8 @@ func TestBotE2E_Refund_OwnerReturnsOneTicket(t *testing.T) {
 	if !strings.Contains(pick, "Stripe") {
 		t.Errorf("the pick screen names no provider:\n%s", pick)
 	}
-	// deselect the first ticket: only the second is returned
-	d.press("or:f:t:0", "Возврат · заказ №")
+	// nothing is ticked at the start: tick the second ticket only
+	d.press("or:f:t:1", "Возврат · заказ №")
 	reason := d.press("or:f:go", "Почему возвращаются деньги")
 	_ = reason
 	word := d.press("or:f:r:1", "ВЕРНУТЬ")
@@ -171,7 +171,7 @@ func TestBotE2E_Refund_OwnerReturnsOneTicket(t *testing.T) {
 	}
 	// ── again from the start, and this time the button sends it
 	d.press("or:f:s:"+seed.anna.String(), "Возврат · заказ №")
-	d.press("or:f:t:0", "Возврат · заказ №")
+	d.press("or:f:t:1", "Возврат · заказ №")
 	d.press("or:f:go", "Почему возвращаются деньги")
 	d.press("or:f:r:1", "ВЕРНУТЬ")
 	d.say("вернуть", "Последняя проверка")
@@ -222,8 +222,8 @@ func TestBotE2E_Refund_OwnerReturnsOneTicket(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE tickets SET used_at = now() WHERE id = $1`, tickets[0]); err != nil {
 		t.Fatal(err)
 	}
-	used := d.press("or:f:s:"+seed.anna.String(), "уже использованы на входе")
-	if !strings.Contains(used, "возвращать здесь нечего") {
+	used := d.press("or:f:s:"+seed.anna.String(), "уже отсканированы на входе")
+	if !strings.Contains(used, "Деньги за них вернуть нельзя") || !strings.Contains(used, "поддержку") {
 		t.Errorf("the screen for a used ticket does not explain itself:\n%s", used)
 	}
 	if n, _ := refundCount(t, srv, seed.anna); n != 1 {
@@ -266,7 +266,7 @@ func TestBotE2E_Refund_SendLostToARestartIsOfferedAgain(t *testing.T) {
 	d := ecDriver{t, tg, ecOwnerTG}
 	d.press("or:v:"+seed.anna.String(), "Заказ №")
 	d.press("or:f:s:"+seed.anna.String(), "Возврат · заказ №")
-	d.press("or:f:t:0", "Возврат · заказ №")
+	d.press("or:f:t:1", "Возврат · заказ №")
 	d.press("or:f:go", "Почему возвращаются деньги")
 	d.press("or:f:r:1", "ВЕРНУТЬ")
 	d.say("вернуть", "Последняя проверка")

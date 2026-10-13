@@ -71,6 +71,10 @@ func (b *Bot) showOrderCard(ctx context.Context, chatID int64, editMsgID *int, f
 	plain := note + b.orderCardText(loc, detail, meta, private, true)
 	kb := b.withResendButton(b.orderCardKeyboard(loc, detail), id, detail, private) // EC-13, resend.go
 	kb = b.withRefundButton(kb, id, detail, private)                                // EC-21, refund_dialog.go
+	if ticketLetterStatus(detail).failed() {
+		// A lost ticket letter: the resend button says what it does now.
+		kb = relabelButton(kb, "or:r:s:"+detail.Id.String(), b.texts.T(loc, "bot.ord.letter_retry_btn", nil))
+	}
 	if err := b.replyChecked(ctx, chatID, editMsgID, clipMessage(html, maxMessageRunes), kb); err != nil && html != plain {
 		// A client that refuses the call/WhatsApp links still gets the card.
 		b.reply(ctx, chatID, editMsgID, clipMessage(plain, maxMessageRunes), kb)
@@ -146,10 +150,14 @@ func (b *Bot) orderCardText(loc string, d openapi.OrderDetail, meta *orderMeta, 
 	if d.Payment != nil && d.Payment.Provider != "" {
 		sb.WriteString(b.texts.T(loc, "bot.ord.payment_line", map[string]any{"Provider": Esc(d.Payment.Provider)}))
 	}
+	// The letters the buyer got, each on its own line (order_letters.go).
 	if len(d.Tickets) > 0 {
-		if key := deliveryKey(d.DeliveryState); key != "" {
-			sb.WriteString("\n" + b.texts.T(loc, key, nil))
+		if line := b.letterLine(loc, "tickets", ticketLetterStatus(d), tz, private); line != "" {
+			sb.WriteString("\n" + line)
 		}
+	}
+	if line := b.letterLine(loc, "refund", refundLetterStatus(d), tz, private); line != "" {
+		sb.WriteString("\n" + line)
 	}
 
 	if key := UnpaidReasonKey(d.Status, d.UnpaidReason); key != "" {

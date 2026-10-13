@@ -10468,6 +10468,13 @@ export interface components {
             session_start_at: string;
             /** @description IANA zone of the session's venue — render session_start_at in it. */
             session_timezone: string;
+            /**
+             * @description The ticket letters of the order folded into one word, as on
+             *     OrderDetail: `sent`, `pending`, `failed` or `none`. A client
+             *     marks a `failed` row so the organizer sees a lost letter
+             *     without opening every order.
+             */
+            delivery_state?: string;
         };
         /** @description One line item of an order (feature */
         OrderItemSummary: {
@@ -10604,6 +10611,31 @@ export interface components {
             sent_at: string | null;
             /** @description Error of the last failed attempt, if any. */
             last_error: string | null;
+            /** @description The address this ticket's letter goes to (a resend to another address changes it); null when unknown. */
+            recipient_email?: string | null;
+        };
+        /**
+         * @description The buyer letter of the order's refund operations (PAY-07): one
+         *     letter covers the refunds of one operation that asked for it.
+         */
+        OrderRefundLetter: {
+            /**
+             * @description `off` — the operation asked for no letter; `queued` — a refund
+             *     has not succeeded yet or its letter is on its way; `partial` —
+             *     some refunds are covered by a letter, others still wait; `sent`
+             *     — every refund that asked for a letter is covered; `failed` —
+             *     the worker gave up on a letter.
+             */
+            state: string;
+            /** @description Refunds that asked for a letter (for `off`, the refunds of the order). */
+            refunds: number;
+            /** @description Of those, the refunds a letter already covers. */
+            sent: number;
+            /**
+             * Format: date-time
+             * @description When the latest step happened (the last letter sent, or the give-up), UTC.
+             */
+            at: string | null;
         };
         /**
          * @description The payment intent the order card speaks about: a succeeded one if
@@ -10693,6 +10725,8 @@ export interface components {
              *     skipped/disabled ones).
              */
             delivery_state: string;
+            /** @description The buyer letter of the order's refund operations; null when the order has none. */
+            refund_letter?: components["schemas"]["OrderRefundLetter"] | null;
             /** @description The payment intent behind the order (see OrderPaymentSummary for which one); null when the order has none — a gateway order paid on the selling site, an invitation, a free order. */
             payment: components["schemas"]["OrderPaymentSummary"] | null;
             /**
@@ -16500,6 +16534,13 @@ export interface components {
              * @description Internal UUIDv7 of the checkout_sessions row.
              */
             checkout_session_id: string;
+            /**
+             * Format: int64
+             * @description The order number the buyer sees in the ticket e-mail and on the PDF
+             *     (`orders.system_id`). Present once the order exists for this
+             *     checkout (always for a paid one); omitted before that.
+             */
+            order_number?: number | null;
             /**
              * Format: date-time
              * @description RFC3339 timestamp when the underlying reservation expires.
