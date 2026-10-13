@@ -117,12 +117,23 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 					map[string]any{"state": cur.State})
 			}
 		}
+		// What the payment's refunds add up to once this one is closed as
+		// succeeded: the OTHER refunds that count, plus this one. This row may
+		// not count now (a refund the provider reversed or failed after it had
+		// accepted it leaves the budget while parked), but a succeeded row
+		// always does.
+		withThis := func() (int64, error) {
+			var others int64
+			err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
+				WHERE payment_intent_id = $1 AND id <> $2 AND state NOT IN ('failed', 'rejected') AND `+countsAgainstBudgetSQL,
+				*piID, cur.ID).Scan(&others)
+			return others + cur.Amount, err
+		}
 		if in.Outcome == ResolveRefundedBeyondPayment {
 			// Only for a refund that really is beyond the payment: anything
 			// else is closed as refunded.
-			var live int64
-			if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
-				WHERE payment_intent_id = $1 AND state NOT IN ('failed', 'rejected') AND `+countsAgainstBudgetSQL, *piID).Scan(&live); err != nil {
+			live, err := withThis()
+			if err != nil {
 				return err
 			}
 			if live <= pay.Amount {
@@ -134,9 +145,8 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 		if in.Outcome == ResolveRefunded && !noProvider {
 			// Settling puts the amount into the payment's live sum: under the
 			// lock, it must still fit what was paid.
-			var live int64
-			if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
-				WHERE payment_intent_id = $1 AND state NOT IN ('failed', 'rejected') AND `+countsAgainstBudgetSQL, *piID).Scan(&live); err != nil {
+			live, err := withThis()
+			if err != nil {
 				return err
 			}
 			if live > pay.Amount {
