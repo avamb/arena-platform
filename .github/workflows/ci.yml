@@ -405,6 +405,91 @@ jobs:
           done
 
   # ─────────────────────────────────────────────────────────────────
+  # Job: Event center — the organizers' web event center
+  # (apps/event-center, events.arenasoldout.com,
+  # 08_architecture/37_web_event_center_ru.md).
+  #
+  # install → type-check → vitest (incl. the parity test against
+  # openapi.yaml and the spec's matrix) → build → Playwright smoke on a
+  # 375x812 viewport against a mocked API → container smoke.
+  # ─────────────────────────────────────────────────────────────────
+  event-center-build:
+    name: Event center (unit / build / smoke / container smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/event-center/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix apps/event-center ci
+
+      - name: Type-check
+        run: npm --prefix apps/event-center run type-check
+
+      - name: Unit tests (vitest)
+        run: npm --prefix apps/event-center test
+
+      - name: Production build
+        run: npm --prefix apps/event-center run build
+
+      - name: Install Chromium for the smoke test
+        run: npx --prefix apps/event-center playwright install --with-deps chromium
+
+      - name: Smoke test against a mocked API (375x812)
+        run: npm --prefix apps/event-center run test:smoke
+
+      - name: Upload smoke artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: event-center-smoke
+          path: |
+            apps/event-center/test-results/
+            apps/event-center/playwright-report/
+          retention-days: 7
+
+      - name: Container smoke test (health, security headers, app under CSP)
+        run: |
+          # The image is built for the mocked API host, so the smoke below
+          # runs the real nginx and CSP against the page.route() mock.
+          docker build \
+            --build-arg VITE_API_BASE_URL=http://api.mock.test \
+            -t arena-event-center:ci \
+            -f apps/event-center/Dockerfile \
+            .
+          docker run -d --name arena-event-center-smoke -p 8091:8080 arena-event-center:ci
+          echo "Waiting for event-center container to become healthy..."
+          for i in $(seq 1 60); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' arena-event-center-smoke 2>/dev/null || echo "starting")
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Container is healthy after ${i}s"
+              break
+            fi
+            if [ "$i" = "60" ]; then
+              echo "ERROR: Container did not become healthy within 60s"
+              docker logs arena-event-center-smoke
+              docker rm -f arena-event-center-smoke
+              exit 1
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8091/o/any/events | grep -q '<div id="root"></div>'
+          sh apps/event-center/scripts/check-headers.sh http://127.0.0.1:8091
+          EVENT_CENTER_BASE_URL=http://127.0.0.1:8091 npm --prefix apps/event-center run test:smoke
+          docker rm -f arena-event-center-smoke
+
+  # ─────────────────────────────────────────────────────────────────
   # Job 6: Widget — Svelte 5 custom element (arena-tickets)
   #
   # Runs on every push/PR. Steps: install → type-check → unit tests

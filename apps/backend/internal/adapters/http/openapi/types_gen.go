@@ -8505,6 +8505,12 @@ type OrderDetail struct {
 	// Items Line items of the order.
 	Items []OrderItemSummary `json:"items"`
 
+	// LetterFailed True when one of the letters failed (status failed).
+	LetterFailed bool `json:"letter_failed"`
+
+	// Letters The buyer letters of the order with their delivery status (see OrderLetter).
+	Letters []OrderLetter `json:"letters"`
+
 	// OrgId Owning organization.
 	OrgId openapi_types.UUID `json:"org_id"`
 
@@ -8616,6 +8622,77 @@ type OrderItemSummary struct {
 	UnitPrice int `json:"unit_price"`
 }
 
+// OrderLetter One buyer letter of an order and its delivery status, from Brevo's
+// transactional webhook. Ticket letters come first, grouped the way
+// they went out (one entry per sent letter, one for the tickets still
+// queued, one for those the mail relay refused, one for tickets sent
+// before letters were recorded), then the change, cancellation and
+// refund letters, oldest first. Times are UTC; a step that has not
+// happened is null. About "opened": Brevo learns of an open when the
+// letter's images are fetched. Apple Mail Privacy Protection fetches
+// them on delivery through Apple's proxy whether anybody reads the
+// letter or not; Brevo reports that as a proxy open, which arena
+// records as proxy_opened_at (proof of delivery, NOT of reading). An
+// opened_at can still be a mail client that loads images by itself.
+type OrderLetter struct {
+	// ClickedAt First click on a link of the letter (for example the ticket download). Proves delivery; not counted as reading, mail security scanners follow links too.
+	ClickedAt *time.Time `json:"clicked_at"`
+
+	// DeferredAt When Brevo first reported the letter deferred (the recipient's server asked it to retry later). Stays set after a later delivery.
+	DeferredAt *time.Time `json:"deferred_at"`
+
+	// DeliveredAt When Brevo reported the letter delivered.
+	DeliveredAt *time.Time `json:"delivered_at"`
+
+	// FailedAt When the failure that decided the status was reported.
+	FailedAt *time.Time `json:"failed_at"`
+
+	// FailureEvent hard_bounce, soft_bounce, invalid_email, blocked, error, or send_failed (the relay refused the letter).
+	FailureEvent *string `json:"failure_event"`
+
+	// FailureReason The provider's reason, with e-mail addresses, IP addresses and host names removed.
+	FailureReason *string `json:"failure_reason"`
+
+	// Id Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
+	Id *openapi_types.UUID `json:"id"`
+
+	// Kind ticket, change, cancel or refund. Invitation letters have no order and are not listed on an order.
+	Kind string `json:"kind"`
+
+	// OpenedAt When Brevo first reported an open.
+	OpenedAt *time.Time `json:"opened_at"`
+
+	// ProxyOpenedAt When a mail proxy (Apple Mail Privacy Protection, image proxies) first fetched the letter. Proof of delivery, not of reading.
+	ProxyOpenedAt *time.Time `json:"proxy_opened_at"`
+
+	// QueuedAt When the delivery job was queued (queued and send_failed entries only).
+	QueuedAt *time.Time `json:"queued_at"`
+
+	// Recipient Address the letter was sent to.
+	Recipient string `json:"recipient"`
+
+	// SentAt When the mail relay accepted the letter.
+	SentAt *time.Time `json:"sent_at"`
+
+	// Status queued (the delivery job waits), sent (the mail relay accepted
+	// the letter), delayed (the recipient's server asked Brevo to try
+	// again later; Brevo keeps retrying), delivered (the recipient's
+	// server accepted it, or a mail proxy fetched it, or a link was
+	// clicked), opened, failed (bounced, blocked, invalid address,
+	// provider error, or the relay refused it). A failure is final
+	// unless a later delivery is reported.
+	Status string `json:"status"`
+
+	// Stuck True when the letter has been sent or delayed for more than six
+	// hours with no delivery while the webhook kept reporting on other
+	// letters: the buyer most likely has no letter. letter_failed is
+	// also true then.
+	Stuck bool `json:"stuck"`
+
+	// TicketIds Tickets the letter carries (empty for change, cancellation and refund letters).
+	TicketIds []openapi_types.UUID `json:"ticket_ids"`
+}
+
 // OrderListItem defines model for OrderListItem.
 type OrderListItem struct {
 	// BuyerEmail Buyer's email, if captured.
@@ -8674,6 +8751,13 @@ type OrderListItem struct {
 
 	// Id UUIDv7 primary key of the order row.
 	Id openapi_types.UUID `json:"id"`
+
+	// LetterFailed True when the buyer did not get a letter: a ticket whose
+	// letter failed (bounced, blocked, refused by the relay), or a
+	// change, cancellation or refund letter that failed and was not
+	// followed by a newer one of the same kind. Details on the
+	// order card (letters).
+	LetterFailed bool `json:"letter_failed"`
 
 	// OrgId Owning organization.
 	OrgId openapi_types.UUID `json:"org_id"`
@@ -9178,6 +9262,48 @@ type OrgCityResponse struct {
 
 	// Created True when the city was created by this call (201), false when an existing one was returned (200).
 	Created bool `json:"created"`
+}
+
+// OrgMeResponse The caller's access inside one organization, returned by
+// GET /v1/organizations/{org_id}/me. Every list is sorted and never null.
+type OrgMeResponse struct {
+	// CallerType `user` for a person signed in with a JWT, `api_key` for an
+	// organization API key.
+	CallerType string `json:"caller_type"`
+
+	// MembershipRoles Every active membership role the caller holds in this organization.
+	MembershipRoles []string `json:"membership_roles"`
+
+	// OrgDisplayNumber Short organization number shown to people. The UUID stays the API key.
+	OrgDisplayNumber int64 `json:"org_display_number"`
+
+	// OrgId UUID of the organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Display name of the organization.
+	OrgName string `json:"org_name"`
+
+	// Permissions Every permission the caller holds inside this organization. For
+	// an API key these are its scopes.
+	Permissions []string `json:"permissions"`
+
+	// PlatformSuperadmin True when the caller is a platform superadmin. Other
+	// organization routes then require the X-Admin-Reason header.
+	PlatformSuperadmin bool `json:"platform_superadmin"`
+
+	// Role The main membership role of the caller in this organization, for
+	// display: `org_admin` (owner), then `organizer` (manager), then
+	// `agent`, then the first other role in alphabetical order. Empty
+	// for an API key and for a platform superadmin who holds no
+	// membership here. Decide actions by `permissions`, never by this
+	// field.
+	Role string `json:"role"`
+
+	// Roles The roles the permission checker counts for this organization:
+	// the membership roles here, the caller's global roles (for example
+	// `platform_superadmin`) and any roles of the token. Empty for an
+	// API key.
+	Roles []string `json:"roles"`
 }
 
 // OrganizationItem A single active organization (primary tenant boundary).
@@ -14943,6 +15069,28 @@ type GetTicketCredentialParams struct {
 	Type *string `form:"type,omitempty" json:"type,omitempty"`
 }
 
+// BrevoDeliveryStatusWebhookBearerJSONBody defines parameters for BrevoDeliveryStatusWebhookBearer.
+type BrevoDeliveryStatusWebhookBearerJSONBody struct {
+	union json.RawMessage
+}
+
+// BrevoDeliveryStatusWebhookBearerJSONBody0 defines parameters for BrevoDeliveryStatusWebhookBearer.
+type BrevoDeliveryStatusWebhookBearerJSONBody0 map[string]interface{}
+
+// BrevoDeliveryStatusWebhookBearerJSONBody1 defines parameters for BrevoDeliveryStatusWebhookBearer.
+type BrevoDeliveryStatusWebhookBearerJSONBody1 = []map[string]interface{}
+
+// BrevoDeliveryStatusWebhookJSONBody defines parameters for BrevoDeliveryStatusWebhook.
+type BrevoDeliveryStatusWebhookJSONBody struct {
+	union json.RawMessage
+}
+
+// BrevoDeliveryStatusWebhookJSONBody0 defines parameters for BrevoDeliveryStatusWebhook.
+type BrevoDeliveryStatusWebhookJSONBody0 map[string]interface{}
+
+// BrevoDeliveryStatusWebhookJSONBody1 defines parameters for BrevoDeliveryStatusWebhook.
+type BrevoDeliveryStatusWebhookJSONBody1 = []map[string]interface{}
+
 // UpdateWebhookSubscriberJSONBody defines parameters for UpdateWebhookSubscriber.
 type UpdateWebhookSubscriberJSONBody struct {
 	// Active Pause (`false`) or resume (`true`) delivery to this
@@ -15379,6 +15527,12 @@ type CancelTicketJSONRequestBody = CancelTicketRequest
 
 // CreateSeatingPlanJSONRequestBody defines body for CreateSeatingPlan for application/json ContentType.
 type CreateSeatingPlanJSONRequestBody = CreateSeatingPlanRequest
+
+// BrevoDeliveryStatusWebhookBearerJSONRequestBody defines body for BrevoDeliveryStatusWebhookBearer for application/json ContentType.
+type BrevoDeliveryStatusWebhookBearerJSONRequestBody BrevoDeliveryStatusWebhookBearerJSONBody
+
+// BrevoDeliveryStatusWebhookJSONRequestBody defines body for BrevoDeliveryStatusWebhook for application/json ContentType.
+type BrevoDeliveryStatusWebhookJSONRequestBody BrevoDeliveryStatusWebhookJSONBody
 
 // RegisterWebhookSubscriberJSONRequestBody defines body for RegisterWebhookSubscriber for application/json ContentType.
 type RegisterWebhookSubscriberJSONRequestBody = RegisterWebhookSubscriberRequest
