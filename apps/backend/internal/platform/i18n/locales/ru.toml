@@ -1700,7 +1700,55 @@ other = "Заказы"
 other = "<b>Заказы: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · страница {{.Page}} из {{.Pages}}.{{.Search}}\n{{.Legend}}\nНажмите на заказ, чтобы открыть его. Для поиска напишите штрихкод, номер заказа, e-mail, телефон или имя."
 
 ["bot.ord.legend"]
-other = "✅ оплачен  ⏳ ждёт оплаты  ⌛ истёк  ✖ отменён  ↩ возврат"
+other = "✅ оплачен  ⏳ ждёт оплаты  ⌛ истёк  ✖ отменён  ↩ возврат  ⚠️📧 письмо с билетами не отправлено"
+
+["bot.ord.letter_tickets_none"]
+other = "📧 Письмо с билетами: Arena его не отправляла."
+
+["bot.ord.letter_tickets_queued"]
+other = "📧 Письмо с билетами: в очереди{{if .To}}, на {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_partial_queued"]
+other = "📧 Письмо с билетами: отправлено {{.Done}} из {{.Total}}. Остальные в очереди."
+
+["bot.ord.letter_tickets_sent"]
+other = "📧 Письмо с билетами: отправлено{{if .When}} {{.When}}{{end}}{{if .To}} на {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_delivered"]
+other = "📧 Письмо с билетами: доставлено{{if .When}} {{.When}}{{end}}{{if .To}} на {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_opened"]
+other = "📧 Письмо с билетами: покупатель открыл его{{if .When}} {{.When}}{{end}}{{if .To}} ({{.To}}){{end}}."
+
+["bot.ord.letter_tickets_partial"]
+other = "⚠️📧 Письмо с билетами: отправлено {{.Done}} из {{.Total}}. Остальные Arena отправить не смогла.{{if .Why}} Причина: {{.Why}}{{end}}"
+
+["bot.ord.letter_tickets_failed"]
+other = "⚠️📧 Письмо с билетами: Arena не смогла его отправить{{if .To}} на {{.To}}{{end}}.{{if .Why}} Причина: {{.Why}}{{end}}"
+
+["bot.ord.letter_refund_off"]
+other = "📧 Письмо о возврате: вы решили его не отправлять."
+
+["bot.ord.letter_refund_queued"]
+other = "📧 Письмо о возврате: в очереди. Arena отправит его после успешного возврата."
+
+["bot.ord.letter_refund_partial_queued"]
+other = "📧 Письмо о возврате: отправлено по {{.Done}} из {{.Total}} возвратов{{if .When}}, последнее {{.When}}{{end}}. Остальные в очереди."
+
+["bot.ord.letter_refund_sent"]
+other = "📧 Письмо о возврате: отправлено{{if .When}} {{.When}}{{end}}{{if .To}} на {{.To}}{{end}}."
+
+["bot.ord.letter_refund_delivered"]
+other = "📧 Письмо о возврате: доставлено{{if .When}} {{.When}}{{end}}{{if .To}} на {{.To}}{{end}}."
+
+["bot.ord.letter_refund_opened"]
+other = "📧 Письмо о возврате: покупатель открыл его{{if .When}} {{.When}}{{end}}{{if .To}} ({{.To}}){{end}}."
+
+["bot.ord.letter_refund_failed"]
+other = "⚠️📧 Письмо о возврате: Arena не смогла его отправить{{if .When}} (последняя попытка {{.When}}){{end}}. Оператор об этом знает."
+
+["bot.ord.letter_retry_btn"]
+other = "📧 Отправить письмо ещё раз"
 
 ["bot.ord.tab_recent"]
 other = "Последние"
@@ -1815,15 +1863,6 @@ other = "другой канал"
 
 ["bot.ord.payment_line"]
 other = "\n💳 Оплата: {{.Provider}}"
-
-["bot.ord.delivery_sent"]
-other = "📧 Билеты отправлены покупателю на почту."
-
-["bot.ord.delivery_pending"]
-other = "📧 Письмо с билетами стоит в очереди и ещё не отправлено."
-
-["bot.ord.delivery_failed"]
-other = "📧 Письмо с билетами не удалось доставить."
 
 ["bot.ord.reason_payment_failed"]
 other = "⚠️ Оплата не прошла: карту или банк отказали. Покупатель может попробовать ещё раз."

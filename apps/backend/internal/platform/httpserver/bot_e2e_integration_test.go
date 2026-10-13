@@ -427,6 +427,29 @@ func (s *stubTelegram) keyboardOf(id int) []string {
 	return nil
 }
 
+// labelsOf is the text of a message's buttons now.
+func (s *stubTelegram) labelsOf(id int) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := s.msgs[id]
+	if m == nil || m.markup == nil {
+		return nil
+	}
+	var kb struct {
+		Rows [][]struct {
+			Text string `json:"text"`
+		} `json:"inline_keyboard"`
+	}
+	_ = json.Unmarshal(m.markup, &kb)
+	var out []string
+	for _, row := range kb.Rows {
+		for _, b := range row {
+			out = append(out, b.Text)
+		}
+	}
+	return out
+}
+
 // callCount is how many times the bot has called a Bot API method so far.
 func (s *stubTelegram) callCount(method string) int {
 	s.mu.Lock()

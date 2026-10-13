@@ -1561,7 +1561,55 @@ other = "Pedidos"
 other = "<b>Pedidos: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · página {{.Page}} de {{.Pages}}.{{.Search}}\n{{.Legend}}\nPulsa un pedido para abrirlo. Para buscar, escribe un código de barras, un número de pedido, un e-mail, un teléfono o un nombre."
 
 ["bot.ord.legend"]
-other = "✅ pagado  ⏳ pendiente de pago  ⌛ caducado  ✖ cancelado  ↩ reembolsado"
+other = "✅ pagado  ⏳ pendiente de pago  ⌛ caducado  ✖ cancelado  ↩ reembolsado  ⚠️📧 e-mail de entradas no enviado"
+
+["bot.ord.letter_tickets_none"]
+other = "📧 E-mail de entradas: Arena no lo envió."
+
+["bot.ord.letter_tickets_queued"]
+other = "📧 E-mail de entradas: en cola{{if .To}}, a {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_partial_queued"]
+other = "📧 E-mail de entradas: enviado para {{.Done}} de {{.Total}} entradas. Las demás están en cola."
+
+["bot.ord.letter_tickets_sent"]
+other = "📧 E-mail de entradas: enviado{{if .When}} el {{.When}}{{end}}{{if .To}} a {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_delivered"]
+other = "📧 E-mail de entradas: entregado{{if .When}} el {{.When}}{{end}}{{if .To}} a {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_opened"]
+other = "📧 E-mail de entradas: el comprador lo abrió{{if .When}} el {{.When}}{{end}}{{if .To}} ({{.To}}){{end}}."
+
+["bot.ord.letter_tickets_partial"]
+other = "⚠️📧 E-mail de entradas: enviado para {{.Done}} de {{.Total}} entradas. Arena no pudo enviar las demás.{{if .Why}} Motivo: {{.Why}}{{end}}"
+
+["bot.ord.letter_tickets_failed"]
+other = "⚠️📧 E-mail de entradas: Arena no pudo enviarlo{{if .To}} a {{.To}}{{end}}.{{if .Why}} Motivo: {{.Why}}{{end}}"
+
+["bot.ord.letter_refund_off"]
+other = "📧 E-mail de reembolso: elegiste no enviarlo."
+
+["bot.ord.letter_refund_queued"]
+other = "📧 E-mail de reembolso: en cola. Arena lo envía cuando el reembolso se completa."
+
+["bot.ord.letter_refund_partial_queued"]
+other = "📧 E-mail de reembolso: enviado para {{.Done}} de {{.Total}} reembolsos{{if .When}}, el último el {{.When}}{{end}}. Los demás están en cola."
+
+["bot.ord.letter_refund_sent"]
+other = "📧 E-mail de reembolso: enviado{{if .When}} el {{.When}}{{end}}{{if .To}} a {{.To}}{{end}}."
+
+["bot.ord.letter_refund_delivered"]
+other = "📧 E-mail de reembolso: entregado{{if .When}} el {{.When}}{{end}}{{if .To}} a {{.To}}{{end}}."
+
+["bot.ord.letter_refund_opened"]
+other = "📧 E-mail de reembolso: el comprador lo abrió{{if .When}} el {{.When}}{{end}}{{if .To}} ({{.To}}){{end}}."
+
+["bot.ord.letter_refund_failed"]
+other = "⚠️📧 E-mail de reembolso: Arena no pudo enviarlo{{if .When}} (último intento el {{.When}}){{end}}. El operador lo sabe."
+
+["bot.ord.letter_retry_btn"]
+other = "📧 Enviar de nuevo el e-mail de entradas"
 
 ["bot.ord.tab_recent"]
 other = "Últimos"
@@ -1676,15 +1724,6 @@ other = "otro canal"
 
 ["bot.ord.payment_line"]
 other = "\n💳 Pago: {{.Provider}}"
-
-["bot.ord.delivery_sent"]
-other = "📧 Las entradas se enviaron al comprador por e-mail."
-
-["bot.ord.delivery_pending"]
-other = "📧 El e-mail con las entradas está en cola y aún no se ha enviado."
-
-["bot.ord.delivery_failed"]
-other = "📧 No se pudo entregar el e-mail con las entradas."
 
 ["bot.ord.reason_payment_failed"]
 other = "⚠️ El pago no se completó: la tarjeta o el banco lo rechazaron. El comprador puede intentarlo de nuevo."

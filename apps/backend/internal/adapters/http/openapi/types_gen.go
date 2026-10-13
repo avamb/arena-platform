@@ -8392,6 +8392,9 @@ type OrderDeliveryEntry struct {
 	// LastError Error of the last failed attempt, if any.
 	LastError *string `json:"last_error"`
 
+	// RecipientEmail The address this ticket's letter goes to (a resend to another address changes it); null when unknown.
+	RecipientEmail *string `json:"recipient_email"`
+
 	// SentAt When the letter was accepted for delivery, for a sent job.
 	SentAt *time.Time `json:"sent_at"`
 
@@ -8485,6 +8488,9 @@ type OrderDetail struct {
 
 	// PromoCodeId Promo code applied to this order, if any.
 	PromoCodeId *openapi_types.UUID `json:"promo_code_id"`
+
+	// RefundLetter The buyer letter of the order's refund operations; null when the order has none.
+	RefundLetter *OrderRefundLetter `json:"refund_letter"`
 
 	// ReservationId Reservation (hold) backing this order.
 	ReservationId openapi_types.UUID `json:"reservation_id"`
@@ -8613,6 +8619,12 @@ type OrderListItem struct {
 
 	// CustomerId Linked customer, if the buyer was resolved to one.
 	CustomerId *openapi_types.UUID `json:"customer_id"`
+
+	// DeliveryState The ticket letters of the order folded into one word, as on
+	// OrderDetail: `sent`, `pending`, `failed` or `none`. A client
+	// marks a `failed` row so the organizer sees a lost letter
+	// without opening every order.
+	DeliveryState *string `json:"delivery_state,omitempty"`
 
 	// Discount Discount applied, in minor currency units.
 	Discount int `json:"discount"`
@@ -8782,6 +8794,26 @@ type OrderRefundItem struct {
 
 	// TicketId The ticket the refund is for; null for a refund of the whole payment.
 	TicketId *openapi_types.UUID `json:"ticket_id"`
+}
+
+// OrderRefundLetter The buyer letter of the order's refund operations (PAY-07): one
+// letter covers the refunds of one operation that asked for it.
+type OrderRefundLetter struct {
+	// At When the latest step happened (the last letter sent, or the give-up), UTC.
+	At *time.Time `json:"at"`
+
+	// Refunds Refunds that asked for a letter (for `off`, the refunds of the order).
+	Refunds int `json:"refunds"`
+
+	// Sent Of those, the refunds a letter already covers.
+	Sent int `json:"sent"`
+
+	// State `off` — the operation asked for no letter; `queued` — a refund
+	// has not succeeded yet or its letter is on its way; `partial` —
+	// some refunds are covered by a letter, others still wait; `sent`
+	// — every refund that asked for a letter is covered; `failed` —
+	// the worker gave up on a letter.
+	State string `json:"state"`
 }
 
 // OrderRefundOptions What an organizer may do about the money of an order (PAY-06). `route`
