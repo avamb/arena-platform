@@ -48,17 +48,56 @@ export interface HostedPageEvent {
   feed_token?: string;
 }
 
+/** Postal address of the seller. Every part is optional. */
+export interface HostedPageSellerAddress {
+  line1?: string | null;
+  line2?: string | null;
+  city?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+}
+
+/** Public contact details of the seller. Both parts are optional. */
+export interface HostedPageSellerContact {
+  email?: string | null;
+  phone?: string | null;
+}
+
+/** Who the buyer's contract is with. Present on a hosted-page response only
+ * when the sales channel has the legal-details switch on; an older backend
+ * (or a channel without the switch) simply omits it and the page renders
+ * exactly as before. */
+export interface HostedPageSeller {
+  legal_name: string;
+  tax_id?: string | null;
+  /** Kind of tax number (`eu_vat`, `gb_vat`, `il_vat`, `us_ein`, `other`,
+   * ...) — picks the label printed next to `tax_id`; unknown means "Tax ID". */
+  tax_scheme?: string | null;
+  registration_number?: string | null;
+  address?: HostedPageSellerAddress | null;
+  country?: string | null;
+  public_contact?: HostedPageSellerContact | null;
+}
+
+/** The event's promoter, shown next to the seller (event page only). */
+export interface HostedPagePromoter {
+  name: string;
+}
+
 export interface HostedPageResponse {
   org: HostedPageOrg;
   event: HostedPageEvent;
   feed_token: string;
   default_locale: string;
+  seller?: HostedPageSeller | null;
+  promoter?: HostedPagePromoter | null;
 }
 
 export interface HostedPromoterPageResponse {
   org: HostedPageOrg;
   default_locale: string;
   events: HostedPageEvent[];
+  seller?: HostedPageSeller | null;
 }
 
 /** ApiError carries the HTTP status so callers can distinguish "not found"
