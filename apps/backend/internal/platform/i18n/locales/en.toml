@@ -1736,7 +1736,7 @@ other = "Orders"
 other = "<b>Orders: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · page {{.Page}} of {{.Pages}}.{{.Search}}\n{{.Legend}}\nTap an order to open it. To search, type a barcode, an order number, an e-mail, a phone or a name."
 
 ["bot.ord.legend"]
-other = "✅ paid  ⏳ waiting for payment  ⌛ expired  ✖ canceled  ↩ refunded  ⚠️📧 ticket e-mail not sent"
+other = "✅ paid  ⏳ waiting for payment  ⌛ expired  ✖ canceled  ↩ refunded  ⚠️📧 an e-mail did not reach the buyer"
 
 ["bot.ord.letter_tickets_none"]
 other = "📧 Ticket e-mail: Arena did not send it."
@@ -1762,6 +1762,15 @@ other = "⚠️📧 Ticket e-mail: sent for {{.Done}} of {{.Total}} tickets. Are
 ["bot.ord.letter_tickets_failed"]
 other = "⚠️📧 Ticket e-mail: Arena could not send it{{if .To}} to {{.To}}{{end}}.{{if .Why}} Reason: {{.Why}}{{end}}"
 
+["bot.ord.letter_tickets_delayed"]
+other = "📧 Ticket e-mail: delivery is delayed{{if .To}} ({{.To}}){{end}}. The buyer's mail server asked to try again later. The mail service will try again by itself."
+
+["bot.ord.letter_tickets_stuck"]
+other = "⚠️📧 Ticket e-mail: sent{{if .When}} {{.When}}{{end}}, but not delivered{{if .To}} to {{.To}}{{end}} in 6 hours. The buyer most likely did not get it. Send the e-mail again or write to the buyer."
+
+["bot.ord.letter_tickets_bounced"]
+other = "⚠️📧 The ticket e-mail did not reach{{if .To}} {{.To}}{{end}}: the buyer's mail server refused it.{{if .Why}} Reason: {{.Why}}{{end}} Check the address and send the e-mail again."
+
 ["bot.ord.letter_refund_off"]
 other = "📧 Refund e-mail: you chose not to send it."
 
@@ -1782,6 +1791,15 @@ other = "📧 Refund e-mail: the buyer opened it{{if .When}} {{.When}}{{end}}{{i
 
 ["bot.ord.letter_refund_failed"]
 other = "⚠️📧 Refund e-mail: Arena could not send it{{if .When}} (last try {{.When}}){{end}}. The operator knows about it."
+
+["bot.ord.letter_refund_delayed"]
+other = "📧 Refund e-mail: delivery is delayed{{if .To}} ({{.To}}){{end}}. The mail service will try again by itself."
+
+["bot.ord.letter_refund_stuck"]
+other = "⚠️📧 Refund e-mail: sent{{if .When}} {{.When}}{{end}}, but not delivered{{if .To}} to {{.To}}{{end}} in 6 hours. The buyer most likely did not get it. Tell the buyer about the refund yourself."
+
+["bot.ord.letter_refund_bounced"]
+other = "⚠️📧 The refund e-mail did not reach{{if .To}} {{.To}}{{end}}: the buyer's mail server refused it.{{if .Why}} Reason: {{.Why}}{{end}} The refund is done. Tell the buyer about it yourself."
 
 ["bot.ord.letter_retry_btn"]
 other = "📧 Send the ticket e-mail again"
