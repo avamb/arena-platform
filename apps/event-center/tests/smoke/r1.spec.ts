@@ -95,6 +95,8 @@ test.describe("R1 read-only event center", () => {
     // Event card.
     await page.getByRole("link", { name: /Serebryanoe kopyttse/ }).click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Serebryanoe kopyttse");
+    // Review finding L6: the focus moves to the new screen's heading.
+    await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
     await expect(page.getByTestId("sales-figures").first()).toContainText("Paid: €540.00");
     await expect(page.getByTestId("session-row")).toContainText("(Prague)");
     await noHorizontalScroll(page);
@@ -108,6 +110,7 @@ test.describe("R1 read-only event center", () => {
     // Session.
     await page.getByTestId("session-row").getByRole("link").click();
     await expect(page.getByRole("heading", { level: 1 })).toContainText("20:00");
+    await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
     await expect(page.getByText("Doors open")).toBeVisible();
     await expect(page.getByTestId("tiers-table")).toContainText("Parter");
     const pdf = page.waitForEvent("download");
