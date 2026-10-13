@@ -329,7 +329,9 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 			h := w.Header()
 			h.Set("Access-Control-Allow-Origin", allowedOrigin)
 			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			h.Set("Access-Control-Expose-Headers", "X-Request-Id, X-Trace-Id")
+			// Content-Disposition carries the file name of a CSV or PDF export;
+			// without it a browser client on another origin cannot read the name.
+			h.Set("Access-Control-Expose-Headers", "X-Request-Id, X-Trace-Id, Content-Disposition")
 			h.Set("Access-Control-Max-Age", "600")
 
 			requestHeaders := strings.TrimSpace(r.Header.Get("Access-Control-Request-Headers"))
