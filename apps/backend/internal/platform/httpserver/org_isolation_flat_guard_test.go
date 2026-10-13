@@ -110,6 +110,7 @@ var flatRouteFamilies = []flatFamily{
 	{"GET", "/v1/public/pages/{org_slug}/{event_slug}", flatPublic, "feed token or checkout token in the URL"},
 	{"GET", "/v1/public/payment-return", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/checkout/{checkout_token}/recover", flatPublic, "feed token or checkout token in the URL"},
+	{"POST", "/v1/public/organizer-contact/{org_slug}", flatPublic, "public page slug; reads only whether the page has a form, never answers the address (hcontact)"},
 	{"POST", "/v1/public/feeds/{feed_token}/checkout/start", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/feeds/{feed_token}/checkout/quote", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/feeds/{feed_token}/events", flatPublic, "feed token or checkout token in the URL"},

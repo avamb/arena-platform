@@ -230,6 +230,9 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		// every currently-visible event of the org, upcoming first.
 		r.Get("/public/pages/{org_slug}", s.handlePublicPromoterPage)
 	}
+	// "Write to the organizer" form of the hosted page (HP contact form).
+	// Always mounted; the handler answers 503 without a database.
+	r.Post("/public/organizer-contact/{org_slug}", s.handleOrganizerContact)
 	// Funnel telemetry sink — WID-0e (feature #322).
 	// Always mounted; handler self-gates with 503 when funnelQueries is nil.
 	r.Post("/public/feeds/{feed_token}/events", s.handlePublicFeedFunnelEvents)

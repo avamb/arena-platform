@@ -51,6 +51,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/bil24wire"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/contactform"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/convertjob"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customerimport"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
@@ -252,6 +253,7 @@ func run() error {
 	registerMediaGCHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerOpsWatchdogHandler(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerEventWatchHandler(registry, pool.Pool, cfg, salesNotifier, logger)
+	registerContactFormHandler(registry, pool.Pool, cfg, salesNotifier, logger)
 	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 
@@ -688,6 +690,23 @@ func registerEventWatchHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *co
 	}))
 	logger.Info("event change watch registered",
 		"interval", eventwatch.DefaultInterval.String(), "stable_for", eventwatch.DefaultStableFor.String())
+}
+
+// registerContactFormHandler registers contact.organizer_message: a buyer's
+// message from the hosted page's "Write to the organizer" form, mailed to the
+// channel's public e-mail (Reply-To = the buyer) and, when the organization
+// keeps the switch on, posted to its own sales chat.
+func registerContactFormHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier *salesnotify.Dispatcher, logger *slog.Logger) {
+	var announcer contactform.Announcer
+	if notifier != nil {
+		announcer = notifier
+	}
+	reg.Register(contactform.JobType, contactform.New(contactform.Options{
+		Pool:      pool,
+		Sender:    buildEmailSender(cfg, logger),
+		Announcer: announcer,
+		Logger:    logger,
+	}).Handle)
 }
 
 // buildSalesNotifier builds the outbox leg that posts sales and refunds to

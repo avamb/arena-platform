@@ -6294,12 +6294,70 @@ components:
       properties:
         email:
           type: string
-          description: Public contact e-mail.
+          description: |
+            Never answered since the contact form (2026-10-13): buyers write
+            through `contact_form`, the address only receives the messages.
+            Kept in the schema for older clients.
           example: "tickets@example.com"
         phone:
           type: string
           description: Public contact phone number.
           example: "+34 600 000 000"
+
+    HostedPageContactForm:
+      type: object
+      required: [available]
+      description: The "Write to the organizer" form of a hosted page.
+      properties:
+        available:
+          type: boolean
+          description: Always true when the block is present.
+        turnstile_site_key:
+          type: string
+          description: Cloudflare Turnstile site key for the form; omitted when the deployment runs without a captcha (never in production).
+          example: "0x4AAAAAAAxxxxxxxxxxxxxx"
+
+    OrganizerContactRequest:
+      type: object
+      additionalProperties: false
+      required: [name, email, message, consent]
+      description: A buyer's message to the organizer of a hosted page.
+      properties:
+        name:
+          type: string
+          description: Sender's name, 1-100 characters.
+          example: "Anna"
+        email:
+          type: string
+          description: Sender's e-mail; the organizer's reply goes there (Reply-To).
+          example: "anna@example.com"
+        message:
+          type: string
+          description: The message, 10-2000 characters.
+          example: "Is the venue accessible by wheelchair?"
+        consent:
+          type: boolean
+          description: Must be true; the buyer agrees that the message is passed to the organizer.
+        turnstile_token:
+          type: string
+          description: Cloudflare Turnstile response token.
+        feed_token:
+          type: string
+          description: The event page's feed token; empty on the promoter landing page.
+        locale:
+          type: string
+          description: Page language of the sender.
+          example: "es"
+
+    OrganizerContactAccepted:
+      type: object
+      required: [status]
+      description: The message is stored and queued for delivery.
+      properties:
+        status:
+          type: string
+          description: Always "queued".
+          example: "queued"
 
     HostedPageSeller:
       type: object
@@ -6455,6 +6513,9 @@ components:
           description: The organization's hosted-page channels, oldest first.
           items:
             $ref: "#/components/schemas/SellerProfileChannel"
+        contact_form_to_telegram:
+          type: boolean
+          description: Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true).
 
     SellerProfileEnvelope:
       type: object
@@ -6465,6 +6526,16 @@ components:
           description: The profile as stored after the call.
           allOf:
             - $ref: "#/components/schemas/SellerProfile"
+
+    UpdateSellerProfileRequest:
+      type: object
+      additionalProperties: false
+      required: [contact_form_to_telegram]
+      description: The organization-wide switch of the contact form's Telegram leg.
+      properties:
+        contact_form_to_telegram:
+          type: boolean
+          description: Post buyers' messages to the organization's sales Telegram chat too.
 
     SellerDisplayContactPatch:
       type: object
@@ -6549,6 +6620,13 @@ components:
             present and the event has a promoter.
           allOf:
             - $ref: "#/components/schemas/HostedPagePromoter"
+        contact_form:
+          description: |
+            Present when the page offers the "Write to the organizer" form: the
+            channel has a public e-mail and the deployment can check the
+            captcha. The address itself is never answered.
+          allOf:
+            - $ref: "#/components/schemas/HostedPageContactForm"
 
     HostedPromoterPageResponse:
       type: object
@@ -6597,6 +6675,13 @@ components:
             present and the slug names a promoter rather than the organization.
           allOf:
             - $ref: "#/components/schemas/HostedPagePromoter"
+        contact_form:
+          description: |
+            Present when the page offers the "Write to the organizer" form: the
+            channel has a public e-mail and the deployment can check the
+            captcha. The address itself is never answered.
+          allOf:
+            - $ref: "#/components/schemas/HostedPageContactForm"
 
     CreateEventRequest:
       type: object
@@ -25210,6 +25295,69 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+    patch:
+      operationId: updateSellerProfile
+      summary: Switch the Telegram leg of the sales page's contact form
+      description: |
+        `contact_form_to_telegram` decides whether buyers' messages from the
+        sales page's contact form also go to the organization's own sales
+        Telegram chat (the e-mail always goes). Requires `org.update`.
+        Audited as `v1.organization.contact_form_update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSellerProfileRequest"
+      responses:
+        "200":
+          description: Saved; the profile as stored now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SellerProfileEnvelope"
+        "400":
+          description: Invalid body (`seller.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` in the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such organization (`org.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/channels/{channel_id}/seller-display:
     patch:
       operationId: updateSellerDisplay
@@ -34231,6 +34379,86 @@ paths:
         "503":
           description: |
             Database unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/organizer-contact/{org_slug}:
+    post:
+      operationId: sendOrganizerContact
+      summary: Send a buyer's message to the organizer of a hosted page
+      description: |
+        The "Write to the organizer" form of the hosted sales page. The page
+        never publishes the organizer's e-mail: the message is stored and a
+        worker mails it to the channel's public e-mail with Reply-To set to
+        the buyer, and posts it to the organization's sales Telegram chat when
+        its switch is on. Protected by Cloudflare Turnstile (production
+        without a secret answers 503), a per-IP limit (5 an hour) and a
+        per-page limit (30 an hour) counted in the database, and a 16 KiB body
+        cap. No JWT. An unknown slug, a page without a public e-mail and a
+        feed token of another organization answer the same 404. The answer
+        never carries the organizer's address.
+      tags: [v1]
+      security: []
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          description: The page's first path segment (organization or promoter slug).
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizerContactRequest"
+      responses:
+        "202":
+          description: Stored and queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizerContactAccepted"
+        "400":
+          description: Invalid name, e-mail, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The captcha was not passed (`contact.captcha_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The page has no contact form (`contact.not_available`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: The body is larger than 16 KiB (`contact.too_large`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many messages from this IP or to this page (`contact.rate_limited`, Retry-After).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The message could not be stored (`contact.send_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable, or the captcha is not configured or cannot be checked.
           content:
             application/json:
               schema:

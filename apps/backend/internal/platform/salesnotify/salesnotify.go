@@ -291,6 +291,30 @@ func (d *Dispatcher) AnnounceEventChange(ctx context.Context, text string) {
 	}
 }
 
+// AnnounceToOrg posts text to the organization's OWN sales chats (rows of
+// sales_notification_subscriptions with that org_id, whatever their sale and
+// refund switches) and never to the operator's: it carries a buyer's message
+// to that organizer (the hosted page's contact form, contactform). It answers
+// how many chats it tried. Best effort, like every other delivery here.
+func (d *Dispatcher) AnnounceToOrg(ctx context.Context, orgID, text string) int {
+	if d == nil || d.sender == nil || orgID == "" {
+		return 0
+	}
+	subs, err := d.store.Subscriptions(ctx)
+	if err != nil {
+		d.logger.Warn("sales.notify: load subscriptions for an organization message", "error", err.Error())
+		return 0
+	}
+	n := 0
+	for _, sub := range subs {
+		if sub.OrgID == orgID {
+			d.deliver(ctx, sub, text)
+			n++
+		}
+	}
+	return n
+}
+
 // deliver sends text to one chat, following a supergroup migration once and
 // recording the outcome on the subscription.
 func (d *Dispatcher) deliver(ctx context.Context, sub Subscription, text string) {

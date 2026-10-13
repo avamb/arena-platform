@@ -47,3 +47,27 @@ func TestAnnounceEventChange_WithoutABotTokenDoesNothing(_ *testing.T) {
 	d.AnnounceEventChange(context.Background(), "x") // nil receiver must not panic
 	NewDispatcher(store, nil, nil).AnnounceEventChange(context.Background(), "x")
 }
+
+func TestAnnounceToOrg_PostsOnlyToThatOrganizationsChats(t *testing.T) {
+	store := newFakeStore(
+		Subscription{ID: "operator", ChatID: "-100", OnEventChanges: true, OnOrderPaid: true},
+		Subscription{ID: "org", OrgID: orgVino, ChatID: "-200"},
+		Subscription{ID: "other", OrgID: "org-other", ChatID: "-300", OnOrderPaid: true},
+	)
+	sender := &fakeSender{}
+	d := NewDispatcher(store, sender, nil)
+
+	if n := d.AnnounceToOrg(context.Background(), orgVino, "✉️ Message"); n != 1 {
+		t.Fatalf("delivered to %d chats, want 1", n)
+	}
+	if len(sender.sent) != 1 || sender.sent[0].chat != "-200" {
+		t.Fatalf("want one message to -200, got %+v", sender.sent)
+	}
+	if n := d.AnnounceToOrg(context.Background(), "", "x"); n != 0 {
+		t.Errorf("an empty organization reaches nobody, got %d", n)
+	}
+	var nilD *Dispatcher
+	if n := nilD.AnnounceToOrg(context.Background(), orgVino, "x"); n != 0 {
+		t.Errorf("nil dispatcher: got %d", n)
+	}
+}

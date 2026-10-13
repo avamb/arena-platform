@@ -45,3 +45,28 @@ WHERE id = $1
   AND org_id = $2
   AND deleted_at IS NULL
   AND settings #>> '{hosted_page,enabled}' = 'true';
+
+-- name: GetContactFormTarget :one
+-- GetContactFormTarget names the sales-page channel a buyer's message goes
+-- through: the hosted-page channel of the organization that owns the feed
+-- token ($2), or the newest eligible one when $2 is empty — the same rule as
+-- GetHostedPageSeller. has_email reports whether the channel has a public
+-- e-mail; the address itself is never selected here.
+SELECT sc.id,
+       COALESCE(sc.settings #>> '{hosted_page,public_contact,email}', '') <> '' AS has_email
+FROM sales_channels sc
+JOIN agent_feed_tokens ft ON ft.sales_channel_id = sc.id
+WHERE sc.org_id = $1
+  AND sc.deleted_at IS NULL
+  AND sc.settings #>> '{hosted_page,enabled}' = 'true'
+  AND ft.is_active = true
+  AND ($2::text = '' OR ft.token = $2::text)
+ORDER BY ft.created_at DESC
+LIMIT 1;
+
+-- name: GetContactFormToTelegram :one
+SELECT contact_form_to_telegram FROM organizations WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: SetContactFormToTelegram :execrows
+UPDATE organizations SET contact_form_to_telegram = $2, updated_at = now()
+WHERE id = $1 AND deleted_at IS NULL;

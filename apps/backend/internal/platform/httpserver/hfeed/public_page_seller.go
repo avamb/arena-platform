@@ -7,7 +7,10 @@
 // Every value comes from the page's OWN organization. A contact is published
 // only from settings.hosted_page.public_contact of the channel; the
 // organization's contact_email / contact_phone are never read, because they
-// may hold a person's private login address.
+// may hold a person's private login address. Since the contact form (HP
+// contact form, 2026-10-13) not even the channel's public e-mail is
+// published: buyers write through the form (contact_form), the address only
+// receives the messages. The public phone is still printed.
 package hfeed
 
 import (
@@ -96,8 +99,37 @@ func buildSeller(row gen.HostedPageSellerRow) *hostedPageSellerResponse {
 		addr.Country = country
 		s.Address = &addr
 	}
-	s.PublicContact = parsePublicContact(row.PublicContact)
+	s.PublicContact = publishedContact(row.PublicContact)
 	return s
+}
+
+// publishedContact is the part of public_contact the page may print: the
+// phone. The e-mail is never published; it only receives the contact form's
+// messages.
+func publishedContact(raw []byte) *hostedPageSellerContact {
+	c := parsePublicContact(raw)
+	if c == nil || c.Phone == "" {
+		return nil
+	}
+	return &hostedPageSellerContact{Phone: c.Phone}
+}
+
+// hostedPageContactForm tells the page whether to offer the "Write to the
+// organizer" form and with which Turnstile site key. It never carries the
+// address the messages go to.
+type hostedPageContactForm struct {
+	Available        bool   `json:"available"`
+	TurnstileSiteKey string `json:"turnstile_site_key,omitempty"`
+}
+
+// contactForm decides the form from the channel row: offered when the channel
+// has a public e-mail and this deployment can check the captcha.
+func (h *Handler) contactForm(row gen.HostedPageSellerRow) *hostedPageContactForm {
+	c := parsePublicContact(row.PublicContact)
+	if c == nil || c.Email == "" || !h.contactFormReady {
+		return nil
+	}
+	return &hostedPageContactForm{Available: true, TurnstileSiteKey: h.contactFormSiteKey}
 }
 
 // parsePublicContact reads settings.hosted_page.public_contact. Anything that
@@ -130,7 +162,7 @@ func parsePublicContact(raw []byte) *hostedPageSellerContact {
 // the channel keeps the block off. A lookup failure is logged and answers
 // nil: the block is informational and must not turn a resolved page into a
 // 500.
-func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken string, eventID *uuid.UUID) (*hostedPageSellerResponse, *hostedPagePromoterResponse) {
+func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken string, eventID *uuid.UUID) (*hostedPageSellerResponse, *hostedPagePromoterResponse, *hostedPageContactForm) {
 	row, err := h.publicFeedQueries.GetHostedPageSeller(ctx, orgID, feedToken)
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
@@ -139,14 +171,15 @@ func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken s
 				slog.String("error", err.Error()),
 			)
 		}
-		return nil, nil
+		return nil, nil, nil
 	}
+	form := h.contactForm(row)
 	seller := buildSeller(row)
 	if seller == nil {
-		return nil, nil
+		return nil, nil, form
 	}
 	if eventID == nil {
-		return seller, nil
+		return seller, nil, form
 	}
 	name, err := h.publicFeedQueries.GetHostedPageEventPromoterName(ctx, *eventID, orgID)
 	if err != nil {
@@ -156,12 +189,12 @@ func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken s
 				slog.String("error", err.Error()),
 			)
 		}
-		return seller, nil
+		return seller, nil, form
 	}
 	if name = strings.TrimSpace(name); name == "" {
-		return seller, nil
+		return seller, nil, form
 	}
-	return seller, &hostedPagePromoterResponse{Name: name}
+	return seller, &hostedPagePromoterResponse{Name: name}, form
 }
 
 // showWithdrawalNotice reports whether the widget must tell the buyer that

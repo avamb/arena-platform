@@ -6265,6 +6265,15 @@ type HealthzResponse struct {
 // HealthzResponseStatus Always "ok" when the process is alive
 type HealthzResponseStatus string
 
+// HostedPageContactForm The "Write to the organizer" form of a hosted page.
+type HostedPageContactForm struct {
+	// Available Always true when the block is present.
+	Available bool `json:"available"`
+
+	// TurnstileSiteKey Cloudflare Turnstile site key for the form; omitted when the deployment runs without a captcha (never in production).
+	TurnstileSiteKey *string `json:"turnstile_site_key,omitempty"`
+}
+
 // HostedPageEvent Event slice of the hosted sales page resolve response. Reuses the
 // same locale-resolved name/description projection as `EventItem`
 // where applicable.
@@ -6367,6 +6376,11 @@ type HostedPagePromoter struct {
 // is published to with `settings.hosted_page.enabled = true`; pass it
 // straight to the `<arena-tickets feed-token=…>` widget.
 type HostedPageResponse struct {
+	// ContactForm Present when the page offers the "Write to the organizer" form: the
+	// channel has a public e-mail and the deployment can check the
+	// captcha. The address itself is never answered.
+	ContactForm *HostedPageContactForm `json:"contact_form,omitempty"`
+
 	// DefaultLocale Organization default locale, used when no `?lang=` is present.
 	DefaultLocale string `json:"default_locale"`
 
@@ -6442,7 +6456,9 @@ type HostedPageSellerAddress struct {
 // published contact; the organization's own contact e-mail and phone
 // are never used. Unset keys are omitted.
 type HostedPageSellerContact struct {
-	// Email Public contact e-mail.
+	// Email Never answered since the contact form (2026-10-13): buyers write
+	// through `contact_form`, the address only receives the messages.
+	// Kept in the schema for older clients.
 	Email *string `json:"email,omitempty"`
 
 	// Phone Public contact phone number.
@@ -6461,6 +6477,11 @@ type HostedPageSellerContact struct {
 // under every date, so a six-date season resolves in ONE request
 // instead of one per date.
 type HostedPromoterPageResponse struct {
+	// ContactForm Present when the page offers the "Write to the organizer" form: the
+	// channel has a public e-mail and the deployment can check the
+	// captcha. The address itself is never answered.
+	ContactForm *HostedPageContactForm `json:"contact_form,omitempty"`
+
 	// DefaultLocale Organization default locale, used when no `?lang=` is present.
 	DefaultLocale string `json:"default_locale"`
 
@@ -9255,6 +9276,36 @@ type OrganizerContact struct {
 	TargetName string `json:"target_name"`
 }
 
+// OrganizerContactAccepted The message is stored and queued for delivery.
+type OrganizerContactAccepted struct {
+	// Status Always "queued".
+	Status string `json:"status"`
+}
+
+// OrganizerContactRequest A buyer's message to the organizer of a hosted page.
+type OrganizerContactRequest struct {
+	// Consent Must be true; the buyer agrees that the message is passed to the organizer.
+	Consent bool `json:"consent"`
+
+	// Email Sender's e-mail; the organizer's reply goes there (Reply-To).
+	Email string `json:"email"`
+
+	// FeedToken The event page's feed token; empty on the promoter landing page.
+	FeedToken *string `json:"feed_token,omitempty"`
+
+	// Locale Page language of the sender.
+	Locale *string `json:"locale,omitempty"`
+
+	// Message The message, 10-2000 characters.
+	Message string `json:"message"`
+
+	// Name Sender's name, 1-100 characters.
+	Name string `json:"name"`
+
+	// TurnstileToken Cloudflare Turnstile response token.
+	TurnstileToken *string `json:"turnstile_token,omitempty"`
+}
+
 // PaginationMeta Standard pagination metadata returned by list endpoints.
 // Clients use this object to implement "load more" buttons or
 // paginator UI components. All fields are always present in list responses.
@@ -11442,6 +11493,9 @@ type SellerProfile struct {
 	// Channels The organization's hosted-page channels, oldest first.
 	Channels []SellerProfileChannel `json:"channels"`
 
+	// ContactFormToTelegram Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true).
+	ContactFormToTelegram *bool `json:"contact_form_to_telegram,omitempty"`
+
 	// Country Country of the organization (stands in for the address country on the page).
 	Country string `json:"country"`
 
@@ -13205,6 +13259,12 @@ type UpdateSellerDisplayRequest struct {
 
 	// ShowSeller Show the seller block on this channel's sales page.
 	ShowSeller *bool `json:"show_seller,omitempty"`
+}
+
+// UpdateSellerProfileRequest The organization-wide switch of the contact form's Telegram leg.
+type UpdateSellerProfileRequest struct {
+	// ContactFormToTelegram Post buyers' messages to the organization's sales Telegram chat too.
+	ContactFormToTelegram bool `json:"contact_form_to_telegram"`
 }
 
 // UpdateSessionRequest Partial update for PATCH
@@ -15186,6 +15246,9 @@ type UpdatePromoterJSONRequestBody = UpdatePromoterRequest
 // PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody defines body for PostV1OrganizationsOrgIdRefundsRefundIdResolve for application/json ContentType.
 type PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody = ResolveOrderRefundRequest
 
+// UpdateSellerProfileJSONRequestBody defines body for UpdateSellerProfile for application/json ContentType.
+type UpdateSellerProfileJSONRequestBody = UpdateSellerProfileRequest
+
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody
 
@@ -15218,6 +15281,9 @@ type StartPublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutStartRequest
 
 // PostPublicFeedFunnelEventsJSONRequestBody defines body for PostPublicFeedFunnelEvents for application/json ContentType.
 type PostPublicFeedFunnelEventsJSONRequestBody = WidgetFunnelEventsBatch
+
+// SendOrganizerContactJSONRequestBody defines body for SendOrganizerContact for application/json ContentType.
+type SendOrganizerContactJSONRequestBody = OrganizerContactRequest
 
 // SubmitReconciliationReportJSONRequestBody defines body for SubmitReconciliationReport for application/json ContentType.
 type SubmitReconciliationReportJSONRequestBody SubmitReconciliationReportJSONBody

@@ -437,6 +437,14 @@ type Config struct {
 	// verifies the first step and the "send me the link" request. Empty is
 	// accepted outside production only; in production the routes answer 503.
 	OnboardingTurnstileSecret string `env:"ONBOARDING_TURNSTILE_SECRET" required:"false" default:""`
+	// ContactFormTurnstileSecret / ContactFormTurnstileSiteKey protect the
+	// "Write to the organizer" form of the hosted sales page. The secret falls
+	// back to ONBOARDING_TURNSTILE_SECRET when empty (one Turnstile widget may
+	// list both hostnames); the site key is public and handed to the page in
+	// the hosted-page response. In production a page offers the form only when
+	// both are set, and the send route answers 503 without a secret.
+	ContactFormTurnstileSecret  string `env:"CONTACT_FORM_TURNSTILE_SECRET" required:"false" default:""`
+	ContactFormTurnstileSiteKey string `env:"CONTACT_FORM_TURNSTILE_SITE_KEY" required:"false" default:""`
 	// BotArenaAPIURL is where the bot process reaches arena-api
 	// (http://api:8080 inside compose).
 	BotArenaAPIURL string `env:"BOT_ARENA_API_URL" required:"false" default:"http://localhost:8080"`
@@ -641,18 +649,20 @@ func Load() (*Config, error) {
 
 		SalesTelegramBotToken: getenv("SALES_TELEGRAM_BOT_TOKEN", ""),
 
-		EventsTelegramBotToken:    getenv("EVENTS_TELEGRAM_BOT_TOKEN", ""),
-		EventsTelegramBotUsername: getenv("EVENTS_TELEGRAM_BOT_USERNAME", ""),
-		BotServiceToken:           getenv("BOT_SERVICE_TOKEN", ""),
-		BotArenaAPIURL:            getenv("BOT_ARENA_API_URL", "http://localhost:8080"),
-		OnboardingSiteURL:         strings.TrimRight(getenv("ONBOARDING_SITE_URL", "https://arenasoldout.com"), "/"),
-		OnboardingTermsURL:        strings.TrimSpace(getenv("ONBOARDING_TERMS_URL", "")),
-		OnboardingPrivacyURL:      strings.TrimSpace(getenv("ONBOARDING_PRIVACY_URL", "")),
-		OnboardingTurnstileSecret: getenv("ONBOARDING_TURNSTILE_SECRET", ""),
-		BotMetricsAddr:            getenv("BOT_METRICS_ADDR", ":9092"),
-		PosterLLMAPIKey:           getenv("POSTER_LLM_API_KEY", ""),
-		PosterLLMModel:            getenv("POSTER_LLM_MODEL", "claude-sonnet-5"),
-		PosterLLMBaseURL:          getenv("POSTER_LLM_BASE_URL", "https://api.anthropic.com"),
+		EventsTelegramBotToken:      getenv("EVENTS_TELEGRAM_BOT_TOKEN", ""),
+		EventsTelegramBotUsername:   getenv("EVENTS_TELEGRAM_BOT_USERNAME", ""),
+		BotServiceToken:             getenv("BOT_SERVICE_TOKEN", ""),
+		BotArenaAPIURL:              getenv("BOT_ARENA_API_URL", "http://localhost:8080"),
+		OnboardingSiteURL:           strings.TrimRight(getenv("ONBOARDING_SITE_URL", "https://arenasoldout.com"), "/"),
+		OnboardingTermsURL:          strings.TrimSpace(getenv("ONBOARDING_TERMS_URL", "")),
+		OnboardingPrivacyURL:        strings.TrimSpace(getenv("ONBOARDING_PRIVACY_URL", "")),
+		OnboardingTurnstileSecret:   getenv("ONBOARDING_TURNSTILE_SECRET", ""),
+		ContactFormTurnstileSecret:  getenv("CONTACT_FORM_TURNSTILE_SECRET", ""),
+		ContactFormTurnstileSiteKey: strings.TrimSpace(getenv("CONTACT_FORM_TURNSTILE_SITE_KEY", "")),
+		BotMetricsAddr:              getenv("BOT_METRICS_ADDR", ":9092"),
+		PosterLLMAPIKey:             getenv("POSTER_LLM_API_KEY", ""),
+		PosterLLMModel:              getenv("POSTER_LLM_MODEL", "claude-sonnet-5"),
+		PosterLLMBaseURL:            getenv("POSTER_LLM_BASE_URL", "https://api.anthropic.com"),
 
 		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
 	}
@@ -1685,4 +1695,16 @@ func redactURL(u string) string {
 		return ""
 	}
 	return redactDSN(u)
+}
+
+// ContactFormSecret is the Turnstile secret of the hosted page's contact
+// form: its own, else the onboarding one.
+func (c *Config) ContactFormSecret() string {
+	if c == nil {
+		return ""
+	}
+	if s := strings.TrimSpace(c.ContactFormTurnstileSecret); s != "" {
+		return s
+	}
+	return strings.TrimSpace(c.OnboardingTurnstileSecret)
 }

@@ -102,3 +102,56 @@ func (q *Queries) SetChannelSellerDisplay(ctx context.Context, channelID, orgID 
 	}
 	return tag.RowsAffected() > 0, nil
 }
+
+// ContactFormTarget is the channel a buyer's message goes through.
+type ContactFormTarget struct {
+	ChannelID uuid.UUID
+	HasEmail  bool
+}
+
+const getContactFormTarget = `-- name: GetContactFormTarget :one
+SELECT sc.id,
+       COALESCE(sc.settings #>> '{hosted_page,public_contact,email}', '') <> '' AS has_email
+FROM sales_channels sc
+JOIN agent_feed_tokens ft ON ft.sales_channel_id = sc.id
+WHERE sc.org_id = $1
+  AND sc.deleted_at IS NULL
+  AND sc.settings #>> '{hosted_page,enabled}' = 'true'
+  AND ft.is_active = true
+  AND ($2::text = '' OR ft.token = $2::text)
+ORDER BY ft.created_at DESC
+LIMIT 1`
+
+// GetContactFormTarget names the sales-page channel of orgID that a buyer's
+// message goes through (the feed token's channel, or the newest eligible one
+// for an empty token) and whether it has a public e-mail. pgx.ErrNoRows when
+// there is none; a token of another organization finds none.
+func (q *Queries) GetContactFormTarget(ctx context.Context, orgID uuid.UUID, feedToken string) (ContactFormTarget, error) {
+	var t ContactFormTarget
+	err := q.db.QueryRow(ctx, getContactFormTarget, orgID, feedToken).Scan(&t.ChannelID, &t.HasEmail)
+	return t, err
+}
+
+const getContactFormToTelegram = `-- name: GetContactFormToTelegram :one
+SELECT contact_form_to_telegram FROM organizations WHERE id = $1 AND deleted_at IS NULL`
+
+// GetContactFormToTelegram reports whether buyers' messages also go to the
+// organization's sales chat (migration 0147).
+func (q *Queries) GetContactFormToTelegram(ctx context.Context, orgID uuid.UUID) (bool, error) {
+	var v bool
+	err := q.db.QueryRow(ctx, getContactFormToTelegram, orgID).Scan(&v)
+	return v, err
+}
+
+const setContactFormToTelegram = `-- name: SetContactFormToTelegram :execrows
+UPDATE organizations SET contact_form_to_telegram = $2, updated_at = now()
+WHERE id = $1 AND deleted_at IS NULL`
+
+// SetContactFormToTelegram switches the Telegram leg of the contact form.
+func (q *Queries) SetContactFormToTelegram(ctx context.Context, orgID uuid.UUID, on bool) (bool, error) {
+	tag, err := q.db.Exec(ctx, setContactFormToTelegram, orgID, on)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
