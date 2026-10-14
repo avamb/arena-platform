@@ -826,16 +826,42 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 	case strings.HasPrefix(data, "hide:") && dlg.Step == sesStepHide:
 		b.sesSaveContact(ctx, chatID, &msgID, id, jwt, from, dlg, data == "hide:1")
 	case data == "go":
-		// A cancellation is never one button: the press only opens the step
-		// that asks for the cancel word (sessionsText carries it out).
-		if dlg.Mode != sesModeMove && dlg.Step == sesStepConfirm && dlg.Impact != nil {
+		switch sesGoVerdict(dlg) {
+		case sesGoAskWord:
 			dlg.Step = sesStepType
 			b.sesShow(ctx, chatID, &msgID, id, jwt, from, dlg, "")
-			return
+		case sesGoRun:
+			b.sesGo(ctx, chatID, &msgID, id, jwt, from, dlg)
+		default:
+			// A second press, or a button of an older screen: the screen the
+			// dialog is on is shown again and nothing is cancelled.
+			b.sesShow(ctx, chatID, &msgID, id, jwt, from, dlg, "")
 		}
-		b.sesGo(ctx, chatID, &msgID, id, jwt, from, dlg)
 	}
 	_ = loc
+}
+
+// The verdicts on the confirm screen's "go" press.
+const (
+	sesGoRun     = "run"      // a move: one press carries it out
+	sesGoAskWord = "ask_word" // a cancellation: ask for the typed word
+	sesGoNothing = "nothing"  // a cancellation is never carried out by a press
+)
+
+// sesGoVerdict decides the "go" press. A cancellation is never one button:
+// the press only opens the step that asks for the cancel word, and only
+// sessionsText carries it out once the word is typed. A press at any other
+// step (a double press, an older screen's button) cancels nothing.
+func sesGoVerdict(dlg *sessionDialog) string {
+	switch dlg.Mode {
+	case sesModeMove:
+		return sesGoRun
+	case sesModeCancel, sesModeCancelAll:
+		if dlg.Step == sesStepConfirm && dlg.Impact != nil {
+			return sesGoAskWord
+		}
+	}
+	return sesGoNothing
 }
 
 func (b *Bot) sesCurOpen(dlg *sessionDialog) bool {

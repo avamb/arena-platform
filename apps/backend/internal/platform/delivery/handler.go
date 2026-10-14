@@ -271,6 +271,10 @@ type HandlerOptions struct {
 	// public e-mail links that page's contact form (ContactRoute); empty
 	// prints no link.
 	TicketsBaseURL string
+	// ContactFormEnabled is config.ContactFormReady: the hosted page shows its
+	// contact form. When false a letter never links the form (the page would
+	// open without it); a public e-mail is still printed.
+	ContactFormEnabled bool
 	// Logger receives structured log entries. Defaults to slog.Default() when nil.
 	Logger *slog.Logger
 }
@@ -350,7 +354,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		}
 		// The organizer contact follows the owner rule at render time
 		// (ContactRoute): before the letter's other tickets copy the payload.
-		applyContactRoute(ctx, queriesOrNil(opts.TicketQueries), opts.TicketsBaseURL, ticketID, &p, logger)
+		applyContactRoute(ctx, queriesOrNil(opts.TicketQueries), formLink{opts.TicketsBaseURL, opts.ContactFormEnabled}, ticketID, &p, logger)
 
 		// ── 2. Guard: honest sender required (PR-03) ──────────────────────────
 		// If Sender is nil or is a dev-only sender (e.g. LogSender), we cannot

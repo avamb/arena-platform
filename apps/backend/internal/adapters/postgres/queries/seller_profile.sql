@@ -50,11 +50,18 @@ WHERE id = $1
 -- GetContactFormTarget names the sales-page channel a buyer's message goes
 -- through: the hosted-page channel of the organization that owns the feed
 -- token ($2), or the newest eligible one when $2 is empty — the same rule as
--- GetHostedPageSeller. has_email reports whether the channel has a public
--- e-mail; the address itself is never selected here.
+-- GetHostedPageSeller. has_email reports whether a message has somewhere to
+-- go (public e-mail, the organization's contact_email or its owner's account
+-- e-mail); no address is selected here.
 SELECT sc.id,
        COALESCE(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') <> ''
-         OR COALESCE(btrim(o.contact_email), '') <> '' AS has_email
+         OR COALESCE(btrim(o.contact_email), '') <> ''
+         OR EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
+               WHERE m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
+                 AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
+                 AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                                 WHERE ur.user_id = u.id AND ur.org_id IS NULL
+                                   AND r.org_id IS NULL AND r.name NOT IN ('org_admin', 'organizer', 'agent'))) AS has_email
 FROM sales_channels sc
 JOIN organizations o ON o.id = sc.org_id
 JOIN agent_feed_tokens ft ON ft.sales_channel_id = sc.id
@@ -69,9 +76,17 @@ LIMIT 1;
 -- name: GetContactFormToTelegram :one
 SELECT contact_form_to_telegram FROM organizations WHERE id = $1 AND deleted_at IS NULL;
 
--- name: OrgHasContactEmail :one
--- A boolean only: the hosted page never reads the organization's address.
-SELECT COALESCE(btrim(contact_email), '') <> '' FROM organizations WHERE id = $1 AND deleted_at IS NULL;
+-- name: OrgHasPrivateRecipient :one
+-- A boolean only: the hosted page never reads an address. True when the
+-- organization has its own contact_email or an owner with an account e-mail.
+SELECT COALESCE(btrim(o.contact_email), '') <> ''
+    OR EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
+               WHERE m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
+                 AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
+                 AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                                 WHERE ur.user_id = u.id AND ur.org_id IS NULL
+                                   AND r.org_id IS NULL AND r.name NOT IN ('org_admin', 'organizer', 'agent')))
+FROM organizations o WHERE o.id = $1 AND o.deleted_at IS NULL;
 
 -- name: SetContactFormToTelegram :execrows
 UPDATE organizations SET contact_form_to_telegram = $2, updated_at = now()

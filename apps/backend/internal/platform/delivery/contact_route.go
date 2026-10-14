@@ -23,8 +23,9 @@ const ContactFormAnchor = "contact"
 //     WITHOUT a hosted page - the organization's contact_email, as before.
 //     It is printed and is the letter's Reply-To.
 //   - Email empty and FormURL set: the ticket was sold through a hosted page
-//     that has no public e-mail, and the organization has a contact_email the
-//     form's messages go to (never printed). The letter prints the link to the
+//     that has no public e-mail, and the form's messages can go to the
+//     organization's contact_email or its owner's account e-mail (neither is
+//     printed). The letter prints the link to the
 //     page's contact form, has no Reply-To and goes from the platform address.
 //   - Both empty: nothing is printed and there is no Reply-To.
 type ContactRoute struct {
@@ -32,10 +33,19 @@ type ContactRoute struct {
 	FormURL string
 }
 
+// formLink is what a letter needs to link a hosted page's contact form: the
+// tickets origin (PUBLIC_TICKETS_BASE_URL) and whether the page shows the
+// form at all (config.ContactFormReady).
+type formLink struct {
+	baseURL string
+	enabled bool
+}
+
 // ContactRouteFor applies the rule to one ticket's route row. ticketsBaseURL
-// is PUBLIC_TICKETS_BASE_URL; without it, or without a page slug, a hosted
-// page gets no link (and still never the organization's address).
-func ContactRouteFor(r gen.TicketContactRoute, ticketsBaseURL string) ContactRoute {
+// is PUBLIC_TICKETS_BASE_URL; without it, without a page slug, or when the
+// page does not show its form (formEnabled false, no captcha keys) a hosted
+// page gets no link - and still never a private address.
+func ContactRouteFor(r gen.TicketContactRoute, ticketsBaseURL string, formEnabled bool) ContactRoute {
 	if v := trimPtr(r.PublicEmail); v != "" {
 		return ContactRoute{Email: v}
 	}
@@ -43,9 +53,10 @@ func ContactRouteFor(r gen.TicketContactRoute, ticketsBaseURL string) ContactRou
 		return ContactRoute{Email: trimPtr(r.OrgEmail)}
 	}
 	// The page offers its form only when a message has somewhere to go: the
-	// public e-mail, else the organization's own address (hfeed contactForm).
-	// Without either the link would open a page with no form.
-	if trimPtr(r.OrgEmail) == "" {
+	// public e-mail, else the organization's own address, else its owner's
+	// account e-mail (hfeed contactForm). Without any the link would open a
+	// page with no form.
+	if !formEnabled || (trimPtr(r.OrgEmail) == "" && !r.OwnerReachable) {
 		return ContactRoute{}
 	}
 	base := strings.TrimRight(strings.TrimSpace(ticketsBaseURL), "/")
@@ -70,7 +81,7 @@ type contactRouteQuerier interface {
 // ContactFormURL. A job queued before this rule, or one whose enqueuer copied
 // an address, is corrected here. When the lookup fails the payload keeps
 // what the enqueuer stored - GetOrgBrandingByTicketID applies the same rule.
-func applyContactRoute(ctx context.Context, q contactRouteQuerier, ticketsBaseURL string, ticketID uuid.UUID, p *Payload, logger *slog.Logger) {
+func applyContactRoute(ctx context.Context, q contactRouteQuerier, link formLink, ticketID uuid.UUID, p *Payload, logger *slog.Logger) {
 	if q == nil || ticketID == uuid.Nil {
 		return
 	}
@@ -82,7 +93,7 @@ func applyContactRoute(ctx context.Context, q contactRouteQuerier, ticketsBaseUR
 		}
 		return
 	}
-	route := ContactRouteFor(row, ticketsBaseURL)
+	route := ContactRouteFor(row, link.baseURL, link.enabled)
 	p.OrgContactEmail = route.Email
 	p.ContactFormURL = route.FormURL
 }

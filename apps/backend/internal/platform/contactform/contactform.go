@@ -9,7 +9,8 @@
 //
 //   - e-mail to the channel's public contact e-mail
 //     (settings.hosted_page.public_contact.email), else to the organization's
-//     own contact_email, which the page never shows; read when the job runs so
+//     own contact_email, else to its owner's account e-mail
+//     (gen.OwnerRecipientSQL); the page shows neither. Read when the job runs so
 //     an address the owner changed in the meantime wins, and checked again
 //     with sellerinfo.NormalizeEmail (a value written around the API is never
 //     mailed). Reply-To is the buyer, so the organizer answers with one click
@@ -47,6 +48,7 @@ import (
 	goi18n "github.com/nicksnyder/go-i18n/v2/i18n"
 
 	emailadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/opsalert"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
@@ -76,7 +78,10 @@ type Options struct {
 	Pool      *pgxpool.Pool
 	Sender    emailadapter.Sender
 	Announcer Announcer // nil: no Telegram leg
-	Logger    *slog.Logger
+	// Ops hears about a message that reached nobody (no usable address and
+	// no sales chat). Ids only, never the buyer's words or an address.
+	Ops    opsalert.Notifier
+	Logger *slog.Logger
 }
 
 // Handler is the job handler. Construct with New.
@@ -84,6 +89,7 @@ type Handler struct {
 	pool      *pgxpool.Pool
 	sender    emailadapter.Sender
 	announcer Announcer
+	ops       opsalert.Notifier
 	logger    *slog.Logger
 }
 
@@ -92,8 +98,20 @@ func New(o Options) *Handler {
 	if o.Logger == nil {
 		o.Logger = slog.Default()
 	}
-	return &Handler{pool: o.Pool, sender: o.Sender, announcer: o.Announcer, logger: o.Logger}
+	return &Handler{pool: o.Pool, sender: o.Sender, announcer: o.Announcer, ops: o.Ops, logger: o.Logger}
 }
+
+// EmailLeg is what the e-mail leg did, as the Telegram copy tells it.
+type EmailLeg int
+
+const (
+	// EmailMailed: the letter went out.
+	EmailMailed EmailLeg = iota
+	// EmailNoAddress: there is no usable address to mail.
+	EmailNoAddress
+	// EmailRetrying: sending failed and the worker will try again.
+	EmailRetrying
+)
 
 // message is one stored row plus what the job needs about its organization.
 type message struct {
@@ -111,6 +129,7 @@ type message struct {
 	ToTelegram     bool
 	PublicContact  []byte
 	OrgEmail       string
+	OwnerEmail     string
 	ChannelDeleted bool
 }
 
@@ -118,7 +137,8 @@ const loadMessageSQL = `
 SELECT m.id, m.org_id, m.page_slug, m.sender_name, m.sender_email, m.message,
        m.email_sent_at IS NOT NULL, m.email_mailed, m.telegram_sent_at IS NOT NULL,
        o.name, o.default_locale, o.contact_form_to_telegram,
-       sc.settings #> '{hosted_page,public_contact}', COALESCE(o.contact_email, ''), sc.deleted_at IS NOT NULL
+       sc.settings #> '{hosted_page,public_contact}', COALESCE(o.contact_email, ''),
+       COALESCE(` + gen.OwnerRecipientSQL + `, ''), sc.deleted_at IS NOT NULL
 FROM organizer_contact_messages m
 JOIN organizations o ON o.id = m.org_id
 JOIN sales_channels sc ON sc.id = m.channel_id
@@ -139,7 +159,7 @@ func (h *Handler) Handle(ctx context.Context, payload []byte) error {
 	err = h.pool.QueryRow(ctx, loadMessageSQL, id).Scan(
 		&m.ID, &m.OrgID, &m.PageSlug, &m.SenderName, &m.SenderEmail, &m.Body,
 		&m.EmailSent, &m.EmailMailed, &m.TelegramSent, &m.OrgName, &m.OrgLocale, &m.ToTelegram,
-		&m.PublicContact, &m.OrgEmail, &m.ChannelDeleted,
+		&m.PublicContact, &m.OrgEmail, &m.OwnerEmail, &m.ChannelDeleted,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Purged or never committed: nothing to deliver.
@@ -150,50 +170,89 @@ func (h *Handler) Handle(ctx context.Context, payload []byte) error {
 		return fmt.Errorf("contactform: load message: %w", err)
 	}
 
+	// The e-mail leg. A failed send does not stop the Telegram leg: the
+	// organizer gets the copy in the chat now, and the worker retries the
+	// e-mail alone (its error is returned at the end).
+	leg := EmailNoAddress
+	if m.EmailMailed {
+		leg = EmailMailed
+	}
+	var sendErr error
 	if !m.EmailSent {
 		to := ""
 		if !m.ChannelDeleted {
-			to = recipient(m.PublicContact, m.OrgEmail)
+			to = recipient(m.PublicContact, m.OrgEmail, m.OwnerEmail)
 		}
 		mailed := false
 		if to == "" {
 			// The owner removed the address after the buyer wrote, or the
 			// stored value is not an address: nothing to mail. The Telegram
 			// leg still runs and says so.
-			h.logger.Warn("contactform: channel has no usable public e-mail; message not mailed", slog.String("message_id", id.String()))
+			h.logger.Warn("contactform: no usable address; message not mailed", slog.String("message_id", id.String()))
 		} else {
 			subject, htmlBody, textBody := RenderEmail(m.OrgLocale, m.OrgName, m.PageSlug, m.SenderName, m.SenderEmail, m.Body)
 			if err := h.sender.Send(ctx, emailadapter.Message{
 				To: to, ReplyTo: m.SenderEmail, Subject: subject, HTMLBody: htmlBody, TextBody: textBody,
 			}); err != nil {
-				return fmt.Errorf("contactform: send message %s: %w", id, err)
+				sendErr = fmt.Errorf("contactform: send message %s: %w", id, err)
+			} else {
+				mailed = true
 			}
-			mailed = true
 		}
-		if _, err := h.pool.Exec(ctx, `UPDATE organizer_contact_messages SET email_sent_at = now(), email_mailed = $2 WHERE id = $1`, id, mailed); err != nil {
-			return fmt.Errorf("contactform: mark e-mail sent: %w", err)
+		if sendErr != nil {
+			leg = EmailRetrying
+		} else {
+			if _, err := h.pool.Exec(ctx, `UPDATE organizer_contact_messages SET email_sent_at = now(), email_mailed = $2 WHERE id = $1`, id, mailed); err != nil {
+				return fmt.Errorf("contactform: mark e-mail sent: %w", err)
+			}
+			m.EmailMailed = mailed
+			leg = EmailNoAddress
+			if mailed {
+				leg = EmailMailed
+			}
 		}
-		m.EmailMailed = mailed
 	}
 
 	if !m.TelegramSent {
+		posted := false
 		if m.ToTelegram && h.announcer != nil {
-			text := FormatTelegram(m.OrgName, m.PageSlug, m.SenderName, m.SenderEmail, m.Body, m.EmailMailed)
+			text := FormatTelegram(m.OrgName, m.PageSlug, m.SenderName, m.SenderEmail, m.Body, leg)
 			chats, delivered, err := h.announcer.AnnounceToOrg(ctx, m.OrgID.String(), text)
 			if err != nil {
-				return fmt.Errorf("contactform: post message %s to the sales chats: %w", id, err)
+				return errors.Join(sendErr, fmt.Errorf("contactform: post message %s to the sales chats: %w", id, err))
 			}
 			if chats > 0 && delivered == 0 {
-				return fmt.Errorf("contactform: no sales chat took message %s (%d chats)", id, chats)
+				return errors.Join(sendErr, fmt.Errorf("contactform: no sales chat took message %s (%d chats)", id, chats))
 			}
+			posted = delivered > 0
 			h.logger.Info("contactform: message posted to the organization's chats", slog.String("message_id", id.String()),
 				slog.Int("chats", chats), slog.Int("delivered", delivered))
+		}
+		if leg == EmailNoAddress && !posted {
+			h.reachedNobody(ctx, m)
 		}
 		if _, err := h.pool.Exec(ctx, `UPDATE organizer_contact_messages SET telegram_sent_at = now() WHERE id = $1`, id); err != nil {
 			h.logger.Warn("contactform: mark telegram sent failed", slog.String("message_id", id.String()), slog.String("error", err.Error()))
 		}
 	}
-	return nil
+	return sendErr
+}
+
+// reachedNobody reports a message that went neither by e-mail nor to a chat:
+// the form accepted it, but nobody will read it. An error log and an ops
+// alert with ids only - never the buyer's words or an address.
+func (h *Handler) reachedNobody(ctx context.Context, m message) {
+	h.logger.Error("contactform: message reached nobody (no usable address, no sales chat)",
+		slog.String("message_id", m.ID.String()), slog.String("org_id", m.OrgID.String()))
+	if h.ops == nil {
+		return
+	}
+	text := "Contact form: a buyer's message reached nobody.\nOrganization: " + opsalert.EscapeHTML(m.OrgName) +
+		" (" + m.OrgID.String() + ")\nMessage: " + m.ID.String() +
+		"\nThe organization has no usable e-mail address and no sales chat. Give it an address, then read the message in organizer_contact_messages."
+	if err := h.ops.Send(ctx, text); err != nil {
+		h.logger.Warn("contactform: ops alert failed", slog.String("message_id", m.ID.String()), slog.String("error", err.Error()))
+	}
 }
 
 // PurgeJobType is the self-scheduling job that deletes old messages.
@@ -251,15 +310,17 @@ VALUES ($1, '{}', 3, 'pending', now())`, PurgeJobType); err != nil {
 }
 
 // recipient is the channel's public e-mail when it is a valid address, else
-// the organization's own contact_email when that is one, else "". The
-// organization's address is a private recipient: the buyer never sees it
-// unless the organizer answers from it.
-func recipient(raw []byte, orgEmail string) string {
+// the first valid private address in order - the organization's own
+// contact_email, then its owner's account e-mail - else "". A private address
+// is never shown to the buyer unless the organizer answers from it.
+func recipient(raw []byte, private ...string) string {
 	if to, ok := sellerinfo.NormalizeEmail(contactEmail(raw)); ok {
 		return to
 	}
-	if to, ok := sellerinfo.NormalizeEmail(orgEmail); ok {
-		return to
+	for _, p := range private {
+		if to, ok := sellerinfo.NormalizeEmail(p); ok {
+			return to
+		}
 	}
 	return ""
 }
@@ -355,16 +416,18 @@ func RenderEmail(locale, orgName, pageSlug, senderName, senderEmail, body string
 // FormatTelegram is the sales-chat message (English, like every message of
 // the sales bot). Every value is escaped for Telegram's HTML parse mode, and
 // the whole text stays within telegramMaxUTF16: the buyer's words are cut,
-// never the lines around them. mailed says whether the e-mail leg really
-// sent the letter.
-func FormatTelegram(orgName, pageSlug, senderName, senderEmail, body string, mailed bool) string {
+// never the lines around them. leg says what the e-mail leg did.
+func FormatTelegram(orgName, pageSlug, senderName, senderEmail, body string, leg EmailLeg) string {
 	esc := opsalert.EscapeHTML
 	head := "✉️ <b>Message from a buyer</b>\n" +
 		"Sales page: " + esc(orgName) + " (/" + esc(pageSlug) + ")\n" +
 		"From: " + esc(strings.Join(strings.Fields(senderName), " ")) + " &lt;" + esc(senderEmail) + "&gt;\n\n"
 	tail := "\n\nThe same message went to your e-mail. Reply to the buyer from there."
-	if !mailed {
+	switch leg {
+	case EmailNoAddress:
 		tail = "\n\nThis message was not e-mailed: the sales page and the organization have no e-mail address. To answer the buyer, write to the address above."
+	case EmailRetrying:
+		tail = "\n\nThe e-mail copy could not be sent yet. Arena Sold Out keeps trying. To answer the buyer now, write to the address above."
 	}
 	budget := telegramMaxUTF16 - utf16Len(head) - utf16Len(tail)
 	if budget < 0 {

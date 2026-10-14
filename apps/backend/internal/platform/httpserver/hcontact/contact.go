@@ -200,7 +200,7 @@ func (h *Handler) HandleSend(w http.ResponseWriter, r *http.Request) {
 	if perIP >= PerIPPerHour || perChannel >= PerChannelPerHour {
 		w.Header().Set("Retry-After", strconv.Itoa(3600))
 		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
-			"contact.rate_limited", "Too many messages were sent from here. Try again in an hour.", r))
+			"contact.rate_limited", "This page accepts a limited number of messages each hour. Try again in an hour.", r))
 		return
 	}
 	var id uuid.UUID

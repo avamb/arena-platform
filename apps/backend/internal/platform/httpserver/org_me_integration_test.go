@@ -81,6 +81,14 @@ func TestOrgMe_RealRouter_RoleAndPermissionsPerOrganization(t *testing.T) {
 		t.Errorf("C: code %q; want org.access_denied", sec1Code(out))
 	}
 
+	// A membership row that carries only a platform role is not a membership:
+	// the real guard refuses it like a stranger (the checker grants nothing
+	// from such a row either).
+	e.member(t, user, orgC, "platform_operator")
+	if out := e.expect(t, http.StatusForbidden, http.MethodGet, c+"/me", tok, "", ""); sec1Code(out) != "org.access_denied" {
+		t.Errorf("C with a platform_operator row: code %q; want org.access_denied", sec1Code(out))
+	}
+
 	// An organization API key: its own organization only, permissions = scopes.
 	key := e.key(t, orgB, "order.read", "event.read")
 	k := decodeOrgMe(t, e.expect(t, http.StatusOK, http.MethodGet, b+"/me", key, "", ""))

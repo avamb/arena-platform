@@ -460,16 +460,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 			b.openMenu(ctx, chatID, from, cmd == "/start")
 			return
 		}
-		if cmd != "/events" {
-			b.leaveEvents(ctx, from.ID) // a command ends the events list's search
-		}
-		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
-		// and an event's delete question (its typed word)
-		b.leaveEvStatus(ctx, from.ID)
-		b.leavePromo(ctx, from.ID)      // and a promo-code question (EC-11)
-		b.leaveIdleRefund(ctx, from.ID) // and a refund question: its word is never an answer after a command (EC-21)
-		b.leaveScanExc(ctx, from.ID)    // and the operator's scan exception reason
-		b.leaveOrgData(ctx, from.ID)    // and an organization data question (HP-4a)
+		// Every command ends every dialog (dialog_owners.go): a word typed
+		// after it is never an answer to a question asked before it.
+		b.leaveForCommand(ctx, from.ID)
 		switch cmd {
 		case "/start":
 			arg = strings.TrimSpace(arg)
@@ -509,43 +502,8 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		b.acceptInvitation(ctx, chatID, from, code, text)
 		return
 	}
-	if text != "" && b.scanExcText(ctx, chatID, from, text) {
-		return
-	}
-	if text != "" && b.teamText(ctx, chatID, from, text) {
-		return
-	}
-	if text != "" && b.sessionsText(ctx, chatID, from, text) {
-		return
-	}
-	if text != "" && b.evStatusText(ctx, chatID, from, text) {
-		return
-	}
-	if text != "" && b.eventsText(ctx, chatID, from, text) {
-		return
-	}
-	if text != "" && b.resendText(ctx, chatID, from, text) {
-		return
-	}
-	if text != "" && b.refundText(ctx, chatID, from, text) {
-		return
-	}
-	if text != "" && b.inviteText(ctx, chatID, from, text) {
-		return
-	}
-	if text != "" && b.promoText(ctx, chatID, from, text) {
-		return
-	}
-	if text != "" && b.promoterText(ctx, chatID, from, text) {
-		return
-	}
-	if text != "" && b.categoryText(ctx, chatID, from, text) {
-		return
-	}
-	if text != "" && b.orgDataText(ctx, chatID, from, text) {
-		return
-	}
-	if text != "" && b.ordersText(ctx, chatID, from, text) {
+	// A typed text goes to the newest open dialog that takes it.
+	if text != "" && b.routeDialogText(ctx, chatID, from, text) {
 		return
 	}
 	if m.Document != nil || len(m.Photo) > 0 {
@@ -584,39 +542,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	ctx = withFeedAction(ctx, pressAction(cq))
 	from := &cq.From
 	parts := strings.Split(cq.Data, ":")
-	if !isEventsCallback(parts[0]) {
-		b.leaveEvents(ctx, from.ID) // any other screen ends the events list's search
-	}
-	if !isOrdersCallback(parts[0]) {
-		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
-	}
-	if !strings.HasPrefix(cq.Data, "or:f:") {
-		b.leaveIdleRefund(ctx, from.ID) // any other press ends the "Refund" dialog (EC-21)
-	}
-	if !strings.HasPrefix(cq.Data, "or:f:x") {
-		b.leaveScanExc(ctx, from.ID) // and the operator's scan exception question
-	}
-	if !strings.HasPrefix(cq.Data, "or:r:") {
-		b.leaveResend(ctx, from.ID) // any other press ends the "Resend tickets" dialog (EC-13)
-	}
-	if parts[0] != "ec" { // "ec" ends a delete question itself, unless it is a status button
-		b.leaveEvStatus(ctx, from.ID)
-	}
-	if parts[0] != "iv" { // any other press ends the "Invitations" dialog (EC-12): its typed guests, quantity or annul word
-		b.leaveInvite(ctx, from.ID)
-	}
-	if parts[0] != "pm" { // any other screen ends the promo-code dialog (EC-11)
-		b.leavePromo(ctx, from.ID)
-	}
-	if parts[0] != "pr" { // and the promoter dialog (EC-14)
-		b.leavePromoter(ctx, from.ID)
-	}
-	if parts[0] != "ct" { // and the category dialog (EC-15)
-		b.leaveCategories(ctx, from.ID)
-	}
-	if parts[0] != "og" { // and the organization data question (HP-4a)
-		b.leaveOrgData(ctx, from.ID)
-	}
+	// A press ends every dialog it does not belong to (dialog_owners.go).
+	b.leaveForeignDialogs(ctx, from.ID, cq.Data)
 	switch parts[0] {
 	case "el":
 		b.eventsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "el:"))
@@ -637,7 +564,6 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	case "og":
 		b.orgDataCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "og:"))
 	case "home":
-		b.clearTeamDialog(ctx, from.ID)
 		b.showHome(ctx, chatID, &msgID, from, "")
 	case menuCallback:
 		b.menuPress(ctx, chatID, from, strings.TrimPrefix(cq.Data, menuCallback+":"))

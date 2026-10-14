@@ -25,7 +25,7 @@
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Zpráva od pořadatele:</strong></p>
     <p style="margin:0;white-space:pre-line">{{.}}</p>
   </div>{{end}}
-  <p style="margin:0 0 12px 0;">Napište prosím pořadateli{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}na adresu <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else}}přes <a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">formulář na prodejní stránce</a>{{end}}{{with .Change.ContactPhone}}, telefon {{.}}{{end}}, abyste se dozvěděli další postup.</p>
+  {{if or .Change.ContactEmail .Change.ContactFormURL}}<p style="margin:0 0 12px 0;">Napište prosím pořadateli{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}na adresu <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else if .Change.ContactFormURL}}přes <a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">formulář na prodejní stránce</a>{{end}}{{with .Change.ContactPhone}}, telefon {{.}}{{end}}, abyste se dozvěděli další postup.</p>{{end}}
   <p style="font-size:12px;color:#666">Číslo vstupenky: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">Doručeno na: {{.RecipientEmail}}</p>
   </td></tr>
@@ -66,9 +66,9 @@ Akce: {{.EventName}}
 Zpráva od pořadatele:
 {{.}}
 {{end}}
-Napište prosím pořadateli{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}na adresu {{.Change.ContactEmail}}{{else}}přes formulář na prodejní stránce: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, telefon {{.}}{{end}}, abyste se dozvěděli další postup.
+{{if or .Change.ContactEmail .Change.ContactFormURL}}Napište prosím pořadateli{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}na adresu {{.Change.ContactEmail}}{{else if .Change.ContactFormURL}}přes formulář na prodejní stránce: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, telefon {{.}}{{end}}, abyste se dozvěděli další postup.
 
-Číslo vstupenky: {{.TicketID}}
+{{end}}Číslo vstupenky: {{.TicketID}}
 Doručeno na: {{.RecipientEmail}}
 
 --
