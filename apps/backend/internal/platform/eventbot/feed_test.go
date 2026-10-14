@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	tgbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -88,7 +89,9 @@ func newFeedBot(t *testing.T) (*Bot, *feedStub) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Bot{tg: tg, texts: NewTexts(nil), logger: slog.New(slog.NewTextHandler(io.Discard, nil)), feed: newFeedMemory()}, stub
+	feed := newFeedMemory()
+	feed.boot -= 10 // started a while ago: a press dated now is of this process
+	return &Bot{tg: tg, texts: NewTexts(nil), logger: slog.New(slog.NewTextHandler(io.Discard, nil)), feed: feed}, stub
 }
 
 func kbOf(data ...string) *models.InlineKeyboardMarkup {
@@ -106,10 +109,13 @@ func press(msgID int, text, data string, kb *models.InlineKeyboardMarkup) *model
 		From: models.User{ID: 42, LanguageCode: "ru"},
 		Data: data,
 		Message: models.MaybeInaccessibleMessage{Message: &models.Message{
-			ID: msgID, Text: text, Chat: models.Chat{ID: 42, Type: "private"}, ReplyMarkup: kb,
+			ID: msgID, Date: int(nowSec()), Text: text, Chat: models.Chat{ID: 42, Type: "private"}, ReplyMarkup: kb,
 		}},
 	}
 }
+
+// nowSec is the current Telegram date: a message sent after the bot started.
+func nowSec() int64 { return time.Now().Unix() }
 
 // A press is answered by a NEW message at the bottom, and the pressed message
 // keeps its text, gains a line naming the pressed button and loses its
@@ -134,10 +140,10 @@ func TestFeed_PressPostsANewMessageAndRetiresThePressedOne(t *testing.T) {
 	if strings.ReplaceAll(echo.markup, " ", "") != `{"inline_keyboard":[]}` {
 		t.Fatalf("the pressed message kept a keyboard: %q", echo.markup)
 	}
-	if b.feed.admit(42, 10) {
+	if b.feed.admit(42, 10, nowSec()) {
 		t.Fatal("the pressed message is still live")
 	}
-	if !b.feed.admit(42, calls[0].msgID) {
+	if !b.feed.admit(42, calls[0].msgID, nowSec()) {
 		t.Fatal("the new message is not live")
 	}
 }
@@ -165,7 +171,7 @@ func TestFeed_AStalePressDoesNothing(t *testing.T) {
 			t.Fatalf("a stale press sent a message: %+v", c)
 		}
 	}
-	if !b.feed.admit(42, 11) {
+	if !b.feed.admit(42, 11, nowSec()) {
 		t.Fatal("the current screen stopped being live")
 	}
 }
@@ -181,7 +187,7 @@ func TestFeed_TheSecondTapOfADoubleTapIsRefused(t *testing.T) {
 	b.consumePress(ctx, 42)
 	b.reply(ctx, 42, &msg, "Sending…", nil)
 	stub.reset()
-	if b.feed.admit(42, 10) {
+	if b.feed.admit(42, 10, nowSec()) {
 		t.Fatal("the second tap on the same message would act again")
 	}
 }
@@ -200,7 +206,7 @@ func TestFeed_AnAnswerWithoutButtonsKeepsTheScreen(t *testing.T) {
 			t.Fatalf("the screen above was touched: %+v", c)
 		}
 	}
-	if !b.feed.admit(42, 10) {
+	if !b.feed.admit(42, 10, nowSec()) {
 		t.Fatal("the screen above lost its buttons to a note")
 	}
 }
@@ -225,7 +231,7 @@ func TestFeed_TogglesAndPagesRedrawInPlace(t *testing.T) {
 		if len(calls) != 1 || calls[0].method != "editMessageText" || calls[0].msgID != 10 {
 			t.Fatalf("%s: want one in-place edit, got %+v", cq.Data, calls)
 		}
-		if !b.feed.admit(42, 10) {
+		if !b.feed.admit(42, 10, nowSec()) {
 			t.Fatalf("%s: the redrawn message stopped being live", cq.Data)
 		}
 	}
@@ -254,7 +260,7 @@ func TestFeed_ATypedAnswerRetiresTheOlderScreens(t *testing.T) {
 	if !stripped[10] || !stripped[12] {
 		t.Fatalf("older screens kept their buttons: %+v", calls)
 	}
-	if b.feed.admit(42, 10) || b.feed.admit(42, 12) {
+	if b.feed.admit(42, 10, nowSec()) || b.feed.admit(42, 12, nowSec()) {
 		t.Fatal("an older screen is still live")
 	}
 }
@@ -295,24 +301,85 @@ func TestFeed_BackgroundWorkLeavesTheCurrentScreenAlone(t *testing.T) {
 			t.Fatalf("background work touched another message: %+v", c)
 		}
 	}
-	if !b.feed.admit(42, 10) {
+	if !b.feed.admit(42, 10, nowSec()) {
 		t.Fatal("the current screen lost its buttons to a reminder")
 	}
 }
 
-// After a restart the bot does not know the chat: the first press is
-// accepted and becomes the chat's live message.
-func TestFeed_AnUnknownChatAcceptsThePress(t *testing.T) {
+// A chat the bot does not know yet accepts a press on a message sent after
+// the bot started (one this process forgot), which becomes the chat's live
+// message.
+func TestFeed_AnUnknownChatAcceptsAMessageOfThisProcess(t *testing.T) {
 	f := newFeedMemory()
-	if !f.admit(42, 7) {
+	f.boot -= 10
+	if !f.admit(42, 7, nowSec()) {
 		t.Fatal("a press in a chat the bot does not know yet was refused")
 	}
-	if !f.admit(42, 7) || f.admit(42, 6) {
+	if !f.admit(42, 7, nowSec()) || f.admit(42, 6, nowSec()) {
 		t.Fatal("the pressed message should be the chat's only live one")
 	}
 	var none *feedMemory
-	if !none.admit(42, 1) {
+	if !none.admit(42, 1, 0) {
 		t.Fatal("a bot without a feed memory must accept every press")
+	}
+}
+
+// After a restart every message sent before it is out of date (owner
+// decision 2026-10-14), in a chat the bot does not know yet, in a chat it
+// already wrote to again, and in a group chat; an inaccessible message (date
+// 0) too.
+func TestFeed_AMessageSentBeforeTheStartIsStale(t *testing.T) {
+	f := newFeedMemory()
+	before, after := f.boot-1, f.boot+1
+	if f.admit(42, 7, before) {
+		t.Fatal("a press on a screen of the previous process was accepted")
+	}
+	if f.admit(42, 7, before) {
+		t.Fatal("the refused press made the old screen live")
+	}
+	f.add(42, 20) // the bot writes to the chat again
+	if f.admit(42, 7, before) || !f.admit(42, 20, after) {
+		t.Fatal("after a new screen only the new screen may be pressed")
+	}
+	if f.admit(-100123, 5, before) || !f.admit(-100123, 5, after) {
+		t.Fatal("a group chat must refuse only the messages of the previous process")
+	}
+	if f.admit(43, 1, 0) {
+		t.Fatal("an inaccessible message (date 0) was accepted")
+	}
+	// The old process may have sent a message in the very second this one
+	// started: it is old too.
+	if f.admit(45, 3, f.boot) || f.admit(-100123, 6, f.boot) {
+		t.Fatal("a message dated the start second was accepted")
+	}
+	// A message this process edited back to life counts as live whatever
+	// its date says (the clocks of Telegram and this host may disagree).
+	f.add(44, 9)
+	if !f.admit(44, 9, before) {
+		t.Fatal("a live message was refused for its date")
+	}
+}
+
+// A press on a screen of the previous process does nothing and tells a
+// person who is not linked to send /start, since nothing below belongs to
+// this process yet.
+func TestFeed_APressAfterARestartDoesNothing(t *testing.T) {
+	b, stub := newFeedBot(t)
+	b.route = func(context.Context, *models.Update) { t.Fatal("a stale press reached a handler") }
+	cq := press(10, "Order card", "or:c:abc", kbOf("or:c:abc"))
+	cq.Message.Message.Date = int(b.feed.boot - 60)
+	b.handleCallback(context.Background(), cq)
+	answer := ""
+	for _, c := range stub.all() {
+		switch c.method {
+		case "sendMessage":
+			t.Fatalf("a press after a restart sent a message: %+v", c)
+		case "answerCallbackQuery":
+			answer = c.text
+		}
+	}
+	if want := b.texts.T("ru", "bot.stale_message_stranger_restart", nil); answer != want {
+		t.Fatalf("answer = %q, want %q", answer, want)
 	}
 }
 

@@ -280,7 +280,7 @@ func (b *Bot) askCancelOrder(ctx context.Context, chatID int64, editMsgID *int, 
 
 func (b *Bot) showCancelPrompt(ctx context.Context, chatID int64, editMsgID *int, loc string, d openapi.OrderDetail, note string) {
 	text := note + b.texts.T(loc, "bot.ord.cancel_ask", map[string]any{
-		"Num": d.SystemId, "Amount": FormatMoney(int64(d.Total), d.Currency, loc), "Word": b.sesCancelWord(loc),
+		"Num": d.SystemId, "Amount": FormatMoney(int64(d.Total), d.Currency, loc), "Word": b.ordCancelWord(loc),
 	})
 	b.reply(ctx, chatID, editMsgID, text, &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 		{{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: "or:v:" + d.Id.String()}},
@@ -299,13 +299,13 @@ func (b *Bot) cancelWordTyped(ctx context.Context, chatID int64, editMsgID *int,
 		return
 	}
 	orderID := *st.CardID
-	if !b.sesIsCancelWord(loc, text) {
+	if !b.ordIsCancelWord(loc, text) {
 		detail, err := b.arena.GetOrder(ctx, jwt, orgID, orderID)
 		if err != nil {
 			b.ecError(ctx, chatID, editMsgID, id, err, "or:b")
 			return
 		}
-		b.showCancelPrompt(ctx, chatID, editMsgID, loc, detail, b.texts.T(loc, "bot.ord.cancel_wrong", map[string]any{"Word": b.sesCancelWord(loc)})+"\n\n")
+		b.showCancelPrompt(ctx, chatID, editMsgID, loc, detail, b.texts.T(loc, "bot.ord.cancel_wrong", map[string]any{"Word": b.ordCancelWord(loc)})+"\n\n")
 		return
 	}
 	err := b.arena.CancelOrder(ctx, jwt, orgID, orderID, "cancelled from the Telegram bot")

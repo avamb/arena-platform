@@ -557,16 +557,17 @@ func (b *Bot) sesShowType(ctx context.Context, chatID int64, msgID *int, loc str
 	}), [][]Button{b.sesNav(loc, "confirm"), b.sesHomeRow(loc)})
 }
 
-// sesCancelWord is the word the organizer types to cancel, in their language.
+// sesCancelWord is the phrase the organizer types to cancel a session, in
+// their language. It differs from the order's (ordCancelWord): a phrase typed
+// for one never cancels the other.
 func (b *Bot) sesCancelWord(loc string) string {
-	return b.sesT(loc, "bot.ses.cancel_word", nil)
+	return b.sesT(loc, sesCancelWordKey, nil)
 }
 
 // sesIsCancelWord reports whether the typed text is the explicit command: the
-// word of the organizer's language, or the English one in any language.
+// phrase of the organizer's language, or the English one in any language.
 func (b *Bot) sesIsCancelWord(loc, text string) bool {
-	text = strings.TrimSpace(strings.Trim(strings.TrimSpace(text), "\"'«».!"))
-	return strings.EqualFold(text, b.sesCancelWord(loc)) || strings.EqualFold(text, "cancel")
+	return b.typedPhrase(loc, sesCancelWordKey, text)
 }
 
 func (b *Bot) goKey(dlg *sessionDialog, notify bool) string {

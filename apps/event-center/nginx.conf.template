@@ -6,6 +6,21 @@
 # enough. The container smoke in CI asserts the headers on / and on a deep
 # link, so a location without the include fails the build.
 
+# The access log never carries the query string or the Referer: the
+# password pages are opened as /reset-password?token=...&email=... and
+# /accept-invite?token=...&email=..., and the one-time token and the e-mail
+# must not land in a log file. The map keeps the path the browser asked for
+# and drops everything from "?" on ($uri would log /index.html after the SPA
+# fallback, $request would log the query).
+map $request_uri $arena_log_path {
+    "~^(?<arena_path>[^?]*)" $arena_path;
+    default                  "-";
+}
+
+log_format arena_no_query '$remote_addr - $remote_user [$time_local] '
+                          '"$request_method $arena_log_path $server_protocol" '
+                          '$status $body_bytes_sent "$http_user_agent"';
+
 server {
     listen 8080;
     listen [::]:8080;
@@ -13,6 +28,7 @@ server {
     root /usr/share/nginx/html;
     index index.html;
     server_tokens off;
+    access_log /var/log/nginx/access.log arena_no_query;
 
     gzip on;
     gzip_types

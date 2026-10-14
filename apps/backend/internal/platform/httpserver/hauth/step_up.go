@@ -5,6 +5,10 @@ package hauth
 // money routes ask for when the request comes from the web event center
 // (spec 08_architecture/37 section 4.5, owner decision 2026-10-14). The bot
 // never asks: Telegram already proves the person.
+//
+// The token is bound to the sign-in of the access token ("sid") and to the
+// organization named in the body: it is worthless in another session, after
+// a sign-out and in another organization.
 
 import (
 	"encoding/json"
@@ -32,9 +36,12 @@ func newStepUpLimiter() ratelimit.Limiter {
 	return ratelimit.New(ratelimit.Config{MaxAttempts: loginRateLimitAttempts, Window: loginRateLimitWindow})
 }
 
-// StepUp serves POST /v1/auth/step-up. Body {"password": "..."}.
+// StepUp serves POST /v1/auth/step-up. Body {"password": "...", "org_id": "..."}.
 //
 //	200 {step_up_token, expires_at}  the password is right
+//	400 validation.org_id_required   no organization named
+//	401 auth.session_ended           the access token comes from no sign-in,
+//	                                 or that sign-in has ended: sign in again
 //	403 auth.step_up_wrong_password  the password is wrong (not 401: the
 //	                                 access token is fine, and a client must
 //	                                 not refresh and retry)
@@ -55,6 +62,7 @@ func (h *Handler) StepUp(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Password string `json:"password"`
+		OrgID    string `json:"org_id"`
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4*1024))
 	if err != nil || json.Unmarshal(body, &req) != nil {
@@ -66,6 +74,20 @@ func (h *Handler) StepUp(w http.ResponseWriter, r *http.Request) {
 			"validation.password_required", "password is required", r,
 			map[string]any{"field": "password"},
 		))
+		return
+	}
+	orgID, err := uuid.Parse(strings.TrimSpace(req.OrgID))
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"validation.org_id_required", "org_id must name the organization of the action", r,
+			map[string]any{"field": "org_id"},
+		))
+		return
+	}
+	sessionID, err := uuid.Parse(actor.SessionID)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope(
+			"auth.session_ended", "this sign-in has ended; sign in again", r))
 		return
 	}
 	key := "step-up:" + userID.String()
@@ -103,6 +125,17 @@ func (h *Handler) StepUp(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope("auth.user_deactivated", "this account has been deactivated", r))
 		return
 	}
+	live, err := q.RefreshSessionIsLive(ctx, sessionID, userID)
+	if err != nil {
+		logger.Error("auth.step_up: session check failed", "error", err)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
+		return
+	}
+	if !live {
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope(
+			"auth.session_ended", "this sign-in has ended; sign in again", r))
+		return
+	}
 	passwordOK := users.CheckPassword(userRow.PasswordHash, req.Password) == nil
 	if h.audit != nil {
 		action := "v1.auth.step_up"
@@ -119,6 +152,7 @@ func (h *Handler) StepUp(w http.ResponseWriter, r *http.Request) {
 			RequestID:    logging.RequestID(ctx),
 			TraceID:      logging.TraceID(ctx),
 			IP:           httputil.ExtractClientIP(r),
+			Metadata:     map[string]any{"org_id": orgID.String()},
 		}); err != nil {
 			logger.Error("auth.step_up: audit write failed", "error", err)
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("auth.audit_failed", "failed to write audit event", r))
@@ -136,7 +170,7 @@ func (h *Handler) StepUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.stepUpLimiter.Reset(key)
-	token, exp, err := auth.IssueJWT(h.jwtSecret, userID, nil, nil, h.jwtIssuer, auth.StepUpAudience, auth.StepUpTTL)
+	token, exp, err := auth.IssueStepUp(h.jwtSecret, h.jwtIssuer, userID, sessionID.String(), orgID.String())
 	if err != nil {
 		logger.Error("auth.step_up: issue token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_mint_failed", "failed to issue step-up token", r))

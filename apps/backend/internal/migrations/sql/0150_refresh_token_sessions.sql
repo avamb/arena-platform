@@ -12,6 +12,12 @@
 --                       Each rotation sets expires_at = now() + idle_seconds,
 --                       capped at session_started_at + 30 days.
 --   session_started_at  the sign-in that started the chain of rotations.
+--   session_id          the id of that sign-in, kept by every rotation. The
+--                       access token carries it as "sid", and the step-up
+--                       token of a money action is bound to it: a sign-out
+--                       (revoked_at) or "sign out everywhere" (expires_at)
+--                       leaves no live row of the session, so its step-up
+--                       token stops working at once.
 --
 -- Rows issued before this migration keep NULLs and behave exactly as before.
 -- No permission is seeded, so the superadmin parity guard has nothing to
@@ -26,11 +32,19 @@ ALTER TABLE refresh_tokens
     ADD COLUMN client_channel     text,
     ADD COLUMN idle_seconds       integer,
     ADD COLUMN session_started_at timestamptz,
+    ADD COLUMN session_id         uuid,
     ADD CONSTRAINT refresh_tokens_idle_seconds_check CHECK (idle_seconds IS NULL OR idle_seconds > 0);
 
+-- Every money request of the web asks whether its session is still live.
+CREATE INDEX refresh_tokens_session_live_idx
+    ON refresh_tokens (session_id)
+    WHERE session_id IS NOT NULL AND revoked_at IS NULL;
+
 -- +goose Down
+DROP INDEX IF EXISTS refresh_tokens_session_live_idx;
 ALTER TABLE refresh_tokens
     DROP CONSTRAINT IF EXISTS refresh_tokens_idle_seconds_check,
+    DROP COLUMN IF EXISTS session_id,
     DROP COLUMN IF EXISTS session_started_at,
     DROP COLUMN IF EXISTS idle_seconds,
     DROP COLUMN IF EXISTS client_channel;

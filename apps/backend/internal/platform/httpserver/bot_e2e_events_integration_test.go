@@ -489,11 +489,13 @@ func TestBotE2E_EventsListSurvivesBotRestart(t *testing.T) {
 	time.Sleep(400 * time.Millisecond) // the stub's long poll
 	startDialogTestBot(t, pool, api, tg)
 
-	// After the restart the list is still the archive, still filtered, and a
-	// button of the old message still opens the right event.
-	text := d.press("el:p:1", "Архив · 1")
+	// A button of a screen sent before the restart is out of date (owner
+	// decision 2026-10-14); the list is still the archive, and the next
+	// search shows it on a new screen whose buttons open the right event.
+	tg.pressStale(t, ecOwnerTG, "el:p:1")
+	text := d.say("opera", "Архив · 1")
 	if !strings.Contains(text, "Поиск: «opera»") {
-		t.Errorf("the search did not survive the restart:\n%s", text)
+		t.Errorf("the archive tab did not survive the restart:\n%s", text)
 	}
 	st := readECListState(t, pool, ecOwnerTG)
 	if st.Filter != "arc" || st.Query != "opera" || seed.shortNames(st.Names) != "Archived Opera" {
