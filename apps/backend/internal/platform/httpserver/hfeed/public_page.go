@@ -157,7 +157,9 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	resolved, err := h.publicFeedQueries.GetHostedPageResolution(ctx, orgSlug, eventSlug)
+	byPromoter := false
 	if errors.Is(err, pgx.ErrNoRows) {
+		byPromoter = true
 		// Not an organization's page: the first segment may be a
 		// promoter's slug (migration 0117) — the same shape comes back,
 		// with the promoter's slug and name in the org slot.
@@ -220,7 +222,10 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 	resp.Event.FirstSessionTimezone = resolved.FirstSessionTimezone
 	resp.Event.SessionCount = resolved.SessionCount
 	resp.Event.FirstSessionDoorsAt = rfc3339UTC(resolved.FirstSessionDoorsAt)
-	resp.Seller, resp.Promoter, resp.ContactForm = h.sellerBlocks(ctx, resolved.OrgID, resolved.FeedToken, &resolved.EventID)
+	// A promoter's page, or an event of a promoter on the organization's
+	// page: the form's messages go to the organization's owner only.
+	toOwner := byPromoter || h.eventToOwner(ctx, resolved.OrgID, eventSlug)
+	resp.Seller, resp.Promoter, resp.ContactForm = h.sellerBlocks(ctx, resolved.OrgID, resolved.FeedToken, &resolved.EventID, toOwner)
 
 	// Venue name(s) are cheap (one aggregate query keyed by event id) and
 	// presentational — a lookup failure must not turn a resolved page into a
@@ -335,7 +340,7 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 		url := h.mediaFileURL(ctx, *org.OrgLogoMediaID)
 		resp.Org.LogoURL = &url
 	}
-	resp.Seller, _, resp.ContactForm = h.sellerBlocks(ctx, org.OrgID, "", nil)
+	resp.Seller, _, resp.ContactForm = h.sellerBlocks(ctx, org.OrgID, "", nil, promoterID != nil)
 	if resp.Seller != nil && promoterID != nil {
 		resp.Promoter = &hostedPagePromoterResponse{Name: org.OrgName}
 	}

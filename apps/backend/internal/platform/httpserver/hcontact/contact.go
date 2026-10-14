@@ -12,6 +12,12 @@
 // same transaction; the job mails it to the channel's public e-mail and,
 // when the organization keeps the switch on, posts it to its sales chat.
 //
+// A message from a promoter's page, or about an event of a promoter
+// (event_slug, gen.EventPromotedSQL), goes to the organization's owner only
+// (owner decision 2026-10-14): the decision travels in the job's payload
+// (contactform.Payload.ToOwner), and such a page without an owner answers
+// the same 404.
+//
 // The answer never carries the organizer's address: 202 {"status":"queued"}.
 // An unknown slug, a channel without a public e-mail and a feed token of
 // another organization all answer the same 404.
@@ -88,6 +94,10 @@ type Request struct {
 	// FeedToken names the event page's channel; empty = the organization's
 	// newest sales-page channel (the promoter landing page).
 	FeedToken string `json:"feed_token"`
+	// EventSlug names the event page the buyer writes from; empty on the
+	// promoter landing page. It only decides whether the message goes to
+	// the organization's owner (an event of a promoter).
+	EventSlug string `json:"event_slug"`
 	Locale    string `json:"locale"`
 }
 
@@ -147,7 +157,7 @@ func (h *Handler) HandleSend(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	q := gen.New(h.pool)
-	orgID, pageSlug, err := h.resolveOrg(ctx, q, slug)
+	orgID, pageSlug, promoterPage, err := h.resolveOrg(ctx, q, slug)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			h.notFound(w, r)
@@ -165,7 +175,15 @@ func (h *Handler) HandleSend(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, "target", err)
 		return
 	}
-	if !target.HasEmail {
+	toOwner := promoterPage
+	if ev := strings.TrimSpace(req.EventSlug); !toOwner && ev != "" && utf8.RuneCountInString(ev) <= 200 {
+		toOwner, err = q.GetContactEventPromoted(ctx, orgID, ev)
+		if err != nil {
+			h.fail(w, r, "event", err)
+			return
+		}
+	}
+	if (toOwner && !target.OwnerReachable) || !target.HasEmail {
 		h.notFound(w, r)
 		return
 	}
@@ -211,7 +229,7 @@ func (h *Handler) HandleSend(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, "insert", err)
 		return
 	}
-	if _, err := worker.EnqueueInTx(ctx, tx, contactform.JobType, contactform.Payload{MessageID: id.String()}, 8); err != nil {
+	if _, err := worker.EnqueueInTx(ctx, tx, contactform.JobType, contactform.Payload{MessageID: id.String(), ToOwner: toOwner}, 8); err != nil {
 		h.fail(w, r, "enqueue", err)
 		return
 	}
@@ -225,26 +243,27 @@ func (h *Handler) HandleSend(w http.ResponseWriter, r *http.Request) {
 }
 
 // resolveOrg finds the organization behind a page slug: an organization's own
-// slug, else a promoter's (migration 0117). The slug answered is the page's.
-func (h *Handler) resolveOrg(ctx context.Context, q *gen.Queries, slug string) (uuid.UUID, string, error) {
+// slug, else a promoter's (migration 0117). The slug answered is the page's;
+// promoter reports a promoter's page.
+func (h *Handler) resolveOrg(ctx context.Context, q *gen.Queries, slug string) (orgID uuid.UUID, pageSlug string, promoter bool, err error) {
 	org, err := q.GetHostedPromoterPageOrg(ctx, slug)
 	if err == nil {
 		if !org.HasHostedChannel {
-			return uuid.Nil, "", pgx.ErrNoRows
+			return uuid.Nil, "", false, pgx.ErrNoRows
 		}
-		return org.OrgID, org.OrgSlug, nil
+		return org.OrgID, org.OrgSlug, false, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, "", err
+		return uuid.Nil, "", false, err
 	}
 	p, err := q.GetHostedPromoterPageByPromoter(ctx, slug)
 	if err != nil {
-		return uuid.Nil, "", err
+		return uuid.Nil, "", false, err
 	}
 	if !p.HasHostedChannel {
-		return uuid.Nil, "", pgx.ErrNoRows
+		return uuid.Nil, "", false, pgx.ErrNoRows
 	}
-	return p.OrgID, p.Slug, nil
+	return p.OrgID, p.Slug, true, nil
 }
 
 func (h *Handler) checkCaptcha(w http.ResponseWriter, r *http.Request, token, ip string) bool {

@@ -96,10 +96,10 @@ describe('validateContact', () => {
 });
 
 describe('sendContact', () => {
-  it('posts to the public route with the feed token and the page language', async () => {
+  it('posts to the public route with the feed token, the event and the page language', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{"status":"queued"}', { status: 202 }));
     vi.stubGlobal('fetch', fetchMock);
-    const code = await sendContact({ ...CTX, apiBase: 'https://api.example/' }, {
+    const code = await sendContact({ ...CTX, apiBase: 'https://api.example/', eventSlug: 'hamlet' }, {
       name: 'Anna', email: 'anna@example.com', message: 'Hello there!', consent: true, turnstile_token: 'tok',
     });
     expect(code).toBe('');
@@ -107,8 +107,18 @@ describe('sendContact', () => {
     expect(url).toBe('https://api.example/v1/public/organizer-contact/lampyris');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toMatchObject({
-      name: 'Anna', consent: true, turnstile_token: 'tok', feed_token: 'ft_1', locale: 'en',
+      name: 'Anna', consent: true, turnstile_token: 'tok', feed_token: 'ft_1', event_slug: 'hamlet', locale: 'en',
     });
+  });
+
+  it('sends an empty event on a landing page', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"status":"queued"}', { status: 202 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await sendContact({ ...CTX, feedToken: undefined }, {
+      name: 'Anna', email: 'anna@example.com', message: 'Hello there!', consent: true, turnstile_token: 'tok',
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({ feed_token: '', event_slug: '' });
   });
 
   it('answers the API error code of a refusal', async () => {

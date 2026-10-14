@@ -5137,7 +5137,9 @@ export interface paths {
          *     worker mails it to the channel's public e-mail (else to the
          *     organization's own contact e-mail, never shown) with Reply-To set to
          *     the buyer, and posts it to the organization's sales Telegram chat when
-         *     its switch is on. Protected by Cloudflare Turnstile (production
+         *     its switch is on. A message from a promoter's page, or about an
+         *     event of a promoter (`event_slug`), goes to the organization's owner
+         *     only, never to the public e-mail. Protected by Cloudflare Turnstile (production
          *     without a secret answers 503), a per-IP limit (5 an hour) and a
          *     per-page limit (30 an hour) counted in the database, and a 16 KiB body
          *     cap. No JWT. An unknown slug, a page whose messages would reach
@@ -13263,6 +13265,8 @@ export interface components {
             turnstile_token?: string;
             /** @description The event page's feed token; empty on the promoter landing page. */
             feed_token?: string;
+            /** @description The event page's slug; empty on a landing page. A message about an event of a promoter goes to the organization's owner only. */
+            event_slug?: string;
             /**
              * @description Page language of the sender.
              * @example es
