@@ -12,6 +12,9 @@
 #   - prometheus : Prometheus metrics scraper  (port 9090)
 #   - grafana    : Grafana dashboards          (port 3000)
 #
+# Venue SVG generator (profile: venue-gen, no published port):
+#   - venue_gen  : apps/venue-svg-generator image, internal network only
+#
 # One-shot tools (profile: tools):
 #   - migrate    : arena-migrate database migration runner
 #
@@ -389,6 +392,24 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # ------------------------------------------------------------------
+  # venue_gen : venue SVG generator (apps/venue-svg-generator, Python).
+  #   - Opt-in: docker compose --profile venue-gen build venue_gen
+  #     (a plain `docker compose up -d` does not start it).
+  #   - NO host port on purpose: only arena-api talks to it, over the
+  #     compose network (http://venue_gen:<port>, the port arrives with
+  #     the HTTP service in G2a).
+  #   - Until G2a the image carries only the CLI, so the container prints
+  #     its help and exits; hence restart "no".
+  # ------------------------------------------------------------------
+  venue_gen:
+    build:
+      context: apps/venue-svg-generator
+    image: arena_new/arena-venue-gen:dev
+    container_name: arena_venue_gen
+    profiles: ["venue-gen"]
+    restart: "no"
 
   # ------------------------------------------------------------------
   # prometheus : scrapes /metrics from api (and worker when it exposes
