@@ -829,11 +829,68 @@ export interface paths {
         };
         /**
          * List reference cities, optionally filtered by country
-         * @description Returns reference cities ordered by slug. Pass ?country_id=<uuid> to
-         *     restrict results to one country. Names are locale-resolved from i18n_text.
+         * @description Returns reference cities ordered by slug. Pass ?country_id=<uuid> or
+         *     ?country=<iso2> to restrict results to one country. Names are
+         *     locale-resolved from i18n_text.
+         *
+         *     With `q` (a typed beginning of a name, in Latin, Cyrillic or Hebrew
+         *     script, compared without case or accents) the list keeps the cities
+         *     whose name or slug starts with it (at most 20) and the answer gains a
+         *     `suggestions` array with up to 20 places of the `country` from the
+         *     embedded GeoNames data, each with its time zone. A suggestion is only
+         *     a hint: nothing is created by this route. A single-zone country
+         *     suggests only its largest cities.
+         *
          *     No authentication required.
          */
         get: operations["getV1GeoCities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geo/countries/{iso2}/timezones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the time zones of a country
+         * @description Returns the IANA zones of the country, the zone of its biggest city
+         *     first, from the embedded GeoNames data. `single` tells a client whether
+         *     it may fill the zone in without asking: Spain (Europe/Madrid,
+         *     Atlantic/Canary, Africa/Ceuta) and Portugal (Europe/Lisbon,
+         *     Atlantic/Madeira, Atlantic/Azores) have several, the Czech Republic
+         *     one. No authentication required.
+         */
+        get: operations["getV1GeoCountryTimezones"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geo/countries/{iso2}/currency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the currency of a country
+         * @description Returns the ISO 4217 currency stored on the platform's country row
+         *     (the base of the session currency chain). A country the platform has
+         *     no row for is 404. No authentication required.
+         */
+        get: operations["getV1GeoCountryCurrency"];
         put?: never;
         post?: never;
         delete?: never;
@@ -12687,12 +12744,94 @@ export interface components {
              * @example Tel Aviv
              */
             name: string;
+            /**
+             * @description IANA time zone the city is in, best effort: the zone the city's
+             *     name points at in the embedded GeoNames data, else the country's
+             *     only zone. Absent when it cannot be told (a city of a country
+             *     with several zones that the data does not know). Only the list
+             *     route fills it.
+             * @example Asia/Jerusalem
+             */
+            timezone?: string;
+            /**
+             * @description Where the item comes from. Always `platform` on a city row (list route only).
+             * @example platform
+             */
+            source?: string;
+        };
+        /**
+         * @description A place from the embedded GeoNames data offered by the city search
+         *     (GET /v1/geo/cities with `q`). It is NOT a platform city: it has no id.
+         *     Choosing it means creating the city through
+         *     POST /v1/organizations/{org_id}/cities (a name that matches an
+         *     existing city returns that city).
+         */
+        GeoCitySuggestion: {
+            /**
+             * @description Display name of the place (the spelling of the top-cities list when it is on it, else its main name capitalised).
+             * @example Barcelona
+             */
+            name: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the country that was searched.
+             * @example ES
+             */
+            country_iso2: string;
+            /**
+             * @description IANA time zone the place is in.
+             * @example Europe/Madrid
+             */
+            timezone: string;
+            /**
+             * @description Always `geonames`.
+             * @example geonames
+             */
+            source: string;
         };
         GeoCitiesResponse: {
             /** @description Ordered list of reference cities with localised names */
             cities: components["schemas"]["GeoCityItem"][];
+            /**
+             * @description Present only when the request carried `q`: up to 20 places of the
+             *     `country` named in the request that start with the typed text,
+             *     the biggest cities first, leaving out cities already listed in
+             *     `cities`. Empty when `country` is absent.
+             */
+            suggestions?: components["schemas"]["GeoCitySuggestion"][];
             /** @description Optional pagination metadata for clients that render paginated city lists. */
             meta?: components["schemas"]["PaginationMeta"];
+        };
+        /** @description One IANA time zone of a country. */
+        GeoTimezoneItem: {
+            /**
+             * @description IANA zone name, the value to store as a venue's timezone.
+             * @example Atlantic/Canary
+             */
+            id: string;
+            /**
+             * @description Name for a person to pick by, the largest city in the zone.
+             * @example Las Palmas de Gran Canaria
+             */
+            label: string;
+        };
+        /** @description Response of GET /v1/geo/countries/{iso2}/timezones. */
+        GeoCountryTimezonesResponse: {
+            /** @description The zones of the country, the zone of its biggest city first. */
+            timezones: components["schemas"]["GeoTimezoneItem"][];
+            /**
+             * @description True when the country has exactly one zone, so a client may fill
+             *     it in without asking. False when it has several (Spain and
+             *     Portugal among them) and the person must choose.
+             */
+            single: boolean;
+        };
+        /** @description Response of GET /v1/geo/countries/{iso2}/currency. */
+        GeoCountryCurrencyResponse: {
+            /**
+             * @description ISO 4217 currency of the country, as stored on the platform's country row.
+             * @example EUR
+             */
+            currency: string;
         };
         GeoCountryResponse: {
             /**
@@ -23964,6 +24103,18 @@ export interface operations {
             query?: {
                 /** @description Filter cities by country UUID */
                 country_id?: string;
+                /**
+                 * @description Filter cities by ISO 3166-1 alpha-2 country code (any case); ignored
+                 *     when `country_id` is also given. Names the country whose GeoNames
+                 *     data `q` draws suggestions from.
+                 * @example ES
+                 */
+                country?: string;
+                /**
+                 * @description City search text, at most 64 characters. Blank counts as absent.
+                 * @example barc
+                 */
+                q?: string;
                 /** @description Preferred language code (e.g. "en", "ru"). Overrides Accept-Language. */
                 lang?: string;
             };
@@ -23980,6 +24131,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GeoCitiesResponse"];
+                };
+            };
+            /**
+             * @description `country_id` is not a UUID (`geo.invalid_country_id`), `country` is
+             *     not a two-letter code (`geo.invalid_country`) or `q` is longer than
+             *     64 characters (`geo.invalid_query`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1GeoCountryTimezones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description ISO 3166-1 alpha-2 country code, any case.
+                 * @example ES
+                 */
+                iso2: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The country's zones */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoCountryTimezonesResponse"];
+                };
+            };
+            /** @description The code is not two letters (`geo.invalid_iso2`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The data knows no such country (`geo.country_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1GeoCountryCurrency: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description ISO 3166-1 alpha-2 country code, any case.
+                 * @example ES
+                 */
+                iso2: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The country's currency */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoCountryCurrencyResponse"];
+                };
+            };
+            /** @description The code is not two letters (`geo.invalid_iso2`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The platform has no such country (`geo.country_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Geo queries not available */
