@@ -254,3 +254,24 @@ func TestQueueRetryErrorText(t *testing.T) {
 		}
 	}
 }
+
+// While a refund may have started (it went to the server and no answer
+// came), no press may change the operation: only "Yes" with the same key,
+// "Cancel" (it parks) and "back to the refund" stay open.
+func TestRefundPressLocked(t *testing.T) {
+	t.Parallel()
+	attempted := refundDialog{Key: "tg-same", Attempted: true}
+	for _, kind := range []string{"t", "all", "nt", "p", "go", "r", "ro", "b"} {
+		if !refundPressLocked(attempted, kind) {
+			t.Errorf("%q must be locked while the refund may have started", kind)
+		}
+		if refundPressLocked(refundDialog{Key: "tg-new"}, kind) {
+			t.Errorf("%q must stay open before anything was sent", kind)
+		}
+	}
+	for _, kind := range []string{"ok", "no", "cur"} {
+		if refundPressLocked(attempted, kind) {
+			t.Errorf("%q must stay open while the refund may have started", kind)
+		}
+	}
+}

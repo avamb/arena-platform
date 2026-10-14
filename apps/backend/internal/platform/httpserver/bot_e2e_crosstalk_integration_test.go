@@ -185,3 +185,78 @@ func TestBotE2E_DialogsCloseOnCommandsAndForeignButtons(t *testing.T) {
 		t.Errorf("no refund may be sent, got %d", n)
 	}
 }
+
+// After a send that got no answer (the operation may have started), the
+// buyer-letter toggle, the ticket ticks and "back" change nothing: the key
+// stays, and the next "Yes" sends the SAME operation.
+func TestBotE2E_RefundThatMayHaveStartedKeepsItsOperation(t *testing.T) {
+	pool := onboardingIntegrationPool(t)
+	f := newBotInviteFixture(t, pool)
+	stripe := newStubStripe(t)
+	stripe.refundHandler = func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"id":"re_maybe_started_e2e","status":"succeeded"}`)
+	}
+	srv := buildBotIntegrationServerCfg(t, pool, func(c *config.Config) { c.StripeAPIBaseURL = stripe.baseURL() })
+	api := httptest.NewServer(srv.router)
+	defer api.Close()
+	seed := seedOrdersBotOrg(t, pool, f.orgID)
+	linkECBotUser(t, f, srv, ecOwnerTG, "owner")
+	seedRefundableOrder(t, pool, f.orgID, seed)
+	ctx := context.Background()
+
+	tg := newStubTelegram(t)
+	stop := startDialogTestBot(t, pool, api, tg)
+	defer func() { stop() }()
+	d := ecDriver{t, tg, ecOwnerTG}
+
+	d.press("or:v:"+seed.anna.String(), "Заказ №")
+	d.press("or:f:s:"+seed.anna.String(), "Возврат · заказ №")
+	d.press("or:f:t:1", "Возврат · заказ №")
+	d.press("or:f:go", "Почему возвращаются деньги")
+	d.press("or:f:r:1", "ВЕРНУТЬ")
+	d.say("вернуть", "Последняя проверка")
+	key := refundDialogKey(t, pool, ecOwnerTG)
+	if key == "" {
+		t.Fatal("the final screen must hold a key")
+	}
+	// The send went out and no answer came: the state the bot keeps after a
+	// timeout or a server error.
+	if _, err := pool.Exec(ctx, `UPDATE bot_dialogs SET state = state || '{"attempted":true}'::jsonb
+	      WHERE telegram_user_id = $1 AND kind = 'refund'`, ecOwnerTG); err != nil {
+		t.Fatal(err)
+	}
+	attempted := func() bool {
+		t.Helper()
+		var a bool
+		if err := pool.QueryRow(ctx, `SELECT coalesce((state->>'attempted')::boolean, false) FROM bot_dialogs
+		      WHERE telegram_user_id = $1 AND kind = 'refund'`, ecOwnerTG).Scan(&a); err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
+	for _, press := range []string{"or:f:nt", "or:f:t:0", "or:f:all", "or:f:b", "or:f:go", "or:f:p"} {
+		d.press(press, "мог уже начаться")
+		if got := refundDialogKey(t, pool, ecOwnerTG); got != key || !attempted() {
+			t.Fatalf("%s changed the operation: key %q -> %q, attempted=%v", press, key, got, attempted())
+		}
+	}
+	if n, _ := refundCount(t, srv, seed.anna); n != 0 {
+		t.Fatalf("a locked press sent %d refund(s)", n)
+	}
+
+	// "Yes" sends the same operation.
+	sent := tg.mark()
+	d.press("or:f:ok:"+strings.TrimPrefix(key, "tg-")[:12], "Отправляю возврат")
+	tg.waitSince(t, sent, "Возврат запрошен")
+	var batchKey string
+	if err := pool.QueryRow(ctx, `SELECT idempotency_key FROM refund_batches WHERE order_id = $1`, seed.anna).Scan(&batchKey); err != nil {
+		t.Fatalf("refund batch: %v", err)
+	}
+	if batchKey != key {
+		t.Errorf("the refund went out with key %q, want the kept %q", batchKey, key)
+	}
+	if n, _ := refundCount(t, srv, seed.anna); n != 1 {
+		t.Errorf("refunds = %d, want 1", n)
+	}
+}

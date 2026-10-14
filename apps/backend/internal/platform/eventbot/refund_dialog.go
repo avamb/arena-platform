@@ -403,6 +403,12 @@ func (b *Bot) refundCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.showRefundFinal(ctx, chatID, &msgID, id, st, b.texts.T(loc, "bot.ref.send_lost", nil)+"\n\n")
 		return
 	}
+	if refundPressLocked(st, kind) {
+		// The operation may have started: no press may change it or mint
+		// another one. The final screen comes back with the same key.
+		b.showRefundFinal(ctx, chatID, &msgID, id, st, b.texts.T(loc, "bot.ref.maybe_started", nil)+"\n\n")
+		return
+	}
 	idx, _ := strconv.Atoi(arg)
 	switch kind {
 	case "t":
@@ -454,6 +460,9 @@ func (b *Bot) refundCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.saveRefund(ctx, from.ID, st, refStepReasonTxt)
 		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.reason_text_ask", nil), b.refundBackKeyboard(loc))
 	case "nt":
+		if st.Attempted {
+			return // refundPressLocked already answered; never mint a new key here
+		}
 		st.NoLetter = !st.NoLetter
 		st.Key, st.Attempted = "", false // the summary changed: a new operation
 		b.showRefundWord(ctx, chatID, &msgID, id, st, "")
@@ -484,6 +493,23 @@ func (b *Bot) refundCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.leaveRefund(ctx, from.ID)
 		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.cancelled", nil), b.resendResultKeyboard(loc, st.OrderID))
 	}
+}
+
+// refundPressLocked reports a press that would change an operation which may
+// have started (it went to the server and no answer came): a ticket tick,
+// "select all", the buyer-letter toggle, a partial amount, another reason or
+// going back to the pick. Each of them would mint a new key, and a new key is
+// a second refund. Only "Yes" (the same key), "Cancel" (parks it) and "back to
+// the refund" stay open.
+func refundPressLocked(st refundDialog, kind string) bool {
+	if !st.Attempted {
+		return false
+	}
+	switch kind {
+	case "ok", "no", "cur":
+		return false
+	}
+	return true
 }
 
 // The verdicts on a "Yes, refund" press.
@@ -583,6 +609,11 @@ func (b *Bot) refundBackKeyboard(loc string) *models.InlineKeyboardMarkup {
 
 func (b *Bot) showRefundPick(ctx context.Context, chatID int64, editMsgID *int, id *Identity, st refundDialog, note string) {
 	loc := id.Locale()
+	if st.Attempted {
+		// Never drop the key of an operation that may have started.
+		b.showRefundFinal(ctx, chatID, editMsgID, id, st, b.texts.T(loc, "bot.ref.maybe_started", nil)+"\n\n")
+		return
+	}
 	if editMsgID != nil {
 		st.MsgID = *editMsgID
 	}
