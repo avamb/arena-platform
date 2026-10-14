@@ -81,6 +81,18 @@ FROM (
 ) effective_roles
 ORDER BY role;
 
+-- name: HasPlatformRole :one
+-- True when the user holds ANY platform-level role: a user_roles row with no
+-- organization (platform_superadmin, platform_operator, admin, ...). Such a
+-- person works in admin-web: the web event center never signs them in without
+-- a password (WL-1, spec 37 section 1 item 4).
+SELECT EXISTS (
+    SELECT 1
+    FROM   user_roles ur
+    WHERE  ur.user_id = $1
+      AND  ur.org_id IS NULL
+);
+
 -- name: ListMembershipsByUser :many
 -- Returns all active memberships for a user across every organization they
 -- belong to. Used by the GET /v1/me current-user context endpoint (feature #211)

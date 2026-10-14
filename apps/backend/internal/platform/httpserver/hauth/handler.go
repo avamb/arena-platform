@@ -57,6 +57,8 @@ type Handler struct {
 	webSessionIdle time.Duration
 	// stepUpLimiter counts wrong passwords on POST /v1/auth/step-up.
 	stepUpLimiter ratelimit.Limiter
+	// webLinkLimiter counts exchanges on POST /v1/auth/web/link per address.
+	webLinkLimiter ratelimit.Limiter
 }
 
 // New creates a Handler. jwtSecret, issuer, and audience must be fully resolved
@@ -90,6 +92,7 @@ func New(
 		}),
 		webSessionIdle: DefaultWebSessionIdle,
 		stepUpLimiter:  newStepUpLimiter(),
+		webLinkLimiter: newWebLinkLimiter(),
 	}
 }
 
@@ -118,5 +121,6 @@ func NewWithLimiter(
 		rateLimiter:           limiter,
 		webSessionIdle:        DefaultWebSessionIdle,
 		stepUpLimiter:         newStepUpLimiter(),
+		webLinkLimiter:        newWebLinkLimiter(),
 	}
 }

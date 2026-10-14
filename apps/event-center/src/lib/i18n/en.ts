@@ -57,6 +57,12 @@ export const en = {
   "forgot.sent": "If this address has an Arena account, the link is on its way. Check your inbox and the spam folder.",
   "forgot.back": "Back to sign in",
 
+  "linkLogin.title": "Signing in from the bot",
+  "linkLogin.working": "One moment, we are signing you in…",
+  "linkLogin.toLogin": "Sign in with e-mail and password",
+  "linkLogin.error.invalid": "This link does not work any more. A link works once and for 5 minutes. Press «🌐 Open in browser» in the bot again.",
+  "linkLogin.error.missing": "The link is not complete. Press «🌐 Open in browser» in the bot and open the new link.",
+  "linkLogin.error.superadmin": "You are a platform superadmin. Please work in the admin console.",
   "stepUp.title": "Confirm your password",
   "stepUp.intro": "This action changes a refund or a payment. To protect the money, type the password of your account again.",
   "stepUp.password": "Password",

@@ -1476,6 +1476,18 @@ type AuthVerifyResponse struct {
 	UserId openapi_types.UUID `json:"user_id"`
 }
 
+// AuthWebLinkRequest Body of POST /v1/auth/web/link.
+type AuthWebLinkRequest struct {
+	// Code The one-time code from the bot's link, taken from the address after `#code=`.
+	Code string `json:"code"`
+}
+
+// AuthWebSessionsRevokeResponse Answer of POST /v1/auth/web-sessions/revoke.
+type AuthWebSessionsRevokeResponse struct {
+	// RevokedSessions How many web event center sessions were ended.
+	RevokedSessions int `json:"revoked_sessions"`
+}
+
 // BankAccountItem A single active bank-account row owned by one organization.
 // Sensitive numbers (IBAN / account_number) are returned verbatim
 // to actors holding `org.update` on the owning organization;
@@ -3421,6 +3433,36 @@ type BotTeamMember struct {
 type BotTeamResponse struct {
 	// Members Owners first, then managers, each ordered by e-mail.
 	Members []BotTeamMember `json:"members"`
+}
+
+// BotWebLoginCodeRequest Body of POST /v1/bot/web-login-codes.
+type BotWebLoginCodeRequest struct {
+	// TelegramUserId The Telegram account that pressed "Open in browser".
+	TelegramUserId int64 `json:"telegram_user_id"`
+}
+
+// BotWebLoginCodeResponse A one-time link to the web event center for the private chat.
+type BotWebLoginCodeResponse struct {
+	// ExpiresAt When the link stops working (5 minutes after it was issued).
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Url `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`. The code is after `#`, so it never reaches a server log.
+	Url string `json:"url"`
+}
+
+// BotWebLoginNotice A sign-in to the web through a bot link that the bot must report.
+type BotWebLoginNotice struct {
+	// SignedInAt When the link was used.
+	SignedInAt time.Time `json:"signed_in_at"`
+
+	// TelegramUserId The Telegram account to tell.
+	TelegramUserId int64 `json:"telegram_user_id"`
+}
+
+// BotWebLoginNoticesResponse Answer of POST /v1/bot/web-login-notices/claim.
+type BotWebLoginNoticesResponse struct {
+	// Notices Sign-ins not reported yet; each is handed out once.
+	Notices []BotWebLoginNotice `json:"notices"`
 }
 
 // BulkSessionPricingRequest AB-48 step 5 - apply one price grid to several sessions of an
@@ -15255,6 +15297,9 @@ type PostV1AuthRegisterJSONRequestBody = AuthRegisterRequest
 // PostV1AuthStepUpJSONRequestBody defines body for PostV1AuthStepUp for application/json ContentType.
 type PostV1AuthStepUpJSONRequestBody = AuthStepUpRequest
 
+// PostV1AuthWebLinkJSONRequestBody defines body for PostV1AuthWebLink for application/json ContentType.
+type PostV1AuthWebLinkJSONRequestBody = AuthWebLinkRequest
+
 // UploadBarcodeBatchJSONRequestBody defines body for UploadBarcodeBatch for application/json ContentType.
 type UploadBarcodeBatchJSONRequestBody UploadBarcodeBatchJSONBody
 
@@ -15299,6 +15344,9 @@ type GetBotOnboardingSiteLinkJSONRequestBody = OnboardingBotActionRequest
 
 // SubmitBotOnboardingApplicationJSONRequestBody defines body for SubmitBotOnboardingApplication for application/json ContentType.
 type SubmitBotOnboardingApplicationJSONRequestBody = OnboardingBotActionRequest
+
+// CreateBotWebLoginCodeJSONRequestBody defines body for CreateBotWebLoginCode for application/json ContentType.
+type CreateBotWebLoginCodeJSONRequestBody = BotWebLoginCodeRequest
 
 // ValidatePromoCodeJSONRequestBody defines body for ValidatePromoCode for application/json ContentType.
 type ValidatePromoCodeJSONRequestBody = ValidatePromoCodeRequest

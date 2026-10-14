@@ -79,6 +79,7 @@ type stubMessage struct {
 	text   string
 	markup json.RawMessage // the reply_markup as sent; nil when it has none
 	data   []string        // callback data of its buttons
+	urls   []string        // addresses of its URL buttons
 	// replyKB is a reply keyboard (the one under the message field) the
 	// message carried, as sent; nil for an inline keyboard or none.
 	replyKB json.RawMessage
@@ -343,6 +344,7 @@ func (s *stubTelegram) remember(id int, p stubSent) {
 	var kb struct {
 		InlineKeyboard [][]struct {
 			CallbackData string `json:"callback_data"`
+			URL          string `json:"url"`
 		} `json:"inline_keyboard"`
 	}
 	if len(p.ReplyMarkup) > 0 && json.Unmarshal(p.ReplyMarkup, &kb) == nil {
@@ -350,6 +352,9 @@ func (s *stubTelegram) remember(id int, p stubSent) {
 			for _, b := range row {
 				if b.CallbackData != "" {
 					m.data = append(m.data, b.CallbackData)
+				}
+				if b.URL != "" {
+					m.urls = append(m.urls, b.URL)
 				}
 			}
 		}
@@ -516,6 +521,16 @@ func hasPrefixData(data []string, prefix string) bool {
 }
 
 // keyboardOf is the callback data of a message's buttons now.
+// urlsOf returns the addresses of a message's URL buttons.
+func (s *stubTelegram) urlsOf(id int) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if m := s.msgs[id]; m != nil {
+		return append([]string(nil), m.urls...)
+	}
+	return nil
+}
+
 func (s *stubTelegram) keyboardOf(id int) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()

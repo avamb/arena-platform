@@ -109,6 +109,8 @@ export interface AuthState {
   refreshes: number;
   /** Lifetime of an access token. Short ones force a rotation per use. */
   ttlMs: number;
+  /** The bot link code was exchanged: a second exchange is refused. */
+  linkUsed?: boolean;
 }
 
 export function newAuthState(ttlMs = 3_600_000): AuthState {
@@ -181,6 +183,16 @@ export async function mockApi(
       return json(route, 200, tokens(auth, auth.refreshes + 1));
     }
     if (m === "POST" && path === "/v1/auth/logout") return route.fulfill({ status: 204, headers: CORS });
+    // A bot link: "good-link-code" works once, anything else is refused.
+    if (m === "POST" && path === "/v1/auth/web/link") {
+      const body = req.postDataJSON() as { code: string };
+      if (body.code !== "good-link-code" || auth.linkUsed) {
+        return json(route, 400, { error: { code: "auth.web_link_invalid", message: "refused" } });
+      }
+      auth.linkUsed = true;
+      auth.compromised = false;
+      return json(route, 200, tokens(auth, 1));
+    }
     if (m === "POST" && path === "/v1/auth/password-reset/request") return json(route, 202, { status: "accepted" });
     if (m === "POST" && path === "/v1/auth/password-reset/confirm") {
       // "used-token" stands for a link that was already opened once.

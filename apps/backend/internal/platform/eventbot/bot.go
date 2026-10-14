@@ -312,6 +312,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	if b.selfOnboarding {
 		go b.onbNoticeLoop(ctx)
 	}
+	go b.webNoticeLoop(ctx)
 	go b.dialogSweepLoop(ctx)
 	go b.draftSweepLoop(ctx)
 	go b.recoverLostRefundSends(ctx)
@@ -550,6 +551,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.eventsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "el:"))
 	case "ec":
 		b.ecCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ec:"))
+	case "web":
+		b.webCallback(ctx, chatID, from, strings.TrimPrefix(cq.Data, "web:"))
 	case "or":
 		b.ordersCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "or:"))
 	case "iv":
@@ -775,6 +778,9 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 	}
 	if len(id.Memberships) > 1 {
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_org", nil), CallbackData: "org"}})
+	}
+	if row := b.webMenuRow(loc, id); row != nil { // the web event center (spec 37 §4.3)
+		rows = append(rows, row)
 	}
 	rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ec.notif_btn", nil), CallbackData: "ec:nt"}})
 	rows = append(rows, b.scannerRow(loc))

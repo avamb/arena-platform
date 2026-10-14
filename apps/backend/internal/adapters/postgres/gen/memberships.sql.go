@@ -184,6 +184,25 @@ func (q *Queries) GetActiveRolesForUser(ctx context.Context, userID uuid.UUID) (
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// HasPlatformRole
+// ─────────────────────────────────────────────────────────────────────────────
+
+const hasPlatformRole = `SELECT EXISTS (
+    SELECT 1
+    FROM   user_roles ur
+    WHERE  ur.user_id = $1
+      AND  ur.org_id IS NULL
+)`
+
+// HasPlatformRole reports whether the user holds any platform-level role, that
+// is a user_roles row with no organization.
+func (q *Queries) HasPlatformRole(ctx context.Context, userID uuid.UUID) (bool, error) {
+	var has bool
+	err := q.db.QueryRow(ctx, hasPlatformRole, userID).Scan(&has)
+	return has, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetActiveRolesForUserInOrg
 // ─────────────────────────────────────────────────────────────────────────────
 

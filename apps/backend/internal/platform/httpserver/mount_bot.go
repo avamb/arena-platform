@@ -44,5 +44,9 @@ func (s *Server) mountBotRoutes(r chi.Router) {
 	r.Group(func(pr chi.Router) {
 		pr.Use(hbot.RequireServiceToken(serviceToken))
 		pr.Post("/bot/invitations/accept", s.handleAcceptBotInvitation)
+		// "Open in browser" (spec 37 §4.3): a one-time web link for the
+		// linked person, and the sign-ins the bot reports back.
+		pr.Post("/bot/web-login-codes", s.handleCreateWebLoginCode)
+		pr.Post("/bot/web-login-notices/claim", s.handleClaimWebLoginNotices)
 	})
 }

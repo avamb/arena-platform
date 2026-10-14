@@ -26,6 +26,8 @@ export const API = {
   passwordResetRequest: { method: "POST", path: "/v1/auth/password-reset/request" },
   // The password again before a money action (spec 37 §4.6).
   stepUp: { method: "POST", path: "/v1/auth/step-up" },
+  // The bot's "Open in browser" link (spec 37 §4.3).
+  webLink: { method: "POST", path: "/v1/auth/web/link" },
   passwordResetConfirm: { method: "POST", path: "/v1/auth/password-reset/confirm" },
   me: { method: "GET", path: "/v1/me" },
   orgMe: { method: "GET", path: "/v1/organizations/{org_id}/me" },

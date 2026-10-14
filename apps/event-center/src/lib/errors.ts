@@ -29,6 +29,18 @@ export function setPasswordErrorKey(err: unknown): MessageKey {
   return "common.error.generic";
 }
 
+/** Errors of POST /v1/auth/web/link. Each one says what to do next. */
+export function linkLoginErrorKey(err: unknown): MessageKey {
+  if (err instanceof ApiError) {
+    if (err.status === 0) return "common.error.network";
+    if (err.code === "auth.web_link_superadmin") return "linkLogin.error.superadmin";
+    if (err.code === "auth.user_deactivated") return "login.error.deactivated";
+    if (err.code === "auth.rate_limited" || err.status === 429) return "login.error.rateLimited";
+    if (err.code === "auth.web_link_invalid" || err.status === 400) return "linkLogin.error.invalid";
+  }
+  return "common.error.generic";
+}
+
 export function loginErrorKey(err: unknown): MessageKey {
   if (err instanceof ApiError) {
     if (err.status === 0) return "common.error.network";

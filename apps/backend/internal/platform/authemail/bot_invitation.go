@@ -73,6 +73,7 @@ func (h *Handler) HandleBotInvitationEmail(ctx context.Context, payload []byte) 
 
 	link := BotDeepLink(h.botUsername, p.Code)
 	subject, htmlBody, textBody := renderBotInvitationEmail(p.Locale, p.OrgName, p.Role, link, p.ExpiresAt)
+	htmlBody, textBody = withEventCenterLine(p.Locale, h.eventCenter, htmlBody, textBody)
 
 	h.logger.Info("authemail: sending bot invitation email",
 		slog.String("user_id", p.UserID),

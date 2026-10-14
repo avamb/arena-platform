@@ -33,6 +33,7 @@
 package hauth
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -211,41 +212,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Feature #118: session tracking + concurrent-session enforcement (post-commit, best-effort).
-	if h.sessionStore != nil {
-		userIDStr := actorID.String()
-		now := time.Now().UTC()
-
-		if h.maxConcurrentSessions > 0 {
-			tokensToEvict, evictErr := h.sessionStore.PruneAndEvict(ctx, userIDStr, h.maxConcurrentSessions-1, now)
-			if evictErr != nil {
-				logger.Warn("auth.login: session prune failed (continuing)", "error", evictErr)
-			} else if len(tokensToEvict) > 0 {
-				evictTx, txErr := h.db.BeginTx(ctx, pgx.TxOptions{})
-				if txErr != nil {
-					logger.Warn("auth.login: cannot begin evict tx", "error", txErr)
-				} else {
-					eq := gen.New(evictTx)
-					for _, tok := range tokensToEvict {
-						if rErr := eq.RevokeRefreshToken(ctx, tok); rErr != nil {
-							logger.Warn("auth.login: DB revoke evicted session failed",
-								"error", rErr,
-								"token_prefix", tok[:min(len(tok), 8)],
-							)
-						}
-						_ = h.sessionStore.RevokeSession(ctx, userIDStr, tok, now.Add(refreshTokenTTL))
-					}
-					if cErr := evictTx.Commit(ctx); cErr != nil {
-						logger.Warn("auth.login: commit evict tx failed", "error", cErr)
-						_ = evictTx.Rollback(ctx)
-					}
-				}
-			}
-		}
-
-		if trackErr := h.sessionStore.TrackSession(ctx, userIDStr, refreshToken, refreshExp); trackErr != nil {
-			logger.Warn("auth.login: session track failed (continuing)", "error", trackErr)
-		}
-	}
+	h.trackNewSession(ctx, actorID, refreshToken, refreshExp)
 
 	slog.Info("auth.login: successful login",
 		"user_id", actorID.String(),
@@ -469,4 +436,46 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		"expires_at":    exp.UTC().Format(time.RFC3339),
 		"user_id":       actorID.String(),
 	})
+}
+
+// trackNewSession records a new sign-in in the session store and evicts the
+// oldest sessions above MaxConcurrentSessions (feature #118). It runs after
+// the sign-in committed and never fails it.
+func (h *Handler) trackNewSession(ctx context.Context, actorID uuid.UUID, refreshToken string, refreshExp time.Time) {
+	logger := logging.FromContext(ctx)
+	if h.sessionStore != nil {
+		userIDStr := actorID.String()
+		now := time.Now().UTC()
+
+		if h.maxConcurrentSessions > 0 {
+			tokensToEvict, evictErr := h.sessionStore.PruneAndEvict(ctx, userIDStr, h.maxConcurrentSessions-1, now)
+			if evictErr != nil {
+				logger.Warn("auth.login: session prune failed (continuing)", "error", evictErr)
+			} else if len(tokensToEvict) > 0 {
+				evictTx, txErr := h.db.BeginTx(ctx, pgx.TxOptions{})
+				if txErr != nil {
+					logger.Warn("auth.login: cannot begin evict tx", "error", txErr)
+				} else {
+					eq := gen.New(evictTx)
+					for _, tok := range tokensToEvict {
+						if rErr := eq.RevokeRefreshToken(ctx, tok); rErr != nil {
+							logger.Warn("auth.login: DB revoke evicted session failed",
+								"error", rErr,
+								"token_prefix", tok[:min(len(tok), 8)],
+							)
+						}
+						_ = h.sessionStore.RevokeSession(ctx, userIDStr, tok, now.Add(refreshTokenTTL))
+					}
+					if cErr := evictTx.Commit(ctx); cErr != nil {
+						logger.Warn("auth.login: commit evict tx failed", "error", cErr)
+						_ = evictTx.Rollback(ctx)
+					}
+				}
+			}
+		}
+
+		if trackErr := h.sessionStore.TrackSession(ctx, userIDStr, refreshToken, refreshExp); trackErr != nil {
+			logger.Warn("auth.login: session track failed (continuing)", "error", trackErr)
+		}
+	}
 }

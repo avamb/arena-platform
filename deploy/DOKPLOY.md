@@ -306,7 +306,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `BREVO_API_BASE_URL` (production: unset or `https://api.brevo.com`) | ● | ● | — | — |
 | `APP_PUBLIC_URL` (`https://`) | ✅ | ✅ | — | — |
 | `API_PUBLIC_URL` (`https://` when set; required with the Bil24 gateway) | ● | ● | — | — |
-| `EVENT_CENTER_PUBLIC_URL` (`https://` when set) | — | ● | — | — |
+| `EVENT_CENTER_PUBLIC_URL` (`https://` when set) | ● | ● | — | — |
 | `PUBLIC_TICKETS_BASE_URL` | ● | ● | ● | — |
 | `ONBOARDING_ENABLED`, `ONBOARDING_TERMS_URL`, `ONBOARDING_PRIVACY_URL` | ● | — | — | — |
 | `ONBOARDING_SITE_URL` | ● | ● | — | — |

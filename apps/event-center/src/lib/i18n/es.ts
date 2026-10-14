@@ -57,6 +57,12 @@ export const es: Record<MessageKey, string> = {
   "forgot.sent": "Si este correo tiene una cuenta de Arena, el enlace ya va de camino. Revisa la bandeja de entrada y la carpeta de spam.",
   "forgot.back": "Volver a la pantalla de acceso",
 
+  "linkLogin.title": "Entrar desde el bot",
+  "linkLogin.working": "Un momento, estamos iniciando tu sesión…",
+  "linkLogin.toLogin": "Entrar con e-mail y contraseña",
+  "linkLogin.error.invalid": "Este enlace ya no funciona. Un enlace funciona una vez y durante 5 minutos. Pulsa de nuevo «🌐 Abrir en el navegador» en el bot.",
+  "linkLogin.error.missing": "El enlace está incompleto. Pulsa «🌐 Abrir en el navegador» en el bot y abre el enlace nuevo.",
+  "linkLogin.error.superadmin": "Eres superadmin de la plataforma. Trabaja en la consola de administración.",
   "stepUp.title": "Confirma tu contraseña",
   "stepUp.intro": "Esta acción cambia una devolución o un pago. Para proteger el dinero, escribe otra vez la contraseña de tu cuenta.",
   "stepUp.password": "Contraseña",
