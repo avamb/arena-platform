@@ -51,6 +51,19 @@ func (m *memDialogTable) UpsertBotDialog(_ context.Context, tg int64, orgID *uui
 	return row, nil
 }
 
+func (m *memDialogTable) UpdateBotDialogQuiet(_ context.Context, tg int64, orgID *uuid.UUID, kind, step string, state json.RawMessage, expiresAt time.Time) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k := memDialogKey{tg, kind}
+	row, ok := m.rows[k]
+	if !ok {
+		return 0, nil
+	}
+	row.OrgID, row.Step, row.State, row.ExpiresAt = orgID, step, append(json.RawMessage(nil), state...), expiresAt
+	m.rows[k] = row // touched (the recency order) is left as it was
+	return 1, nil
+}
+
 func (m *memDialogTable) GetBotDialog(_ context.Context, tg int64, kind string) (gen.BotDialogRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

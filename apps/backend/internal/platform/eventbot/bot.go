@@ -87,6 +87,7 @@ type Bot struct {
 	// dialogs keeps the short multi-step dialogs (the team invite, ...) in
 	// bot_dialogs, so a restart loses none of them.
 	dialogs          DialogStore
+	textRoutes       map[string]dialogTextHandler // nil: dialogTexts (tests replace it)
 	dialogSweepEvery time.Duration
 	draftSweepEvery  time.Duration
 	// limiter is the per-account message limit (spec 35 §4.4); cbLimiter is

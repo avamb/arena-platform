@@ -200,7 +200,7 @@ func (b *Bot) recoverLostRefundSends(ctx context.Context) {
 				return
 			}
 			cur.RestartNoticed = true
-			marked = b.saveRefund(c, tg, cur, refStepSending)
+			marked = b.saveRefundQuiet(c, tg, cur, refStepSending)
 		}
 		if b.serial == nil {
 			mark(ctx)
@@ -312,11 +312,37 @@ func newRefundDialog(orgID uuid.UUID, num int64, opts openapi.OrderRefundOptions
 
 func (b *Bot) saveRefund(ctx context.Context, tg int64, st refundDialog, step string) bool {
 	orgID := st.OrgID
-	if err := b.dialogs.Save(ctx, tg, &orgID, refundDialogKind, step, st, dialogTTL); err != nil {
+	if err := b.dialogs.Save(ctx, tg, &orgID, refundDialogKind, step, st, refundTTL(st)); err != nil {
 		b.logger.Error("eventbot: refund dialog save failed", slog.Int64("telegram_user_id", tg), slog.String("error", err.Error()))
 		return false
 	}
 	return true
+}
+
+// saveRefundQuiet rewrites the refund dialog without making it the newest
+// dialog (DialogStore.SaveQuiet): a background answer, a restart notice or
+// parking on the way out must not take a text the person types for the
+// dialog they opened meanwhile. A dialog that is gone stays gone.
+func (b *Bot) saveRefundQuiet(ctx context.Context, tg int64, st refundDialog, step string) bool {
+	orgID := st.OrgID
+	found, err := b.dialogs.SaveQuiet(ctx, tg, &orgID, refundDialogKind, step, st, refundTTL(st))
+	if err != nil {
+		b.logger.Error("eventbot: refund dialog save failed", slog.Int64("telegram_user_id", tg), slog.String("error", err.Error()))
+		return false
+	}
+	return found
+}
+
+// refundAttemptedTTL keeps the key of an operation that may have started:
+// sending it again with the same key replays it, so losing the key after the
+// usual 30 minutes would turn the next attempt into a second refund.
+const refundAttemptedTTL = 7 * 24 * time.Hour
+
+func refundTTL(st refundDialog) time.Duration {
+	if st.Attempted {
+		return refundAttemptedTTL
+	}
+	return dialogTTL
 }
 
 // leaveIdleRefund ends the dialog when the person goes elsewhere, but never
@@ -332,7 +358,7 @@ func (b *Bot) leaveIdleRefund(ctx context.Context, tg int64) {
 		// stops taking typed text.
 		if !st.Parked {
 			st.Parked = true
-			b.saveRefund(ctx, tg, st, step)
+			b.saveRefundQuiet(ctx, tg, st, step)
 		}
 		return
 	}
@@ -387,6 +413,14 @@ func (b *Bot) refundCallback(ctx context.Context, chatID int64, msgID int, from 
 			// (same key) comes back instead of a new one.
 			st.Parked = false
 			b.showRefundFinal(ctx, chatID, &msgID, id, st, b.texts.T(loc, "bot.ref.maybe_started", nil)+"\n\n")
+			return
+		}
+		if found && st.mayHaveStarted(step) {
+			// Another order's refund may have started: its dialog holds the
+			// only key that replays it, so it is never overwritten. The
+			// person settles that order first.
+			b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.other_maybe_started", map[string]any{"Num": st.Num}),
+				b.otherRefundKeyboard(loc, st, id))
 			return
 		}
 		b.startRefund(ctx, chatID, &msgID, from, id, jwt, target)
@@ -480,19 +514,38 @@ func (b *Bot) refundCallback(ctx context.Context, chatID int64, msgID int, from 
 			b.showRefundPick(ctx, chatID, &msgID, id, st, stale)
 		}
 	case "no":
-		if st.mayHaveStarted(step) {
-			// The server may already be returning the money: "Cancel" must
-			// not drop the key, or a new attempt would be a second refund.
-			// The operation is parked like the menu parks it; the order's
-			// refund button brings the same key back.
-			st.Parked = true
-			b.saveRefund(ctx, from.ID, st, step)
-			b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.cancel_maybe_started", map[string]any{"Num": st.Num}), b.resendResultKeyboard(loc, st.OrderID))
-			return
-		}
-		b.leaveRefund(ctx, from.ID)
-		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.cancelled", nil), b.resendResultKeyboard(loc, st.OrderID))
+		key := b.cancelRefund(ctx, from.ID, st, step)
+		b.reply(ctx, chatID, &msgID, b.texts.T(loc, key, map[string]any{"Num": st.Num}), b.resendResultKeyboard(loc, st.OrderID))
 	}
+}
+
+// cancelRefund handles "Cancel" on a refund screen and answers the text to
+// show. An operation that may have started is parked with its key, like the
+// menu parks it, because the server may already be returning the money and a
+// new attempt with a new key would be a second refund: the order's refund
+// button brings the same key back. Anything else ends: nothing was sent.
+func (b *Bot) cancelRefund(ctx context.Context, tg int64, st refundDialog, step string) string {
+	if st.mayHaveStarted(step) {
+		st.Parked = true
+		b.saveRefund(ctx, tg, st, step)
+		return "bot.ref.cancel_maybe_started"
+	}
+	b.leaveRefund(ctx, tg)
+	return "bot.ref.cancelled"
+}
+
+// otherRefundKeyboard leads back to the order whose refund may have started:
+// its refund (the same operation) when it belongs to the organization the
+// person works in now, and the main menu.
+func (b *Bot) otherRefundKeyboard(loc string, st refundDialog, id *Identity) *models.InlineKeyboardMarkup {
+	var rows [][]models.InlineKeyboardButton
+	if id.Current != nil && id.Current.OrgID == st.OrgID {
+		rows = append(rows, []models.InlineKeyboardButton{{
+			Text: b.texts.T(loc, "bot.ref.other_open_btn", map[string]any{"Num": st.Num}), CallbackData: "or:f:s:" + st.OrderID.String(),
+		}})
+	}
+	rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}})
+	return &models.InlineKeyboardMarkup{InlineKeyboard: rows}
 }
 
 // refundPressLocked reports a press that would change an operation which may
@@ -845,7 +898,7 @@ func (b *Bot) finishRefundSend(ctx context.Context, chatID int64, msgID int, tg 
 		}
 		if toFinal {
 			st.SendingAt = time.Time{}
-			b.saveRefund(c, tg, st, refStepFinal)
+			b.saveRefundQuiet(c, tg, st, refStepFinal)
 			return
 		}
 		b.leaveRefund(c, tg)
@@ -1084,12 +1137,18 @@ func (b *Bot) refundText(ctx context.Context, chatID int64, from *models.User, t
 	}
 	// A refund with the server waits for buttons only: a typed text then
 	// belongs to whatever other dialog asked for it.
-	if !found || st.Parked || (step != refStepAmount && step != refStepReasonTxt && step != refStepWord && step != refStepFinal) {
+	// The final screen takes no text either: only its buttons send money,
+	// and a background answer may have left the dialog there while the
+	// person typed for another one.
+	if !found || st.Parked || (step != refStepAmount && step != refStepReasonTxt && step != refStepWord) {
 		return false
 	}
 	id, _, err := b.resolveIdentity(ctx, from.ID)
-	if err != nil || id.Current == nil || id.Current.OrgID != st.OrgID || !canRefund(id) {
-		b.leaveRefund(ctx, from.ID)
+	if err != nil {
+		return false // a passing failure: the dialog and its key stay as they are
+	}
+	if id.Current == nil || id.Current.OrgID != st.OrgID || !canRefund(id) {
+		b.leaveIdleRefund(ctx, from.ID) // keeps the key of an operation that may have started
 		return false
 	}
 	loc := id.Locale()
@@ -1121,8 +1180,6 @@ func (b *Bot) refundText(ctx context.Context, chatID int64, from *models.User, t
 			return true
 		}
 		b.showRefundFinal(ctx, chatID, edit, id, st, "")
-	case refStepFinal:
-		b.showRefundFinal(ctx, chatID, edit, id, st, "") // only the buttons send money
 	}
 	return true
 }
