@@ -49,7 +49,7 @@ const (
 
 	// seedPassword is the plaintext of all three accounts. Only its bcrypt
 	// hash reaches the database; the value is a test one for this fixture.
-	seedPassword = "E2e-Twin-Pass!47"
+	seedPassword = "E2e-Twin-Pass!47" //nolint:gosec // G101: test fixture credential, never a real one.
 )
 
 // person is one account of the fixture.
