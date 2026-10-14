@@ -83,19 +83,55 @@ func TestLetterRetention_CountsFromTheEventDate(t *testing.T) {
 		changeLetter, change); err != nil {
 		t.Fatal(err)
 	}
-	for name, id := range map[string]uuid.UUID{"ticket": ticket, "invitation": invitation, "change": changeLetter} {
+	// 4. A refund letter goes through the order like a ticket letter.
+	refund := begin(emailstatus.NewLetter{OrderID: &seed.OrderID, Kind: emailstatus.KindRefund})
+	for name, id := range map[string]uuid.UUID{"ticket": ticket, "invitation": invitation, "change": changeLetter, "refund": refund} {
 		if got := start(id); !got.Equal(sessionEnd) {
 			t.Errorf("%s letter: retention starts %v, want the session's end %v", name, got, sessionEnd)
 		}
 	}
 
-	// 4. A letter tied to no session counts from the moment it was sent.
+	// 5. A letter tied to two sessions (its order's, and another one through
+	// a change notice) counts from the LATER end, whichever path it takes.
+	other := uuid.New()
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM session_changes WHERE session_id = $1`, other)
+		_, _ = pool.Exec(ctx, `DELETE FROM sessions WHERE id = $1`, other)
+	}()
+	var otherEnd time.Time
+	if err := pool.QueryRow(ctx, `INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, currency, currency_source)
+		SELECT $1, event_id, venue_id, now() + interval '500 days', now() + interval '500 days 2 hours', 100, currency, currency_source
+		FROM sessions WHERE id = $2 RETURNING end_at`, other, seed.SessionID).Scan(&otherEnd); err != nil {
+		t.Fatal(err)
+	}
+	var otherChange uuid.UUID
+	if err := pool.QueryRow(ctx, `INSERT INTO session_changes (session_id, event_id, org_id, kinds, old_state, new_state)
+		VALUES ($1, $2, $3, ARRAY['time'], '{}', '{}') RETURNING id`, other, seed.EventID, org).Scan(&otherChange); err != nil {
+		t.Fatal(err)
+	}
+	twoSessions := begin(emailstatus.NewLetter{OrderID: &seed.OrderID, Kind: emailstatus.KindChange})
+	if _, err := pool.Exec(ctx, `INSERT INTO session_change_notices (change_id, order_id, route, email_letter_id)
+		VALUES ($1, $2, 'arena', $3)`, otherChange, seed.OrderID, twoSessions); err != nil {
+		t.Fatal(err)
+	}
+	if got := start(twoSessions); !got.Equal(otherEnd) {
+		t.Errorf("two sessions, the other one later: retention starts %v, want its end %v", got, otherEnd)
+	}
+	if err := pool.QueryRow(ctx, `UPDATE sessions SET start_at = now() + interval '100 days',
+		end_at = now() + interval '100 days 2 hours' WHERE id = $1 RETURNING end_at`, other).Scan(&otherEnd); err != nil {
+		t.Fatal(err)
+	}
+	if got := start(twoSessions); !got.Equal(sessionEnd) {
+		t.Errorf("two sessions, the order's one later: retention starts %v, want its end %v", got, sessionEnd)
+	}
+
+	// 6. A letter tied to no session counts from the moment it was sent.
 	loose := begin(emailstatus.NewLetter{Kind: emailstatus.KindInvitation, TicketNumbers: []string{"AB12CD34"}})
 	if got, want := start(loose), sentAt(loose); !got.Equal(want) {
 		t.Errorf("letter without a session: retention starts %v, want sent_at %v", got, want)
 	}
 
-	// 5. A show that is already over: the letter is the later moment.
+	// 7. A show that is already over: the letter is the later moment.
 	if _, err := pool.Exec(ctx, `UPDATE sessions SET start_at = now() - interval '30 days',
 		end_at = now() - interval '30 days' + interval '2 hours' WHERE id = $1`, seed.SessionID); err != nil {
 		t.Fatal(err)
