@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 func tier(id, name string, price int64) TierSnap {
@@ -248,5 +249,70 @@ func TestLink(t *testing.T) {
 	}
 	if Link("", e) != "" {
 		t.Error("no base address: want no link")
+	}
+}
+
+func TestStorefrontBlock_OneLinePerStorefront(t *testing.T) {
+	fronts := []Storefront{
+		{Name: "Arena sales page", State: StateLive},
+		{Name: "lampyrisevents.com", State: StateWaiting},
+		{Name: "vinoandco.events", State: StateSynced},
+		{Name: "old <site>", State: StateIdle},
+	}
+	want := "🛒 <b>Storefronts</b>\n" +
+		"• Arena sales page: updated\n" +
+		"• lampyrisevents.com: waiting for sync\n" +
+		"• vinoandco.events: updated\n" +
+		"• old &lt;site&gt;: no catalog fetch for over 7 days"
+	if got := StorefrontBlock(fronts); got != want {
+		t.Errorf("block:\n%s\nwant:\n%s", got, want)
+	}
+	if got := WithStorefronts("msg", fronts); got != "msg\n\n"+want {
+		t.Errorf("WithStorefronts = %q", got)
+	}
+	if got := WithStorefronts("msg", nil); got != "msg" {
+		t.Errorf("no storefronts must leave the text alone, got %q", got)
+	}
+	if got := WithStorefronts("", fronts); got != "" {
+		t.Errorf("a silent change must stay silent, got %q", got)
+	}
+}
+
+func TestSiteSyncedText(t *testing.T) {
+	one := SiteSyncedText("Concert <live>", []SiteDelay{{Name: "lampyrisevents.com", After: 7*time.Minute + 20*time.Second}})
+	if want := "✅ <b>Concert &lt;live&gt;</b> — lampyrisevents.com picked up the change (after 7 min)"; one != want {
+		t.Errorf("one site:\n%s\nwant:\n%s", one, want)
+	}
+	two := SiteSyncedText("Concert", []SiteDelay{
+		{Name: "a.com", After: 20 * time.Second},
+		{Name: "b.com", After: 95 * time.Minute},
+	})
+	if want := "✅ <b>Concert</b> — sites picked up the change\n• a.com (after under 1 min)\n• b.com (after 1 h 35 min)"; two != want {
+		t.Errorf("two sites:\n%s\nwant:\n%s", two, want)
+	}
+}
+
+func TestSiteLateText(t *testing.T) {
+	one := SiteLateText("Concert", []string{"lampyrisevents.com"})
+	if want := "⚠️ <b>Concert</b> — lampyrisevents.com has not picked up the change for 30 min"; one != want {
+		t.Errorf("one site:\n%s\nwant:\n%s", one, want)
+	}
+	two := SiteLateText("Concert", []string{"a.com", "b.com"})
+	if want := "⚠️ <b>Concert</b> — sites have not picked up the change for 30 min\n• a.com\n• b.com"; two != want {
+		t.Errorf("two sites:\n%s\nwant:\n%s", two, want)
+	}
+}
+
+func TestHumanDuration(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		10 * time.Second:  "under 1 min",
+		90 * time.Second:  "2 min",
+		30 * time.Minute:  "30 min",
+		60 * time.Minute:  "1 h",
+		125 * time.Minute: "2 h 5 min",
+	} {
+		if got := humanDuration(d); got != want {
+			t.Errorf("humanDuration(%s) = %q, want %q", d, got, want)
+		}
 	}
 }

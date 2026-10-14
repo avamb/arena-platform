@@ -195,9 +195,19 @@ func (w *Watcher) RunOnce(ctx context.Context, now time.Time) (int, error) {
 			} else {
 				text = ChangedText(*r.announced, ev, w.base)
 			}
+			// The version announced now was first seen at observedAt: a site
+			// that started a catalog fetch after it already carries it.
+			var fronts []Storefront
+			if text != "" {
+				fronts, err = LoadStorefronts(ctx, w.pool, ev.ID, ev.OrgID, r.observedAt, now)
+				if err != nil {
+					return sent, err
+				}
+				text = WithStorefronts(text, fronts)
+			}
 			// Record first, send second: a crash between the two loses one
 			// message instead of repeating it forever.
-			if err := w.setAnnounced(ctx, ev, digest, now); err != nil {
+			if err := w.recordAnnouncement(ctx, ev, digest, text != "", fronts, r.observedAt, now); err != nil {
 				return sent, err
 			}
 			if text != "" && w.announcer != nil {
@@ -206,7 +216,32 @@ func (w *Watcher) RunOnce(ctx context.Context, now time.Time) (int, error) {
 			}
 		}
 	}
-	return sent, nil
+	synced, err := w.processSiteSync(ctx, now)
+	return sent + synced, err
+}
+
+// recordAnnouncement stores the announced snapshot and, when a message goes
+// out, replaces the event's tracked sites with this announcement's — one
+// transaction, so a newer change always supersedes the older one's pending
+// confirmations.
+func (w *Watcher) recordAnnouncement(ctx context.Context, ev Event, digest string, announcing bool, fronts []Storefront, changedAt, now time.Time) error {
+	tx, err := w.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("eventwatch: begin announcement: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := setAnnounced(ctx, tx, ev, digest, now); err != nil {
+		return err
+	}
+	if announcing {
+		if err := recordSiteSync(ctx, tx, ev.ID, fronts, changedAt, now); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("eventwatch: commit announcement: %w", err)
+	}
+	return nil
 }
 
 func (w *Watcher) isSeeded(ctx context.Context) (bool, error) {
@@ -299,12 +334,12 @@ func (w *Watcher) setObserved(ctx context.Context, eventID, digest string, now t
 	return nil
 }
 
-func (w *Watcher) setAnnounced(ctx context.Context, ev Event, digest string, now time.Time) error {
+func setAnnounced(ctx context.Context, db execer, ev Event, digest string, now time.Time) error {
 	raw, err := json.Marshal(ev.Snapshot)
 	if err != nil {
 		return fmt.Errorf("eventwatch: marshal snapshot: %w", err)
 	}
-	if _, err := w.pool.Exec(ctx, `
+	if _, err := db.Exec(ctx, `
 		UPDATE event_watch_snapshots
 		   SET announced = $2, announced_digest = $3, observed_digest = $3,
 		       observed_at = $4, announced_at = $4, updated_at = now()
