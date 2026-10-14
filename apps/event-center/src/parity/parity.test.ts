@@ -6,14 +6,16 @@
  * 2. every route of the parity matrix exists in openapi.yaml;
  * 3. every route the web calls belongs to a function of the matrix;
  * 4. no web call goes to a superadmin route (/v1/admin/*);
- * 5. the table in 08_architecture/37_web_event_center_ru.md equals
+ * 5. a function is "done" only with its twin test file in tests/smoke (R1 is
+ *    waived as legacy; see matrix.ts);
+ * 6. the table in 08_architecture/37_web_event_center_ru.md equals
  *    renderParityTable(). Run with UPDATE_PARITY=1 to rewrite it.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { API } from "@/lib/api/routes";
-import { PARITY, parityRoutes, renderParityTable } from "@/parity/matrix";
+import { PARITY, parityRoutes, readyViolations, renderParityTable } from "@/parity/matrix";
 
 const OPENAPI = fileURLToPath(new URL("../../../backend/openapi/openapi.yaml", import.meta.url));
 const SPEC = fileURLToPath(new URL("../../../../08_architecture/37_web_event_center_ru.md", import.meta.url));
@@ -37,6 +39,9 @@ function openapiOperations(): Set<string> {
   }
   return ops;
 }
+
+const SMOKE_DIR = fileURLToPath(new URL("../../tests/smoke/", import.meta.url));
+const smokeFileExists = (file: string): boolean => existsSync(SMOKE_DIR + file);
 
 const ops = openapiOperations();
 const webCalls = Object.entries(API).map(([name, r]) => ({ name, op: `${r.method} ${r.path}` }));
@@ -64,6 +69,27 @@ describe("web calls", () => {
   });
 });
 
+describe("twin test rule", () => {
+  const base = { area: "A", fn: "F", bot: "b", routes: [] as string[] };
+  const none = () => false;
+  const has = () => true;
+  it("refuses a done function whose twin file is missing", () => {
+    const rows = [{ ...base, web: "R4" as const, ready: { twin: "refund.twin.spec.ts" } }];
+    expect(readyViolations(rows, none)).toHaveLength(1);
+    expect(readyViolations(rows, has)).toEqual([]);
+  });
+  it("refuses a done function with no twin outside the R1 waiver", () => {
+    expect(readyViolations([{ ...base, web: "R4" as const, ready: { twin: null, legacy: true as const } }], has)).toHaveLength(1);
+    expect(readyViolations([{ ...base, web: "R1" as const, ready: { twin: null } }], has)).toHaveLength(1);
+    expect(readyViolations([{ ...base, web: "R1" as const, ready: { twin: null, legacy: true as const } }], has)).toEqual([]);
+  });
+  it("refuses a built R1 function with no ready entry and a missing smoke file", () => {
+    expect(readyViolations([{ ...base, web: "R1" as const }], has)).toHaveLength(1);
+    const rows = [{ ...base, web: "R1" as const, ready: { twin: null, legacy: true as const, smoke: "x.spec.ts" } }];
+    expect(readyViolations(rows, none)).toHaveLength(1);
+  });
+});
+
 describe("parity matrix", () => {
   it("names only routes that exist in openapi.yaml", () => {
     const missing = parityRoutes().filter((r) => !ops.has(r));
@@ -74,6 +100,23 @@ describe("parity matrix", () => {
     const called = new Set(webCalls.map((c) => c.op));
     // Every R1 route is called by the web (R1 is built, so nothing is promised only).
     expect([...r1].filter((op) => !called.has(op))).toEqual([]);
+  });
+  it("has no function marked done without its twin test", () => {
+    expect(readyViolations(PARITY, smokeFileExists)).toEqual([]);
+  });
+  it("has an organization data row for the owner", () => {
+    const row = PARITY.find((r) => r.area === "Данные организации");
+    expect(row).toBeDefined();
+    expect(row?.web).toBe("R3");
+    expect(row?.ready).toBeUndefined(); // planned: stage 4, task 4-7
+    expect(row?.routes).toEqual(
+      expect.arrayContaining([
+        "GET /v1/organizations/{org_id}/seller-profile",
+        "PATCH /v1/organizations/{org_id}/channels/{channel_id}/seller-display",
+        "PATCH /v1/organizations/{id}",
+        "GET /v1/organizations/{org_id}/me",
+      ]),
+    );
   });
   it("is the table of the spec", () => {
     const doc = readFileSync(SPEC, "utf8").replace(/\r\n/g, "\n");
