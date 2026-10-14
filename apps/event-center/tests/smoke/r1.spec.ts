@@ -128,7 +128,9 @@ test.describe("R1 read-only event center", () => {
     await page.getByLabel("Search for an order").fill("nobody");
     await page.getByRole("button", { name: "Search" }).click();
     await expect(page.getByText("No order matches «nobody».")).toBeVisible();
-    expect(state.requests.some((r) => r.includes("/orders?") && r.includes("q=nobody"))).toBe(true);
+    expect(state.requests.some((r) => r.startsWith("POST ") && r.includes("/orders/search") && r.includes('"q":"nobody"'))).toBe(true);
+    // The search travels in the body: no request URL carries it.
+    expect(state.requests.some((r) => r.split(" ")[1]?.includes("nobody"))).toBe(false);
     // Review finding L5: the buyer search never goes into the page address.
     expect(page.url()).not.toContain("nobody");
     await noA11yViolations(page);
@@ -166,9 +168,9 @@ test.describe("R1 read-only event center", () => {
     await expect(page).toHaveURL(new RegExp(`/o/${ORG_A}/orders`));
     await expect(page.getByLabel("Search for an order")).toHaveValue("");
     await expect(page.getByTestId("order-row").first()).toBeVisible();
-    const after = state.requests.slice(before).filter((r) => r.includes("/orders?"));
+    const after = state.requests.slice(before).filter((r) => r.includes("/orders/search"));
     expect(after.length).toBeGreaterThan(0);
-    expect(after.some((r) => r.includes("q="))).toBe(false);
+    expect(after.some((r) => r.includes('"q"'))).toBe(false);
   });
 
   test("an agent sees no orders and no sales figures", async ({ page }) => {
