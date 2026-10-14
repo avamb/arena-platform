@@ -76,6 +76,12 @@ test.describe("R1 read-only event center", () => {
     await page.goto("/accept-invite?token=tok-1&email=anna%40example.test");
     await expect(page.getByRole("heading", { name: "Welcome to the Arena event center" })).toBeVisible();
     await expect(page.getByTestId("accept-invite")).toContainText("anna@example.test");
+    // Password managers save the new password under a visible username field.
+    const email = page.getByLabel("E-mail");
+    await expect(email).toBeVisible();
+    await expect(email).toHaveValue("anna@example.test");
+    await expect(email).toHaveAttribute("readonly", "");
+    await expect(email).toHaveAttribute("autocomplete", "username");
     await page.getByLabel("New password").fill("a long phrase");
     await page.getByLabel("Repeat the password").fill("a long phrase!");
     await page.getByTestId("password-submit").click();
