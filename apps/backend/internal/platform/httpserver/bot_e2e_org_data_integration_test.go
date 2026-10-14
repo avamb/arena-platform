@@ -181,6 +181,9 @@ func TestBotE2E_OrganizationData(t *testing.T) {
 	}
 
 	// ── buyer messages of the contact form: the sales-chat switch ─────────────
+	// The manager's screens were sent before the restart and are out of date
+	// (owner decision 2026-10-14): the manager starts from the menu.
+	manager.say("☰ Меню", "Что будем делать")
 	manager.press("og:tg:0", "только владелец")
 	if got := org("contact_form_to_telegram::text"); got != "true" {
 		t.Errorf("a manager press changed the switch: %s", got)
