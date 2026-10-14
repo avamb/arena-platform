@@ -28,7 +28,9 @@ import (
 )
 
 // MinRetention is how long letters, their events and their interactions are
-// kept at the very least: 24 months. Card networks let a buyer dispute a
+// kept at the very least: 24 months, counted from the event date
+// (RetentionAnchorSQL: the end of the letter's session when that is later
+// than the letter, otherwise sent_at). Card networks let a buyer dispute a
 // payment for up to 120-540 days after the purchase or the event, and the
 // delivery chain of the ticket letter is part of arena's answer. Nothing may
 // delete these rows earlier (tests/staticanalysis/email_letters_retention_test.go
