@@ -418,7 +418,7 @@ func TestBotE2E_Invitations_OwnerIssuesListsAndAnnuls(t *testing.T) {
 	// ── the card and the annul word ─────────────────────────────────────────
 	d.press("iv:lo:0", "действует")
 	d.press("iv:rv", "Аннулировать это приглашение?")
-	d.say("нет", "Это не то слово")
+	d.say("нет", "Текст не совпал")
 	if e.count(`SELECT count(*) FROM tickets WHERE status = 'revoked' AND complimentary_issuance_id IN (SELECT id FROM complimentary_issuances WHERE org_id = $1)`, e.seed.orgID) != 0 {
 		t.Fatal("a wrong word annulled something")
 	}
@@ -674,7 +674,7 @@ func TestBotE2E_Invitations_OtherOrganizationAndGroupChat(t *testing.T) {
 	// A press from a group chat (the chat is not the person's own) is refused
 	// before anything is read or shown.
 	m := e.tg.mark()
-	e.tg.push(fmt.Sprintf(`"callback_query":{"id":"cb-grp","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":"iv:l","message":{"message_id":5,"date":%d,"chat":{"id":-1001234,"type":"supergroup"},"text":"menu"}}`, ecOwnerTG, time.Now().Unix()))
+	e.tg.push(fmt.Sprintf(`"callback_query":{"id":"cb-grp","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":"iv:l","message":{"message_id":5,"date":%d,"chat":{"id":-1001234,"type":"supergroup"},"text":"menu"}}`, ecOwnerTG, e2ePressDate()))
 	e.tg.waitSince(t, m, "только в личном чате")
 }
 

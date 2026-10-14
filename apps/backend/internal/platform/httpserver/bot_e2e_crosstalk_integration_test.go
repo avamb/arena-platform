@@ -349,3 +349,66 @@ func TestBotE2E_BackgroundRefundAnswerDoesNotTakeText(t *testing.T) {
 		t.Errorf("the refund dialog changed: key %q", got)
 	}
 }
+
+// A session waiting for its typed cancel phrase when the bot restarts: the
+// old screen's buttons are out of date, the order's phrase cancels nothing,
+// and the session's own phrase, typed after the restart, still cancels it
+// (a step that waits for text continues, owner decision 2026-10-14).
+func TestBotE2E_SessionCancelPhraseAfterRestart(t *testing.T) {
+	pool := onboardingIntegrationPool(t)
+	f := newBotInviteFixture(t, pool)
+	srv := buildBotIntegrationServer(t, pool)
+	api := httptest.NewServer(srv.router)
+	defer api.Close()
+	seed := seedOrdersBotOrg(t, pool, f.orgID)
+	linkECBotUser(t, f, srv, ecOwnerTG, "owner")
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_email = 'restart-phrase@example.test' WHERE id = $1`, f.orgID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		c := context.Background()
+		_, _ = pool.Exec(c, `DELETE FROM worker_jobs WHERE job_type = 'session.change_email'
+		      AND payload->>'change_id' IN (SELECT id::text FROM session_changes WHERE session_id = $1)`, seed.session1)
+		_, _ = pool.Exec(c, `DELETE FROM session_change_notices WHERE change_id IN (SELECT id FROM session_changes WHERE session_id = $1)`, seed.session1)
+		_, _ = pool.Exec(c, `DELETE FROM session_changes WHERE session_id = $1`, seed.session1)
+	})
+	status := func() string {
+		t.Helper()
+		var s string
+		if err := pool.QueryRow(ctx, `SELECT status FROM sessions WHERE id = $1`, seed.session1).Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+
+	tg := newStubTelegram(t)
+	stop := startDialogTestBot(t, pool, api, tg)
+	defer func() { stop() }()
+	d := ecDriver{t, tg, ecOwnerTG}
+	d.press("ses:list:"+seed.event1.String(), "Сеансы мероприятия")
+	d.press("ses:o:0", "Здесь можно перенести")
+	d.press("ses:cx", "Отмена сеанса")
+	d.press("ses:nomsg", "Отмена сеанса")
+	ask := d.press("ses:go", "это действие нельзя отменить")
+	if !strings.Contains(ask, "ОТМЕНИТЬ СЕАНС") {
+		t.Fatalf("the prompt does not name the session's phrase:\n%s", ask)
+	}
+
+	stop = restartDialogTestBot(t, pool, api, tg, stop)
+
+	// The "Back" button of the screen sent before the restart does nothing.
+	tg.pressStale(t, ecOwnerTG, "ses:confirm")
+	if botDialogCount(t, pool, ecOwnerTG, "sessions") != 1 {
+		t.Fatal("the stale press changed the session dialog")
+	}
+	d.say("ОТМЕНИТЬ ЗАКАЗ", "Текст не совпал")
+	d.say("отменить", "Текст не совпал")
+	if got := status(); got != "scheduled" {
+		t.Fatalf("a wrong phrase after the restart cancelled the session: %q", got)
+	}
+	d.say("Отменить  сеанс", "Сеанс отменён")
+	if got := status(); got != "cancelled" {
+		t.Fatalf("the session's phrase after the restart did not cancel it: %q", got)
+	}
+}

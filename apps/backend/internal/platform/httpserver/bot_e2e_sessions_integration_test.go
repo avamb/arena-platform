@@ -35,7 +35,7 @@ func e2eSessionsMessage(text string) string {
 
 func e2eSessionsCallback(data string) string {
 	return fmt.Sprintf(`"callback_query":{"id":"cb-%d","from":{"id":%d,"is_bot":false,"first_name":"Ses","language_code":"ru"},"chat_instance":"x","data":%q,"message":{"message_id":5,"date":%d,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
-		time.Now().UnixNano()%100000, e2eSessionsTelegramUser, data, time.Now().Unix(), e2eSessionsTelegramUser)
+		time.Now().UnixNano()%100000, e2eSessionsTelegramUser, data, e2ePressDate(), e2eSessionsTelegramUser)
 }
 
 func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {

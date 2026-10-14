@@ -89,7 +89,9 @@ func newFeedBot(t *testing.T) (*Bot, *feedStub) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Bot{tg: tg, texts: NewTexts(nil), logger: slog.New(slog.NewTextHandler(io.Discard, nil)), feed: newFeedMemory()}, stub
+	feed := newFeedMemory()
+	feed.boot -= 10 // started a while ago: a press dated now is of this process
+	return &Bot{tg: tg, texts: NewTexts(nil), logger: slog.New(slog.NewTextHandler(io.Discard, nil)), feed: feed}, stub
 }
 
 func kbOf(data ...string) *models.InlineKeyboardMarkup {
@@ -309,6 +311,7 @@ func TestFeed_BackgroundWorkLeavesTheCurrentScreenAlone(t *testing.T) {
 // message.
 func TestFeed_AnUnknownChatAcceptsAMessageOfThisProcess(t *testing.T) {
 	f := newFeedMemory()
+	f.boot -= 10
 	if !f.admit(42, 7, nowSec()) {
 		t.Fatal("a press in a chat the bot does not know yet was refused")
 	}
@@ -327,7 +330,7 @@ func TestFeed_AnUnknownChatAcceptsAMessageOfThisProcess(t *testing.T) {
 // 0) too.
 func TestFeed_AMessageSentBeforeTheStartIsStale(t *testing.T) {
 	f := newFeedMemory()
-	before := f.boot - 1
+	before, after := f.boot-1, f.boot+1
 	if f.admit(42, 7, before) {
 		t.Fatal("a press on a screen of the previous process was accepted")
 	}
@@ -335,14 +338,19 @@ func TestFeed_AMessageSentBeforeTheStartIsStale(t *testing.T) {
 		t.Fatal("the refused press made the old screen live")
 	}
 	f.add(42, 20) // the bot writes to the chat again
-	if f.admit(42, 7, before) || !f.admit(42, 20, nowSec()) {
+	if f.admit(42, 7, before) || !f.admit(42, 20, after) {
 		t.Fatal("after a new screen only the new screen may be pressed")
 	}
-	if f.admit(-100123, 5, before) || !f.admit(-100123, 5, nowSec()) {
+	if f.admit(-100123, 5, before) || !f.admit(-100123, 5, after) {
 		t.Fatal("a group chat must refuse only the messages of the previous process")
 	}
 	if f.admit(43, 1, 0) {
 		t.Fatal("an inaccessible message (date 0) was accepted")
+	}
+	// The old process may have sent a message in the very second this one
+	// started: it is old too.
+	if f.admit(45, 3, f.boot) || f.admit(-100123, 6, f.boot) {
+		t.Fatal("a message dated the start second was accepted")
 	}
 	// A message this process edited back to life counts as live whatever
 	// its date says (the clocks of Telegram and this host may disagree).

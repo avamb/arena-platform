@@ -181,7 +181,7 @@ func TestBotE2E_MenuButtonAlwaysOpensTheMenu(t *testing.T) {
 	d.press("help", "Что умеет бот")
 	answers := tg.callCount("answerCallbackQuery")
 	tg.push(fmt.Sprintf(`"callback_query":{"id":"cb-stale-menu","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":"help","message":{"message_id":%d,"date":%d,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
-		ecOwnerTG, home, time.Now().Unix(), ecOwnerTG))
+		ecOwnerTG, home, e2ePressDate(), ecOwnerTG))
 	tg.waitCall(t, "answerCallbackQuery", answers)
 	time.Sleep(300 * time.Millisecond)
 	tg.mu.Lock()

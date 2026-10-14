@@ -598,8 +598,14 @@ func e2eMessage(text string) string {
 
 func e2eCallback(data string) string {
 	return fmt.Sprintf(`"callback_query":{"id":"cb-%d",%s,"chat_instance":"x","data":%q,"message":{"message_id":5,"date":%d,"chat":{"id":777,"type":"private"},"text":"menu"}}`,
-		time.Now().UnixNano()%100000, e2eTelegramUser, data, time.Now().Unix())
+		time.Now().UnixNano()%100000, e2eTelegramUser, data, e2ePressDate())
 }
+
+// e2ePressDate dates a press the test makes up on a placeholder message: a
+// second ahead, so a bot started in this very second still counts the screen
+// as its own (feed.go treats the start second as the previous process's).
+// A press the stub aims at a real message carries that message's own date.
+func e2ePressDate() int64 { return time.Now().Unix() + 1 }
 
 // e2eMessageAs / e2eCallbackAs are the same updates from another Telegram
 // account (its private chat id equals its user id, as in Telegram).
@@ -610,7 +616,7 @@ func e2eMessageAs(userID int64, text string) string {
 
 func e2eCallbackAs(userID int64, data string) string {
 	return fmt.Sprintf(`"callback_query":{"id":"cb-%d","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":%q,"message":{"message_id":5,"date":%d,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
-		time.Now().UnixNano()%100000, userID, data, time.Now().Unix(), userID)
+		time.Now().UnixNano()%100000, userID, data, e2ePressDate(), userID)
 }
 
 func TestBotE2E_InvitationToMyEvents(t *testing.T) {

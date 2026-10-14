@@ -1905,7 +1905,7 @@ other = "✔ «{{.Name}}» está eliminado."
 other = "⚠️ <b>Último paso: todavía no se ha eliminado nada.</b>\n\n«{{.Name}}»: fechas: {{.N}}, sin pedidos pagados y sin entradas vendidas. El evento y sus fechas se eliminarán. No se puede deshacer.\n\nPara eliminar, <b>escribe la palabra {{.Word}}</b> y envíala como mensaje. Para conservar el evento, pulsa «Atrás»."
 
 ["bot.evs.delete_wrong"]
-other = "Esa no es la palabra, así que no se ha eliminado nada. Para eliminar, escribe exactamente: {{.Word}}"
+other = "El texto no coincide, así que no se ha eliminado nada. Para eliminar, escribe exactamente: {{.Word}}"
 
 ["bot.evs.delete_blocked"]
 other = "🚫 <b>«{{.Name}}» no se puede eliminar.</b>\n\nTiene {{.Orders}} pedido(s) pagado(s) y {{.Tickets}} entrada(s) vendida(s). Los compradores tienen entradas válidas, así que el evento se queda. Puedes archivarlo: la venta se detiene, el evento sale de tus listas y las entradas siguen siendo válidas."
@@ -2127,7 +2127,7 @@ other = "🚫 Anular invitación"
 other = "🚫 <b>¿Anular esta invitación?</b>\n\n{{.Guest}}\n{{.Event}} · {{.When}}\n\nLa entrada y su código de barras dejan de funcionar al instante y la plaza vuelve a la venta. No se puede deshacer y Arena no avisa al invitado: escríbele tú.\n\nPara anular, escribe la palabra <b>{{.Word}}</b> como mensaje."
 
 ["bot.inv.revoke_wrong"]
-other = "Esa no es la palabra, así que no se ha anulado nada. Para anular, escribe {{.Word}} o pulsa «Atrás»."
+other = "El texto no coincide, así que no se ha anulado nada. Para anular, escribe {{.Word}} o pulsa «Atrás»."
 
 ["bot.inv.revoke_word"]
 other = "ANULAR"
@@ -2328,7 +2328,7 @@ other = "El archivo de uso es demasiado grande para enviarlo por el chat."
 other = "🗑 <b>¿Eliminar el código {{.Code}}?</b>\n\nVeces usado: {{.Count}}. Al eliminarlo, el código sale de la lista, su uso ya no se puede abrir ni exportar aquí y su nombre sigue ocupado, así que ningún código nuevo podrá llamarse igual. Si solo quieres detenerlo, mejor ponlo en pausa. Los pedidos ya pagados no cambian.\n\nPara eliminarlo, escribe exactamente: {{.Word}}"
 
 ["bot.promo.delete_wrong"]
-other = "Esa no es la palabra, así que no se eliminó nada. Para eliminar, escribe exactamente: {{.Word}}"
+other = "El texto no coincide, así que no se ha eliminado nada. Para eliminar, escribe exactamente: {{.Word}}"
 
 ["bot.promo.delete_word"]
 other = "ELIMINAR"
@@ -2885,7 +2885,7 @@ other = "☐ No enviar un correo al comprador"
 other = "DEVOLVER"
 
 ["bot.ref.word_wrong"]
-other = "Esa no es la palabra de confirmación. No se devolvió nada. Escribe {{.Word}} para confirmar o vuelve atrás."
+other = "El texto no coincide, así que no se ha devuelto nada. Para confirmar, escribe {{.Word}} o vuelve atrás."
 
 ["bot.ref.done_head"]
 other = "<b>Devolución solicitada · pedido n.º {{.Num}}</b>"

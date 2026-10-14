@@ -39,7 +39,7 @@ func e2eWizardMessage(text string) string {
 
 func e2eWizardCallback(data string) string {
 	return fmt.Sprintf(`"callback_query":{"id":"cb-%d","from":{"id":%d,"is_bot":false,"first_name":"Wiz","language_code":"ru"},"chat_instance":"x","data":%q,"message":{"message_id":5,"date":%d,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
-		time.Now().UnixNano()%100000, e2eWizardTelegramUser, data, time.Now().Unix(), e2eWizardTelegramUser)
+		time.Now().UnixNano()%100000, e2eWizardTelegramUser, data, e2ePressDate(), e2eWizardTelegramUser)
 }
 
 // e2eWizardDocument is a poster sent as a file (the recommended way, no

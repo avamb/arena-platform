@@ -616,7 +616,7 @@ func TestBotE2E_PromoCodes(t *testing.T) {
 	if mustPmCode(t, pool, f.orgID, "FIVE").Deleted {
 		t.Fatal("the question deletes nothing")
 	}
-	owner.say("нет", "Это не то слово")
+	owner.say("нет", "Текст не совпал")
 	if mustPmCode(t, pool, f.orgID, "FIVE").Deleted {
 		t.Fatal("a wrong word deletes nothing")
 	}

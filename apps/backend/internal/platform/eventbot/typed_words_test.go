@@ -72,3 +72,30 @@ func TestTypedWords_FormsThatStillCount(t *testing.T) {
 		}
 	}
 }
+
+// Each action takes its own phrase and nothing else: of every confirmation
+// word the bot knows, in every language, an order cancel accepts only the
+// order's phrase (the person's language or English) and a session cancel
+// only the session's.
+func TestTypedWords_EachActionAcceptsOnlyItsOwnPhrase(t *testing.T) {
+	b := ecTestBot(t)
+	keys := []string{ordCancelWordKey, sesCancelWordKey, "bot.ref.word", "bot.evs.delete_word", "bot.inv.revoke_word", "bot.promo.delete_word"}
+	var all []string
+	for _, loc := range SupportedLocales {
+		for _, k := range keys {
+			all = append(all, b.texts.T(loc, k, nil))
+		}
+	}
+	for _, loc := range SupportedLocales {
+		ownOrd := map[string]bool{b.ordCancelWord(loc): true, b.ordCancelWord("en"): true}
+		ownSes := map[string]bool{b.sesCancelWord(loc): true, b.sesCancelWord("en"): true}
+		for _, w := range all {
+			if got := b.ordIsCancelWord(loc, w); got != ownOrd[w] {
+				t.Errorf("%s: order cancel accepts %q = %v, want %v", loc, w, got, ownOrd[w])
+			}
+			if got := b.sesIsCancelWord(loc, w); got != ownSes[w] {
+				t.Errorf("%s: session cancel accepts %q = %v, want %v", loc, w, got, ownSes[w])
+			}
+		}
+	}
+}

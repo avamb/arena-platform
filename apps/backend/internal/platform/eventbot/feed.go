@@ -64,8 +64,9 @@ type feedMemory struct {
 	now   func() time.Time
 	swept time.Time
 	// boot is when this process started, in Unix seconds (Telegram dates a
-	// message to the second). A message dated earlier was sent by a previous
-	// process and is never live here.
+	// message to the second). A message dated at or before it may come from
+	// a previous process and is never live here unless this process made it
+	// live.
 	boot int64
 }
 
@@ -78,11 +79,14 @@ func newFeedMemory() *feedMemory {
 	return &feedMemory{chats: map[int64]*chatFeed{}, now: time.Now, boot: time.Now().Unix()}
 }
 
-// beforeBoot reports a message sent before this process started: its
-// Telegram date (Unix seconds) is earlier than the start. A date of 0 is an
-// inaccessible message and counts as old too.
+// beforeBoot reports a message that may have been sent by the previous
+// process: its Telegram date (Unix seconds) is not later than the second this
+// process started in. A message the old process sent in the very second the
+// new one started counts as old; one this process sent in that second is live
+// anyway (admit checks the live set first). A date of 0 is an inaccessible
+// message and counts as old too.
 func (f *feedMemory) beforeBoot(sent int64) bool {
-	return f != nil && sent < f.boot
+	return f != nil && sent <= f.boot
 }
 
 // tracked reports whether a chat's messages are remembered at all: private

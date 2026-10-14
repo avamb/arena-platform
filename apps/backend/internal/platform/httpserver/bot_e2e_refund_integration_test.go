@@ -142,7 +142,7 @@ func TestBotE2E_Refund_OwnerReturnsOneTicket(t *testing.T) {
 	}
 
 	// ── a wrong word refunds nothing
-	d.say("да", "Это не слово подтверждения")
+	d.say("да", "Текст не совпал, поэтому ничего не возвращено")
 	if n, _ := refundCount(t, srv, seed.anna); n != 0 {
 		t.Fatalf("a wrong word created %d refund(s)", n)
 	}
