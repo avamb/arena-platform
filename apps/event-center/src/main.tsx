@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { ApiError } from "@/lib/api/http";
 import { AuthProvider } from "@/lib/auth";
+import { StepUpProvider } from "@/components/StepUpDialog";
 import { I18nProvider } from "@/lib/i18n";
 import { router } from "@/router";
 import "@/styles.css";
@@ -21,6 +22,14 @@ const queryClient = new QueryClient({
   },
 });
 
+// The installable app (PWA): the worker caches the app shell only, never
+// an API answer (public/sw.js). Dev builds skip it: Vite serves source.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+  });
+}
+
 const rootEl = document.getElementById("root");
 if (rootEl === null) throw new Error("#root is missing in index.html");
 
@@ -29,7 +38,9 @@ createRoot(rootEl).render(
     <I18nProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <RouterProvider router={router} />
+          <StepUpProvider>
+            <RouterProvider router={router} />
+          </StepUpProvider>
         </AuthProvider>
       </QueryClientProvider>
     </I18nProvider>

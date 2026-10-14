@@ -35,6 +35,27 @@ server {
         return 200 "ok\n";
     }
 
+    # The service worker must reach every tab on the next visit: never cached.
+    location = /sw.js {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    # The installable-app manifest and its icons carry no hash in their
+    # names: a day of cache, so a new icon reaches every device.
+    location = /manifest.webmanifest {
+        include /etc/nginx/snippets/security-headers.conf;
+        types { }
+        default_type application/manifest+json;
+        add_header Cache-Control "public, max-age=86400" always;
+    }
+
+    location ^~ /icons/ {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "public, max-age=86400" always;
+        try_files $uri =404;
+    }
+
     # Immutable cache for content-hashed assets produced by Vite.
     location ~* \.(js|css|woff2?|ttf|eot|otf|svg|png|jpg|jpeg|gif|ico|webp)$ {
         include /etc/nginx/snippets/security-headers.conf;
