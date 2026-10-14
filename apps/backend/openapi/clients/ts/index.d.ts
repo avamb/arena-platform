@@ -582,13 +582,21 @@ export interface paths {
          * Confirm the password again before a money action
          * @description The signed-in person types their password again and receives a short
          *     step-up token (5 minutes). The money routes (refund create, retry,
-         *     approve and reject) refuse a request from the web event center
-         *     (`X-Client-Channel: event_center_web`) without this token in
-         *     `X-Step-Up-Token` (403 `auth.step_up_required`). Other clients are
-         *     not asked: the owner decided against it for the Telegram bot (spec
-         *     37 section 4.5). The token has its own audience and is never accepted
-         *     as an access token. Wrong passwords are limited to 5 per person in
-         *     15 minutes. A wrong password is 403, not 401, so a client never takes
+         *     resolve, approve and reject, review-hold clear, scan-refund
+         *     exception) refuse a request from the web event center without this
+         *     token in `X-Step-Up-Token` (403 `auth.step_up_required`). A request
+         *     is from the web when it sends `X-Client-Channel: event_center_web`
+         *     OR when its access token was minted from a web sign-in (the `chn`
+         *     claim, taken from the stored session, never from a header). Other
+         *     clients are not asked: the owner decided against it for the Telegram
+         *     bot (spec 37 section 4.5).
+         *
+         *     The token is bound to the sign-in of the access token (its `sid`
+         *     claim) and to the organization named in `org_id`: it does not work
+         *     in another session, after a sign-out, or for an action in another
+         *     organization. It has its own audience and is never accepted as an
+         *     access token. Wrong passwords are limited to 5 per person in 15
+         *     minutes. A wrong password is 403, not 401, so a client never takes
          *     it for an expired access token.
          */
         post: operations["postV1AuthStepUp"];
@@ -6888,6 +6896,9 @@ export interface paths {
          *     reason it was parked with, except that one closed as refunded carries
          *     no failure. A parked refund without a provider is closed as
          *     `refunded` or `not_refunded` exactly as stated and settles nothing. Platform superadmin only, with X-Admin-Reason.
+         *     From the web event center the request also needs the password
+         *     again: X-Step-Up-Token from POST /v1/auth/step-up for this
+         *     organization, otherwise 403 auth.step_up_required.
          */
         post: operations["postV1OrganizationsOrgIdRefundsRefundIdResolve"];
         delete?: never;
@@ -8572,6 +8583,11 @@ export interface components {
         AuthStepUpRequest: {
             /** @description The signed-in person's current password. */
             password: string;
+            /**
+             * Format: uuid
+             * @description The organization of the money action. The token covers actions in this organization only.
+             */
+            org_id: string;
         };
         /** @description Proof of a fresh password confirmation for the money routes. */
         AuthStepUpResponse: {
@@ -23348,7 +23364,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthStepUpResponse"];
                 };
             };
-            /** @description The body is not JSON or has no password (`validation.password_required`). */
+            /** @description The body is not JSON, has no password (`validation.password_required`) or names no organization (`validation.org_id_required`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -23357,7 +23373,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Missing or invalid JWT Authorization header. */
+            /** @description Missing or invalid JWT Authorization header, or the access token comes from no sign-in or from one that has ended (`auth.session_ended`, sign in again). */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -45450,7 +45466,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Not a platform operator (refund.resolve_superadmin_only). */
+            /** @description Not a platform operator (refund.resolve_superadmin_only), or a request from the web event center without a valid step-up token for this organization (auth.step_up_required). */
             403: {
                 headers: {
                     [name: string]: unknown;
