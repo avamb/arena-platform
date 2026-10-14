@@ -22,8 +22,25 @@
 
 ## M3 — Target compatibility
 
-- локально проверять Arena ImportSVG и canonical geometry;
-- отдельно проверять Bil24 authoring contract;
+Решение 12 владельца (14.10.2026, план `docs/plans/event_center_unified_plan_2026-10-14_ru.md` §8.4): целевой выход генератора — **авторский Inkscape-SVG под `seating.ImportSVG` платформы Arena**, а не sbt-SVG Bil24. Подгоняется уже сейчас, не после M2.
+
+Контракт выхода (то, что читает `seating.ImportSVG` в `apps/backend`):
+
+(сверено с `apps/backend/internal/domain/seating/doc.go`)
+
+- категории цены — группа `PriceCategory`, цвет заливки её дочерних кругов индексирует категорию; до назначения цен организатором — одна временная категория («Без категории», явно не коммерческая); группа `Legend` желательна (её отсутствие — предупреждение импорта);
+- ряд — группа с `inkscape:label="#<Сектор>"` и дочерним `<title>` (название ряда); место — только `<circle>` с вложенным `<title>` = номер места;
+- место без подтверждённого номера в SVG не попадает, а едет в отчёт (`number_status`, `confidence`, карантин);
+- холст не больше 2000×2000 px; холст и радиус профиль выводит из сетки исходника;
+- никаких `sbt:*` атрибутов;
+- `seating-json-v1` остаётся отчётом о происхождении мест (sheet/cell, карантин), а не входом платформы.
+
+Доказательство, что такой SVG проходит импорт: `arena_importsvg_proof` (фаза 10B/10C — Aribau, `BALCONY`, ряд 15, 3 места, `arena-target-profile.json`, exporter `arena_authoring_exporter.py`, expected-import). **Внимание:** папка в upstream-`.gitignore` и в монорепо не попала; код exporter-а переносится в `xlsx_seating_adapter/profiles` вместе с HTTP-слоем (G2a).
+
+Проверки M3:
+
+- локально прогонять результат через Arena ImportSVG и сравнивать canonical geometry с expected-import;
+- sbt/Bil24 authoring contract — только справочно (`BIL24_SVG_GUIDE_RU.md`), не цель;
 - не объявлять UI/staging compatibility без реального изолированного теста.
 
 ## M4 — Controlled AI milestones

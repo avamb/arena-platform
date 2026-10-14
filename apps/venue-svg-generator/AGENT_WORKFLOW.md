@@ -1,3 +1,5 @@
+> Генератор живёт в монорепо arena-platform, `apps/venue-svg-generator`, с 14.10.2026. Первоисточник — архив GitHub-репозитория `avamb/Venue_SVG_Generator` (не удалён и не заархивирован, решение владельца). Образ, CI и сервис compose — см. `README.md`.
+
 # AGENT_WORKFLOW — Codex ↔ Claude Agent SDK
 
 ## Поток
