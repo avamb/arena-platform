@@ -516,4 +516,15 @@ func TestBrevoWebhook_RepeatedEventKeepsItsFirstAndLastTime(t *testing.T) {
 	if !strings.Contains(reason, "later") {
 		t.Fatalf("reason = %q, want the one of the latest report", reason)
 	}
+
+	// In time order too: the second, later report must not move first_at.
+	hook.send("deferred", mid, early, nil)
+	hook.send("deferred", mid, late, nil)
+	if err := f.pool.QueryRow(ctx, `SELECT first_at, last_at FROM email_letter_events
+		WHERE letter_id = $1 AND event = 'deferred'`, letter).Scan(&first, &last); err != nil {
+		t.Fatal(err)
+	}
+	if !first.Equal(early) || !last.Equal(late) {
+		t.Fatalf("deferred in order: first_at %v last_at %v, want %v and %v", first, last, early, late)
+	}
 }

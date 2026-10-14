@@ -108,9 +108,13 @@ func TestLetterStatus_TicketLetterIsRecordedAndLinked(t *testing.T) {
 	if bodyHash == nil || *bodyHash != emailstatus.BodyDigest(sender.got[0].HTMLBody, sender.got[0].TextBody) {
 		t.Fatalf("body_sha256 = %v", bodyHash)
 	}
-	var fromAddr *string
-	if err := pool.QueryRow(ctx, `SELECT from_address FROM email_letters WHERE id = $1`, letterID).Scan(&fromAddr); err != nil {
+	var fromAddr, replyTo *string
+	if err := pool.QueryRow(ctx, `SELECT from_address, reply_to FROM email_letters WHERE id = $1`, letterID).
+		Scan(&fromAddr, &replyTo); err != nil {
 		t.Fatal(err)
+	}
+	if want := sender.got[0].ReplyTo; (want == "") != (replyTo == nil) || (replyTo != nil && *replyTo != want) {
+		t.Fatalf("reply_to = %v, want %q", replyTo, want)
 	}
 	if want := sender.got[0].From; want == "" && (fromAddr == nil || *fromAddr != "tickets@arena.test") ||
 		want != "" && (fromAddr == nil || *fromAddr != want) {

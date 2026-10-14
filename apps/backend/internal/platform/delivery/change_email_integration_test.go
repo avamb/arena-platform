@@ -225,6 +225,22 @@ func TestSessionChange_MoveQueuesOneLetterAndRerendersThePDF(t *testing.T) {
 	if got := f.noticeState(ctx, t, res.ChangeID); got != sessionchange.StateSent {
 		t.Fatalf("notice state after send = %q, want sent", got)
 	}
+	// The notice names the letter that carried it (migration 0149): only
+	// that link may confirm the letter later (emailstatus.SweepStale).
+	var linked *uuid.UUID
+	var linkedKind, linkedReplyTo string
+	if err := f.pool.QueryRow(ctx, `SELECT n.email_letter_id, COALESCE(l.kind, ''), COALESCE(l.reply_to, '')
+		FROM session_change_notices n LEFT JOIN email_letters l ON l.id = n.email_letter_id
+		WHERE n.change_id = $1 AND n.order_id = $2`, res.ChangeID, f.OrderID).Scan(&linked, &linkedKind, &linkedReplyTo); err != nil {
+		t.Fatal(err)
+	}
+	if linked == nil || linkedKind != "change" {
+		t.Fatalf("notice letter = %v (kind %q), want the change letter that was sent", linked, linkedKind)
+	}
+	// The letter keeps the Reply-To the buyer saw: the organizer's contact.
+	if !strings.Contains(linkedReplyTo, f.contact) {
+		t.Fatalf("letter reply_to = %q, want the organizer %q", linkedReplyTo, f.contact)
+	}
 	// A redelivered job must not mail again.
 	again, err := f.runJob(ctx, t, res.ChangeID)
 	if err != nil || again != "" {

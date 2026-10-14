@@ -1,6 +1,8 @@
 package eventbot
 
 import (
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +10,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 )
 
 // providerLetter is one letter of letters[] as the e-mail provider reported
@@ -129,5 +132,21 @@ func TestOrderRowLabel_MarksALetterTheServerFlags(t *testing.T) {
 	o.LetterFailed = true
 	if got := OrderRowLabel(o, "en"); !strings.Contains(got, letterFailedMark) {
 		t.Errorf("row = %q, want the mark for letter_failed", got)
+	}
+}
+
+// The "stuck" texts name the threshold in hours: it must be the server's
+// emailstatus.StuckAfter, in every language (review 2026-10-14 F6).
+func TestOrderCard_StuckTextsNameTheServerThreshold(t *testing.T) {
+	t.Parallel()
+	b := ecTestBot(t)
+	hours := regexp.MustCompile(`\b` + strconv.Itoa(int(emailstatus.StuckAfter.Hours())) + `\b`)
+	for _, loc := range SupportedLocales {
+		for _, kind := range []string{"tickets", "refund"} {
+			line := b.letterLine(loc, kind, letterStatus{State: letterStuck}, "Europe/Madrid", false)
+			if !hours.MatchString(line) {
+				t.Errorf("%s %s stuck text does not say %v: %q", loc, kind, emailstatus.StuckAfter, line)
+			}
+		}
 	}
 }
