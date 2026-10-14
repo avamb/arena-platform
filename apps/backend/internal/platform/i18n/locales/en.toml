@@ -408,6 +408,9 @@ other = "This message is out of date. Press ☰ Menu below."
 ["bot.stale_message_stranger"]
 other = "This message is out of date. Please continue below."
 
+["bot.stale_message_stranger_restart"]
+other = "This message is out of date. Send /start to continue."
+
 ["bot.menu_button"]
 other = "☰ Menu"
 
@@ -1318,7 +1321,7 @@ other = "Create events and follow Arena Sold Out sales in Telegram. Enter the na
 other = "Arena Sold Out events and sales in Telegram"
 
 ["bot.ses.cancel_word"]
-other = "CANCEL"
+other = "CANCEL SESSION"
 
 ["bot.ses.type_ask"]
 other = "⚠️ <b>Warning: this cannot be undone.</b>\nNothing is canceled yet.\n\n{{.Subject}}\nE-mails to buyers: {{.Orders}}.{{if .Orders}}\n\n💶 The platform does NOT refund the money. The orders stay paid. The tickets stay valid. Settle refunds with the buyers yourself.{{end}}\n\nTo cancel, <b>type {{.Word}}</b> and send it. To keep the session, press «Back»."
@@ -1330,7 +1333,7 @@ other = "Session: <b>{{.Old}}</b>"
 other = "Event: <b>{{.Name}}</b> — all {{.N}} sessions"
 
 ["bot.ses.type_wrong"]
-other = "That is not the word, so nothing was canceled. To cancel, type exactly: {{.Word}}"
+other = "The text does not match, so nothing changed. To cancel, type exactly: {{.Word}}"
 
 ["bot.ses.done_refund_note"]
 other = "💶 The platform did not refund any money, and the tickets stay valid. Settle refunds with the buyers yourself."
@@ -1927,11 +1930,14 @@ other = "Message from the payment provider: {{.Msg}}"
 ["bot.ord.cancel_btn"]
 other = "Cancel unpaid order"
 
+["bot.ord.cancel_word"]
+other = "CANCEL ORDER"
+
 ["bot.ord.cancel_ask"]
-other = "⚠️ <b>Last step: nothing is canceled yet.</b>\n\nOrder №{{.Num}} · {{.Amount}}\nThe order closes and the hold on its seats ends. The seats go back on sale. This cannot be undone.\n\nTo cancel, <b>type the word {{.Word}}</b> and send it as a message. To keep the order, press «Back»."
+other = "⚠️ <b>Last step: nothing is canceled yet.</b>\n\nOrder №{{.Num}} · {{.Amount}}\nThe order closes and the hold on its seats ends. The seats go back on sale. This cannot be undone.\n\nTo cancel, <b>type {{.Word}}</b> and send it as a message. To keep the order, press «Back»."
 
 ["bot.ord.cancel_wrong"]
-other = "That is not the word, so nothing was canceled. To cancel, type exactly: {{.Word}}"
+other = "The text does not match, so nothing changed. To cancel, type exactly: {{.Word}}"
 
 ["bot.ord.cancel_done"]
 other = "✔ The order is canceled and its seats are free again."

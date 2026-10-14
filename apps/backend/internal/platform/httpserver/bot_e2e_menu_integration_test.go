@@ -140,7 +140,7 @@ func TestBotE2E_MenuButtonAlwaysOpensTheMenu(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.say("☰ Меню", "Что будем делать?")
-	d.say("ОТМЕНИТЬ", "Я не понял")
+	d.say("ОТМЕНИТЬ СЕАНС", "Я не понял")
 	var sesStatus string
 	if err := pool.QueryRow(context.Background(), `SELECT status FROM sessions WHERE id = $1`, seed.session1).Scan(&sesStatus); err != nil {
 		t.Fatal(err)
@@ -180,8 +180,8 @@ func TestBotE2E_MenuButtonAlwaysOpensTheMenu(t *testing.T) {
 	home, _, _ := tg.lastOf(ecOwnerTG)
 	d.press("help", "Что умеет бот")
 	answers := tg.callCount("answerCallbackQuery")
-	tg.push(fmt.Sprintf(`"callback_query":{"id":"cb-stale-menu","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":"help","message":{"message_id":%d,"date":1700000000,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
-		ecOwnerTG, home, ecOwnerTG))
+	tg.push(fmt.Sprintf(`"callback_query":{"id":"cb-stale-menu","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":"help","message":{"message_id":%d,"date":%d,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
+		ecOwnerTG, home, time.Now().Unix(), ecOwnerTG))
 	tg.waitCall(t, "answerCallbackQuery", answers)
 	time.Sleep(300 * time.Millisecond)
 	tg.mu.Lock()

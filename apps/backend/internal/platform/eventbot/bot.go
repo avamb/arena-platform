@@ -535,7 +535,7 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	msgID := cq.Message.Message.ID
 	// A button of a message that is no longer the live one does nothing
 	// (feed.go): the person is told to carry on below.
-	if !b.feed.admit(chatID, msgID) {
+	if !b.feed.admit(chatID, msgID, int64(cq.Message.Message.Date)) {
 		b.refuseStalePress(ctx, cq)
 		return
 	}

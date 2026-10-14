@@ -560,8 +560,21 @@ func TestBotE2E_Invitations_RestartHomeExpiryAndSeatedDate(t *testing.T) {
 	d.say("2", "Осталось указать: 2")
 	d.say("One, "+g1, "Принято пока (1 из 2)")
 	e.restart()
+	// A typed answer still reaches the dialog kept on disk.
 	d.say("Two, "+g2, "Отправить приглашения?")
 	e.restart()
+	// The confirmation was sent before the restart: its button is out of
+	// date and issues nothing (owner decision 2026-10-14).
+	e.tg.pressStale(t, d.id, "iv:go")
+	if n := e.issuances(); n != 0 {
+		t.Fatalf("the old screen's button issued %d invitation(s)", n)
+	}
+	// From the menu the person starts again on new screens.
+	d.say("☰ Меню", "Что будем делать")
+	e.toCategory(d, 0)
+	d.say("2", "Осталось указать: 2")
+	d.say("One, "+g1, "Принято пока (1 из 2)")
+	d.say("Two, "+g2, "Отправить приглашения?")
 	d.press("iv:go", "Выдано приглашений: 2")
 	if tk := e.tickets(); len(tk) != 2 || tk[g1].name != "One" || tk[g2].name != "Two" {
 		t.Fatalf("tickets = %+v", tk)
@@ -661,7 +674,7 @@ func TestBotE2E_Invitations_OtherOrganizationAndGroupChat(t *testing.T) {
 	// A press from a group chat (the chat is not the person's own) is refused
 	// before anything is read or shown.
 	m := e.tg.mark()
-	e.tg.push(fmt.Sprintf(`"callback_query":{"id":"cb-grp","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":"iv:l","message":{"message_id":5,"date":1700000000,"chat":{"id":-1001234,"type":"supergroup"},"text":"menu"}}`, ecOwnerTG))
+	e.tg.push(fmt.Sprintf(`"callback_query":{"id":"cb-grp","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":"iv:l","message":{"message_id":5,"date":%d,"chat":{"id":-1001234,"type":"supergroup"},"text":"menu"}}`, ecOwnerTG, time.Now().Unix()))
 	e.tg.waitSince(t, m, "только в личном чате")
 }
 

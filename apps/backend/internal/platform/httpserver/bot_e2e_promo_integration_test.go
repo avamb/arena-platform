@@ -187,6 +187,7 @@ func startPromoTestBot(t *testing.T, pool *pgxpool.Pool, api *httptest.Server, t
 	if err != nil {
 		t.Fatalf("i18n.NewBundle: %v", err)
 	}
+	tg.restartGap()
 	bot, err := eventbot.New(eventbot.Options{
 		Token:             "123:test-token",
 		Queries:           gen.New(pool),

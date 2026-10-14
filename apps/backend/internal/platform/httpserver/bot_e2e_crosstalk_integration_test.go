@@ -92,8 +92,17 @@ func TestBotE2E_DialogsCloseOnCommandsAndForeignButtons(t *testing.T) {
 	d.press("or:v:"+seed.clara.String(), "Clara Zakharova")
 	d.press("or:c:"+seed.clara.String(), "Последний шаг")
 
-	// ── the same word now cancels the ORDER, never the session
-	d.say("ОТМЕНИТЬ", "Заказ отменён")
+	// ── the session's phrase is not the order's: it cancels nothing here
+	d.say("ОТМЕНИТЬ СЕАНС", "Текст не совпал")
+	if got := orderStatus(t, pool, seed.clara); got == "cancelled" {
+		t.Fatal("the session's cancel phrase cancelled the order")
+	}
+	if got := sessionStatus(); got != "scheduled" {
+		t.Fatalf("the session's cancel phrase typed on an order cancelled the session: status %q", got)
+	}
+
+	// ── the order's own phrase cancels the ORDER, never the session
+	d.say("ОТМЕНИТЬ ЗАКАЗ", "Заказ отменён")
 	if got := orderStatus(t, pool, seed.clara); got != "cancelled" {
 		t.Errorf("the order must be cancelled, status %q", got)
 	}
@@ -116,7 +125,7 @@ func TestBotE2E_DialogsCloseOnCommandsAndForeignButtons(t *testing.T) {
 	}
 	d.press("or:v:"+seed.karl.String(), "Karl Brandtner")
 	d.press("or:c:"+seed.karl.String(), "Последний шаг")
-	d.say("ОТМЕНИТЬ", "Заказ отменён")
+	d.say("ОТМЕНИТЬ ЗАКАЗ", "Заказ отменён")
 	if got := sessionStatus(); got != "scheduled" || sessionChanges() != 0 {
 		t.Fatalf("the session changed after a press elsewhere: status %q", got)
 	}
@@ -322,7 +331,13 @@ func TestBotE2E_BackgroundRefundAnswerDoesNotTakeText(t *testing.T) {
 	d.press("ses:nomsg", "Отмена сеанса")
 	d.press("ses:go", "это действие нельзя отменить")
 	refundRow("now() + interval '5 seconds'")
-	d.say("ОТМЕНИТЬ", "Сеанс отменён")
+	// The order's phrase is not the session's.
+	d.say("ОТМЕНИТЬ ЗАКАЗ", "Текст не совпал")
+	var before string
+	if err := pool.QueryRow(ctx, `SELECT status FROM sessions WHERE id = $1`, seed.session1).Scan(&before); err != nil || before != "scheduled" {
+		t.Fatalf("the order's cancel phrase cancelled the session: %q (%v)", before, err)
+	}
+	d.say("ОТМЕНИТЬ СЕАНС", "Сеанс отменён")
 	var status string
 	if err := pool.QueryRow(ctx, `SELECT status FROM sessions WHERE id = $1`, seed.session1).Scan(&status); err != nil {
 		t.Fatal(err)

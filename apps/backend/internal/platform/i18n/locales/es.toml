@@ -266,6 +266,9 @@ other = "Este mensaje está desactualizado. Pulsa ☰ Menú abajo."
 ["bot.stale_message_stranger"]
 other = "Este mensaje está desactualizado. Continúa más abajo."
 
+["bot.stale_message_stranger_restart"]
+other = "Este mensaje está desactualizado. Envía /start para continuar."
+
 ["bot.menu_button"]
 other = "☰ Menú"
 
@@ -1173,7 +1176,7 @@ other = "Crea eventos y consulta las ventas de Arena Sold Out sin salir de Teleg
 other = "Eventos y ventas de Arena Sold Out en Telegram"
 
 ["bot.ses.cancel_word"]
-other = "CANCELAR"
+other = "CANCELAR SESIÓN"
 
 ["bot.ses.type_ask"]
 other = "⚠️ <b>Atención: esta acción no se puede deshacer.</b>\nTodavía no se ha cancelado nada.\n\n{{.Subject}}\nCorreos a compradores: {{.Orders}}.{{if .Orders}}\n\n💶 La plataforma NO devuelve el dinero. Los pedidos siguen pagados. Las entradas siguen siendo válidas. Gestiona los reembolsos tú directamente con los compradores.{{end}}\n\nPara cancelar, <b>escribe {{.Word}}</b> y envíalo. Para conservar la sesión, pulsa «Atrás»."
@@ -1185,7 +1188,7 @@ other = "Sesión: <b>{{.Old}}</b>"
 other = "Evento: <b>{{.Name}}</b>: las {{.N}} sesiones"
 
 ["bot.ses.type_wrong"]
-other = "Esa no es la palabra, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
+other = "El texto no coincide, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
 
 ["bot.ses.done_refund_note"]
 other = "💶 No se ha devuelto dinero automáticamente y las entradas siguen siendo válidas. Gestiona los reembolsos tú directamente con los compradores."
@@ -1782,11 +1785,14 @@ other = "Mensaje del proveedor de pago: {{.Msg}}"
 ["bot.ord.cancel_btn"]
 other = "Cancelar pedido sin pagar"
 
+["bot.ord.cancel_word"]
+other = "CANCELAR PEDIDO"
+
 ["bot.ord.cancel_ask"]
-other = "⚠️ <b>Último paso: todavía no se ha cancelado nada.</b>\n\nPedido №{{.Num}} · {{.Amount}}\nEl pedido se cierra y la reserva de sus plazas termina. Las plazas vuelven a la venta. Esto no se puede deshacer.\n\nPara cancelar, <b>escribe la palabra {{.Word}}</b> y envíala como mensaje. Para conservar el pedido, pulsa «Atrás»."
+other = "⚠️ <b>Último paso: todavía no se ha cancelado nada.</b>\n\nPedido №{{.Num}} · {{.Amount}}\nEl pedido se cierra y la reserva de sus plazas termina. Las plazas vuelven a la venta. Esto no se puede deshacer.\n\nPara cancelar, <b>escribe {{.Word}}</b> y envíalo como mensaje. Para conservar el pedido, pulsa «Atrás»."
 
 ["bot.ord.cancel_wrong"]
-other = "Esa no es la palabra, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
+other = "El texto no coincide, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
 
 ["bot.ord.cancel_done"]
 other = "✔ El pedido está cancelado y sus plazas vuelven a estar libres."

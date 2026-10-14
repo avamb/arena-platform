@@ -309,9 +309,18 @@ func TestBotE2E_Refund_SendLostToARestartIsOfferedAgain(t *testing.T) {
 	if repeated != "" {
 		t.Fatalf("the restart notice was sent again on the next start:\n%s", repeated)
 	}
-	final := d.press("or:f:b", "ответ потерялся")
+	// The notice was sent by the process before this one: its button is out
+	// of date (owner decision 2026-10-14). The refund keeps its key and is
+	// reached again through the menu and the order.
+	tg.pressStale(t, ecOwnerTG, "or:f:b")
+	d.say("☰ Меню", "мог уже начаться")
+	d.press("or:v:"+seed.anna.String(), "Заказ №")
+	if got := refundDialogKey(t, pool, ecOwnerTG); got != key {
+		t.Fatalf("leaving through the order changed the refund's key: %q, want %q", got, key)
+	}
+	final := d.press("or:f:s:"+seed.anna.String(), "Последняя проверка")
 	if !strings.Contains(final, "Последняя проверка") {
-		t.Errorf("the recovery button does not open the final check:\n%s", final)
+		t.Errorf("the order's refund button does not open the final check:\n%s", final)
 	}
 	d.press("or:f:ok:"+tag, "Возврат запрошен")
 	if n, state := refundCount(t, srv, seed.anna); n != 1 || state != "succeeded" {

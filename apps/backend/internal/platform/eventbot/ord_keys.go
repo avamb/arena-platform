@@ -25,7 +25,7 @@ var ordKeys = []string{
 	"bot.ord.reason_payment_failed", "bot.ord.reason_payment_abandoned", "bot.ord.reason_hold_expired",
 	"bot.ord.reason_cancelled", "bot.ord.reason_awaiting_payment", "bot.ord.reason_manual_review",
 	"bot.ord.reason_unknown", "bot.ord.reason_provider",
-	"bot.ord.cancel_btn", "bot.ord.cancel_ask", "bot.ord.cancel_wrong", "bot.ord.cancel_done",
+	"bot.ord.cancel_btn", "bot.ord.cancel_word", "bot.ord.cancel_ask", "bot.ord.cancel_wrong", "bot.ord.cancel_done",
 	"bot.ord.cancel_not_possible",
 }
 
