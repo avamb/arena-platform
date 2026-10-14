@@ -10,7 +10,10 @@ const TYPED_WORDS_GO = fileURLToPath(new URL("../../../backend/internal/platform
 /** The value of `["key"]` / `other = "value"` in a bot catalog. */
 function botText(locale: string, key: string): string {
   const text = readFileSync(fileURLToPath(new URL(`${locale}.toml`, LOCALES_DIR)), "utf8");
-  const m = new RegExp(`\\["${key.replace(/\./g, "\\.")}"\\]\\r?\\nother = "([^"\\r\\n]*)"`).exec(text);
+  // A plain search, no regular expression built from the key (nothing to escape).
+  const lines = text.split(/\r?\n/);
+  const at = lines.indexOf(`["${key}"]`);
+  const m = at < 0 ? null : /^other = "([^"]*)"$/.exec(lines[at + 1] ?? "");
   if (m === null) throw new Error(`${locale}.toml has no ${key}`);
   return m[1];
 }
