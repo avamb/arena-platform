@@ -251,7 +251,7 @@ export const ru: Record<MessageKey, string> = {
 
   "apiError.network.title": "Не удалось связаться с сервером.",
   "apiError.network.next": "Проверьте соединение и попробуйте ещё раз.",
-  "apiError.unauthorized.title": "Ваш сеанс работы закончился.",
+  "apiError.unauthorized.title": "Время входа истекло.",
   "apiError.unauthorized.next": "Войдите снова и повторите действие.",
   "apiError.forbidden.title": "У вас нет доступа к этому.",
   "apiError.forbidden.next": "Попросите владельца организации выдать вам роль менеджера.",

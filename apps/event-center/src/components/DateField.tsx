@@ -8,7 +8,7 @@
  * It is not a <form>: a screen can put it inside its own form. The value is an
  * ISO day "YYYY-MM-DD"; `onChange` fires only for a pressed day or a confirmed reading.
  */
-import { useId, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { initialDateFieldState, noDaysToPick, reduceDateField, type DateFieldAction, type DateFieldContext } from "@/lib/dateField";
 import {
   MONTH_NAMES,
@@ -46,6 +46,22 @@ export function DateField({ value, onChange, timezone, today: todayProp, min, ma
   const bounds = dateBounds(today, min, max);
   const ctx: DateFieldContext = { today, bounds };
   const [state, setState] = useState(() => initialDateFieldState(value, ctx));
+
+  // Reading a date disables the field and its button, which would drop the focus
+  // on the page body. The focus goes to the first reading, so a keyboard and a
+  // screen reader land on the question. "A different date" gives it back to the field.
+  const confirmBox = useRef<HTMLDivElement>(null);
+  const textInput = useRef<HTMLInputElement>(null);
+  const hadReadings = useRef(false);
+  const hasReadings = state.pending.length > 0;
+  useEffect(() => {
+    if (hasReadings) {
+      confirmBox.current?.querySelector<HTMLElement>("button")?.focus();
+    } else if (hadReadings.current) {
+      textInput.current?.focus();
+    }
+    hadReadings.current = hasReadings;
+  }, [hasReadings]);
 
   const send = (action: DateFieldAction) => {
     const result = reduceDateField(state, action, ctx);
@@ -162,6 +178,7 @@ export function DateField({ value, onChange, timezone, today: todayProp, min, ma
       <div className="date-field-type">
         <label htmlFor={`${ids}-text`}>{t("dateField.typeLabel")}</label>
         <input
+          ref={textInput}
           id={`${ids}-text`}
           type="text"
           inputMode="text"
@@ -194,7 +211,7 @@ export function DateField({ value, onChange, timezone, today: todayProp, min, ma
       )}
 
       {state.pending.length > 0 && (
-        <div role="group" aria-labelledby={`${ids}-confirm`} className="date-field-confirm" data-testid="date-field-confirm">
+        <div ref={confirmBox} role="group" aria-labelledby={`${ids}-confirm`} className="date-field-confirm" data-testid="date-field-confirm">
           <p id={`${ids}-confirm`}>
             {state.pending.length === 1
               ? t("dateField.confirmOne", { raw: state.raw, date: dateWords(locale, state.pending[0]) })

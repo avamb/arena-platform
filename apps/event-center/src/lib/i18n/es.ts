@@ -251,7 +251,7 @@ export const es: Record<MessageKey, string> = {
 
   "apiError.network.title": "No pudimos conectar con el servidor.",
   "apiError.network.next": "Revisa tu conexión e inténtalo de nuevo.",
-  "apiError.unauthorized.title": "Tu sesión ha terminado.",
+  "apiError.unauthorized.title": "Tu inicio de sesión ha caducado.",
   "apiError.unauthorized.next": "Inicia sesión otra vez y repite la acción.",
   "apiError.forbidden.title": "No tienes acceso a esto.",
   "apiError.forbidden.next": "Pide a la persona propietaria de la organización el rol de gestor.",

@@ -251,7 +251,7 @@ export const en = {
 
   "apiError.network.title": "We could not reach the server.",
   "apiError.network.next": "Check your connection and try again.",
-  "apiError.unauthorized.title": "Your session has ended.",
+  "apiError.unauthorized.title": "Your sign-in has expired.",
   "apiError.unauthorized.next": "Sign in again, then repeat the action.",
   "apiError.forbidden.title": "You have no access to this.",
   "apiError.forbidden.next": "Ask the owner of the organization to give you the manager role.",

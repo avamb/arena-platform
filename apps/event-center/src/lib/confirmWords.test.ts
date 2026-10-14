@@ -29,8 +29,10 @@ describe("the table equals the bot's catalogs", () => {
 
   it("the bot source still names the keys of the order and session words", () => {
     const go = readFileSync(TYPED_WORDS_GO, "utf8");
-    expect(go).toContain(`ordCancelWordKey = "${BOT_KEYS.cancel_order}"`);
-    expect(go).toContain(`sesCancelWordKey = "${BOT_KEYS.cancel_session}"`);
+    // gofmt aligns the "=" of a const block, so compare with the spaces folded.
+    const declared = go.split(/\r?\n/).map((l) => l.trim().replace(/\s+/g, " "));
+    expect(declared).toContain(`ordCancelWordKey = "${BOT_KEYS.cancel_order}"`);
+    expect(declared).toContain(`sesCancelWordKey = "${BOT_KEYS.cancel_session}"`);
   });
 });
 
