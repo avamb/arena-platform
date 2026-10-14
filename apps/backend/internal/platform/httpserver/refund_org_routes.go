@@ -38,10 +38,12 @@ func (s *Server) mountRefundOrgRoutes(r chi.Router) {
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "refund.create", "refunds")
+		pr.Use(s.requireWebStepUp) // money: the web asks for the password again
 		pr.Post("/organizations/{org_id}/orders/{order_id}/refunds", s.handleCreateOrderRefunds)
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "refund.approve", "refunds")
+		pr.Use(s.requireWebStepUp) // money: the web asks for the password again
 		pr.Post("/organizations/{org_id}/refunds/{refund_id}/retry", s.handleRetryOrgRefund)
 		pr.Post("/organizations/{org_id}/refunds/{refund_id}/resolve", s.handleResolveOrgRefund)
 		pr.Post("/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear", s.handleClearTicketReviewHold)

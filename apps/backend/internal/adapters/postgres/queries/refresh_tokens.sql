@@ -25,3 +25,14 @@ WHERE user_id = $1 AND revoked_at IS NULL;
 SELECT id, email, password_hash, preferred_locale, created_at, email_verified_at, deactivated_at
 FROM users
 WHERE id = $1;
+
+-- name: InsertRefreshTokenSession :exec
+-- A refresh token with its session facts (migration 0150): the client that
+-- signed in, the idle window (NULL = fixed lifetime) and the sign-in time.
+INSERT INTO refresh_tokens (token, user_id, expires_at, client_channel, idle_seconds, session_started_at)
+VALUES ($1, $2, $3, $4, $5, $6);
+
+-- name: GetRefreshTokenSession :one
+SELECT client_channel, idle_seconds, session_started_at
+FROM refresh_tokens
+WHERE token = $1;

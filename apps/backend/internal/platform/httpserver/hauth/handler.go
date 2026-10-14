@@ -52,6 +52,11 @@ type Handler struct {
 	// rate-limit key is derived from the real client IP rather than from the
 	// client-controlled X-Forwarded-For header. See config.TrustedProxyCount.
 	trustedProxyCount int
+	// webSessionIdle is the idle window of a web event center session
+	// (session_policy.go); zero keeps the fixed refresh lifetime.
+	webSessionIdle time.Duration
+	// stepUpLimiter counts wrong passwords on POST /v1/auth/step-up.
+	stepUpLimiter ratelimit.Limiter
 }
 
 // New creates a Handler. jwtSecret, issuer, and audience must be fully resolved
@@ -83,6 +88,8 @@ func New(
 			MaxAttempts: loginRateLimitAttempts,
 			Window:      loginRateLimitWindow,
 		}),
+		webSessionIdle: DefaultWebSessionIdle,
+		stepUpLimiter:  newStepUpLimiter(),
 	}
 }
 
@@ -109,5 +116,7 @@ func NewWithLimiter(
 		maxConcurrentSessions: maxSessions,
 		trustedProxyCount:     trustedProxies,
 		rateLimiter:           limiter,
+		webSessionIdle:        DefaultWebSessionIdle,
+		stepUpLimiter:         newStepUpLimiter(),
 	}
 }

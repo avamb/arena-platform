@@ -108,6 +108,11 @@ type Config struct {
 	// single-host deployments keep working unchanged (feature #535, spec
 	// 22_site_facing_gaps_w1s1_ru.md §2.1). Read through APIPublicBaseURL().
 	APIPublicURL string `env:"API_PUBLIC_URL" required:"false" default:""`
+	// WebSessionIdleHours is how long a web event center session lives
+	// WITHOUT activity (owner decision 2026-10-14: 72 hours, like the Stripe
+	// dashboard). Every refresh pushes the end forward, never past 30 days
+	// from the sign-in. 0 gives the web the fixed 30-day token.
+	WebSessionIdleHours int `env:"WEB_SESSION_IDLE_HOURS" required:"false" default:"72"`
 
 	// -------------------------------------------------------------------------
 	// HTTP
@@ -717,6 +722,16 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.TrustedProxyCount = iTPC
+
+	// WEB_SESSION_IDLE_HOURS — idle window of a web event center session.
+	iIdle, err := getenvInt("WEB_SESSION_IDLE_HOURS", 72)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	if iIdle < 0 || iIdle > 720 {
+		parseErrs = append(parseErrs, fmt.Errorf("WEB_SESSION_IDLE_HOURS must be 0..720 (got %d)", iIdle))
+	}
+	cfg.WebSessionIdleHours = iIdle
 
 	// PUBLIC_FEED_TOKEN_RATE_LIMIT / PUBLIC_CHECKOUT_TOKEN_RATE_LIMIT /
 	// PUBLIC_API_IP_RATE_LIMIT — public widget API limits. See the field

@@ -195,8 +195,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// PR2-03: store SHA-256(rawToken) in DB; return raw token to client only.
 	refreshTokenHash := users.TokenHash(refreshToken)
-	refreshExp := time.Now().UTC().Add(refreshTokenTTL)
-	if err := q.InsertRefreshToken(ctx, refreshTokenHash, actorID, refreshExp); err != nil {
+	session, refreshExp := h.newSession(ctx, time.Now().UTC())
+	if err := q.InsertRefreshTokenSession(ctx, refreshTokenHash, actorID, refreshExp, session); err != nil {
 		logger.Error("auth.login: insert refresh token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_insert_failed", "failed to save refresh token", r))
 		return
@@ -407,14 +407,22 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	newTokenHash := users.TokenHash(newRawToken)
-	newRefreshExp := time.Now().UTC().Add(refreshTokenTTL)
+	// The new token keeps the session facts of the old one (migration 0150):
+	// a web session slides its idle window, never past 30 days from sign-in.
+	session, err := q.GetRefreshTokenSession(ctx, tokenHash)
+	if err != nil {
+		logger.Error("auth.refresh: read session facts failed", "error", err)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
+		return
+	}
+	newRefreshExp := sessionEnd(session, time.Now().UTC())
 
 	if err := q.RevokeRefreshToken(ctx, tokenHash); err != nil {
 		logger.Error("auth.refresh: revoke old token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.revoke_failed", "failed to revoke old refresh token", r))
 		return
 	}
-	if err := q.InsertRefreshToken(ctx, newTokenHash, actorID, newRefreshExp); err != nil {
+	if err := q.InsertRefreshTokenSession(ctx, newTokenHash, actorID, newRefreshExp, session); err != nil {
 		logger.Error("auth.refresh: insert new refresh token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_insert_failed", "failed to save new refresh token", r))
 		return

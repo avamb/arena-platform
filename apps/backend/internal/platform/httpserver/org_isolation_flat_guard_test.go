@@ -89,6 +89,7 @@ var flatRouteFamilies = []flatFamily{
 	{"GET", "/v1/auth/verify", flatPublic, "credentials in the request body"},
 	{"POST", "/v1/auth/login", flatPublic, "credentials in the request body"},
 	{"POST", "/v1/auth/logout", flatPublic, "credentials in the request body"},
+	{"POST", "/v1/auth/step-up", flatOwnAccount, "the caller's own password, checked against the caller's own account"},
 	{"POST", "/v1/auth/password-reset/confirm", flatPublic, "credentials in the request body"},
 	{"POST", "/v1/auth/password-reset/request", flatPublic, "credentials in the request body"},
 	{"POST", "/v1/auth/refresh", flatPublic, "credentials in the request body"},
