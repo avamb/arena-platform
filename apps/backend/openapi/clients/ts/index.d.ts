@@ -10744,10 +10744,11 @@ export interface components {
          */
         OrderListItem: components["schemas"]["OrderSummary"] & {
             /**
-             * @description True when the buyer did not get a letter: a ticket whose
-             *     letter failed (bounced, blocked, refused by the relay), or a
-             *     change, cancellation or refund letter that failed and was not
-             *     followed by a newer one of the same kind. Details on the
+             * @description True when the buyer most likely did not get a letter: a
+             *     ticket letter that failed (bounced, blocked, refused by the
+             *     relay) or is stuck (see OrderLetter.stuck), or a change,
+             *     cancellation or refund letter that failed or is stuck and was
+             *     not followed by a newer one of the same kind. Details on the
              *     order card (letters).
              */
             letter_failed: boolean;
@@ -11128,7 +11129,14 @@ export interface components {
             channel: components["schemas"]["OrderChannelSummary"];
             /** @description The buyer letters of the order with their delivery status (see OrderLetter). */
             letters: components["schemas"]["OrderLetter"][];
-            /** @description True when one of the letters failed (status failed). */
+            /**
+             * @description True when the buyer most likely did not get a letter: a
+             *     ticket letter that failed (bounced, blocked, refused by the
+             *     relay) or is stuck (see OrderLetter.stuck), or a change,
+             *     cancellation or refund letter that failed or is stuck and was
+             *     not followed by a newer one of the same kind. The same rule
+             *     as letter_failed on the orders list.
+             */
             letter_failed: boolean;
         };
         /** @description Places of a session, or of one category, by status. */

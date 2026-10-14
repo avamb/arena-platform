@@ -225,6 +225,10 @@ func (s *SMTPSender) Send(ctx context.Context, msg Message) error {
 	return err
 }
 
+// DefaultFrom is the platform sender a message without its own From goes
+// out with (recorded with each buyer letter as dispute evidence).
+func (s *SMTPSender) DefaultFrom() string { return s.cfg.From }
+
 // SendReceipt is Send that also returns the message id the server reported
 // in its final reply to DATA (Brevo: "250 2.0.0 OK: queued as <id>").
 func (s *SMTPSender) SendReceipt(_ context.Context, msg Message) (Receipt, error) {

@@ -13,7 +13,9 @@ const FailureSendFailed = "send_failed"
 
 // StuckAfter is how long a letter may stay "sent" or "delayed" before the
 // order read flags it as stuck: Brevo reports a delivery within seconds, so
-// six hours without one means the buyer most likely has no letter.
+// six hours without one means the buyer most likely has no letter. The bot's
+// texts name this number of hours; eventbot's
+// TestOrderCard_StuckTextsNameTheServerThreshold keeps them in step.
 const StuckAfter = 6 * time.Hour
 
 // stuckAfterSQL is StuckAfter as a Postgres interval.
@@ -210,6 +212,8 @@ func OrderLetters(ctx context.Context, db DB, orderID uuid.UUID) ([]LetterView, 
 // most likely has no letter: a ticket whose job failed or whose current
 // letter failed or is stuck, or a change / cancellation / refund letter that
 // failed or is stuck and was not followed by a newer letter of the same kind.
+// "Newer" is compared to the second, exactly as the order card compares the
+// RFC 3339 times it shows (horders.supersededLetter), so card and list agree.
 const failedLetterOrdersSQL = `
 SELECT o.id
 FROM   unnest($1::uuid[]) AS o(id)
@@ -228,7 +232,7 @@ WHERE  EXISTS (
            AND  NOT EXISTS (
                   SELECT 1 FROM email_letters n
                   WHERE  n.order_id = o.id AND n.kind = l.kind AND n.status <> 'sending'
-                    AND  n.sent_at > l.sent_at))`
+                    AND  date_trunc('second', n.sent_at) > date_trunc('second', l.sent_at)))`
 
 // FailedLetterOrders reports which of orderIDs have a letter that failed or
 // is stuck (letter_failed on the orders list).

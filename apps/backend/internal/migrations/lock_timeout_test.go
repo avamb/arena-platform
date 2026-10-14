@@ -10,7 +10,7 @@ import (
 // deploy that meets a long transaction fails fast instead of queueing every
 // sale behind it.
 func TestMigrations_ForeignKeysOnBusyTablesSetALockTimeout(t *testing.T) {
-	for _, name := range []string{"sql/0143_refund_scan_blocks.sql", "sql/0145_refund_scan_exceptions.sql", "sql/0147_email_letters.sql"} {
+	for _, name := range []string{"sql/0143_refund_scan_blocks.sql", "sql/0145_refund_scan_exceptions.sql", "sql/0147_email_letters.sql", "sql/0149_email_letter_sources.sql"} {
 		raw, err := FS.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
@@ -22,9 +22,20 @@ func TestMigrations_ForeignKeysOnBusyTablesSetALockTimeout(t *testing.T) {
 		}
 		up = up[i:]
 		lock := strings.Index(up, "SET LOCAL lock_timeout")
-		create := strings.Index(up, "CREATE TABLE")
+		create := firstStatement(up)
 		if lock < 0 || create < 0 || lock > create {
 			t.Errorf("%s: SET LOCAL lock_timeout must come before the first statement of the Up section", name)
 		}
 	}
+}
+
+// firstStatement is the offset of the first CREATE TABLE or ALTER TABLE.
+func firstStatement(up string) int {
+	first := -1
+	for _, kw := range []string{"CREATE TABLE", "ALTER TABLE"} {
+		if i := strings.Index(up, kw); i >= 0 && (first < 0 || i < first) {
+			first = i
+		}
+	}
+	return first
 }

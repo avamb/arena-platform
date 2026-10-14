@@ -370,11 +370,32 @@ func (h *Handler) orderLetters(ctx context.Context, orderID uuid.UUID) []emailst
 	return letters
 }
 
-// anyLetterFailed reports whether a letter of the card failed or is stuck:
-// the same test the list's letter_failed applies.
+// anyLetterFailed reports whether a letter of the card failed or is stuck,
+// by the same rule as the list's letter_failed (emailstatus.FailedLetterOrders):
+// a change, cancellation or refund letter followed by a newer letter of the
+// same kind does not count, the newer one replaced it.
 func anyLetterFailed(letters []emailstatus.LetterView) bool {
-	for _, l := range letters {
-		if l.NeedsAttention() {
+	for i, l := range letters {
+		if !l.NeedsAttention() {
+			continue
+		}
+		if l.Kind != emailstatus.KindTicket && supersededLetter(letters, i) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// supersededLetter reports whether a newer letter of the same kind follows
+// letters[i] (RFC 3339 UTC times of one layout compare in time order).
+func supersededLetter(letters []emailstatus.LetterView, i int) bool {
+	l := letters[i]
+	if l.SentAt == nil {
+		return false
+	}
+	for j, n := range letters {
+		if j != i && n.Kind == l.Kind && n.SentAt != nil && *n.SentAt > *l.SentAt {
 			return true
 		}
 	}

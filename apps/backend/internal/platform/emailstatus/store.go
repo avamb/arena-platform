@@ -49,6 +49,17 @@ type NewLetter struct {
 	// linked to the letter at Begin, so a ticket job marked sent proves the
 	// letter went out even if Accepted is lost (the stale-letter sweep).
 	DeliveryJobIDs []uuid.UUID
+	// ChangeID names the session change a change or cancellation letter
+	// carries; with OrderID it is the session_change_notices row linked to
+	// the letter at Begin.
+	ChangeID uuid.UUID
+	// RefundIDs are the refunds a refund letter carries, linked at Begin.
+	RefundIDs []uuid.UUID
+
+	// FromAddress and ReplyTo are the sender and the reply address the
+	// buyer saw (ReplyTo empty when the letter had none).
+	FromAddress string
+	ReplyTo     string
 
 	Subject         string
 	TicketNumbers   []string
@@ -86,32 +97,42 @@ const maxInteractionsPerLetter = 500
 
 // confirmStaleSentSQL settles a letter left "sending" for a day whose send
 // DID succeed although Accepted never ran (the worker died or the database
-// failed right after the relay's 250): its ticket delivery job, its change
-// notice or its refund notice says the letter went out. It becomes "sent"
-// without a message id (receipt_missing) — evidence is never deleted.
+// failed right after the relay's 250): the source row linked to THIS letter
+// (its ticket delivery job, its change notice, its refund) says the letter
+// went out. It becomes "sent" without a message id (receipt_missing). A
+// source row of the same order linked to another letter proves nothing
+// about this one: a retry relinks the source to the newer letter.
 const confirmStaleSentSQL = `
 UPDATE email_letters l
 SET    status = 'sent', receipt_missing = true, updated_at = now()
 WHERE  l.status = 'sending' AND l.sent_at < now() - $1::interval
   AND  (EXISTS (SELECT 1 FROM delivery_jobs dj WHERE dj.email_letter_id = l.id AND dj.status = 'sent')
         OR (l.kind IN ('change', 'cancel') AND EXISTS (
-              SELECT 1 FROM session_change_notices n
-              WHERE  n.order_id = l.order_id AND n.state = 'sent' AND n.updated_at >= l.sent_at))
+              SELECT 1 FROM session_change_notices n WHERE n.email_letter_id = l.id AND n.state = 'sent'))
         OR (l.kind = 'refund' AND EXISTS (
-              SELECT 1 FROM refunds r JOIN refund_batches b ON b.id = r.batch_id
-              WHERE  b.order_id = l.order_id AND r.buyer_notified_at >= l.sent_at)))`
+              SELECT 1 FROM refunds r WHERE r.buyer_notice_letter_id = l.id AND r.buyer_notified_at IS NOT NULL)))`
+
+// deleteStaleSendingSQL removes a letter left "sending" for a day that no
+// source confirmed. A letter whose ticket delivery job is still
+// 'processing' is kept: the worker may have died after the relay's 250 and
+// before it marked the job, so the letter may have gone out. Such a letter
+// stays 'sending' (not shown on the order card) as evidence.
+const deleteStaleSendingSQL = `
+DELETE FROM email_letters l
+WHERE  l.status = 'sending' AND l.sent_at < now() - $1::interval
+  AND  NOT EXISTS (SELECT 1 FROM delivery_jobs dj WHERE dj.email_letter_id = l.id AND dj.status = 'processing')`
 
 // SweepStale settles letters left "sending" for more than a day: one that
-// provably went out becomes "sent" (confirmStaleSentSQL); the rest were
-// never sent (the worker died before or during the hand-over, a refusal it
-// could not record) and are deleted, so their recipient address does not
-// linger. Begin runs it before every letter.
+// provably went out becomes "sent" (confirmStaleSentSQL), one that may have
+// gone out is kept, and the rest were never sent (the worker died before
+// the hand-over, a refusal it could not record) and are deleted, so their
+// recipient address does not linger. Begin runs it before every letter, so
+// the check runs whenever a letter is sent, with a one-day threshold.
 func SweepStale(ctx context.Context, db DB) error {
 	if _, err := db.Exec(ctx, confirmStaleSentSQL, sendingKeepSQL); err != nil {
 		return fmt.Errorf("emailstatus: confirm stale letters: %w", err)
 	}
-	if _, err := db.Exec(ctx, `DELETE FROM email_letters WHERE status = 'sending' AND sent_at < now() - $1::interval`,
-		sendingKeepSQL); err != nil {
+	if _, err := db.Exec(ctx, deleteStaleSendingSQL, sendingKeepSQL); err != nil {
 		return fmt.Errorf("emailstatus: sweep stale letters: %w", err)
 	}
 	return nil
@@ -141,16 +162,29 @@ func Begin(ctx context.Context, db DB, l NewLetter) (uuid.UUID, error) {
 		return uuid.Nil, err
 	}
 	if _, err := db.Exec(ctx, `INSERT INTO email_letters (id, org_id, order_id, kind, recipient, provider, status,
-		    subject, ticket_numbers, body_sha256, attachments, template_version)
-		VALUES ($1, $2, $3, $4, $5, $6, 'sending', $7, $8, $9, $10, $11)`,
+		    subject, ticket_numbers, body_sha256, attachments, template_version, from_address, reply_to)
+		VALUES ($1, $2, $3, $4, $5, $6, 'sending', $7, $8, $9, $10, $11, $12, $13)`,
 		id, l.OrgID, l.OrderID, l.Kind, l.Recipient, ProviderBrevo,
-		nonEmpty(l.Subject), numbers, nonEmpty(l.BodySHA256), attJSON, nonEmpty(l.TemplateVersion)); err != nil {
+		nonEmpty(l.Subject), numbers, nonEmpty(l.BodySHA256), attJSON, nonEmpty(l.TemplateVersion),
+		nonEmpty(l.FromAddress), nonEmpty(l.ReplyTo)); err != nil {
 		return uuid.Nil, fmt.Errorf("emailstatus: begin letter: %w", err)
 	}
 	if len(l.DeliveryJobIDs) > 0 {
 		if _, err := db.Exec(ctx, `UPDATE delivery_jobs SET email_letter_id = $1 WHERE id = ANY($2)`,
 			id, l.DeliveryJobIDs); err != nil {
 			return uuid.Nil, fmt.Errorf("emailstatus: link delivery jobs: %w", err)
+		}
+	}
+	if l.ChangeID != uuid.Nil && l.OrderID != nil {
+		if _, err := db.Exec(ctx, `UPDATE session_change_notices SET email_letter_id = $1
+			WHERE change_id = $2 AND order_id = $3`, id, l.ChangeID, *l.OrderID); err != nil {
+			return uuid.Nil, fmt.Errorf("emailstatus: link change notice: %w", err)
+		}
+	}
+	if len(l.RefundIDs) > 0 {
+		if _, err := db.Exec(ctx, `UPDATE refunds SET buyer_notice_letter_id = $1 WHERE id = ANY($2)`,
+			id, l.RefundIDs); err != nil {
+			return uuid.Nil, fmt.Errorf("emailstatus: link refunds: %w", err)
 		}
 	}
 	return id, nil

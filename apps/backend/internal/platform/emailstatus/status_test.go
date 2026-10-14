@@ -281,3 +281,19 @@ func TestCleanLink_MasksDottedTokens(t *testing.T) {
 		t.Fatalf("an ordinary file name must stay: %q", got)
 	}
 }
+
+// TestParseBrevo_DateWithoutZoneIsNotTrusted (review L6): Brevo's "date" is
+// the account's local time without a zone. Read as UTC it could move an
+// event by hours, so a zoneless date counts as "no time" (now); a date that
+// names its zone is used.
+func TestParseBrevo_DateWithoutZoneIsNotTrusted(t *testing.T) {
+	evs, err := ParseBrevo([]byte(`{"event":"delivered","message-id":"<a@b>","date":"2026-10-13 08:00:00"}`), t0)
+	if err != nil || !evs[0].At.Equal(t0) {
+		t.Fatalf("zoneless date: %v %v, want now", evs, err)
+	}
+	evs, err = ParseBrevo([]byte(`{"event":"delivered","message-id":"<a@b>","date":"2026-10-13T09:30:00+02:00"}`), t0)
+	want := time.Date(2026, 10, 13, 7, 30, 0, 0, time.UTC)
+	if err != nil || !evs[0].At.Equal(want) {
+		t.Fatalf("date with a zone: %v %v, want %v", evs, err, want)
+	}
+}
