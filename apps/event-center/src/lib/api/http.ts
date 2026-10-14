@@ -72,11 +72,14 @@ interface SendOptions {
   body?: unknown;
   authenticated: boolean;
   accept?: string;
+  /** Extra headers, for example X-Step-Up-Token on a money request. */
+  headers?: Record<string, string>;
 }
 
 async function send(opts: SendOptions): Promise<Response> {
   const headers: Record<string, string> = {
     Accept: opts.accept ?? "application/json",
+    ...opts.headers,
     "X-Client-Channel": CLIENT_CHANNEL,
   };
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";

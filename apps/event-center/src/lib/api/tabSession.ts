@@ -2,8 +2,9 @@
  * The sign-in session of one browser tab, coordinated with the other tabs
  * of the SAME session (review finding M3, 2026-10-13).
  *
- * The problem. The refresh token lives in sessionStorage, and the browser
- * copies sessionStorage into a duplicated tab. arena-api rotates the
+ * The problem. The refresh token lives in sessionStorage (and in
+ * localStorage, so the session survives closing the browser: layeredStore),
+ * and the browser copies sessionStorage into a duplicated tab. arena-api rotates the
  * refresh token on every refresh and treats a second use of an old token as
  * theft: it revokes ALL the person's sessions (auth.session_compromised),
  * admin-web included. Two tabs that refresh with one token trip it.
@@ -421,29 +422,86 @@ export class TabSession {
 
 const STORE_KEY = "arena.events.session";
 
-/** sessionStorage of this tab (copied by the browser into a duplicated tab). */
-export function browserStore(): SessionStore {
+/** Minimal Web Storage, so the rules below can be tested without a browser. */
+export interface KeyValue {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+function readStored(storage: KeyValue | null): Stored | null {
+  if (storage === null) return null;
+  try {
+    const raw = storage.getItem(STORE_KEY);
+    if (raw === null) return null;
+    const v = JSON.parse(raw) as Partial<Stored>;
+    if (typeof v.key !== "string" || typeof v.refreshToken !== "string" || typeof v.userId !== "string") return null;
+    return { key: v.key, refreshToken: v.refreshToken, userId: v.userId };
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(storage: KeyValue | null, value: Stored | null): void {
+  if (storage === null) return;
+  try {
+    if (value === null) storage.removeItem(STORE_KEY);
+    else storage.setItem(STORE_KEY, JSON.stringify(value));
+  } catch {
+    // Storage full or blocked: the tab keeps working until a reload.
+  }
+}
+
+/**
+ * The session of this tab, kept in two places (owner decision 2026-10-14,
+ * spec 37 section 4.4: a web session survives closing the browser and lives
+ * 72 hours without activity, like the Stripe dashboard).
+ *
+ * - `tab` (sessionStorage): the session THIS tab works in. A duplicated tab
+ *   copies it, exactly as before.
+ * - `browser` (localStorage): the session a NEW tab of this browser joins.
+ *   A tab writes it when it signs in, and keeps it current while it rotates
+ *   the token of that same session. A tab of an older session (somebody
+ *   signed in again in another tab) never overwrites the newer one, and its
+ *   sign-out does not erase it.
+ */
+export function layeredStore(tab: KeyValue | null, browser: KeyValue | null): SessionStore {
   return {
     get() {
-      try {
-        const raw = sessionStorage.getItem(STORE_KEY);
-        if (raw === null) return null;
-        const v = JSON.parse(raw) as Partial<Stored>;
-        if (typeof v.key !== "string" || typeof v.refreshToken !== "string" || typeof v.userId !== "string") return null;
-        return { key: v.key, refreshToken: v.refreshToken, userId: v.userId };
-      } catch {
-        return null;
-      }
+      return readStored(tab) ?? readStored(browser);
     },
     set(value) {
-      try {
-        if (value === null) sessionStorage.removeItem(STORE_KEY);
-        else sessionStorage.setItem(STORE_KEY, JSON.stringify(value));
-      } catch {
-        // Without storage a reload signs the person out. Nothing else breaks.
+      const mine = readStored(tab) ?? readStored(browser);
+      const shared = readStored(browser);
+      writeStored(tab, value);
+      if (value === null) {
+        // Sign-out forgets the browser's session only when it is this tab's.
+        if (shared !== null && mine !== null && shared.key === mine.key) writeStored(browser, null);
+        return;
       }
+      // A new key in this tab is a sign-in: it becomes the browser's session.
+      // The same key is a rotation: kept current only while it is still the
+      // browser's session (or the browser holds none).
+      const signedIn = mine === null || mine.key !== value.key;
+      if (signedIn || shared === null || shared.key === value.key) writeStored(browser, value);
     },
   };
+}
+
+function storageOrNull(pick: () => Storage): KeyValue | null {
+  try {
+    return pick();
+  } catch {
+    return null;
+  }
+}
+
+/** The tab's sessionStorage plus the browser's localStorage (layeredStore). */
+export function browserStore(): SessionStore {
+  return layeredStore(
+    storageOrNull(() => sessionStorage),
+    storageOrNull(() => localStorage),
+  );
 }
 
 export function browserBus(): Bus | null {

@@ -57,6 +57,17 @@ export const es: Record<MessageKey, string> = {
   "forgot.sent": "Si este correo tiene una cuenta de Arena, el enlace ya va de camino. Revisa la bandeja de entrada y la carpeta de spam.",
   "forgot.back": "Volver a la pantalla de acceso",
 
+  "stepUp.title": "Confirma tu contraseña",
+  "stepUp.intro": "Esta acción mueve dinero. Escribe otra vez la contraseña de tu cuenta.",
+  "stepUp.password": "Contraseña",
+  "stepUp.hint": "La confirmación dura 5 minutos. No hace falta escribirla para cada acción.",
+  "stepUp.submit": "Confirmar",
+  "stepUp.working": "Comprobando…",
+  "stepUp.cancel": "Cancelar",
+  "stepUp.error.empty": "Escribe tu contraseña.",
+  "stepUp.error.wrong": "Esta contraseña no coincide. Revisa el idioma del teclado y Bloq Mayús y vuelve a intentarlo.",
+  "stepUp.error.tooMany": "Demasiados intentos. Espera 15 minutos y vuelve a intentarlo.",
+
   "org.notMember": "No eres miembro de esta organización. Pide a la persona propietaria que te invite o elige otra organización.",
   "orgs.title": "Elige una organización",
   "orgs.role": "Tu rol: {role}",

@@ -13,6 +13,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchMe, fetchOrgMe } from "@/lib/api/endpoints";
 import { ApiError, login as apiLogin, logout as apiLogout, session } from "@/lib/api/http";
 import { forgetOrderSearches } from "@/lib/orderSearchMemory";
+import { stepUp } from "@/lib/stepUp";
 import type { MeOrganizationMembership, OrgMeResponse } from "@/lib/api/types";
 
 export type AuthStatus = "loading" | "signedOut" | "signedIn";
@@ -51,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStatus("signedOut");
         queryClient.clear();
         forgetOrderSearches();
+        stepUp.clear();
       }
     });
     return () => {
@@ -69,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await apiLogout();
     queryClient.clear();
     forgetOrderSearches();
+    stepUp.clear();
     setStatus("signedOut");
   }, [queryClient]);
 

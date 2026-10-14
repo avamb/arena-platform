@@ -57,6 +57,17 @@ export const en = {
   "forgot.sent": "If this address has an Arena account, the link is on its way. Check your inbox and the spam folder.",
   "forgot.back": "Back to sign in",
 
+  "stepUp.title": "Confirm your password",
+  "stepUp.intro": "This action moves money. Type the password of your account again.",
+  "stepUp.password": "Password",
+  "stepUp.hint": "The confirmation lasts 5 minutes. You do not need to type it again for each action.",
+  "stepUp.submit": "Confirm",
+  "stepUp.working": "Checking…",
+  "stepUp.cancel": "Cancel",
+  "stepUp.error.empty": "Type your password.",
+  "stepUp.error.wrong": "This password does not fit. Check the keyboard language and Caps Lock, then try again.",
+  "stepUp.error.tooMany": "Too many attempts. Wait 15 minutes and try again.",
+
   "org.notMember": "You are not a member of this organization. Ask its owner to invite you, or choose another organization.",
   "orgs.title": "Choose an organization",
   "orgs.role": "Your role: {role}",

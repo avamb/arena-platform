@@ -9,6 +9,7 @@ type S = components["schemas"];
 
 export type AuthLoginResponse = S["AuthLoginResponse"];
 export type AuthRefreshResponse = S["AuthRefreshResponse"];
+export type AuthStepUpResponse = S["AuthStepUpResponse"];
 export type MeResponse = S["MeResponse"];
 export type MeOrganizationMembership = S["MeOrganizationMembership"];
 export type OrgMeResponse = S["OrgMeResponse"];
