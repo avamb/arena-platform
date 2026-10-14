@@ -34,8 +34,8 @@ func e2eSessionsMessage(text string) string {
 }
 
 func e2eSessionsCallback(data string) string {
-	return fmt.Sprintf(`"callback_query":{"id":"cb-%d","from":{"id":%d,"is_bot":false,"first_name":"Ses","language_code":"ru"},"chat_instance":"x","data":%q,"message":{"message_id":5,"date":1700000000,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
-		time.Now().UnixNano()%100000, e2eSessionsTelegramUser, data, e2eSessionsTelegramUser)
+	return fmt.Sprintf(`"callback_query":{"id":"cb-%d","from":{"id":%d,"is_bot":false,"first_name":"Ses","language_code":"ru"},"chat_instance":"x","data":%q,"message":{"message_id":5,"date":%d,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
+		time.Now().UnixNano()%100000, e2eSessionsTelegramUser, data, e2ePressDate(), e2eSessionsTelegramUser)
 }
 
 func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
@@ -115,6 +115,7 @@ func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
 		t.Fatalf("i18n.NewBundle: %v", err)
 	}
 	tg := newStubTelegram(t)
+	tg.restartGap()
 	bot, err := eventbot.New(eventbot.Options{
 		Token:             "123:test-token",
 		Queries:           gen.New(pool),
@@ -256,7 +257,8 @@ func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
 	if status == "cancelled" {
 		t.Fatal("the session was cancelled by a button press alone")
 	}
-	say("да", "Это не то слово")
+	say("да", "Текст не совпал")
+	say("ОТМЕНИТЬ ЗАКАЗ", "Текст не совпал")
 	_ = pool.QueryRow(ctx, `SELECT status FROM sessions WHERE id = $1`, sessionID).Scan(&status)
 	if status == "cancelled" {
 		t.Fatal("the session was cancelled by a wrong word")
@@ -267,7 +269,7 @@ func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
 	if !strings.Contains(askWord, "Платформа деньги НЕ возвращает") {
 		t.Fatalf("the last step does not say that no money is refunded:\n%s", askWord)
 	}
-	doneMsg := say("ОТМЕНИТЬ", "Сеанс отменён")
+	doneMsg := say("ОТМЕНИТЬ СЕАНС", "Сеанс отменён")
 	if !strings.Contains(doneMsg, "автоматически не возвращены") {
 		t.Fatalf("the done message does not repeat that no money is refunded:\n%s", doneMsg)
 	}

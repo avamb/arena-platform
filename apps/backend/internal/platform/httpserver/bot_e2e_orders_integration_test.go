@@ -375,7 +375,7 @@ func ordScreens(t *testing.T, pool *pgxpool.Pool, s *ordBotSeed, d ecDriver, pen
 		t.Errorf("pending card:\n%s", card)
 	}
 	prompt := d.press("or:c:"+pending.String(), "Последний шаг")
-	if !strings.Contains(prompt, "пока ничего не отменено") || !strings.Contains(prompt, "ОТМЕНИТЬ") {
+	if !strings.Contains(prompt, "пока ничего не отменено") || !strings.Contains(prompt, "ОТМЕНИТЬ ЗАКАЗ") {
 		t.Errorf("cancel prompt:\n%s", prompt)
 	}
 	if v := state(); v.Step != "cancel" || v.CardBuyer != pendingName {
@@ -384,12 +384,13 @@ func ordScreens(t *testing.T, pool *pgxpool.Pool, s *ordBotSeed, d ecDriver, pen
 	if got := orderStatus(t, pool, pending); got != "pending_payment" {
 		t.Fatalf("opening the prompt cancelled the order: %q", got)
 	}
-	d.say("нет, не надо", "не то слово")
-	d.say("ОТМЕНА", "не то слово")
+	d.say("нет, не надо", "Текст не совпал")
+	d.say("ОТМЕНА", "Текст не совпал")
+	d.say("ОТМЕНИТЬ СЕАНС", "Текст не совпал")
 	if got := orderStatus(t, pool, pending); got != "pending_payment" {
 		t.Fatalf("a wrong word changed the order to %q", got)
 	}
-	done := d.say("отменить", "Заказ отменён")
+	done := d.say("отменить заказ", "Заказ отменён")
 	if !strings.Contains(done, "✖ Отменён") {
 		t.Errorf("the card after the cancellation:\n%s", done)
 	}
@@ -516,11 +517,15 @@ func TestBotE2E_OrdersSurviveBotRestart(t *testing.T) {
 
 	stop = restartDialogTestBot(t, pool, api, tg, stop)
 
-	// After the restart the list is still the unpaid tab, still filtered, and
-	// a button of the old message still opens the right order.
-	text := d.press("or:p:1", "Неоплаченные · ")
+	// A button of a screen sent before the restart is out of date and does
+	// nothing (owner decision 2026-10-14).
+	tg.pressStale(t, ecOwnerTG, "or:p:1")
+
+	// The list is still the unpaid tab: the next search shows it on a new
+	// screen, whose buttons open the right order.
+	text := d.say("petrov", "Неоплаченные · ")
 	if !strings.Contains(text, "Поиск: «petrov»") {
-		t.Errorf("the search did not survive the restart:\n%s", text)
+		t.Errorf("the tab did not survive the restart:\n%s", text)
 	}
 	v := readOrdersDialog(t, pool, ecOwnerTG)
 	if v.Tab != "unpaid" || v.Query != "petrov" || strings.Join(v.Buyers, ",") != "Boris Petrov" {
@@ -533,11 +538,12 @@ func TestBotE2E_OrdersSurviveBotRestart(t *testing.T) {
 	d.press("or:v:"+seed.clara.String(), "Clara Zakharova")
 	d.press("or:c:"+seed.clara.String(), "Последний шаг")
 	stop = restartDialogTestBot(t, pool, api, tg, stop)
-	d.say("не надо", "не то слово")
+	d.say("не надо", "Текст не совпал")
+	d.say("CANCEL", "Текст не совпал")
 	if got := orderStatus(t, pool, seed.clara); got != "pending_payment" {
 		t.Fatalf("a wrong word after the restart changed the order to %q", got)
 	}
-	d.say("CANCEL", "Заказ отменён")
+	d.say("CANCEL ORDER", "Заказ отменён")
 	if got := orderStatus(t, pool, seed.clara); got != "cancelled" {
 		t.Fatalf("the English word must cancel in any language, status = %q", got)
 	}

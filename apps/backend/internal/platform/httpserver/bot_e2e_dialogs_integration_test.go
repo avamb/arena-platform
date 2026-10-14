@@ -34,6 +34,7 @@ func startDialogTestBot(t *testing.T, pool *pgxpool.Pool, api *httptest.Server, 
 	if err != nil {
 		t.Fatalf("i18n.NewBundle: %v", err)
 	}
+	tg.restartGap()
 	bot, err := eventbot.New(eventbot.Options{
 		Token:             "123:test-token",
 		Queries:           gen.New(pool),
@@ -87,9 +88,11 @@ func linkDialogTestOwner(t *testing.T, f *botInviteFixture, srv *Server, tgID in
 	})
 }
 
-// The owner types a colleague's e-mail, the bot restarts (a deploy), and the
-// role pressed afterwards still sends the invitation — the dialog was on disk.
-func TestBotE2E_TeamInviteSurvivesBotRestart(t *testing.T) {
+// The owner types a colleague's e-mail and the bot restarts (a deploy). Every
+// screen sent before the restart is out of date (owner decision 2026-10-14):
+// the role pressed on the old screen does nothing and says so, and the
+// invitation is sent from new screens reached through the menu.
+func TestBotE2E_TeamInviteAfterRestartStartsFromANewScreen(t *testing.T) {
 	pool := onboardingIntegrationPool(t)
 	f := newBotInviteFixture(t, pool)
 	srv := buildBotIntegrationServer(t, pool)
@@ -124,6 +127,27 @@ func TestBotE2E_TeamInviteSurvivesBotRestart(t *testing.T) {
 	time.Sleep(400 * time.Millisecond)
 	startDialogTestBot(t, pool, api, tg)
 
+	// The old screen's role button: out of date, nothing sent, nothing done.
+	tg.pressStale(t, ownerTG, "team:role:manager")
+	ctx := context.Background()
+	var early int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM bot_invitations WHERE org_id = $1 AND email = $2`, f.orgID, colleague).Scan(&early); err != nil || early != 0 {
+		t.Fatalf("the old screen's button invited the colleague: %d (%v)", early, err)
+	}
+
+	// From the menu the person goes on with new screens.
+	m = tg.mark()
+	tg.push(e2eMessageAs(ownerTG, "☰ Меню"))
+	tg.waitSince(t, m, "Что будем делать")
+	m = tg.mark()
+	tg.push(e2eCallbackAs(ownerTG, "team"))
+	tg.waitSince(t, m, "Сотрудники: ")
+	m = tg.mark()
+	tg.push(e2eCallbackAs(ownerTG, "team:invite"))
+	tg.waitSince(t, m, "E-mail коллеги")
+	m = tg.mark()
+	tg.push(e2eMessageAs(ownerTG, colleague))
+	tg.waitSince(t, m, "Что может")
 	m = tg.mark()
 	tg.push(e2eCallbackAs(ownerTG, "team:role:manager"))
 	invited := tg.waitSince(t, m, "Приглашение отправлено")
@@ -131,7 +155,6 @@ func TestBotE2E_TeamInviteSurvivesBotRestart(t *testing.T) {
 		t.Fatalf("after the restart the invitation must name the colleague and the role:\n%s", invited)
 	}
 
-	ctx := context.Background()
 	var role, invID string
 	if err := pool.QueryRow(ctx,
 		`SELECT role, id::text FROM bot_invitations WHERE org_id = $1 AND email = $2 ORDER BY created_at DESC LIMIT 1`,
@@ -229,6 +252,7 @@ func TestBotE2E_StrangerDialogSweptAtExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	tg := newStubTelegram(t)
+	tg.restartGap()
 	bot, err := eventbot.New(eventbot.Options{
 		Token: "123:test-token", Queries: gen.New(pool),
 		Arena:             eventbot.NewArenaClient(api.URL, botTestServiceToken, api.Client()),
