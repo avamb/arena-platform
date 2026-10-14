@@ -12,14 +12,27 @@ const pub = path.resolve(__dirname, "../../public");
 
 type Policy = (url: string, method: string, origin: string, mode: string) => string;
 
-function loadPolicy(): Policy {
+interface Worker {
+  arenaCachePolicy: Policy;
+  arenaBuildVersion: (href: string) => string;
+  arenaStaleCaches: (keys: string[], current: string) => string[];
+}
+
+function loadWorker(): Worker {
   const sandbox: Record<string, unknown> = {
     URL,
-    self: { addEventListener: () => undefined, location: { origin: "https://events.example" } },
+    self: {
+      addEventListener: () => undefined,
+      location: { origin: "https://events.example", href: "https://events.example/sw.js?v=b42" },
+    },
   };
   vm.createContext(sandbox);
   vm.runInContext(readFileSync(path.join(pub, "sw.js"), "utf8"), sandbox);
-  return (sandbox.self as { arenaCachePolicy: Policy }).arenaCachePolicy;
+  return sandbox.self as Worker;
+}
+
+function loadPolicy(): Policy {
+  return loadWorker().arenaCachePolicy;
 }
 
 describe("manifest", () => {
@@ -62,10 +75,26 @@ describe("service worker cache policy", () => {
     expect(policy(`${origin}/manifest.webmanifest`, "GET", origin, "cors")).toBe("skip");
   });
 
-  it("caches hashed assets and icons, serves app pages from the network", () => {
+  it("caches hashed assets, takes icons and app pages from the network first", () => {
     expect(policy(`${origin}/assets/index-abc.js`, "GET", origin, "no-cors")).toBe("asset");
-    expect(policy(`${origin}/icons/icon-192.png`, "GET", origin, "no-cors")).toBe("asset");
+    // An icon keeps its name when it changes: network first, the cache offline only.
+    expect(policy(`${origin}/icons/icon-192.png`, "GET", origin, "no-cors")).toBe("fresh");
     expect(policy(`${origin}/o/1/orders?q=x`, "GET", origin, "navigate")).toBe("page");
     expect(policy(`${origin}/reset-password?token=t`, "GET", origin, "navigate")).toBe("page");
+  });
+});
+
+describe("service worker versions", () => {
+  const worker = loadWorker();
+
+  it("names its cache after the build in its own address", () => {
+    expect(worker.arenaBuildVersion("https://events.example/sw.js?v=lq1x2")).toBe("lq1x2");
+    expect(worker.arenaBuildVersion("https://events.example/sw.js")).toBe("dev");
+    expect(worker.arenaBuildVersion("https://events.example/sw.js?v=../../x")).toBe("dev");
+  });
+
+  it("deletes the caches of older builds of this app only", () => {
+    const keys = ["arena-ec-shell-v1", "arena-ec-shell-old", "arena-ec-shell-b42", "someone-else"];
+    expect(worker.arenaStaleCaches(keys, "arena-ec-shell-b42")).toEqual(["arena-ec-shell-v1", "arena-ec-shell-old"]);
   });
 });

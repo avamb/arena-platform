@@ -5,6 +5,11 @@
  * and arena-api refuses a money request from the web without it (403
  * auth.step_up_required).
  *
+ * The token is made for ONE organization and for this sign-in: the server
+ * refuses it in another organization and after a sign-out. So the store
+ * keeps the organization next to the token and gives it out only for that
+ * organization.
+ *
  * The token lives in memory only: never in storage, never in the address.
  * Sign-out forgets it. Refunds arrive in phase R5; this is the mechanism
  * they call (`withStepUp`).
@@ -21,33 +26,36 @@ const MARGIN_MS = 30_000;
 
 export class StepUpStore {
   private token: string | null = null;
+  private orgId: string | null = null;
   private expiresAt = 0;
 
   constructor(private readonly now: () => number = Date.now) {}
 
-  /** The token while it still covers a request, else null. */
-  current(): string | null {
-    if (this.token === null || this.expiresAt - this.now() <= MARGIN_MS) return null;
+  /** The token of orgId while it still covers a request, else null. */
+  current(orgId: string): string | null {
+    if (this.token === null || this.orgId !== orgId || this.expiresAt - this.now() <= MARGIN_MS) return null;
     return this.token;
   }
 
-  set(token: string, expiresAt: number): void {
+  set(token: string, orgId: string, expiresAt: number): void {
     this.token = token;
+    this.orgId = orgId;
     this.expiresAt = expiresAt;
   }
 
   clear(): void {
     this.token = null;
+    this.orgId = null;
     this.expiresAt = 0;
   }
 }
 
 export const stepUp = new StepUpStore();
 
-/** Checks the password and keeps the token. Throws ApiError on a refusal. */
-export async function confirmPassword(password: string, store: StepUpStore = stepUp): Promise<void> {
-  const res = await call<AuthStepUpResponse>({ route: API.stepUp, body: { password } });
-  store.set(res.step_up_token, Date.parse(res.expires_at));
+/** Checks the password for orgId and keeps the token. Throws ApiError on a refusal. */
+export async function confirmPassword(password: string, orgId: string, store: StepUpStore = stepUp): Promise<void> {
+  const res = await call<AuthStepUpResponse>({ route: API.stepUp, body: { password, org_id: orgId } });
+  store.set(res.step_up_token, orgId, Date.parse(res.expires_at));
 }
 
 /** The person closed the password question: nothing was sent. */
@@ -59,21 +67,22 @@ export class StepUpCancelled extends Error {
 }
 
 /**
- * Runs a money request with the step-up header. `ask` opens the password
- * question and resolves true once the password is confirmed (false: the
- * person cancelled). When the server still says auth.step_up_required (the
- * token ran out on the way), it asks once more.
+ * Runs a money request of organization orgId with the step-up header. `ask`
+ * opens the password question and resolves true once the password is
+ * confirmed (false: the person cancelled). When the server still says
+ * auth.step_up_required (the token ran out on the way), it asks once more.
  */
 export async function withStepUp<T>(
+  orgId: string,
   run: (headers: Record<string, string>) => Promise<T>,
-  ask: () => Promise<boolean>,
+  ask: (orgId: string) => Promise<boolean>,
   store: StepUpStore = stepUp,
 ): Promise<T> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    let token = store.current();
+    let token = store.current(orgId);
     if (token === null) {
-      if (!(await ask())) throw new StepUpCancelled();
-      token = store.current();
+      if (!(await ask(orgId))) throw new StepUpCancelled();
+      token = store.current(orgId);
       if (token === null) throw new StepUpCancelled();
     }
     try {
@@ -89,6 +98,55 @@ export async function withStepUp<T>(
   throw new StepUpCancelled();
 }
 
+/**
+ * The one open password question. A second ask() while the question is on
+ * screen does not open a second one and does not drop the first caller:
+ * it waits for the same answer. Every caller is told the answer once.
+ */
+export class StepUpQuestion {
+  private waiters: Array<(ok: boolean) => void> = [];
+  private openOrg: string | null = null;
+
+  constructor(private readonly onChange: (orgId: string | null) => void) {}
+
+  /** The organization the open question is for, null when none is open. */
+  get org(): string | null {
+    return this.openOrg;
+  }
+
+  ask(orgId: string): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      this.waiters.push(resolve);
+      if (this.openOrg === null) {
+        this.openOrg = orgId;
+        this.onChange(orgId);
+      }
+    });
+  }
+
+  /** The person answered: confirmed (true) or cancelled (false). */
+  answer(ok: boolean): void {
+    const waiters = this.waiters;
+    this.waiters = [];
+    this.openOrg = null;
+    this.onChange(null);
+    for (const resolve of waiters) resolve(ok);
+  }
+}
+
+/**
+ * Where Tab moves the focus inside a dialog with `count` focusable elements
+ * when the focus is on element `current` (-1: outside them). It never
+ * leaves the dialog: past the last it goes to the first, before the first
+ * to the last.
+ */
+export function trapFocusIndex(count: number, current: number, backwards: boolean): number {
+  if (count <= 0) return -1;
+  if (current < 0) return backwards ? count - 1 : 0;
+  if (backwards) return current === 0 ? count - 1 : current - 1;
+  return current === count - 1 ? 0 : current + 1;
+}
+
 /** Errors of POST /v1/auth/step-up. Each one says what to do next. */
 export function stepUpErrorKey(err: unknown): MessageKey {
   if (err instanceof ApiError) {
@@ -96,6 +154,7 @@ export function stepUpErrorKey(err: unknown): MessageKey {
     if (err.code === "auth.step_up_wrong_password") return "stepUp.error.wrong";
     if (err.code === "auth.rate_limited" || err.status === 429) return "stepUp.error.tooMany";
     if (err.code === "validation.password_required") return "stepUp.error.empty";
+    if (err.code === "auth.session_ended" || err.status === 401) return "stepUp.error.sessionEnded";
   }
   return "common.error.generic";
 }

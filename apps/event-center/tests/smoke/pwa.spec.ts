@@ -72,6 +72,14 @@ test.describe("web session and installable app", () => {
       return urls;
     });
     expect(cached.length).toBeGreaterThan(0);
+
+    // The worker is registered with the build id, and its only cache is named
+    // after that build: a deploy gets a new worker and the old cache goes.
+    const scriptURL = await page.evaluate(async () => (await navigator.serviceWorker.ready).active?.scriptURL ?? "");
+    const build = new URL(scriptURL).searchParams.get("v");
+    expect(build, scriptURL).toBeTruthy();
+    const names = await page.evaluate(() => caches.keys());
+    expect(names).toEqual([`arena-ec-shell-${build}`]);
     for (const url of cached) {
       const u = new URL(url);
       expect(u.origin, url).toBe(new URL(page.url()).origin);
