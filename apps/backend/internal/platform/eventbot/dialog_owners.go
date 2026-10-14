@@ -26,6 +26,9 @@ import (
 type dialogOwner struct {
 	owns  func(data string) bool
 	leave func(b *Bot, ctx context.Context, tg int64)
+	// narrow, when set, runs on a press the dialog owns: it ends a step of
+	// the dialog that belongs to fewer buttons than the dialog as a whole.
+	narrow func(b *Bot, ctx context.Context, tg int64, data string)
 }
 
 func prefixIs(p string) func(string) bool {
@@ -48,8 +51,9 @@ var dialogOwners = map[string]dialogOwner{
 		leave: (*Bot).leaveEvents,
 	},
 	ordersDialogKind: {
-		owns:  func(data string) bool { head, _, _ := strings.Cut(data, ":"); return isOrdersCallback(head) },
-		leave: (*Bot).leaveOrders,
+		owns:   func(data string) bool { head, _, _ := strings.Cut(data, ":"); return isOrdersCallback(head) },
+		leave:  (*Bot).leaveOrders,
+		narrow: (*Bot).narrowOrderCancel,
 	},
 	// A refund already with the server, or one that may have started, is
 	// kept or parked with its key by leaveIdleRefund, never dropped.
@@ -68,7 +72,7 @@ var dialogOwners = map[string]dialogOwner{
 
 // dialogTexts maps every dialog kind that takes typed text to its handler.
 // A handler reports whether it took the text.
-var dialogTexts = map[string]func(b *Bot, ctx context.Context, chatID int64, from *models.User, text string) bool{
+var dialogTexts = map[string]dialogTextHandler{
 	eventsDialogKind:   (*Bot).eventsText,
 	ordersDialogKind:   (*Bot).ordersText,
 	refundDialogKind:   (*Bot).refundText,
@@ -91,9 +95,33 @@ func (b *Bot) leaveForeignDialogs(ctx context.Context, tg int64, data string) {
 		return
 	}
 	for _, kind := range dialogOwnerOrder {
-		if o := dialogOwners[kind]; !o.owns(data) {
+		o := dialogOwners[kind]
+		switch {
+		case !o.owns(data):
 			o.leave(b, ctx, tg)
+		case o.narrow != nil:
+			o.narrow(b, ctx, tg, data)
 		}
+	}
+}
+
+// narrowOrderCancel ends the order's cancel-word step on any press but its
+// own ("or:c:"), while the orders list and card stay: the refund and resend
+// screens live under "or:" too, and a word typed on them must never reach
+// the cancel prompt. The step goes back to the card without making the
+// dialog the newest one.
+func (b *Bot) narrowOrderCancel(ctx context.Context, tg int64, data string) {
+	if strings.HasPrefix(data, "or:c:") {
+		return
+	}
+	var st ordersDialog
+	step, found, _, err := b.dialogs.Load(ctx, tg, ordersDialogKind, &st)
+	if err != nil || !found || step != ordStepCancel {
+		return
+	}
+	orgID := st.OrgID
+	if _, err := b.dialogs.SaveQuiet(ctx, tg, &orgID, ordersDialogKind, ordStepCard, st, dialogTTL); err != nil {
+		b.logger.Warn("eventbot: order cancel step not ended", slog.Int64("telegram_user_id", tg), slog.String("error", err.Error()))
 	}
 }
 
@@ -121,11 +149,19 @@ func (b *Bot) routeDialogText(ctx context.Context, chatID int64, from *models.Us
 		b.logger.Warn("eventbot: dialogs not listed", slog.Int64("telegram_user_id", from.ID), slog.String("error", err.Error()))
 		return false
 	}
+	routes := dialogTexts
+	if b.textRoutes != nil {
+		routes = b.textRoutes // tests put recording handlers here
+	}
 	return offerText(kinds, func(kind string) bool {
-		handle := dialogTexts[kind]
+		handle := routes[kind]
 		return handle != nil && handle(b, ctx, chatID, from, text)
 	})
 }
+
+// dialogTextHandler takes a typed text for one dialog kind and reports
+// whether it took it.
+type dialogTextHandler = func(b *Bot, ctx context.Context, chatID int64, from *models.User, text string) bool
 
 // offerText offers a text to the dialogs in the order given (newest first)
 // and stops at the first one that takes it.
