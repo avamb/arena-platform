@@ -42,7 +42,10 @@
 1. Откройте `https://events.arenasoldout.com/health`. Должно быть `ok`.
 2. Если Cloudflare показывает ошибку 526, у Traefik ещё нет сертификата. Подождите 2 минуты и обновите страницу.
 3. Если ошибка 526 не уходит 5 минут, нажмите «Deploy» у приложения ещё раз: Traefik запросит сертификат заново. Если и это не помогло, переключите запись `events` в Cloudflare на «DNS only» (серое облако), дождитесь страницы, потом верните «Proxied».
-4. Запустите проверку из корня репозитория:
+4. Проверьте режим SSL зоны в Cloudflare: раздел SSL/TLS, Overview. Нужен режим «Full (strict)». Так Cloudflare проверяет сертификат сервера и не пускает подменённый.
+5. Если режим не «Full (strict)», сначала убедитесь, что `https://events.arenasoldout.com/health` отвечает `ok`, то есть сертификат Let's Encrypt уже выпущен. Только после этого включите «Full (strict)». Если включить его раньше, сайт будет отвечать 526.
+6. Режим действует на всю зону, а не только на `events`. Если в зоне есть адрес без настоящего сертификата, он после переключения ответит 526. Проверьте `api`, `tickets` и главную страницу сразу после переключения.
+7. Запустите проверку из корня репозитория:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File apps\event-center\scripts\check-live.ps1
@@ -85,5 +88,5 @@ powershell -ExecutionPolicy Bypass -File apps\event-center\scripts\check-live.ps
 
 ## 5. Что проверяет CI
 
-1. Задача `event-center-build`: vitest, сборка, Playwright smoke (включая страницы `/reset-password` и `/accept-invite`), сборка образа, ожидание `healthy`, `scripts/check-headers.sh` на контейнере и тот же smoke против контейнера с включённым CSP.
-2. Go: `authemail` (выбор адреса и тексты писем), `config` (на проде `EVENT_CENTER_PUBLIC_URL` только `https://`), интеграционный тест `TestPGRecipients_OrganizerOrPlatformUser` (кто организатор, кто платформенный пользователь).
+1. Задача `event-center-build`: vitest, сборка, Playwright smoke (включая страницы `/reset-password` и `/accept-invite`), сборка образа, ожидание `healthy`, `scripts/check-headers.sh` на контейнере, тот же smoke против контейнера с включённым CSP и журнал nginx: в нём есть путь `/reset-password`, но нет токена и адреса из ссылки.
+2. Go: `authemail` (выбор адреса и тексты писем), `config` (на проде `EVENT_CENTER_PUBLIC_URL` — только адрес вида `https://хост` без пути, запроса и фрагмента), интеграционный тест `TestPGRecipients_OrganizerOrPlatformUser` (кто организатор, кто платформенный пользователь).

@@ -9,6 +9,8 @@ package httpserver
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
@@ -128,6 +130,15 @@ func TestWebLink_BotCodeSignsInOnceAndSignOutEverywhere(t *testing.T) {
 	if s.channel == nil || *s.channel != "event_center_web" || s.idle == nil || *s.idle != 72*3600 || !near(s.expiresAt, time.Now().Add(72*time.Hour)) {
 		t.Fatalf("session of a bot link: %+v", s)
 	}
+	// Its access token says it is a web sign-in ("chn") and names it ("sid"),
+	// so the money routes ask this session for the password too.
+	if chn, sid := accessSessionClaims(t, signedIn["access_token"].(string)); chn != "event_center_web" || s.sessionID == nil || sid != s.sessionID.String() {
+		t.Fatalf("access token of a bot link: chn=%q sid=%q (session %v)", chn, sid, s.sessionID)
+	}
+	stepUpBody := fmt.Sprintf(`{"password":"a long phrase 1","org_id":%q}`, uuid.NewString())
+	if code, out := c.do(http.MethodPost, "/v1/auth/step-up", signedIn["access_token"].(string), stepUpBody, nil); code != http.StatusOK {
+		t.Fatalf("step-up in a bot-link session: %d %v", code, out)
+	}
 	// It works once.
 	if code, out := exchange(second); code != http.StatusBadRequest || errCode(out) != "auth.web_link_invalid" {
 		t.Fatalf("second exchange: %d %v", code, out)
@@ -182,4 +193,31 @@ func TestWebLink_BotCodeSignsInOnceAndSignOutEverywhere(t *testing.T) {
 	if code, out := c.do(http.MethodPost, "/v1/auth/refresh", "", fmt.Sprintf(`{"refresh_token":%q}`, plain["refresh_token"]), nil); code != http.StatusOK {
 		t.Fatalf("a non-web session was ended too: %d %v", code, out)
 	}
+	// The ended web session cannot confirm a password any more: its step-up
+	// tokens died with it.
+	if code, out := c.do(http.MethodPost, "/v1/auth/step-up", signedIn["access_token"].(string), stepUpBody, nil); code != http.StatusUnauthorized || errCode(out) != "auth.session_ended" {
+		t.Fatalf("step-up after sign out everywhere: %d %v", code, out)
+	}
+}
+
+// accessSessionClaims reads "chn" and "sid" from an access token's payload
+// (the signature is the server's business; the test only reads).
+func accessSessionClaims(t *testing.T, token string) (string, string) {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("not a JWT: %q", token)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claims struct {
+		Chn string `json:"chn"`
+		Sid string `json:"sid"`
+	}
+	if err := json.Unmarshal(raw, &claims); err != nil {
+		t.Fatal(err)
+	}
+	return claims.Chn, claims.Sid
 }

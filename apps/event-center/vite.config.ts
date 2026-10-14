@@ -2,6 +2,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 
+// Every build gets its own id. The page registers /sw.js?v=<id>, so a deploy
+// installs a new service worker with its own cache and the old cache goes
+// (public/sw.js). A build may pass its own id (the commit) in VITE_BUILD_ID.
+process.env.VITE_BUILD_ID ??= Date.now().toString(36);
+
 // The event center is a thin client of arena-api. It shares only the
 // generated OpenAPI types with admin-web (the @openapi alias), never
 // admin-web's screens: admin-web is the platform superadmin console.

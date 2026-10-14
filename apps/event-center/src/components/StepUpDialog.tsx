@@ -1,39 +1,46 @@
 /**
  * The password question before a money action (spec 37 section 4.6).
- * StepUpProvider mounts it once; a screen calls `useStepUp().ask()`, which
- * opens the question and resolves true when the password is confirmed and
- * false when the person cancels. Money calls go through `withStepUp`.
+ * StepUpProvider mounts it once; a screen calls `useStepUp().ask(orgId)`,
+ * which opens the question and resolves true when the password is confirmed
+ * for that organization and false when the person cancels. Money calls go
+ * through `withStepUp`.
+ *
+ * Two asks while the question is open share it (StepUpQuestion): nobody is
+ * left waiting. The dialog keeps the keyboard inside itself (Tab and
+ * Shift+Tab go round its controls) and gives the focus back to the control
+ * that was focused before it opened.
  */
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { confirmPassword, stepUpErrorKey } from "@/lib/stepUp";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
+import { StepUpQuestion, confirmPassword, stepUpErrorKey, trapFocusIndex } from "@/lib/stepUp";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 
 interface StepUpValue {
-  ask: () => Promise<boolean>;
+  ask: (orgId: string) => Promise<boolean>;
 }
 
 const Ctx = createContext<StepUpValue | null>(null);
 
 export function StepUpProvider({ children }: { children: ReactNode }) {
-  const [pending, setPending] = useState<((ok: boolean) => void) | null>(null);
-
-  const ask = useCallback(
-    () =>
-      new Promise<boolean>((resolve) => {
-        setPending(() => resolve);
-      }),
-    [],
-  );
-
-  const close = (ok: boolean) => {
-    pending?.(ok);
-    setPending(null);
-  };
+  const [openOrg, setOpenOrg] = useState<string | null>(null);
+  const question = useMemo(() => new StepUpQuestion(setOpenOrg), []);
+  const ask = useCallback((orgId: string) => question.ask(orgId), [question]);
+  const value = useMemo(() => ({ ask }), [ask]);
 
   return (
-    <Ctx.Provider value={{ ask }}>
+    <Ctx.Provider value={value}>
       {children}
-      {pending !== null && <StepUpDialog onDone={close} />}
+      {openOrg !== null && <StepUpDialog orgId={openOrg} onDone={(ok) => question.answer(ok)} />}
     </Ctx.Provider>
   );
 }
@@ -44,21 +51,40 @@ export function useStepUp(): StepUpValue {
   return v;
 }
 
-function StepUpDialog({ onDone }: { onDone: (ok: boolean) => void }) {
+const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+
+function StepUpDialog({ orgId, onDone }: { orgId: string; onDone: (ok: boolean) => void }) {
   const { t } = useI18n();
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<MessageKey | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const done = useRef(onDone);
+  done.current = onDone;
 
   useEffect(() => {
+    // The control that opened the question gets the focus back afterwards.
+    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     input.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onDone(false);
+      if (e.key === "Escape") done.current(false);
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onDone]);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      if (before !== null && before.isConnected) before.focus();
+    };
+  }, []);
+
+  const keepFocusInside = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab" || box.current === null) return;
+    const items = Array.from(box.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+    const next = trapFocusIndex(items.length, items.indexOf(document.activeElement as HTMLElement), e.shiftKey);
+    if (next < 0) return;
+    e.preventDefault();
+    items[next].focus();
+  };
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -69,7 +95,7 @@ function StepUpDialog({ onDone }: { onDone: (ok: boolean) => void }) {
     setBusy(true);
     setError(null);
     try {
-      await confirmPassword(password);
+      await confirmPassword(password, orgId);
       setPassword("");
       onDone(true);
     } catch (err) {
@@ -80,7 +106,15 @@ function StepUpDialog({ onDone }: { onDone: (ok: boolean) => void }) {
 
   return (
     <div className="dialog-backdrop">
-      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="step-up-title" data-testid="step-up">
+      <div
+        ref={box}
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="step-up-title"
+        data-testid="step-up"
+        onKeyDown={keepFocusInside}
+      >
         <h2 id="step-up-title">{t("stepUp.title")}</h2>
         <p>{t("stepUp.intro")}</p>
         <form onSubmit={onSubmit} noValidate>

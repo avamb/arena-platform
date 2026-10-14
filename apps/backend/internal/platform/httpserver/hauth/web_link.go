@@ -49,7 +49,8 @@ func newWebLinkLimiter() ratelimit.Limiter {
 // header the request carries: a link from the bot always opens the web.
 func (h *Handler) newWebSession(now time.Time) (gen.RefreshTokenSession, time.Time) {
 	channel := audit.ChannelEventCenterWeb
-	s := gen.RefreshTokenSession{SessionStartedAt: &now, ClientChannel: &channel}
+	id := uuid.New()
+	s := gen.RefreshTokenSession{SessionStartedAt: &now, ClientChannel: &channel, SessionID: &id}
 	if h.webSessionIdle > 0 {
 		idle := int32(h.webSessionIdle / time.Second) // #nosec G115 -- capped at maxSessionAge (30 days)
 		s.IdleSeconds = &idle
@@ -155,7 +156,10 @@ func (h *Handler) WebLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	actorID := used.UserID
-	accessToken, exp, err := auth.IssueJWT(h.jwtSecret, actorID, nil, nil, h.jwtIssuer, h.jwtAudience, accessTokenTTL)
+	// A web session: its access token carries "sid" and "chn" like a web
+	// sign-in with a password, so the money routes ask for the password.
+	session, refreshExp := h.newWebSession(time.Now().UTC())
+	accessToken, exp, err := auth.IssueSessionJWT(h.jwtSecret, actorID, h.jwtIssuer, h.jwtAudience, accessTokenTTL, sessionClaims(session))
 	if err != nil {
 		logger.Error("auth.web_link: issue JWT failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_mint_failed", "failed to issue access token", r))
@@ -167,7 +171,6 @@ func (h *Handler) WebLink(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_generation_failed", "failed to generate refresh token", r))
 		return
 	}
-	session, refreshExp := h.newWebSession(time.Now().UTC())
 	if err := q.InsertRefreshTokenSession(ctx, users.TokenHash(refreshToken), actorID, refreshExp, session); err != nil {
 		logger.Error("auth.web_link: insert refresh token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_insert_failed", "failed to save refresh token", r))

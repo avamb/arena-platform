@@ -1,11 +1,13 @@
 package httpserver
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
@@ -128,6 +130,9 @@ type Server struct {
 	// pool access beyond the PoolDB interface (e.g. macs export, AB-50b).
 	// Wired from Options.PgxPool in wire.go.
 	pgxPool *pgxpool.Pool
+	// stepUpSessionCheck replaces the database lookup of requireWebStepUp
+	// ("is this sign-in still live?") in unit tests; nil in production.
+	stepUpSessionCheck func(ctx context.Context, sessionID, userID uuid.UUID) (bool, error)
 
 	// bundle is the platform i18n bundle used by the Bil24 compat gateway
 	// (feature #478, W1-A3b) to localize bil24.* description keys per

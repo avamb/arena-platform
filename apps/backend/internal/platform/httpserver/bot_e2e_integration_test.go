@@ -62,6 +62,10 @@ type stubTelegram struct {
 	msgs map[int]*stubMessage
 	// retired counts the old messages that lost their keyboard.
 	retired int
+	// dates is when each message was sent, in Unix seconds, as Telegram
+	// dates it; a press carries its message's date, and the bot refuses a
+	// message sent before it started (feed.go).
+	dates map[int]int64
 	// lastCall is when the bot last called a method other than getUpdates.
 	lastCall time.Time
 	// answers are the texts of the bot's answerCallbackQuery calls ("" when
@@ -152,6 +156,7 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		case method == "sendMessage":
 			s.msgSeq++
 			seq = s.msgSeq
+			s.stamp(seq)
 			s.remember(seq, p)
 			s.sent = append(s.sent, p.Text)
 			s.sentIDs = append(s.sentIDs, seq)
@@ -172,8 +177,9 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 			s.sent = append(s.sent, p.Text)
 			s.sentIDs = append(s.sentIDs, seq)
 		}
+		date := s.dates[seq]
 		s.mu.Unlock()
-		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":1700000000,"chat":{"id":%d,"type":"private"},"text":%q}}`, seq, p.chat(), p.Text)
+		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":%d,"chat":{"id":%d,"type":"private"},"text":%q}}`, seq, date, p.chat(), p.Text)
 	case "answerCallbackQuery":
 		var p struct {
 			Text string `json:"text"`
@@ -229,8 +235,10 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		s.sentIDs = append(s.sentIDs, 0)
 		s.msgSeq++
 		seq := s.msgSeq
+		s.stamp(seq)
+		date := s.dates[seq]
 		s.mu.Unlock()
-		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":1700000000,"chat":{"id":777,"type":"private"},"caption":%q}}`, seq, caption)
+		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":%d,"chat":{"id":777,"type":"private"},"caption":%q}}`, seq, date, caption)
 	default:
 		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
 	}
@@ -274,6 +282,54 @@ func stubParams(body []byte, field func(string) string) stubSent {
 		p.ReplyMarkup = json.RawMessage(m)
 	}
 	return p
+}
+
+// restartGap is called before a bot starts on this stub: it waits until the
+// clock has left the second of the last message the stub dated, so a bot
+// started again (a restart) tells the messages of the previous one by their
+// date, as Telegram's whole-second dates allow (feed.go). A fresh stub does
+// not wait.
+func (s *stubTelegram) restartGap() {
+	s.mu.Lock()
+	last := int64(0)
+	for _, d := range s.dates {
+		if d > last {
+			last = d
+		}
+	}
+	s.mu.Unlock()
+	for last != 0 && time.Now().Unix() <= last {
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// pressStale presses a button of a screen the bot sent before it restarted
+// and asserts the answer: the note pointing at the menu, and no message
+// sent (feed.go).
+func (s *stubTelegram) pressStale(t *testing.T, user int64, data string) {
+	t.Helper()
+	sends := s.callCount("sendMessage")
+	answers := s.callCount("answerCallbackQuery")
+	s.push(e2eCallbackAs(user, data))
+	s.waitCall(t, "answerCallbackQuery", answers)
+	time.Sleep(300 * time.Millisecond)
+	s.mu.Lock()
+	note := s.answers[len(s.answers)-1]
+	s.mu.Unlock()
+	if note != "Это сообщение устарело. Нажмите ☰ Меню внизу." {
+		t.Errorf("a press on a screen of the old process (%s): %q", data, note)
+	}
+	if got := s.callCount("sendMessage"); got != sends {
+		t.Fatalf("a press on a screen of the old process (%s) sent %d message(s)", data, got-sends)
+	}
+}
+
+// stamp dates a new message now; s.mu must be held.
+func (s *stubTelegram) stamp(id int) {
+	if s.dates == nil {
+		s.dates = map[int]int64{}
+	}
+	s.dates[id] = time.Now().Unix()
 }
 
 // remember records a message's text and keyboard; s.mu must be held.
@@ -407,15 +463,16 @@ func (s *stubTelegram) aim(update string) string {
 	s.mu.Lock()
 	id := s.liveMessage(msg.Chat.ID, data)
 	var target *stubMessage
+	var date int64
 	if id != 0 {
-		target = s.msgs[id]
+		target, date = s.msgs[id], s.dates[id]
 	}
 	s.mu.Unlock()
 	if target == nil {
 		return update
 	}
 	m := map[string]any{
-		"message_id": id, "date": 1700000000, "text": target.text,
+		"message_id": id, "date": date, "text": target.text,
 		"chat": map[string]any{"id": msg.Chat.ID, "type": "private"},
 	}
 	if target.markup != nil {
@@ -555,9 +612,15 @@ func e2eMessage(text string) string {
 }
 
 func e2eCallback(data string) string {
-	return fmt.Sprintf(`"callback_query":{"id":"cb-%d",%s,"chat_instance":"x","data":%q,"message":{"message_id":5,"date":1700000000,"chat":{"id":777,"type":"private"},"text":"menu"}}`,
-		time.Now().UnixNano()%100000, e2eTelegramUser, data)
+	return fmt.Sprintf(`"callback_query":{"id":"cb-%d",%s,"chat_instance":"x","data":%q,"message":{"message_id":5,"date":%d,"chat":{"id":777,"type":"private"},"text":"menu"}}`,
+		time.Now().UnixNano()%100000, e2eTelegramUser, data, e2ePressDate())
 }
+
+// e2ePressDate dates a press the test makes up on a placeholder message: a
+// second ahead, so a bot started in this very second still counts the screen
+// as its own (feed.go treats the start second as the previous process's).
+// A press the stub aims at a real message carries that message's own date.
+func e2ePressDate() int64 { return time.Now().Unix() + 1 }
 
 // e2eMessageAs / e2eCallbackAs are the same updates from another Telegram
 // account (its private chat id equals its user id, as in Telegram).
@@ -567,8 +630,8 @@ func e2eMessageAs(userID int64, text string) string {
 }
 
 func e2eCallbackAs(userID int64, data string) string {
-	return fmt.Sprintf(`"callback_query":{"id":"cb-%d","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":%q,"message":{"message_id":5,"date":1700000000,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
-		time.Now().UnixNano()%100000, userID, data, userID)
+	return fmt.Sprintf(`"callback_query":{"id":"cb-%d","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":%q,"message":{"message_id":5,"date":%d,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
+		time.Now().UnixNano()%100000, userID, data, e2ePressDate(), userID)
 }
 
 func TestBotE2E_InvitationToMyEvents(t *testing.T) {
@@ -595,6 +658,7 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 		t.Fatalf("i18n.NewBundle: %v", err)
 	}
 	tg := newStubTelegram(t)
+	tg.restartGap()
 	bot, err := eventbot.New(eventbot.Options{
 		Token:             "123:test-token",
 		Queries:           gen.New(pool),

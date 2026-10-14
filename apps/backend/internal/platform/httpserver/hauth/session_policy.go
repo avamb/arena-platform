@@ -11,8 +11,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 )
 
 // DefaultWebSessionIdle is the idle window of a web event center session.
@@ -34,7 +37,8 @@ func (h *Handler) SetWebSessionIdle(d time.Duration) {
 // newSession returns the session facts and the end of the first refresh
 // token of a sign-in made now by the client of ctx.
 func (h *Handler) newSession(ctx context.Context, now time.Time) (gen.RefreshTokenSession, time.Time) {
-	s := gen.RefreshTokenSession{SessionStartedAt: &now}
+	id := uuid.New()
+	s := gen.RefreshTokenSession{SessionStartedAt: &now, SessionID: &id}
 	channel, _ := audit.ClientChannelFromContext(ctx)
 	if channel != "" {
 		s.ClientChannel = &channel
@@ -44,6 +48,20 @@ func (h *Handler) newSession(ctx context.Context, now time.Time) (gen.RefreshTok
 		s.IdleSeconds = &idle
 	}
 	return s, sessionEnd(s, now)
+}
+
+// sessionClaims are the claims an access token of session s carries: the
+// sign-in id always, the channel only for the web event center (the one
+// client the money routes ask for the password again).
+func sessionClaims(s gen.RefreshTokenSession) auth.SessionClaims {
+	var c auth.SessionClaims
+	if s.SessionID != nil {
+		c.SessionID = s.SessionID.String()
+	}
+	if s.ClientChannel != nil && *s.ClientChannel == audit.ChannelEventCenterWeb {
+		c.Channel = audit.ChannelEventCenterWeb
+	}
+	return c
 }
 
 // sessionEnd is the end of a refresh token issued now in session s: now plus

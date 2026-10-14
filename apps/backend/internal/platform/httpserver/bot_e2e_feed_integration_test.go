@@ -46,8 +46,8 @@ func TestBotE2E_FeedNewMessagePerPressAndStalePressesRefused(t *testing.T) {
 	// not be removed) does nothing: the spinner stops with a note.
 	sends := tg.callCount("sendMessage")
 	answers := tg.callCount("answerCallbackQuery")
-	tg.push(fmt.Sprintf(`"callback_query":{"id":"cb-stale","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":"help","message":{"message_id":%d,"date":1700000000,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
-		ecOwnerTG, home, ecOwnerTG))
+	tg.push(fmt.Sprintf(`"callback_query":{"id":"cb-stale","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":"help","message":{"message_id":%d,"date":%d,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
+		ecOwnerTG, home, e2ePressDate(), ecOwnerTG))
 	tg.waitCall(t, "answerCallbackQuery", answers)
 	time.Sleep(300 * time.Millisecond)
 	tg.mu.Lock()

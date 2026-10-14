@@ -31,7 +31,9 @@ const queryClient = new QueryClient({
 // an API answer (public/sw.js). Dev builds skip it: Vite serves source.
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    navigator.serviceWorker
+      .register(`/sw.js?v=${encodeURIComponent(String(import.meta.env.VITE_BUILD_ID ?? "dev"))}`)
+      .catch(() => undefined);
   });
 }
 

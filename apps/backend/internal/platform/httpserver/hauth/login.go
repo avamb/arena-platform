@@ -173,14 +173,16 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	h.rateLimiter.Reset(rlKey) // clear on successful login
 
 	actorID := userRow.ID
-	accessToken, exp, err := auth.IssueJWT(
+	// The sign-in's facts come first: the access token carries its id and,
+	// for the web event center, its channel (spec 08_architecture/37 4.5).
+	session, refreshExp := h.newSession(ctx, time.Now().UTC())
+	accessToken, exp, err := auth.IssueSessionJWT(
 		h.jwtSecret,
 		actorID,
-		nil,
-		nil,
 		h.jwtIssuer,
 		h.jwtAudience,
 		accessTokenTTL,
+		sessionClaims(session),
 	)
 	if err != nil {
 		logger.Error("auth.login: issue JWT failed", "error", err)
@@ -197,7 +199,6 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// PR2-03: store SHA-256(rawToken) in DB; return raw token to client only.
 	refreshTokenHash := users.TokenHash(refreshToken)
-	session, refreshExp := h.newSession(ctx, time.Now().UTC())
 	if err := q.InsertRefreshTokenSession(ctx, refreshTokenHash, actorID, refreshExp, session); err != nil {
 		logger.Error("auth.login: insert refresh token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_insert_failed", "failed to save refresh token", r))
@@ -352,14 +353,29 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	actorID := userRow.ID
-	accessToken, exp, err := auth.IssueJWT(
+	// The new token keeps the session facts of the old one (migration 0150):
+	// a web session slides its idle window, never past 30 days from sign-in.
+	// The access token takes its "chn" from the STORED session, never from
+	// this request's header, so leaving X-Client-Channel out of a refresh
+	// does not turn a web session into one the money routes do not ask.
+	session, err := q.GetRefreshTokenSession(ctx, tokenHash)
+	if err != nil {
+		logger.Error("auth.refresh: read session facts failed", "error", err)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
+		return
+	}
+	if session.SessionID == nil {
+		// A token issued before the sign-in got an id: the chain gets one now.
+		id := uuid.New()
+		session.SessionID = &id
+	}
+	accessToken, exp, err := auth.IssueSessionJWT(
 		h.jwtSecret,
 		actorID,
-		nil,
-		nil,
 		h.jwtIssuer,
 		h.jwtAudience,
 		accessTokenTTL,
+		sessionClaims(session),
 	)
 	if err != nil {
 		logger.Error("auth.refresh: issue JWT failed", "error", err)
@@ -375,14 +391,6 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	newTokenHash := users.TokenHash(newRawToken)
-	// The new token keeps the session facts of the old one (migration 0150):
-	// a web session slides its idle window, never past 30 days from sign-in.
-	session, err := q.GetRefreshTokenSession(ctx, tokenHash)
-	if err != nil {
-		logger.Error("auth.refresh: read session facts failed", "error", err)
-		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
-		return
-	}
 	newRefreshExp := sessionEnd(session, time.Now().UTC())
 
 	if err := q.RevokeRefreshToken(ctx, tokenHash); err != nil {

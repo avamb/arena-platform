@@ -251,7 +251,7 @@ func TestBotE2E_EventStatusButtons(t *testing.T) {
 	if seed.deleted(t, live) || seed.dialogs(t, evsOwnerTG) != 1 {
 		t.Fatalf("the question deletes nothing and opens a dialog: deleted=%v dialogs=%d", seed.deleted(t, live), seed.dialogs(t, evsOwnerTG))
 	}
-	if w := owner.say("да", "Это не то слово"); !strings.Contains(w, "УДАЛИТЬ") {
+	if w := owner.say("да", "Текст не совпал"); !strings.Contains(w, "УДАЛИТЬ") {
 		t.Errorf("a wrong word must repeat the word:\n%s", w)
 	}
 	if seed.deleted(t, live) || seed.dialogs(t, evsOwnerTG) != 1 {
@@ -277,7 +277,7 @@ func TestBotE2E_EventStatusButtons(t *testing.T) {
 	// The manager deletes with the English word (accepted in any language).
 	mgrLive, _, _ := seed.event("published", "Manager Live", 1)
 	manager.press(evsData(mgrLive, "del"), "Последний шаг")
-	manager.say("нет", "Это не то слово")
+	manager.say("нет", "Текст не совпал")
 	manager.say("delete", "удалён")
 	if !seed.deleted(t, mgrLive) {
 		t.Fatal("the manager must be able to delete with the English word")

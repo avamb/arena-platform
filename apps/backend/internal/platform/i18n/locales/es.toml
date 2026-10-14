@@ -266,6 +266,9 @@ other = "Este mensaje está desactualizado. Pulsa ☰ Menú abajo."
 ["bot.stale_message_stranger"]
 other = "Este mensaje está desactualizado. Continúa más abajo."
 
+["bot.stale_message_stranger_restart"]
+other = "Este mensaje está desactualizado. Envía /start para continuar."
+
 ["bot.menu_button"]
 other = "☰ Menú"
 
@@ -1173,7 +1176,7 @@ other = "Crea eventos y consulta las ventas de Arena Sold Out sin salir de Teleg
 other = "Eventos y ventas de Arena Sold Out en Telegram"
 
 ["bot.ses.cancel_word"]
-other = "CANCELAR"
+other = "CANCELAR SESIÓN"
 
 ["bot.ses.type_ask"]
 other = "⚠️ <b>Atención: esta acción no se puede deshacer.</b>\nTodavía no se ha cancelado nada.\n\n{{.Subject}}\nCorreos a compradores: {{.Orders}}.{{if .Orders}}\n\n💶 La plataforma NO devuelve el dinero. Los pedidos siguen pagados. Las entradas siguen siendo válidas. Gestiona los reembolsos tú directamente con los compradores.{{end}}\n\nPara cancelar, <b>escribe {{.Word}}</b> y envíalo. Para conservar la sesión, pulsa «Atrás»."
@@ -1185,7 +1188,7 @@ other = "Sesión: <b>{{.Old}}</b>"
 other = "Evento: <b>{{.Name}}</b>: las {{.N}} sesiones"
 
 ["bot.ses.type_wrong"]
-other = "Esa no es la palabra, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
+other = "El texto no coincide, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
 
 ["bot.ses.done_refund_note"]
 other = "💶 No se ha devuelto dinero automáticamente y las entradas siguen siendo válidas. Gestiona los reembolsos tú directamente con los compradores."
@@ -1800,11 +1803,14 @@ other = "Mensaje del proveedor de pago: {{.Msg}}"
 ["bot.ord.cancel_btn"]
 other = "Cancelar pedido sin pagar"
 
+["bot.ord.cancel_word"]
+other = "CANCELAR PEDIDO"
+
 ["bot.ord.cancel_ask"]
-other = "⚠️ <b>Último paso: todavía no se ha cancelado nada.</b>\n\nPedido №{{.Num}} · {{.Amount}}\nEl pedido se cierra y la reserva de sus plazas termina. Las plazas vuelven a la venta. Esto no se puede deshacer.\n\nPara cancelar, <b>escribe la palabra {{.Word}}</b> y envíala como mensaje. Para conservar el pedido, pulsa «Atrás»."
+other = "⚠️ <b>Último paso: todavía no se ha cancelado nada.</b>\n\nPedido №{{.Num}} · {{.Amount}}\nEl pedido se cierra y la reserva de sus plazas termina. Las plazas vuelven a la venta. Esto no se puede deshacer.\n\nPara cancelar, <b>escribe {{.Word}}</b> y envíalo como mensaje. Para conservar el pedido, pulsa «Atrás»."
 
 ["bot.ord.cancel_wrong"]
-other = "Esa no es la palabra, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
+other = "El texto no coincide, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
 
 ["bot.ord.cancel_done"]
 other = "✔ El pedido está cancelado y sus plazas vuelven a estar libres."
@@ -1899,7 +1905,7 @@ other = "✔ «{{.Name}}» está eliminado."
 other = "⚠️ <b>Último paso: todavía no se ha eliminado nada.</b>\n\n«{{.Name}}»: fechas: {{.N}}, sin pedidos pagados y sin entradas vendidas. El evento y sus fechas se eliminarán. No se puede deshacer.\n\nPara eliminar, <b>escribe la palabra {{.Word}}</b> y envíala como mensaje. Para conservar el evento, pulsa «Atrás»."
 
 ["bot.evs.delete_wrong"]
-other = "Esa no es la palabra, así que no se ha eliminado nada. Para eliminar, escribe exactamente: {{.Word}}"
+other = "El texto no coincide, así que no se ha eliminado nada. Para eliminar, escribe exactamente: {{.Word}}"
 
 ["bot.evs.delete_blocked"]
 other = "🚫 <b>«{{.Name}}» no se puede eliminar.</b>\n\nTiene {{.Orders}} pedido(s) pagado(s) y {{.Tickets}} entrada(s) vendida(s). Los compradores tienen entradas válidas, así que el evento se queda. Puedes archivarlo: la venta se detiene, el evento sale de tus listas y las entradas siguen siendo válidas."
@@ -2121,7 +2127,7 @@ other = "🚫 Anular invitación"
 other = "🚫 <b>¿Anular esta invitación?</b>\n\n{{.Guest}}\n{{.Event}} · {{.When}}\n\nLa entrada y su código de barras dejan de funcionar al instante y la plaza vuelve a la venta. No se puede deshacer y Arena no avisa al invitado: escríbele tú.\n\nPara anular, escribe la palabra <b>{{.Word}}</b> como mensaje."
 
 ["bot.inv.revoke_wrong"]
-other = "Esa no es la palabra, así que no se ha anulado nada. Para anular, escribe {{.Word}} o pulsa «Atrás»."
+other = "El texto no coincide, así que no se ha anulado nada. Para anular, escribe {{.Word}} o pulsa «Atrás»."
 
 ["bot.inv.revoke_word"]
 other = "ANULAR"
@@ -2322,7 +2328,7 @@ other = "El archivo de uso es demasiado grande para enviarlo por el chat."
 other = "🗑 <b>¿Eliminar el código {{.Code}}?</b>\n\nVeces usado: {{.Count}}. Al eliminarlo, el código sale de la lista, su uso ya no se puede abrir ni exportar aquí y su nombre sigue ocupado, así que ningún código nuevo podrá llamarse igual. Si solo quieres detenerlo, mejor ponlo en pausa. Los pedidos ya pagados no cambian.\n\nPara eliminarlo, escribe exactamente: {{.Word}}"
 
 ["bot.promo.delete_wrong"]
-other = "Esa no es la palabra, así que no se eliminó nada. Para eliminar, escribe exactamente: {{.Word}}"
+other = "El texto no coincide, así que no se ha eliminado nada. Para eliminar, escribe exactamente: {{.Word}}"
 
 ["bot.promo.delete_word"]
 other = "ELIMINAR"
@@ -2879,7 +2885,7 @@ other = "☐ No enviar un correo al comprador"
 other = "DEVOLVER"
 
 ["bot.ref.word_wrong"]
-other = "Esa no es la palabra de confirmación. No se devolvió nada. Escribe {{.Word}} para confirmar o vuelve atrás."
+other = "El texto no coincide, así que no se ha devuelto nada. Para confirmar, escribe {{.Word}} o vuelve atrás."
 
 ["bot.ref.done_head"]
 other = "<b>Devolución solicitada · pedido n.º {{.Num}}</b>"

@@ -1445,6 +1445,9 @@ type AuthRegisterResponse struct {
 
 // AuthStepUpRequest Body of POST /v1/auth/step-up.
 type AuthStepUpRequest struct {
+	// OrgId The organization of the money action. The token covers actions in this organization only.
+	OrgId openapi_types.UUID `json:"org_id"`
+
 	// Password The signed-in person's current password.
 	Password string `json:"password"`
 }
