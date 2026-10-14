@@ -37,6 +37,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 )
@@ -211,14 +212,39 @@ func (h *Handler) HandleListCities(w http.ResponseWriter, r *http.Request) {
 		countryID = &parsed
 	}
 
-	rows, err := h.queries.ListCities(ctx, locale, countryID)
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"geo.list_cities_failed",
-			"failed to list cities",
-			r,
-		))
-		return
+	// A country code is resolved to its row first so the read below is
+	// limited to that country's cities (this route is public and a search
+	// calls it on every keystroke); a code with no row has no platform cities.
+	noPlatformCities := false
+	if countryID == nil && country != "" {
+		row, err := h.queries.GetCountryByISO2(ctx, country)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			noPlatformCities = true
+		case err != nil:
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"geo.list_cities_failed",
+				"failed to list cities",
+				r,
+			))
+			return
+		default:
+			countryID = &row.ID
+		}
+	}
+
+	var rows []gen.ListCityRow
+	if !noPlatformCities {
+		var err error
+		rows, err = h.queries.ListCities(ctx, locale, countryID)
+		if err != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"geo.list_cities_failed",
+				"failed to list cities",
+				r,
+			))
+			return
+		}
 	}
 
 	result, suggestions := assembleCities(rows, country, countryID != nil, q)
