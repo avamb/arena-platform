@@ -31,6 +31,9 @@
 | Р-2 | П1d | зависимость от П1b | П1d запускается параллельно с П1b: адаптеры Flitt/AllPay передают имя и телефон, когда они есть в запросе провайдеру (`CustomerName`/`CustomerPhone` уже кладёт `hfeed/payment_start.go`), а П1b только меняет, когда они собираются | файлы не пересекаются (`adapters/flitt`, `adapters/allpay` против `hfeed`/виджета); зависимость в спеке смысловая, не кодовая |
 | Р-3 | все | общие файлы `openapi.yaml`, `types_gen.go`, TS-клиенты | каждая сессия правит спеку в своей ветке; перед финальным push — rebase на свежий master и повторный кодген; PR, трогающие openapi, вливаются по одному, следующий rebase'ится после слива предыдущего | правило раздела 5 плана; конфликты в сгенерированных файлах решаются только регенерацией, никогда руками |
 | Р-4 | все | интеграционные тесты на общей базе | каждая сессия создаёт СВОЮ базу `arena_ci_<задача>` на стенде (порт 55432) по рецепту AGENTS.md и удаляет её после; общую `arena` не трогать | параллельные сессии на одной базе ломают друг другу фикстуры (урок AGENTS.md) |
+| Р-5 | П1b | флаги `collect_name`/`collect_phone` оказались КОЛОНКАМИ `sales_channels` (миграция 0061), карточка грозила ST-5 | не стоп-условие: план §5.П сам допускает «миграция данных канала — в 0160 или без миграции». Колонки остаются единственным источником правды; новое чтение `true` = `required`, `false` = `optional` (поле показывается необязательным — решение владельца 14); состояние `off` НЕ реализуется в волне A и приходит миграцией 0160 вместе с П2 (волна B) — карточка П2 дополняется | резерв миграций не нарушен, двойного источника правды в jsonb нет, поведение для живых организаторов меняется ровно так, как велит решение 14 (ST-1 не возникает) |
+| Р-6 | М1 | разведка М0 расходится с планом §8.12 | `tickets.first_admitted_at` НЕ добавлять — есть `tickets.used_at` (0055) с той же семантикой, сводка сеанса уже считает «вошли N из M»; событие `v1.ticket.scanned` УЖЕ эмитится собственным сканером (`hscanner/scanner_callback.go`) — М1 только вносит его в каталог спеки 15 и переводит публикацию в одну транзакцию со вставкой; таблицы `macs_webhook_subscribers` нет — подписчики МАКС это `webhook_subscribers` с `kind='macs'`, секрет `signing_secret` (0040/0089); `gate` и `device_id` в `scan_events` уже есть — 0164 добавляет только `source`, `scanner_label`, `external_scan_id`, `subscriber_id` + UNIQUE | факты по коду master; карточка М1 в спеке 40 поправлена PR разведки |
+| Р-7 | все | запуск исполнителей | задачи волны A идут фоновыми агентами с изолированными worktree (по одному на задачу, модель по классу), а не сессиями приложения: приложение отказывает в старте сессии на ходу, начатом сообщением другой сессии | тот же результат — свой worktree, своя ветка, свой PR; отчёт исполнителя приходит оркестратору напрямую |
 
 ## 3. Волна A — состояние задач
 
@@ -82,7 +85,86 @@
 
 ## 5. Чек-листы шагов владельца (О0, Д0)
 
-(дописываются разведкой haiku)
+Подготовлены разведкой (haiku) 14.10 по официальной документации; факты, которые документация не подтвердила, отмечены отдельно. Секреты в чат и в репозиторий не присылать — только в секретный стор (`arena-site-secrets`).
+
+### 5.1 О0 — чек-лист владельца: платформенный аккаунт Stripe
+
+Проверка репозитория: в `config.go` и `deploy/DOKPLOY.md` нет `STRIPE_PLATFORM_SECRET_KEY`, `STRIPE_CONNECT_CLIENT_ID`, `STRIPE_CONNECT_WEBHOOK_SECRET` (есть только `STRIPE_WEBHOOK_SECRET` и test-only `STRIPE_API_BASE_URL`). Маршрут `GET /v1/stripe/connect/callback` в коде уже есть (`hbilling/stripe_connect.go`, `mount_commerce.go`), но не подключён.
+
+1. Если в Dashboard не включён Connect, откройте раздел Connect и примите условия. Переключатель слева вверху должен показывать «Test mode».
+2. Откройте настройки брендинга Connect: https://dashboard.stripe.com/account/applications/settings — название, цвет, иконка (Stripe показывает их организатору в онбординге).
+3. Откройте https://dashboard.stripe.com/settings/connect/onboarding-options/oauth и скопируйте тестовый `client_id` вида `ca_…` в секретный стор.
+4. На той же странице добавьте оба redirect URI через запятую: `https://api-staging.arenasoldout.com/v1/stripe/connect/callback` и `https://api.arenasoldout.com/v1/stripe/connect/callback` (байт в байт, без слэша в конце).
+5. Откройте https://dashboard.stripe.com/test/apikeys и скопируйте secret key `sk_test_…` платформы в секретный стор. `sk_live_…` в этом чек-листе не создавайте.
+6. Откройте https://dashboard.stripe.com/test/webhooks → «Add endpoint», в «Events from» выберите «Connected accounts». URL пока оставьте заглушкой: маршрут `/v1/payment-intents/webhook/connect` появится в волне B (О1c); агент сообщит адрес.
+7. Выберите события `account.updated`, `account.application.deauthorized` (подтверждены документацией https://docs.stripe.com/connect/webhooks), а также `checkout.session.completed`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `refund.created`, `refund.updated`, `refund.failed` — их точные имена проверьте в списке на экране.
+8. Скопируйте signing secret `whsec_…` endpoint'а в секретный стор. Для sandbox-аккаунта Stripe требует отдельный endpoint.
+9. Проверка доступности OAuth (не нажимайте «Allow»):
+
+```powershell
+Start-Process 'https://connect.stripe.com/oauth/authorize?response_type=code&client_id=<CA_CLIENT_ID>&scope=read_write&redirect_uri=https://api-staging.arenasoldout.com/v1/stripe/connect/callback'
+```
+
+Если показана форма подключения — OAuth доступен. Если `invalid_redirect_uri` — вернитесь к шагу 4.
+
+10. Факт документации: фразы «OAuth не рекомендуется для новых платформ» на открытых страницах Stripe нет; Stripe говорит, что legacy-типы Standard «applies only to platforms that already use legacy connected account types», а новым платформам советует Accounts v2 (https://docs.stripe.com/connect/standard-accounts, https://docs.stripe.com/connect/interactive-platform-guide). OAuth остаётся документированным путём для СУЩЕСТВУЮЩИХ аккаунтов; `read_write` не подключает Standard-аккаунт другой платформы (https://docs.stripe.com/connect/oauth-changes-for-standard-platforms). Решение по модели (OAuth против Accounts v2) агент О1a сверит с этим перед production — это и есть риск (2) плана §8.11.
+11. Передайте агентам (только в стенд, только контейнер api):
+
+| Переменная | Значение | Где |
+|---|---|---|
+| `STRIPE_PLATFORM_SECRET_KEY` | `sk_test_…` платформы | только api |
+| `STRIPE_CONNECT_CLIENT_ID` | `ca_…` | только api |
+| `STRIPE_CONNECT_WEBHOOK_SECRET` | `whsec_…` Connect-endpoint | только api |
+
+`STRIPE_WEBHOOK_SECRET` остаётся отдельным. Строки в `deploy/DOKPLOY.md` §2.6 и в `roleSecrets` впишет агент О1a.
+
+**Что передать агентам:** `ca_…`, результат шага 9, id endpoint'а и список событий (тест), подтверждение, что три значения лежат в секретном сторе стенда.
+
+### 5.2 Д0 — чек-лист владельца: Cloudflare for SaaS
+
+Подтверждено документацией: 100 custom hostnames включены на Free/Pro/Business, далее 0,10 $ за hostname в месяц (https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/plans/); Enterprise нужен только для своих сертификатов, wildcard и Apex Proxying. Требование платёжного метода документация не называет — проверьте в панели.
+
+1. Если план зоны `arenasoldout.com` — Free, Pro или Business, переходите к шагу 2 (Enterprise не нужен).
+2. Если в панели зоны есть пункт «Custom Hostnames», Cloudflare for SaaS уже включён; иначе включите его по https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/start/getting-started/ (панель может попросить платёжный метод).
+3. Создайте в DNS зоны proxied-запись (оранжевое облако) на нынешний хост витрины `tickets.arenasoldout.com`, например `fallback.arenasoldout.com` — это fallback origin.
+4. В Custom Hostnames → Fallback Origin укажите это имя; дождитесь `Active`.
+5. Создайте proxied CNAME-таргет для организаторов, например `pages.arenasoldout.com` (имя — наша конвенция из плана §8.10, не Cloudflare). Организатор ставит у себя `tickets.organizer.com CNAME pages.arenasoldout.com`. Голый домен (apex) без Enterprise невозможен — только поддомены, как и записано в плане.
+6. My Profile → API Tokens → Create Custom Token: права «SSL and Certificates: Edit» + «Zone: Read», ресурс — только зона `arenasoldout.com`, срок действия задайте. Сохраните в `arena-site-secrets`.
+7. Проверка токена (значение подставьте из стора, файлом не сохраняйте):
+
+```powershell
+$env:CF_API_TOKEN = '<ИЗ_СЕКРЕТНОГО_СТОРА>'
+Invoke-RestMethod -Uri 'https://api.cloudflare.com/client/v4/user/tokens/verify' -Headers @{ Authorization = "Bearer $env:CF_API_TOKEN" }
+```
+
+Ожидается `success: true`, `status: active`.
+
+8. На тестовом поддомене, которым вы владеете (например `trial.<ваш-домен>`), создайте CNAME на таргет из шага 5 и дождитесь распространения DNS (`nslookup trial.<домен>`).
+9. Создайте custom hostname (платный объект — после пробы удалите, шаг 12):
+
+```powershell
+$body = @{ hostname = 'trial.<ВАШ-ДОМЕН>'; ssl = @{ method = 'http'; type = 'dv' } } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri 'https://api.cloudflare.com/client/v4/zones/<ZONE_ID>/custom_hostnames' -Headers @{ Authorization = "Bearer $env:CF_API_TOKEN" } -ContentType 'application/json' -Body $body
+```
+
+Из ответа возьмите `result.id`.
+
+10. Проверяйте статус каждые 5 минут, не дольше часа:
+
+```powershell
+Invoke-RestMethod -Uri 'https://api.cloudflare.com/client/v4/zones/<ZONE_ID>/custom_hostnames/<HOSTNAME_ID>' -Headers @{ Authorization = "Bearer $env:CF_API_TOKEN" } | Select-Object -ExpandProperty result | Select-Object status, @{n='ssl';e={$_.ssl.status}}
+```
+
+Нужно `status: active` и `ssl: active` (`pending`, `initializing`, `pending_validation` — промежуточные).
+
+11. Откройте `https://trial.<ВАШ-ДОМЕН>` — должна отдаться витрина. **Не подтверждено документацией:** поведение Full (strict) для fallback origin (открытые страницы Cloudflare for SaaS не описывают требований к сертификату origin). Режим SSL зоны в день пробы не менять (ловушка 526 из заметок проекта). Результат пробы решает ST-6 для линии Д.
+12. Удалите тестовый hostname:
+
+```powershell
+Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zones/<ZONE_ID>/custom_hostnames/<HOSTNAME_ID>' -Headers @{ Authorization = "Bearer $env:CF_API_TOKEN" }
+```
+
+**Что передать агентам:** `ZONE_ID` (не секрет), имена fallback origin и CNAME-таргета, имя записи токена в секретном сторе (не значение), результат шагов 10–11 (в т.ч. отдаётся ли витрина по https и какой режим SSL стоял на зоне).
 
 ## 6. Хроника
 
