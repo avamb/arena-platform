@@ -187,6 +187,7 @@ func startPromoTestBot(t *testing.T, pool *pgxpool.Pool, api *httptest.Server, t
 	if err != nil {
 		t.Fatalf("i18n.NewBundle: %v", err)
 	}
+	tg.restartGap()
 	bot, err := eventbot.New(eventbot.Options{
 		Token:             "123:test-token",
 		Queries:           gen.New(pool),
@@ -615,7 +616,7 @@ func TestBotE2E_PromoCodes(t *testing.T) {
 	if mustPmCode(t, pool, f.orgID, "FIVE").Deleted {
 		t.Fatal("the question deletes nothing")
 	}
-	owner.say("нет", "Это не то слово")
+	owner.say("нет", "Текст не совпал")
 	if mustPmCode(t, pool, f.orgID, "FIVE").Deleted {
 		t.Fatal("a wrong word deletes nothing")
 	}

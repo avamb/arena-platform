@@ -1,11 +1,13 @@
 // email_letters_retention_test.go keeps the retention rule of
 // emailstatus.MinRetention true: buyer letters, their provider events and
-// their opens/clicks are dispute evidence and are kept at least 24 months.
+// their opens/clicks are dispute evidence and are kept at least 24 months,
+// counted from the event date (emailstatus.RetentionAnchorSQL).
 // No production code and no migration may delete or truncate them, except
 // the two statements that remove a letter the mail relay never accepted
 // (status 'sending' — nothing was sent, so there is nothing to prove).
 //
-// A future purge job must keep the 24 months and be added here on purpose,
+// A future purge job must keep the 24 months, count them from
+// emailstatus.RetentionAnchorSQL (never from sent_at alone), and be added here on purpose,
 // with the documentation (docs/ops/brevo_delivery_status_webhook_ru.md §5)
 // changed in the same commit.
 package staticanalysis
@@ -113,7 +115,7 @@ func TestEmailLetters_NoCodeDeletesEvidenceEarly(t *testing.T) {
 		}
 	}
 	if len(violations) > 0 {
-		t.Errorf("letters are dispute evidence and are kept at least 24 months (emailstatus.MinRetention);"+
+		t.Errorf("letters are dispute evidence and are kept at least 24 months from the event date (emailstatus.MinRetention, RetentionAnchorSQL);"+
 			" only a letter still 'sending' may be deleted:\n  %s", strings.Join(violations, "\n  "))
 	}
 	if allowed == 0 {

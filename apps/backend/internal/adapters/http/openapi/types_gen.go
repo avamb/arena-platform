@@ -9468,6 +9468,9 @@ type OrganizerContactRequest struct {
 	// Email Sender's e-mail; the organizer's reply goes there (Reply-To).
 	Email string `json:"email"`
 
+	// EventSlug The event page's slug; empty on a landing page. A message about an event of a promoter goes to the organization's owner only.
+	EventSlug *string `json:"event_slug,omitempty"`
+
 	// FeedToken The event page's feed token; empty on the promoter landing page.
 	FeedToken *string `json:"feed_token,omitempty"`
 

@@ -57,6 +57,7 @@ func TestBotE2E_OnboardingApplication(t *testing.T) {
 		t.Fatalf("i18n.NewBundle: %v", err)
 	}
 	tg := newStubTelegram(t)
+	tg.restartGap()
 	bot, err := eventbot.New(eventbot.Options{
 		Token:             "123:test-token",
 		Queries:           gen.New(pool),

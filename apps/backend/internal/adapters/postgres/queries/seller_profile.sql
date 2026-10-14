@@ -52,7 +52,8 @@ WHERE id = $1
 -- token ($2), or the newest eligible one when $2 is empty — the same rule as
 -- GetHostedPageSeller. has_email reports whether a message has somewhere to
 -- go (public e-mail, the organization's contact_email or its owner's account
--- e-mail); no address is selected here.
+-- e-mail); owner_reachable whether the owner alone can take it (a message
+-- from a promoter's page goes to the owner only). No address is selected here.
 SELECT sc.id,
        COALESCE(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') <> ''
          OR COALESCE(btrim(o.contact_email), '') <> ''
@@ -61,7 +62,13 @@ SELECT sc.id,
                  AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
                  AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
                                  WHERE ur.user_id = u.id AND ur.org_id IS NULL
-                                   AND r.org_id IS NULL AND r.name NOT IN ('org_admin', 'organizer', 'agent'))) AS has_email
+                                   AND r.org_id IS NULL AND r.name NOT IN ('org_admin', 'organizer', 'agent'))) AS has_email,
+       EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
+               WHERE m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
+                 AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
+                 AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                                 WHERE ur.user_id = u.id AND ur.org_id IS NULL
+                                   AND r.org_id IS NULL AND r.name NOT IN ('org_admin', 'organizer', 'agent'))) AS owner_reachable
 FROM sales_channels sc
 JOIN organizations o ON o.id = sc.org_id
 JOIN agent_feed_tokens ft ON ft.sales_channel_id = sc.id
@@ -81,6 +88,26 @@ SELECT contact_form_to_telegram FROM organizations WHERE id = $1 AND deleted_at 
 -- organization has its own contact_email or an owner with an account e-mail.
 SELECT COALESCE(btrim(o.contact_email), '') <> ''
     OR EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
+               WHERE m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
+                 AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
+                 AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                                 WHERE ur.user_id = u.id AND ur.org_id IS NULL
+                                   AND r.org_id IS NULL AND r.name NOT IN ('org_admin', 'organizer', 'agent')))
+FROM organizations o WHERE o.id = $1 AND o.deleted_at IS NULL;
+
+-- name: GetContactEventPromoted :one
+-- Whether the event with this slug in the organization belongs to a promoter
+-- (gen.EventPromotedSQL): its buyers' messages go to the owner only.
+SELECT EXISTS (SELECT 1 FROM events e
+               WHERE e.org_id = $1 AND lower(e.slug) = lower($2) AND e.deleted_at IS NULL
+                 AND EXISTS (SELECT 1 FROM event_promoters epx
+               JOIN org_promoters opx ON opx.id = epx.promoter_id AND opx.org_id = epx.org_id
+               WHERE epx.event_id = e.id AND epx.org_id = e.org_id AND opx.archived_at IS NULL));
+
+-- name: OrgOwnerReachable :one
+-- A boolean only: whether the organization has an owner who may receive the
+-- contact form's messages (gen.OwnerRecipientWhereSQL).
+SELECT EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
                WHERE m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
                  AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
                  AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id

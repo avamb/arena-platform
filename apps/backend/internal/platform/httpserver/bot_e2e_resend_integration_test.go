@@ -404,11 +404,22 @@ func TestBotE2E_ResendTickets_SurvivesRestartAndExpires(t *testing.T) {
 	stop = restartDialogTestBot(t, pool, api, tg, stop)
 
 	// The bot no longer remembers anything in memory, yet the typed address is
-	// taken for the address, and the confirmation press still works after a
-	// second restart.
+	// taken for the address.
 	addr := "after-restart-" + seed.suffix + "@example.org"
 	d.say(addr, "Отправить билеты?")
+	// After a second restart the confirmation on screen is out of date
+	// (owner decision 2026-10-14): its press queues nothing.
 	stop = restartDialogTestBot(t, pool, api, tg, stop)
+	tg.pressStale(t, ecOwnerTG, "or:r:go")
+	if got := e2eResendJob(t, pool, tickets[0]); got.status != "sent" {
+		t.Fatalf("the old screen's button queued a job: %+v", got)
+	}
+	// From the menu the person sends the tickets on new screens.
+	d.say("☰ Меню", "Что будем делать")
+	d.press("or:v:"+seed.anna.String(), "Заказ №")
+	d.press("or:r:s:"+seed.anna.String(), "Выслать билеты")
+	d.press("or:r:o", "Другой адрес")
+	d.say(addr, "Отправить билеты?")
 	d.press("or:r:go", "Готово")
 	for _, tk := range tickets {
 		if got := e2eResendJob(t, pool, tk); got.status != "pending" || got.recipient != addr {

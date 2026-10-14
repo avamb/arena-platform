@@ -131,12 +131,17 @@ type hostedPageContactForm struct {
 // can check the captcha. orgReachable is asked only when the channel has no
 // public e-mail; it answers a boolean from its own query, so the page's
 // seller query never touches the organization's address.
-func (h *Handler) contactForm(row gen.HostedPageSellerRow, orgReachable func() bool) *hostedPageContactForm {
+//
+// toOwner (owner decision 2026-10-14): the page is a promoter's, or the
+// event belongs to a promoter (gen.EventPromotedSQL). Its messages go to the
+// organization's owner only, so the public e-mail does not count and
+// orgReachable must answer whether that owner exists.
+func (h *Handler) contactForm(row gen.HostedPageSellerRow, toOwner bool, orgReachable func() bool) *hostedPageContactForm {
 	if !h.contactFormReady {
 		return nil
 	}
 	c := parsePublicContact(row.PublicContact)
-	if (c == nil || c.Email == "") && (orgReachable == nil || !orgReachable()) {
+	if (toOwner || c == nil || c.Email == "") && (orgReachable == nil || !orgReachable()) {
 		return nil
 	}
 	return &hostedPageContactForm{Available: true, TurnstileSiteKey: h.contactFormSiteKey, PrivacyURL: h.contactFormPrivacyURL}
@@ -171,8 +176,9 @@ func parsePublicContact(raw []byte) *hostedPageSellerContact {
 // when eventID is set, the promoter the event is linked to. Both are nil when
 // the channel keeps the block off. A lookup failure is logged and answers
 // nil: the block is informational and must not turn a resolved page into a
-// 500.
-func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken string, eventID *uuid.UUID) (*hostedPageSellerResponse, *hostedPagePromoterResponse, *hostedPageContactForm) {
+// 500. toOwner: the form's messages go to the organization's owner only
+// (contactForm).
+func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken string, eventID *uuid.UUID, toOwner bool) (*hostedPageSellerResponse, *hostedPagePromoterResponse, *hostedPageContactForm) {
 	row, err := h.publicFeedQueries.GetHostedPageSeller(ctx, orgID, feedToken)
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
@@ -183,8 +189,12 @@ func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken s
 		}
 		return nil, nil, nil
 	}
-	form := h.contactForm(row, func() bool {
-		ok, err := h.publicFeedQueries.OrgHasPrivateRecipient(ctx, orgID)
+	form := h.contactForm(row, toOwner, func() bool {
+		recipient := h.publicFeedQueries.OrgHasPrivateRecipient
+		if toOwner {
+			recipient = h.publicFeedQueries.OrgOwnerReachable
+		}
+		ok, err := recipient(ctx, orgID)
 		if err != nil {
 			h.logger.Warn("public_page: contact form recipient lookup failed",
 				slog.String("org_id", orgID.String()),
@@ -215,6 +225,23 @@ func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken s
 		return seller, nil, form
 	}
 	return seller, &hostedPagePromoterResponse{Name: name}, form
+}
+
+// eventToOwner reports whether the buyers' messages about the event with
+// this slug go to the organization's owner only: it belongs to a promoter
+// (gen.EventPromotedSQL, the rule the send route applies too). A failed
+// lookup answers true and is logged: the form then needs the owner, which
+// never sends a message to an address the rule would not pick.
+func (h *Handler) eventToOwner(ctx context.Context, orgID uuid.UUID, eventSlug string) bool {
+	ok, err := h.publicFeedQueries.GetContactEventPromoted(ctx, orgID, eventSlug)
+	if err != nil {
+		h.logger.Warn("public_page: event promoter lookup failed",
+			slog.String("org_id", orgID.String()),
+			slog.String("error", err.Error()),
+		)
+		return true
+	}
+	return ok
 }
 
 // showWithdrawalNotice reports whether the widget must tell the buyer that

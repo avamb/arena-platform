@@ -12,7 +12,7 @@ if [ -z "$asset" ]; then
   exit 1
 fi
 status=0
-for path in / /o/any/events /index.html "$asset"; do
+for path in / /o/any/events /index.html "/reset-password?token=check" "/accept-invite?token=check" "$asset"; do
   headers="$(curl -fsSI "$base$path")"
   for want in \
     "content-security-policy: default-src 'none'" \
@@ -27,6 +27,6 @@ for path in / /o/any/events /index.html "$asset"; do
   done
 done
 if [ "$status" -eq 0 ]; then
-  echo "OK: security headers on /, a deep link, /index.html and $asset"
+  echo "OK: security headers on /, a deep link, /index.html, the password pages and $asset"
 fi
 exit "$status"
