@@ -539,6 +539,31 @@ func (q *Queries) GetBotDialog(ctx context.Context, telegramUserID int64, kind s
 	return scanBotDialogRow(q.db.QueryRow(ctx, getBotDialog, telegramUserID, kind))
 }
 
+const listBotDialogKindsByRecency = `-- name: ListBotDialogKindsByRecency :many
+SELECT kind
+FROM   bot_dialogs
+WHERE  telegram_user_id = $1
+ORDER  BY updated_at DESC, created_at DESC, kind`
+
+// ListBotDialogKindsByRecency lists the kinds of a person's dialogs, expired
+// or not, the one touched last first.
+func (q *Queries) ListBotDialogKindsByRecency(ctx context.Context, telegramUserID int64) ([]string, error) {
+	rows, err := q.db.Query(ctx, listBotDialogKindsByRecency, telegramUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var kinds []string
+	for rows.Next() {
+		var kind string
+		if err := rows.Scan(&kind); err != nil {
+			return nil, err
+		}
+		kinds = append(kinds, kind)
+	}
+	return kinds, rows.Err()
+}
+
 const listLiveBotDialogsByStep = `-- name: ListLiveBotDialogsByStep :many
 SELECT ` + botDialogColumns + `
 FROM   bot_dialogs

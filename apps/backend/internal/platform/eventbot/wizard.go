@@ -760,6 +760,12 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		}
 		return "", nil
 	case "cancel:drop":
+		// Only the confirmation screen's own button deletes: a button of an
+		// older message (the draft has moved on since) redraws the current
+		// question and deletes nothing.
+		if d.Step != stCancel {
+			return "", nil
+		}
 		return "", ErrCancelled
 	case "e:home":
 		if d.Mode == ModeEdit && d.Step != stEditMenu {

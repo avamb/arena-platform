@@ -12,7 +12,7 @@ var refundKeys = []string{
 	"bot.ref.confirm", "bot.ref.letter_on_btn", "bot.ref.letter_off_btn", "bot.ref.word", "bot.ref.word_wrong",
 	"bot.ref.done_head", "bot.ref.line", "bot.ref.st_succeeded", "bot.ref.st_pending", "bot.ref.st_failed",
 	"bot.ref.st_review", "bot.ref.st_other", "bot.ref.err_progress", "bot.ref.err_changed",
-	"bot.ref.final", "bot.ref.yes_btn", "bot.ref.no_btn", "bot.ref.letter_yes", "bot.ref.letter_no", "bot.ref.cancelled",
+	"bot.ref.final", "bot.ref.yes_btn", "bot.ref.no_btn", "bot.ref.letter_yes", "bot.ref.letter_no", "bot.ref.cancelled", "bot.ref.cancel_maybe_started",
 	"bot.ref.sending", "bot.ref.err_unsupported", "bot.ref.err_unavailable", "bot.ref.err_ticket", "bot.ref.err_timeout",
 	"bot.ref.err_scanned", "bot.ref.scanned_all", "bot.ref.scanned_note", "bot.ref.err_scanned_notified", "bot.ref.err_scanned_nobody",
 	"bot.ref.still_sending", "bot.ref.send_lost", "bot.ref.restart_notice", "bot.ref.check_btn", "bot.ref.stale_btn", "bot.ref.err_forbidden", "bot.ref.st_queued",

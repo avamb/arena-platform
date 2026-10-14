@@ -56,6 +56,9 @@ type DialogStore interface {
 	Save(ctx context.Context, tg int64, orgID *uuid.UUID, kind, step string, state any, ttl time.Duration) error
 	Load(ctx context.Context, tg int64, kind string, into any) (step string, found, expired bool, err error)
 	Delete(ctx context.Context, tg int64, kind string) error
+	// Recent lists the kinds of the person's dialogs (expired or not), the
+	// one touched last first.
+	Recent(ctx context.Context, tg int64) ([]string, error)
 }
 
 // dialogQueries is the slice of gen.Queries the store uses; the unit tests
@@ -65,6 +68,7 @@ type dialogQueries interface {
 	UpsertBotDialog(ctx context.Context, telegramUserID int64, orgID *uuid.UUID, kind, step string, state json.RawMessage, expiresAt time.Time) (gen.BotDialogRow, error)
 	GetBotDialog(ctx context.Context, telegramUserID int64, kind string) (gen.BotDialogRow, error)
 	DeleteBotDialog(ctx context.Context, telegramUserID int64, kind string) error
+	ListBotDialogKindsByRecency(ctx context.Context, telegramUserID int64) ([]string, error)
 }
 
 // errNoDialogDatabase is what the store answers when the bot was built
@@ -185,4 +189,16 @@ func (b *Bot) sweepDialogs(ctx context.Context, now time.Time) {
 	if n > 0 {
 		b.logger.Info("eventbot: expired dialogs swept", slog.Int64("count", n))
 	}
+}
+
+// Recent lists the kinds of the person's dialogs, the one touched last first.
+func (s *pgDialogStore) Recent(ctx context.Context, tg int64) ([]string, error) {
+	if s.q == nil {
+		return nil, errNoDialogDatabase
+	}
+	kinds, err := s.q.ListBotDialogKindsByRecency(ctx, tg)
+	if err != nil {
+		return nil, fmt.Errorf("eventbot: recent dialogs: %w", err)
+	}
+	return kinds, nil
 }
