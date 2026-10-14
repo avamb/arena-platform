@@ -217,6 +217,15 @@ FROM   bot_dialogs
 WHERE  telegram_user_id = $1
   AND  kind = $2;
 
+-- name: ListBotDialogKindsByRecency :many
+-- The kinds of a person's dialogs, expired or not, the one touched last
+-- first: a typed text goes to the newest dialog that takes it
+-- (eventbot routeDialogText).
+SELECT kind
+FROM   bot_dialogs
+WHERE  telegram_user_id = $1
+ORDER  BY updated_at DESC, created_at DESC, kind;
+
 -- name: DeleteBotDialog :exec
 DELETE FROM bot_dialogs
 WHERE  telegram_user_id = $1
