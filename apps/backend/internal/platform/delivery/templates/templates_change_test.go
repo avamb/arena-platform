@@ -273,3 +273,50 @@ func TestRender_Change_SubjectsDifferByWhatChanged(t *testing.T) {
 		}
 	}
 }
+
+// A change or cancel letter names the organizer contact three ways: an
+// e-mail, the sales page's form, or - when there is neither (a hosted page
+// without a public e-mail whose form is not shown) - no sentence at all.
+// Never a form link with an empty address. Every kind and locale.
+func TestRender_ChangeAndCancel_ContactThreeWays(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const form = "https://tickets.example/teatro#contact"
+	for _, kind := range []string{TemplateKindChange, TemplateKindCancel} {
+		for _, loc := range SupportedLocales {
+			label := kind + "/" + loc
+
+			data := changeTestData()
+			data.Branding.ContactEmail = ""
+			data.Change.ContactEmail = ""
+			data.Change.ContactPhone = ""
+			data.Change.ContactFormURL = form
+			out, err := r.Render(kind, loc, data)
+			if err != nil {
+				t.Fatalf("%s: %v", label, err)
+			}
+			if !strings.Contains(out.HTMLBody, `href="`+form+`"`) || !strings.Contains(out.TextBody, form) {
+				t.Errorf("%s: the form link is missing", label)
+			}
+
+			data.Change.ContactFormURL = ""
+			out, err = r.Render(kind, loc, data)
+			if err != nil {
+				t.Fatalf("%s: %v", label, err)
+			}
+			for part, s := range map[string]string{"html": out.HTMLBody, "text": out.TextBody} {
+				if strings.Contains(s, `href=""`) {
+					t.Errorf("%s/%s: a link with an empty address", label, part)
+				}
+				if strings.Contains(s, data.Change.ContactName) {
+					t.Errorf("%s/%s: the contact sentence is printed with nothing to contact", label, part)
+				}
+			}
+			if strings.Contains(out.TextBody, "\n\n\n") {
+				t.Errorf("%s/text: the missing sentence leaves an empty gap", label)
+			}
+		}
+	}
+}

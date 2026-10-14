@@ -581,3 +581,83 @@ func TestRefundBuyerEmail_TextAndReplyToNameTheSameContact(t *testing.T) {
 		t.Fatalf("Reply-To %q, text:\n%s", msgs[0].ReplyTo, msgs[0].TextBody)
 	}
 }
+
+// A hosted page without a public e-mail: the refund letter links the page's
+// contact form only while the form is shown (HandlerOptions.ContactFormEnabled).
+// Without it the letter names no contact at all - never the organization's own
+// address, never a Reply-To.
+func TestRefundBuyerEmail_HostedPageLetterFollowsTheFormSwitch(t *testing.T) {
+	stub := newStubStripe(t)
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.StripeAPIBaseURL = stub.baseURL() })
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+	pf := &prom0113Fixture{ts: ts, client: ts.Client(), q: gen.New(srv.pgxPool)}
+	user, err := pf.q.InsertUser(context.Background(), "pay07f-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.userID = user.ID
+	org := pf.org(t, "PAY07F")
+	ctx := context.Background()
+	stub.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"id":"re_`+uuid.NewString()[:8]+`","status":"succeeded"}`)
+	}
+	stub.sessionPI = "pi_pay07f_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	f := newPay03Order(t, srv.pgxPool, org, "stripe")
+	const orgEmail = "owner.private@pay07f.example"
+	for _, sql := range []string{
+		`UPDATE organizations SET contact_email = '` + orgEmail + `' WHERE id = $1`,
+		`UPDATE sales_channels SET settings = '{"hosted_page": {"enabled": true}}'::jsonb WHERE id = (SELECT channel_id FROM orders WHERE org_id = $1 LIMIT 1)`,
+	} {
+		if _, err := srv.pgxPool.Exec(ctx, sql, org); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE orders SET buyer_email = 'buyer@pay07f.test', buyer_name = 'Ana' WHERE id = $1`, f.order); err != nil {
+		t.Fatal(err)
+	}
+
+	letter := func(ticket uuid.UUID, formEnabled bool) email.Message {
+		t.Helper()
+		sender := &recordingSender{}
+		handler := delivery.NewRefundEmailHandler(delivery.RefundEmailOptions{
+			HandlerOptions: delivery.HandlerOptions{
+				TicketQueries: pf.q, CredentialQueries: pf.q, DeliveryJobQueries: pf.q, Sender: sender,
+				TicketsBaseURL: "https://tickets.test", ContactFormEnabled: formEnabled,
+			},
+			DB: srv.pgxPool,
+		})
+		res, err := srv.refundEngine().CreateBatch(ctx, refunds.BatchInput{
+			OrgID: org, OrderID: f.order, Reason: "pay07f", CancelTickets: false, NotifyBuyer: true,
+			IdempotencyKey: "pay07f-" + uuid.NewString(), Approved: true,
+			Items: []refunds.Item{{TicketID: ticket}},
+		})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		batch := res.BatchID.String()
+		t.Cleanup(func() {
+			_, _ = srv.pgxPool.Exec(context.Background(), `DELETE FROM worker_jobs WHERE job_type = $1 AND payload->>'batch_id' = $2`, refunds.JobTypeBuyerEmail, batch)
+		})
+		raw, _ := json.Marshal(refunds.BuyerEmailPayload{BatchID: batch})
+		if err := handler(ctx, raw); err != nil {
+			t.Fatalf("handler: %v", err)
+		}
+		msgs := sender.sent()
+		if len(msgs) != 1 {
+			t.Fatalf("messages = %d; want one letter", len(msgs))
+		}
+		return msgs[0]
+	}
+
+	m := letter(f.tickets[0], false)
+	if m.ReplyTo != "" || strings.Contains(m.TextBody+m.HTMLBody, orgEmail) ||
+		strings.Contains(m.TextBody+m.HTMLBody, "#contact") || strings.Contains(m.HTMLBody, `href=""`) {
+		t.Fatalf("without the form: Reply-To %q, text:\n%s", m.ReplyTo, m.TextBody)
+	}
+	m = letter(f.tickets[1], true)
+	if m.ReplyTo != "" || strings.Contains(m.TextBody+m.HTMLBody, orgEmail) || !strings.Contains(m.TextBody, "#contact") {
+		t.Fatalf("with the form: Reply-To %q, text:\n%s", m.ReplyTo, m.TextBody)
+	}
+}

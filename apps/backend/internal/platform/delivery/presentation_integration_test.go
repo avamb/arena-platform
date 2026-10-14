@@ -331,6 +331,14 @@ func runDeliveryWithPayload(ctx context.Context, t *testing.T, pool *pgxpool.Poo
 // bytes, exactly as it does for the org logo.
 func runDeliveryWithMedia(ctx context.Context, t *testing.T, pool *pgxpool.Pool, p Payload, media MediaResolver) string {
 	t.Helper()
+	return runDeliveryWithForm(ctx, t, pool, p, media, true)
+}
+
+// runDeliveryWithForm is runDeliveryWithMedia with the "page shows the
+// contact form" switch of the worker (HandlerOptions.ContactFormEnabled)
+// under the test's control.
+func runDeliveryWithForm(ctx context.Context, t *testing.T, pool *pgxpool.Pool, p Payload, media MediaResolver, formEnabled bool) string {
+	t.Helper()
 	smtp := newSMTPCaptureServer(t)
 	queries := gen.New(pool)
 	handler := NewHandler(HandlerOptions{
@@ -340,7 +348,7 @@ func runDeliveryWithMedia(ctx context.Context, t *testing.T, pool *pgxpool.Pool,
 		Sender:             buildSMTPSender(smtp.Addr),
 		Media:              media,
 		TicketsBaseURL:     testTicketsBaseURL,
-		ContactFormEnabled: true,
+		ContactFormEnabled: formEnabled,
 		Logger:             testLogger(),
 	})
 	body := mustJSON(t, p)
