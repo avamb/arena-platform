@@ -1,0 +1,15 @@
+{
+  "task_id": "orchestration-a4-local-mock-v1",
+  "objective": "Локально проверь read-only orchestration telemetry на PRODUCT_SPEC.md и ROADMAP.md без API-вызова.",
+  "inputs": ["PRODUCT_SPEC.md", "ROADMAP.md"],
+  "allowed_paths": ["PRODUCT_SPEC.md", "ROADMAP.md"],
+  "forbidden_paths": ["arena_new", "production", "staging", "SSH", "ChatExport_2026-10-11", "sdk_experiments/results", "**/.env"],
+  "commands": [],
+  "budget_usd": 0,
+  "max_turns": 2,
+  "max_retries": 0,
+  "timeout_ms": 90000,
+  "api_allowed": false,
+  "acceptance": ["mock result содержит structured result и telemetry", "api_calls равен 0", "Codex review и checkpoint сохранены"],
+  "status": "local-only"
+}
