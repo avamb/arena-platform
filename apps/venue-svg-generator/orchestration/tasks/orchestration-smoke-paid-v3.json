@@ -1,0 +1,34 @@
+{
+  "task_id": "orchestration-smoke-paid-v3",
+  "objective": "Изучи PRODUCT_SPEC.md и ROADMAP.md. Верни конкретные противоречия, пробелы и три приоритетных следующих шага. Не изменяй файлы.",
+  "inputs": [
+    "PRODUCT_SPEC.md",
+    "ROADMAP.md"
+  ],
+  "allowed_paths": [
+    "PRODUCT_SPEC.md",
+    "ROADMAP.md"
+  ],
+  "forbidden_paths": [
+    "arena_new",
+    "production",
+    "staging",
+    "SSH",
+    "ChatExport_2026-10-11",
+    "sdk_experiments/results",
+    "**/.env"
+  ],
+  "commands": [],
+  "budget_usd": 1,
+  "max_turns": 2,
+  "max_retries": 0,
+  "timeout_ms": 90000,
+  "api_allowed": true,
+  "acceptance": [
+    "JSON содержит contradictions, gaps, next_steps и evidence",
+    "только два approved Read",
+    "Codex review и checkpoint сохранены",
+    "SDK terminal/result diagnostics сохранены при успехе или ошибке"
+  ],
+  "status": "awaiting-owner-approval"
+}
