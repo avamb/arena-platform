@@ -19,6 +19,8 @@ var ordKeys = []string{
 	"bot.ord.letter_tickets_none", "bot.ord.letter_tickets_queued", "bot.ord.letter_tickets_partial_queued",
 	"bot.ord.letter_tickets_sent", "bot.ord.letter_tickets_delivered", "bot.ord.letter_tickets_opened",
 	"bot.ord.letter_tickets_partial", "bot.ord.letter_tickets_failed",
+	"bot.ord.letter_tickets_delayed", "bot.ord.letter_tickets_stuck", "bot.ord.letter_tickets_bounced",
+	"bot.ord.letter_refund_delayed", "bot.ord.letter_refund_stuck", "bot.ord.letter_refund_bounced",
 	"bot.ord.letter_refund_off", "bot.ord.letter_refund_queued", "bot.ord.letter_refund_partial_queued",
 	"bot.ord.letter_refund_sent", "bot.ord.letter_refund_delivered", "bot.ord.letter_refund_opened",
 	"bot.ord.letter_refund_failed", "bot.ord.letter_retry_btn",

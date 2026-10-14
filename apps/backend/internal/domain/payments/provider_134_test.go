@@ -8,7 +8,6 @@
 //     3-6. (The PaymentRoutingPolicy groups moved to registry_test.go when the
 //     module registry replaced the policy — PAY-01.)
 //  7. Webhook helpers — VerifyStripeSignature
-//  8. Webhook helpers — VerifyAllPaySignature
 //  9. Webhook helpers — ComputeHMACSHA256
 //
 // 10. ErrorProvider always returns the configured error
@@ -251,69 +250,6 @@ func TestPayment134_StripeSignature_ZeroToleranceSkipsTimestampCheck(t *testing.
 	// With tolerance=0 the timestamp check is skipped
 	if err := payments.VerifyStripeSignature(header, body, secret, 0); err != nil {
 		t.Fatalf("expected valid signature with zero tolerance, got error: %v", err)
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 8. VerifyAllPaySignature
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestPayment134_AllPaySignature_ValidSignature(t *testing.T) {
-	secret := "allpay_webhook_secret"
-	body := []byte(`{"event":"payment.completed","id":"ap_evt_1"}`)
-	sigHeader := payments.ComputeHMACSHA256(secret, body)
-
-	if err := payments.VerifyAllPaySignature(sigHeader, body, secret); err != nil {
-		t.Fatalf("expected valid signature, got error: %v", err)
-	}
-}
-
-func TestPayment134_AllPaySignature_WrongSecret(t *testing.T) {
-	body := []byte(`{"event":"payment.completed"}`)
-	sigHeader := payments.ComputeHMACSHA256("correct_secret", body)
-
-	err := payments.VerifyAllPaySignature(sigHeader, body, "wrong_secret")
-	if !errors.Is(err, payments.ErrInvalidWebhookSignature) {
-		t.Fatalf("expected ErrInvalidWebhookSignature, got %v", err)
-	}
-}
-
-func TestPayment134_AllPaySignature_EmptyHeader(t *testing.T) {
-	err := payments.VerifyAllPaySignature("", []byte("body"), "secret")
-	if !errors.Is(err, payments.ErrInvalidWebhookSignature) {
-		t.Fatalf("expected ErrInvalidWebhookSignature for empty header, got %v", err)
-	}
-}
-
-func TestPayment134_AllPaySignature_TamperedBody(t *testing.T) {
-	secret := "allpay_secret"
-	originalBody := []byte(`{"amount":10000}`)
-	sigHeader := payments.ComputeHMACSHA256(secret, originalBody)
-
-	tamperedBody := []byte(`{"amount":1}`)
-	err := payments.VerifyAllPaySignature(sigHeader, tamperedBody, secret)
-	if !errors.Is(err, payments.ErrInvalidWebhookSignature) {
-		t.Fatalf("expected ErrInvalidWebhookSignature for tampered body, got %v", err)
-	}
-}
-
-func TestPayment134_AllPaySignature_UppercaseHeaderAccepted(t *testing.T) {
-	secret := "allpay_secret"
-	body := []byte(`{"event":"payment.completed"}`)
-	// Compute lowercase hex, then uppercase it
-	lowerhex := payments.ComputeHMACSHA256(secret, body)
-	upperhex := ""
-	for _, c := range lowerhex {
-		if c >= 'a' && c <= 'f' {
-			upperhex += string(rune(c - 32))
-		} else {
-			upperhex += string(c)
-		}
-	}
-
-	// Should accept uppercase hex (normalised internally)
-	if err := payments.VerifyAllPaySignature(upperhex, body, secret); err != nil {
-		t.Fatalf("expected uppercase header to be accepted, got error: %v", err)
 	}
 }
 

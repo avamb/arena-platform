@@ -10,7 +10,10 @@
 //   - e-mail to the channel's public contact e-mail
 //     (settings.hosted_page.public_contact.email), else to the organization's
 //     own contact_email, else to its owner's account e-mail
-//     (gen.OwnerRecipientSQL); the page shows neither. Read when the job runs so
+//     (gen.OwnerRecipientSQL); the page shows neither. A message from a
+//     promoter's page or about a promoter's event (Payload.ToOwner, decided
+//     by the send route) goes to the owner's account e-mail only (owner
+//     decision 2026-10-14), never to the public e-mail or the promoter's. Read when the job runs so
 //     an address the owner changed in the meantime wins, and checked again
 //     with sellerinfo.NormalizeEmail (a value written around the API is never
 //     mailed). Reply-To is the buyer, so the organizer answers with one click
@@ -63,6 +66,9 @@ const RetentionDays = 90
 // Payload is the job's JSON.
 type Payload struct {
 	MessageID string `json:"message_id"`
+	// ToOwner: the message goes to the organization's owner only. A job
+	// queued before the field existed reads false and keeps the old chain.
+	ToOwner bool `json:"to_owner,omitempty"`
 }
 
 // Announcer posts a text to an organization's own sales chats
@@ -180,7 +186,12 @@ func (h *Handler) Handle(ctx context.Context, payload []byte) error {
 	var sendErr error
 	if !m.EmailSent {
 		to := ""
-		if !m.ChannelDeleted {
+		switch {
+		case p.ToOwner:
+			// The owner is looked up through the organization, not the
+			// channel, so a deleted channel does not lose the message.
+			to = recipient(nil, m.OwnerEmail)
+		case !m.ChannelDeleted:
 			to = recipient(m.PublicContact, m.OrgEmail, m.OwnerEmail)
 		}
 		mailed := false
@@ -425,7 +436,7 @@ func FormatTelegram(orgName, pageSlug, senderName, senderEmail, body string, leg
 	tail := "\n\nThe same message went to your e-mail. Reply to the buyer from there."
 	switch leg {
 	case EmailNoAddress:
-		tail = "\n\nThis message was not e-mailed: the sales page and the organization have no e-mail address. To answer the buyer, write to the address above."
+		tail = "\n\nThis message was not e-mailed: Arena has no e-mail address to send it to. To answer the buyer, write to the address above."
 	case EmailRetrying:
 		tail = "\n\nThe e-mail copy could not be sent yet. Arena Sold Out keeps trying. To answer the buyer now, write to the address above."
 	}

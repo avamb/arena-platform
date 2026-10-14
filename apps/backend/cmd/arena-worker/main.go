@@ -578,6 +578,10 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		BotUsername:  cfg.EventsTelegramBotUsername,
 
 		OnboardingSiteURL: cfg.OnboardingSiteURL,
+		// Organizers' password links land on the web event center
+		// (EVENT_CENTER_PUBLIC_URL); platform users keep APP_PUBLIC_URL.
+		EventCenterURL: cfg.EventCenterPublicURL,
+		Recipients:     authemail.PGRecipients{DB: pool},
 	})
 	reg.Register(authemail.JobTypeEmailVerification, authEmailHandler.HandleEmailVerification)
 	reg.Register(authemail.JobTypePasswordResetEmail, authEmailHandler.HandlePasswordResetEmail)

@@ -64,6 +64,13 @@ type RefundCase struct {
 	// when it saw none. The partial-refund sub-test then proves the amount
 	// the module sent is the one asked for, not just that a call worked.
 	StubAmountFor func(idempotencyKey string) int64
+	// PartialChargeRef, when set, is a SECOND payment the stub accepts
+	// refunds for, untouched by the other sub-tests; the partial-refund
+	// sub-test refunds it instead of ChargeRef. A provider that tells refunds
+	// apart only by the payment's refunded total (AllPay has no refund id or
+	// idempotency key) needs it: ChargeRef is already refunded in full by
+	// then. Empty means ChargeRef.
+	PartialChargeRef string
 }
 
 // Run executes the contract against c.
@@ -232,6 +239,9 @@ func Run(t *testing.T, c Case) {
 					t.Skip("payment too small to halve")
 				}
 				req.IdempotencyKey = "contract-partial"
+				if rc.PartialChargeRef != "" {
+					req.ProviderChargeRef = rc.PartialChargeRef
+				}
 				if _, err := refunder.Refund(t.Context(), req); err != nil {
 					t.Errorf("partial Refund: %v", err)
 				}

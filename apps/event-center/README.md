@@ -37,6 +37,12 @@ npm --prefix apps/event-center run dev
 Dokploy application, like `tickets-page`: Dockerfile `apps/event-center/Dockerfile`,
 build context the repository root, build argument `VITE_API_BASE_URL`, port 8080,
 health check `GET /health`. Add the app's origin to `CORS_ALLOWED_ORIGINS` of arena-api.
+Production: `https://events.arenasoldout.com`; the step-by-step checklist is
+`docs/ops/event_center_rollout_ru.md`, and `scripts/check-live.ps1` checks the live site.
+
+Password letters of organizers link here (`/reset-password`, `/accept-invite`) once
+arena-api and arena-worker carry `EVENT_CENTER_PUBLIC_URL`; platform users keep
+the admin-web link (`APP_PUBLIC_URL`).
 
 nginx sends a strict Content-Security-Policy and the other security headers from
 `security-headers.conf.template`, included in EVERY location (a location with its own

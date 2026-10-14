@@ -3927,6 +3927,21 @@ export interface paths {
          *     the `payment_status` gate on `checkout.session.completed`,
          *     idempotency, and the state machine — is identical to
          *     `POST /v1/payment-intents/webhook`.
+         *
+         *     **Flitt and AllPay** sign their callbacks in the BODY with the
+         *     merchant's own key and are accepted on this route only; the
+         *     un-suffixed route answers `400 webhook.<provider>_requires_config_route`
+         *     for such a body. arena sends this URL with every order, so the
+         *     organizer configures nothing in their dashboard. A Flitt `declined`
+         *     callback and an AllPay webhook with `status` 0 report one failed
+         *     attempt on a page that stays open for another card: they are
+         *     acknowledged and move nothing. A paid AllPay webhook is confirmed
+         *     by reading the order back from AllPay first; when AllPay cannot
+         *     confirm it yet, the route answers `503 webhook.provider_unconfirmed`
+         *     and AllPay delivers it again. For Flitt and AllPay a paid event
+         *     whose amount or currency differs from the payment parks the
+         *     payment in `manual_review` (failure code `paid_amount_mismatch`)
+         *     and issues no tickets.
          */
         post: operations["paymentIntentWebhookForConfig"];
         delete?: never;
@@ -5069,7 +5084,8 @@ export interface paths {
         /**
          * Buyer return from a hosted payment page
          * @description Where a provider-hosted payment page sends the buyer back to. A provider
-         *     may return the buyer with an HTTP POST (Flitt does by default), while
+         *     may return the buyer with an HTTP POST (Flitt does by default; AllPay
+         *     does not document its method, so it is routed here too), while
          *     the buyer's page is an ordinary web page that cannot take one; this
          *     route answers GET and POST alike with a `303 See Other` to that page,
          *     which a browser always follows with GET. The body of a POST is never
@@ -5081,7 +5097,8 @@ export interface paths {
         /**
          * Buyer return from a hosted payment page (POST)
          * @description Where a provider-hosted payment page sends the buyer back to. A provider
-         *     may return the buyer with an HTTP POST (Flitt does by default), while
+         *     may return the buyer with an HTTP POST (Flitt does by default; AllPay
+         *     does not document its method, so it is routed here too), while
          *     the buyer's page is an ordinary web page that cannot take one; this
          *     route answers GET and POST alike with a `303 See Other` to that page,
          *     which a browser always follows with GET. The body of a POST is never
@@ -5137,7 +5154,9 @@ export interface paths {
          *     worker mails it to the channel's public e-mail (else to the
          *     organization's own contact e-mail, never shown) with Reply-To set to
          *     the buyer, and posts it to the organization's sales Telegram chat when
-         *     its switch is on. Protected by Cloudflare Turnstile (production
+         *     its switch is on. A message from a promoter's page, or about an
+         *     event of a promoter (`event_slug`), goes to the organization's owner
+         *     only, never to the public e-mail. Protected by Cloudflare Turnstile (production
          *     without a secret answers 503), a per-IP limit (5 an hour) and a
          *     per-page limit (30 an hour) counted in the database, and a 16 KiB body
          *     cap. No JWT. An unknown slug, a page whose messages would reach
@@ -10744,10 +10763,11 @@ export interface components {
          */
         OrderListItem: components["schemas"]["OrderSummary"] & {
             /**
-             * @description True when the buyer did not get a letter: a ticket whose
-             *     letter failed (bounced, blocked, refused by the relay), or a
-             *     change, cancellation or refund letter that failed and was not
-             *     followed by a newer one of the same kind. Details on the
+             * @description True when the buyer most likely did not get a letter: a
+             *     ticket letter that failed (bounced, blocked, refused by the
+             *     relay) or is stuck (see OrderLetter.stuck), or a change,
+             *     cancellation or refund letter that failed or is stuck and was
+             *     not followed by a newer one of the same kind. Details on the
              *     order card (letters).
              */
             letter_failed: boolean;
@@ -11128,7 +11148,14 @@ export interface components {
             channel: components["schemas"]["OrderChannelSummary"];
             /** @description The buyer letters of the order with their delivery status (see OrderLetter). */
             letters: components["schemas"]["OrderLetter"][];
-            /** @description True when one of the letters failed (status failed). */
+            /**
+             * @description True when the buyer most likely did not get a letter: a
+             *     ticket letter that failed (bounced, blocked, refused by the
+             *     relay) or is stuck (see OrderLetter.stuck), or a change,
+             *     cancellation or refund letter that failed or is stuck and was
+             *     not followed by a newer one of the same kind. The same rule
+             *     as letter_failed on the orders list.
+             */
             letter_failed: boolean;
         };
         /** @description Places of a session, or of one category, by status. */
@@ -12129,6 +12156,11 @@ export interface components {
              *     cloudpayments, yookassa, manual. `flitt` needs the secrets
              *     `merchant_id` and `payment_key` (the portal's payment key signs
              *     requests and callbacks; there is no separate webhook secret).
+             *     `allpay` needs `merchant_id` (the integration's API login) and
+             *     `secret_key` (its API key, which also signs webhooks); `vat`
+             *     (0, 1 or 3), `max_installments` (2 to 12) and
+             *     `installments_min_amount` (the smallest order total in shekels
+             *     that offers installments) are optional.
              * @example stripe
              */
             provider: string;
@@ -12262,8 +12294,10 @@ export interface components {
             };
             /**
              * @description Map of secret credential fields to values. Stripe expects
-             *     api_key + webhook_secret; AllPay expects merchant_id +
-             *     secret_key; etc. Values are never returned.
+             *     api_key + webhook_secret; AllPay expects merchant_id (the API
+             *     login) + secret_key (the API key), optionally vat,
+             *     max_installments and installments_min_amount; etc. Values are
+             *     never returned.
              * @example {
              *       "api_key": "sk_live_xxx",
              *       "webhook_secret": "whsec_xxx"
@@ -13263,6 +13297,8 @@ export interface components {
             turnstile_token?: string;
             /** @description The event page's feed token; empty on the promoter landing page. */
             feed_token?: string;
+            /** @description The event page's slug; empty on a landing page. A message about an event of a promoter goes to the organization's owner only. */
+            event_slug?: string;
             /**
              * @description Page language of the sender.
              * @example es
@@ -17524,7 +17560,7 @@ export interface components {
          *
          *     1. The normalised flat shape documented by this schema's
          *        top-level properties (`provider_payment_id`, `event_type`,
-         *        ...) — used by the mock provider and by AllPay callbacks.
+         *        ...) — used by the mock provider.
          *     2. A genuine Stripe event envelope —
          *        `{"id":"evt_...","type":"payment_intent.succeeded",
          *        "data":{"object":{"id":"pi_...","status":"succeeded",
@@ -36158,7 +36194,9 @@ export interface operations {
             /**
              * @description Duplicate webhook delivery — the
              *     `(provider_payment_id, event_type)` pair was already recorded.
-             *     No body.
+             *     No body. Flitt and AllPay retry until they see 200, so their
+             *     duplicate deliveries are answered 200 with `processed: false`
+             *     and `reason: "duplicate event delivery"` instead.
              */
             204: {
                 headers: {
@@ -36223,7 +36261,10 @@ export interface operations {
             };
             /**
              * @description Database pool or payment intent queries unavailable
-             *     (`dependency.database_unavailable`).
+             *     (`dependency.database_unavailable`), or the signature verified
+             *     but the provider could not confirm the event yet
+             *     (`webhook.provider_unconfirmed`, AllPay); nothing was written
+             *     and the provider should deliver it again.
              */
             503: {
                 headers: {

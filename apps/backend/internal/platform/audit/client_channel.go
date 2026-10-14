@@ -105,7 +105,7 @@ func stampVia(ctx context.Context, ev Event) Event {
 	if _, exists := ev.Metadata[MetadataVia]; exists {
 		return ev
 	}
-	md := make(map[string]any, len(ev.Metadata)+1)
+	md := make(map[string]any, len(ev.Metadata))
 	for k, v := range ev.Metadata {
 		md[k] = v
 	}

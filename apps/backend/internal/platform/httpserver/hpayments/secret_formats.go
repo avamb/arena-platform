@@ -23,6 +23,7 @@ package hpayments
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -63,6 +64,13 @@ func ValidateSecretFormats(provider, mode string, patch map[string]string) error
 		}
 		format, checked := d.Secret(field)
 		if !checked {
+			continue
+		}
+		if format.Pattern != "" {
+			// Descriptor.Validate compiled every pattern at registration.
+			if !regexp.MustCompile(format.Pattern).MatchString(value) {
+				return fmt.Errorf("%s does not fit: %s", field, format.Label)
+			}
 			continue
 		}
 		allowed := format.Prefixes

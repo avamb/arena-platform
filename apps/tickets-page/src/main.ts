@@ -105,6 +105,7 @@ async function main(): Promise<void> {
         apiBase: API_BASE,
         slug: route.orgSlug,
         feedToken: data.feed_token,
+        eventSlug: route.eventSlug,
         locale,
         form: data.contact_form,
         phone: data.seller?.public_contact?.phone ?? undefined,

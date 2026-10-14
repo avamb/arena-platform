@@ -77,7 +77,21 @@ func (s *Server) hostedPaymentStarter() hfeed.PaymentStarter {
 		callbackBase = s.cfg.APIPublicBaseURL()
 	}
 	return hfeed.NewStripePaymentStarter(s.orgQueries, s.channelQueries, s.stripeBaseURL()).
-		WithFlitt(s.flittBaseURL(), callbackBase)
+		WithFlitt(s.flittBaseURL(), callbackBase).
+		WithAllPay(s.allpayBaseURL())
+}
+
+// allpayBaseURL resolves the AllPay endpoint with the same precedence as
+// flittBaseURL: the in-process override, then ALLPAY_API_BASE_URL (refused by
+// config.Validate in production), then the real allpay.to.
+func (s *Server) allpayBaseURL() string {
+	if s.allpayAPIBaseURL != "" {
+		return s.allpayAPIBaseURL
+	}
+	if s.cfg != nil {
+		return s.cfg.AllPayAPIBaseURL
+	}
+	return ""
 }
 
 // flittBaseURL resolves the Flitt endpoint, with the same precedence as

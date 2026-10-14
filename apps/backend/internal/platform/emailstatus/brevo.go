@@ -127,8 +127,11 @@ func brevoEvent(o map[string]any, now time.Time) ProviderEvent {
 }
 
 // brevoTime prefers ts_epoch (true UTC, milliseconds). Brevo's ts / ts_event
-// are seconds; "date" is a local time string of the account and is used
-// only as a last resort. An absent, absurd or future time becomes now.
+// are seconds. "date" is used only as a last resort and only when it names
+// its zone (RFC 3339): Brevo writes it in the account's local time without
+// a zone, and reading that as UTC could shift an event by hours and change
+// which of a bounce and a delivery came last. An absent, zoneless, absurd or
+// future time becomes now.
 func brevoTime(o map[string]any, now time.Time) time.Time {
 	var t time.Time
 	if n, ok := num(o["ts_epoch"]); ok {
@@ -139,8 +142,6 @@ func brevoTime(o map[string]any, now time.Time) time.Time {
 		t = time.Unix(n, 0)
 	} else if d := str(o["date"]); d != "" {
 		if p, err := time.Parse(time.RFC3339, d); err == nil {
-			t = p
-		} else if p, err := time.Parse("2006-01-02 15:04:05", d); err == nil { // allow:timeformat
 			t = p
 		}
 	}

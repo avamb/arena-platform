@@ -352,7 +352,8 @@ SELECT NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') A
                                   AND psc.org_id = o.id AND psc.deleted_at IS NULL
                                   AND psc.settings #>> '{hosted_page,enabled}' = 'true')
                    THEN e.slug END AS event_slug,
-       ` + ownerReachableSQL + ` AS owner_reachable
+       ` + ownerReachableSQL + ` AS owner_reachable,
+       ` + EventPromotedSQL + ` AS to_owner
 FROM   tickets t
 JOIN   sessions s ON s.id = t.session_id
 JOIN   events   e ON e.id = s.event_id
@@ -374,6 +375,10 @@ type TicketContactRoute struct {
 	// OwnerReachable: the organization has an owner with an account e-mail,
 	// the contact form's last private recipient. The address is never read.
 	OwnerReachable bool `json:"owner_reachable"`
+	// ToOwner: the event belongs to a promoter (EventPromotedSQL), so the
+	// form's messages go to the organization's owner only and the letter
+	// links the form only when OwnerReachable.
+	ToOwner bool `json:"to_owner"`
 }
 
 // GetTicketContactRoute returns where a letter about the ticket sends the
@@ -388,7 +393,7 @@ type TicketContactRoute struct {
 func (q *Queries) GetTicketContactRoute(ctx context.Context, ticketID uuid.UUID) (TicketContactRoute, error) {
 	var r TicketContactRoute
 	err := q.db.QueryRow(ctx, getTicketContactRoute, ticketID).Scan(
-		&r.PublicEmail, &r.HostedPage, &r.OrgEmail, &r.PageSlug, &r.EventSlug, &r.OwnerReachable,
+		&r.PublicEmail, &r.HostedPage, &r.OrgEmail, &r.PageSlug, &r.EventSlug, &r.OwnerReachable, &r.ToOwner,
 	)
 	return r, err
 }

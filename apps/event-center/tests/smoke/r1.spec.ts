@@ -71,6 +71,38 @@ test.describe("R1 read-only event center", () => {
     expect(state.requests).toContain("POST /v1/auth/password-reset/request");
   });
 
+  test("the invitation letter's link sets the first password", async ({ page }) => {
+    const state = await mockApi(page);
+    await page.goto("/accept-invite?token=tok-1&email=anna%40example.test");
+    await expect(page.getByRole("heading", { name: "Welcome to the Arena event center" })).toBeVisible();
+    await expect(page.getByTestId("accept-invite")).toContainText("anna@example.test");
+    await page.getByLabel("New password").fill("a long phrase");
+    await page.getByLabel("Repeat the password").fill("a long phrase!");
+    await page.getByTestId("password-submit").click();
+    await expect(page.getByTestId("password-error")).toContainText("The two passwords are different");
+    expect(state.requests).not.toContain("POST /v1/auth/password-reset/confirm");
+    await page.getByLabel("Repeat the password").fill("a long phrase");
+    await page.getByTestId("password-submit").click();
+    await expect(page.getByTestId("password-done")).toBeVisible();
+    expect(state.requests).toContain("POST /v1/auth/password-reset/confirm");
+    await noA11yViolations(page);
+    await noHorizontalScroll(page);
+  });
+
+  test("a used reset link says what to do next", async ({ page }) => {
+    await mockApi(page);
+    await page.goto("/reset-password?token=used-token");
+    await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
+    await page.getByLabel("New password").fill("a long phrase");
+    await page.getByLabel("Repeat the password").fill("a long phrase");
+    await page.getByTestId("password-submit").click();
+    await expect(page.getByTestId("password-error")).toContainText("This link was already used");
+    await expect(page.getByRole("link", { name: "Ask for a new letter" })).toBeVisible();
+    await page.goto("/reset-password");
+    await expect(page.getByTestId("password-missing")).toBeVisible();
+    await noA11yViolations(page);
+  });
+
   test("a manager sees events with figures, the event, the session and downloads", async ({ page }) => {
     const state = await mockApi(page);
     await signIn(page);

@@ -22,8 +22,46 @@ import (
 // tables, across a line break.
 var letterDelete = regexp.MustCompile(`(?is)(DELETE\s+FROM|TRUNCATE(\s+TABLE)?)\s+(ONLY\s+)?(email_letters|email_letter_events|email_letter_interactions)\b[^;` + "`" + `]*`)
 
-// sendingOnly is the only deletion allowed: a letter still 'sending'.
-var sendingOnly = regexp.MustCompile(`(?is)status\s*=\s*'sending'`)
+// sendingOnly is the only deletion allowed: a DELETE whose WHERE starts
+// with "status = 'sending' AND" (an optional table alias in front) and has no
+// OR anywhere, so no other condition can widen it to letters that were sent.
+// TRUNCATE has no WHERE and never matches.
+var sendingOnly = regexp.MustCompile(`(?is)^DELETE\s+FROM\s+email_letters(\s+\w+)?\s+WHERE\s+(\w+\.)?status\s*=\s*'sending'\s+AND\b`)
+
+// abandonDelete is Abandon's removal of the one letter the relay refused a
+// moment ago: by id, still 'sending', nothing else.
+var abandonDelete = regexp.MustCompile(`(?is)^DELETE\s+FROM\s+email_letters\s+WHERE\s+id\s*=\s*\$1\s+AND\s+status\s*=\s*'sending'\s*$`)
+
+var anyOr = regexp.MustCompile(`(?i)\bOR\b`)
+
+// allowedLetterDelete reports whether a matched statement is the permitted
+// clean-up of letters still 'sending'.
+func allowedLetterDelete(stmt string) bool {
+	return sendingOnly.MatchString(stmt) && !anyOr.MatchString(stmt)
+}
+
+// TestEmailLetters_AllowedDeleteShape pins what the scan lets through
+// (review L4: "status = 'sending' OR …" used to pass).
+func TestEmailLetters_AllowedDeleteShape(t *testing.T) {
+	cases := []struct {
+		stmt string
+		ok   bool
+	}{
+		{"DELETE FROM email_letters WHERE status = 'sending' AND sent_at < now() - $1::interval", true},
+		{"DELETE FROM email_letters l\nWHERE l.status = 'sending' AND l.sent_at < now() - $1::interval AND NOT EXISTS (SELECT 1)", true},
+		{"DELETE FROM email_letters WHERE id = $1 AND status = 'sending'", false},
+		{"DELETE FROM email_letters WHERE status = 'sending' OR sent_at < now() - $1::interval", false},
+		{"DELETE FROM email_letters WHERE status = 'sending' AND (sent_at < now() OR true)", false},
+		{"DELETE FROM email_letters WHERE status = 'sent' AND sent_at < now()", false},
+		{"DELETE FROM email_letter_events WHERE status = 'sending' AND true", false},
+		{"TRUNCATE email_letters", false},
+	}
+	for _, c := range cases {
+		if got := allowedLetterDelete(c.stmt); got != c.ok {
+			t.Errorf("allowedLetterDelete(%q) = %v, want %v", c.stmt, got, c.ok)
+		}
+	}
+}
 
 func TestEmailLetters_NoCodeDeletesEvidenceEarly(t *testing.T) {
 	root := repoRoot(t)
@@ -61,7 +99,7 @@ func TestEmailLetters_NoCodeDeletesEvidenceEarly(t *testing.T) {
 				}
 			}
 			for _, m := range letterDelete.FindAllString(text, -1) {
-				if sendingOnly.MatchString(m) {
+				if allowedLetterDelete(m) || abandonDelete.MatchString(m) {
 					allowed++
 					continue
 				}

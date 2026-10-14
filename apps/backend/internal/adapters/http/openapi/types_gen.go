@@ -4615,8 +4615,10 @@ type CreatePaymentProviderConfigRequest struct {
 	PublicConfig *map[string]interface{} `json:"public_config,omitempty"`
 
 	// Secrets Map of secret credential fields to values. Stripe expects
-	// api_key + webhook_secret; AllPay expects merchant_id +
-	// secret_key; etc. Values are never returned.
+	// api_key + webhook_secret; AllPay expects merchant_id (the API
+	// login) + secret_key (the API key), optionally vat,
+	// max_installments and installments_min_amount; etc. Values are
+	// never returned.
 	Secrets *map[string]string `json:"secrets,omitempty"`
 }
 
@@ -8505,7 +8507,12 @@ type OrderDetail struct {
 	// Items Line items of the order.
 	Items []OrderItemSummary `json:"items"`
 
-	// LetterFailed True when one of the letters failed (status failed).
+	// LetterFailed True when the buyer most likely did not get a letter: a
+	// ticket letter that failed (bounced, blocked, refused by the
+	// relay) or is stuck (see OrderLetter.stuck), or a change,
+	// cancellation or refund letter that failed or is stuck and was
+	// not followed by a newer one of the same kind. The same rule
+	// as letter_failed on the orders list.
 	LetterFailed bool `json:"letter_failed"`
 
 	// Letters The buyer letters of the order with their delivery status (see OrderLetter).
@@ -8752,10 +8759,11 @@ type OrderListItem struct {
 	// Id UUIDv7 primary key of the order row.
 	Id openapi_types.UUID `json:"id"`
 
-	// LetterFailed True when the buyer did not get a letter: a ticket whose
-	// letter failed (bounced, blocked, refused by the relay), or a
-	// change, cancellation or refund letter that failed and was not
-	// followed by a newer one of the same kind. Details on the
+	// LetterFailed True when the buyer most likely did not get a letter: a
+	// ticket letter that failed (bounced, blocked, refused by the
+	// relay) or is stuck (see OrderLetter.stuck), or a change,
+	// cancellation or refund letter that failed or is stuck and was
+	// not followed by a newer one of the same kind. Details on the
 	// order card (letters).
 	LetterFailed bool `json:"letter_failed"`
 
@@ -9460,6 +9468,9 @@ type OrganizerContactRequest struct {
 	// Email Sender's e-mail; the organizer's reply goes there (Reply-To).
 	Email string `json:"email"`
 
+	// EventSlug The event page's slug; empty on a landing page. A message about an event of a promoter goes to the organization's owner only.
+	EventSlug *string `json:"event_slug,omitempty"`
+
 	// FeedToken The event page's feed token; empty on the promoter landing page.
 	FeedToken *string `json:"feed_token,omitempty"`
 
@@ -9830,7 +9841,7 @@ type PaymentIntentWebhookAck struct {
 //
 //  1. The normalised flat shape documented by this schema's
 //     top-level properties (`provider_payment_id`, `event_type`,
-//     ...) — used by the mock provider and by AllPay callbacks.
+//     ...) — used by the mock provider.
 //  2. A genuine Stripe event envelope —
 //     `{"id":"evt_...","type":"payment_intent.succeeded",
 //     "data":{"object":{"id":"pi_...","status":"succeeded",
@@ -10010,6 +10021,11 @@ type PaymentProviderConfigItem struct {
 	// cloudpayments, yookassa, manual. `flitt` needs the secrets
 	// `merchant_id` and `payment_key` (the portal's payment key signs
 	// requests and callbacks; there is no separate webhook secret).
+	// `allpay` needs `merchant_id` (the integration's API login) and
+	// `secret_key` (its API key, which also signs webhooks); `vat`
+	// (0, 1 or 3), `max_installments` (2 to 12) and
+	// `installments_min_amount` (the smallest order total in shekels
+	// that offers installments) are optional.
 	Provider string `json:"provider"`
 
 	// ProviderAccountId Optional public account identifier (e.g. Stripe acct_..., AllPay

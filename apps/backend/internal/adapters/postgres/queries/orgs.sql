@@ -128,7 +128,9 @@ WHERE  t.id = $1;
 -- feed token of a hosted-page channel of the organization (the hosted event
 -- page's own resolution): the page of any other one answers 404, so
 -- a cancel or refund letter then links the organization's or promoter's page.
--- "hosted page enabled" is the page's own rule (#>> = 'true').
+-- "hosted page enabled" is the page's own rule (#>> = 'true'). to_owner: the
+-- event belongs to a promoter (gen.EventPromotedSQL), so the form's messages
+-- go to the organization's owner only.
 SELECT NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') AS public_email,
        CASE WHEN sc.id IS NOT NULL THEN COALESCE(sc.settings #>> '{hosted_page,enabled}', '') = 'true'
             ELSE EXISTS (SELECT 1 FROM sales_channels h WHERE h.org_id = o.id AND h.deleted_at IS NULL
@@ -148,7 +150,10 @@ SELECT NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') A
                  AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
                  AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
                                  WHERE ur.user_id = u.id AND ur.org_id IS NULL
-                                   AND r.org_id IS NULL AND r.name NOT IN ('org_admin', 'organizer', 'agent'))) AS owner_reachable
+                                   AND r.org_id IS NULL AND r.name NOT IN ('org_admin', 'organizer', 'agent'))) AS owner_reachable,
+       EXISTS (SELECT 1 FROM event_promoters epx
+               JOIN org_promoters opx ON opx.id = epx.promoter_id AND opx.org_id = epx.org_id
+               WHERE epx.event_id = e.id AND epx.org_id = e.org_id AND opx.archived_at IS NULL) AS to_owner
 FROM   tickets t
 JOIN   sessions s ON s.id = t.session_id
 JOIN   events   e ON e.id = s.event_id

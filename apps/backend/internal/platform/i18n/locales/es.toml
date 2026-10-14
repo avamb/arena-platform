@@ -1594,7 +1594,7 @@ other = "Pedidos"
 other = "<b>Pedidos: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · página {{.Page}} de {{.Pages}}.{{.Search}}\n{{.Legend}}\nPulsa un pedido para abrirlo. Para buscar, escribe un código de barras, un número de pedido, un e-mail, un teléfono o un nombre."
 
 ["bot.ord.legend"]
-other = "✅ pagado  ⏳ pendiente de pago  ⌛ caducado  ✖ cancelado  ↩ reembolsado  ⚠️📧 e-mail de entradas no enviado"
+other = "✅ pagado  ⏳ pendiente de pago  ⌛ caducado  ✖ cancelado  ↩ reembolsado  ⚠️📧 un e-mail no llegó al comprador"
 
 ["bot.ord.letter_tickets_none"]
 other = "📧 E-mail de entradas: Arena no lo envió."
@@ -1620,6 +1620,15 @@ other = "⚠️📧 E-mail de entradas: enviado para {{.Done}} de {{.Total}} ent
 ["bot.ord.letter_tickets_failed"]
 other = "⚠️📧 E-mail de entradas: Arena no pudo enviarlo{{if .To}} a {{.To}}{{end}}.{{if .Why}} Motivo: {{.Why}}{{end}}"
 
+["bot.ord.letter_tickets_delayed"]
+other = "📧 E-mail de entradas: la entrega se retrasa{{if .To}} ({{.To}}){{end}}. El servidor de correo del comprador pidió reintentar más tarde. El servicio de correo lo reintentará solo."
+
+["bot.ord.letter_tickets_stuck"]
+other = "⚠️📧 E-mail de entradas: enviado{{if .When}} el {{.When}}{{end}}, pero no entregado{{if .To}} a {{.To}}{{end}} en 6 horas. Lo más probable es que el comprador no lo haya recibido. Envía el e-mail de nuevo o escribe al comprador."
+
+["bot.ord.letter_tickets_bounced"]
+other = "⚠️📧 El e-mail de entradas no llegó{{if .To}} a {{.To}}{{end}}: el servidor de correo del comprador lo rechazó.{{if .Why}} Motivo: {{.Why}}{{end}} Revisa la dirección y envía el e-mail de nuevo."
+
 ["bot.ord.letter_refund_off"]
 other = "📧 E-mail de reembolso: elegiste no enviarlo."
 
@@ -1640,6 +1649,15 @@ other = "📧 E-mail de reembolso: el comprador lo abrió{{if .When}} el {{.When
 
 ["bot.ord.letter_refund_failed"]
 other = "⚠️📧 E-mail de reembolso: Arena no pudo enviarlo{{if .When}} (último intento el {{.When}}){{end}}. El operador lo sabe."
+
+["bot.ord.letter_refund_delayed"]
+other = "📧 E-mail de reembolso: la entrega se retrasa{{if .To}} ({{.To}}){{end}}. El servicio de correo lo reintentará solo."
+
+["bot.ord.letter_refund_stuck"]
+other = "⚠️📧 E-mail de reembolso: enviado{{if .When}} el {{.When}}{{end}}, pero no entregado{{if .To}} a {{.To}}{{end}} en 6 horas. Lo más probable es que el comprador no lo haya recibido. Avisa tú mismo al comprador del reembolso."
+
+["bot.ord.letter_refund_bounced"]
+other = "⚠️📧 El e-mail de reembolso no llegó{{if .To}} a {{.To}}{{end}}: el servidor de correo del comprador lo rechazó.{{if .Why}} Motivo: {{.Why}}{{end}} El reembolso está hecho. Avísale tú mismo al comprador."
 
 ["bot.ord.letter_retry_btn"]
 other = "📧 Enviar de nuevo el e-mail de entradas"
