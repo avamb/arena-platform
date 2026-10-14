@@ -8,8 +8,6 @@ package eventbot
 import (
 	"context"
 	"net/http"
-	"net/url"
-	"strconv"
 
 	"github.com/google/uuid"
 
@@ -42,35 +40,35 @@ type OrderPage struct {
 	HasMore    bool                    `json:"has_more"`
 }
 
+// orderSearchBody is the body of POST .../orders/search: the same filters as
+// the GET query string, kept out of the URL so a buyer's e-mail or phone
+// never reaches a proxy log (owner decision 2026-10-14).
+type orderSearchBody struct {
+	Tab       string `json:"tab,omitempty"`
+	Q         string `json:"q,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
+	EventID   string `json:"event_id,omitempty"`
+	Limit     int    `json:"limit,omitempty"`
+	Offset    int    `json:"offset,omitempty"`
+}
+
 // ListOrders returns a page of the organization's orders
-// (GET .../orders). The search text goes to `q` untouched: the server decides
-// whether it is a barcode, an order number, an e-mail, a phone or a name.
+// (POST .../orders/search). The search text goes to `q` untouched: the server
+// decides whether it is a barcode, an order number, an e-mail, a phone or a
+// name.
 func (c *ArenaClient) ListOrders(ctx context.Context, jwt string, orgID uuid.UUID, q OrderListQuery) (OrderPage, error) {
-	v := url.Values{}
+	body := orderSearchBody{Q: q.Q, Limit: q.Limit, Offset: q.Offset}
 	if q.Tab != "" && q.Tab != ordTabRecent {
-		v.Set("tab", q.Tab)
-	}
-	if q.Q != "" {
-		v.Set("q", q.Q)
+		body.Tab = q.Tab
 	}
 	if q.SessionID != nil {
-		v.Set("session_id", q.SessionID.String())
+		body.SessionID = q.SessionID.String()
 	}
 	if q.EventID != nil {
-		v.Set("event_id", q.EventID.String())
-	}
-	if q.Limit > 0 {
-		v.Set("limit", strconv.Itoa(q.Limit))
-	}
-	if q.Offset > 0 {
-		v.Set("offset", strconv.Itoa(q.Offset))
-	}
-	path := "/v1/organizations/" + orgID.String() + "/orders"
-	if enc := v.Encode(); enc != "" {
-		path += "?" + enc
+		body.EventID = q.EventID.String()
 	}
 	var out OrderPage
-	err := c.do(ctx, http.MethodGet, path, jwt, nil, &out)
+	err := c.do(ctx, http.MethodPost, "/v1/organizations/"+orgID.String()+"/orders/search", jwt, body, &out)
 	return out, err
 }
 

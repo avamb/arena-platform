@@ -276,7 +276,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Список заказов, вкладки, поиск",
     bot: "orders_list.go, `or:`",
     web: "R1",
-    routes: [`GET ${O}/orders`],
+    routes: [`POST ${O}/orders/search`],
+    note: "Поиск идёт в теле запроса, не в адресе: так e-mail и телефон покупателя не попадают в журналы прокси. Бот тоже.",
   },
   {
     area: "Заказы",

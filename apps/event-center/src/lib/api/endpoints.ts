@@ -61,11 +61,11 @@ export interface OrderQuery {
 
 export function listOrders(orgId: string, query: OrderQuery): Promise<OrderListResponse> {
   return call<OrderListResponse>({
-    route: API.orders,
+    route: API.orderSearch,
     params: { org_id: orgId },
-    query: {
+    body: {
       tab: query.tab,
-      q: query.q,
+      q: query.q === "" ? undefined : query.q,
       event_id: query.eventId,
       session_id: query.sessionId,
       limit: query.limit,

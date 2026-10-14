@@ -1443,6 +1443,24 @@ type AuthRegisterResponse struct {
 	UserId openapi_types.UUID `json:"user_id"`
 }
 
+// AuthStepUpRequest Body of POST /v1/auth/step-up.
+type AuthStepUpRequest struct {
+	// OrgId The organization of the money action. The token covers actions in this organization only.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Password The signed-in person's current password.
+	Password string `json:"password"`
+}
+
+// AuthStepUpResponse Proof of a fresh password confirmation for the money routes.
+type AuthStepUpResponse struct {
+	// ExpiresAt When the token stops working (5 minutes after it was issued).
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// StepUpToken Send it as `X-Step-Up-Token` on a money request from the web event center.
+	StepUpToken string `json:"step_up_token"`
+}
+
 // AuthVerifyResponse defines model for AuthVerifyResponse.
 type AuthVerifyResponse struct {
 	// Email Verified email address
@@ -9117,6 +9135,38 @@ type OrderResendTicketsResponse struct {
 	RecipientMasked string `json:"recipient_masked"`
 }
 
+// OrderSearchRequest Body of POST /v1/organizations/{org_id}/orders/search. Every field is
+// optional and means what the query parameter of the same name means
+// on GET /v1/organizations/{org_id}/orders.
+type OrderSearchRequest struct {
+	// EventId Only orders of this event of the organization.
+	EventId *openapi_types.UUID `json:"event_id,omitempty"`
+
+	// From Only orders created at or after this RFC3339 timestamp.
+	From *time.Time `json:"from,omitempty"`
+
+	// Limit Page size, 1-200 (default 50).
+	Limit *int `json:"limit,omitempty"`
+
+	// Offset Pagination offset (default 0).
+	Offset *int `json:"offset,omitempty"`
+
+	// Q One search value (barcode, order number, e-mail, phone or name), classified like the GET `q`.
+	Q *string `json:"q,omitempty"`
+
+	// SessionId Only orders of this session of the organization.
+	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
+
+	// Status Order lifecycle status filter.
+	Status *string `json:"status,omitempty"`
+
+	// Tab Status group `recent` (default), `paid` or `unpaid`.
+	Tab *string `json:"tab,omitempty"`
+
+	// To Only orders created at or before this RFC3339 timestamp.
+	To *time.Time `json:"to,omitempty"`
+}
+
 // OrderSummary One order, as returned by both the org-scoped orders list and the
 // `order` fields common to the detail endpoint (feature #489, W1-A6d,
 // spec §14.2).
@@ -15202,6 +15252,9 @@ type PostV1AuthRefreshJSONRequestBody = AuthRefreshRequest
 // PostV1AuthRegisterJSONRequestBody defines body for PostV1AuthRegister for application/json ContentType.
 type PostV1AuthRegisterJSONRequestBody = AuthRegisterRequest
 
+// PostV1AuthStepUpJSONRequestBody defines body for PostV1AuthStepUp for application/json ContentType.
+type PostV1AuthStepUpJSONRequestBody = AuthStepUpRequest
+
 // UploadBarcodeBatchJSONRequestBody defines body for UploadBarcodeBatch for application/json ContentType.
 type UploadBarcodeBatchJSONRequestBody UploadBarcodeBatchJSONBody
 
@@ -15423,6 +15476,9 @@ type GrantOrganizationMembershipJSONRequestBody = GrantMembershipRequest
 
 // RevokeOrganizationMembershipJSONRequestBody defines body for RevokeOrganizationMembership for application/json ContentType.
 type RevokeOrganizationMembershipJSONRequestBody = RevokeMembershipRequest
+
+// PostV1OrganizationsOrgIdOrdersSearchJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersSearch for application/json ContentType.
+type PostV1OrganizationsOrgIdOrdersSearchJSONRequestBody = OrderSearchRequest
 
 // PostV1OrganizationsOrgIdOrdersIdCancelJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersIdCancel for application/json ContentType.
 type PostV1OrganizationsOrgIdOrdersIdCancelJSONRequestBody PostV1OrganizationsOrgIdOrdersIdCancelJSONBody

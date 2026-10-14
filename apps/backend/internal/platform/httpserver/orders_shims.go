@@ -26,6 +26,13 @@ func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 	s.ordersHandler().HandleList(w, r)
 }
 
+func (s *Server) handleSearchOrders(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.ordersHandler().HandleSearch(w, r)
+}
+
 func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 	if !s.enforceOrgMembership(w, r, "org_id") {
 		return

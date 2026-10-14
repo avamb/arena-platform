@@ -569,6 +569,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/step-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the password again before a money action
+         * @description The signed-in person types their password again and receives a short
+         *     step-up token (5 minutes). The money routes (refund create, retry,
+         *     resolve, approve and reject, review-hold clear, scan-refund
+         *     exception) refuse a request from the web event center without this
+         *     token in `X-Step-Up-Token` (403 `auth.step_up_required`). A request
+         *     is from the web when it sends `X-Client-Channel: event_center_web`
+         *     OR when its access token was minted from a web sign-in (the `chn`
+         *     claim, taken from the stored session, never from a header). Other
+         *     clients are not asked: the owner decided against it for the Telegram
+         *     bot (spec 37 section 4.5).
+         *
+         *     The token is bound to the sign-in of the access token (its `sid`
+         *     claim) and to the organization named in `org_id`: it does not work
+         *     in another session, after a sign-out, or for an action in another
+         *     organization. It has its own audience and is never accepted as an
+         *     access token. Wrong passwords are limited to 5 per person in 15
+         *     minutes. A wrong password is 403, not 401, so a client never takes
+         *     it for an expired access token.
+         */
+        post: operations["postV1AuthStepUp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me": {
         parameters: {
             query?: never;
@@ -4006,7 +4043,8 @@ export interface paths {
         put?: never;
         /**
          * Create a refund request
-         * @description Creates a new refund row in the `requested` state. The handler
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Creates a new refund row in the `requested` state. The handler
          *     looks up the parent payment intent to copy `org_id`; a missing
          *     payment intent returns 404 `refund.payment_intent_not_found`.
          *     Amount may be less than the payment-intent amount (partial
@@ -4071,7 +4109,8 @@ export interface paths {
         put?: never;
         /**
          * Approve a refund request
-         * @description Approves a refund in the `requested` state. Standard path
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Approves a refund in the `requested` state. Standard path
          *     transitions `requested → approved → provider_pending`
          *     (simulating provider submission). When the refund is partial
          *     AND the payment intent has a checkout session AND at least one
@@ -4103,7 +4142,8 @@ export interface paths {
         put?: never;
         /**
          * Reject a refund request
-         * @description Rejects a refund in the `requested` state, transitioning it to
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Rejects a refund in the `requested` state, transitioning it to
          *     the terminal `rejected` state. Rejecting a refund that is not
          *     in `requested` returns 409 `refund.invalid_state`.
          *
@@ -6325,6 +6365,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/orders/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search orders with the filters in the request body
+         * @description The same search as `GET /v1/organizations/{org_id}/orders`, with
+         *     every filter in the JSON body instead of the query string (owner
+         *     decision 2026-10-14, spec 37 §13 item 5): a buyer's e-mail or phone
+         *     in a URL is written by every proxy and by Cloudflare, a body is not.
+         *     Each field means exactly what the GET parameter of the same name
+         *     means, with the same validation and the same error codes. A query
+         *     string on this route is refused (400 `orders.query_in_url`), and so
+         *     is a body that is not one JSON object of the known fields (400
+         *     `orders.invalid_body`). Requires the `order.read` permission.
+         */
+        post: operations["postV1OrganizationsOrgIdOrdersSearch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/orders/{id}": {
         parameters: {
             query?: never;
@@ -6700,7 +6768,8 @@ export interface paths {
         put?: never;
         /**
          * Refund tickets of an order
-         * @description Records one refund operation and, when the caller also holds
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Records one refund operation and, when the caller also holds
          *     `refund.approve`, sends it to the payment provider at once (PAY-06,
          *     spec 36 section 8). The `Idempotency-Key` header is required and
          *     unique per organization: repeating the call with the same key and the
@@ -6776,7 +6845,8 @@ export interface paths {
         put?: never;
         /**
          * Send a failed or never-sent refund again
-         * @description Starts a NEW one-ticket refund operation from a refund the provider
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Starts a NEW one-ticket refund operation from a refund the provider
          *     refused outright (failed, with no provider refund id), or one that was
          *     parked before any provider call, and sends it
          *     at once with a new idempotency key. A refund the provider refused stays
@@ -6826,6 +6896,9 @@ export interface paths {
          *     reason it was parked with, except that one closed as refunded carries
          *     no failure. A parked refund without a provider is closed as
          *     `refunded` or `not_refunded` exactly as stated and settles nothing. Platform superadmin only, with X-Admin-Reason.
+         *     From the web event center the request also needs the password
+         *     again: X-Step-Up-Token from POST /v1/auth/step-up for this
+         *     organization, otherwise 403 auth.step_up_required.
          */
         post: operations["postV1OrganizationsOrgIdRefundsRefundIdResolve"];
         delete?: never;
@@ -8505,6 +8578,26 @@ export interface components {
              * @example 1
              */
             total: number;
+        };
+        /** @description Body of POST /v1/auth/step-up. */
+        AuthStepUpRequest: {
+            /** @description The signed-in person's current password. */
+            password: string;
+            /**
+             * Format: uuid
+             * @description The organization of the money action. The token covers actions in this organization only.
+             */
+            org_id: string;
+        };
+        /** @description Proof of a fresh password confirmation for the money routes. */
+        AuthStepUpResponse: {
+            /** @description Send it as `X-Step-Up-Token` on a money request from the web event center. */
+            step_up_token: string;
+            /**
+             * Format: date-time
+             * @description When the token stops working (5 minutes after it was issued).
+             */
+            expires_at: string;
         };
         AuthLogoutRequest: {
             /**
@@ -10754,6 +10847,43 @@ export interface components {
              * @description When the order was last updated.
              */
             updated_at: string;
+        };
+        /**
+         * @description Body of POST /v1/organizations/{org_id}/orders/search. Every field is
+         *     optional and means what the query parameter of the same name means
+         *     on GET /v1/organizations/{org_id}/orders.
+         */
+        OrderSearchRequest: {
+            /** @description One search value (barcode, order number, e-mail, phone or name), classified like the GET `q`. */
+            q?: string;
+            /** @description Status group `recent` (default), `paid` or `unpaid`. */
+            tab?: string;
+            /** @description Order lifecycle status filter. */
+            status?: string;
+            /**
+             * Format: uuid
+             * @description Only orders of this session of the organization.
+             */
+            session_id?: string;
+            /**
+             * Format: uuid
+             * @description Only orders of this event of the organization.
+             */
+            event_id?: string;
+            /**
+             * Format: date-time
+             * @description Only orders created at or after this RFC3339 timestamp.
+             */
+            from?: string;
+            /**
+             * Format: date-time
+             * @description Only orders created at or before this RFC3339 timestamp.
+             */
+            to?: string;
+            /** @description Page size, 1-200 (default 50). */
+            limit?: number;
+            /** @description Pagination offset (default 0). */
+            offset?: number;
         };
         /**
          * @description One row of the org-scoped order list (EC-04): the order plus the
@@ -23202,6 +23332,75 @@ export interface operations {
                 };
             };
             /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AuthStepUp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthStepUpRequest"];
+            };
+        };
+        responses: {
+            /** @description The password is right. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStepUpResponse"];
+                };
+            };
+            /** @description The body is not JSON, has no password (`validation.password_required`) or names no organization (`validation.org_id_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT Authorization header, or the access token comes from no sign-in or from one that has ended (`auth.session_ended`, sign in again). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The password is wrong (`auth.step_up_wrong_password`) or the account is deactivated (`auth.user_deactivated`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many wrong passwords (`auth.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -43663,6 +43862,92 @@ export interface operations {
             };
         };
     };
+    postV1OrganizationsOrgIdOrdersSearch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OrderSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Page of orders within the organization, as GET .../orders answers it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description The page, newest first. */
+                        orders: components["schemas"]["OrderListItem"][];
+                        /** @description Page size applied. */
+                        limit: number;
+                        /** @description Offset applied. */
+                        offset: number;
+                        /**
+                         * Format: int64
+                         * @description Orders matching the same filters across every page.
+                         */
+                        total_count: number;
+                        /** @description True when offset plus the page's length is below total_count. */
+                        has_more: boolean;
+                    };
+                };
+            };
+            /** @description A field is invalid (the GET codes), the body is not one JSON object of the known fields (`orders.invalid_body`), or the URL carries a query string (`orders.query_in_url`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`) in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description session_id or event_id names a row of another organization or an unknown one (`orders.session_id_not_found` / `orders.event_id_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getV1OrganizationsOrgIdOrdersId: {
         parameters: {
             query?: never;
@@ -45181,7 +45466,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Not a platform operator (refund.resolve_superadmin_only). */
+            /** @description Not a platform operator (refund.resolve_superadmin_only), or a request from the web event center without a valid step-up token for this organization (auth.step_up_required). */
             403: {
                 headers: {
                     [name: string]: unknown;

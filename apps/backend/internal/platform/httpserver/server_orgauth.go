@@ -11,6 +11,7 @@ package httpserver
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -132,8 +133,16 @@ func (s *Server) requirePermissionInOrg(w http.ResponseWriter, r *http.Request, 
 // but a refusal is the route's OWN 404, never 403, so a foreign refund or
 // payment id cannot be told apart from a missing one. Fail-closed when the
 // membership queries are not wired.
+//
+// On a money route the web passed with a step-up token (requireWebStepUp),
+// the row must also belong to the organization that token was made for: a
+// password confirmed in one organization does not cover another one.
 func (s *Server) rowOrgAccess(w http.ResponseWriter, r *http.Request, orgID uuid.UUID, write bool, notFoundCode, notFoundMessage string) bool {
 	ctx := r.Context()
+	if stepUpOrg, ok := stepUpOrgFromContext(ctx); ok && !strings.EqualFold(stepUpOrg, orgID.String()) {
+		writeStepUpRequired(w, r)
+		return false
+	}
 	if auth.HasSuperadminOrgAccess(ctx) {
 		if !write {
 			return true

@@ -151,7 +151,9 @@ export async function mockApi(
     const url = new URL(req.url());
     const path = url.pathname;
     const m = req.method();
-    state.requests.push(`${m} ${path}${url.search}`);
+    // The body of an order search is logged too, so a test can tell what it sent.
+    const searchBody = m === "POST" && path.endsWith("/orders/search") ? ` ${req.postData() ?? ""}` : "";
+    state.requests.push(`${m} ${path}${url.search}${searchBody}`);
     if (m === "OPTIONS") {
       return route.fulfill({
         status: 204,
@@ -345,9 +347,13 @@ export async function mockApi(
         body: "%PDF-1.4\n%mock\n",
       });
     }
-    if (rest === "/orders") {
-      const q = url.searchParams.get("q") ?? "";
-      const tab = url.searchParams.get("tab") ?? "recent";
+    if (rest === "/orders/search" && m === "POST") {
+      if (url.search !== "") {
+        return json(route, 400, { error: { code: "orders.query_in_url", message: "query string" } });
+      }
+      const body = (req.postDataJSON() ?? {}) as { q?: string; tab?: string };
+      const q = body.q ?? "";
+      const tab = body.tab ?? "recent";
       const rows = q === "nobody" || tab === "unpaid" ? [] : [
         { ...orderSummary, event_name: "Serebryanoe kopyttse", session_start_at: "2026-11-20T19:00:00Z", session_timezone: "Europe/Prague" },
       ];

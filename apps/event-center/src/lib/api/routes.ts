@@ -42,7 +42,9 @@ export const API = {
     path: "/v1/organizations/{org_id}/sessions/{session_id}/summary.csv",
   },
   sampleTicket: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/sample-ticket" },
-  orders: { method: "GET", path: "/v1/organizations/{org_id}/orders" },
+  // The search travels in the body, never in the URL: a buyer's e-mail or
+  // phone in a query string is written by every proxy log (spec 37 §13).
+  orderSearch: { method: "POST", path: "/v1/organizations/{org_id}/orders/search" },
   order: { method: "GET", path: "/v1/organizations/{org_id}/orders/{id}" },
 } as const satisfies Record<string, ApiRoute>;
 

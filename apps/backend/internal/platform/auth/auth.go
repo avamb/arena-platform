@@ -112,6 +112,15 @@ type Actor struct {
 	// 08_architecture/22_site_facing_gaps_w1s1_ru.md §2.2). nil means the key
 	// is not bound to a channel — a supported configuration, not an error.
 	ChannelID *uuid.UUID
+	// SessionID is the "sid" claim: the sign-in (the chain of refresh tokens)
+	// this access token was issued from. Empty for a token minted outside a
+	// sign-in (the Telegram bot, dev tokens, impersonation).
+	SessionID string
+	// Channel is the "chn" claim: the client that started the sign-in, taken
+	// from the stored session, never from the request. Only the web event
+	// center ("event_center_web") is written today: a money route asks it for
+	// the password again even when a request leaves X-Client-Channel out.
+	Channel string
 }
 
 // IsImpersonated reports whether this actor's token was issued as an
@@ -440,6 +449,8 @@ func (p *StubProvider) Verify(_ context.Context, token string) (Actor, error) {
 		RawToken:            token,
 		ImpersonatedBy:      claims.ImpersonatedBy,
 		ImpersonationReason: claims.ImpersonationReason,
+		SessionID:           claims.SessionID,
+		Channel:             claims.Channel,
 	}, nil
 }
 
@@ -457,6 +468,10 @@ type jwtClaims struct {
 	// by a platform admin via POST /v1/admin/impersonate.
 	ImpersonatedBy      string `json:"impersonated_by,omitempty"`
 	ImpersonationReason string `json:"impersonation_reason,omitempty"`
+	// Session claims (spec 08_architecture/37 section 4.5): set only on an
+	// access token minted from a sign-in.
+	SessionID string `json:"sid,omitempty"`
+	Channel   string `json:"chn,omitempty"`
 }
 
 func signHS256(secret, msg []byte) []byte {
@@ -495,6 +510,8 @@ type jwtVerifierClaims struct {
 	Roles               []string `json:"roles,omitempty"`
 	ImpersonatedBy      string   `json:"impersonated_by,omitempty"`
 	ImpersonationReason string   `json:"impersonation_reason,omitempty"`
+	SessionID           string   `json:"sid,omitempty"`
+	Channel             string   `json:"chn,omitempty"`
 }
 
 // JWTVerifier is a production-grade auth.Provider that verifies HS256 JWTs
@@ -583,6 +600,8 @@ func (v *JWTVerifier) Verify(_ context.Context, rawToken string) (Actor, error) 
 		RawToken:            rawToken,
 		ImpersonatedBy:      claims.ImpersonatedBy,
 		ImpersonationReason: claims.ImpersonationReason,
+		SessionID:           claims.SessionID,
+		Channel:             claims.Channel,
 	}, nil
 }
 

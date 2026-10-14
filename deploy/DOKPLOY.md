@@ -292,6 +292,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `JWT_SIGNING_SECRET` | ✅ | — | ✅ | — |
 | `JWT_ISSUER`, `JWT_AUDIENCE` (same values on api and bot) | ● | — | ● | — |
 | `JWT_DEFAULT_TTL` | ● | — | — | — |
+| `WEB_SESSION_IDLE_HOURS` (idle window of a web event center session, 0..720, default 72) | ● | — | — | — |
 | `HTTP_LISTEN_ADDR`, `BODY_LIMIT_BYTES`, `REQUEST_TIMEOUT_SECONDS` | ● | — | — | — |
 | `CORS_ALLOWED_ORIGINS` (no `*`) | ✅ | — | — | — |
 | `TRUSTED_PROXY_COUNT` | ● | — | — | — |
