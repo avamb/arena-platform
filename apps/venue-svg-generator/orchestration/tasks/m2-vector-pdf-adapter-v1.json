@@ -1,0 +1,76 @@
+{
+  "task_id": "m2-vector-pdf-adapter-v1",
+  "objective": "Создай ограниченный source-only адаптер векторных PDF-примитивов в Seating JSON v1. Используй существующую диагностику PDF и renderer как основу, не изменяй подтверждённые XLSX-компоненты и не используй reference SVG.",
+  "inputs": [
+    "PRODUCT_SPEC.md",
+    "ROADMAP.md",
+    "pdf_diagnostics/diagnose_pdf.py",
+    "benchmark_v1/README_RU.md",
+    "seating_svg_renderer/core.py",
+    "seating_svg_renderer/README_RU.md",
+    "BIL24_SVG_GUIDE_RU.md"
+  ],
+  "allowed_paths": [
+    "PRODUCT_SPEC.md",
+    "ROADMAP.md",
+    "pdf_diagnostics",
+    "benchmark_v1/README_RU.md",
+    "seating_svg_renderer",
+    "BIL24_SVG_GUIDE_RU.md",
+    "pdf_seating_adapter"
+  ],
+  "read_paths": [
+    "PRODUCT_SPEC.md",
+    "ROADMAP.md",
+    "pdf_diagnostics/diagnose_pdf.py",
+    "benchmark_v1/README_RU.md",
+    "seating_svg_renderer",
+    "seating_svg_renderer/README_RU.md",
+    "BIL24_SVG_GUIDE_RU.md"
+  ],
+  "write_paths": ["pdf_seating_adapter"],
+  "forbidden_paths": [
+    "arena_new",
+    "production",
+    "staging",
+    "ChatExport_2026-10-11",
+    "independent_evaluation",
+    "sdk_experiments",
+    "orchestration/runs",
+    "orchestration/runtime",
+    "*.pdf",
+    "*.svg",
+    "*.xlsx",
+    "*.jpg",
+    "*.png"
+  ],
+  "commands": [],
+  "expected_outputs": [
+    "pdf_seating_adapter/__init__.py",
+    "pdf_seating_adapter/core.py",
+    "pdf_seating_adapter/README_RU.md",
+    "pdf_seating_adapter/tests/test_adapter.py"
+  ],
+  "budget_usd": 5,
+  "max_turns": 6,
+  "max_retries": 0,
+  "timeout_ms": 300000,
+  "api_allowed": true,
+  "acceptance": [
+    "Входной контракт принимает только документированный manifest векторных примитивов и сохраняет page/source provenance.",
+    "Выход использует seating-json-v1 с координатами, секциями, рядами, номерами, evidence, confidence и VALID/QUARANTINE.",
+    "Неоднозначные примитивы, отсутствующие номера и неподдержанные структуры fail-closed; позиционная нумерация запрещена.",
+    "Координатное преобразование явно описано и обратимо; reference SVG и закрытый Telegram archive не читаются.",
+    "Добавлены детерминированные локальные unit tests для valid, unknown, quarantine, duplicate и bounds cases.",
+    "Не изменены xlsx_seating_adapter, seating_svg_renderer, arena_new и production; без заявления о реальном PDF PASS при отсутствии закрытого fixture.",
+    "Документация перечисляет поддержанные примитивы, ограничения и следующий независимый evaluator step."
+  ],
+  "review_requirements": [
+    "Codex must run the adapter tests and inspect the diff independently.",
+    "A real PDF fixture is required before product PASS; unavailable fixture means NOT_VERIFIED.",
+    "Claude must report incomplete components and must not create a commit or merge."
+  ],
+  "status": "awaiting-owner-approval",
+  "workflow_profile": "m2-source-adapter-v1",
+  "note": "Prepared only. Real Claude execution requires a fresh Console confirmation and explicit owner approval."
+}

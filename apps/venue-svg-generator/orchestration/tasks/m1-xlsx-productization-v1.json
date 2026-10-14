@@ -1,0 +1,68 @@
+{
+  "task_id": "m1-xlsx-productization-v1",
+  "objective": "Стабилизируй локальный продуктовый путь XLSX → seating-json-v1 → диагностический SVG на уже проверенных профилях Hunter и Aribau. Не меняй алгоритм извлечения, не используй reference SVG и не добавляй новые форматы. Добавь только воспроизводимую упаковку результата, явную provenance/validation проверку и команды, пригодные для локального запуска.",
+  "inputs": [
+    "PRODUCT_SPEC.md",
+    "ROADMAP.md",
+    "xlsx_seating_adapter/README_RU.md",
+    "xlsx_seating_adapter/core.py",
+    "xlsx_seating_adapter/cli.py",
+    "xlsx_seating_adapter/profiles.py",
+    "xlsx_seating_adapter/tests/test_adapter.py",
+    "seating_svg_renderer/README_RU.md",
+    "seating_svg_renderer/core.py",
+    "seating_svg_renderer/cli.py",
+    "seating_svg_renderer/tests/test_renderer.py",
+    "benchmark_v1/benchmark.py",
+    "benchmark_v1/test_benchmark.py"
+  ],
+  "allowed_paths": [
+    "PRODUCT_SPEC.md",
+    "ROADMAP.md",
+    "xlsx_seating_adapter",
+    "seating_svg_renderer",
+    "benchmark_v1/benchmark.py",
+    "benchmark_v1/test_benchmark.py",
+    "m1_product"
+  ],
+  "read_paths": [
+    "PRODUCT_SPEC.md",
+    "ROADMAP.md",
+    "xlsx_seating_adapter",
+    "seating_svg_renderer",
+    "benchmark_v1/benchmark.py",
+    "benchmark_v1/test_benchmark.py"
+  ],
+  "write_paths": [
+    "m1_product"
+  ],
+  "forbidden_paths": [
+    "arena_new",
+    "ChatExport_2026-10-11",
+    "production",
+    "staging",
+    "SSH",
+    "sdk_experiments/console-confirmation.json",
+    "sdk_experiments/workspace-confirmation.json",
+    "orchestration/runs",
+    "orchestration/runtime"
+  ],
+  "commands": [],
+  "budget_usd": 10,
+  "max_turns": 6,
+  "max_retries": 0,
+  "timeout_ms": 300000,
+  "api_allowed": true,
+  "acceptance": [
+    "Единая локальная команда создаёт только Seating JSON и diagnostic SVG из поддержанного XLSX profile.",
+    "Hunter regression остаётся 907/907, Aribau остаётся 1166/1166.",
+    "Source SHA-256, profile, sheet/cell evidence и validation status сохраняются.",
+    "QUARANTINE, gaps, merged cells и unknown не становятся продаваемыми seat elements.",
+    "Reference SVG и приватный Telegram archive не входят в extraction inputs.",
+    "Добавлены локальные regression/fail-closed tests и русская инструкция.",
+    "Изменения не затрагивают arena_new и не создают commit/merge автоматически."
+  ],
+  "status": "awaiting-owner-approval",
+  "workflow_profile": "m1-write-v1",
+  "note": "Task packet is prepared only. A paid SDK call requires a fresh owner approval and a clean dedicated worktree."
+}

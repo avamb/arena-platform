@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "session_id": "m2-vector-pdf-session-v1",
+  "session_budget_usd": 20,
+  "max_task_budget_usd": 5,
+  "max_fix_attempts": 2,
+  "tasks": [
+    {
+      "task_id": "m2-vector-pdf-adapter-v1",
+      "task_file": "orchestration/tasks/m2-vector-pdf-adapter-v1.json",
+      "mode": "real",
+      "launcher": "m1",
+      "worktree": "C:\\Projects\\Venue_SVG_Generator-m2-vector-pdf",
+      "codex_review": "run"
+    }
+  ]
+}

@@ -500,6 +500,76 @@ jobs:
           docker rm -f arena-event-center-smoke
 
   # ─────────────────────────────────────────────────────────────────
+  # Venue SVG generator (apps/venue-svg-generator, Python) — pytest +
+  # docker build. Runs only when that folder or this job changes: the
+  # first step compares the change set and every later step is gated on
+  # it, so the job stays green (and a required check stays satisfiable)
+  # on an unrelated PR. A path filter on the whole workflow would
+  # disable every other job, so the filter lives here.
+  #
+  # Not run in CI (needs private, git-ignored client data, see
+  # apps/venue-svg-generator/conftest.py): benchmark_v1 (imports the
+  # seating_poc package), and nine tests that read client XLSX / frozen
+  # results. conftest.py skips those nine when the data is absent.
+  # ─────────────────────────────────────────────────────────────────
+  venue-svg-generator:
+    name: Venue SVG generator (pytest / docker build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes in the generator
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          run=true
+          # Compare against the base only when there is one; a new branch or a
+          # force push has no usable "before" and runs the job.
+          if [ -n "$BASE_SHA" ] && ! echo "$BASE_SHA" | grep -qE '^0+$' && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            if git diff --name-only "$BASE_SHA" HEAD | grep -qE '^(apps/venue-svg-generator/|\.github/workflows/ci\.yml$)'; then
+              run=true
+            else
+              run=false
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "venue-svg-generator job runs: $run"
+
+      - name: Set up Python
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/venue-svg-generator/requirements-dev.txt
+
+      - name: Install dependencies
+        if: steps.changes.outputs.run == 'true'
+        run: pip install -r apps/venue-svg-generator/requirements-dev.txt
+
+      - name: Unit tests (pytest)
+        if: steps.changes.outputs.run == 'true'
+        working-directory: apps/venue-svg-generator
+        run: python -m pytest -q -rs
+
+      - name: Build the Docker image
+        if: steps.changes.outputs.run == 'true'
+        run: docker build -t arena_new/arena-venue-gen:ci apps/venue-svg-generator
+
+      - name: Image smoke (the CLI starts)
+        if: steps.changes.outputs.run == 'true'
+        run: docker run --rm arena_new/arena-venue-gen:ci python -m m1_product --help
+
+  # ─────────────────────────────────────────────────────────────────
   # Job 6: Widget — Svelte 5 custom element (arena-tickets)
   #
   # Runs on every push/PR. Steps: install → type-check → unit tests

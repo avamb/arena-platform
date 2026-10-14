@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "session_id": "autonomous-v1-mock",
+  "session_budget_usd": 20,
+  "max_task_budget_usd": 5,
+  "max_fix_attempts": 2,
+  "tasks": [
+    {
+      "task_id": "supervisor-readonly-mock-v1",
+      "task_file": "orchestration/tasks/supervisor-readonly-mock-v1.json",
+      "mode": "mock"
+    },
+    {
+      "task_id": "supervisor-write-isolation-mock-v1",
+      "task_file": "orchestration/tasks/supervisor-write-isolation-mock-v1.json",
+      "mode": "mock"
+    }
+  ]
+}
