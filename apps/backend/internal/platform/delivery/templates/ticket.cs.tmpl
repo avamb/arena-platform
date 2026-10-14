@@ -35,7 +35,7 @@
   </td></tr>{{end}}
   {{if .WithdrawalNotice}}<tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Na vstupenky na akci konanou v určitém termínu se nevztahuje právo na odstoupení od smlouvy. Objednávka se stává závaznou okamžikem zaplacení.</td></tr>{{end}}
   <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Otevřete soubor v telefonu a u vstupu ukažte čárový kód — tisk není nutný.</td></tr>
-  <tr><td style="padding:8px 32px 16px 32px;color:#46555f;font-size:14px;line-height:1.6;">V případě dotazů jednoduše odpovězte na tento e-mail.</td></tr>
+  {{if .Branding.ContactEmail}}<tr><td style="padding:8px 32px 16px 32px;color:#46555f;font-size:14px;line-height:1.6;">V případě dotazů jednoduše odpovězte na tento e-mail.</td></tr>{{end}}
   <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
     Doručeno na: {{.RecipientEmail}}<br><br>
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
@@ -81,8 +81,8 @@ Platba:
 {{if .WithdrawalNotice}}Na vstupenky na akci konanou v určitém termínu se nevztahuje právo na odstoupení od smlouvy. Objednávka se stává závaznou okamžikem zaplacení.
 
 {{end}}Otevřete soubor v telefonu a u vstupu ukažte čárový kód — tisk není nutný.
-V případě dotazů jednoduše odpovězte na tento e-mail.
-
+{{if .Branding.ContactEmail}}V případě dotazů jednoduše odpovězte na tento e-mail.
+{{end}}
 Doručeno na: {{.RecipientEmail}}
 
 --

@@ -1047,21 +1047,37 @@ func emailTextBody(t *testing.T, raw string) string {
 	if !strings.HasPrefix(mediaType, "multipart/") {
 		t.Fatalf("captured message is %q, expected multipart (the ticket PDF must be attached)", mediaType)
 	}
-	mr := multipart.NewReader(msg.Body, params["boundary"])
+	if body, ok := findTextPlain(t, msg.Body, params["boundary"]); ok {
+		return body
+	}
+	t.Fatal("captured message has no text/plain part")
+	return ""
+}
+
+// findTextPlain walks a multipart body, descending into the
+// multipart/alternative part that holds the plain and HTML versions.
+func findTextPlain(t *testing.T, body io.Reader, boundary string) (string, bool) {
+	t.Helper()
+	mr := multipart.NewReader(body, boundary)
 	for {
 		part, err := mr.NextPart()
 		if err != nil {
-			break
+			return "", false
 		}
-		if !strings.HasPrefix(part.Header.Get("Content-Type"), "text/plain") {
+		ct := part.Header.Get("Content-Type")
+		if mt, p, _ := mime.ParseMediaType(ct); mt == "multipart/alternative" {
+			if s, ok := findTextPlain(t, part, p["boundary"]); ok {
+				return s, true
+			}
+			continue
+		}
+		if !strings.HasPrefix(ct, "text/plain") {
 			continue
 		}
 		decoded, err := io.ReadAll(quotedprintable.NewReader(part))
 		if err != nil {
 			t.Fatalf("decode text/plain part: %v", err)
 		}
-		return string(decoded)
+		return string(decoded), true
 	}
-	t.Fatal("captured message has no text/plain part")
-	return ""
 }

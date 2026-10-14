@@ -144,12 +144,14 @@ api service's internal address) as the linked user, so it needs the API's
 | `BOT_METRICS_ADDR` | bot | `:9092` |
 | `JWT_SIGNING_SECRET` | api, bot | the same value on both |
 
-### 2.4 Env passthrough checklist (all three services)
+### 2.4 Env passthrough checklist (all services)
 
-The three services share configuration loaded from the same `config.Load()`
-path. The variables below **must be set identically** on `arena-api`,
-`arena-worker`, and `arena-migrate` (Dokploy "Shared Environment" or copy-paste
-into each service's env tab).
+Every binary loads its configuration with `config.LoadFor(<its role>)`, and
+production validation checks only what that binary reads. A variable used by
+several services **must have the same value** on each of them, but no service
+needs another service's secrets: section 2.6 lists which service gets which
+variable. The production rules below apply to the services named in that
+table; the database, log-format and debug-flag rules apply to all of them.
 
 > **PR-00 production safety contract**: `APP_ENV=production` enforces the
 > following hard rejections at boot time — the process will not start if any
@@ -160,7 +162,9 @@ into each service's env tab).
 > - `DB_LOG_QUERIES` must be `false`.
 > - `DATABASE_URL` must use `sslmode=require` or `sslmode=verify-full`, unless
 >   the narrowly-scoped private Docker-network override below is explicitly used.
-> - `MEDIA_BACKEND=local` requires a strong `MEDIA_SIGNING_SECRET` (≥ 32 bytes).
+> - Any `MEDIA_BACKEND` (`local` or `s3`) requires a strong `MEDIA_SIGNING_SECRET`
+>   (≥ 32 bytes), the same value on api and worker: the worker signs the media
+>   links the api verifies, and production never falls back to the JWT secret.
 > - `EMAIL_MODE` must be `smtp` (never `log`).
 > - `OUTBOX_MODE` must be `webhook` or `disabled` (never `noop` or empty).
 > - `LOG_FORMAT` must be `json`.
@@ -187,8 +191,8 @@ into each service's env tab).
 | `APP_NAME` | api / worker | `arena-api` / `arena-worker` | |
 | `APP_VERSION` | api / worker / migrate | *(injected by CI)* | |
 | `APP_COMMIT` | api / worker / migrate | *(injected by CI)* | |
-| `JWT_SIGNING_SECRET` | api / worker | *(strong random, ≥ 32 bytes)* | Shared symmetric key; must not be a dev placeholder |
-| `ENABLE_DEV_AUTH` | api / worker | `false` | **Must be false** |
+| `JWT_SIGNING_SECRET` | api / bot | *(strong random, ≥ 32 bytes)* | Shared symmetric key; must not be a dev placeholder |
+| `ENABLE_DEV_AUTH` | all (or unset) | `false` | **Must be false**; refused in production by every service |
 | `APP_PUBLIC_URL` | api / worker | `https://app.example.com` | Canonical **SPA origin** for emails and webhooks; distinct from the API base URL and never derived from request headers. Also the single-host fallback for `API_PUBLIC_URL` |
 | `API_PUBLIC_URL` | api / worker | `https://api.example.com` | Canonical **API origin**. Every link a third-party site must FETCH is built on it: Bil24 `base_url`/`image_url`, `GET_ALL_ACTIONS` signed poster URLs, `GET_TICKETS_BY_ORDER` `pdfUrl`. Empty falls back to `APP_PUBLIC_URL`; the effective value is mandatory and `https://` when `BIL24_COMPAT_ENABLED=true` (feature #535) |
 | `OUTBOX_MODE` | worker | `webhook` or `disabled` | `noop` and empty are forbidden in production |
@@ -226,9 +230,8 @@ For per-organizer sender identities, also set `BREVO_API_KEY` as a Dokploy
 secret on **arena-api** and **arena-worker**. This API key only reads Brevo
 sender/DNS verification state; organizers never supply SMTP credentials.
 
-Use the same `EMAIL_MODE=smtp` on API and migrate too, because all three load
-the shared production config. SMTP credentials only need to be present on the
-worker; API and migrate never instantiate an SMTP sender.
+`EMAIL_MODE` and the SMTP variables belong to the worker only: API, bot and
+migrate never instantiate an SMTP sender and do not validate them.
 
 #### Outbox webhook (when OUTBOX_MODE=webhook)
 
@@ -253,6 +256,97 @@ worker; API and migrate never instantiate an SMTP sender.
 > Tip: in Dokploy ≥ 0.6 you can attach a **Shared Environment** group to all
 > three services and only override the service-specific entries (`APP_NAME`,
 > `HTTP_LISTEN_ADDR`, `OTEL_SERVICE_NAME`, `WORKER_METRICS_ADDR`).
+
+### 2.6 Which service gets which variable
+
+Production validation is per binary (`config.LoadFor(config.RoleAPI)` in
+`cmd/arena-api`, `RoleWorker`, `RoleBot`, `RoleMigrate`; arena-seed uses
+`RoleMigrate`). A service starts with only the variables marked for it below,
+and a secret of another service in its environment is NOT an error: the
+binary logs one `config warning` naming the unused secrets (names only, never
+values) so it can be removed. The secret list lives in
+`apps/backend/internal/platform/config/roles.go` (`roleSecrets`); keep it and
+this table in step. `tests/staticanalysis/dokploy_env_table_test.go` fails
+when a variable `config.go` reads is missing from this table.
+
+✅ = required in production, ● = read when set (optional or with a default),
+— = never read, do not give it.
+
+**`APP_ENV` is required on all four services.** Without it a container runs
+as `development`: every production check is off and `ENABLE_DEV_AUTH`
+defaults to `true` (dev tokens accepted by the api). Each binary then logs a
+`config warning` "APP_ENV is not set" at start.
+
+| Variable | api | worker | bot | migrate |
+|---|---|---|---|---|
+| `APP_ENV` (`production` / `staging`) | ✅ | ✅ | ✅ | ✅ |
+| `DATABASE_URL` (`sslmode=require`, or `ALLOW_PRIVATE_DB_PLAINTEXT`) | ✅ | ✅ | ✅ | ✅ |
+| `ALLOW_PRIVATE_DB_PLAINTEXT` | ● | ● | ● | ● |
+| `APP_NAME`, `APP_VERSION`, `APP_COMMIT`, `LOG_LEVEL` | ● | ● | ● | ● |
+| `LOG_FORMAT` (`json` in production) | ● | ● | ● | ● |
+| `DB_POOL_MIN_CONNS`, `DB_POOL_MAX_CONNS`, `DB_POOL_MAX_CONN_LIFETIME`, `DB_POOL_MAX_CONN_IDLE_TIME` | ● | ● | ● | ● |
+| `DEFAULT_LOCALE`, `ACTIVE_LOCALES` | ● | ● | — | — |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_INSECURE`, `OTEL_SERVICE_NAME`, `OTEL_TRACES_SAMPLER_ARG` | ● | ● | — | — |
+| `SHUTDOWN_TIMEOUT` | ● | ● | — | — |
+| `HEALTH_ADDR` (read by `arena-healthcheck` inside the container) | ● | ● | ● | — |
+| `JWT_SIGNING_SECRET` | ✅ | — | ✅ | — |
+| `JWT_ISSUER`, `JWT_AUDIENCE` (same values on api and bot) | ● | — | ● | — |
+| `JWT_DEFAULT_TTL` | ● | — | — | — |
+| `WEB_SESSION_IDLE_HOURS` (idle window of a web event center session, 0..720, default 72) | ● | — | — | — |
+| `HTTP_LISTEN_ADDR`, `BODY_LIMIT_BYTES`, `REQUEST_TIMEOUT_SECONDS` | ● | — | — | — |
+| `CORS_ALLOWED_ORIGINS` (no `*`) | ✅ | — | — | — |
+| `TRUSTED_PROXY_COUNT` | ● | — | — | — |
+| `PUBLIC_FEED_TOKEN_RATE_LIMIT`, `PUBLIC_CHECKOUT_TOKEN_RATE_LIMIT`, `PUBLIC_API_IP_RATE_LIMIT`, `PUBLIC_PROMO_FAIL_TOKEN_RATE_LIMIT`, `PUBLIC_PROMO_FAIL_IP_RATE_LIMIT` | ● | — | — | — |
+| `WIDGET_PAYMENT_WINDOW_SECONDS`, `WIDGET_PAYMENT_GRACE_SECONDS` | ● | — | — | — |
+| `STRIPE_WEBHOOK_SECRET` | ✅ | — | — | — |
+| `ALLPAY_WEBHOOK_SECRET` (deprecated, verifies nothing) | ● | — | — | — |
+| `BIL24_COMPAT_ENABLED`, `BIL24_REQUIRE_TOKEN`, `BIL24_TOKEN_CACHE_TTL` | ● | — | — | — |
+| `BREVO_WEBHOOK_TOKEN`, `BREVO_WEBHOOK_TOKEN_PREVIOUS` (≥ 32 random chars) | ● | — | — | — |
+| `BREVO_API_KEY` | ● | ● | — | — |
+| `BREVO_API_BASE_URL` (production: unset or `https://api.brevo.com`) | ● | ● | — | — |
+| `APP_PUBLIC_URL` (`https://`) | ✅ | ✅ | — | — |
+| `API_PUBLIC_URL` (`https://` when set; required with the Bil24 gateway) | ● | ● | — | — |
+| `EVENT_CENTER_PUBLIC_URL` (`https://` when set) | — | ● | — | — |
+| `PUBLIC_TICKETS_BASE_URL` | ● | ● | ● | — |
+| `ONBOARDING_ENABLED`, `ONBOARDING_TERMS_URL`, `ONBOARDING_PRIVACY_URL` | ● | — | — | — |
+| `ONBOARDING_SITE_URL` | ● | ● | — | — |
+| `ONBOARDING_TURNSTILE_SECRET`, `CONTACT_FORM_TURNSTILE_SECRET`, `CONTACT_FORM_TURNSTILE_SITE_KEY` | ● | ● | — | — |
+| `MEDIA_BACKEND`, `MEDIA_LOCAL_ROOT`, `MEDIA_S3_ENDPOINT`, `MEDIA_S3_REGION`, `MEDIA_S3_BUCKET`, `MEDIA_S3_ACCESS_KEY_ID`, `MEDIA_S3_SECRET_ACCESS_KEY`, `MEDIA_S3_USE_PATH_STYLE` | ● | ● | — | — |
+| `MEDIA_SIGNING_SECRET` (same value on api and worker) | ✅ with a media backend | ✅ with a media backend | — | — |
+| `BOT_SERVICE_TOKEN` | ● | — | ● | — |
+| `EVENTS_TELEGRAM_BOT_USERNAME` | ● | ● | — | — |
+| `METRICS_BEARER_TOKEN` | ● | ● | ● | — |
+| `EMAIL_MODE` (`smtp`), `SMTP_HOST`, `SMTP_FROM` | — | ✅ | — | — |
+| `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS` | — | ● | — | — |
+| `OUTBOX_MODE` (`webhook`/`disabled`) | — | ✅ | — | — |
+| `OUTBOX_WEBHOOK_URL`, `OUTBOX_SIGNING_SECRET` | — | ✅ with `OUTBOX_MODE=webhook` | — | — |
+| `OUTBOX_POLL_INTERVAL`, `WORKER_POLL_INTERVAL`, `WORKER_METRICS_ADDR`, `SENDER_VERIFICATION_POLL_INTERVAL` | — | ● | — | — |
+| `OPS_TELEGRAM_BOT_TOKEN`, `OPS_TELEGRAM_CHAT_ID`, `OPS_ALERT_ENV_LABEL`, `OPS_WATCHDOG_HEARTBEAT_HOUR_UTC` | — | ● | — | — |
+| `SALES_TELEGRAM_BOT_TOKEN` | — | ● | — | — |
+| `EVENTS_TELEGRAM_BOT_TOKEN` | — | — | ✅ | — |
+| `BOT_ARENA_API_URL`, `BOT_METRICS_ADDR`, `BOT_SELF_ONBOARDING_ENABLED`, `BOT_ONBOARDING_SITE_BUTTON` | — | — | ● | — |
+| `POSTER_LLM_API_KEY`, `POSTER_LLM_MODEL` | — | — | ● | — |
+| `POSTER_LLM_BASE_URL` (production: unset or `https://api.anthropic.com`) | — | — | ● | — |
+| `ENABLE_DEV_AUTH`, `DB_LOG_QUERIES`, `DEBUG_ROUTES_ENABLED`, `FAULT_INJECT_OUTBOX_AFTER_AUDIT` (leave unset; `true` is refused in production) | — | — | — | — |
+| `STRIPE_API_BASE_URL`, `FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL` (test seams; refused in production) | — | — | — | — |
+| `REDIS_URL`, `IDEMPOTENCY_TTL`, `IDEMPOTENCY_KEY_MAX_LENGTH`, `WORKER_CONCURRENCY`, `WORKER_JOB_TIMEOUT`, `WORKER_RETRY_BACKOFF_BASE`, `WORKER_RETRY_BACKOFF_MAX`, `OUTBOX_BATCH_SIZE` (parsed, but no binary uses them today) | — | — | — | — |
+
+Never set in production, on any service: `ENABLE_DEV_AUTH=true`,
+`DB_LOG_QUERIES=true`, `DEBUG_ROUTES_ENABLED=true`,
+`FAULT_INJECT_OUTBOX_AFTER_AUDIT=true`, `STRIPE_API_BASE_URL`,
+`FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, and `BREVO_API_BASE_URL` /
+`POSTER_LLM_BASE_URL` with anything but their default (every role refuses
+to start: a changed host would receive the API key).
+
+**Staging** follows the same split. With `APP_ENV=staging` the production
+checks are off, but `MEDIA_SIGNING_SECRET` is still required on api and
+worker for any `MEDIA_BACKEND`: the JWT-secret fallback exists only in
+development, and a worker without the media key would put unsigned links in
+letters (logos and posters vanish).
+
+Before removing a variable from a container, deploy an image that contains
+`config.LoadFor` (2026-10-14 or later): an older image validates every
+service's variables in every container and will not start without them.
 
 ---
 
@@ -312,11 +406,12 @@ In Dokploy, open your `arena-api` application → **Environment Variables** tab.
 Set each variable below.  A full list of *optional* tuning variables is in
 [`.env.example`](../.env.example) at the repository root.
 
-### Mandatory Production Variables (enforced by config.Load at boot)
+### Mandatory Production Variables (enforced by config.LoadFor at boot)
 
 > `APP_ENV=production` causes the process to exit at boot if any of these
 > constraints are violated. See `apps/backend/internal/platform/config/config.go`
-> for the full `validateProduction()` implementation.
+> for the full `validateProduction()` implementation. Each row applies only
+> to the services that read the variable (section 2.6).
 
 | Variable | Production value | Constraint |
 |---|---|---|
@@ -330,7 +425,7 @@ Set each variable below.  A full list of *optional* tuning variables is in
 | `DB_LOG_QUERIES` | `false` | **`true` is rejected** |
 | `EMAIL_MODE` | `smtp` | **`log` and empty are rejected** |
 | `OUTBOX_MODE` | `webhook` or `disabled` | **`noop` and empty are rejected** |
-| `APP_PUBLIC_URL` | `https://app.example.com` | Required when EMAIL_MODE=smtp; the SPA origin used for canonical email links, separate from the API base URL |
+| `APP_PUBLIC_URL` | `https://app.example.com` | Required on api and worker; the SPA origin used for canonical email links, separate from the API base URL |
 | `API_PUBLIC_URL` | `https://api.example.com` | The API origin third parties fetch from; required (directly or via the `APP_PUBLIC_URL` fallback) when `BIL24_COMPAT_ENABLED=true` |
 | `SMTP_HOST` | SMTP server hostname | Required when EMAIL_MODE=smtp |
 | `SMTP_FROM` | `tickets@arena.example.com` | Required when EMAIL_MODE=smtp |
