@@ -1,0 +1,7 @@
+node_modules/
+.venv/
+.env*
+!.env.example
+results/
+.runtime-home/
+console-confirmation.json

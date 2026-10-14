@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "findings", "tests_passed", "scope_ok"],
+  "properties": {
+    "verdict": { "enum": ["PASS", "REJECT", "BLOCKED"] },
+    "findings": { "type": "array", "items": { "type": "string" } },
+    "tests_passed": { "type": "boolean" },
+    "scope_ok": { "type": "boolean" },
+    "summary": { "type": "string" }
+  }
+}

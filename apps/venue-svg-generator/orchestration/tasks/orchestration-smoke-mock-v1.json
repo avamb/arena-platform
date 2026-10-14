@@ -1,0 +1,15 @@
+{
+  "task_id": "orchestration-smoke-mock-v1",
+  "objective": "Изучи PRODUCT_SPEC.md и ROADMAP.md. Верни конкретные противоречия, пробелы и три приоритетных следующих шага. Не изменяй файлы.",
+  "inputs": ["PRODUCT_SPEC.md", "ROADMAP.md"],
+  "allowed_paths": ["PRODUCT_SPEC.md", "ROADMAP.md"],
+  "forbidden_paths": ["arena_new", "production", "staging", "SSH", "ChatExport_2026-10-11", "sdk_experiments/results", "**/.env"],
+  "commands": [],
+  "budget_usd": 0,
+  "max_turns": 0,
+  "max_retries": 0,
+  "timeout_ms": 90000,
+  "api_allowed": false,
+  "acceptance": ["mock JSON содержит contradictions, gaps, next_steps и evidence", "API calls равны 0", "Codex review и checkpoint сохранены"],
+  "status": "local-mock"
+}
