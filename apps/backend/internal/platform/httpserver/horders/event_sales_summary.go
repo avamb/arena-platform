@@ -164,7 +164,7 @@ func (h *Handler) HandleEventSalesSummaries(w http.ResponseWriter, r *http.Reque
 			all = append(all, s.SessionID)
 		}
 		var part string
-		rows, part, err = h.loadSummaryRows(ctx, all)
+		rows, part, err = h.loadSummaryRowsNoTiers(ctx, all)
 		if err != nil {
 			h.summaryFailure(w, r, "event_batch", part, err)
 			return

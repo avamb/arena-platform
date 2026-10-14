@@ -172,6 +172,18 @@ func (h *Handler) loadSummaryRows(ctx context.Context, sessionIDs []uuid.UUID) (
 // queriesSummaryRows is loadSummaryRows on an explicit query set, so the CSV
 // export (hexport) reads the very same aggregates through LoadSessionSummary.
 func queriesSummaryRows(ctx context.Context, q *gen.Queries, sessionIDs []uuid.UUID) (summaryRows, string, error) {
+	return queriesSummaryRowsOpt(ctx, q, sessionIDs, true)
+}
+
+// loadSummaryRowsNoTiers is loadSummaryRows without the per-category query,
+// for a caller that never reads the category table (the batch sales summary):
+// ListSessionSummaryTiers joins every order item of every session, and the
+// places totals do not depend on it (foldTiers counts every place row).
+func (h *Handler) loadSummaryRowsNoTiers(ctx context.Context, sessionIDs []uuid.UUID) (summaryRows, string, error) {
+	return queriesSummaryRowsOpt(ctx, h.queries, sessionIDs, false)
+}
+
+func queriesSummaryRowsOpt(ctx context.Context, q *gen.Queries, sessionIDs []uuid.UUID, withTiers bool) (summaryRows, string, error) {
 	var (
 		r   summaryRows
 		err error
@@ -179,8 +191,10 @@ func queriesSummaryRows(ctx context.Context, q *gen.Queries, sessionIDs []uuid.U
 	if r.places, err = q.ListSessionSummaryPlaces(ctx, sessionIDs); err != nil {
 		return r, "places", err
 	}
-	if r.tiers, err = q.ListSessionSummaryTiers(ctx, sessionIDs); err != nil {
-		return r, "tiers", err
+	if withTiers {
+		if r.tiers, err = q.ListSessionSummaryTiers(ctx, sessionIDs); err != nil {
+			return r, "tiers", err
+		}
 	}
 	if r.orders, err = q.ListSessionSummaryOrders(ctx, sessionIDs); err != nil {
 		return r, "orders", err

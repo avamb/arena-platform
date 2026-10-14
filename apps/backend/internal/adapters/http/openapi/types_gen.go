@@ -14851,7 +14851,9 @@ type ListOrgEventsParams struct {
 
 // GetV1OrganizationsOrgIdEventsSalesSummaryParams defines parameters for GetV1OrganizationsOrgIdEventsSalesSummary.
 type GetV1OrganizationsOrgIdEventsSalesSummaryParams struct {
-	// Ids Event ids separated by commas, at most 50.
+	// Ids Event ids as ONE string separated by commas (`ids=a,b,c`), at most
+	// 50. Repeating the parameter (`ids=a&ids=b`) is not supported: only
+	// the first value is read.
 	Ids string `form:"ids" json:"ids"`
 }
 

@@ -65,11 +65,26 @@ func TestEventSalesSummary_BatchEqualsPerEventSummary(t *testing.T) {
 	})
 	unknown := uuid.New()
 
+	// A soft-deleted event of THIS organization, and, inside the on-sale
+	// event, one cancelled and one soft-deleted session: the cancelled one
+	// counts in the event (as in the single summary), the deleted one does not.
+	deletedEvent := uuid.New()
+	if _, err := x.q.DB().Exec(ctx, `INSERT INTO events (id, org_id, name, status, visibility, deleted_at) VALUES ($1, $2, 'Deleted', 'published', 'public', now())`, deletedEvent, x.org); err != nil {
+		t.Fatalf("insert deleted event: %v", err)
+	}
+	for _, s := range []struct{ status, deleted string }{{"cancelled", "NULL"}, {"scheduled", "now()"}} {
+		if _, err := x.q.DB().Exec(ctx, `INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, status, currency, currency_source, deleted_at)
+		      SELECT $1, $2, (SELECT id FROM venues WHERE org_id = $3 LIMIT 1), now() + interval '60 days', now() + interval '60 days 2 hours', 5, $4, 'EUR', 'override', `+s.deleted,
+			uuid.New(), x.evOnSale, x.org, s.status); err != nil {
+			t.Fatalf("insert %s session: %v", s.status, err)
+		}
+	}
+
 	base := "/v1/organizations/" + x.org.String()
 	// The on-sale event carries the paid order, the invitation, the promo and
 	// the refund; the empty one has no session; the sold-out one has places
 	// sold upstream only; the foreign and the unknown id must be left out.
-	requested := []uuid.UUID{x.evOnSale, foreignEvent, x.evEmpty, unknown, x.evSoldOut, x.evUpcoming, x.evOnSale}
+	requested := []uuid.UUID{x.evOnSale, foreignEvent, x.evEmpty, deletedEvent, unknown, x.evSoldOut, x.evUpcoming, x.evOnSale}
 	parts := make([]string, 0, len(requested))
 	for _, id := range requested {
 		parts = append(parts, id.String())
@@ -85,6 +100,9 @@ func TestEventSalesSummary_BatchEqualsPerEventSummary(t *testing.T) {
 	}
 	if _, ok := byID[unknown.String()]; ok {
 		t.Errorf("an unknown id must be absent: %v", list)
+	}
+	if _, ok := byID[deletedEvent.String()]; ok {
+		t.Errorf("a deleted event must be absent: %v", list)
 	}
 	if len(list) != 4 {
 		t.Fatalf("want 4 entries (a repeated id counts once), got %d: %v", len(list), list)
@@ -110,7 +128,7 @@ func TestEventSalesSummary_BatchEqualsPerEventSummary(t *testing.T) {
 
 	// The figures are really there, not two empty documents that agree.
 	onSale := byID[x.evOnSale.String()]
-	if ecNum(onSale, "tickets", "active") != 3 || ecNum(onSale, "event", "session_count") != 2 {
+	if ecNum(onSale, "tickets", "active") != 3 || ecNum(onSale, "event", "session_count") != 3 {
 		t.Errorf("on-sale entry: %v", onSale)
 	}
 	money, _ := onSale["money"].([]any)
