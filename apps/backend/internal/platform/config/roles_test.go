@@ -140,6 +140,9 @@ func TestLoadFor_SharedProductionRulesApplyToEveryRole(t *testing.T) {
 		{"stripe seam", "STRIPE_API_BASE_URL", "http://stub:12111/v1"},
 		{"flitt seam", "FLITT_API_BASE_URL", "http://stub:12112"},
 		{"allpay seam", "ALLPAY_API_BASE_URL", "http://stub:12113"},
+		{"brevo host", "BREVO_API_BASE_URL", "https://brevo.attacker.example"},
+		{"llm host", "POSTER_LLM_BASE_URL", "https://llm.attacker.example"},
+		{"event center link", "EVENT_CENTER_PUBLIC_URL", "http://ec.example.com"},
 	}
 	for role, own := range roleMinimum {
 		for _, tc := range shared {
@@ -258,5 +261,176 @@ func TestRoleSecrets_NameRealVariables(t *testing.T) {
 		if len(s.roles) == 0 {
 			t.Errorf("%s has no role", s.name)
 		}
+	}
+}
+
+// The default values of the two API hosts are accepted, with or without a
+// trailing slash; only another host is refused.
+func TestLoadFor_DefaultAPIHostsAreAccepted(t *testing.T) {
+	clearConfigEnv(t)
+	setEnv(t, productionCommon)
+	setEnv(t, roleMinimum[RoleBot])
+	t.Setenv("BREVO_API_BASE_URL", DefaultBrevoAPIBaseURL+"/")
+	t.Setenv("POSTER_LLM_BASE_URL", DefaultPosterLLMBaseURL)
+	if _, err := LoadFor(RoleBot); err != nil {
+		t.Fatalf("the default API hosts must be accepted: %v", err)
+	}
+}
+
+// Each conditional rule (one that only fires on a bad value) is checked for
+// exactly the roles that read the setting: removing it from one of those
+// roles, or extending it to a role that never reads the setting, fails here.
+func TestLoadFor_ConditionalRulesFollowTheRoles(t *testing.T) {
+	cases := []struct {
+		name    string
+		env     map[string]string
+		refused []Role
+	}{
+		{"bil24 gateway without token enforcement",
+			map[string]string{"BIL24_COMPAT_ENABLED": "true", "BIL24_REQUIRE_TOKEN": "false"},
+			[]Role{RoleAPI}},
+		{"bil24 gateway with a plaintext public url",
+			map[string]string{"BIL24_COMPAT_ENABLED": "true", "API_PUBLIC_URL": "http://api.example.com"},
+			[]Role{RoleAPI, RoleWorker}},
+		{"short brevo webhook token",
+			map[string]string{"BREVO_WEBHOOK_TOKEN": "short"},
+			[]Role{RoleAPI}},
+		{"placeholder brevo webhook token",
+			map[string]string{"BREVO_WEBHOOK_TOKEN": "changeme"},
+			[]Role{RoleAPI}},
+		{"short previous brevo webhook token",
+			map[string]string{"BREVO_WEBHOOK_TOKEN_PREVIOUS": "short"},
+			[]Role{RoleAPI}},
+		{"wildcard cors",
+			map[string]string{"CORS_ALLOWED_ORIGINS": "*"},
+			[]Role{RoleAPI}},
+		{"short jwt secret",
+			map[string]string{"JWT_SIGNING_SECRET": "too-short"},
+			[]Role{RoleAPI, RoleBot}},
+		{"placeholder jwt secret",
+			map[string]string{"JWT_SIGNING_SECRET": "dev-only-do-not-use-in-prod"},
+			[]Role{RoleAPI, RoleBot}},
+		{"plaintext app public url",
+			map[string]string{"APP_PUBLIC_URL": "http://app.example.com"},
+			[]Role{RoleAPI, RoleWorker}},
+		{"plaintext api public url",
+			map[string]string{"API_PUBLIC_URL": "http://api.example.com"},
+			[]Role{RoleAPI, RoleWorker}},
+		{"log-only email",
+			map[string]string{"EMAIL_MODE": "log"},
+			[]Role{RoleWorker}},
+		{"smtp without a from address",
+			map[string]string{"EMAIL_MODE": "smtp", "SMTP_HOST": "smtp.example.com", "SMTP_FROM": ""},
+			[]Role{RoleWorker}},
+		{"noop outbox",
+			map[string]string{"OUTBOX_MODE": "noop"},
+			[]Role{RoleWorker}},
+		{"webhook outbox without url and secret",
+			map[string]string{"OUTBOX_MODE": "webhook"},
+			[]Role{RoleWorker}},
+		{"local media without a signing secret",
+			map[string]string{"MEDIA_BACKEND": "local", "MEDIA_LOCAL_ROOT": "/data/media"},
+			[]Role{RoleAPI, RoleWorker}},
+		{"local media with a short signing secret",
+			map[string]string{"MEDIA_BACKEND": "local", "MEDIA_LOCAL_ROOT": "/data/media", "MEDIA_SIGNING_SECRET": "short"},
+			[]Role{RoleAPI, RoleWorker}},
+		{"unknown media backend",
+			map[string]string{"MEDIA_BACKEND": "ftp"},
+			[]Role{RoleAPI, RoleWorker}},
+	}
+	for _, tc := range cases {
+		for role, own := range roleMinimum {
+			t.Run(tc.name+"/"+string(role), func(t *testing.T) {
+				clearConfigEnv(t)
+				setEnv(t, productionCommon)
+				setEnv(t, own)
+				for k, v := range tc.env {
+					if v == "" {
+						if err := os.Unsetenv(k); err != nil {
+							t.Fatal(err)
+						}
+						continue
+					}
+					t.Setenv(k, v)
+				}
+				_, err := LoadFor(role)
+				if roleListed(tc.refused, role) && err == nil {
+					t.Fatalf("%s must refuse to start with %v", role.Binary(), tc.env)
+				}
+				if !roleListed(tc.refused, role) && err != nil {
+					t.Fatalf("%s never reads these settings and must start: %v", role.Binary(), err)
+				}
+			})
+		}
+	}
+}
+
+// Staging separates secrets too: without MEDIA_SIGNING_SECRET the worker
+// would sign with nothing the api accepts, so staging demands it as well and
+// never falls back to the JWT secret.
+func TestLoadFor_StagingNeedsMediaSigningSecret(t *testing.T) {
+	cfg := &Config{AppEnv: EnvStaging, JWTSecretStub: "jwt-secret"}
+	if got := string(cfg.MediaSigningKey()); got != "" {
+		t.Errorf("staging MediaSigningKey must not fall back to the JWT secret, got %q", got)
+	}
+	for _, role := range []Role{RoleAPI, RoleWorker} {
+		t.Run(string(role), func(t *testing.T) {
+			clearConfigEnv(t)
+			t.Setenv("APP_ENV", "staging")
+			t.Setenv("DATABASE_URL", productionCommon["DATABASE_URL"])
+			t.Setenv("JWT_SIGNING_SECRET", strongSecret)
+			t.Setenv("MEDIA_BACKEND", "local")
+			t.Setenv("MEDIA_LOCAL_ROOT", "/data/media")
+			_, err := LoadFor(role)
+			if err == nil || !strings.Contains(err.Error(), "MEDIA_SIGNING_SECRET") {
+				t.Fatalf("staging %s without MEDIA_SIGNING_SECRET must fail, got: %v", role, err)
+			}
+			t.Setenv("MEDIA_SIGNING_SECRET", "staging-media-secret")
+			if _, err := LoadFor(role); err != nil {
+				t.Fatalf("staging %s with MEDIA_SIGNING_SECRET must start: %v", role, err)
+			}
+		})
+	}
+	t.Run("development keeps the fallback", func(t *testing.T) {
+		clearConfigEnv(t)
+		t.Setenv("APP_ENV", "development")
+		t.Setenv("DATABASE_URL", productionCommon["DATABASE_URL"])
+		t.Setenv("JWT_SIGNING_SECRET", "dev-secret")
+		t.Setenv("MEDIA_BACKEND", "local")
+		t.Setenv("MEDIA_LOCAL_ROOT", "/data/media")
+		cfg, err := LoadFor(RoleWorker)
+		if err != nil {
+			t.Fatalf("development must keep working without MEDIA_SIGNING_SECRET: %v", err)
+		}
+		if string(cfg.MediaSigningKey()) != "dev-secret" {
+			t.Errorf("development must fall back to the JWT secret")
+		}
+	})
+}
+
+// A container without APP_ENV runs as development with every production
+// check off; the binary says so loudly.
+func TestLoadFor_MissingAppEnvIsALoudWarning(t *testing.T) {
+	for role := range roleMinimum {
+		t.Run(string(role), func(t *testing.T) {
+			clearConfigEnv(t)
+			t.Setenv("DATABASE_URL", productionCommon["DATABASE_URL"])
+			t.Setenv("JWT_SIGNING_SECRET", strongSecret)
+			cfg, err := LoadFor(role)
+			if err != nil {
+				t.Fatalf("LoadFor(%s): %v", role, err)
+			}
+			if !strings.Contains(strings.Join(cfg.Warnings(), " | "), "APP_ENV is not set") {
+				t.Errorf("%s without APP_ENV must warn, got %v", role, cfg.Warnings())
+			}
+			t.Setenv("APP_ENV", "development")
+			cfg, err = LoadFor(role)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(strings.Join(cfg.Warnings(), " | "), "APP_ENV") {
+				t.Errorf("an explicit APP_ENV must not warn, got %v", cfg.Warnings())
+			}
+		})
 	}
 }

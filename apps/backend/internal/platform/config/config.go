@@ -100,6 +100,9 @@ type Config struct {
 	// set by LoadFor from code, never from the environment; empty means
 	// RoleAll and validates the rules of every binary.
 	Role Role `required:"false"`
+	// appEnvUnset records that APP_ENV was absent, so the binary can warn
+	// loudly that it runs as development (see Warnings).
+	appEnvUnset bool `required:"false"`
 	// AppPublicURL is the canonical public base URL of the application
 	// (e.g. https://app.example.com). Used to construct absolute links in
 	// emails and webhooks so they are never derived from r.Host or forwarded
@@ -532,13 +535,13 @@ func (c *Config) EffectiveHealthAddr(role string) string {
 }
 
 // MediaSigningKey returns the HMAC key to use for signing media download URLs.
-// In production it is MEDIA_SIGNING_SECRET only (validation demands it for any
-// MEDIA_BACKEND): the api verifies what the worker signs, and the worker no
-// longer receives JWT_SIGNING_SECRET, so a JWT fallback would make the two
-// keys differ. Outside production the JWT signing secret is used as a fallback
-// so developers do not need a second secret for local testing.
+// In staging and production it is MEDIA_SIGNING_SECRET only (validation
+// demands it for any MEDIA_BACKEND): the api verifies what the worker signs,
+// and the worker no longer receives JWT_SIGNING_SECRET, so a JWT fallback
+// would make the two keys differ. Only in development is the JWT signing
+// secret used as a fallback, so developers do not need a second secret.
 func (c *Config) MediaSigningKey() []byte {
-	if c.MediaSigningSecret != "" || c.IsProduction() {
+	if c.MediaSigningSecret != "" || c.AppEnv == EnvStaging || c.AppEnv == EnvProduction {
 		return []byte(c.MediaSigningSecret)
 	}
 	return []byte(c.JWTSecretStub)
@@ -635,6 +638,7 @@ func LoadFor(role Role) (*Config, error) {
 	cfg := &Config{
 		Role:         role,
 		AppEnv:       AppEnv(getenv("APP_ENV", "development")),
+		appEnvUnset:  strings.TrimSpace(os.Getenv("APP_ENV")) == "",
 		AppName:      getenv("APP_NAME", role.Binary()),
 		AppVersion:   getenv("APP_VERSION", "0.0.0-dev"),
 		AppCommit:    getenv("APP_COMMIT", "local"),
@@ -674,7 +678,7 @@ func LoadFor(role Role) (*Config, error) {
 		SMTPPassword:    getenv("SMTP_PASSWORD", ""),
 		SMTPFrom:        getenv("SMTP_FROM", ""),
 		BrevoAPIKey:     getenv("BREVO_API_KEY", ""),
-		BrevoAPIBaseURL: getenv("BREVO_API_BASE_URL", "https://api.brevo.com"),
+		BrevoAPIBaseURL: getenv("BREVO_API_BASE_URL", DefaultBrevoAPIBaseURL),
 
 		BrevoWebhookToken:         strings.TrimSpace(getenv("BREVO_WEBHOOK_TOKEN", "")),
 		BrevoWebhookTokenPrevious: strings.TrimSpace(getenv("BREVO_WEBHOOK_TOKEN_PREVIOUS", "")),
@@ -710,7 +714,7 @@ func LoadFor(role Role) (*Config, error) {
 		BotMetricsAddr:              getenv("BOT_METRICS_ADDR", ":9092"),
 		PosterLLMAPIKey:             getenv("POSTER_LLM_API_KEY", ""),
 		PosterLLMModel:              getenv("POSTER_LLM_MODEL", "claude-sonnet-5"),
-		PosterLLMBaseURL:            getenv("POSTER_LLM_BASE_URL", "https://api.anthropic.com"),
+		PosterLLMBaseURL:            getenv("POSTER_LLM_BASE_URL", DefaultPosterLLMBaseURL),
 
 		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
 	}
@@ -1157,6 +1161,7 @@ func (c *Config) Validate() error {
 	// --- Media storage backend (api, worker) ----------------------------------
 	if c.uses(capMedia) {
 		errs = append(errs, c.validateMedia()...)
+		errs = append(errs, c.validateMediaSigning()...)
 	}
 
 	// --- Ops watchdog -----------------------------------------------------
@@ -1240,6 +1245,25 @@ func (c *Config) validateEmail() []error {
 	}
 
 	return errs
+}
+
+// validateMediaSigning demands MEDIA_SIGNING_SECRET for any MEDIA_BACKEND
+// outside development. The worker signs the links the api verifies and holds
+// no JWT secret, so the development fallback to it would make the two keys
+// differ: links in letters would fail and logos and posters would vanish.
+func (c *Config) validateMediaSigning() []error {
+	if c.AppEnv != EnvStaging && c.AppEnv != EnvProduction {
+		return nil
+	}
+	backend := strings.TrimSpace(c.MediaBackend)
+	if backend == "" || strings.TrimSpace(c.MediaSigningSecret) != "" {
+		return nil
+	}
+	return []error{fmt.Errorf(
+		"MEDIA_SIGNING_SECRET is required when MEDIA_BACKEND=%s in %s"+
+			" (the same value on api and worker; the JWT fallback is for development only)",
+		backend, c.AppEnv,
+	)}
 }
 
 // validateMedia checks MEDIA_BACKEND and the settings the chosen backend needs.
@@ -1345,18 +1369,11 @@ func (c *Config) validateProduction() []error {
 		))
 	}
 
-	// 6. Any media backend requires an explicit signing secret in production
-	// (api, worker). Using the JWT secret as a fallback is only acceptable in
-	// development: the worker signs the links the api verifies and holds no
-	// JWT secret, so both must share MEDIA_SIGNING_SECRET.
+	// 6. Any media backend requires an explicit, strong signing secret in
+	// production (api, worker); its presence is already checked for staging
+	// and production by validateMediaSigning.
 	if c.uses(capMedia) && strings.TrimSpace(c.MediaBackend) != "" {
-		if strings.TrimSpace(c.MediaSigningSecret) == "" {
-			errs = append(errs, fmt.Errorf(
-				"MEDIA_SIGNING_SECRET is required when MEDIA_BACKEND=%s in production"+
-					" (api and worker must share it)",
-				strings.TrimSpace(c.MediaBackend),
-			))
-		} else if len(strings.TrimSpace(c.MediaSigningSecret)) < minJWTSecretLen {
+		if len(strings.TrimSpace(c.MediaSigningSecret)) > 0 && len(strings.TrimSpace(c.MediaSigningSecret)) < minJWTSecretLen {
 			errs = append(errs, fmt.Errorf(
 				"MEDIA_SIGNING_SECRET must be at least %d bytes in production, got %d",
 				minJWTSecretLen, len(strings.TrimSpace(c.MediaSigningSecret)),
@@ -1405,6 +1422,15 @@ func (c *Config) validateProduction() []error {
 				pub,
 			))
 		}
+	}
+
+	// 10c. API_PUBLIC_URL, when set, is the origin of signed media and ticket
+	// links (api, worker): https only.
+	if api := strings.TrimSpace(c.APIPublicURL); c.uses(capPublicURL) && api != "" &&
+		!strings.HasPrefix(strings.ToLower(api), "https://") {
+		errs = append(errs, fmt.Errorf(
+			"API_PUBLIC_URL must start with https:// in production (got %q)", api,
+		))
 	}
 
 	// 10a. EVENT_CENTER_PUBLIC_URL, when set, receives organizers' password
@@ -1521,6 +1547,22 @@ func (c *Config) validateProduction() []error {
 		))
 	}
 
+	// 17b. BREVO_API_BASE_URL and POSTER_LLM_BASE_URL: a changed host would
+	// receive the platform's Brevo key or the LLM key with every request. Only
+	// the built-in default is accepted in production, on every role.
+	for _, seam := range []struct{ name, value, def string }{
+		{"BREVO_API_BASE_URL", c.BrevoAPIBaseURL, DefaultBrevoAPIBaseURL},
+		{"POSTER_LLM_BASE_URL", c.PosterLLMBaseURL, DefaultPosterLLMBaseURL},
+	} {
+		if v := strings.TrimRight(strings.TrimSpace(seam.value), "/"); v != "" && v != seam.def {
+			errs = append(errs, fmt.Errorf(
+				"%s must not be changed in production (got %q, only %s is allowed);"+
+					" it would send the API key to another host",
+				seam.name, v, seam.def,
+			))
+		}
+	}
+
 	// 18. BREVO_WEBHOOK_TOKEN is the only thing that authenticates the
 	// delivery-status webhook: a short or well-known value would let anyone
 	// mark buyers' letters delivered or bounced.
@@ -1567,6 +1609,13 @@ func (c *Config) validateProductionJWT() []error {
 	return nil
 }
 
+// DefaultBrevoAPIBaseURL and DefaultPosterLLMBaseURL are the only
+// BREVO_API_BASE_URL and POSTER_LLM_BASE_URL production accepts.
+const (
+	DefaultBrevoAPIBaseURL  = "https://api.brevo.com"
+	DefaultPosterLLMBaseURL = "https://api.anthropic.com"
+)
+
 // MinBrevoWebhookTokenLen is the shortest BREVO_WEBHOOK_TOKEN production
 // accepts.
 const MinBrevoWebhookTokenLen = 32
@@ -1606,6 +1655,14 @@ func (c *Config) Warnings() []string {
 	if c.AppEnv == EnvProduction && c.uses(capEdge) && c.BrevoWebhookToken == "" {
 		w = append(w, "BREVO_WEBHOOK_TOKEN is empty: the Brevo delivery-status webhook is not mounted,"+
 			" so organizers see buyer letters only as sent (docs/ops/brevo_delivery_status_webhook_ru.md)")
+	}
+
+	if c.appEnvUnset && c.Role != "" && c.Role != RoleAll {
+		w = append(w, fmt.Sprintf(
+			"APP_ENV is not set: %s runs as development, so production checks are OFF"+
+				" and ENABLE_DEV_AUTH defaults to true; set APP_ENV on every container",
+			c.Role.Binary(),
+		))
 	}
 
 	w = append(w, c.unusedSecretWarnings()...)

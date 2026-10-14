@@ -264,54 +264,84 @@ Production validation is per binary (`config.LoadFor(config.RoleAPI)` in
 `RoleMigrate`). A service starts with only the variables marked for it below,
 and a secret of another service in its environment is NOT an error: the
 binary logs one `config warning` naming the unused secrets (names only, never
-values) so it can be removed. The warning list lives in
+values) so it can be removed. The secret list lives in
 `apps/backend/internal/platform/config/roles.go` (`roleSecrets`); keep it and
-this table in step. ✅ = required in production, ● = read when set (optional
-or with a default), — = never read, do not give it.
+this table in step. `tests/staticanalysis/dokploy_env_table_test.go` fails
+when a variable `config.go` reads is missing from this table.
+
+✅ = required in production, ● = read when set (optional or with a default),
+— = never read, do not give it.
+
+**`APP_ENV` is required on all four services.** Without it a container runs
+as `development`: every production check is off and `ENABLE_DEV_AUTH`
+defaults to `true` (dev tokens accepted by the api). Each binary then logs a
+`config warning` "APP_ENV is not set" at start.
 
 | Variable | api | worker | bot | migrate |
 |---|---|---|---|---|
-| `APP_ENV`, `APP_VERSION`, `APP_COMMIT`, `LOG_LEVEL` | ● | ● | ● | ● |
-| `LOG_FORMAT` (`json`) | ● | ● | ● | ● |
+| `APP_ENV` (`production` / `staging`) | ✅ | ✅ | ✅ | ✅ |
 | `DATABASE_URL` (`sslmode=require`, or `ALLOW_PRIVATE_DB_PLAINTEXT`) | ✅ | ✅ | ✅ | ✅ |
-| `DB_POOL_*` | ● | ● | ● | ● |
+| `ALLOW_PRIVATE_DB_PLAINTEXT` | ● | ● | ● | ● |
+| `APP_NAME`, `APP_VERSION`, `APP_COMMIT`, `LOG_LEVEL` | ● | ● | ● | ● |
+| `LOG_FORMAT` (`json` in production) | ● | ● | ● | ● |
+| `DB_POOL_MIN_CONNS`, `DB_POOL_MAX_CONNS`, `DB_POOL_MAX_CONN_LIFETIME`, `DB_POOL_MAX_CONN_IDLE_TIME` | ● | ● | ● | ● |
+| `DEFAULT_LOCALE`, `ACTIVE_LOCALES` | ● | ● | — | — |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_INSECURE`, `OTEL_SERVICE_NAME`, `OTEL_TRACES_SAMPLER_ARG` | ● | ● | — | — |
+| `SHUTDOWN_TIMEOUT` | ● | ● | — | — |
+| `HEALTH_ADDR` (read by `arena-healthcheck` inside the container) | ● | ● | ● | — |
 | `JWT_SIGNING_SECRET` | ✅ | — | ✅ | — |
-| `JWT_ISSUER`, `JWT_AUDIENCE` | ● | — | ● | — |
+| `JWT_ISSUER`, `JWT_AUDIENCE` (same values on api and bot) | ● | — | ● | — |
+| `JWT_DEFAULT_TTL` | ● | — | — | — |
+| `HTTP_LISTEN_ADDR`, `BODY_LIMIT_BYTES`, `REQUEST_TIMEOUT_SECONDS` | ● | — | — | — |
 | `CORS_ALLOWED_ORIGINS` (no `*`) | ✅ | — | — | — |
+| `TRUSTED_PROXY_COUNT` | ● | — | — | — |
+| `PUBLIC_FEED_TOKEN_RATE_LIMIT`, `PUBLIC_CHECKOUT_TOKEN_RATE_LIMIT`, `PUBLIC_API_IP_RATE_LIMIT`, `PUBLIC_PROMO_FAIL_TOKEN_RATE_LIMIT`, `PUBLIC_PROMO_FAIL_IP_RATE_LIMIT` | ● | — | — | — |
+| `WIDGET_PAYMENT_WINDOW_SECONDS`, `WIDGET_PAYMENT_GRACE_SECONDS` | ● | — | — | — |
 | `STRIPE_WEBHOOK_SECRET` | ✅ | — | — | — |
 | `ALLPAY_WEBHOOK_SECRET` (deprecated, verifies nothing) | ● | — | — | — |
-| `APP_PUBLIC_URL` (`https://`) | ✅ | ✅ | — | — |
-| `API_PUBLIC_URL` | ● (✅ with Bil24 gateway) | ● | — | — |
-| `TRUSTED_PROXY_COUNT`, `PUBLIC_*_RATE_LIMIT`, `HTTP_LISTEN_ADDR` | ● | — | — | — |
 | `BIL24_COMPAT_ENABLED`, `BIL24_REQUIRE_TOKEN`, `BIL24_TOKEN_CACHE_TTL` | ● | — | — | — |
-| `BREVO_WEBHOOK_TOKEN`, `BREVO_WEBHOOK_TOKEN_PREVIOUS` | ● | — | — | — |
+| `BREVO_WEBHOOK_TOKEN`, `BREVO_WEBHOOK_TOKEN_PREVIOUS` (≥ 32 random chars) | ● | — | — | — |
 | `BREVO_API_KEY` | ● | ● | — | — |
-| `CONTACT_FORM_TURNSTILE_SECRET`, `CONTACT_FORM_TURNSTILE_SITE_KEY`, `ONBOARDING_TURNSTILE_SECRET` | ● | ● | — | — |
+| `BREVO_API_BASE_URL` (production: unset or `https://api.brevo.com`) | ● | ● | — | — |
+| `APP_PUBLIC_URL` (`https://`) | ✅ | ✅ | — | — |
+| `API_PUBLIC_URL` (`https://` when set; required with the Bil24 gateway) | ● | ● | — | — |
+| `EVENT_CENTER_PUBLIC_URL` (`https://` when set) | — | ● | — | — |
+| `PUBLIC_TICKETS_BASE_URL` | ● | ● | ● | — |
 | `ONBOARDING_ENABLED`, `ONBOARDING_TERMS_URL`, `ONBOARDING_PRIVACY_URL` | ● | — | — | — |
 | `ONBOARDING_SITE_URL` | ● | ● | — | — |
-| `MEDIA_BACKEND`, `MEDIA_LOCAL_ROOT`, `MEDIA_S3_*` | ● | ● | — | — |
-| `MEDIA_SIGNING_SECRET` | ✅ with a media backend | ✅ with a media backend | — | — |
+| `ONBOARDING_TURNSTILE_SECRET`, `CONTACT_FORM_TURNSTILE_SECRET`, `CONTACT_FORM_TURNSTILE_SITE_KEY` | ● | ● | — | — |
+| `MEDIA_BACKEND`, `MEDIA_LOCAL_ROOT`, `MEDIA_S3_ENDPOINT`, `MEDIA_S3_REGION`, `MEDIA_S3_BUCKET`, `MEDIA_S3_ACCESS_KEY_ID`, `MEDIA_S3_SECRET_ACCESS_KEY`, `MEDIA_S3_USE_PATH_STYLE` | ● | ● | — | — |
+| `MEDIA_SIGNING_SECRET` (same value on api and worker) | ✅ with a media backend | ✅ with a media backend | — | — |
 | `BOT_SERVICE_TOKEN` | ● | — | ● | — |
 | `EVENTS_TELEGRAM_BOT_USERNAME` | ● | ● | — | — |
-| `PUBLIC_TICKETS_BASE_URL` | ● | ● | ● | — |
 | `METRICS_BEARER_TOKEN` | ● | ● | ● | — |
 | `EMAIL_MODE` (`smtp`), `SMTP_HOST`, `SMTP_FROM` | — | ✅ | — | — |
 | `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS` | — | ● | — | — |
 | `OUTBOX_MODE` (`webhook`/`disabled`) | — | ✅ | — | — |
 | `OUTBOX_WEBHOOK_URL`, `OUTBOX_SIGNING_SECRET` | — | ✅ with `OUTBOX_MODE=webhook` | — | — |
-| `OPS_TELEGRAM_BOT_TOKEN`, `OPS_TELEGRAM_CHAT_ID`, `OPS_ALERT_ENV_LABEL` | — | ● | — | — |
+| `OUTBOX_POLL_INTERVAL`, `WORKER_POLL_INTERVAL`, `WORKER_METRICS_ADDR`, `SENDER_VERIFICATION_POLL_INTERVAL` | — | ● | — | — |
+| `OPS_TELEGRAM_BOT_TOKEN`, `OPS_TELEGRAM_CHAT_ID`, `OPS_ALERT_ENV_LABEL`, `OPS_WATCHDOG_HEARTBEAT_HOUR_UTC` | — | ● | — | — |
 | `SALES_TELEGRAM_BOT_TOKEN` | — | ● | — | — |
-| `WORKER_*`, `SENDER_VERIFICATION_POLL_INTERVAL` | — | ● | — | — |
 | `EVENTS_TELEGRAM_BOT_TOKEN` | — | — | ✅ | — |
-| `BOT_ARENA_API_URL`, `BOT_METRICS_ADDR`, `BOT_*_ONBOARDING_*` | — | — | ● | — |
-| `POSTER_LLM_API_KEY`, `POSTER_LLM_MODEL`, `POSTER_LLM_BASE_URL` | — | — | ● | — |
-| `REDIS_URL` | — | — | — | — |
+| `BOT_ARENA_API_URL`, `BOT_METRICS_ADDR`, `BOT_SELF_ONBOARDING_ENABLED`, `BOT_ONBOARDING_SITE_BUTTON` | — | — | ● | — |
+| `POSTER_LLM_API_KEY`, `POSTER_LLM_MODEL` | — | — | ● | — |
+| `POSTER_LLM_BASE_URL` (production: unset or `https://api.anthropic.com`) | — | — | ● | — |
+| `ENABLE_DEV_AUTH`, `DB_LOG_QUERIES`, `DEBUG_ROUTES_ENABLED`, `FAULT_INJECT_OUTBOX_AFTER_AUDIT` (leave unset; `true` is refused in production) | — | — | — | — |
+| `STRIPE_API_BASE_URL`, `FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL` (test seams; refused in production) | — | — | — | — |
+| `REDIS_URL`, `IDEMPOTENCY_TTL`, `IDEMPOTENCY_KEY_MAX_LENGTH`, `WORKER_CONCURRENCY`, `WORKER_JOB_TIMEOUT`, `WORKER_RETRY_BACKOFF_BASE`, `WORKER_RETRY_BACKOFF_MAX`, `OUTBOX_BATCH_SIZE` (parsed, but no binary uses them today) | — | — | — | — |
 
 Never set in production, on any service: `ENABLE_DEV_AUTH=true`,
 `DB_LOG_QUERIES=true`, `DEBUG_ROUTES_ENABLED=true`,
 `FAULT_INJECT_OUTBOX_AFTER_AUDIT=true`, `STRIPE_API_BASE_URL`,
-`FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL` (every role refuses to start
-with them).
+`FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, and `BREVO_API_BASE_URL` /
+`POSTER_LLM_BASE_URL` with anything but their default (every role refuses
+to start: a changed host would receive the API key).
+
+**Staging** follows the same split. With `APP_ENV=staging` the production
+checks are off, but `MEDIA_SIGNING_SECRET` is still required on api and
+worker for any `MEDIA_BACKEND`: the JWT-secret fallback exists only in
+development, and a worker without the media key would put unsigned links in
+letters (logos and posters vanish).
 
 Before removing a variable from a container, deploy an image that contains
 `config.LoadFor` (2026-10-14 or later): an older image validates every
