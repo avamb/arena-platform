@@ -245,62 +245,64 @@
 
 ## 11. Матрица паритета «функция × бот × веб»
 
-Источник — `apps/event-center/src/parity/matrix.ts`. Таблицу ниже рисует `renderParityTable()`. Тест `src/parity/parity.test.ts` проверяет три вещи:
+Источник — `apps/event-center/src/parity/matrix.ts`. Таблицу ниже рисует `renderParityTable()`. Тест `src/parity/parity.test.ts` проверяет четыре вещи:
 
 1. каждый маршрут таблицы есть в `openapi.yaml` с тем же методом;
 2. каждый маршрут, который зовёт веб (`src/lib/api/routes.ts`), относится к функции таблицы;
 3. таблица в этом документе совпадает с выводом `renderParityTable()`. Обновить её: `UPDATE_PARITY=1 npm --prefix apps/event-center test`.
+4. функция получает отметку «Готово» только вместе с файлом близнец-теста в `apps/event-center/tests/smoke` (сценарий бота, пройденный через настоящий API). Исключение одно: функции R1 вышли до этого правила, их smoke-тесты идут на подменённом API, поэтому в столбце стоит «до правила». Для R2 и позже исключения нет.
 
-Итог по фазам: R1 — 18 функций, R2 — 3, R3 — 9, R4 — 8, R5 — 2, не планируется в вебе — 2.
+Итог по фазам: R1 — 20 функций, R2 — 3, R3 — 10, R4 — 8, R5 — 2, не планируется в вебе — 2.
 
 <!-- PARITY:BEGIN -->
-| Раздел | Функция | Бот | Веб | Маршруты API | Примечание |
-|---|---|---|---|---|---|
-| Вход и организация | Вход по e-mail и паролю | — (бот знает человека по Telegram) | R1 | `POST /v1/auth/login`<br>`POST /v1/auth/refresh`<br>`POST /v1/auth/logout` |  |
-| Вход и организация | Вход по одноразовой ссылке из бота | web_login.go, `web:open`, `web:out` | R1 | `POST /v1/auth/web/link` | Кнопка «Открыть в браузере» для всех ролей, кроме суперадмина (раздел 4.3). Код и «Выйти везде» — служебные маршруты бота. |
-| Вход и организация | Забыли пароль | — | R1 | `POST /v1/auth/password-reset/request` | Письмо организатору ведёт на EVENT_CENTER_PUBLIC_URL (раздел 4.2). |
-| Вход и организация | Новый пароль и первый пароль по ссылке из письма | — | R1 | `POST /v1/auth/password-reset/confirm` | Страницы `/reset-password` и `/accept-invite`, без входа. |
-| Вход и организация | Повторный пароль перед денежным действием | — (в Telegram не спрашивают, решение владельца) | R5 | `POST /v1/auth/step-up` | Механизм готов (раздел 4.6); экраны возвратов — в R5. |
-| Вход и организация | Выбор организации | bot.go, `org:` | R1 | `GET /v1/me` |  |
-| Вход и организация | Роль и права в организации | bot.go (`canViewSales`, `isOwner` по роли из /v1/me) | R1 | `GET /v1/organizations/{org_id}/me` | Бот пока решает по роли. Веб решает по правам A1. |
-| Вход и организация | Язык интерфейса | bot.go, `lang:` | R1 | — | Хранится на устройстве. |
-| Вход и организация | Заметка «оплата не подключена» | payments.go | R3 | `GET /v1/organizations/{org_id}/payment-configs` |  |
-| Мероприятия | Список мероприятий | events_list.go, `el:` | R1 | `GET /v1/organizations/{org_id}/events` |  |
-| Мероприятия | Цифры продаж в списке | — (в боте только на карточке) | R1 | `GET /v1/organizations/{org_id}/events/{event_id}/summary` | Один запрос на строку. Нужен пакетный маршрут. |
-| Мероприятия | Карточка мероприятия с сеансами | event_card.go, `ec:o:` | R1 | `GET /v1/organizations/{org_id}/events`<br>`GET /v1/organizations/{org_id}/events/{event_id}/summary`<br>`GET /v1/organizations/{org_id}/events/{event_id}/sessions` |  |
-| Мероприятия | Сводка мероприятия | event_summary.go, `ec:es:` | R1 | `GET /v1/organizations/{org_id}/events/{event_id}/summary` |  |
-| Мероприятия | CSV продаж мероприятия | event_csv.go, `ec:ce:` | R1 | `GET /v1/organizations/{org_id}/events/{event_id}/sales.csv` |  |
-| Мероприятия | Образец билета (PDF) | sample.go, `sample:` | R1 | `GET /v1/organizations/{org_id}/sessions/{session_id}/sample-ticket` |  |
-| Мероприятия | Создание мероприятия (мастер) | wizard*.go, `wz:` | R2 | `GET /v1/geo/countries`<br>`GET /v1/geo/cities`<br>`GET /v1/organizations/{org_id}/venues`<br>`POST /v1/organizations/{org_id}/venues`<br>`POST /v1/organizations/{org_id}/cities`<br>`GET /v1/organizations/{org_id}/promoters`<br>`POST /v1/organizations/{org_id}/promoters`<br>`GET /v1/organizations/{org_id}/channels`<br>`POST /v1/media`<br>`GET /v1/media/{id}`<br>`POST /v1/organizations/{org_id}/imports/event-bundle` | Ждёт A3 «план мероприятия»: бот и веб должны сохранять одним серверным слоем. |
-| Мероприятия | Чтение афиши | wizard_bot.go, `wz:hint` | R2 | `POST /v1/media` | Ждёт A4: чтение афиши на сервере, ключ модели не в клиенте. |
-| Мероприятия | Правка и копия мероприятия | wizard_load.go, `wz:edit:`, `wz:copy:` | R2 | `GET /v1/events/{id}`<br>`GET /v1/organizations/{org_id}/events/{event_id}/sessions`<br>`GET /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers`<br>`GET /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule`<br>`POST /v1/organizations/{org_id}/imports/event-bundle` |  |
-| Мероприятия | Публикация, снятие с продажи, архив | evstatus.go, `ec:ev:` | R4 | `GET /v1/events/{id}`<br>`POST /v1/organizations/{org_id}/events/{id}/status` |  |
-| Мероприятия | Удаление мероприятия | evstatus.go, `ec:ev:…:del` (слово) | R4 | `GET /v1/organizations/{org_id}/events/{event_id}/delete-impact`<br>`DELETE /v1/organizations/{org_id}/events/{id}` |  |
-| Мероприятия | Уведомления о продажах | notifications.go, `ec:nt` | R1 | — | Только ссылка на @ArenaSoldOutSalesBot. |
-| Сеансы | Список сеансов и карточка сеанса | sessions_dialog.go, `ses:list:`, `ses:o:` | R1 | `GET /v1/organizations/{org_id}/events/{event_id}/sessions`<br>`GET /v1/organizations/{org_id}/sessions/{session_id}/summary` |  |
-| Сеансы | Сводка сеанса | event_summary.go, `ec:ss:`, `ses:sm` | R1 | `GET /v1/organizations/{org_id}/sessions/{session_id}/summary` |  |
-| Сеансы | CSV продаж и сводки сеанса | event_csv.go, `ec:cs:`, `ec:cm:`, `ses:csv` | R1 | `GET /v1/organizations/{org_id}/sessions/{session_id}/sales.csv`<br>`GET /v1/organizations/{org_id}/sessions/{session_id}/summary.csv` |  |
-| Сеансы | Перенос сеанса | sessions_dialog.go, `ses:mv`, `ses:go` | R4 | `GET /v1/organizations/{org_id}/sessions/{session_id}/change-impact`<br>`PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}` |  |
-| Сеансы | Отмена сеанса | sessions_dialog.go, `ses:cx`, `ses:cxall` (слово) | R4 | `GET /v1/organizations/{org_id}/sessions/{session_id}/change-impact`<br>`PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}` |  |
-| Сеансы | Контакт организатора для писем | sessions_dialog.go (`sesSaveContact`) | R4 | `PUT /v1/organizations/{org_id}/events/{event_id}/contact` |  |
-| Сеансы | Конец продаж и «вход с» | sessions_sale_times.go, `ses:se`, `ses:dr` | R4 | `PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}` |  |
-| Категории | Категории сеанса (чтение) | categories.go, `ct:e:`, `ct:v:` | R1 | `GET /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers` |  |
-| Категории | Открыть или закрыть продажи категории | categories.go, `ct:op`, `ct:cl` | R4 | `PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}` |  |
-| Категории | Цена, окно продаж, количество | categories.go, `ct:pr`, `ct:wn`, `ct:qt` | R4 | `PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}`<br>`GET /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule`<br>`PUT /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule` |  |
-| Заказы | Список заказов, вкладки, поиск | orders_list.go, `or:` | R1 | `POST /v1/organizations/{org_id}/orders/search` | Поиск идёт в теле запроса, не в адресе: так e-mail и телефон покупателя не попадают в журналы прокси. Бот тоже. |
-| Заказы | Карточка заказа и статус письма с билетами | order_card.go, `or:v:` | R1 | `GET /v1/organizations/{org_id}/orders/{id}` |  |
-| Заказы | Отмена неоплаченного заказа | order_card.go, `or:c:` (слово) | R3 | `POST /v1/organizations/{org_id}/orders/{id}/cancel` |  |
-| Заказы | Повторная отправка билетов | resend.go, `or:r:` | R3 | `POST /v1/organizations/{org_id}/orders/{order_id}/resend-tickets` |  |
-| Возвраты | Возврат по заказу | refund_dialog.go, `or:f:` (слово и кнопка) | R5 | `GET /v1/organizations/{org_id}/orders/{order_id}/refund-options`<br>`POST /v1/organizations/{org_id}/orders/{order_id}/refunds` |  |
-| Возвраты | Очередь возвратов и повтор | refunds_queue.go, `rq:` | R5 | `GET /v1/organizations/{org_id}/refunds`<br>`GET /v1/organizations/{org_id}/refunds/{refund_id}`<br>`POST /v1/organizations/{org_id}/refunds/{refund_id}/retry` |  |
-| Промокоды | Список, карточка, использование | promo_dialog.go, `pm:` | R3 | `GET /v1/organizations/{org_id}/promo-codes`<br>`GET /v1/organizations/{org_id}/promo-codes/{id}`<br>`GET /v1/organizations/{org_id}/promo-code-redemptions`<br>`GET /v1/organizations/{org_id}/promo-codes/{promo_code_id}/redemptions.csv` |  |
-| Промокоды | Создание, пауза, сеансы, удаление | promo_create.go, `pm:n`, `pm:ps`, `pm:se`, `pm:del` | R3 | `POST /v1/organizations/{org_id}/promo-codes`<br>`PATCH /v1/organizations/{org_id}/promo-codes/{id}`<br>`DELETE /v1/organizations/{org_id}/promo-codes/{id}` |  |
-| Пригласительные | Выдача пригласительных | invite.go, `iv:i` | R3 | `POST /v1/organizations/{org_id}/complimentary` |  |
-| Пригласительные | Список и аннулирование | invite_list.go, `iv:l`, `iv:rv` (слово) | R3 | `GET /v1/organizations/{org_id}/complimentary`<br>`POST /v1/complimentary/{id}/revoke` |  |
-| Команда | Команда, приглашение, удаление | team.go, `team:` | R3 | `GET /v1/organizations/{org_id}/bot-team`<br>`POST /v1/organizations/{org_id}/bot-invitations`<br>`DELETE /v1/organizations/{org_id}/bot-invitations/{id}`<br>`POST /v1/organizations/{org_id}/bot-invitations/{id}/resend`<br>`DELETE /v1/organizations/{org_id}/members/{user_id}` | Ждёт A2: приглашение с каналом web или telegram. |
-| Промоутеры | Список, правка, архив | promoters.go, `pr:` | R3 | `GET /v1/organizations/{org_id}/promoters`<br>`PATCH /v1/organizations/{org_id}/promoters/{id}` |  |
-| Не в ивент-центре | Анкета организатора | onboarding_dialog.go, `onb` | — | `GET /v1/onboarding/form-schema`<br>`POST /v1/onboarding/applications` | В вебе анкета живёт на сайте arenasoldout.com. |
-| Не в ивент-центре | Принять приглашение в команду | bot.go, `/start inv_…` | — | `POST /v1/bot/invitations/accept` | В вебе: письмо с установкой пароля ведёт на `/accept-invite`. Приглашение из «Команды» с каналом web — задача A2. |
+| Раздел | Функция | Бот | Веб | Готово | Маршруты API | Примечание |
+|---|---|---|---|---|---|---|
+| Вход и организация | Вход по e-mail и паролю | — (бот знает человека по Telegram) | R1 | ✔ (до правила, `r1.spec.ts`) | `POST /v1/auth/login`<br>`POST /v1/auth/refresh`<br>`POST /v1/auth/logout` |  |
+| Вход и организация | Вход по одноразовой ссылке из бота | web_login.go, `web:open`, `web:out` | R1 | ✔ (до правила, `link.spec.ts`) | `POST /v1/auth/web/link` | Кнопка «Открыть в браузере» для всех ролей, кроме суперадмина (раздел 4.3). Код и «Выйти везде» — служебные маршруты бота. |
+| Вход и организация | Забыли пароль | — | R1 | ✔ (до правила, `r1.spec.ts`) | `POST /v1/auth/password-reset/request` | Письмо организатору ведёт на EVENT_CENTER_PUBLIC_URL (раздел 4.2). |
+| Вход и организация | Новый пароль и первый пароль по ссылке из письма | — | R1 | ✔ (до правила, `r1.spec.ts`) | `POST /v1/auth/password-reset/confirm` | Страницы `/reset-password` и `/accept-invite`, без входа. |
+| Вход и организация | Повторный пароль перед денежным действием | — (в Telegram не спрашивают, решение владельца) | R5 | — | `POST /v1/auth/step-up` | Механизм готов (раздел 4.6); экраны возвратов — в R5. |
+| Вход и организация | Выбор организации | bot.go, `org:` | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/me` |  |
+| Вход и организация | Роль и права в организации | bot.go (`canViewSales`, `isOwner` по роли из /v1/me) | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/me` | Бот пока решает по роли. Веб решает по правам A1. |
+| Вход и организация | Язык интерфейса | bot.go, `lang:` | R1 | ✔ (до правила, `r1.spec.ts`) | — | Хранится на устройстве. |
+| Вход и организация | Заметка «оплата не подключена» | payments.go | R3 | — | `GET /v1/organizations/{org_id}/payment-configs` |  |
+| Мероприятия | Список мероприятий | events_list.go, `el:` | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/events` |  |
+| Мероприятия | Цифры продаж в списке | — (в боте только на карточке) | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/events/{event_id}/summary` | Один запрос на строку. Нужен пакетный маршрут. |
+| Мероприятия | Карточка мероприятия с сеансами | event_card.go, `ec:o:` | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/events`<br>`GET /v1/organizations/{org_id}/events/{event_id}/summary`<br>`GET /v1/organizations/{org_id}/events/{event_id}/sessions` |  |
+| Мероприятия | Сводка мероприятия | event_summary.go, `ec:es:` | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/events/{event_id}/summary` |  |
+| Мероприятия | CSV продаж мероприятия | event_csv.go, `ec:ce:` | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/events/{event_id}/sales.csv` |  |
+| Мероприятия | Образец билета (PDF) | sample.go, `sample:` | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/sessions/{session_id}/sample-ticket` |  |
+| Мероприятия | Создание мероприятия (мастер) | wizard*.go, `wz:` | R2 | — | `GET /v1/geo/countries`<br>`GET /v1/geo/cities`<br>`GET /v1/organizations/{org_id}/venues`<br>`POST /v1/organizations/{org_id}/venues`<br>`POST /v1/organizations/{org_id}/cities`<br>`GET /v1/organizations/{org_id}/promoters`<br>`POST /v1/organizations/{org_id}/promoters`<br>`GET /v1/organizations/{org_id}/channels`<br>`POST /v1/media`<br>`GET /v1/media/{id}`<br>`POST /v1/organizations/{org_id}/imports/event-bundle` | Ждёт A3 «план мероприятия»: бот и веб должны сохранять одним серверным слоем. |
+| Мероприятия | Чтение афиши | wizard_bot.go, `wz:hint` | R2 | — | `POST /v1/media` | Ждёт A4: чтение афиши на сервере, ключ модели не в клиенте. |
+| Мероприятия | Правка и копия мероприятия | wizard_load.go, `wz:edit:`, `wz:copy:` | R2 | — | `GET /v1/events/{id}`<br>`GET /v1/organizations/{org_id}/events/{event_id}/sessions`<br>`GET /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers`<br>`GET /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule`<br>`POST /v1/organizations/{org_id}/imports/event-bundle` |  |
+| Мероприятия | Публикация, снятие с продажи, архив | evstatus.go, `ec:ev:` | R4 | — | `GET /v1/events/{id}`<br>`POST /v1/organizations/{org_id}/events/{id}/status` |  |
+| Мероприятия | Удаление мероприятия | evstatus.go, `ec:ev:…:del` (слово) | R4 | — | `GET /v1/organizations/{org_id}/events/{event_id}/delete-impact`<br>`DELETE /v1/organizations/{org_id}/events/{id}` |  |
+| Мероприятия | Уведомления о продажах | notifications.go, `ec:nt` | R1 | ✔ (до правила) | — | Только ссылка на @ArenaSoldOutSalesBot. |
+| Сеансы | Список сеансов и карточка сеанса | sessions_dialog.go, `ses:list:`, `ses:o:` | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/events/{event_id}/sessions`<br>`GET /v1/organizations/{org_id}/sessions/{session_id}/summary` |  |
+| Сеансы | Сводка сеанса | event_summary.go, `ec:ss:`, `ses:sm` | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/sessions/{session_id}/summary` |  |
+| Сеансы | CSV продаж и сводки сеанса | event_csv.go, `ec:cs:`, `ec:cm:`, `ses:csv` | R1 | ✔ (до правила) | `GET /v1/organizations/{org_id}/sessions/{session_id}/sales.csv`<br>`GET /v1/organizations/{org_id}/sessions/{session_id}/summary.csv` |  |
+| Сеансы | Перенос сеанса | sessions_dialog.go, `ses:mv`, `ses:go` | R4 | — | `GET /v1/organizations/{org_id}/sessions/{session_id}/change-impact`<br>`PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}` |  |
+| Сеансы | Отмена сеанса | sessions_dialog.go, `ses:cx`, `ses:cxall` (слово) | R4 | — | `GET /v1/organizations/{org_id}/sessions/{session_id}/change-impact`<br>`PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}` |  |
+| Сеансы | Контакт организатора для писем | sessions_dialog.go (`sesSaveContact`) | R4 | — | `PUT /v1/organizations/{org_id}/events/{event_id}/contact` |  |
+| Сеансы | Конец продаж и «вход с» | sessions_sale_times.go, `ses:se`, `ses:dr` | R4 | — | `PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}` |  |
+| Категории | Категории сеанса (чтение) | categories.go, `ct:e:`, `ct:v:` | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers` |  |
+| Категории | Открыть или закрыть продажи категории | categories.go, `ct:op`, `ct:cl` | R4 | — | `PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}` |  |
+| Категории | Цена, окно продаж, количество | categories.go, `ct:pr`, `ct:wn`, `ct:qt` | R4 | — | `PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}`<br>`GET /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule`<br>`PUT /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule` |  |
+| Заказы | Список заказов, вкладки, поиск | orders_list.go, `or:` | R1 | ✔ (до правила, `r1.spec.ts`) | `POST /v1/organizations/{org_id}/orders/search` | Поиск идёт в теле запроса, не в адресе: так e-mail и телефон покупателя не попадают в журналы прокси. Бот тоже. |
+| Заказы | Карточка заказа и статус письма с билетами | order_card.go, `or:v:` | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/orders/{id}` |  |
+| Заказы | Отмена неоплаченного заказа | order_card.go, `or:c:` (слово) | R3 | — | `POST /v1/organizations/{org_id}/orders/{id}/cancel` |  |
+| Заказы | Повторная отправка билетов | resend.go, `or:r:` | R3 | — | `POST /v1/organizations/{org_id}/orders/{order_id}/resend-tickets` |  |
+| Возвраты | Возврат по заказу | refund_dialog.go, `or:f:` (слово и кнопка) | R5 | — | `GET /v1/organizations/{org_id}/orders/{order_id}/refund-options`<br>`POST /v1/organizations/{org_id}/orders/{order_id}/refunds` |  |
+| Возвраты | Очередь возвратов и повтор | refunds_queue.go, `rq:` | R5 | — | `GET /v1/organizations/{org_id}/refunds`<br>`GET /v1/organizations/{org_id}/refunds/{refund_id}`<br>`POST /v1/organizations/{org_id}/refunds/{refund_id}/retry` |  |
+| Промокоды | Список, карточка, использование | promo_dialog.go, `pm:` | R3 | — | `GET /v1/organizations/{org_id}/promo-codes`<br>`GET /v1/organizations/{org_id}/promo-codes/{id}`<br>`GET /v1/organizations/{org_id}/promo-code-redemptions`<br>`GET /v1/organizations/{org_id}/promo-codes/{promo_code_id}/redemptions.csv` |  |
+| Промокоды | Создание, пауза, сеансы, удаление | promo_create.go, `pm:n`, `pm:ps`, `pm:se`, `pm:del` | R3 | — | `POST /v1/organizations/{org_id}/promo-codes`<br>`PATCH /v1/organizations/{org_id}/promo-codes/{id}`<br>`DELETE /v1/organizations/{org_id}/promo-codes/{id}` |  |
+| Пригласительные | Выдача пригласительных | invite.go, `iv:i` | R3 | — | `POST /v1/organizations/{org_id}/complimentary` |  |
+| Пригласительные | Список и аннулирование | invite_list.go, `iv:l`, `iv:rv` (слово) | R3 | — | `GET /v1/organizations/{org_id}/complimentary`<br>`POST /v1/complimentary/{id}/revoke` |  |
+| Команда | Команда, приглашение, удаление | team.go, `team:` | R3 | — | `GET /v1/organizations/{org_id}/bot-team`<br>`POST /v1/organizations/{org_id}/bot-invitations`<br>`DELETE /v1/organizations/{org_id}/bot-invitations/{id}`<br>`POST /v1/organizations/{org_id}/bot-invitations/{id}/resend`<br>`DELETE /v1/organizations/{org_id}/members/{user_id}` | Ждёт A2: приглашение с каналом web или telegram. |
+| Промоутеры | Список, правка, архив | promoters.go, `pr:` | R3 | — | `GET /v1/organizations/{org_id}/promoters`<br>`PATCH /v1/organizations/{org_id}/promoters/{id}` |  |
+| Данные организации | Данные организации, блок продавца и контакт на странице продаж | org_data.go, `og:` (владелец и оператор платформы) | R3 | — | `GET /v1/organizations/{org_id}/seller-profile`<br>`PATCH /v1/organizations/{org_id}/channels/{channel_id}/seller-display`<br>`PATCH /v1/organizations/{id}`<br>`GET /v1/organizations/{org_id}/me` | Этап 4, задача 4-7 плана; близнец сценария `org_data` бота. Только владелец (`org.update`). Ключ организации сюда не допущен. На сайте-плагине данные организации не правятся. |
+| Не в ивент-центре | Анкета организатора | onboarding_dialog.go, `onb` | — | — | `GET /v1/onboarding/form-schema`<br>`POST /v1/onboarding/applications` | В вебе анкета живёт на сайте arenasoldout.com. |
+| Не в ивент-центре | Принять приглашение в команду | bot.go, `/start inv_…` | — | — | `POST /v1/bot/invitations/accept` | В вебе: письмо с установкой пароля ведёт на `/accept-invite`. Приглашение из «Команды» с каналом web — задача A2. |
 <!-- PARITY:END -->
 
 ## 12. Фазы и серверные задачи
