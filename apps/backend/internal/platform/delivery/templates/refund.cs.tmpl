@@ -19,7 +19,7 @@
   </table>
   <p style="margin:16px 0 12px 0;">Peníze se vrátí na platební metodu, kterou jste platili. Bance obvykle trvá 5–10 pracovních dnů, než je zobrazí.</p>
   {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">Vrácené vstupenky již neplatí pro vstup.</p>{{else if .Refund.SomeTicketsCancelled}}<p style="margin:0 0 12px 0;">Pro vstup již nelze použít pouze vstupenky označené „již neplatí“; ostatní vstupenky v seznamu výše zůstávají platné.</p>{{end}}
-  <p style="margin:0 0 12px 0;">Máte dotazy? Odpovězte na tento e-mail.</p>
+  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">Máte dotazy? Odpovězte na tento e-mail.</p>{{end}}
   <p style="font-size:12px;color:#666">Doručeno na: {{.RecipientEmail}}</p>
   </td></tr>
   <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
@@ -56,8 +56,8 @@ Peníze se vrátí na platební metodu, kterou jste platili. Bance obvykle trvá
 {{if .Refund.TicketsCancelled}}Vrácené vstupenky již neplatí pro vstup.
 {{else if .Refund.SomeTicketsCancelled}}Pro vstup již nelze použít pouze vstupenky označené „již neplatí“; ostatní vstupenky v seznamu výše zůstávají platné.
 {{end}}
-Máte dotazy? Odpovězte na tento e-mail.
-
+{{if .Branding.ContactEmail}}Máte dotazy? Odpovězte na tento e-mail.
+{{end}}
 Doručeno na: {{.RecipientEmail}}
 
 --

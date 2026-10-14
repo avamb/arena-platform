@@ -19,7 +19,7 @@
   </table>
   <p style="margin:16px 0 12px 0;">El dinero vuelve al medio de pago que usaste. Tu banco suele tardar de 5 a 10 días hábiles en mostrarlo.</p>
   {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">Las entradas reembolsadas ya no son válidas para entrar.</p>{{else if .Refund.SomeTicketsCancelled}}<p style="margin:0 0 12px 0;">Solo las entradas marcadas «ya no es válida» dejan de servir para entrar; las demás entradas de la lista de arriba siguen siendo válidas.</p>{{end}}
-  <p style="margin:0 0 12px 0;">¿Tienes preguntas? Responde a este correo.</p>
+  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">¿Tienes preguntas? Responde a este correo.</p>{{end}}
   <p style="font-size:12px;color:#666">Enviado a: {{.RecipientEmail}}</p>
   </td></tr>
   <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
@@ -56,8 +56,8 @@ El dinero vuelve al medio de pago que usaste. Tu banco suele tardar de 5 a 10 d�
 {{if .Refund.TicketsCancelled}}Las entradas reembolsadas ya no son válidas para entrar.
 {{else if .Refund.SomeTicketsCancelled}}Solo las entradas marcadas «ya no es válida» dejan de servir para entrar; las demás entradas de la lista de arriba siguen siendo válidas.
 {{end}}
-¿Tienes preguntas? Responde a este correo.
-
+{{if .Branding.ContactEmail}}¿Tienes preguntas? Responde a este correo.
+{{end}}
 Enviado a: {{.RecipientEmail}}
 
 --
