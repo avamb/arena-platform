@@ -38,6 +38,10 @@ type fakeCall struct {
 	key, chargeRef string
 	amount         int64
 	ticketActive   bool // the ticket's status when the provider was called
+	// What the engine told the module about earlier calls (PAY-14b).
+	attempt        int
+	firstAttemptAt time.Time
+	known, unsure  int64
 }
 
 type fakeModule struct {
@@ -102,7 +106,8 @@ func (m *fakeModule) Refund(ctx context.Context, req payments.RefundRequest) (pa
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.calls = append(m.calls, fakeCall{key: req.IdempotencyKey, chargeRef: req.ProviderChargeRef, amount: req.AmountMinor, ticketActive: active})
+	m.calls = append(m.calls, fakeCall{key: req.IdempotencyKey, chargeRef: req.ProviderChargeRef, amount: req.AmountMinor, ticketActive: active,
+		attempt: req.Attempt, firstAttemptAt: req.FirstAttemptAt, known: req.OtherRefundedMinor, unsure: req.OtherUncertainMinor})
 	if len(m.answers) == 0 {
 		return payments.RefundResult{ProviderRefundID: "re_" + req.IdempotencyKey, Status: payments.RefundSucceeded}, nil
 	}

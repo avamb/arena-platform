@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 )
 
@@ -47,7 +48,12 @@ func (s *Server) checkoutHandler() *hcheckout.Handler {
 		s.issueTicketsForCheckout,
 		s.publishTicketRefundedEvents,
 		s.publishTicketRefundedV1Events,
-	).WithMetrics(s.typedMetrics).WithRowOrgAccess(s.rowOrgAccess).WithRefundEngine(s.refundEngine())
+	).WithMetrics(s.typedMetrics).WithRowOrgAccess(s.rowOrgAccess).WithRefundEngine(s.refundEngine()).
+		WithModuleOptions(payments.Options{
+			StripeAPIBaseURL: s.stripeBaseURL(),
+			FlittAPIBaseURL:  s.flittBaseURL(),
+			AllPayAPIBaseURL: s.allpayBaseURL(),
+		})
 }
 
 // NewReservationProcessor forwards to hcheckout.NewReservationProcessor so

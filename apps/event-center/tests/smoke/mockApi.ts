@@ -180,6 +180,14 @@ export async function mockApi(
     }
     if (m === "POST" && path === "/v1/auth/logout") return route.fulfill({ status: 204, headers: CORS });
     if (m === "POST" && path === "/v1/auth/password-reset/request") return json(route, 202, { status: "accepted" });
+    if (m === "POST" && path === "/v1/auth/password-reset/confirm") {
+      // "used-token" stands for a link that was already opened once.
+      const body = req.postDataJSON() as { token: string; new_password: string };
+      if (body.token === "used-token") {
+        return json(route, 410, { error: { code: "auth.token_already_used", message: "used" } });
+      }
+      return json(route, 200, { message: "password updated" });
+    }
 
     if (req.headers()["authorization"] === undefined || auth.compromised) {
       return json(route, 401, { error: { code: "auth.unauthorized", message: "no token" } });

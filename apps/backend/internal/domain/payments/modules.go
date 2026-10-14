@@ -28,6 +28,18 @@ type Options struct {
 	// FlittAPIBaseURL overrides https://pay.flitt.com/api.
 	// FLITT_API_BASE_URL in a deployed process; tests set it directly.
 	FlittAPIBaseURL string
+	// AllPayAPIBaseURL overrides https://allpay.to/app (the adapter appends
+	// "/?show=<method>&mode=<version>"). ALLPAY_API_BASE_URL in a deployed
+	// process; tests set it directly.
+	AllPayAPIBaseURL string
+	// Mode is the mode of the configuration the module is built from
+	// ("test" or "live"), for a provider that takes it per request. Unlike
+	// the fields above it is not a deployment seam: a caller that knows which
+	// payment_provider_configs row it builds from sets it on its own copy.
+	// AllPay sends test_mode=1 for a test configuration, so a key filed as
+	// test can never charge a real card. Empty means "unknown": the
+	// provider's own account setting decides.
+	Mode string
 }
 
 // Factory builds a module for one configuration. secrets is the config's

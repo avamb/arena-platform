@@ -435,7 +435,7 @@ func TestPR216_Step4_Load_DebugFlagsDefaultToFalse(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestPR206_WebhookSecretsMissingInProduction verifies that production startup
-// is refused when both STRIPE_WEBHOOK_SECRET and ALLPAY_WEBHOOK_SECRET are empty.
+// is refused when STRIPE_WEBHOOK_SECRET is empty.
 func TestPR206_WebhookSecretsMissingInProduction(t *testing.T) {
 	cfg := validProductionBase()
 	cfg.StripeWebhookSecret = ""
@@ -444,8 +444,8 @@ func TestPR206_WebhookSecretsMissingInProduction(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when both webhook secrets are absent in production")
 	}
-	if !strings.Contains(err.Error(), "STRIPE_WEBHOOK_SECRET") && !strings.Contains(err.Error(), "ALLPAY_WEBHOOK_SECRET") {
-		t.Errorf("error should mention STRIPE_WEBHOOK_SECRET or ALLPAY_WEBHOOK_SECRET; got: %v", err)
+	if !strings.Contains(err.Error(), "STRIPE_WEBHOOK_SECRET") {
+		t.Errorf("error should mention STRIPE_WEBHOOK_SECRET; got: %v", err)
 	}
 }
 
@@ -460,14 +460,31 @@ func TestPR206_StripeSecretAloneIsEnoughInProduction(t *testing.T) {
 	}
 }
 
-// TestPR206_AllPaySecretAloneIsEnoughInProduction verifies that providing only
-// ALLPAY_WEBHOOK_SECRET satisfies the production requirement.
-func TestPR206_AllPaySecretAloneIsEnoughInProduction(t *testing.T) {
+// TestPR206_AllPaySecretAloneIsNotEnoughInProduction: ALLPAY_WEBHOOK_SECRET
+// is deprecated (it verified a header AllPay never sends, and AllPay webhooks
+// are accepted on the per-config route only), so it must not satisfy the
+// production requirement — the legacy routes would run unsigned.
+func TestPR206_AllPaySecretAloneIsNotEnoughInProduction(t *testing.T) {
 	cfg := validProductionBase()
 	cfg.StripeWebhookSecret = ""
 	cfg.AllPayWebhookSecret = "allpay-valid-secret-only"
-	if err := cfg.Validate(); err != nil {
-		t.Errorf("ALLPAY_WEBHOOK_SECRET alone should be enough in production; got: %v", err)
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "STRIPE_WEBHOOK_SECRET") {
+		t.Errorf("ALLPAY_WEBHOOK_SECRET alone must not be enough in production; got: %v", err)
+	}
+}
+
+// TestAllPayAPIBaseURLRefusedInProduction: the AllPay test seam would send the
+// organizer's signed orders to another endpoint.
+func TestAllPayAPIBaseURLRefusedInProduction(t *testing.T) {
+	cfg := validProductionBase()
+	cfg.AllPayAPIBaseURL = "http://127.0.0.1:9/app"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "ALLPAY_API_BASE_URL") {
+		t.Errorf("ALLPAY_API_BASE_URL must be refused in production; got: %v", err)
+	}
+	dev := validBase()
+	dev.AllPayAPIBaseURL = "http://127.0.0.1:9/app"
+	if err := dev.Validate(); err != nil {
+		t.Errorf("ALLPAY_API_BASE_URL must be allowed outside production; got: %v", err)
 	}
 }
 
