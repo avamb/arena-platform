@@ -4615,8 +4615,10 @@ type CreatePaymentProviderConfigRequest struct {
 	PublicConfig *map[string]interface{} `json:"public_config,omitempty"`
 
 	// Secrets Map of secret credential fields to values. Stripe expects
-	// api_key + webhook_secret; AllPay expects merchant_id +
-	// secret_key; etc. Values are never returned.
+	// api_key + webhook_secret; AllPay expects merchant_id (the API
+	// login) + secret_key (the API key), optionally vat,
+	// max_installments and installments_min_amount; etc. Values are
+	// never returned.
 	Secrets *map[string]string `json:"secrets,omitempty"`
 }
 
@@ -9836,7 +9838,7 @@ type PaymentIntentWebhookAck struct {
 //
 //  1. The normalised flat shape documented by this schema's
 //     top-level properties (`provider_payment_id`, `event_type`,
-//     ...) — used by the mock provider and by AllPay callbacks.
+//     ...) — used by the mock provider.
 //  2. A genuine Stripe event envelope —
 //     `{"id":"evt_...","type":"payment_intent.succeeded",
 //     "data":{"object":{"id":"pi_...","status":"succeeded",
@@ -10016,6 +10018,11 @@ type PaymentProviderConfigItem struct {
 	// cloudpayments, yookassa, manual. `flitt` needs the secrets
 	// `merchant_id` and `payment_key` (the portal's payment key signs
 	// requests and callbacks; there is no separate webhook secret).
+	// `allpay` needs `merchant_id` (the integration's API login) and
+	// `secret_key` (its API key, which also signs webhooks); `vat`
+	// (0, 1 or 3), `max_installments` (2 to 12) and
+	// `installments_min_amount` (the smallest order total in shekels
+	// that offers installments) are optional.
 	Provider string `json:"provider"`
 
 	// ProviderAccountId Optional public account identifier (e.g. Stripe acct_..., AllPay

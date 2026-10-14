@@ -49,8 +49,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/allpay"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
@@ -1038,10 +1038,11 @@ func TestHostedCheckout_UnsupportedProviderTakesNoInventory(t *testing.T) {
 	f := newHostedOrgFixture(t, ctx, pool, "badprov")
 	defer f.cleanup()
 
-	// allpay is a real, CHECK-allowed sales_channels.provider value that
-	// cannot host a Stripe-style checkout page.
+	// yookassa is a provider arena knows by name (Declared) but has no module
+	// for, so it cannot host a checkout page. (AllPay was the example until
+	// PAY-14 gave it a hosted page.)
 	if _, err := pool.Exec(ctx,
-		`UPDATE sales_channels SET provider = 'allpay' WHERE id = $1`, f.channelID); err != nil {
+		`UPDATE sales_channels SET provider = 'yookassa' WHERE id = $1`, f.channelID); err != nil {
 		t.Fatalf("set an unsupported provider: %v", err)
 	}
 
@@ -1278,11 +1279,11 @@ func TestHostedCheckout_ConfigRoute_UnmappedKindsAreAcknowledged(t *testing.T) {
 	}
 }
 
-// TestHostedCheckout_ConfigRoute_AllPayEventsDecidedByKind drives a SIGNED
-// AllPay delivery through the per-config route: the module's normalized kind
-// decides. A refund update names a payment but moves nothing, a failure
-// event fails the intent only when its signature verifies, and a capture
-// succeeds it.
+// TestHostedCheckout_ConfigRoute_AllPayEventsDecidedByKind drives SIGNED
+// AllPay webhooks through the per-config route: the module's normalized kind
+// decides. A chargeback names a payment but moves nothing, a failed attempt
+// (status 0) moves nothing, a wrong signature is 401, and a paid webhook
+// succeeds the intent.
 func TestHostedCheckout_ConfigRoute_AllPayEventsDecidedByKind(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := t.Context()
@@ -1307,20 +1308,33 @@ func TestHostedCheckout_ConfigRoute_AllPayEventsDecidedByKind(t *testing.T) {
 	}
 	payID := *intents[0].ProviderPaymentID
 
-	// The organizer's config becomes an AllPay one (module signature check,
-	// flat body); the intent keeps the id the events will name.
+	// The organizer's config and the intent become AllPay ones (the per-config
+	// route only lets an AllPay signature move an AllPay intent); the intent
+	// keeps the id the webhooks will name.
 	const allpayKey = "allpay_secret_cfgtest"
 	if _, err := pool.Exec(ctx, `UPDATE payment_provider_configs
 	    SET provider = 'allpay', secrets = $2::jsonb WHERE id = $1`,
 		f.configID, `{"merchant_id":"m_test","secret_key":"`+allpayKey+`"}`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(ctx, `UPDATE payment_intents SET provider = 'allpay' WHERE id = $1`, intents[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	// A paid webhook is confirmed with AllPay before it counts: the stub
+	// holds the order as paid, for the intent's own amount.
+	stub := newStubAllPayServer(t)
+	stub.account("m_test", allpayKey)
+	stub.paidOrder("m_test", payID, intents[0].Amount, intents[0].Currency)
+	srv.allpayAPIBaseURL = stub.baseURL()
 
-	post := func(event, key string) (int, map[string]any) {
-		raw := []byte(`{"event_type":"` + event + `","payment_id":"` + payID + `","status":"x"}`)
+	post := func(fields map[string]any, key string) (int, map[string]any) {
+		fields["order_id"] = payID
+		fields["amount"] = json.Number("25.31")
+		fields["currency"] = "EUR"
+		fields["sign"] = allpay.Sign(key, fields)
+		raw, _ := json.Marshal(fields)
 		req := httptest.NewRequest(http.MethodPost, f.configWebhookPath(), bytes.NewReader(raw))
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-AllPay-Signature", payments.ComputeHMACSHA256(key, raw))
 		rec := httptest.NewRecorder()
 		srv.router.ServeHTTP(rec, req)
 		var resp map[string]any
@@ -1335,16 +1349,20 @@ func TestHostedCheckout_ConfigRoute_AllPayEventsDecidedByKind(t *testing.T) {
 		return pi.State
 	}
 
-	if c, _ := post("payment.captured", "someone-elses-key"); c != http.StatusUnauthorized || state() != "created" {
+	if c, _ := post(map[string]any{"status": json.Number("1")}, "someone-elses-key"); c != http.StatusUnauthorized || state() != "created" {
 		t.Fatalf("a wrong AllPay signature = %d, state %q; want 401 and no change", c, state())
 	}
-	c, resp := post("payment.refunded", allpayKey)
+	c, resp := post(map[string]any{"type": "chargeback", "status": json.Number("3")}, allpayKey)
 	if c != http.StatusOK || resp["processed"] == true || state() != "created" {
-		t.Fatalf("refund update = %d %v, state %q; want 200, not processed, no change", c, resp, state())
+		t.Fatalf("chargeback = %d %v, state %q; want 200, not processed, no change", c, resp, state())
 	}
-	c, resp = post("payment.captured", allpayKey)
+	c, resp = post(map[string]any{"status": json.Number("0"), "decline_code": json.Number("20004")}, allpayKey)
+	if c != http.StatusOK || resp["processed"] == true || state() != "created" {
+		t.Fatalf("failed attempt = %d %v, state %q; want 200, not processed, no change", c, resp, state())
+	}
+	c, resp = post(map[string]any{"status": json.Number("1")}, allpayKey)
 	if c != http.StatusOK || resp["processed"] != true || state() != "succeeded" {
-		t.Fatalf("capture = %d %v, state %q; want 200, processed, succeeded", c, resp, state())
+		t.Fatalf("paid = %d %v, state %q; want 200, processed, succeeded", c, resp, state())
 	}
 }
 

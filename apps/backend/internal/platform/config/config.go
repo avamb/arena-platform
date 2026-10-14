@@ -210,6 +210,13 @@ type Config struct {
 	// request, and a redirected endpoint could replay a signed order.
 	FlittAPIBaseURL string `env:"FLITT_API_BASE_URL" required:"false" default:""`
 
+	// AllPayAPIBaseURL is the same seam for AllPay (default
+	// https://allpay.to/app). TEST AND DEVELOPMENT ONLY: Validate() refuses a
+	// non-empty value under APP_ENV=production, for the reason Flitt's is
+	// refused — the organizer's API key signs every request, and a
+	// redirected endpoint could replay a signed order.
+	AllPayAPIBaseURL string `env:"ALLPAY_API_BASE_URL" required:"false" default:""`
+
 	// -------------------------------------------------------------------------
 	// Database (PostgreSQL 17)
 	// -------------------------------------------------------------------------
@@ -358,10 +365,12 @@ type Config struct {
 	// processing the request body. Required in production to prevent unsigned
 	// forgery.
 	StripeWebhookSecret string `env:"STRIPE_WEBHOOK_SECRET" required:"false" default:""`
-	// AllPayWebhookSecret is the AllPay shared webhook signing secret.
-	// When set, POST /v1/payment-intents/webhook and POST /v1/refunds/webhook
-	// verify the "X-AllPay-Signature" HMAC-SHA256 before processing the request
-	// body.
+	// AllPayWebhookSecret is DEPRECATED and verifies nothing. It was the
+	// secret of an "X-AllPay-Signature" header that AllPay never sends. A real
+	// AllPay webhook is signed in its body with the organizer's own API key
+	// and is only accepted on POST /v1/payment-intents/webhook/{config_id}
+	// (spec 08_architecture/39). The variable is still read so an old
+	// deployment that sets it keeps starting.
 	AllPayWebhookSecret string `env:"ALLPAY_WEBHOOK_SECRET" required:"false" default:""`
 
 	// -------------------------------------------------------------------------
@@ -773,6 +782,8 @@ func Load() (*Config, error) {
 	cfg.StripeAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("STRIPE_API_BASE_URL", "")), "/")
 	// FLITT_API_BASE_URL — test/dev only, rejected in production by Validate.
 	cfg.FlittAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("FLITT_API_BASE_URL", "")), "/")
+	// ALLPAY_API_BASE_URL — test/dev only, rejected in production by Validate.
+	cfg.AllPayAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("ALLPAY_API_BASE_URL", "")), "/")
 
 	d, err := getenvDuration("REQUEST_TIMEOUT_SECONDS", 30*time.Second, true)
 	if err != nil {
@@ -1340,15 +1351,18 @@ func (c *Config) validateProduction() []error {
 	// 11. Debug routes expose internal panic/slow endpoints and must never be
 	// enabled in production where an operator Dokploy variable could mount them.
 
-	// 10b. Payment webhook signing secrets — at least one must be configured in
-	// production. Without a secret the webhook endpoints accept unsigned JSON,
-	// which allows anyone who guesses a provider_payment_id to forge
-	// payment.succeeded events (mint tickets) or forge refunds (cancel tickets).
-	if strings.TrimSpace(c.StripeWebhookSecret) == "" &&
-		strings.TrimSpace(c.AllPayWebhookSecret) == "" {
+	// 10b. The legacy webhook routes' signing secret must be configured in
+	// production. Without it those endpoints accept unsigned JSON, which
+	// allows anyone who guesses a provider_payment_id to forge
+	// payment.succeeded events (mint tickets) or forge refunds (cancel
+	// tickets). ALLPAY_WEBHOOK_SECRET no longer counts: it never verified a
+	// real AllPay delivery, and with AllPay on the per-config route only it
+	// protects nothing.
+	if strings.TrimSpace(c.StripeWebhookSecret) == "" {
 		errs = append(errs, errors.New(
-			"at least one of STRIPE_WEBHOOK_SECRET or ALLPAY_WEBHOOK_SECRET must be set in production;"+
-				" unsigned payment webhooks allow arbitrary ticket minting",
+			"STRIPE_WEBHOOK_SECRET must be set in production;"+
+				" unsigned payment webhooks allow arbitrary ticket minting"+
+				" (ALLPAY_WEBHOOK_SECRET is deprecated and does not count)",
 		))
 	}
 
@@ -1430,7 +1444,16 @@ func (c *Config) validateProduction() []error {
 		))
 	}
 
-	// 17. BREVO_WEBHOOK_TOKEN is the only thing that authenticates the
+	// 17. ALLPAY_API_BASE_URL: same reasoning as STRIPE_API_BASE_URL above.
+	if strings.TrimSpace(c.AllPayAPIBaseURL) != "" {
+		errs = append(errs, errors.New(
+			"ALLPAY_API_BASE_URL must not be set in production;"+
+				" it redirects hosted checkout calls away from allpay.to"+
+				" and is for tests and local development only",
+		))
+	}
+
+	// 18. BREVO_WEBHOOK_TOKEN is the only thing that authenticates the
 	// delivery-status webhook: a short or well-known value would let anyone
 	// mark buyers' letters delivered or bounced.
 	for _, tok := range []struct{ name, value string }{

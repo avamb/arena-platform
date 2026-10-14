@@ -1,12 +1,12 @@
 // webhook.go provides HMAC-SHA256 signature verification helpers for inbound
 // payment provider webhooks.
 //
-// Two providers are currently supported:
+// Stripe uses the "Stripe-Signature" header with format t=<ts>,v1=<sig>.
+// Providers that sign their callbacks in the BODY (Flitt, AllPay) verify them
+// in their own adapter package, under the key of the config the callback URL
+// names.
 //
-//   - Stripe  — uses the "Stripe-Signature" header with format t=<ts>,v1=<sig>
-//   - AllPay  — uses the "X-AllPay-Signature" header containing a hex HMAC-SHA256
-//
-// Both helpers return ErrInvalidWebhookSignature (possibly wrapped) on failure.
+// The helpers return ErrInvalidWebhookSignature (possibly wrapped) on failure.
 package payments
 
 import (
@@ -100,39 +100,6 @@ func VerifyStripeSignature(signatureHeader string, body []byte, secret string, t
 	}
 
 	return fmt.Errorf("%w: computed HMAC does not match any provided v1 signature", ErrInvalidWebhookSignature)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// AllPay webhook signature verification
-// ─────────────────────────────────────────────────────────────────────────────
-
-// VerifyAllPaySignature verifies the HMAC-SHA256 signature of an AllPay webhook.
-//
-// AllPay sends the signature as a lowercase hex-encoded HMAC-SHA256 of the raw
-// body using the shared secret, in the "X-AllPay-Signature" header.
-//
-// Parameters:
-//   - signatureHeader: raw value of the "X-AllPay-Signature" header (hex HMAC)
-//   - body: raw (unmodified) request body bytes
-//   - secret: AllPay webhook shared secret
-//
-// Returns ErrInvalidWebhookSignature when the header is absent or the HMAC
-// does not match.
-func VerifyAllPaySignature(signatureHeader string, body []byte, secret string) error {
-	if strings.TrimSpace(signatureHeader) == "" {
-		return fmt.Errorf("%w: missing X-AllPay-Signature header", ErrInvalidWebhookSignature)
-	}
-
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(body)
-	expected := hex.EncodeToString(mac.Sum(nil))
-
-	// AllPay transmits lowercase hex; normalise the incoming header just in case.
-	if !hmac.Equal([]byte(strings.ToLower(strings.TrimSpace(signatureHeader))), []byte(expected)) {
-		return fmt.Errorf("%w: AllPay HMAC-SHA256 mismatch", ErrInvalidWebhookSignature)
-	}
-
-	return nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
