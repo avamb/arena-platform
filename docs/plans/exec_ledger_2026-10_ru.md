@@ -53,9 +53,9 @@
 | 0-4 | A5: геопомощники в `hgeo` | M sonnet | агент | `feat/s-0-4-geo-helpers` | #119 | PR, ревью (sonnet) | build 0, vet 0, gofmt пусто, lint 0 (geotz, hgeo, httpserver), test 0 (geotz, hgeo, httpserver, eventbot, adapters/http, staticanalysis), кодген без drift | интеграционных тестов нет (ни одного нового запроса к БД); маршрут валюты не гонялся на живой базе (у страны без валюты в БД default USD по миграции 0081) |
 | 0-5 | A2: приглашение в команду с каналом `web` | M sonnet | агент | `feat/s-0-5-invite-channel` | #123 | PR, ревью (sonnet) | build 0, vet 0 (± integration), unit 0 (authemail, httpserver, adapters, staticanalysis, arena-worker; `TestInfoP99Latency_*` флаки под нагрузкой), lint 0, gofmt чисто, integration (`arena_ci_s05`: BotInvitation, BotE2E_Team) 0 до и после rebase, кодген без drift | живая доставка через SMTP/Brevo, вид писем в почтовом клиенте, экраны ивент-центра; **выкат: worker раньше api** (новый job `auth.org_added_email`) |
 | 0-8 | Автотест писем (`X-Mailin-custom` + HTML-часть); V1–V5 вручную — ST-7 | S sonnet | агент | `feat/s-0-8-letter-tracking-test` | #114 | **влито** 14.10 | build 0, vet 0, test 0, gofmt пусто, lint 0 (только два пакета) | V1–V5 — владелец (В-5); интеграционные тесты `delivery` не гонялись (пакет не менялся) |
-| 3-1 | `event-bundle?dry_run=true` | **L opus** + opus-ревью | | `feat/s-3-1-bundle-dry-run` | | ожидает (после этапа 0) | | |
+| 3-1 | `event-bundle?dry_run=true` | **L opus** + opus-ревью | агент (opus) | `feat/s-3-1-bundle-dry-run` | | в работе (запущена 14.10 после сдачи всех PR этапа 0; `himports` этап 0 не трогал) | | |
 | 3-2 | `GET …/events/{id}/event-bundle` | M sonnet | | `feat/s-3-2-event-bundle-read` | | ожидает (после 3-1) | | |
-| 3-3 | Чтение афиши на api, бот зовёт api | M sonnet + opus-ревью | | `feat/s-3-3-poster-facts-api` | | ожидает (после этапа 0) | | |
+| 3-3 | Чтение афиши на api, бот зовёт api | M sonnet + opus-ревью | агент | `feat/s-3-3-poster-facts-api` | | в работе (запущена 14.10 параллельно с 3-1; пересечение с 0-3 только в `wizard_bot.go`, решается слиянием) | | |
 
 ### 3.2 Веб-линия
 
