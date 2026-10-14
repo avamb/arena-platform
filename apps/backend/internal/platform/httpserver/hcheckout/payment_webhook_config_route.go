@@ -114,6 +114,20 @@ func (h *Handler) HandlePaymentIntentWebhookForConfig(w http.ResponseWriter, r *
 	}
 
 	event, entryDesc, sigErr := h.verifyConfigWebhookSignature(r, body, cfg)
+	if sigErr != nil && errors.Is(sigErr, payments.ErrProviderUnreachable) {
+		// The signature verified, but the module must confirm the event with
+		// the provider first (AllPay reads a paid order back) and could not.
+		// 503 makes the provider deliver it again later; nothing was written.
+		h.logger.Warn("webhook: the provider could not confirm a signed event; asking for a redelivery",
+			slog.String("config_id", configID.String()),
+			slog.String("provider", cfg.Provider),
+			slog.String("error", sigErr.Error()),
+		)
+		h.recordWebhookEvent(observability.PaymentWebhookEventOther, webhookOutcomeError)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"webhook.provider_unconfirmed", "the payment provider could not confirm the event; deliver it again later", r))
+		return
+	}
 	if sigErr != nil {
 		h.logger.Warn("webhook: invalid signature on the per-config route; rejecting request",
 			slog.String("config_id", configID.String()),
@@ -191,7 +205,9 @@ func (h *Handler) usableWebhookConfig(r *http.Request, configID uuid.UUID) (gen.
 // which would defeat the point of this route. Here the provider comes from
 // the config row, so the expected scheme is known too.
 func (h *Handler) verifyConfigWebhookSignature(r *http.Request, body []byte, cfg gen.PaymentProviderConfigRow) (payments.NormalizedEvent, payments.Descriptor, error) {
-	parser, d, ok := webhookParserFor(cfg.Provider, payments.SecretsFromJSON(cfg.Secrets))
+	opts := h.moduleOptions
+	opts.Mode = cfg.Mode
+	parser, d, ok := webhookParserFor(cfg.Provider, payments.SecretsFromJSON(cfg.Secrets), opts)
 	if !ok {
 		return payments.NormalizedEvent{}, payments.Descriptor{}, errNoWebhookModule
 	}

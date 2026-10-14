@@ -976,8 +976,8 @@ var RefundWebhookEventTypeToState = refundWebhookEventTypeToState
 //
 // This endpoint is intentionally unauthenticated via JWT — payment providers
 // deliver webhooks from their own infrastructure. Authentication is performed
-// via HMAC signature verification (Stripe-Signature or X-AllPay-Signature
-// headers) before the body is parsed or any database state is mutated.
+// via the Stripe-Signature HMAC before the body is parsed or any database
+// state is mutated.
 //
 // Idempotency: each (provider_refund_id, event_type) is recorded in
 // refund_events with a UNIQUE constraint. Duplicate deliveries return 204.

@@ -87,6 +87,32 @@ func TestValidateSecretFormats_LeavesUnknownProvidersAlone(t *testing.T) {
 	}
 }
 
+// An optional setting a module describes with a Pattern (AllPay's VAT code and
+// installments) is refused at save time when it does not fit, so a typo never
+// reaches a buyer's checkout as a failed payment page.
+func TestValidateSecretFormats_AppliesTheFieldPattern(t *testing.T) {
+	for _, ok := range []map[string]string{{"vat": "0"}, {"vat": "1"}, {"vat": "3"}, {"max_installments": "12"}, {"max_installments": "2"}} {
+		if err := ValidateSecretFormats("allpay", "test", ok); err != nil {
+			t.Errorf("%v was refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []map[string]string{{"vat": "18"}, {"vat": "2"}, {"max_installments": "1"}, {"max_installments": "13"}, {"max_installments": "six"}} {
+		err := ValidateSecretFormats("allpay", "live", bad)
+		if err == nil {
+			t.Errorf("%v was accepted", bad)
+			continue
+		}
+		for _, v := range bad {
+			if strings.Contains(err.Error(), "\""+v+"\"") {
+				t.Errorf("the error echoes the value back: %v", err)
+			}
+		}
+	}
+	if err := ValidateSecretFormats("allpay", "live", map[string]string{"vat": ""}); err != nil {
+		t.Errorf("clearing an optional setting was refused: %v", err)
+	}
+}
+
 // A key copied out of a web page or an e-mail routinely carries a trailing
 // newline. Stored verbatim it becomes a 401 nobody can explain.
 func TestNormalizeSecretValue_DropsPastedWhitespace(t *testing.T) {

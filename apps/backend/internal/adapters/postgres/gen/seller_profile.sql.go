@@ -110,13 +110,18 @@ func (q *Queries) SetChannelSellerDisplay(ctx context.Context, channelID, orgID 
 type ContactFormTarget struct {
 	ChannelID uuid.UUID
 	HasEmail  bool
+	// OwnerReachable: the organization has an owner whose account e-mail
+	// may take the messages (OwnerRecipientWhereSQL). A message from a
+	// promoter's page goes to that owner only. A boolean, never the address.
+	OwnerReachable bool
 }
 
 const getContactFormTarget = `-- name: GetContactFormTarget :one
 SELECT sc.id,
        COALESCE(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') <> ''
          OR COALESCE(btrim(o.contact_email), '') <> ''
-         OR ` + ownerReachableSQL + ` AS has_email
+         OR ` + ownerReachableSQL + ` AS has_email,
+       ` + ownerReachableSQL + ` AS owner_reachable
 FROM sales_channels sc
 JOIN organizations o ON o.id = sc.org_id
 JOIN agent_feed_tokens ft ON ft.sales_channel_id = sc.id
@@ -134,7 +139,7 @@ LIMIT 1`
 // there is none; a token of another organization finds none.
 func (q *Queries) GetContactFormTarget(ctx context.Context, orgID uuid.UUID, feedToken string) (ContactFormTarget, error) {
 	var t ContactFormTarget
-	err := q.db.QueryRow(ctx, getContactFormTarget, orgID, feedToken).Scan(&t.ChannelID, &t.HasEmail)
+	err := q.db.QueryRow(ctx, getContactFormTarget, orgID, feedToken).Scan(&t.ChannelID, &t.HasEmail, &t.OwnerReachable)
 	return t, err
 }
 
@@ -192,6 +197,45 @@ FROM organizations o WHERE o.id = $1 AND o.deleted_at IS NULL`
 func (q *Queries) OrgHasPrivateRecipient(ctx context.Context, orgID uuid.UUID) (bool, error) {
 	var v bool
 	err := q.db.QueryRow(ctx, orgHasPrivateRecipient, orgID).Scan(&v)
+	return v, err
+}
+
+// EventPromotedSQL is the ONE rule for "this event belongs to a promoter"
+// (event alias e): a link in event_promoters to a promoter of the same
+// organization that is not archived. A buyer's message about such an event,
+// and every message from a promoter's own page, goes to the organization's
+// owner only (owner decision 2026-10-14), never to the promoter's e-mail and
+// never to the sales page's public e-mail. The page's form, the send route
+// and the letters' form link all decide with it
+// (TestEventPromotedRule_OneCopyEverywhere).
+const EventPromotedSQL = `EXISTS (SELECT 1 FROM event_promoters epx
+               JOIN org_promoters opx ON opx.id = epx.promoter_id AND opx.org_id = epx.org_id
+               WHERE epx.event_id = e.id AND epx.org_id = e.org_id AND opx.archived_at IS NULL)`
+
+const getContactEventPromoted = `-- name: GetContactEventPromoted :one
+SELECT EXISTS (SELECT 1 FROM events e
+               WHERE e.org_id = $1 AND lower(e.slug) = lower($2) AND e.deleted_at IS NULL
+                 AND ` + EventPromotedSQL + `)`
+
+// GetContactEventPromoted reports whether the event with this slug in orgID
+// belongs to a promoter (EventPromotedSQL). An unknown slug, or one of
+// another organization, answers false.
+func (q *Queries) GetContactEventPromoted(ctx context.Context, orgID uuid.UUID, eventSlug string) (bool, error) {
+	var v bool
+	err := q.db.QueryRow(ctx, getContactEventPromoted, orgID, eventSlug).Scan(&v)
+	return v, err
+}
+
+const orgOwnerReachable = `-- name: OrgOwnerReachable :one
+SELECT ` + ownerReachableSQL + `
+FROM organizations o WHERE o.id = $1 AND o.deleted_at IS NULL`
+
+// OrgOwnerReachable reports whether the organization has an owner who may
+// receive the contact form's messages (OwnerRecipientWhereSQL). A boolean
+// only: the hosted page never learns the address.
+func (q *Queries) OrgOwnerReachable(ctx context.Context, orgID uuid.UUID) (bool, error) {
+	var v bool
+	err := q.db.QueryRow(ctx, orgOwnerReachable, orgID).Scan(&v)
 	return v, err
 }
 

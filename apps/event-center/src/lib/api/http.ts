@@ -211,6 +211,20 @@ export async function requestPasswordReset(email: string): Promise<void> {
   );
 }
 
+/**
+ * Sets the password from a link of a password letter (reset, account setup
+ * or invitation: all three redeem the same one-time token).
+ */
+export async function confirmPasswordReset(token: string, newPassword: string): Promise<void> {
+  await readJson<unknown>(
+    await send({
+      route: API.passwordResetConfirm,
+      body: { token, new_password: newPassword },
+      authenticated: false,
+    }),
+  );
+}
+
 type CallOptions = Omit<SendOptions, "authenticated">;
 
 async function sendAuthed(opts: CallOptions): Promise<Response> {

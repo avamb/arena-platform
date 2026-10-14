@@ -12,7 +12,7 @@ if [ -z "$asset" ]; then
   exit 1
 fi
 status=0
-for path in / /o/any/events /index.html /sw.js /manifest.webmanifest "$asset"; do
+for path in / /o/any/events /index.html "/reset-password?token=check" "/accept-invite?token=check" /sw.js /manifest.webmanifest "$asset"; do
   headers="$(curl -fsSI "$base$path")"
   for want in \
     "content-security-policy: default-src 'none'" \
@@ -27,6 +27,6 @@ for path in / /o/any/events /index.html /sw.js /manifest.webmanifest "$asset"; d
   done
 done
 if [ "$status" -eq 0 ]; then
-  echo "OK: security headers on /, a deep link, /index.html, /sw.js, the manifest and $asset"
+  echo "OK: security headers on /, a deep link, /index.html, the password pages, /sw.js, the manifest and $asset"
 fi
 exit "$status"

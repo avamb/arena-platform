@@ -10,6 +10,7 @@ package delivery
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -187,5 +188,67 @@ func assertOwnerAddress(ctx context.Context, t *testing.T, pool *pgxpool.Pool, o
 	}
 	if got == nil || *got != want {
 		t.Errorf("owner recipient = %v, want %s", got, want)
+	}
+}
+
+// Owner decision 2026-10-14: the form's messages about an event of a
+// promoter go to the organization's owner only. to_owner follows the same
+// rule as the page and the send route (gen.EventPromotedSQL): an active
+// promoter of the SAME organization; an archived one no longer counts.
+func TestTicketContactRoute_PromoterEventGoesToTheOwner(t *testing.T) {
+	pool := presentationPool(t)
+	ctx := context.Background()
+	seed, cleanup := seedPresentationTicket(ctx, t, pool)
+	defer cleanup()
+	var orgID uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT org_id FROM events WHERE id = $1`, seed.EventID).Scan(&orgID); err != nil {
+		t.Fatal(err)
+	}
+	q := gen.New(pool)
+	toOwner := func() bool {
+		t.Helper()
+		r, err := q.GetTicketContactRoute(ctx, seed.TicketID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.ToOwner
+	}
+	if toOwner() {
+		t.Fatal("an event without a promoter must keep the organization's chain")
+	}
+	var promoterID uuid.UUID
+	if err := pool.QueryRow(ctx, `INSERT INTO org_promoters (org_id, name, slug, email) VALUES ($1, $2, $3, 'promoter@lumen.example') RETURNING id`,
+		orgID, "Lumen "+uuid.NewString()[:8], "lumen-"+uuid.NewString()[:8]).Scan(&promoterID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		c := context.Background()
+		_, _ = pool.Exec(c, `DELETE FROM event_promoters WHERE event_id = $1`, seed.EventID)
+		_, _ = pool.Exec(c, `DELETE FROM org_promoters WHERE id = $1`, promoterID)
+	}()
+	if _, err := pool.Exec(ctx, `INSERT INTO event_promoters (event_id, org_id, promoter_id) VALUES ($1, $2, $3)`, seed.EventID, orgID, promoterID); err != nil {
+		t.Fatal(err)
+	}
+	if !toOwner() {
+		t.Error("an event of a promoter must send the form's messages to the owner")
+	}
+	slug := "ev-promo-" + uuid.NewString()[:8]
+	if _, err := pool.Exec(ctx, `UPDATE events SET slug = $2 WHERE id = $1`, seed.EventID, slug); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := q.GetContactEventPromoted(ctx, orgID, strings.ToUpper(slug)); err != nil || !ok {
+		t.Errorf("the send route's rule must agree with the letters' (slug matched case-insensitively): %v %v", ok, err)
+	}
+	if ok, err := q.GetContactEventPromoted(ctx, uuid.New(), slug); err != nil || ok {
+		t.Errorf("another organization never sees this event as its own: %v %v", ok, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE org_promoters SET archived_at = now() WHERE id = $1`, promoterID); err != nil {
+		t.Fatal(err)
+	}
+	if toOwner() {
+		t.Error("an archived promoter no longer sends the messages to the owner")
+	}
+	if ok, err := q.GetContactEventPromoted(ctx, orgID, slug); err != nil || ok {
+		t.Errorf("the send route must agree on an archived promoter: %v %v", ok, err)
 	}
 }
