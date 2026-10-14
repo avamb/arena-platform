@@ -298,36 +298,69 @@ func TestBotInvitationWeb_Lifecycle_AcceptedAtOnceNoResendRevokeKeepsTheMember(t
 	out := decodeWebInvite(t, rec.Body.Bytes())
 	inv, user := out.Invitation.ID, out.Invitation.UserID
 
-	// The team list reports it accepted.
-	code, _, body := m.call(&f.ownerID, http.MethodGet, "/v1/organizations/"+f.orgID.String()+"/bot-team", nil)
-	if code != http.StatusOK {
-		t.Fatalf("bot-team: %d %s", code, body)
-	}
-	var team struct {
-		Members []struct {
-			UserID          uuid.UUID `json:"user_id"`
-			InvitationState string    `json:"invitation_state"`
-			InvitationID    uuid.UUID `json:"invitation_id"`
-		} `json:"members"`
-	}
-	if err := json.Unmarshal(body, &team); err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, mem := range team.Members {
-		if mem.UserID == user {
-			found = true
-			if mem.InvitationState != "accepted" || mem.InvitationID != inv {
-				t.Fatalf("member = %+v", mem)
+	// The team list: "waiting" while the new account's setup link is unused and
+	// alive, "accepted" once it was used, and always "accepted" for an account
+	// that already existed. The channel is reported and no resend time is.
+	teamState := func(who uuid.UUID) (state, channel string, id uuid.UUID, resendAt *string) {
+		t.Helper()
+		code, _, body := m.call(&f.ownerID, http.MethodGet, "/v1/organizations/"+f.orgID.String()+"/bot-team", nil)
+		if code != http.StatusOK {
+			t.Fatalf("bot-team: %d %s", code, body)
+		}
+		var team struct {
+			Members []struct {
+				UserID            uuid.UUID `json:"user_id"`
+				InvitationState   string    `json:"invitation_state"`
+				InvitationChannel string    `json:"invitation_channel"`
+				InvitationID      uuid.UUID `json:"invitation_id"`
+				ResendAvailableAt *string   `json:"resend_available_at"`
+			} `json:"members"`
+		}
+		if err := json.Unmarshal(body, &team); err != nil {
+			t.Fatal(err)
+		}
+		for _, mem := range team.Members {
+			if mem.UserID == who {
+				return mem.InvitationState, mem.InvitationChannel, mem.InvitationID, mem.ResendAvailableAt
 			}
 		}
-	}
-	if !found {
 		t.Fatal("the invited person is missing from the team list")
+		return
+	}
+	state, channel, id, resendAt := teamState(user)
+	if state != "waiting" || channel != "web" || id != inv || resendAt != nil {
+		t.Fatalf("new account before setup: state %q channel %q id %v resend %v", state, channel, id, resendAt)
+	}
+	// An expired, unused link is not waiting any more.
+	m.exec(`UPDATE password_reset_tokens SET expires_at = now() - interval '1 minute' WHERE user_id = $1`, user)
+	if state, _, _, _ = teamState(user); state != "accepted" {
+		t.Fatalf("expired setup link: state %q, want accepted", state)
+	}
+	m.exec(`UPDATE password_reset_tokens SET expires_at = now() + interval '1 day' WHERE user_id = $1`, user)
+	if state, _, _, _ = teamState(user); state != "waiting" {
+		t.Fatalf("live setup link: state %q, want waiting", state)
+	}
+	// Setting the password uses the token.
+	m.exec(`UPDATE password_reset_tokens SET used_at = now() WHERE user_id = $1`, user)
+	if state, _, _, _ = teamState(user); state != "accepted" {
+		t.Fatalf("used setup link: state %q, want accepted", state)
+	}
+	// An account that existed before is accepted at once, whatever tokens it has.
+	oldEmail := f.newEmail("web-old")
+	old, err := gen.New(pool).InsertUser(context.Background(), oldEmail, "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.exec(`INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES ($1, $2, now() + interval '1 hour')`, uuid.NewString(), old.ID)
+	if rec2 := f.invite(srv, f.ownerID, `{"email":"`+oldEmail+`","role":"manager","channel":"web"}`); rec2.Code != http.StatusCreated {
+		t.Fatalf("invite existing: %d %s", rec2.Code, rec2.Body.String())
+	}
+	if state, channel, _, _ = teamState(old.ID); state != "accepted" || channel != "web" {
+		t.Fatalf("existing account: state %q channel %q, want accepted/web", state, channel)
 	}
 
 	// A lost link is replaced by "forgot password", not by a resend.
-	code, _, body = m.call(&f.ownerID, http.MethodPost, m.invPath(f.orgID, inv, "/resend"), nil)
+	code, _, body := m.call(&f.ownerID, http.MethodPost, m.invPath(f.orgID, inv, "/resend"), nil)
 	if code != http.StatusConflict || errCodeOf(body) != "bot.invitation_channel_unsupported" {
 		t.Fatalf("resend: %d %s", code, body)
 	}

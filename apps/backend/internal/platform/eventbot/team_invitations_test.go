@@ -20,6 +20,8 @@ func TestTeamMember_RevokableOnlyForAnOpenInvitation(t *testing.T) {
 		{"waiting", TeamMember{InvitationState: invStateWaiting, InvitationID: id}, true},
 		{"expired", TeamMember{InvitationState: invStateExpired, InvitationID: id}, true},
 		{"accepted", TeamMember{InvitationState: invStateAccepted, InvitationID: id}, false},
+		{"web waiting has no resend or revoke", TeamMember{InvitationState: invStateWaiting, InvitationID: id, InvitationChannel: "web"}, false},
+		{"telegram channel", TeamMember{InvitationState: invStateWaiting, InvitationID: id, InvitationChannel: "telegram"}, true},
 		{"none", TeamMember{}, false},
 		{"state without id", TeamMember{InvitationState: invStateWaiting}, false},
 	}

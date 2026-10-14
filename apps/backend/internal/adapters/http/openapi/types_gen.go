@@ -3413,7 +3413,12 @@ type BotTeamMember struct {
 	// Email The member's e-mail, the name the bot shows.
 	Email string `json:"email"`
 
-	// InvitationExpiresAt When the invitation's code stops working. Absent with `invitation_state`.
+	// InvitationChannel How the invitation was sent, `telegram` or `web`. Absent with
+	// `invitation_state`. A `web` invitation cannot be resent
+	// (`resend_available_at` is never present for it).
+	InvitationChannel *string `json:"invitation_channel,omitempty"`
+
+	// InvitationExpiresAt When the invitation's code stops working (for a `web` invitation that is still `waiting`, when its setup link stops working). Absent with `invitation_state`.
 	InvitationExpiresAt *time.Time `json:"invitation_expires_at,omitempty"`
 
 	// InvitationId Id of that invitation, what the revoke and resend routes take. Absent with `invitation_state`.
@@ -3426,6 +3431,14 @@ type BotTeamMember struct {
 	// (sent, not opened, not expired) or `expired`. Absent for a member
 	// who has no bot invitation (added another way). Plain string on
 	// purpose: an inline enum would rename generated Go constants.
+	//
+	// For an invitation sent for the web event center (`invitation_channel`
+	// `web`) the invitation row is accepted at once, so the state comes
+	// from the setup link: `waiting` while the account that invitation
+	// created has an unused, unexpired password-setup token, `accepted`
+	// once it was used or none is left. For an account that already
+	// existed it is always `accepted`: the API cannot tell whether it
+	// ever chose a password.
 	InvitationState *string `json:"invitation_state,omitempty"`
 
 	// JoinedAt When the membership was created.

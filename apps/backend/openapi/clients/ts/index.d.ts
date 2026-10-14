@@ -10119,8 +10119,22 @@ export interface components {
              *     (sent, not opened, not expired) or `expired`. Absent for a member
              *     who has no bot invitation (added another way). Plain string on
              *     purpose: an inline enum would rename generated Go constants.
+             *
+             *     For an invitation sent for the web event center (`invitation_channel`
+             *     `web`) the invitation row is accepted at once, so the state comes
+             *     from the setup link: `waiting` while the account that invitation
+             *     created has an unused, unexpired password-setup token, `accepted`
+             *     once it was used or none is left. For an account that already
+             *     existed it is always `accepted`: the API cannot tell whether it
+             *     ever chose a password.
              */
             invitation_state?: string;
+            /**
+             * @description How the invitation was sent, `telegram` or `web`. Absent with
+             *     `invitation_state`. A `web` invitation cannot be resent
+             *     (`resend_available_at` is never present for it).
+             */
+            invitation_channel?: string;
             /**
              * Format: uuid
              * @description Id of that invitation, what the revoke and resend routes take. Absent with `invitation_state`.
@@ -10128,7 +10142,7 @@ export interface components {
             invitation_id?: string;
             /**
              * Format: date-time
-             * @description When the invitation's code stops working. Absent with `invitation_state`.
+             * @description When the invitation's code stops working (for a `web` invitation that is still `waiting`, when its setup link stops working). Absent with `invitation_state`.
              */
             invitation_expires_at?: string;
             /**

@@ -297,11 +297,18 @@ SELECT u.id      AS user_id,
        inv.id           AS invitation_id,
        inv.accepted_at  AS invitation_accepted_at,
        inv.expires_at   AS invitation_expires_at,
-       inv.last_sent_at AS invitation_last_sent_at
+       inv.last_sent_at AS invitation_last_sent_at,
+       (inv.accepted_at IS NOT NULL AND inv.accepted_telegram_user_id IS NULL) AS invitation_web,
+       -- A web invitation of an account that invitation CREATED (same
+       -- transaction, so the same now()) is still waiting while its setup link
+       -- is unused and alive.
+       (SELECT max(t.expires_at) FROM password_reset_tokens t
+        WHERE t.user_id = u.id AND t.used_at IS NULL AND t.expires_at > now()
+          AND u.created_at = inv.created_at) AS web_setup_expires_at
 FROM   memberships m
 JOIN   users u ON u.id = m.user_id
 LEFT JOIN LATERAL (
-           SELECT i.id, i.accepted_at, i.expires_at, i.last_sent_at
+           SELECT i.id, i.accepted_at, i.accepted_telegram_user_id, i.created_at, i.expires_at, i.last_sent_at
            FROM   bot_invitations i
            WHERE  i.user_id = u.id AND i.org_id = m.org_id AND i.revoked_at IS NULL
            ORDER  BY (i.accepted_at IS NOT NULL) DESC, i.created_at DESC
