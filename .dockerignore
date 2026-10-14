@@ -44,6 +44,11 @@ apps/widget/playwright-report
 apps/widget/.playwright
 apps/widget/demo
 
+# ----- Venue SVG generator: own image, own build context -----
+# apps/venue-svg-generator is built from its own folder; the Go and
+# admin images never need the Python tree.
+apps/venue-svg-generator
+
 # ----- Test / CI / Playwright artifacts ----------------------
 .playwright
 .playwright-cli
