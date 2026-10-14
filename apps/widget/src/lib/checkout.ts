@@ -600,6 +600,8 @@ export interface CheckoutI18nStrings {
   name_label: string;
   name_placeholder: string;
   name_required: string;
+  /** Added after the label of a buyer field that is not required. */
+  optional_label: string;
   phone_label: string;
   phone_placeholder: string;
   phone_required: string;
@@ -688,9 +690,10 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     email_required: 'Email address is required',
     email_invalid: 'Please enter a valid email address',
     email_suggestion: 'Did you mean {suggestion}?',
-    name_label: 'Full name',
+    name_label: 'First and last name',
     name_placeholder: 'Jane Smith',
-    name_required: 'Full name is required',
+    name_required: 'First and last name is required',
+    optional_label: '(optional)',
     phone_label: 'Phone',
     phone_placeholder: '+1 555 000 0000',
     phone_required: 'Phone number is required',
@@ -743,9 +746,10 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     email_required: 'Введите адрес электронной почты',
     email_invalid: 'Введите корректный адрес электронной почты',
     email_suggestion: 'Вы имели в виду {suggestion}?',
-    name_label: 'Полное имя',
+    name_label: 'Имя и фамилия',
     name_placeholder: 'Иван Иванов',
-    name_required: 'Введите полное имя',
+    name_required: 'Введите имя и фамилию',
+    optional_label: '(необязательно)',
     phone_label: 'Телефон',
     phone_placeholder: '+7 999 000 0000',
     phone_required: 'Введите номер телефона',
@@ -799,9 +803,10 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     email_required: 'Zadejte e-mailovou adresu',
     email_invalid: 'Zadejte platnou e-mailovou adresu',
     email_suggestion: 'Mysleli jste {suggestion}?',
-    name_label: 'Celé jméno',
+    name_label: 'Jméno a příjmení',
     name_placeholder: 'Jan Novák',
-    name_required: 'Zadejte celé jméno',
+    name_required: 'Zadejte jméno a příjmení',
+    optional_label: '(nepovinné)',
     phone_label: 'Telefon',
     phone_placeholder: '+420 777 000 000',
     phone_required: 'Zadejte telefonní číslo',
@@ -855,9 +860,10 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     email_required: 'נדרשת כתובת דוא"ל',
     email_invalid: 'נא להזין כתובת דוא"ל תקינה',
     email_suggestion: 'האם התכוונת ל-{suggestion}?',
-    name_label: 'שם מלא',
+    name_label: 'שם פרטי ושם משפחה',
     name_placeholder: 'ישראל ישראלי',
-    name_required: 'נדרש שם מלא',
+    name_required: 'יש להזין שם פרטי ושם משפחה',
+    optional_label: '(אופציונלי)',
     phone_label: 'טלפון',
     phone_placeholder: '050-000-0000',
     phone_required: 'נדרש מספר טלפון',

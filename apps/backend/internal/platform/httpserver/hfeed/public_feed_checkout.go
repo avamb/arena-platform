@@ -83,8 +83,8 @@ type PublicGAItem struct {
 
 // PublicBuyerInfo carries the buyer's contact details for the checkout form
 // (feature #321 WID-0d).  Email supersedes holder_email when both are present.
-// Name and phone are collected only when the sales channel has the
-// corresponding collect_name / collect_phone flag enabled.
+// Name and phone are always accepted (the widget offers them as optional);
+// the channel's collect_name / collect_phone flag makes them required.
 type PublicBuyerInfo struct {
 	Email string  `json:"email"`
 	Name  *string `json:"name,omitempty"`
@@ -365,8 +365,8 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// Fetch the buyer-field flags for this feed token and enforce them.
 	// A flag-lookup failure is treated as "flags all off" (non-blocking)
 	// so that a missing row (token had no linked channel, unlikely but
-	// defensive) degrades to email-only rather than hard-failing all
-	// checkouts.
+	// defensive) degrades to name and phone optional rather than
+	// hard-failing all checkouts.
 	var collectName, collectPhone bool
 	if h.publicFeedQueries != nil {
 		flags, flagsErr := h.publicFeedQueries.GetFeedTokenBuyerFlags(ctx, feedToken)
@@ -389,12 +389,11 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		buyerPhone = ptrOrNil(strings.TrimSpace(derefOr(req.Buyer.Phone)))
 	}
 
+	// A flag that is off means "optional": an empty value is accepted and a
+	// non-empty one is kept (buyerName above). Only a required field refuses
+	// an empty value; whitespace alone counts as empty.
 	if collectName {
-		var name string
-		if req.Buyer != nil && req.Buyer.Name != nil {
-			name = *req.Buyer.Name
-		}
-		if name == "" {
+		if buyerName == nil {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 				"checkout.buyer_name_required",
 				"This sales channel needs the buyer's name (buyer.name). Fill it in and try again.",
@@ -406,11 +405,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	}
 
 	if collectPhone {
-		var phone string
-		if req.Buyer != nil && req.Buyer.Phone != nil {
-			phone = *req.Buyer.Phone
-		}
-		if phone == "" {
+		if buyerPhone == nil {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 				"checkout.buyer_phone_required",
 				"This sales channel needs the buyer's phone number (buyer.phone). Fill it in and try again.",
@@ -1125,8 +1120,8 @@ func (h *Handler) applyPromoDiscount(ctx context.Context, q *gen.Queries, promoR
 
 // publicOrderBuyer is the buyer identity the public feed collected on this
 // request. Email is always present (the endpoint rejects an empty one at step
-// 4); name and phone are only filled when the channel's collect_name /
-// collect_phone flags are on.
+// 4); name and phone are filled when the buyer typed them, and are demanded
+// only when the channel's collect_name / collect_phone flags are on.
 type publicOrderBuyer struct {
 	Email string
 	Name  *string
