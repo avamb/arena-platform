@@ -121,7 +121,6 @@ type WebhookRequest struct {
 	Provider string
 	// SignatureHeader is the provider-specific signature header value.
 	// For Stripe this is the raw "Stripe-Signature" header value.
-	// For AllPay this is the raw "X-AllPay-Signature" header value.
 	SignatureHeader string
 	// Body is the raw (un-parsed) request body bytes used for signature verification.
 	Body []byte

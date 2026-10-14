@@ -149,6 +149,9 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 		if pay, err = getPayment(ctx, tx, *piID); err != nil {
 			return err
 		}
+		if pay.OtherRefunded, pay.OtherUncertain, err = otherProviderRefunds(ctx, tx, *piID, id); err != nil {
+			return err
+		}
 		if b, ticket, berr := e.blockScannedAtClaim(ctx, tx, id); berr != nil || b != nil {
 			if b != nil {
 				r, scannedTicket = *b, ticket
@@ -177,7 +180,7 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 			return err
 		}
 		r = claimed
-		return nil
+		return tx.QueryRow(ctx, `SELECT first_attempted_at FROM refunds WHERE id = $1`, id).Scan(&pay.RefundFirstAttemptAt)
 	})
 	if err == nil && scannedTicket != uuid.Nil {
 		e.RecordScannedBlock(ctx, r.OrgID, scannedTicket, Actor{}, "claim")
@@ -188,6 +191,28 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 		return r, pay, ErrNotClaimable
 	}
 	return r, pay, err
+}
+
+// otherProviderRefunds sums the OTHER provider refunds of a payment for
+// payments.RefundRequest (PAY-14b). refunded: the provider accepted them
+// (a provider refund id, and the row is succeeded, still pending, or the
+// provider itself reported success — a dashboard refund parked over the
+// payment). uncertain: a call ended without an answer (attempted, no
+// provider refund id, not settled either way), or the row is parked for a
+// human although the provider once accepted it. The caller holds the
+// payment's lock and no other call of the payment is in flight, so both
+// sums are final for the length of this call.
+func otherProviderRefunds(ctx context.Context, tx pgx.Tx, paymentID, refundID uuid.UUID) (refunded, uncertain int64, err error) {
+	err = tx.QueryRow(ctx, `
+		SELECT COALESCE(SUM(amount) FILTER (WHERE provider_refund_id IS NOT NULL
+		                AND (state IN ('succeeded', 'provider_pending') OR provider_status = 'succeeded')), 0)::bigint,
+		       COALESCE(SUM(amount) FILTER (WHERE
+		                (provider_refund_id IS NULL AND provider_attempts > 0 AND state IN ('provider_pending', 'manual_review'))
+		             OR (provider_refund_id IS NOT NULL AND state = 'manual_review' AND provider_status IS DISTINCT FROM 'succeeded')), 0)::bigint
+		FROM   refunds
+		WHERE  payment_intent_id = $1 AND id <> $2 AND settlement = 'provider' AND provider IS NOT NULL`,
+		paymentID, refundID).Scan(&refunded, &uncertain)
+	return refunded, uncertain, err
 }
 
 // parkOverBudget is the claim's budget re-check (fourth review, M-b). The
@@ -347,13 +372,17 @@ func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
 	}
 
 	res, err := refunder.Refund(callCtx, payments.RefundRequest{
-		ProviderChargeRef:  chargeRef,
-		AmountMinor:        r.Amount,
-		PaymentAmountMinor: pay.Amount,
-		Currency:           r.Currency,
-		Reason:             deref(r.Reason),
-		IdempotencyKey:     r.ID.String(),
-		Metadata:           payments.RefundMetadata{RefundID: r.ID.String(), OrderID: uuidString(r.OrderID)},
+		ProviderChargeRef:   chargeRef,
+		AmountMinor:         r.Amount,
+		PaymentAmountMinor:  pay.Amount,
+		Currency:            r.Currency,
+		Reason:              deref(r.Reason),
+		IdempotencyKey:      r.ID.String(),
+		OtherRefundedMinor:  pay.OtherRefunded,
+		OtherUncertainMinor: pay.OtherUncertain,
+		Attempt:             int(r.ProviderAttempts),
+		FirstAttemptAt:      pay.RefundFirstAttemptAt,
+		Metadata:            payments.RefundMetadata{RefundID: r.ID.String(), OrderID: uuidString(r.OrderID)},
 	})
 	switch {
 	case err != nil:

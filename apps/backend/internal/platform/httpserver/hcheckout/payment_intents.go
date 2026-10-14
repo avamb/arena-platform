@@ -127,12 +127,16 @@ var validWebhookTransitions = map[string]map[string]bool{
 		"succeeded":       true,
 		"authorized":      true,
 		"failed":          true,
+		// A paid event whose amount or currency disagrees with the intent
+		// (payment_amount_guard.go).
+		"manual_review": true,
 	},
 	"requires_action": {
-		"processing": true,
-		"succeeded":  true,
-		"authorized": true,
-		"failed":     true,
+		"processing":    true,
+		"succeeded":     true,
+		"authorized":    true,
+		"failed":        true,
+		"manual_review": true,
 	},
 	"processing": {
 		"authorized":    true,
@@ -685,9 +689,9 @@ func providerChargeRef(req webhookPaymentIntentRequest) *string {
 //
 // This is what Stripe (and this repo's own internal/adapters/stripebilling/adapter.go,
 // see HandleBillingWebhook) actually send — as opposed to the flat, normalised
-// webhookPaymentIntentRequest shape used by the mock provider and AllPay.
-// AllPay is left as-is: it POSTs the flat shape natively and has no envelope
-// of its own to parse.
+// webhookPaymentIntentRequest shape used by the mock provider. (Flitt and
+// AllPay never reach this parser: their modules normalize their own bodies on
+// the per-config route.)
 type stripeEventEnvelope struct {
 	ID   string `json:"id"`
 	Type string `json:"type"`
@@ -711,7 +715,7 @@ type stripeEventEnvelope struct {
 // POST /v1/payment-intents/webhook supports:
 //
 //   - The flat, normalised shape (webhookPaymentIntentRequest) used by the
-//     mock provider, AllPay, and every pre-existing test/integration fixture.
+//     mock provider and every pre-existing test/integration fixture.
 //   - A genuine Stripe event envelope (stripeEventEnvelope). Before this fix
 //     a real Stripe payment_intent.succeeded webhook — which Stripe always
 //     sends as an envelope, never as the flat shape — failed parsing with
@@ -891,8 +895,9 @@ var WebhookEventTypeToState = webhookEventTypeToState
 //
 // This endpoint is intentionally unauthenticated via JWT — payment providers
 // deliver webhooks from their own infrastructure. Authentication is performed
-// via HMAC signature verification (Stripe-Signature or X-AllPay-Signature
-// headers) before the body is parsed or any database state is mutated.
+// via the Stripe-Signature HMAC (or, on the per-config route, the module of
+// the config in the URL) before the body is parsed or any database state is
+// mutated.
 //
 // # Atomicity (feature #363, PR2-07)
 //
@@ -1174,6 +1179,22 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
+	// A module's paid event must name the amount arena asked for
+	// (payment_amount_guard.go). A disagreement parks the payment for a
+	// human instead of shipping tickets.
+	if route.Event != nil && route.ExpectedProvider != "" && targetState == "succeeded" {
+		if why := paidAmountMismatch(*route.Event, pi.Amount, pi.Currency); why != "" {
+			h.logger.Error("PAYMENT AMOUNT MISMATCH: payment intent parked in manual_review",
+				slog.String("payment_intent_id", pi.ID.String()),
+				slog.String("provider", pi.Provider),
+				slog.String("reason", why),
+			)
+			targetState = "manual_review"
+			code := failureCodeAmountMismatch
+			req.FailureCode, req.FailureMessage = &code, &why
+		}
+	}
+
 	if !validWebhookTransition(currentState, targetState) {
 		// Transition not valid — acknowledge without transitioning.
 		h.recordWebhookEvent(req.EventType, webhookOutcomeIgnored)
@@ -1226,6 +1247,17 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 			slog.String("event_type", req.EventType),
 		)
 		_ = tx.Rollback(ctx)
+		if route.ExpectedProvider != "" {
+			// A config-route-only provider (Flitt, AllPay) retries until it
+			// sees 200; a 204 is not documented as success there.
+			httputil.WriteJSON(w, http.StatusOK, map[string]any{
+				"acknowledged": true,
+				"event_type":   req.EventType,
+				"processed":    false,
+				"reason":       "duplicate event delivery",
+			})
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

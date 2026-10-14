@@ -21,12 +21,16 @@ import (
 // and returns it as a WebhookParser, with its descriptor. ok is false for an
 // unknown provider, a declared provider with no module, or a module that
 // does not parse webhooks.
-func webhookParserFor(provider string, secrets map[string]string) (payments.WebhookParser, payments.Descriptor, bool) {
+func webhookParserFor(provider string, secrets map[string]string, opts ...payments.Options) (payments.WebhookParser, payments.Descriptor, bool) {
 	entry, known := paymodules.Registry().Get(provider)
 	if !known || entry.New == nil {
 		return nil, payments.Descriptor{}, false
 	}
-	module, err := entry.Build(secrets, payments.Options{})
+	var o payments.Options
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+	module, err := entry.Build(secrets, o)
 	if err != nil {
 		return nil, payments.Descriptor{}, false
 	}
@@ -96,7 +100,7 @@ func verifyLegacyWebhook(ctx context.Context, r *http.Request, body []byte, orgS
 		return nil
 	}
 	return fmt.Errorf(
-		"%w: no provider signature header present (expected Stripe-Signature or X-AllPay-Signature)",
+		"%w: no provider signature header present (expected Stripe-Signature)",
 		payments.ErrInvalidWebhookSignature,
 	)
 }

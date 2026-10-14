@@ -12,6 +12,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
@@ -254,13 +255,14 @@ type Handler struct {
 	// webhookStripeSecret is the Stripe webhook endpoint signing secret
 	// (whsec_…). When non-empty, HandlePaymentIntentWebhook and
 	// HandleRefundWebhook verify the "Stripe-Signature" HMAC-SHA256 header
-	// before processing the request body. Empty = dev/mock mode (allowed only
-	// when webhookAllPaySecret is also empty and APP_ENV != production).
+	// before processing the request body. Empty = dev/mock mode (refused by
+	// config.Validate under APP_ENV=production).
 	webhookStripeSecret string
 
-	// webhookAllPaySecret is the AllPay webhook shared signing secret.
-	// When non-empty, HandlePaymentIntentWebhook and HandleRefundWebhook verify
-	// the "X-AllPay-Signature" HMAC-SHA256 header. Empty = dev/mock mode.
+	// webhookAllPaySecret is the DEPRECATED ALLPAY_WEBHOOK_SECRET. It verifies
+	// nothing: AllPay is a config-route-only module (its webhook is signed in
+	// the body with the organizer's own key), so the legacy route never asks
+	// it. Kept so the constructor and the config stay compatible.
 	webhookAllPaySecret string
 
 	// Callback fields for cross-domain side effects.
@@ -282,6 +284,19 @@ type Handler struct {
 	// (refund_engine.go, PAY-03). Nil: a refundable payment's approval
 	// answers 503 and writes nothing.
 	refundEngine *refunds.Engine
+
+	// moduleOptions are the provider API roots a webhook module is built
+	// with (WithModuleOptions). A module that confirms an event with its
+	// provider (AllPay reads a paid order back) calls that root.
+	moduleOptions payments.Options
+}
+
+// WithModuleOptions sets the deployment seams (provider API roots) every
+// payment module this handler builds receives. The per-config webhook route
+// adds the config's own mode. Returns the receiver for chaining.
+func (h *Handler) WithModuleOptions(opts payments.Options) *Handler {
+	h.moduleOptions = opts
+	return h
 }
 
 // WithMetrics wires the Prometheus collectors used by the payment-webhook
@@ -317,10 +332,11 @@ func (h *Handler) recordWebhookEvent(eventType, outcome string) {
 
 // New constructs a Handler from the caller's dependencies.
 //
-// webhookStripeSecret and webhookAllPaySecret are the provider HMAC signing
-// secrets used to authenticate inbound webhook calls. When both are empty the
-// handler operates in dev/mock mode and accepts unsigned webhooks. Production
-// deployments must supply at least one — enforced by config.validateProduction.
+// webhookStripeSecret is the HMAC signing secret of the legacy webhook
+// routes. When it is empty the handler operates in dev/mock mode and accepts
+// unsigned webhooks; production must supply it (config.Validate).
+// webhookAllPaySecret is the deprecated ALLPAY_WEBHOOK_SECRET and verifies
+// nothing.
 func New(
 	checkoutQ *gen.Queries,
 	reservationQ *gen.Queries,
@@ -364,15 +380,14 @@ func New(
 }
 
 // verifyWebhookSignature enforces HMAC authentication on inbound webhook
-// requests from payment providers (Stripe and AllPay).
+// requests on the LEGACY un-suffixed routes (Stripe; the mock provider in
+// dev). Flitt and AllPay deliveries are verified on the per-config route.
 //
 // Logic:
 //   - When both secrets are empty (dev/mock mode), returns nil. Production
 //     deployments are prevented from entering this branch by config validation.
 //   - When Stripe-Signature is present and stripeSecret is set, performs
 //     Stripe HMAC-SHA256 verification with the 5-minute replay-attack window.
-//   - When X-AllPay-Signature is present and allPaySecret is set, performs
-//     AllPay HMAC-SHA256 verification.
 //   - When secrets are configured but no recognized signature header is found,
 //     returns ErrInvalidWebhookSignature (caller → 401 Unauthorized, no state change).
 func (h *Handler) verifyWebhookSignature(r *http.Request, body []byte) error {

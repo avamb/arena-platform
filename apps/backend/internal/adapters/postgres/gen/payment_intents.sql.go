@@ -313,8 +313,8 @@ SET    state               = $2,
        authorized_at       = CASE WHEN $2 = 'authorized' THEN now() ELSE authorized_at END,
        succeeded_at        = CASE WHEN $2 = 'succeeded'  THEN now() ELSE succeeded_at  END,
        failed_at           = CASE WHEN $2 = 'failed'     THEN now() ELSE failed_at     END,
-       failure_code        = CASE WHEN $2 = 'failed' THEN COALESCE($5, failure_code)    ELSE failure_code    END,
-       failure_message     = CASE WHEN $2 = 'failed' THEN COALESCE($6, failure_message) ELSE failure_message END,
+       failure_code        = CASE WHEN $2 IN ('failed', 'manual_review') THEN COALESCE($5, failure_code)    ELSE failure_code    END,
+       failure_message     = CASE WHEN $2 IN ('failed', 'manual_review') THEN COALESCE($6, failure_message) ELSE failure_message END,
        provider_payment_id = COALESCE(provider_payment_id, $7),
        provider_charge_ref = COALESCE(provider_charge_ref, $8)
 WHERE  id = $1
@@ -328,8 +328,8 @@ RETURNING id, checkout_session_id, org_id, provider, provider_payment_id, amount
 // Optional parameters:
 //   - scaRedirectURL: set when transitioning to requires_action to supply the 3DS URL
 //   - clientSecret:   set when transitioning to requires_action to supply the SDK secret
-//   - failureCode:    set when transitioning to failed for structured error reporting
-//   - failureMessage: set when transitioning to failed for human-readable error
+//   - failureCode:    set when transitioning to failed or manual_review (the reason)
+//   - failureMessage: set with failureCode, human-readable
 //   - providerPaymentID: set on first provider callback if not supplied at creation time
 //   - providerChargeRef: the pi_… behind a hosted checkout session (migration
 //     0103), learned from the webhook; the first non-NULL value wins

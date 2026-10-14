@@ -90,6 +90,13 @@ func (h *Handler) WithFlittBaseURL(base string) *Handler {
 	return h
 }
 
+// WithAllPayBaseURL points AllPay credential verification at a different API
+// root (a stub in tests). Empty means the real https://allpay.to/app.
+func (h *Handler) WithAllPayBaseURL(base string) *Handler {
+	h.providerOptions.AllPayAPIBaseURL = base
+	return h
+}
+
 // WithCallbackBase sets the public API origin used to build the per-config
 // webhook URL for the subscription check. Empty disables that check.
 func (h *Handler) WithCallbackBase(base string) *Handler {
