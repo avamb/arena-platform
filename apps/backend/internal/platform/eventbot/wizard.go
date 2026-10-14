@@ -119,6 +119,10 @@ type Draft struct {
 	// the card opened ("name", "description", …): the edit card marks them and
 	// offers "Publish changes" only once there is something to publish.
 	Changed []string `json:"changed,omitempty"`
+	// Paused is set when the person opened the menu with the draft half
+	// way (menu_keyboard.go): a typed text or a poster is then not taken as
+	// an answer until a wizard button continues the draft.
+	Paused bool `json:"paused,omitempty"`
 }
 
 // DraftEvent is the event part of the draft.

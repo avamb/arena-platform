@@ -260,6 +260,39 @@ other = "Ya no tienes acceso a esta organización. Si es un error, pide una nuev
 ["bot.unknown_input"]
 other = "No he entendido eso. Usa los botones de abajo."
 
+["bot.stale_message"]
+other = "Este mensaje está desactualizado. Pulsa ☰ Menú abajo."
+
+["bot.stale_message_stranger"]
+other = "Este mensaje está desactualizado. Continúa más abajo."
+
+["bot.menu_button"]
+other = "☰ Menú"
+
+["bot.menu_keyboard_note"]
+other = "El botón ☰ Menú bajo el campo de mensaje siempre abre el menú principal."
+
+["bot.cmd_menu"]
+other = "Abrir el menú principal"
+
+["bot.menu_leave_refund"]
+other = "La devolución del pedido n.º {{.Num}} aún no se ha enviado. Si abres el menú ahora, el comprador no recibe el dinero.\n\nPuedes volver a la devolución o abrir el menú."
+
+["bot.menu_back_refund_btn"]
+other = "↩ Volver a la devolución"
+
+["bot.menu_leave_refund_maybe"]
+other = "Es posible que la devolución del pedido n.º {{.Num}} ya haya empezado: el bot no recibió respuesta del servidor. Revisa el pedido antes de enviar la devolución otra vez.\n\nSi vuelves a la devolución y la envías de nuevo, el dinero no se devuelve dos veces. Si abres el menú, la devolución se queda aquí."
+
+["bot.menu_open_order_btn"]
+other = "📄 Abrir el pedido"
+
+["bot.ref.maybe_started"]
+other = "Es posible que esta devolución ya haya empezado: el bot no recibió respuesta del servidor. Revisa primero el pedido. Enviarla de nuevo no devuelve el dinero dos veces."
+
+["bot.menu_leave_btn"]
+other = "☰ Abrir el menú"
+
 ["bot.wz.new_event_btn"]
 other = "+ Evento"
 
@@ -1558,7 +1591,55 @@ other = "Pedidos"
 other = "<b>Pedidos: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · página {{.Page}} de {{.Pages}}.{{.Search}}\n{{.Legend}}\nPulsa un pedido para abrirlo. Para buscar, escribe un código de barras, un número de pedido, un e-mail, un teléfono o un nombre."
 
 ["bot.ord.legend"]
-other = "✅ pagado  ⏳ pendiente de pago  ⌛ caducado  ✖ cancelado  ↩ reembolsado"
+other = "✅ pagado  ⏳ pendiente de pago  ⌛ caducado  ✖ cancelado  ↩ reembolsado  ⚠️📧 e-mail de entradas no enviado"
+
+["bot.ord.letter_tickets_none"]
+other = "📧 E-mail de entradas: Arena no lo envió."
+
+["bot.ord.letter_tickets_queued"]
+other = "📧 E-mail de entradas: en cola{{if .To}}, a {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_partial_queued"]
+other = "📧 E-mail de entradas: enviado para {{.Done}} de {{.Total}} entradas. Las demás están en cola."
+
+["bot.ord.letter_tickets_sent"]
+other = "📧 E-mail de entradas: enviado{{if .When}} el {{.When}}{{end}}{{if .To}} a {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_delivered"]
+other = "📧 E-mail de entradas: entregado{{if .When}} el {{.When}}{{end}}{{if .To}} a {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_opened"]
+other = "📧 E-mail de entradas: el comprador lo abrió{{if .When}} el {{.When}}{{end}}{{if .To}} ({{.To}}){{end}}."
+
+["bot.ord.letter_tickets_partial"]
+other = "⚠️📧 E-mail de entradas: enviado para {{.Done}} de {{.Total}} entradas. Arena no pudo enviar las demás.{{if .Why}} Motivo: {{.Why}}{{end}}"
+
+["bot.ord.letter_tickets_failed"]
+other = "⚠️📧 E-mail de entradas: Arena no pudo enviarlo{{if .To}} a {{.To}}{{end}}.{{if .Why}} Motivo: {{.Why}}{{end}}"
+
+["bot.ord.letter_refund_off"]
+other = "📧 E-mail de reembolso: elegiste no enviarlo."
+
+["bot.ord.letter_refund_queued"]
+other = "📧 E-mail de reembolso: en cola. Arena lo envía cuando el reembolso se completa."
+
+["bot.ord.letter_refund_partial_queued"]
+other = "📧 E-mail de reembolso: enviado para {{.Done}} de {{.Total}} reembolsos{{if .When}}, el último el {{.When}}{{end}}. Los demás están en cola."
+
+["bot.ord.letter_refund_sent"]
+other = "📧 E-mail de reembolso: enviado{{if .When}} el {{.When}}{{end}}{{if .To}} a {{.To}}{{end}}."
+
+["bot.ord.letter_refund_delivered"]
+other = "📧 E-mail de reembolso: entregado{{if .When}} el {{.When}}{{end}}{{if .To}} a {{.To}}{{end}}."
+
+["bot.ord.letter_refund_opened"]
+other = "📧 E-mail de reembolso: el comprador lo abrió{{if .When}} el {{.When}}{{end}}{{if .To}} ({{.To}}){{end}}."
+
+["bot.ord.letter_refund_failed"]
+other = "⚠️📧 E-mail de reembolso: Arena no pudo enviarlo{{if .When}} (último intento el {{.When}}){{end}}. El operador lo sabe."
+
+["bot.ord.letter_retry_btn"]
+other = "📧 Enviar de nuevo el e-mail de entradas"
 
 ["bot.ord.tab_recent"]
 other = "Últimos"
@@ -1673,15 +1754,6 @@ other = "otro canal"
 
 ["bot.ord.payment_line"]
 other = "\n💳 Pago: {{.Provider}}"
-
-["bot.ord.delivery_sent"]
-other = "📧 Las entradas se enviaron al comprador por e-mail."
-
-["bot.ord.delivery_pending"]
-other = "📧 El e-mail con las entradas está en cola y aún no se ha enviado."
-
-["bot.ord.delivery_failed"]
-other = "📧 No se pudo entregar el e-mail con las entradas."
 
 ["bot.ord.reason_payment_failed"]
 other = "⚠️ El pago no se completó: la tarjeta o el banco lo rechazaron. El comprador puede intentarlo de nuevo."
@@ -2780,10 +2852,10 @@ other = "El motivo debe tener entre 1 y 300 caracteres."
 other = "¿<b>Devolver {{.Amount}}</b> por {{.N}} entrada(s) del pedido n.º {{.Num}} con {{.Provider}}?\nMotivo: {{.Reason}}\n\nLas entradas dejan de ser válidas al instante. No se puede deshacer.\n\nEscribe <b>{{.Word}}</b> para confirmar."
 
 ["bot.ref.letter_on_btn"]
-other = "✉️ Carta al comprador: sí"
+other = "☑ Enviar un correo al comprador"
 
 ["bot.ref.letter_off_btn"]
-other = "✉️ Carta al comprador: no"
+other = "☐ No enviar un correo al comprador"
 
 ["bot.ref.word"]
 other = "DEVOLVER"
@@ -2896,7 +2968,7 @@ other = "Esta devolución no se puede reenviar: el proveedor puede haber devuelt
 ["bot.rq.provider_word"]
 other = "el proveedor"
 ["bot.ref.final"]
-other = "<b>Comprobación final</b>\nPedido n.º {{.Num}} · {{.N}} entrada(s): {{.Tickets}}\nA devolver: <b>{{.Amount}}</b> a través de {{.Provider}}\nCorreo al comprador: {{.Letter}}\n\nEstas entradas dejan de ser válidas para entrar, también cuando solo se devuelve una parte de su precio. El proveedor de pago devuelve el dinero; esto no se puede deshacer."
+other = "<b>Comprobación final</b>\nPedido n.º {{.Num}} · {{.N}} entrada(s): {{.Tickets}}\nA devolver: <b>{{.Amount}}</b> a través de {{.Provider}}\n{{.Letter}}\n\nEstas entradas dejan de ser válidas para entrar, también cuando solo devuelves una parte de su precio. El proveedor de pago devuelve el dinero. Esto no se puede deshacer."
 
 ["bot.ref.yes_btn"]
 other = "✅ Sí, devolver {{.Amount}}"
@@ -2905,10 +2977,10 @@ other = "✅ Sí, devolver {{.Amount}}"
 other = "Cancelar"
 
 ["bot.ref.letter_yes"]
-other = "se enviará"
+other = "El comprador recibirá un correo."
 
 ["bot.ref.letter_no"]
-other = "no se enviará"
+other = "No se envía ningún correo al comprador."
 
 ["bot.ref.cancelled"]
 other = "Cancelado. No se devolvió nada."
@@ -2929,19 +3001,64 @@ other = "Una de las entradas ya no se puede devolver (cambió, ya no es válida 
 other = "La respuesta tarda más de lo normal. No se ha perdido nada: abre el pedido en un minuto para ver el estado de la devolución. No la inicies de nuevo."
 
 ["bot.ref.err_scanned"]
-other = "Esta entrada ya se usó en la puerta (un escaneo registrado en Arena), así que no se puede devolver. No se devolvió nada."
+other = "{{if .Ticket}}La entrada {{.Ticket}}{{else}}Esta entrada{{end}} ya se escaneó en el acceso. No se puede devolver su dinero. No se devolvió nada.{{if .Next}} {{.Next}}{{end}}"
 
 ["bot.ref.scanned_all"]
-other = "Pedido n.º {{.Num}}: las entradas ya se usaron en la puerta (escaneos registrados en Arena), no hay nada que devolver aquí."
+other = "Pedido n.º {{.Num}}: todas las entradas ya se escanearon en el acceso. No se puede devolver su dinero."
 
 ["bot.ref.scanned_note"]
-other = "No se ofrecen: {{.Tickets}} — ya usadas en la puerta (según los escaneos registrados en Arena; una entrada escaneada solo en MACS no se ve aquí).\n\n"
+other = "Ya escaneadas en el acceso: {{.Tickets}}. No se puede devolver el dinero de estas entradas, así que no están en la lista."
+
+["bot.ref.letter_hint"]
+other = "Pulsa el botón del correo para cambiarlo."
+
+["bot.ref.scanned_next"]
+other = "Si la entrada se escaneó por error, escribe al soporte de Arena. El operador puede permitir una devolución."
+
+["bot.ref.scanned_next_operator"]
+other = "Eres operador de la plataforma: puedes permitir una devolución de la entrada con el botón de abajo."
+
+["bot.ref.exc_btn"]
+other = "🔓 Permitir la devolución de la entrada {{.Ticket}} ({{.Hours}} h)"
+
+["bot.ref.exc_ask"]
+other = "La entrada {{.Ticket}} ya se escaneó en el acceso. Permites una devolución de esta entrada durante {{.Hours}} horas.\n\nEscribe el motivo en un solo mensaje (hasta {{.Chars}} caracteres). Los propietarios de la organización lo recibirán por correo y en el chat de ventas."
+
+["bot.ref.exc_bad"]
+other = "El motivo debe tener entre 1 y {{.Chars}} caracteres. Escríbelo de nuevo."
+
+["bot.ref.exc_done"]
+other = "✔ Se permite la devolución de la entrada {{.Ticket}} durante {{.Hours}} horas. El permiso sirve para una devolución.\nPulsa «Continuar la devolución»."
+
+["bot.ref.exc_replayed"]
+other = "La devolución de la entrada {{.Ticket}} ya está permitida y el permiso sigue vigente. Pulsa «Continuar la devolución»."
+
+["bot.ref.exc_continue_btn"]
+other = "Continuar la devolución"
+
+["bot.ref.exc_cancelled"]
+other = "Cancelado. No se ha dado ningún permiso."
+
+["bot.ref.exc_not_scanned"]
+other = "La entrada {{.Ticket}} no está escaneada, así que no hace falta un permiso. Pulsa «Continuar la devolución»."
+
+["bot.ref.exc_exists"]
+other = "La entrada {{.Ticket}} ya tiene un permiso: lo dio otro operador o ya se usó. No se ha dado un permiso nuevo. Abre el pedido para revisar sus devoluciones."
+
+["bot.ref.exc_not_found"]
+other = "No se ha encontrado la entrada {{.Ticket}} en esta organización. No se ha cambiado nada."
+
+["bot.ref.exc_forbidden"]
+other = "Solo un operador de la plataforma puede permitir esta devolución. No se ha cambiado nada."
+
+["bot.ref.exc_failed"]
+other = "No se ha podido dar el permiso. No se ha cambiado nada. Dentro de unos minutos, vuelve a escribir el motivo."
 
 ["bot.ref.err_scanned_notified"]
-other = "Esta entrada ya se usó en la puerta (un escaneo registrado en Arena), así que no se puede devolver. No se devolvió nada. Los propietarios de la organización han sido avisados."
+other = "{{if .Ticket}}La entrada {{.Ticket}}{{else}}Esta entrada{{end}} ya se escaneó en el acceso. No se puede devolver su dinero. No se devolvió nada. Los propietarios de la organización han recibido un aviso.{{if .Next}} {{.Next}}{{end}}"
 
 ["bot.ref.err_scanned_nobody"]
-other = "Esta entrada ya se usó en la puerta (un escaneo registrado en Arena), así que no se puede devolver. No se devolvió nada. Arena no tiene la dirección de los propietarios de la organización, así que se avisó al operador de la plataforma."
+other = "{{if .Ticket}}La entrada {{.Ticket}}{{else}}Esta entrada{{end}} ya se escaneó en el acceso. No se puede devolver su dinero. No se devolvió nada. Arena no tiene la dirección de los propietarios de la organización, así que avisamos al operador de la plataforma.{{if .Next}} {{.Next}}{{end}}"
 
 ["bot.ref.still_sending"]
 other = "La devolución del pedido n.º {{.Num}} todavía se está enviando. Espera la respuesta aquí; hasta entonces no se puede cambiar nada."
@@ -2969,3 +3086,297 @@ other = "Arena no cobró nada por el pedido n.º {{.Num}} (un pedido gratuito o 
 
 ["bot.ref.unknown_provider"]
 other = "Arena no conoce el proveedor de pago del pedido n.º {{.Num}}, así que no puede devolver el dinero. Devuélvelo en el panel del proveedor o escribe a soporte. No se envió nada."
+
+["bot.og.btn"]
+other = "🏢 Datos de la organización"
+
+["bot.og.owner_only"]
+other = "Solo el propietario de la organización puede cambiar sus datos. Pídeselo al propietario o vuelve al menú."
+
+["bot.og.card"]
+other = "🏢 <b>Datos de la organización</b> · {{.Org}}"
+
+["bot.og.card_where"]
+other = "Los compradores ven estos datos en la página de venta cuando muestras los datos del vendedor, y también en los correos con entradas y en las entradas PDF."
+
+["bot.og.line_legal_name"]
+other = "Razón social: {{.Value}}"
+
+["bot.og.line_legal_form"]
+other = "Forma jurídica: {{.Value}}"
+
+["bot.og.line_reg"]
+other = "Número de registro: {{.Value}}"
+
+["bot.og.line_tax"]
+other = "Número fiscal: {{.Value}}"
+
+["bot.og.line_address"]
+other = "Dirección legal: {{.Value}}"
+
+["bot.og.pages_title"]
+other = "<b>Páginas de venta</b>"
+
+["bot.og.pages_none"]
+other = "Tu organización aún no tiene página de venta. Aparece cuando publicas el primer evento."
+
+["bot.og.state_shown"]
+other = "✅ datos del vendedor visibles"
+
+["bot.og.state_hidden"]
+other = "⬜ datos del vendedor ocultos"
+
+["bot.og.none"]
+other = "sin indicar"
+
+["bot.og.now"]
+other = "Ahora: {{.Value}}"
+
+["bot.og.missing_title"]
+other = "Para mostrar los datos del vendedor en la página, completa:"
+
+["bot.og.m_legal_name"]
+other = "razón social"
+
+["bot.og.m_tax_id"]
+other = "número fiscal"
+
+["bot.og.m_address_line1"]
+other = "calle y número de la dirección legal"
+
+["bot.og.m_address_city"]
+other = "ciudad de la dirección legal"
+
+["bot.og.m_address_postal_code"]
+other = "código postal de la dirección legal"
+
+["bot.og.m_public_email"]
+other = "correo público de esta página de venta"
+
+["bot.og.btn_legal_name"]
+other = "✏ Razón social"
+
+["bot.og.btn_legal_form"]
+other = "✏ Forma jurídica"
+
+["bot.og.btn_reg"]
+other = "✏ N.º de registro"
+
+["bot.og.btn_tax"]
+other = "✏ Número fiscal"
+
+["bot.og.btn_address"]
+other = "✏ Calle"
+
+["bot.og.btn_city"]
+other = "✏ Ciudad"
+
+["bot.og.btn_postcode"]
+other = "✏ Código postal"
+
+["bot.og.btn_country"]
+other = "✏ País"
+
+["bot.og.btn_page"]
+other = "🌐 Página de venta: {{.Name}}"
+
+["bot.og.q_legal_name"]
+other = "✏ <b>Razón social</b> como en los documentos de registro. Por ejemplo, «Teatro Ejemplo S.L.» o tu nombre completo."
+
+["bot.og.q_legal_form"]
+other = "✏ <b>Forma jurídica</b>. Por ejemplo, S.L., s.r.o., GmbH o «autónomo». Hasta 80 caracteres."
+
+["bot.og.q_reg"]
+other = "✏ <b>Número de registro</b> en el registro mercantil, si lo tienes. Hasta 60 caracteres."
+
+["bot.og.q_address"]
+other = "✏ <b>Calle y número</b> de la dirección legal. La ciudad y el código postal tienen sus propios botones."
+
+["bot.og.q_city"]
+other = "✏ <b>Ciudad</b> de la dirección legal."
+
+["bot.og.q_postcode"]
+other = "✏ <b>Código postal</b> de la dirección legal."
+
+["bot.og.q_country"]
+other = "✏ <b>País</b> de la dirección legal: dos letras, por ejemplo ES, CZ o IL. O pulsa el botón de abajo."
+
+["bot.og.q_scheme"]
+other = "🧾 <b>Número fiscal.</b> Elige su tipo."
+
+["bot.og.scheme_eu_vat"]
+other = "NIF-IVA de la UE"
+
+["bot.og.scheme_gb_vat"]
+other = "IVA del Reino Unido"
+
+["bot.og.scheme_il_vat"]
+other = "Israel: número de empresa o de identidad"
+
+["bot.og.scheme_us_ein"]
+other = "EE. UU.: EIN"
+
+["bot.og.scheme_other"]
+other = "Otro número (NIF, IČO y otros)"
+
+["bot.og.q_tax_eu_vat"]
+other = "✏ Envía el <b>NIF-IVA</b> con el código del país. Por ejemplo, ESB12345678 o CZ12345678."
+
+["bot.og.q_tax_gb_vat"]
+other = "✏ Envía el <b>número de IVA del Reino Unido</b>. Por ejemplo, GB123456789."
+
+["bot.og.q_tax_il_vat"]
+other = "✏ Envía el <b>número israelí</b>: 9 cifras. Por ejemplo, 512345678."
+
+["bot.og.q_tax_us_ein"]
+other = "✏ Envía el <b>EIN</b>. Por ejemplo, 12-3456789."
+
+["bot.og.q_tax_other"]
+other = "✏ Envía el <b>número fiscal</b> como aparece en tus documentos. Por ejemplo, un NIF español o un IČO checo."
+
+["bot.og.other_scheme_btn"]
+other = "🔁 Otro tipo de número"
+
+["bot.og.page_card"]
+other = "🌐 <b>Página de venta: {{.Name}}</b>"
+
+["bot.og.page_where"]
+other = "Los compradores ven el teléfono en esta página de venta cuando los datos del vendedor están visibles. La página no muestra el correo: los compradores te escriben con el formulario de la página y los mensajes llegan a esta dirección. Los correos con entradas y las entradas en PDF de esta página muestran esta dirección, y las respuestas de los compradores a esos correos llegan a ella. Usa una dirección para entradas, no tu buzón personal."
+
+["bot.og.line_email"]
+other = "✉ Correo para mensajes de compradores: {{.Value}}"
+
+["bot.og.line_phone"]
+other = "📞 Teléfono público: {{.Value}}"
+
+["bot.og.line_state"]
+other = "Datos del vendedor en la página: {{.Value}}"
+
+["bot.og.btn_email"]
+other = "✏ Correo"
+
+["bot.og.btn_phone"]
+other = "✏ Teléfono"
+
+["bot.og.btn_show"]
+other = "✅ Mostrar los datos del vendedor en la página"
+
+["bot.og.btn_hide"]
+other = "⬜ Ocultar los datos del vendedor de la página"
+
+["bot.og.q_email"]
+other = "✏ <b>Correo público</b> de esta página de venta. Por ejemplo, tickets@tu-web.com."
+
+["bot.og.q_phone"]
+other = "✏ <b>Teléfono público</b> con el prefijo del país. Por ejemplo, +34 600 000 000. Puedes dejarlo vacío."
+
+["bot.og.personal_email"]
+other = "💡 Parece un buzón personal. Te sugerimos una dirección aparte para entradas, por ejemplo tickets@tu-web.com. Si lo prefieres, puedes dejar esta."
+
+["bot.og.clear_btn"]
+other = "🗑 Borrar"
+
+["bot.og.cancel_btn"]
+other = "« Cancelar"
+
+["bot.og.saved"]
+other = "✅ Guardado."
+
+["bot.og.cleared"]
+other = "✅ Borrado."
+
+["bot.og.shown_done"]
+other = "✅ Hecho. Ahora los compradores ven los datos del vendedor en esta página de venta."
+
+["bot.og.hidden_done"]
+other = "✅ Hecho. Los datos del vendedor ya no se muestran en esta página de venta."
+
+["bot.og.channel_gone"]
+other = "Esta página de venta ya no está en la lista. Aquí tienes los datos actuales."
+
+["bot.og.err_legal_name"]
+other = "Escribe la razón social, hasta 200 caracteres."
+
+["bot.og.err_legal_form"]
+other = "Escribe la forma jurídica, hasta 80 caracteres."
+
+["bot.og.err_reg"]
+other = "Escribe el número de registro, hasta 60 caracteres."
+
+["bot.og.err_address"]
+other = "Escribe la calle y el número, hasta 200 caracteres."
+
+["bot.og.err_city"]
+other = "Escribe la ciudad, hasta 100 caracteres."
+
+["bot.og.err_postcode"]
+other = "Escribe el código postal, hasta 20 caracteres."
+
+["bot.og.err_country"]
+other = "Escribe dos letras latinas del país, por ejemplo ES."
+
+["bot.og.err_tax_eu_vat"]
+other = "No parece un NIF-IVA de la UE. Empieza con el código del país, por ejemplo ESB12345678. Si tienes un NIF o IČO sin código, pulsa «Otro tipo de número»."
+
+["bot.og.err_tax_gb_vat"]
+other = "No parece un número de IVA del Reino Unido. Ejemplo: GB123456789."
+
+["bot.og.err_tax_il_vat"]
+other = "El número israelí tiene 9 cifras. Ejemplo: 512345678."
+
+["bot.og.err_tax_us_ein"]
+other = "El EIN tiene esta forma: 12-3456789."
+
+["bot.og.err_tax_other"]
+other = "Escribe el número en una línea, de 2 a 64 caracteres."
+
+["bot.og.err_tax_api"]
+other = "Arena no aceptó el número fiscal. Revisa el número y su tipo. Si estás cambiando otro campo, corrige primero el número fiscal."
+
+["bot.og.err_email"]
+other = "No parece una dirección de correo. Revísala, por ejemplo tickets@tu-web.com."
+
+["bot.og.err_phone"]
+other = "No parece un número de teléfono. Usa cifras con el prefijo del país, por ejemplo +34 600 000 000."
+
+["bot.og.line_form_tg"]
+other = "💬 Mensajes de compradores en el chat de ventas: {{.Value}}"
+
+["bot.og.form_tg_on"]
+other = "activados"
+
+["bot.og.form_tg_off"]
+other = "desactivados"
+
+["bot.og.btn_form_tg_on"]
+other = "💬 Enviar mensajes de compradores al chat de ventas"
+
+["bot.og.btn_form_tg_off"]
+other = "💬 No enviar mensajes de compradores al chat de ventas"
+
+["bot.og.form_tg_saved_on"]
+other = "✅ Los mensajes de compradores ahora también llegan a tu chat de ventas."
+
+["bot.og.form_tg_saved_off"]
+other = "✅ Los mensajes de compradores ahora solo llegan al correo de la página de venta."
+
+["bot.og.block_hidden"]
+other = "⚠️ Un campo obligatorio está vacío, así que los datos del vendedor se ocultaron en las páginas de venta: {{.N}}. Rellena el campo y vuelve a activar los datos del vendedor en la ficha de la página."
+
+["contact.email.subject"]
+other = "Mensaje de un comprador: {{.Name}}"
+
+["contact.email.intro"]
+other = "Un comprador te escribió con el formulario de contacto de tu página de venta de Arena."
+
+["contact.email.from"]
+other = "De"
+
+["contact.email.page"]
+other = "Página de venta"
+
+["contact.email.reply"]
+other = "Para contestar al comprador, responde a este correo. Arena no ve tu respuesta."
+
+["contact.email.footer"]
+other = "Arena Sold Out envió este mensaje porque el formulario de contacto de tu página de venta está activo."

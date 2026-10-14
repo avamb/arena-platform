@@ -720,6 +720,11 @@ func TestHostedCheckout_StartCreatesStripeSessionAndWebhookPaysTheOrder(t *testi
 	if statusAfter.PaymentURL != nil {
 		t.Errorf("payment_url = %q on a PAID order; it must be omitted", *statusAfter.PaymentURL)
 	}
+	// The success screen names the order by the number the ticket e-mail
+	// and the PDF print, never by a piece of a UUID.
+	if statusAfter.OrderNumber == nil || *statusAfter.OrderNumber != orderAfter.SystemID {
+		t.Errorf("order_number = %v; want orders.system_id %d", statusAfter.OrderNumber, orderAfter.SystemID)
+	}
 }
 
 // TestHostedCheckout_TwoOrgsUseTheirOwnWebhookSecrets is the launch-blocking
@@ -1141,9 +1146,10 @@ func (f *hostedOrgFixture) getStatus(t *testing.T, srv *Server, checkoutToken st
 }
 
 type hostedStatusResponse struct {
-	Status     string  `json:"status"`
-	PaymentURL *string `json:"payment_url"`
-	Tickets    []struct {
+	Status      string  `json:"status"`
+	PaymentURL  *string `json:"payment_url"`
+	OrderNumber *int64  `json:"order_number"`
+	Tickets     []struct {
 		TicketID string `json:"ticket_id"`
 	} `json:"tickets"`
 }

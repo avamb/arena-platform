@@ -17,6 +17,10 @@ var refundKeys = []string{
 	"bot.ref.err_scanned", "bot.ref.scanned_all", "bot.ref.scanned_note", "bot.ref.err_scanned_notified", "bot.ref.err_scanned_nobody",
 	"bot.ref.still_sending", "bot.ref.send_lost", "bot.ref.restart_notice", "bot.ref.check_btn", "bot.ref.stale_btn", "bot.ref.err_forbidden", "bot.ref.st_queued",
 	"bot.ref.no_payment", "bot.ref.unknown_provider",
+	"bot.ref.letter_hint", "bot.ref.scanned_next", "bot.ref.scanned_next_operator",
+	"bot.ref.exc_btn", "bot.ref.exc_ask", "bot.ref.exc_bad", "bot.ref.exc_done", "bot.ref.exc_replayed",
+	"bot.ref.exc_continue_btn", "bot.ref.exc_cancelled", "bot.ref.exc_not_scanned", "bot.ref.exc_exists",
+	"bot.ref.exc_not_found", "bot.ref.exc_forbidden", "bot.ref.exc_failed",
 }
 
 func init() {

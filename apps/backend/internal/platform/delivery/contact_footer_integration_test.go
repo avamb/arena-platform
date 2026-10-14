@@ -66,6 +66,14 @@ func TestDeliveryContactFooter(t *testing.T) {
 			ctx := context.Background()
 			seed, cleanup := seedPresentationTicket(ctx, t, pool)
 			defer cleanup()
+			// The contact is resolved from the rows when the letter is
+			// rendered (ContactRoute): the seed's channel has no hosted page,
+			// so the organization's own address is the one printed.
+			if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_email = NULLIF($2, '')
+			        WHERE id = (SELECT e.org_id FROM tickets t JOIN sessions s ON s.id = t.session_id JOIN events e ON e.id = s.event_id WHERE t.id = $1)`,
+				seed.TicketID, tc.orgContact); err != nil {
+				t.Fatal(err)
+			}
 
 			msg := deliverCaptured(ctx, t, gen.New(pool), Payload{
 				TicketID:        seed.TicketID.String(),

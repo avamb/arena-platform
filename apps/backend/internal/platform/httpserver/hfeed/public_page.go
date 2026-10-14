@@ -100,6 +100,8 @@ type hostedPageResponse struct {
 	// settings.hosted_page.show_seller on.
 	Seller   *hostedPageSellerResponse   `json:"seller,omitempty"`
 	Promoter *hostedPagePromoterResponse `json:"promoter,omitempty"`
+	// ContactForm is present when the page offers "Write to the organizer".
+	ContactForm *hostedPageContactForm `json:"contact_form,omitempty"`
 }
 
 // hostedPromoterPageResponse is the full JSON envelope for GET
@@ -112,6 +114,8 @@ type hostedPromoterPageResponse struct {
 	// promoter's own page.
 	Seller   *hostedPageSellerResponse   `json:"seller,omitempty"`
 	Promoter *hostedPagePromoterResponse `json:"promoter,omitempty"`
+	// ContactForm is present when the page offers "Write to the organizer".
+	ContactForm *hostedPageContactForm `json:"contact_form,omitempty"`
 }
 
 // HandlePublicPage resolves the hosted-page context for an (org_slug,
@@ -216,7 +220,7 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 	resp.Event.FirstSessionTimezone = resolved.FirstSessionTimezone
 	resp.Event.SessionCount = resolved.SessionCount
 	resp.Event.FirstSessionDoorsAt = rfc3339UTC(resolved.FirstSessionDoorsAt)
-	resp.Seller, resp.Promoter = h.sellerBlocks(ctx, resolved.OrgID, resolved.FeedToken, &resolved.EventID)
+	resp.Seller, resp.Promoter, resp.ContactForm = h.sellerBlocks(ctx, resolved.OrgID, resolved.FeedToken, &resolved.EventID)
 
 	// Venue name(s) are cheap (one aggregate query keyed by event id) and
 	// presentational — a lookup failure must not turn a resolved page into a
@@ -331,7 +335,7 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 		url := h.mediaFileURL(ctx, *org.OrgLogoMediaID)
 		resp.Org.LogoURL = &url
 	}
-	resp.Seller, _ = h.sellerBlocks(ctx, org.OrgID, "", nil)
+	resp.Seller, _, resp.ContactForm = h.sellerBlocks(ctx, org.OrgID, "", nil)
 	if resp.Seller != nil && promoterID != nil {
 		resp.Promoter = &hostedPagePromoterResponse{Name: org.OrgName}
 	}

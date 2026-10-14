@@ -82,6 +82,7 @@ type Server struct {
 	publicationQueries    *gen.Queries
 	publicFeedQueries     *gen.Queries
 	publicFeedRL          *publicFeedRateLimiter
+	brevoWebhookRL        *publicFeedRateLimiter // per-IP limit of the Brevo delivery-status webhook
 	sessionQueries        *gen.Queries
 	gdprQueries           *gen.Queries
 	tierQueries           *gen.Queries

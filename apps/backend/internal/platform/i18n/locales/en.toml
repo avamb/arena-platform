@@ -402,6 +402,39 @@ other = "You no longer have access to this organization. If this is a mistake, a
 ["bot.unknown_input"]
 other = "I did not understand that. Use the buttons below."
 
+["bot.stale_message"]
+other = "This message is out of date. Press ☰ Menu below."
+
+["bot.stale_message_stranger"]
+other = "This message is out of date. Please continue below."
+
+["bot.menu_button"]
+other = "☰ Menu"
+
+["bot.menu_keyboard_note"]
+other = "The ☰ Menu button below the message field always opens the main menu."
+
+["bot.cmd_menu"]
+other = "Open the main menu"
+
+["bot.menu_leave_refund"]
+other = "The refund for order #{{.Num}} is not sent yet. If you open the menu now, the buyer does not get the money back.\n\nYou can go back to the refund or open the menu."
+
+["bot.menu_leave_refund_maybe"]
+other = "The refund for order #{{.Num}} may have started already: the bot did not get an answer from the server. Check the order before you send the refund again.\n\nIf you go back to the refund and send it again, the money does not go back twice. The refund stays here when you open the menu."
+
+["bot.menu_open_order_btn"]
+other = "📄 Open the order"
+
+["bot.ref.maybe_started"]
+other = "This refund may have started already: the bot did not get an answer from the server. Check the order first. Sending it again does not return the money twice."
+
+["bot.menu_back_refund_btn"]
+other = "↩ Back to the refund"
+
+["bot.menu_leave_btn"]
+other = "☰ Open the menu"
+
 # --- the "+ Event" wizard (eventbot/wizard.go) ------------------------------
 
 ["bot.wz.new_event_btn"]
@@ -1703,7 +1736,55 @@ other = "Orders"
 other = "<b>Orders: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · page {{.Page}} of {{.Pages}}.{{.Search}}\n{{.Legend}}\nTap an order to open it. To search, type a barcode, an order number, an e-mail, a phone or a name."
 
 ["bot.ord.legend"]
-other = "✅ paid  ⏳ waiting for payment  ⌛ expired  ✖ canceled  ↩ refunded"
+other = "✅ paid  ⏳ waiting for payment  ⌛ expired  ✖ canceled  ↩ refunded  ⚠️📧 ticket e-mail not sent"
+
+["bot.ord.letter_tickets_none"]
+other = "📧 Ticket e-mail: Arena did not send it."
+
+["bot.ord.letter_tickets_queued"]
+other = "📧 Ticket e-mail: in the queue{{if .To}}, to {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_partial_queued"]
+other = "📧 Ticket e-mail: sent for {{.Done}} of {{.Total}} tickets. The rest are in the queue."
+
+["bot.ord.letter_tickets_sent"]
+other = "📧 Ticket e-mail: sent{{if .When}} {{.When}}{{end}}{{if .To}} to {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_delivered"]
+other = "📧 Ticket e-mail: delivered{{if .When}} {{.When}}{{end}}{{if .To}} to {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_opened"]
+other = "📧 Ticket e-mail: the buyer opened it{{if .When}} {{.When}}{{end}}{{if .To}} ({{.To}}){{end}}."
+
+["bot.ord.letter_tickets_partial"]
+other = "⚠️📧 Ticket e-mail: sent for {{.Done}} of {{.Total}} tickets. Arena could not send the rest.{{if .Why}} Reason: {{.Why}}{{end}}"
+
+["bot.ord.letter_tickets_failed"]
+other = "⚠️📧 Ticket e-mail: Arena could not send it{{if .To}} to {{.To}}{{end}}.{{if .Why}} Reason: {{.Why}}{{end}}"
+
+["bot.ord.letter_refund_off"]
+other = "📧 Refund e-mail: you chose not to send it."
+
+["bot.ord.letter_refund_queued"]
+other = "📧 Refund e-mail: in the queue. Arena sends it after the refund succeeds."
+
+["bot.ord.letter_refund_partial_queued"]
+other = "📧 Refund e-mail: sent for {{.Done}} of {{.Total}} refunds{{if .When}}, last one {{.When}}{{end}}. The rest are in the queue."
+
+["bot.ord.letter_refund_sent"]
+other = "📧 Refund e-mail: sent{{if .When}} {{.When}}{{end}}{{if .To}} to {{.To}}{{end}}."
+
+["bot.ord.letter_refund_delivered"]
+other = "📧 Refund e-mail: delivered{{if .When}} {{.When}}{{end}}{{if .To}} to {{.To}}{{end}}."
+
+["bot.ord.letter_refund_opened"]
+other = "📧 Refund e-mail: the buyer opened it{{if .When}} {{.When}}{{end}}{{if .To}} ({{.To}}){{end}}."
+
+["bot.ord.letter_refund_failed"]
+other = "⚠️📧 Refund e-mail: Arena could not send it{{if .When}} (last try {{.When}}){{end}}. The operator knows about it."
+
+["bot.ord.letter_retry_btn"]
+other = "📧 Send the ticket e-mail again"
 
 ["bot.ord.tab_recent"]
 other = "Latest"
@@ -1818,15 +1899,6 @@ other = "another channel"
 
 ["bot.ord.payment_line"]
 other = "\n💳 Payment: {{.Provider}}"
-
-["bot.ord.delivery_sent"]
-other = "📧 The tickets were e-mailed to the buyer."
-
-["bot.ord.delivery_pending"]
-other = "📧 The e-mail with the tickets is queued and not sent yet."
-
-["bot.ord.delivery_failed"]
-other = "📧 The e-mail with the tickets could not be delivered."
 
 ["bot.ord.reason_payment_failed"]
 other = "⚠️ The payment did not go through: the card or the bank refused it. The buyer can try again."
@@ -2925,10 +2997,10 @@ other = "The reason must be between 1 and 300 characters."
 other = "<b>Return {{.Amount}}</b> for {{.N}} ticket(s) of order #{{.Num}} through {{.Provider}}?\nReason: {{.Reason}}\n\nThe tickets stop being valid at once. This cannot be undone.\n\nType <b>{{.Word}}</b> to confirm."
 
 ["bot.ref.letter_on_btn"]
-other = "✉️ Letter to the buyer: on"
+other = "☑ Send a letter to the buyer"
 
 ["bot.ref.letter_off_btn"]
-other = "✉️ Letter to the buyer: off"
+other = "☐ Do not send a letter to the buyer"
 
 ["bot.ref.word"]
 other = "REFUND"
@@ -3041,7 +3113,7 @@ other = "This refund cannot be sent again: the provider may already have returne
 ["bot.rq.provider_word"]
 other = "the provider"
 ["bot.ref.final"]
-other = "<b>Final check</b>\nOrder #{{.Num}} · {{.N}} ticket(s): {{.Tickets}}\nTo return: <b>{{.Amount}}</b> through {{.Provider}}\nLetter to the buyer: {{.Letter}}\n\nThese tickets stop being valid for entry, also when only part of their price is returned. The payment provider returns the money; this cannot be undone."
+other = "<b>Final check</b>\nOrder #{{.Num}} · {{.N}} ticket(s): {{.Tickets}}\nTo return: <b>{{.Amount}}</b> through {{.Provider}}\n{{.Letter}}\n\nThese tickets stop being valid for entry, even when you return only part of their price. The payment provider returns the money. You cannot undo this."
 
 ["bot.ref.yes_btn"]
 other = "✅ Yes, refund {{.Amount}}"
@@ -3050,10 +3122,10 @@ other = "✅ Yes, refund {{.Amount}}"
 other = "Cancel"
 
 ["bot.ref.letter_yes"]
-other = "will be sent"
+other = "The buyer gets a letter."
 
 ["bot.ref.letter_no"]
-other = "will not be sent"
+other = "No letter is sent to the buyer."
 
 ["bot.ref.cancelled"]
 other = "Canceled. Nothing was refunded."
@@ -3074,19 +3146,64 @@ other = "One of the tickets can no longer be refunded (it changed, is no longer 
 other = "The answer is taking longer than expected. Nothing is lost: open the order in a minute to see the state of the refund. Do not start it again."
 
 ["bot.ref.err_scanned"]
-other = "This ticket was already used at the gate (a scan recorded in Arena), so it cannot be refunded. Nothing was refunded."
+other = "{{if .Ticket}}Ticket {{.Ticket}}{{else}}This ticket{{end}} was already scanned at the entrance. Arena cannot return its money and did not refund anything.{{if .Next}} {{.Next}}{{end}}"
 
 ["bot.ref.scanned_all"]
-other = "Order #{{.Num}}: the ticket(s) were already used at the gate (scans recorded in Arena), so there is nothing to refund here."
+other = "Order #{{.Num}}: every ticket was already scanned at the entrance. Arena cannot return their money."
 
 ["bot.ref.scanned_note"]
-other = "Not offered: {{.Tickets}} - already used at the gate (scans recorded in Arena; an entry scanned only in MACS is not seen here).\n\n"
+other = "Already scanned at the entrance: {{.Tickets}}. Arena cannot return the money for these tickets, so they are not in the list."
+
+["bot.ref.letter_hint"]
+other = "Press the letter button to change this."
+
+["bot.ref.scanned_next"]
+other = "If someone scanned the ticket by mistake, write to Arena support. The operator can allow one refund."
+
+["bot.ref.scanned_next_operator"]
+other = "You are a platform operator: you can allow one refund of the ticket with the button below."
+
+["bot.ref.exc_btn"]
+other = "🔓 Allow a refund of ticket {{.Ticket}} ({{.Hours}} h)"
+
+["bot.ref.exc_ask"]
+other = "Ticket {{.Ticket}} was already scanned at the entrance. You are allowing one refund of this ticket for {{.Hours}} hours.\n\nWrite the reason in one message (up to {{.Chars}} characters). The organization's owners receive it by e-mail and in the sales chat."
+
+["bot.ref.exc_bad"]
+other = "The reason must be 1 to {{.Chars}} characters long. Please write it again."
+
+["bot.ref.exc_done"]
+other = "✔ You allowed one refund of ticket {{.Ticket}} for {{.Hours}} hours.\nPress “Continue the refund”."
+
+["bot.ref.exc_replayed"]
+other = "A refund of ticket {{.Ticket}} is already allowed, and the permission is still valid. Press “Continue the refund”."
+
+["bot.ref.exc_continue_btn"]
+other = "Continue the refund"
+
+["bot.ref.exc_cancelled"]
+other = "Canceled. Arena gave no permission."
+
+["bot.ref.exc_not_scanned"]
+other = "Nobody scanned ticket {{.Ticket}}, so you do not need a permission. Press “Continue the refund”."
+
+["bot.ref.exc_exists"]
+other = "Ticket {{.Ticket}} already has a permission: another operator gave it, or someone already used it. Arena gave no new permission. Open the order to check its refunds."
+
+["bot.ref.exc_not_found"]
+other = "Arena did not find ticket {{.Ticket}} in this organization and changed nothing."
+
+["bot.ref.exc_forbidden"]
+other = "Only a platform operator can allow such a refund. Arena changed nothing."
+
+["bot.ref.exc_failed"]
+other = "Arena could not give the permission and changed nothing. In a few minutes, write the reason again."
 
 ["bot.ref.err_scanned_notified"]
-other = "This ticket was already used at the gate (a scan recorded in Arena), so it cannot be refunded. Nothing was refunded. The organization's owners have been notified."
+other = "{{if .Ticket}}Ticket {{.Ticket}}{{else}}This ticket{{end}} was already scanned at the entrance. Arena cannot return its money and did not refund anything. The organization's owners got a notice.{{if .Next}} {{.Next}}{{end}}"
 
 ["bot.ref.err_scanned_nobody"]
-other = "This ticket was already used at the gate (a scan recorded in Arena), so it cannot be refunded. Nothing was refunded. Arena has no e-mail address of the organization's owners, so the platform operator was told instead."
+other = "{{if .Ticket}}Ticket {{.Ticket}}{{else}}This ticket{{end}} was already scanned at the entrance. Arena cannot return its money and did not refund anything. Arena has no e-mail address of the organization's owners, so we told the platform operator.{{if .Next}} {{.Next}}{{end}}"
 
 ["bot.ref.still_sending"]
 other = "The refund of order #{{.Num}} is still being sent. Wait for the answer here; nothing can be changed until then."
@@ -3114,3 +3231,297 @@ other = "Arena took no payment for order #{{.Num}} (a free order or an invitatio
 
 ["bot.ref.unknown_provider"]
 other = "Arena does not know the payment provider of order #{{.Num}}, so it cannot refund it. Refund it in the provider's dashboard or write to support. Nothing was sent."
+
+["bot.og.btn"]
+other = "🏢 Organization data"
+
+["bot.og.owner_only"]
+other = "Only the owner of the organization can change its data. Ask the owner, or go back to the menu."
+
+["bot.og.card"]
+other = "🏢 <b>Organization data</b> · {{.Org}}"
+
+["bot.og.card_where"]
+other = "Buyers see these details on the sales page when you show the seller data, and in ticket letters and PDF tickets."
+
+["bot.og.line_legal_name"]
+other = "Legal name: {{.Value}}"
+
+["bot.og.line_legal_form"]
+other = "Legal form: {{.Value}}"
+
+["bot.og.line_reg"]
+other = "Registration number: {{.Value}}"
+
+["bot.og.line_tax"]
+other = "Tax number: {{.Value}}"
+
+["bot.og.line_address"]
+other = "Legal address: {{.Value}}"
+
+["bot.og.pages_title"]
+other = "<b>Sales pages</b>"
+
+["bot.og.pages_none"]
+other = "Your organization has no sales page yet. It appears after you publish your first event."
+
+["bot.og.state_shown"]
+other = "✅ seller data shown"
+
+["bot.og.state_hidden"]
+other = "⬜ seller data hidden"
+
+["bot.og.none"]
+other = "not set"
+
+["bot.og.now"]
+other = "Now: {{.Value}}"
+
+["bot.og.missing_title"]
+other = "To show the seller data on the page, fill in:"
+
+["bot.og.m_legal_name"]
+other = "legal name"
+
+["bot.og.m_tax_id"]
+other = "tax number"
+
+["bot.og.m_address_line1"]
+other = "street and number of the legal address"
+
+["bot.og.m_address_city"]
+other = "city of the legal address"
+
+["bot.og.m_address_postal_code"]
+other = "postal code of the legal address"
+
+["bot.og.m_public_email"]
+other = "public e-mail of this sales page"
+
+["bot.og.btn_legal_name"]
+other = "✏ Legal name"
+
+["bot.og.btn_legal_form"]
+other = "✏ Legal form"
+
+["bot.og.btn_reg"]
+other = "✏ Registration no."
+
+["bot.og.btn_tax"]
+other = "✏ Tax number"
+
+["bot.og.btn_address"]
+other = "✏ Street"
+
+["bot.og.btn_city"]
+other = "✏ City"
+
+["bot.og.btn_postcode"]
+other = "✏ Postal code"
+
+["bot.og.btn_country"]
+other = "✏ Country"
+
+["bot.og.btn_page"]
+other = "🌐 Sales page: {{.Name}}"
+
+["bot.og.q_legal_name"]
+other = "✏ <b>Legal name</b> as in the registration documents, for example «Teatro Ejemplo S.L.» or your full name."
+
+["bot.og.q_legal_form"]
+other = "✏ <b>Legal form</b>, for example S.L., s.r.o., GmbH or «self-employed». Up to 80 characters."
+
+["bot.og.q_reg"]
+other = "✏ <b>Registration number</b> in the company register, if you have one. Up to 60 characters."
+
+["bot.og.q_address"]
+other = "✏ <b>Street and number</b> of the legal address. Send the city and the postal code with their own buttons."
+
+["bot.og.q_city"]
+other = "✏ <b>City</b> of the legal address."
+
+["bot.og.q_postcode"]
+other = "✏ <b>Postal code</b> of the legal address."
+
+["bot.og.q_country"]
+other = "✏ <b>Country</b> of the legal address: two letters, for example ES, CZ or IL. Or press the button below."
+
+["bot.og.q_scheme"]
+other = "🧾 <b>Tax number.</b> Choose its type."
+
+["bot.og.scheme_eu_vat"]
+other = "EU VAT number"
+
+["bot.og.scheme_gb_vat"]
+other = "UK VAT number"
+
+["bot.og.scheme_il_vat"]
+other = "Israel: business or ID number"
+
+["bot.og.scheme_us_ein"]
+other = "US EIN"
+
+["bot.og.scheme_other"]
+other = "Another number (NIF, IČO and others)"
+
+["bot.og.q_tax_eu_vat"]
+other = "✏ Send the <b>EU VAT number</b> with its country code, for example ESB12345678 or CZ12345678."
+
+["bot.og.q_tax_gb_vat"]
+other = "✏ Send the <b>UK VAT number</b>, for example GB123456789."
+
+["bot.og.q_tax_il_vat"]
+other = "✏ Send the <b>Israeli number</b>: 9 digits, for example 512345678."
+
+["bot.og.q_tax_us_ein"]
+other = "✏ Send the <b>EIN</b>, for example 12-3456789."
+
+["bot.og.q_tax_other"]
+other = "✏ Send the <b>tax number</b> as it is written in your documents, for example a Spanish NIF or a Czech IČO."
+
+["bot.og.other_scheme_btn"]
+other = "🔁 Another type of number"
+
+["bot.og.page_card"]
+other = "🌐 <b>Sales page: {{.Name}}</b>"
+
+["bot.og.page_where"]
+other = "Buyers see the phone on this sales page when the seller data is shown. The page does not show the e-mail: buyers write to you through the form on the page, and the messages arrive at this address. Ticket e-mails and PDF tickets of this page print this address, and buyers' replies to those e-mails go to it. Use an address for tickets, not your personal mailbox."
+
+["bot.og.line_email"]
+other = "✉ E-mail for buyer messages: {{.Value}}"
+
+["bot.og.line_phone"]
+other = "📞 Public phone: {{.Value}}"
+
+["bot.og.line_state"]
+other = "Seller data on the page: {{.Value}}"
+
+["bot.og.btn_email"]
+other = "✏ E-mail"
+
+["bot.og.btn_phone"]
+other = "✏ Phone"
+
+["bot.og.btn_show"]
+other = "✅ Show seller data on the page"
+
+["bot.og.btn_hide"]
+other = "⬜ Hide seller data from the page"
+
+["bot.og.q_email"]
+other = "✏ <b>Public e-mail</b> of this sales page, for example tickets@your-site.com."
+
+["bot.og.q_phone"]
+other = "✏ <b>Public phone</b> with the country code, for example +34 600 000 000. You can leave it empty."
+
+["bot.og.personal_email"]
+other = "💡 This looks like a personal mailbox. We suggest a separate address for tickets, for example tickets@your-site.com. You can keep this one if you prefer."
+
+["bot.og.clear_btn"]
+other = "🗑 Clear"
+
+["bot.og.cancel_btn"]
+other = "« Cancel"
+
+["bot.og.saved"]
+other = "✅ Saved."
+
+["bot.og.cleared"]
+other = "✅ Cleared."
+
+["bot.og.shown_done"]
+other = "✅ Done. Buyers now see the seller data on this sales page."
+
+["bot.og.hidden_done"]
+other = "✅ Done. The seller data is no longer shown on this sales page."
+
+["bot.og.channel_gone"]
+other = "This sales page is no longer in the list. Here is the current data."
+
+["bot.og.err_legal_name"]
+other = "Type the legal name, up to 200 characters."
+
+["bot.og.err_legal_form"]
+other = "Type the legal form, up to 80 characters."
+
+["bot.og.err_reg"]
+other = "Type the registration number, up to 60 characters."
+
+["bot.og.err_address"]
+other = "Type the street and number, up to 200 characters."
+
+["bot.og.err_city"]
+other = "Type the city, up to 100 characters."
+
+["bot.og.err_postcode"]
+other = "Type the postal code, up to 20 characters."
+
+["bot.og.err_country"]
+other = "Type two Latin letters of the country, for example ES."
+
+["bot.og.err_tax_eu_vat"]
+other = "This does not look like an EU VAT number. Start with the country code, for example ESB12345678. If you have a NIF or IČO without a code, press «Another type of number»."
+
+["bot.og.err_tax_gb_vat"]
+other = "This does not look like a UK VAT number. Example: GB123456789."
+
+["bot.og.err_tax_il_vat"]
+other = "The Israeli number has 9 digits. Example: 512345678."
+
+["bot.og.err_tax_us_ein"]
+other = "The EIN looks like 12-3456789."
+
+["bot.og.err_tax_other"]
+other = "Type the number in one line, from 2 to 64 characters."
+
+["bot.og.err_tax_api"]
+other = "Arena did not accept the tax number. Check the number and its type. If you are changing another field, fix the tax number first."
+
+["bot.og.err_email"]
+other = "This does not look like an e-mail address. Check it, for example tickets@your-site.com."
+
+["bot.og.err_phone"]
+other = "This does not look like a phone number. Use digits with the country code, for example +34 600 000 000."
+
+["bot.og.line_form_tg"]
+other = "💬 Buyer messages in the sales chat: {{.Value}}"
+
+["bot.og.form_tg_on"]
+other = "on"
+
+["bot.og.form_tg_off"]
+other = "off"
+
+["bot.og.btn_form_tg_on"]
+other = "💬 Send buyer messages to the sales chat"
+
+["bot.og.btn_form_tg_off"]
+other = "💬 Stop buyer messages in the sales chat"
+
+["bot.og.form_tg_saved_on"]
+other = "✅ Buyer messages now also go to your sales chat."
+
+["bot.og.form_tg_saved_off"]
+other = "✅ Buyer messages now go only to the e-mail of the sales page."
+
+["bot.og.block_hidden"]
+other = "⚠️ A required field is now empty, so the seller data is hidden on sales pages: {{.N}}. Fill in the field, then turn the seller data on again on the page card."
+
+["contact.email.subject"]
+other = "Message from a buyer: {{.Name}}"
+
+["contact.email.intro"]
+other = "A buyer wrote to you through the contact form of your Arena sales page."
+
+["contact.email.from"]
+other = "From"
+
+["contact.email.page"]
+other = "Sales page"
+
+["contact.email.reply"]
+other = "To answer the buyer, reply to this e-mail. Arena does not see your answer."
+
+["contact.email.footer"]
+other = "Arena Sold Out sent this message because the contact form of your sales page is on."

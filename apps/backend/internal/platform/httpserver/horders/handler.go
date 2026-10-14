@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -178,9 +179,20 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, o := range rows {
+		ids = append(ids, o.ID)
+	}
+	letters := h.listDeliveryStates(r.Context(), ids) // letters.go
+	failedLetters := h.failedLetterOrders(r.Context(), rows)
 	out := make([]map[string]any, 0, len(rows))
 	for _, o := range rows {
 		m := orderSummary(o.OrderRow)
+		m["delivery_state"] = deliveryNone
+		if st, ok := letters[o.ID]; ok {
+			m["delivery_state"] = st
+		}
+		m["letter_failed"] = failedLetters[o.ID]
 		m["event_name"] = o.EventName
 		m["session_start_at"] = o.SessionStartAt.UTC().Format(time.RFC3339)
 		m["session_timezone"] = o.SessionTimezone
@@ -298,6 +310,10 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 	resp["payment"] = extras.payment
 	resp["unpaid_reason"] = extras.reason
 	resp["channel"] = extras.channel
+	resp["letters"] = extras.letters
+	resp["letter_failed"] = anyLetterFailed(extras.letters)
+	h.addRecipients(r.Context(), order.ID, extras.delivery) // letters.go
+	resp["refund_letter"] = h.refundLetter(r.Context(), order.ID)
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 

@@ -84,6 +84,19 @@ func New(botToken, chatID, envLabel string, logger *slog.Logger) Notifier {
 	return NewTelegramNotifier(botToken, chatID, envLabel, WithLogger(logger))
 }
 
+// NewNoop returns the logging no-op Notifier without announcing it. New logs
+// "Telegram not configured" once per call, which is right for a process that
+// builds its notifier once at startup; a caller that deliberately has no
+// Telegram destination and is built per request (onboarding.Service in
+// arena-api, where the operator is told by arena-worker instead) uses this so
+// that line is not repeated on every request.
+func NewNoop(logger *slog.Logger) Notifier {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &noopNotifier{logger: logger}
+}
+
 // noopNotifier logs every message instead of delivering it. Used when
 // Telegram credentials are absent (dev/test) so callers never need to
 // special-case "notifications disabled".

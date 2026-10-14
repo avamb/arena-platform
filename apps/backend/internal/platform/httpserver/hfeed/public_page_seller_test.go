@@ -14,6 +14,7 @@ func fullSellerRow() gen.HostedPageSellerRow {
 	return gen.HostedPageSellerRow{
 		OrgName:            "Teatro Ejemplo",
 		LegalName:          sp("Teatro Ejemplo S.L."),
+		LegalForm:          sp(" S.L. "),
 		TaxID:              sp("ESB12345678"),
 		TaxIDScheme:        sp("eu_vat"),
 		RegistrationNumber: sp("B12345678"),
@@ -44,7 +45,7 @@ func TestBuildSeller_FlagOnPublishesLegalIdentity(t *testing.T) {
 		t.Fatal("buildSeller returned nil with show_seller on")
 	}
 	if got.LegalName != "Teatro Ejemplo S.L." || got.TaxID != "ESB12345678" ||
-		got.TaxScheme != "eu_vat" || got.RegistrationNumber != "B12345678" {
+		got.TaxScheme != "eu_vat" || got.RegistrationNumber != "B12345678" || got.LegalForm != "S.L." {
 		t.Fatalf("identity wrong: %+v", got)
 	}
 	if got.Country != "ES" {
@@ -54,8 +55,12 @@ func TestBuildSeller_FlagOnPublishesLegalIdentity(t *testing.T) {
 		got.Address.PostalCode != "28013" || got.Address.Country != "ES" {
 		t.Fatalf("address wrong: %+v", got.Address)
 	}
-	if got.PublicContact == nil || got.PublicContact.Email != "tickets@example.com" || got.PublicContact.Phone != "+34 600 000 000" {
+	// The e-mail is never published (HP contact form); the phone is.
+	if got.PublicContact == nil || got.PublicContact.Email != "" || got.PublicContact.Phone != "+34 600 000 000" {
 		t.Fatalf("contact wrong: %+v", got.PublicContact)
+	}
+	if b, _ := json.Marshal(got); strings.Contains(string(b), "tickets@example.com") {
+		t.Fatalf("the public e-mail leaked into the seller block: %s", b)
 	}
 }
 
@@ -82,7 +87,7 @@ func TestBuildSeller_MissingFieldsAreOmitted(t *testing.T) {
 		t.Fatalf("address/contact must be omitted: %+v", got)
 	}
 	b, _ := json.Marshal(got)
-	if s := string(b); strings.Contains(s, "tax_id") || strings.Contains(s, "registration_number") ||
+	if s := string(b); strings.Contains(s, "tax_id") || strings.Contains(s, "registration_number") || strings.Contains(s, "legal_form") ||
 		strings.Contains(s, "address") || strings.Contains(s, "public_contact") {
 		t.Fatalf("empty values leaked into the JSON: %s", s)
 	}
@@ -128,5 +133,43 @@ func TestSellerRowCarriesNoOrganizationContact(t *testing.T) {
 		if strings.Contains(strings.ReplaceAll(string(b), "PublicContact", ""), banned) {
 			t.Fatalf("HostedPageSellerRow exposes a %q field: %s", banned, b)
 		}
+	}
+}
+
+func TestPublishedContact_EmailOnlyChannelPublishesNothing(t *testing.T) {
+	t.Parallel()
+	if c := publishedContact([]byte(`{"email":"tickets@example.com"}`)); c != nil {
+		t.Fatalf("an e-mail-only contact must publish nothing, got %+v", c)
+	}
+}
+
+func TestContactForm_OfferedOnlyWithAPublicEmailAndACaptcha(t *testing.T) {
+	t.Parallel()
+	row := fullSellerRow()
+	row.ShowSeller = false // the form does not depend on the seller block
+	h := (&Handler{}).WithContactForm(true, "site-key", "https://arenasoldout.com/legal/privacy")
+	f := h.contactForm(row, nil)
+	if f == nil || !f.Available || f.TurnstileSiteKey != "site-key" || f.PrivacyURL != "https://arenasoldout.com/legal/privacy" {
+		t.Fatalf("form = %+v", f)
+	}
+	if b, _ := json.Marshal(f); strings.Contains(string(b), "@") {
+		t.Fatalf("the form block must never carry the address: %s", b)
+	}
+	if f := (&Handler{}).WithContactForm(false, "site-key", "").contactForm(row, nil); f != nil {
+		t.Fatalf("a deployment that cannot check the captcha offers no form, got %+v", f)
+	}
+	row.PublicContact = []byte(`{"phone":"+34 600 000 000"}`)
+	if f := h.contactForm(row, nil); f != nil {
+		t.Fatalf("a page whose messages would reach nobody offers no form, got %+v", f)
+	}
+	// Without a public e-mail the messages go to the organization's own
+	// address, which the block never carries: the letters of such a page link
+	// this form instead of printing an address.
+	f = h.contactForm(row, func() bool { return true })
+	if f == nil || !f.Available {
+		t.Fatalf("a page whose organization has an address offers the form, got %+v", f)
+	}
+	if b, _ := json.Marshal(f); strings.Contains(string(b), "@") {
+		t.Fatalf("the form block must never carry an address: %s", b)
 	}
 }
