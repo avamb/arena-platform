@@ -56,7 +56,7 @@ func main() {
 
 func run() error {
 	// 1. Configuration ---------------------------------------------------------
-	cfg, err := config.Load()
+	cfg, err := config.LoadFor(config.RoleAPI)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -325,7 +325,7 @@ func run() error {
 // server when MEDIA_BACKEND is set. Empty MediaBackend returns (nil, nil)
 // so the /v1/media endpoints respond with 503 storage_unavailable until
 // an operator configures the env vars. Validation that fields required
-// by the selected backend are present already runs in config.Load().
+// by the selected backend are present already runs in config.LoadFor.
 func buildMediaRepo(cfg *config.Config, logger *slog.Logger, pool *pgxpool.Pool) (*mediastore.Repo, error) {
 	if cfg.MediaBackend == "" {
 		logger.Info("media storage disabled (MEDIA_BACKEND not set)")
