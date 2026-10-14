@@ -5,10 +5,11 @@
 # catch-all sends every app URL) the moment that location adds Cache-Control.
 # Review finding B1, 2026-10-13. Same approach as apps/tickets-page.
 #
-# The page shows buyers' contacts and keeps a refresh token in
-# sessionStorage, so the policy is strict: no inline or external script,
-# no inline style (the app has none), API calls only to __API_ORIGIN__,
-# never framed. __API_ORIGIN__ is replaced at image build time (Dockerfile).
+# The page shows buyers' contacts and keeps the refresh token of a 72-hour
+# web session in localStorage (and in the tab's sessionStorage), where any
+# script of this origin could read it, so the policy is strict: no inline
+# or external script, no inline style (the app has none), API calls only
+# to __API_ORIGIN__, never framed. __API_ORIGIN__ is replaced at image build time (Dockerfile).
 add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' __API_ORIGIN__; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'" always;
 add_header X-Content-Type-Options "nosniff" always;
 add_header X-Frame-Options "DENY" always;
