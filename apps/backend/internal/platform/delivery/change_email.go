@@ -274,7 +274,7 @@ func (h *changeEmail) ticketPayload(ctx context.Context, ticketID uuid.UUID, loc
 			p.EAN13 = cred.Payload
 		}
 	}
-	applyContactRoute(ctx, q, h.opts.TicketsBaseURL, ticketID, &p, h.logger)
+	applyContactRoute(ctx, q, formLink{h.opts.TicketsBaseURL, h.opts.ContactFormEnabled}, ticketID, &p, h.logger)
 	resolvePresentation(ctx, q, ticketID, &p, h.logger)
 	return p
 }

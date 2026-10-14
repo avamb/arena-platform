@@ -93,11 +93,18 @@ func TestOrganizerContact_RouteStoresQueuesAndRefuses(t *testing.T) {
 	other := newContactFixture(t, srv, true)
 	noMail := newContactFixture(t, srv, false)
 	orgOnly := newContactFixture(t, srv, false)
+	ownerOnly := newContactFixture(t, srv, false)
 	ctx := context.Background()
-	// noMail's messages would reach nobody; orgOnly's organization has its
-	// own address, which the page must never show.
+	// noMail's messages would reach nobody (no address, no active owner);
+	// orgOnly's organization has its own address and ownerOnly only its
+	// owner's account e-mail, which the page must never show.
 	const orgPrivate = "box-private@organizer.example"
-	if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_email = NULL WHERE id = $1`, noMail.f.orgID); err != nil {
+	for _, org := range []uuid.UUID{noMail.f.orgID, ownerOnly.f.orgID} {
+		if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_email = NULL WHERE id = $1`, org); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `UPDATE memberships SET status = 'suspended' WHERE org_id = $1 AND role = 'org_admin'`, noMail.f.orgID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_email = $2 WHERE id = $1`, orgOnly.f.orgID, orgPrivate); err != nil {
@@ -128,6 +135,14 @@ func TestOrganizerContact_RouteStoresQueuesAndRefuses(t *testing.T) {
 	srv.router.ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), `"contact_form":{"available":true`) || strings.Contains(rec.Body.String(), orgPrivate) {
 		t.Errorf("organization address only: %d %s", rec.Code, rec.Body.String())
+	}
+	// Owner decision 2026-10-13: with no address at all the owner's account
+	// e-mail takes the messages; the page offers the form and never shows it.
+	req = httptest.NewRequest(http.MethodGet, "/v1/public/pages/"+ownerOnly.slug, nil)
+	rec = httptest.NewRecorder()
+	srv.router.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), `"contact_form":{"available":true`) || strings.Contains(rec.Body.String(), ownerOnly.f.emails[0]) {
+		t.Errorf("owner's account e-mail only: %d %s", rec.Code, rec.Body.String())
 	}
 	if code, body := contactPost(t, srv.router, orgOnly.slug, contactBody("ben@example.com", orgOnly.token), "198.51.100.17"); code != http.StatusAccepted || strings.Contains(body, orgPrivate) {
 		t.Errorf("send to a page without a public e-mail: %d %s", code, body)
@@ -238,10 +253,25 @@ func TestOrganizerContact_CaptchaIsCheckedBeforeAnythingIsWritten(t *testing.T) 
 	}
 }
 
-type captureMail struct{ sent []emailadapter.Message }
+// captureMail records each letter; with fail set, the provider refuses it.
+type captureMail struct {
+	sent []emailadapter.Message
+	fail bool
+}
 
 func (c *captureMail) Send(_ context.Context, m emailadapter.Message) error {
+	if c.fail {
+		return errors.New("provider down")
+	}
 	c.sent = append(c.sent, m)
+	return nil
+}
+
+// captureOps records operator alerts.
+type captureOps struct{ texts []string }
+
+func (c *captureOps) Send(_ context.Context, text string) error {
+	c.texts = append(c.texts, text)
 	return nil
 }
 
@@ -278,8 +308,8 @@ func TestOrganizerContact_WorkerMailsAndPostsOnce(t *testing.T) {
 		}
 		return id
 	}
-	mail, chat := &captureMail{}, &captureAnnounce{}
-	h := contactform.New(contactform.Options{Pool: pool, Sender: mail, Announcer: chat})
+	mail, chat, ops := &captureMail{}, &captureAnnounce{}, &captureOps{}
+	h := contactform.New(contactform.Options{Pool: pool, Sender: mail, Announcer: chat, Ops: ops})
 	payload := func(id uuid.UUID) []byte {
 		b, _ := json.Marshal(contactform.Payload{MessageID: id.String()})
 		return b
@@ -356,8 +386,44 @@ func TestOrganizerContact_WorkerMailsAndPostsOnce(t *testing.T) {
 		t.Fatalf("fallback to the organization's address: %+v", mail.sent[len(mail.sent)-1])
 	}
 
-	// ── neither address: nothing mailed, and said so ──────────────────────────
+	// ── no organization address: the owner's account e-mail takes it ─────────
 	if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_email = NULL WHERE id = $1`, cf.f.orgID); err != nil {
+		t.Fatal(err)
+	}
+	id = send("198.51.100.35")
+	if err := h.Handle(ctx, payload(id)); err != nil {
+		t.Fatal(err)
+	}
+	if len(mail.sent) != 5 || !strings.EqualFold(mail.sent[4].To, cf.f.emails[0]) || mail.sent[4].ReplyTo != "anna@example.com" {
+		t.Fatalf("fallback to the owner's account e-mail: %+v", mail.sent[len(mail.sent)-1])
+	}
+
+	// ── a platform superadmin is never the owner who receives it ─────────────
+	// The operator is an org_admin of organizations it set up; the message
+	// must reach the organizer, the next owner, not the platform.
+	if _, err := pool.Exec(ctx, `INSERT INTO user_roles (user_id, role_id, org_id)
+	        SELECT $1, id, NULL FROM roles WHERE name = 'platform_superadmin' AND org_id IS NULL`, cf.f.ownerID); err != nil {
+		t.Fatal(err)
+	}
+	second := "second-owner-" + uuid.NewString()[:8] + "@organizer.example"
+	cf.f.emails = append(cf.f.emails, second)
+	var secondID uuid.UUID
+	if err := pool.QueryRow(ctx, `INSERT INTO users (email, password_hash) VALUES ($1, 'x') RETURNING id`, second).Scan(&secondID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO memberships (user_id, org_id, role) VALUES ($1, $2, 'org_admin')`, secondID, cf.f.orgID); err != nil {
+		t.Fatal(err)
+	}
+	id = send("198.51.100.36")
+	if err := h.Handle(ctx, payload(id)); err != nil {
+		t.Fatal(err)
+	}
+	if len(mail.sent) != 6 || mail.sent[5].To != second {
+		t.Fatalf("the superadmin was picked over the organizer: %+v", mail.sent[len(mail.sent)-1])
+	}
+
+	// ── no address and no owner but the superadmin: nothing mailed, said so ──
+	if _, err := pool.Exec(ctx, `UPDATE memberships SET status = 'suspended' WHERE user_id = $1 AND org_id = $2`, secondID, cf.f.orgID); err != nil {
 		t.Fatal(err)
 	}
 	id = send("198.51.100.33")
@@ -368,11 +434,52 @@ func TestOrganizerContact_WorkerMailsAndPostsOnce(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT email_mailed FROM organizer_contact_messages WHERE id = $1`, id).Scan(&mailed); err != nil || mailed {
 		t.Errorf("email_mailed = %v %v, want false", mailed, err)
 	}
-	if len(mail.sent) != 4 {
-		t.Errorf("a broken address was mailed: %+v", mail.sent[len(mail.sent)-1])
+	if len(mail.sent) != 6 {
+		t.Errorf("a message was mailed with no recipient: %+v", mail.sent[len(mail.sent)-1])
 	}
 	if last := chat.texts[len(chat.texts)-1]; strings.Contains(last, "went to your e-mail") || !strings.Contains(last, "was not e-mailed") {
 		t.Errorf("the post claims an e-mail that did not go out: %s", last)
+	}
+	if len(ops.texts) != 0 {
+		t.Errorf("the chat took the message, yet the operator was alerted: %v", ops.texts)
+	}
+
+	// ── neither an address nor a chat: the operator hears, without the words ─
+	if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_form_to_telegram = false WHERE id = $1`, cf.f.orgID); err != nil {
+		t.Fatal(err)
+	}
+	id = send("198.51.100.37")
+	if err := h.Handle(ctx, payload(id)); err != nil {
+		t.Fatal(err)
+	}
+	if len(ops.texts) != 1 || !strings.Contains(ops.texts[0], id.String()) ||
+		strings.Contains(ops.texts[0], "anna@example.com") || strings.Contains(ops.texts[0], "wheelchair") {
+		t.Fatalf("message to nobody: ops alerts = %v", ops.texts)
+	}
+
+	// ── the e-mail provider fails: the chat copy still goes, once ────────────
+	if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_form_to_telegram = true, contact_email = 'box-private@organizer.example' WHERE id = $1`, cf.f.orgID); err != nil {
+		t.Fatal(err)
+	}
+	mail.fail = true
+	posts := len(chat.texts)
+	id = send("198.51.100.38")
+	if err := h.Handle(ctx, payload(id)); err == nil {
+		t.Fatal("a failed e-mail must fail the job so the worker retries it")
+	}
+	if len(chat.texts) != posts+1 || !strings.Contains(chat.texts[posts], "keeps trying") {
+		t.Fatalf("the chat copy must go while the e-mail is retried: %v", chat.texts[posts:])
+	}
+	var emailDone, tgSent bool
+	if err := pool.QueryRow(ctx, `SELECT email_sent_at IS NOT NULL, telegram_sent_at IS NOT NULL FROM organizer_contact_messages WHERE id = $1`, id).Scan(&emailDone, &tgSent); err != nil || emailDone || !tgSent {
+		t.Errorf("after a failed e-mail: email done=%v telegram done=%v %v", emailDone, tgSent, err)
+	}
+	mail.fail = false
+	if err := h.Handle(ctx, payload(id)); err != nil {
+		t.Fatal(err)
+	}
+	if len(mail.sent) != 7 || mail.sent[6].To != "box-private@organizer.example" || len(chat.texts) != posts+1 {
+		t.Errorf("the retry mails once and does not post again: mails=%d posts=%d", len(mail.sent), len(chat.texts)-posts)
 	}
 }
 

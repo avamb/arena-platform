@@ -19,8 +19,14 @@
  * sessionStorage. A tab signed in separately (another key) never takes
  * another session's tokens.
  *
- * Without Web Locks or BroadcastChannel (old browsers) the tab acts alone,
- * which is the previous behaviour.
+ * Without Web Locks or BroadcastChannel (old browsers), or when the browser
+ * refuses the lock (Firefox with site storage blocked throws SecurityError),
+ * the tab acts alone, which is the previous behaviour.
+ *
+ * A tab that becomes the leader announces it, so a follower whose question
+ * went to the tab that just closed asks again at once instead of waiting for
+ * its timeout. A tab that becomes the leader while it waits for an answer
+ * rotates the token itself.
  *
  * Failures: only a refusal from the server (401/400 on refresh) signs the
  * person out, in every tab of the session. A network error keeps the
@@ -50,9 +56,15 @@ export type Message =
   | { type: "rotated"; key: string; refreshToken: string; accessToken: string; expiresAt: number; userId: string }
   /** `stale`: the access token the asking tab holds and the API refused. */
   | { type: "need-token"; key: string; id: string; stale?: string }
-  | { type: "token"; key: string; id: string; accessToken: string; expiresAt: number; userId: string }
+  /**
+   * `refreshToken`: the leader's current one. A duplicated tab copies
+   * sessionStorage before it listens, so it may have missed a "rotated".
+   */
+  | { type: "token"; key: string; id: string; accessToken: string; expiresAt: number; userId: string; refreshToken?: string }
   | { type: "token-failed"; key: string; id: string; status: number; code: string }
-  | { type: "signed-out"; key: string };
+  | { type: "signed-out"; key: string }
+  /** A tab took the lead: questions sent to the previous leader go again. */
+  | { type: "leader"; key: string };
 
 export interface Bus {
   post(msg: Message): void;
@@ -88,12 +100,17 @@ export const EXPIRY_MARGIN_MS = 30_000;
 export class TabSession {
   private access: { token: string; expiresAt: number; userId: string } | null = null;
   private leader = false;
+  /** The browser refused the lock: this tab acts alone. */
+  private solo = false;
   /** The claim in progress or done, so a second start() (React StrictMode) reuses it. */
   private claiming: { key: string; done: Promise<void> } | null = null;
   private release: (() => void) | null = null;
   private queued: AbortController | null = null;
   private inflight: Promise<void> | null = null;
-  private waiters = new Map<string, { resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+  private waiters = new Map<
+    string,
+    { resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout>; stale?: string }
+  >();
   private listeners = new Set<() => void>();
   private readonly now: () => number;
   private readonly newId: () => string;
@@ -169,7 +186,8 @@ export class TabSession {
   /** Gets a new access token: the leader rotates, a follower asks. */
   refresh(): Promise<void> {
     if (this.inflight !== null) return this.inflight;
-    const run = this.leader || this.deps.bus === null || this.deps.locks === null ? this.rotate() : this.ask();
+    const alone = this.leader || this.solo || this.deps.bus === null || this.deps.locks === null;
+    const run = alone ? this.rotate() : this.ask();
     this.inflight = run.finally(() => {
       this.inflight = null;
     });
@@ -207,14 +225,15 @@ export class TabSession {
     const stored = this.deps.store.get();
     if (stored === null) return Promise.reject(this.deps.makeError(401, "auth.no_refresh_token", "You are signed out."));
     const id = this.newId();
+    const stale = this.access?.token;
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.waiters.delete(id);
         // The session stays: the leader tab may be busy. The person can retry.
         reject(this.deps.makeError(0, "network.timeout", "Another tab of this session did not answer."));
       }, this.askTimeoutMs);
-      this.waiters.set(id, { resolve, reject, timer });
-      this.deps.bus?.post({ type: "need-token", key: stored.key, id, stale: this.access?.token });
+      this.waiters.set(id, { resolve, reject, timer, stale });
+      this.deps.bus?.post({ type: "need-token", key: stored.key, id, stale });
     });
   }
 
@@ -236,7 +255,15 @@ export class TabSession {
           () => {
             const a = this.access;
             if (a !== null) {
-              this.deps.bus?.post({ type: "token", key: m.key, id: m.id, accessToken: a.token, expiresAt: a.expiresAt, userId: a.userId });
+              this.deps.bus?.post({
+                type: "token",
+                key: m.key,
+                id: m.id,
+                accessToken: a.token,
+                expiresAt: a.expiresAt,
+                userId: a.userId,
+                refreshToken: this.deps.store.get()?.refreshToken,
+              });
             }
           },
           (err: unknown) => {
@@ -250,6 +277,9 @@ export class TabSession {
         if (w === undefined) return;
         this.waiters.delete(m.id);
         clearTimeout(w.timer);
+        if (typeof m.refreshToken === "string" && m.refreshToken.length > 0) {
+          this.deps.store.set({ key: m.key, refreshToken: m.refreshToken, userId: m.userId });
+        }
         this.setAccess(m.accessToken, m.expiresAt, m.userId);
         this.notify();
         w.resolve();
@@ -265,6 +295,13 @@ export class TabSession {
       }
       case "signed-out":
         this.clearLocal();
+        return;
+      case "leader":
+        // Questions still waiting were sent to the tab that closed: ask again.
+        if (this.leader) return;
+        for (const [id, w] of this.waiters) {
+          this.deps.bus?.post({ type: "need-token", key: m.key, id, stale: w.stale });
+        }
         return;
     }
   }
@@ -289,7 +326,15 @@ export class TabSession {
       return;
     }
     const name = this.lockName(key);
-    const now = await locks.acquire(name, { ifAvailable: true });
+    let now: (() => void) | null;
+    try {
+      now = await locks.acquire(name, { ifAvailable: true });
+    } catch {
+      // The browser refused the lock (Firefox with site storage blocked
+      // throws SecurityError). Sign-in must still work: act alone.
+      this.goSolo(key);
+      return;
+    }
     if (now !== null) {
       this.becomeLeader(key, now);
       return;
@@ -303,9 +348,18 @@ export class TabSession {
         if (rel !== null) this.becomeLeader(key, rel);
       },
       () => {
-        // Aborted at sign-out or by a new sign-in.
+        // Aborted at sign-out or by a new sign-in. Any other refusal leaves
+        // this tab without a leader to ask: it acts alone.
+        if (!ctl.signal.aborted) this.goSolo(key);
       },
     );
+  }
+
+  private goSolo(key: string): void {
+    if (this.deps.store.get()?.key !== key) return;
+    this.solo = true;
+    this.leader = true;
+    this.takeOverWaiters();
   }
 
   private becomeLeader(key: string, rel: () => void): void {
@@ -316,6 +370,20 @@ export class TabSession {
     this.leader = true;
     this.release = rel;
     this.queued = null;
+    this.deps.bus?.post({ type: "leader", key });
+    this.takeOverWaiters();
+  }
+
+  /** Questions this tab sent as a follower: now it answers them itself. */
+  private takeOverWaiters(): void {
+    if (this.waiters.size === 0) return;
+    const pending = [...this.waiters.values()];
+    this.waiters.clear();
+    for (const w of pending) clearTimeout(w.timer);
+    this.rotate().then(
+      () => pending.forEach((w) => w.resolve()),
+      (err: unknown) => pending.forEach((w) => w.reject(err as Error)),
+    );
   }
 
   private dropLeadership(): void {
@@ -325,6 +393,7 @@ export class TabSession {
     this.release?.();
     this.release = null;
     this.leader = false;
+    this.solo = false;
   }
 
   private setAccess(token: string, expiresAt: number, userId: string): void {
@@ -379,7 +448,12 @@ export function browserStore(): SessionStore {
 
 export function browserBus(): Bus | null {
   if (typeof BroadcastChannel === "undefined") return null;
-  const ch = new BroadcastChannel("arena.events.session");
+  let ch: BroadcastChannel;
+  try {
+    ch = new BroadcastChannel("arena.events.session");
+  } catch {
+    return null;
+  }
   // Node (unit tests) keeps a process alive for an open channel.
   (ch as unknown as { unref?: () => void }).unref?.();
   return {
@@ -393,12 +467,18 @@ export function browserBus(): Bus | null {
 }
 
 export function browserLocks(): Locks | null {
-  if (typeof navigator === "undefined" || navigator.locks === undefined) return null;
-  const lm = navigator.locks;
+  let lm: LockManager | undefined;
+  try {
+    lm = typeof navigator === "undefined" ? undefined : navigator.locks;
+  } catch {
+    return null;
+  }
+  if (lm === undefined) return null;
+  const locks = lm;
   return {
     acquire(name, opts) {
       return new Promise((resolve, reject) => {
-        lm.request(name, { ifAvailable: opts.ifAvailable, signal: opts.signal }, (lock) => {
+        locks.request(name, { ifAvailable: opts.ifAvailable, signal: opts.signal }, (lock) => {
           if (lock === null) {
             resolve(null);
             return undefined;

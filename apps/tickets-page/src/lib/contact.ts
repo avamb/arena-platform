@@ -25,6 +25,9 @@ export interface ContactContext {
   feedToken?: string;
   locale: PageLocale;
   form: HostedPageContactForm | null | undefined;
+  /** The organizer's public phone from the page's seller block, if any:
+   * offered when a message cannot be sent. */
+  phone?: string;
 }
 
 /** Cloudflare Turnstile's global, as far as this module uses it. */
@@ -119,8 +122,10 @@ function field(label: string, input: HTMLInputElement | HTMLTextAreaElement, id:
   return wrap;
 }
 
-/** Maps an API error code onto the sentence the buyer reads. */
-function errorText(code: string, locale: PageLocale): string {
+/** Maps an API error code onto the sentence the buyer reads. A failure the
+ * buyer cannot fix also says how else to reach the organizer: the page's
+ * public phone when it has one. */
+export function errorText(code: string, locale: PageLocale, phone?: string): string {
   const s = t(locale);
   switch (code) {
     case 'contact.invalid_name':
@@ -141,17 +146,61 @@ function errorText(code: string, locale: PageLocale): string {
       return s.contactErrCaptcha;
     case 'contact.rate_limited':
       return s.contactErrRate;
+    default: {
+      const tel = (phone ?? '').trim();
+      // The phone stays left-to-right inside a Hebrew sentence.
+      if (tel) return `${s.contactErrGeneric} ${s.contactErrCall} \u2066${tel}\u2069`;
+      return `${s.contactErrGeneric} ${s.contactErrElsewhere}`;
+    }
+  }
+}
+
+/** The form field an API refusal is about, if it is about one. */
+function fieldOfError(code: string): 'name' | 'email' | 'message' | 'consent' | '' {
+  switch (code) {
+    case 'contact.invalid_name':
+      return 'name';
+    case 'contact.invalid_email':
+      return 'email';
+    case 'contact.invalid_message':
+    case 'contact.too_large':
+      return 'message';
+    case 'contact.consent_required':
+      return 'consent';
     default:
-      return s.contactErrGeneric;
+      return '';
   }
 }
 
 let seq = 0;
 
+/** What the buyer typed, kept per page while the tab lives: closing the form
+ * (Esc, Cancel, a click beside it) never throws the text away. Cleared once
+ * the message is sent. The consent is not kept: the buyer gives it again
+ * each time the form opens. */
+interface ContactDraft {
+  name: string;
+  email: string;
+  message: string;
+}
+const drafts = new Map<string, ContactDraft>();
+
+/** The draft kept for a page, if any (exported for tests). */
+export function contactDraft(slug: string): ContactDraft | undefined {
+  return drafts.get(slug);
+}
+
+/** Set on <body> while the dialog is open (style.css stops the page scrolling). */
+export const SCROLL_LOCK_CLASS = 'asa-contact-open';
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
+
 /** Opens the form as a modal dialog. Returns the overlay element. */
 export function openContactForm(ctx: ContactContext): HTMLElement {
   const s = t(ctx.locale);
   const n = ++seq;
+  // Focus goes back where it was when the dialog closes.
+  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const overlay = document.createElement('div');
   overlay.className = 'asa-contact';
   const dialog = document.createElement('div');
@@ -227,9 +276,42 @@ export function openContactForm(ctx: ContactContext): HTMLElement {
 
   const status = document.createElement('p');
   status.className = 'asa-contact__status';
+  status.id = `asa-contact-status-${n}`;
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
   form.appendChild(status);
+
+  // A field the buyer must correct is marked for screen readers and points
+  // at the sentence that says what to do.
+  const inputs = { name, email, message, consent } as const;
+  const clearInvalid = () => {
+    for (const el of Object.values(inputs)) {
+      el.removeAttribute('aria-invalid');
+      el.removeAttribute('aria-describedby');
+    }
+  };
+  const markInvalid = (key: keyof typeof inputs) => {
+    clearInvalid();
+    const el = inputs[key];
+    el.setAttribute('aria-invalid', 'true');
+    el.setAttribute('aria-describedby', status.id);
+    el.focus();
+  };
+
+  const draft = drafts.get(ctx.slug);
+  if (draft) {
+    name.value = draft.name;
+    email.value = draft.email;
+    message.value = draft.message;
+  }
+  const saveDraft = () => {
+    drafts.set(ctx.slug, { name: name.value, email: email.value, message: message.value });
+  };
+  form.addEventListener('input', () => {
+    saveDraft();
+    clearInvalid();
+  });
+  form.addEventListener('change', saveDraft);
 
   const actions = document.createElement('div');
   actions.className = 'asa-contact__actions';
@@ -266,16 +348,38 @@ export function openContactForm(ctx: ContactContext): HTMLElement {
     });
   }
 
+  // The page under the dialog does not scroll while it is open.
+  document.body.classList.add(SCROLL_LOCK_CLASS);
   const close = () => {
     if (widgetId && window.turnstile?.remove) window.turnstile.remove(widgetId);
     document.removeEventListener('keydown', onKey);
     overlay.remove();
+    if (!document.querySelector('.asa-contact')) document.body.classList.remove(SCROLL_LOCK_CLASS);
+    if (opener && opener.isConnected) opener.focus();
   };
+  // Keyboard focus stays inside the dialog while it is open.
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape') {
+      close();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const items = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.isConnected);
+    if (items.length === 0) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || !dialog.contains(active))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (active === last || !dialog.contains(active))) {
+      e.preventDefault();
+      first.focus();
+    }
   };
   document.addEventListener('keydown', onKey);
   cancel.addEventListener('click', close);
+  // A click beside the dialog closes it; the typed text stays in the draft.
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) close();
   });
@@ -286,8 +390,10 @@ export function openContactForm(ctx: ContactContext): HTMLElement {
     const problem = validateContact(values);
     if (problem) {
       status.textContent = errorText(problem, ctx.locale);
+      markInvalid(problem);
       return;
     }
+    clearInvalid();
     if (siteKey && !token) {
       status.textContent = errorText('captcha', ctx.locale);
       return;
@@ -297,6 +403,7 @@ export function openContactForm(ctx: ContactContext): HTMLElement {
     void sendContact(ctx, { ...values, turnstile_token: token }).then((code) => {
       send.disabled = false;
       if (!code) {
+        drafts.delete(ctx.slug);
         form.remove();
         intro.textContent = s.contactSent;
         const done = document.createElement('button');
@@ -308,7 +415,9 @@ export function openContactForm(ctx: ContactContext): HTMLElement {
         done.focus();
         return;
       }
-      status.textContent = errorText(code, ctx.locale);
+      status.textContent = errorText(code, ctx.locale, ctx.phone);
+      const bad = fieldOfError(code);
+      if (bad) markInvalid(bad);
       if (code === 'contact.captcha_failed' && widgetId && window.turnstile) {
         token = '';
         window.turnstile.reset(widgetId);
@@ -341,6 +450,8 @@ const FOOTER_ID = 'asa-footer-contact';
 export function renderContactFooter(ctx: ContactContext): void {
   const existing = document.getElementById(FOOTER_ID);
   if (existing) existing.remove();
+  // The seller block already offers the button: one is enough.
+  if (document.querySelector('.asa-seller__write')) return;
   const btn = renderContactButton(ctx, 'asa-contact-btn asa-contact-btn--footer');
   if (!btn) return;
   const inner = document.querySelector('.asa-footer__in');
@@ -360,19 +471,58 @@ export const CONTACT_HASH = '#contact';
  * Opens the form when the page was reached through `#contact` (the link the
  * ticket letters print when the sales page shows no organizer e-mail). The
  * fragment is removed afterwards, so a reload or a later re-render does not
- * open it again. Returns whether the form was opened.
+ * open it again. When the page shows no form, a short note says so instead
+ * of leaving the buyer with nothing. Returns whether the form was opened.
  */
 export function openContactFromHash(
   ctx: ContactContext,
   loc: Pick<Location, 'hash' | 'pathname' | 'search'> = window.location,
   hist: Pick<History, 'replaceState'> | null = window.history,
 ): boolean {
-  if (loc.hash !== CONTACT_HASH || !ctx.form?.available) return false;
+  if (loc.hash !== CONTACT_HASH) return false;
   try {
     hist?.replaceState(null, '', loc.pathname + loc.search);
   } catch {
-    // A sandboxed frame may refuse; the form still opens.
+    // A sandboxed frame may refuse; the form (or the note) still shows.
+  }
+  if (!contactAvailable(ctx.form) || !ctx.slug) {
+    showContactUnavailable(ctx.locale);
+    return false;
   }
   openContactForm(ctx);
   return true;
+}
+
+const NOTICE_ID = 'asa-contact-notice';
+
+/** A short, dismissible note: the organizer cannot be written to from this
+ * page right now. */
+export function showContactUnavailable(locale: PageLocale): HTMLElement {
+  document.getElementById(NOTICE_ID)?.remove();
+  const box = document.createElement('div');
+  box.id = NOTICE_ID;
+  box.className = 'asa-contact-notice';
+  box.setAttribute('role', 'status');
+  box.setAttribute('dir', isRtlLocale(locale) ? 'rtl' : 'ltr');
+  const text = document.createElement('p');
+  text.textContent = t(locale).contactUnavailable;
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'asa-contact-notice__close';
+  close.textContent = t(locale).contactClose;
+  close.addEventListener('click', () => box.remove());
+  box.appendChild(text);
+  box.appendChild(close);
+  document.body.appendChild(box);
+  return box;
+}
+
+/**
+ * Where a `#contact` link goes when its event page no longer exists (taken
+ * off sale, deleted): the organization's or promoter's own page, which offers
+ * the same form. Null when the address is not a `#contact` link.
+ */
+export function contactFallbackURL(orgSlug: string, loc: Pick<Location, 'hash' | 'search'>): string | null {
+  if (loc.hash !== CONTACT_HASH || !orgSlug) return null;
+  return '/' + encodeURIComponent(orgSlug) + loc.search + CONTACT_HASH;
 }

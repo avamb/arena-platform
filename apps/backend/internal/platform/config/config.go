@@ -1742,3 +1742,17 @@ func (c *Config) ContactFormSecret() string {
 	}
 	return strings.TrimSpace(c.OnboardingTurnstileSecret)
 }
+
+// ContactFormReady reports whether the hosted page may offer its "Write to
+// the organizer" form: outside production always (the captcha is optional
+// there), in production only with both a Turnstile secret and a site key.
+// arena-api decides the page's form with it and arena-worker decides with it
+// whether a letter may link the form, so BOTH services need the two keys: a
+// worker without them only drops the link, the reverse prints a link to a
+// page with no form.
+func (c *Config) ContactFormReady() bool {
+	if c == nil || !c.IsProduction() {
+		return true
+	}
+	return c.ContactFormSecret() != "" && strings.TrimSpace(c.ContactFormTurnstileSiteKey) != ""
+}

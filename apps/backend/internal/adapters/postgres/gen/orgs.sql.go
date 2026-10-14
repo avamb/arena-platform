@@ -273,9 +273,9 @@ SELECT o.name, o.website_url, o.legal_name, o.legal_address_line1, o.legal_addre
        o.legal_address_postal_code, o.legal_address_city, o.legal_address_country,
        CASE WHEN NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') IS NOT NULL
                  THEN btrim(sc.settings #>> '{hosted_page,public_contact,email}')
-            WHEN CASE WHEN sc.id IS NOT NULL THEN COALESCE(sc.settings #> '{hosted_page,enabled}' = 'true'::jsonb, false)
+            WHEN CASE WHEN sc.id IS NOT NULL THEN COALESCE(sc.settings #>> '{hosted_page,enabled}', '') = 'true'
                  ELSE EXISTS (SELECT 1 FROM sales_channels h WHERE h.org_id = o.id AND h.deleted_at IS NULL
-                              AND h.settings #> '{hosted_page,enabled}' = 'true'::jsonb) END THEN NULL
+                              AND h.settings #>> '{hosted_page,enabled}' = 'true') END THEN NULL
             ELSE o.contact_email END AS contact_email,
        o.logo_media_id, o.sender_email, o.sender_verification_status,
        o.registration_number, o.tax_id, o.tax_id_scheme
@@ -339,12 +339,20 @@ func (q *Queries) GetOrgBrandingByTicketID(ctx context.Context, ticketID uuid.UU
 
 const getTicketContactRoute = `-- name: GetTicketContactRoute :one
 SELECT NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') AS public_email,
-       CASE WHEN sc.id IS NOT NULL THEN COALESCE(sc.settings #> '{hosted_page,enabled}' = 'true'::jsonb, false)
+       CASE WHEN sc.id IS NOT NULL THEN COALESCE(sc.settings #>> '{hosted_page,enabled}', '') = 'true'
             ELSE EXISTS (SELECT 1 FROM sales_channels h WHERE h.org_id = o.id AND h.deleted_at IS NULL
-                         AND h.settings #> '{hosted_page,enabled}' = 'true'::jsonb) END AS hosted_page,
+                         AND h.settings #>> '{hosted_page,enabled}' = 'true') END AS hosted_page,
        NULLIF(btrim(o.contact_email), '') AS org_email,
        COALESCE(op.slug, o.slug) AS page_slug,
-       e.slug AS event_slug
+       CASE WHEN e.status = 'published' AND e.deleted_at IS NULL
+                    AND EXISTS (SELECT 1 FROM event_publications pub
+                                JOIN agent_feed_tokens pft ON pft.id = pub.feed_token_id
+                                JOIN sales_channels psc ON psc.id = pft.sales_channel_id
+                                WHERE pub.event_id = e.id AND pft.is_active = true
+                                  AND psc.org_id = o.id AND psc.deleted_at IS NULL
+                                  AND psc.settings #>> '{hosted_page,enabled}' = 'true')
+                   THEN e.slug END AS event_slug,
+       ` + ownerReachableSQL + ` AS owner_reachable
 FROM   tickets t
 JOIN   sessions s ON s.id = t.session_id
 JOIN   events   e ON e.id = s.event_id
@@ -363,17 +371,24 @@ type TicketContactRoute struct {
 	OrgEmail    *string `json:"org_email"`
 	PageSlug    *string `json:"page_slug"`
 	EventSlug   *string `json:"event_slug"`
+	// OwnerReachable: the organization has an owner with an account e-mail,
+	// the contact form's last private recipient. The address is never read.
+	OwnerReachable bool `json:"owner_reachable"`
 }
 
 // GetTicketContactRoute returns where a letter about the ticket sends the
 // buyer to reach the organizer: the sales page's public e-mail, the hosted
 // page's contact form, or the organization's contact_email (HP-4b review,
 // owner rule 2026-10-13). delivery.ContactRouteFor turns it into the letter's
-// e-mail or form link.
+// e-mail or form link. EventSlug is set only for a published, not deleted
+// event that is still published on an active feed token of a hosted-page
+// channel (the hosted event page's own resolution; any other event page
+// answers 404, an unpublished one included), so the link then falls back to
+// the organization's or promoter's page.
 func (q *Queries) GetTicketContactRoute(ctx context.Context, ticketID uuid.UUID) (TicketContactRoute, error) {
 	var r TicketContactRoute
 	err := q.db.QueryRow(ctx, getTicketContactRoute, ticketID).Scan(
-		&r.PublicEmail, &r.HostedPage, &r.OrgEmail, &r.PageSlug, &r.EventSlug,
+		&r.PublicEmail, &r.HostedPage, &r.OrgEmail, &r.PageSlug, &r.EventSlug, &r.OwnerReachable,
 	)
 	return r, err
 }

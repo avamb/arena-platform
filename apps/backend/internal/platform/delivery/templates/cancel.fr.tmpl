@@ -25,7 +25,7 @@
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Message de l'organisateur :</strong></p>
     <p style="margin:0;white-space:pre-line">{{.}}</p>
   </div>{{end}}
-  <p style="margin:0 0 12px 0;">Merci d'écrire à l'organisateur{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}à l'adresse <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else}}via le <a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">formulaire de la page de vente</a>{{end}}{{with .Change.ContactPhone}}, téléphone {{.}}{{end}}, pour connaître la suite.</p>
+  {{if or .Change.ContactEmail .Change.ContactFormURL}}<p style="margin:0 0 12px 0;">Merci d'écrire à l'organisateur{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}à l'adresse <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else if .Change.ContactFormURL}}via le <a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">formulaire de la page de vente</a>{{end}}{{with .Change.ContactPhone}}, téléphone {{.}}{{end}}, pour connaître la suite.</p>{{end}}
   <p style="font-size:12px;color:#666">Identifiant du billet : {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">Envoyé à : {{.RecipientEmail}}</p>
   </td></tr>
@@ -66,9 +66,9 @@ L'organisateur a annulé la séance de {{.EventName}}{{with .SessionStart}} pré
 Message de l'organisateur :
 {{.}}
 {{end}}
-Merci d'écrire à l'organisateur{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}à l'adresse {{.Change.ContactEmail}}{{else}}via le formulaire de la page de vente: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, téléphone {{.}}{{end}}, pour connaître la suite.
+{{if or .Change.ContactEmail .Change.ContactFormURL}}Merci d'écrire à l'organisateur{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}à l'adresse {{.Change.ContactEmail}}{{else if .Change.ContactFormURL}}via le formulaire de la page de vente: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, téléphone {{.}}{{end}}, pour connaître la suite.
 
-Identifiant du billet : {{.TicketID}}
+{{end}}Identifiant du billet : {{.TicketID}}
 Envoyé à : {{.RecipientEmail}}
 
 --

@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -23,12 +24,52 @@ func TestGetHostedPageSellerQuery_NeverReadsOrganizationContact(t *testing.T) {
 	}
 }
 
-// The contact form's fallback recipient is asked for as a boolean only, so
-// the page never learns the organization's address.
-func TestOrgHasContactEmailQuery_AnswersABooleanOnly(t *testing.T) {
+// The contact form's private recipients (the organization's contact_email,
+// its owner's account e-mail) are asked for as a boolean only, so the page
+// never learns an address.
+func TestOrgHasPrivateRecipientQuery_AnswersABooleanOnly(t *testing.T) {
 	t.Parallel()
-	q := strings.Join(strings.Fields(orgHasContactEmail), " ")
-	if !strings.Contains(q, "SELECT COALESCE(btrim(contact_email), '') <> '' FROM organizations") {
-		t.Fatalf("the query must select a comparison, never the column: %s", q)
+	q := strings.Join(strings.Fields(orgHasPrivateRecipient), " ")
+	if !strings.Contains(q, "SELECT COALESCE(btrim(o.contact_email), '') <> '' OR EXISTS (SELECT 1 FROM memberships") {
+		t.Fatalf("the query must select a comparison, never an address: %s", q)
+	}
+	for _, banned := range []string{"SELECT u.email", "SELECT o.contact_email", "SELECT contact_email"} {
+		if strings.Contains(q, banned) {
+			t.Fatalf("the query selects an address (%s): %s", banned, q)
+		}
+	}
+}
+
+// One rule picks the owner who may receive the contact form's messages: the
+// page's boolean, the send route's boolean, the letters' boolean and the
+// worker's address all build on OwnerRecipientWhereSQL, and the mirrors in
+// queries/*.sql repeat it literally. A drift would let the page offer a form
+// whose messages the worker cannot deliver, or the reverse.
+func TestOwnerRecipientRule_OneCopyEverywhere(t *testing.T) {
+	t.Parallel()
+	norm := func(s string) string { return strings.Join(strings.Fields(s), " ") }
+	rule := norm(OwnerRecipientWhereSQL)
+	if !strings.Contains(rule, "ur.org_id IS NULL") || !strings.Contains(rule, "r.name NOT IN ('org_admin', 'organizer', 'agent')") ||
+		!strings.Contains(rule, "NOT EXISTS") {
+		t.Fatalf("the rule must leave out everyone who holds a platform-wide role: %s", rule)
+	}
+	for name, q := range map[string]string{
+		"OwnerRecipientSQL":      OwnerRecipientSQL,
+		"OrgHasPrivateRecipient": orgHasPrivateRecipient,
+		"GetContactFormTarget":   getContactFormTarget,
+		"GetTicketContactRoute":  getTicketContactRoute,
+	} {
+		if !strings.Contains(norm(q), rule) {
+			t.Errorf("%s does not use OwnerRecipientWhereSQL", name)
+		}
+	}
+	for file, want := range map[string]int{"../queries/seller_profile.sql": 2, "../queries/orgs.sql": 1} {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Count(norm(string(b)), rule); got != want {
+			t.Errorf("%s repeats the owner rule %d times, want %d", file, got, want)
+		}
 	}
 }

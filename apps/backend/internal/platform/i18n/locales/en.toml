@@ -3151,6 +3151,12 @@ other = "Canceled. Nothing was refunded."
 ["bot.ref.cancel_maybe_started"]
 other = "The refund for order #{{.Num}} may have started already: the bot did not get an answer from the server. So the bot did not cancel it.\n\nCheck the order. If the money did not go back, press «💸 Refund» on the order again. The bot sends the same operation, and the money does not go back twice."
 
+["bot.ref.other_maybe_started"]
+other = "The refund for order #{{.Num}} may have started already: the bot did not get an answer from the server.\n\nFirst open that refund and send it again. The bot repeats the same operation, so the money does not go back twice. Then you can refund another order."
+
+["bot.ref.other_open_btn"]
+other = "💸 Refund for order #{{.Num}}"
+
 ["bot.ref.sending"]
 other = "Sending the refund… The payment provider may take a few minutes; the bot keeps working meanwhile and will write here when the answer is in."
 

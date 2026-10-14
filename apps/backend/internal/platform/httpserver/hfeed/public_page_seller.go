@@ -125,7 +125,8 @@ type hostedPageContactForm struct {
 
 // contactForm decides the form from the channel row: offered when a message
 // has somewhere to go - the channel's public e-mail, else the organization's
-// own address, which is never answered (owner rule 2026-10-13: letters of a
+// own address, else its owner's account e-mail, neither of which is ever
+// answered (owner rule 2026-10-13: letters of a
 // hosted page without a public e-mail link this form) - and this deployment
 // can check the captcha. orgReachable is asked only when the channel has no
 // public e-mail; it answers a boolean from its own query, so the page's
@@ -183,7 +184,7 @@ func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken s
 		return nil, nil, nil
 	}
 	form := h.contactForm(row, func() bool {
-		ok, err := h.publicFeedQueries.OrgHasContactEmail(ctx, orgID)
+		ok, err := h.publicFeedQueries.OrgHasPrivateRecipient(ctx, orgID)
 		if err != nil {
 			h.logger.Warn("public_page: contact form recipient lookup failed",
 				slog.String("org_id", orgID.String()),
