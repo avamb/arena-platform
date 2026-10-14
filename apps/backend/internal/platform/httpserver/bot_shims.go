@@ -12,13 +12,23 @@ import (
 
 // botHandler constructs an hbot.Handler from the server's dependencies.
 func (s *Server) botHandler() *hbot.Handler {
-	username := ""
+	username, eventCenter := "", ""
 	if s.cfg != nil {
 		username = s.cfg.EventsTelegramBotUsername
+		eventCenter = s.cfg.EventCenterPublicURL
 	}
 	return hbot.New(s.membershipQueries, s.pool, s.audit, s.logger).
 		WithMembershipQueries(s.membershipQueries).
-		WithBotUsername(username)
+		WithBotUsername(username).
+		WithEventCenterURL(eventCenter)
+}
+
+func (s *Server) handleCreateWebLoginCode(w http.ResponseWriter, r *http.Request) {
+	s.botHandler().HandleCreateWebLoginCode(w, r)
+}
+
+func (s *Server) handleClaimWebLoginNotices(w http.ResponseWriter, r *http.Request) {
+	s.botHandler().HandleClaimWebLoginNotices(w, r)
 }
 
 func (s *Server) handleCreateBotInvitation(w http.ResponseWriter, r *http.Request) {

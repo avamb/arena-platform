@@ -31,6 +31,8 @@ func (s *Server) mountAuthRoutes(r chi.Router) {
 	r.Post("/auth/refresh", h.Refresh)
 	r.Post("/auth/password-reset/request", h.PasswordResetRequest)
 	r.Post("/auth/password-reset/confirm", h.PasswordResetConfirm)
+	// A one-time code from the bot's "Open in browser" (spec 37 §4.3).
+	r.Post("/auth/web/link", h.WebLink)
 
 	if s.authEnabled() {
 		r.Group(func(pr chi.Router) {
@@ -38,6 +40,8 @@ func (s *Server) mountAuthRoutes(r chi.Router) {
 			pr.Post("/auth/logout", h.Logout)
 			// The password again, before a money action in the web (spec 37 §4.5).
 			pr.Post("/auth/step-up", h.StepUp)
+			// "Sign out everywhere" of the bot ends every web session (§4.3).
+			pr.Post("/auth/web-sessions/revoke", h.RevokeWebSessions)
 		})
 	}
 }

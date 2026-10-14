@@ -598,6 +598,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/web/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in to the web event center with a one-time link from the bot
+         * @description Exchanges the one-time code of the bot's "Open in browser" link for a
+         *     web event center session (spec 37 section 4.3). The code works once,
+         *     for 5 minutes, and only while the Telegram account that asked for it
+         *     is still linked to the same person. The session is always a web
+         *     session (72 hours without activity, at most 30 days). Unknown, used,
+         *     taken back and expired codes all answer the same 400
+         *     `auth.web_link_invalid`. A platform superadmin is refused (403
+         *     `auth.web_link_superadmin`). The bot later tells the person about the
+         *     sign-in and offers "Sign out everywhere".
+         */
+        post: operations["postV1AuthWebLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/web-sessions/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End every web event center session of the caller
+         * @description "Sign out everywhere" of the bot (spec 37 section 4.3). Ends every
+         *     refresh token of the caller that was issued to the web event center
+         *     and takes back every unused link code. Sessions of the admin console
+         *     and of the bot stay. An access token the web already holds works
+         *     until it expires (15 minutes).
+         */
+        post: operations["postV1AuthWebSessionsRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me": {
         parameters: {
             query?: never;
@@ -1251,6 +1303,56 @@ export interface paths {
          *     `BOT_SERVICE_TOKEN` is unset the route answers 503; it is never open.
          */
         post: operations["acceptBotInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/web-login-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A one-time web event center link for a linked Telegram account
+         * @description Called by the bot PROCESS with `Authorization: Bearer
+         *     <BOT_SERVICE_TOKEN>` when a person presses "Open in browser" (spec 37
+         *     section 4.3, every role, according to its rights). Returns a link
+         *     that works once and for 5 minutes; a new link takes back the
+         *     person's earlier unused ones. The bot sends it to the private chat
+         *     only. Refused for a platform superadmin, who works in the admin
+         *     console. While `EVENT_CENTER_PUBLIC_URL` is unset the route answers
+         *     503 `bot.web_login_not_configured`.
+         */
+        post: operations["createBotWebLoginCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/web-login-notices/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign-ins through a bot link that the bot must report
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN`. Returns up to 50
+         *     sign-ins of the last day through "Open in browser" links that were
+         *     not reported yet and marks them reported, so each one is handed out
+         *     once. The bot tells the person and offers "Sign out everywhere".
+         */
+        post: operations["claimBotWebLoginNotices"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8582,6 +8684,52 @@ export interface components {
              * @description When the token stops working (5 minutes after it was issued).
              */
             expires_at: string;
+        };
+        /** @description Body of POST /v1/auth/web/link. */
+        AuthWebLinkRequest: {
+            /** @description The one-time code from the bot's link, taken from the address after `#code=`. */
+            code: string;
+        };
+        /** @description Answer of POST /v1/auth/web-sessions/revoke. */
+        AuthWebSessionsRevokeResponse: {
+            /** @description How many web event center sessions were ended. */
+            revoked_sessions: number;
+        };
+        /** @description Body of POST /v1/bot/web-login-codes. */
+        BotWebLoginCodeRequest: {
+            /**
+             * Format: int64
+             * @description The Telegram account that pressed "Open in browser".
+             */
+            telegram_user_id: number;
+        };
+        /** @description A one-time link to the web event center for the private chat. */
+        BotWebLoginCodeResponse: {
+            /** @description `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`. The code is after `#`, so it never reaches a server log. */
+            url: string;
+            /**
+             * Format: date-time
+             * @description When the link stops working (5 minutes after it was issued).
+             */
+            expires_at: string;
+        };
+        /** @description A sign-in to the web through a bot link that the bot must report. */
+        BotWebLoginNotice: {
+            /**
+             * Format: int64
+             * @description The Telegram account to tell.
+             */
+            telegram_user_id: number;
+            /**
+             * Format: date-time
+             * @description When the link was used.
+             */
+            signed_in_at: string;
+        };
+        /** @description Answer of POST /v1/bot/web-login-notices/claim. */
+        BotWebLoginNoticesResponse: {
+            /** @description Sign-ins not reported yet; each is handed out once. */
+            notices: components["schemas"]["BotWebLoginNotice"][];
         };
         AuthLogoutRequest: {
             /**
@@ -23395,6 +23543,104 @@ export interface operations {
             };
         };
     };
+    postV1AuthWebLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthWebLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Signed in. Same answer as POST /v1/auth/login. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthLoginResponse"];
+                };
+            };
+            /** @description The body is not JSON (`http.invalid_json`) or the link does not work (`auth.web_link_invalid`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The account is deactivated (`auth.user_deactivated`) or is a platform superadmin (`auth.web_link_superadmin`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many attempts from this address (`auth.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AuthWebSessionsRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The web sessions are ended. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthWebSessionsRevokeResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT Authorization header. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getV1Me: {
         parameters: {
             query?: never;
@@ -25627,6 +25873,113 @@ export interface operations {
                 };
             };
             /** @description Service token not configured (`bot.service_not_configured`) or database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createBotWebLoginCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotWebLoginCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description The link */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotWebLoginCodeResponse"];
+                };
+            };
+            /** @description Invalid body or telegram_user_id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The account is deactivated (`auth.user_deactivated`) or is a platform superadmin (`bot.web_login_superadmin`) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Telegram account is linked to nobody (`bot.not_linked`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token or `EVENT_CENTER_PUBLIC_URL` not configured, or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    claimBotWebLoginNotices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sign-ins to report */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotWebLoginNoticesResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
             503: {
                 headers: {
                     [name: string]: unknown;

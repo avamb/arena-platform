@@ -1167,6 +1167,68 @@ components:
           type: string
           format: date-time
           description: When the token stops working (5 minutes after it was issued).
+    AuthWebLinkRequest:
+      type: object
+      required: [code]
+      additionalProperties: false
+      description: Body of POST /v1/auth/web/link.
+      properties:
+        code:
+          type: string
+          description: The one-time code from the bot's link, taken from the address after `#code=`.
+    AuthWebSessionsRevokeResponse:
+      type: object
+      required: [revoked_sessions]
+      description: Answer of POST /v1/auth/web-sessions/revoke.
+      properties:
+        revoked_sessions:
+          type: integer
+          description: How many web event center sessions were ended.
+    BotWebLoginCodeRequest:
+      type: object
+      required: [telegram_user_id]
+      additionalProperties: false
+      description: Body of POST /v1/bot/web-login-codes.
+      properties:
+        telegram_user_id:
+          type: integer
+          format: int64
+          description: The Telegram account that pressed "Open in browser".
+    BotWebLoginCodeResponse:
+      type: object
+      required: [url, expires_at]
+      description: A one-time link to the web event center for the private chat.
+      properties:
+        url:
+          type: string
+          description: "`<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`. The code is after `#`, so it never reaches a server log."
+        expires_at:
+          type: string
+          format: date-time
+          description: When the link stops working (5 minutes after it was issued).
+    BotWebLoginNotice:
+      type: object
+      required: [telegram_user_id, signed_in_at]
+      description: A sign-in to the web through a bot link that the bot must report.
+      properties:
+        telegram_user_id:
+          type: integer
+          format: int64
+          description: The Telegram account to tell.
+        signed_in_at:
+          type: string
+          format: date-time
+          description: When the link was used.
+    BotWebLoginNoticesResponse:
+      type: object
+      required: [notices]
+      description: Answer of POST /v1/bot/web-login-notices/claim.
+      properties:
+        notices:
+          type: array
+          description: Sign-ins not reported yet; each is handed out once.
+          items:
+            $ref: "#/components/schemas/BotWebLoginNotice"
 
     AuthLogoutRequest:
       type: object
@@ -18248,6 +18310,93 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/auth/web/link:
+    post:
+      operationId: postV1AuthWebLink
+      summary: Sign in to the web event center with a one-time link from the bot
+      description: |
+        Exchanges the one-time code of the bot's "Open in browser" link for a
+        web event center session (spec 37 section 4.3). The code works once,
+        for 5 minutes, and only while the Telegram account that asked for it
+        is still linked to the same person. The session is always a web
+        session (72 hours without activity, at most 30 days). Unknown, used,
+        taken back and expired codes all answer the same 400
+        `auth.web_link_invalid`. A platform superadmin is refused (403
+        `auth.web_link_superadmin`). The bot later tells the person about the
+        sign-in and offers "Sign out everywhere".
+      tags: [v1, auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthWebLinkRequest"
+      responses:
+        "200":
+          description: Signed in. Same answer as POST /v1/auth/login.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthLoginResponse"
+        "400":
+          description: The body is not JSON (`http.invalid_json`) or the link does not work (`auth.web_link_invalid`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The account is deactivated (`auth.user_deactivated`) or is a platform superadmin (`auth.web_link_superadmin`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many attempts from this address (`auth.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/auth/web-sessions/revoke:
+    post:
+      operationId: postV1AuthWebSessionsRevoke
+      summary: End every web event center session of the caller
+      description: |
+        "Sign out everywhere" of the bot (spec 37 section 4.3). Ends every
+        refresh token of the caller that was issued to the web event center
+        and takes back every unused link code. Sessions of the admin console
+        and of the bot stay. An access token the web already holds works
+        until it expires (15 minutes).
+      tags: [v1, auth]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The web sessions are ended.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthWebSessionsRevokeResponse"
+        "401":
+          description: Missing or invalid JWT Authorization header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/me:
     get:
       operationId: getV1Me
@@ -20321,6 +20470,98 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Service token not configured (`bot.service_not_configured`) or database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/bot/web-login-codes:
+    post:
+      operationId: createBotWebLoginCode
+      summary: A one-time web event center link for a linked Telegram account
+      description: |
+        Called by the bot PROCESS with `Authorization: Bearer
+        <BOT_SERVICE_TOKEN>` when a person presses "Open in browser" (spec 37
+        section 4.3, every role, according to its rights). Returns a link
+        that works once and for 5 minutes; a new link takes back the
+        person's earlier unused ones. The bot sends it to the private chat
+        only. Refused for a platform superadmin, who works in the admin
+        console. While `EVENT_CENTER_PUBLIC_URL` is unset the route answers
+        503 `bot.web_login_not_configured`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotWebLoginCodeRequest"
+      responses:
+        "201":
+          description: The link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotWebLoginCodeResponse"
+        "400":
+          description: Invalid body or telegram_user_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The account is deactivated (`auth.user_deactivated`) or is a platform superadmin (`bot.web_login_superadmin`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The Telegram account is linked to nobody (`bot.not_linked`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Service token or `EVENT_CENTER_PUBLIC_URL` not configured, or database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/bot/web-login-notices/claim:
+    post:
+      operationId: claimBotWebLoginNotices
+      summary: Sign-ins through a bot link that the bot must report
+      description: |
+        Called by the bot PROCESS under `BOT_SERVICE_TOKEN`. Returns up to 50
+        sign-ins of the last day through "Open in browser" links that were
+        not reported yet and marks them reported, so each one is handed out
+        once. The bot tells the person and offers "Sign out everywhere".
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The sign-ins to report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotWebLoginNoticesResponse"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Service token not configured or database not available
           content:
             application/json:
               schema:

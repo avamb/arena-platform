@@ -3407,3 +3407,36 @@ other = "Para contestar al comprador, responde a este correo. Arena no ve tu res
 
 ["contact.email.footer"]
 other = "Arena Sold Out envió este mensaje porque el formulario de contacto de tu página de venta está activo."
+
+["bot.web.btn"]
+other = "🌐 Abrir en el navegador"
+
+["bot.web.link"]
+other = "Aquí tienes tu enlace al centro de eventos web. Funciona una vez y durante 5 minutos. No lo reenvíes: con este enlace se entra en tu nombre."
+
+["bot.web.open_btn"]
+other = "Abrir el centro de eventos"
+
+["bot.web.private_only"]
+other = "El bot envía el enlace de acceso solo en un chat privado. Escribe al bot directamente y pulsa «🌐 Abrir en el navegador»."
+
+["bot.web.not_configured"]
+other = "El centro de eventos web aún no está conectado. Puedes hacerlo todo aquí, en el bot."
+
+["bot.web.superadmin"]
+other = "Eres superadmin de la plataforma. Trabaja en la consola de administración: el centro de eventos web no da enlace a un superadmin."
+
+["bot.web.failed"]
+other = "No pudimos crear el enlace. Inténtalo de nuevo dentro de un minuto. Si sigue sin funcionar, escribe a soporte."
+
+["bot.web.signed_in"]
+other = "Has entrado en el centro de eventos web con un enlace de este chat ({{.Time}} UTC). Si no has sido tú, pulsa «Cerrar sesión en todas partes». Si el botón ya no está, abre «☰ Menú» y luego «🌐 Abrir en el navegador»."
+
+["bot.web.signout_btn"]
+other = "🚪 Cerrar sesión en todas partes"
+
+["bot.web.signed_out"]
+other = "Listo. Todas las sesiones del centro de eventos web están cerradas. Una página ya abierta puede funcionar hasta 15 minutos más. Para entrar de nuevo, pulsa «🌐 Abrir en el navegador»."
+
+["bot.web.signout_failed"]
+other = "No pudimos cerrar las sesiones. Inténtalo de nuevo dentro de un minuto."

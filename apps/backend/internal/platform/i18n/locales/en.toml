@@ -3552,3 +3552,36 @@ other = "To answer the buyer, reply to this e-mail. Arena does not see your answ
 
 ["contact.email.footer"]
 other = "Arena Sold Out sent this message because the contact form of your sales page is on."
+
+["bot.web.btn"]
+other = "🌐 Open in browser"
+
+["bot.web.link"]
+other = "Here is your link to the web event center. It works once and for 5 minutes. Do not forward it: anyone with this link signs in as you."
+
+["bot.web.open_btn"]
+other = "Open the event center"
+
+["bot.web.private_only"]
+other = "The bot sends a sign-in link only in a private chat. Write to the bot directly and press «🌐 Open in browser»."
+
+["bot.web.not_configured"]
+other = "The web event center is not connected yet. You can do everything here in the bot."
+
+["bot.web.superadmin"]
+other = "You are a platform superadmin. Please work in the admin console: the web event center gives no link to a superadmin."
+
+["bot.web.failed"]
+other = "We could not make a link. Please try again in a minute. If it still does not work, write to support."
+
+["bot.web.signed_in"]
+other = "You signed in to the web event center with a link from this chat ({{.Time}} UTC). If it was not you, press «Sign out everywhere». If the button is gone, open «☰ Menu», then «🌐 Open in browser»."
+
+["bot.web.signout_btn"]
+other = "🚪 Sign out everywhere"
+
+["bot.web.signed_out"]
+other = "Done. We closed every sign-in to the web event center. A page that is already open can work for up to 15 more minutes. To sign in again, press «🌐 Open in browser»."
+
+["bot.web.signout_failed"]
+other = "We could not close the sign-ins. Please try again in a minute."
