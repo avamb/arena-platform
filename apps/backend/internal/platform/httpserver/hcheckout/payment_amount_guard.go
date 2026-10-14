@@ -1,5 +1,5 @@
 // payment_amount_guard.go — a paid event must name the amount and currency
-// arena asked for (PAY-14b, spec 08_architecture/37 §7).
+// arena asked for (PAY-14b, spec 08_architecture/39 §7).
 //
 // Only a provider whose module owns the whole normalization
 // (Capabilities.WebhookConfigRouteOnly: Flitt, AllPay) is checked here: its
@@ -21,14 +21,20 @@ import (
 const failureCodeAmountMismatch = "paid_amount_mismatch"
 
 // paidAmountMismatch explains how a paid event disagrees with the intent's
-// amount and currency, or returns "" when it agrees. An event that names no
-// amount (0) or no currency is not judged on that field.
+// amount and currency, or returns "" when it agrees. A paid event that names
+// no amount (0) or no currency is a disagreement too (PAY-14b review L-C):
+// these modules always report what was charged, and an event without it
+// cannot show that the buyer paid what arena asked for.
 func paidAmountMismatch(ev payments.NormalizedEvent, amount int64, currency string) string {
-	if ev.Currency != "" && currency != "" && !strings.EqualFold(ev.Currency, currency) {
+	switch {
+	case strings.TrimSpace(ev.Currency) == "":
+		return "the provider reports a payment without a currency"
+	case ev.AmountMinor == 0:
+		return "the provider reports a payment without an amount"
+	case currency != "" && !strings.EqualFold(ev.Currency, currency):
 		return fmt.Sprintf("the provider reports a payment in %s, arena asked for %s",
 			strings.ToUpper(ev.Currency), strings.ToUpper(currency))
-	}
-	if ev.AmountMinor != 0 && ev.AmountMinor != amount {
+	case ev.AmountMinor != amount:
 		return fmt.Sprintf("the provider reports %d minor units paid, arena asked for %d", ev.AmountMinor, amount)
 	}
 	return ""

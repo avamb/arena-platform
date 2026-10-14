@@ -9,7 +9,7 @@
 // from a host-to-host webhook. Card data never reaches arena.
 //
 // What shapes this adapter (the traps are in AGENTS.md and spec
-// 08_architecture/37_allpay_payment_provider_ru.md):
+// 08_architecture/39_allpay_payment_provider_ru.md):
 //
 //   - There is no bearer token. An integration ("API login") is identified by
 //     `login`, and every request and every webhook carries a `sign` field: a

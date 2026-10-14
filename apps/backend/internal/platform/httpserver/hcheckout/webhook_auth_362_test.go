@@ -6,7 +6,7 @@
 //	Step 1: Verify provider signature (Stripe HMAC) before processing body.
 //	        The X-AllPay-Signature header these tests once accepted was never sent
 //	        by AllPay: a real AllPay webhook is signed in its body and only the
-//	        per-config route verifies it (adapters/allpay, spec 37).
+//	        per-config route verifies it (adapters/allpay, spec 39).
 //	Step 2: Reject unsigned/invalid-signature requests with 401 and no state change.
 //	Step 3: Keep non-production mock path gated by empty secrets (both empty = dev mode).
 //	Step 4: Test forged body rejection and valid signed event happy path.

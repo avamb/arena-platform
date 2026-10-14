@@ -1,5 +1,5 @@
 // module.go — AllPay as a payment MODULE (spec 36 §5; PAY-14, spec
-// 08_architecture/37_allpay_payment_provider_ru.md): descriptor, registry
+// 08_architecture/39_allpay_payment_provider_ru.md): descriptor, registry
 // factory and the WebhookParser that verifies a webhook.
 //
 // Capabilities: a hosted payment page, and a webhook only the per-config
@@ -9,7 +9,7 @@
 // redirect. Refunds, full and partial (PAY-14b): AllPay's refund method has
 // no idempotency key and returns no refund id, so the module reads the
 // order back before every call and refuses to send when AllPay's refunded
-// total does not match what arena knows (refund.go, spec 37 §8).
+// total does not match what arena knows (refund.go, spec 39 §8).
 package allpay
 
 import (

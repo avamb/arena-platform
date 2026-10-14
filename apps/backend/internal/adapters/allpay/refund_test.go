@@ -162,11 +162,13 @@ func TestRefund_LostAnswerIsNotRefundedTwice(t *testing.T) {
 	stub.loseRefundAnswers = 1
 	a := newTestAdapter(stub, Config{})
 	req := refundReq("o-lost", 4000, 10000, "r-lost")
+	req.Attempt = 1
 	if _, err := a.Refund(t.Context(), req); err == nil {
 		t.Fatal("a lost answer was reported as an answer")
 	} else if _, _, ok := payments.RefundDeclined(err); ok {
 		t.Fatalf("a lost answer was reported as a refusal: %v; the outcome is unknown", err)
 	}
+	req.Attempt = 2
 	res, err := a.Refund(t.Context(), req)
 	if err != nil {
 		t.Fatalf("second Refund: %v", err)
@@ -176,6 +178,34 @@ func TestRefund_LostAnswerIsNotRefundedTwice(t *testing.T) {
 	}
 	if got := stub.refunds("o-lost"); len(got) != 1 {
 		t.Errorf("AllPay refunded %v; want exactly one refund", got)
+	}
+}
+
+// PAY-14b review L-B: on a FIRST call there is no earlier call whose answer
+// could have been lost. A difference equal to this refund is then money
+// refunded elsewhere (the AllPay dashboard): a human checks, nothing is sent
+// and the refund is not taken for arena's own.
+func TestRefund_FirstCallNeverTakesADashboardRefundForItsOwn(t *testing.T) {
+	stub := newStubAllPay(t, "pp1", "key")
+	stub.addOrder("o-dash", stubOrder{Status: StatusPaid, Amount: 10000, Refunded: 4000})
+	a := newTestAdapter(stub, Config{})
+	req := refundReq("o-dash", 4000, 10000, "r-dash")
+	req.Attempt = 1
+	_, err := a.Refund(t.Context(), req)
+	if d := declined(t, err); d.Code != RefundCodeUnexplained || !d.NeedsReview {
+		t.Fatalf("first call = %+v; want %s needing review", d, RefundCodeUnexplained)
+	}
+	if n := stub.count(methodRefund); n != 0 {
+		t.Fatalf("AllPay received %d refund call(s); want none", n)
+	}
+	// The same difference on a repeated call is this refund's own lost answer.
+	req.Attempt = 2
+	res, err := a.Refund(t.Context(), req)
+	if err != nil || res.Status != payments.RefundSucceeded {
+		t.Fatalf("repeat = %+v %v; want succeeded without a call", res, err)
+	}
+	if n := stub.count(methodRefund); n != 0 {
+		t.Fatalf("AllPay received %d refund call(s) on the repeat; want none", n)
 	}
 }
 

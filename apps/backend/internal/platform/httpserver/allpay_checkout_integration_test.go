@@ -1,7 +1,7 @@
 //go:build integration
 
 // allpay_checkout_integration_test.go — live-DB, real-router coverage of the
-// widget's AllPay-hosted payment flow (spec 08_architecture/37_*), only AllPay
+// widget's AllPay-hosted payment flow (spec 08_architecture/39_*), only AllPay
 // itself stubbed:
 //
 //	POST /v1/public/feeds/{feed_token}/checkout/start   (→ stub AllPay ?show=getpayment)
@@ -475,7 +475,7 @@ func TestAllPay_StartAndWebhookPayTheOrder(t *testing.T) {
 
 // TestAllPay_LiveConfigForcesLiveMode: a config filed as live sends
 // test_mode=0, so a page charges real cards even when the integration was
-// left in test mode in the AllPay dashboard (spec 37 §3).
+// left in test mode in the AllPay dashboard (spec 39 §3).
 func TestAllPay_LiveConfigForcesLiveMode(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := t.Context()

@@ -1,5 +1,5 @@
 // refund.go — refunds through AllPay (PAY-14b, spec
-// 08_architecture/37_allpay_payment_provider_ru.md §8).
+// 08_architecture/39_allpay_payment_provider_ru.md §8).
 //
 // AllPay's refund method has no idempotency key and returns no refund id.
 // A call whose answer was lost may have returned the money, and a blind
@@ -14,8 +14,11 @@
 //
 //	P < K                 → a human checks (AllPay knows less than arena)
 //	P − K = 0             → nothing unexplained: send the refund
-//	P − K = A and U = 0   → an earlier call of THIS refund landed: succeeded,
-//	                        nothing is sent
+//	P − K = A and U = 0   → on a REPEATED call (Attempt ≠ 1), an earlier call
+//	  and Attempt ≠ 1       of THIS refund landed: succeeded, nothing is sent.
+//	                        On a first call the same difference is money
+//	                        refunded elsewhere (the AllPay dashboard), so a
+//	                        human checks.
 //	anything else         → a human checks; nothing is sent
 //
 // The refund engine holds the payment's lock while it computes K and U and
@@ -151,9 +154,11 @@ func (a *Adapter) Refund(ctx context.Context, req payments.RefundRequest) (payme
 	case extra < 0:
 		return payments.RefundResult{}, review(RefundCodeKnowsLess,
 			fmt.Sprintf("AllPay reports %s refunded, arena knows of %s", MinorToMajor(refunded), MinorToMajor(known)))
-	case extra == req.AmountMinor && uncertain == 0:
+	case extra == req.AmountMinor && uncertain == 0 && req.Attempt != 1:
 		// An earlier call of this refund reached AllPay and its answer was
-		// lost. The money is back; nothing is sent again.
+		// lost. The money is back; nothing is sent again. On a first call
+		// there is no earlier call: the same difference is a refund made
+		// elsewhere and falls through to a human check below.
 		return accepted, nil
 	case extra != 0:
 		return payments.RefundResult{}, review(RefundCodeUnexplained,

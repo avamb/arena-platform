@@ -1,7 +1,7 @@
 //go:build allpaylive
 
 // live_test.go — the manual check against AllPay's TEST zone (spec
-// 08_architecture/37 §11). It talks to the real allpay.to, so it never runs
+// 08_architecture/39 §11). It talks to the real allpay.to, so it never runs
 // in CI: it needs the build tag `allpaylive` AND a TEST integration's
 // credentials in the environment. The credentials are read from the
 // environment only and never printed.
@@ -12,7 +12,7 @@
 // Optional: ALLPAY_TEST_ORDER_ID=<an order id paid by hand> reads that order's
 // status back (it must be 1 after paying with test card 4557430402053431).
 //
-// Optional refund of a TEST order paid by hand (spec 37 §11 C):
+// Optional refund of a TEST order paid by hand (spec 39 §11 C):
 // ALLPAY_TEST_REFUND_ORDER_ID=<order id>, ALLPAY_TEST_REFUND_MINOR=<amount in
 // agorot>, ALLPAY_TEST_REFUND_KNOWN_MINOR=<what earlier refunds of this
 // order returned, default 0>. The module reads the order first, exactly as

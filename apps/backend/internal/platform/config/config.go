@@ -369,7 +369,7 @@ type Config struct {
 	// secret of an "X-AllPay-Signature" header that AllPay never sends. A real
 	// AllPay webhook is signed in its body with the organizer's own API key
 	// and is only accepted on POST /v1/payment-intents/webhook/{config_id}
-	// (spec 08_architecture/37). The variable is still read so an old
+	// (spec 08_architecture/39). The variable is still read so an old
 	// deployment that sets it keeps starting.
 	AllPayWebhookSecret string `env:"ALLPAY_WEBHOOK_SECRET" required:"false" default:""`
 
