@@ -47,8 +47,12 @@ func TestTicketContactRoute_OwnersEventPageAndHostedFlag(t *testing.T) {
 	// Deferred after the seed's cleanup, so it runs first (LIFO): the
 	// memberships go before the organization does.
 	var users []uuid.UUID
+	feedToken := uuid.New()
 	defer func() {
 		c := context.Background()
+		_, _ = pool.Exec(c, `DELETE FROM event_publications WHERE feed_token_id = $1`, feedToken)
+		_, _ = pool.Exec(c, `DELETE FROM agent_feed_tokens WHERE id = $1`, feedToken)
+		_, _ = pool.Exec(c, `DELETE FROM user_roles WHERE user_id = ANY($1)`, users)
 		_, _ = pool.Exec(c, `DELETE FROM memberships WHERE user_id = ANY($1)`, users)
 		_, _ = pool.Exec(c, `DELETE FROM users WHERE id = ANY($1)`, users)
 	}()
@@ -78,24 +82,66 @@ func TestTicketContactRoute_OwnersEventPageAndHostedFlag(t *testing.T) {
 	if !r.HostedPage {
 		t.Fatal(`"enabled": "true" (a string) must count as a hosted page, as the page itself reads it`)
 	}
-	if r.EventSlug == nil || *r.EventSlug != evSlug {
+	// Published but on no feed token: the event page answers 404.
+	if r.EventSlug != nil {
+		t.Errorf("an event with no publication must not be linked, got %q", *r.EventSlug)
+	}
+	publish := func() {
+		t.Helper()
+		if _, err := pool.Exec(ctx, `INSERT INTO event_publications (event_id, feed_token_id) VALUES ($1, $2)`, eventID, feedToken); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO agent_feed_tokens (id, token, sales_channel_id, label, is_active)
+	        VALUES ($1, $2, $3, 'contact route', true)`, feedToken, "tok-"+uuid.NewString(), channelID); err != nil {
+		t.Fatal(err)
+	}
+	publish()
+	if r := route(); r.EventSlug == nil || *r.EventSlug != evSlug {
 		t.Errorf("a published event links its own page, got %v", r.EventSlug)
+	}
+	// Unpublished the way HandleUnpublishEvent does it: the status stays
+	// 'published' but the page has nothing to show.
+	if _, err := pool.Exec(ctx, `DELETE FROM event_publications WHERE event_id = $1 AND feed_token_id = $2`, eventID, feedToken); err != nil {
+		t.Fatal(err)
+	}
+	if r := route(); r.EventSlug != nil {
+		t.Errorf("an unpublished event must not be linked, got %q", *r.EventSlug)
+	}
+	publish()
+	if _, err := pool.Exec(ctx, `UPDATE agent_feed_tokens SET is_active = false WHERE id = $1`, feedToken); err != nil {
+		t.Fatal(err)
+	}
+	if r := route(); r.EventSlug != nil {
+		t.Errorf("an event published only on a revoked token must not be linked, got %q", *r.EventSlug)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE agent_feed_tokens SET is_active = true WHERE id = $1`, feedToken); err != nil {
+		t.Fatal(err)
 	}
 	if r.OwnerReachable {
 		t.Fatal("no owner yet, but owner_reachable is true")
 	}
 
-	// An operator of the platform who is an org_admin here is not the owner.
+	// A person with any platform-wide role who is an org_admin here is not the
+	// owner: the superadmin, the operator, the admin, support.
 	nonce := uuid.NewString()[:8]
-	operator := addOwner("operator-" + nonce + "@platform.example")
-	if _, err := pool.Exec(ctx, `INSERT INTO user_roles (user_id, role_id, org_id)
-	        SELECT $1, id, NULL FROM roles WHERE name = 'platform_superadmin' AND org_id IS NULL`, operator); err != nil {
-		t.Fatal(err)
-	}
-	if route().OwnerReachable {
-		t.Error("a platform superadmin must never receive a buyer's message")
+	for _, role := range []string{"platform_superadmin", "platform_operator", "admin", "support"} {
+		staff := addOwner(role + "-" + nonce + "@platform.example")
+		if _, err := pool.Exec(ctx, `INSERT INTO user_roles (user_id, role_id, org_id)
+		        SELECT $1, id, NULL FROM roles WHERE name = $2 AND org_id IS NULL`, staff, role); err != nil {
+			t.Fatal(err)
+		}
+		if route().OwnerReachable {
+			t.Errorf("a %s must never receive a buyer's message", role)
+		}
 	}
 	client := addOwner("client-" + nonce + "@organizer.example")
+	// A global row of a membership role (an old way to hand out org_admin) is
+	// not a platform role: that owner stays reachable.
+	if _, err := pool.Exec(ctx, `INSERT INTO user_roles (user_id, role_id, org_id)
+	        SELECT $1, id, NULL FROM roles WHERE name = 'org_admin' AND org_id IS NULL`, client); err != nil {
+		t.Fatal(err)
+	}
 	if !route().OwnerReachable {
 		t.Error("an ordinary owner next to the operator is reachable")
 	}

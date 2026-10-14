@@ -344,7 +344,14 @@ SELECT NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') A
                          AND h.settings #>> '{hosted_page,enabled}' = 'true') END AS hosted_page,
        NULLIF(btrim(o.contact_email), '') AS org_email,
        COALESCE(op.slug, o.slug) AS page_slug,
-       CASE WHEN e.status = 'published' AND e.deleted_at IS NULL THEN e.slug END AS event_slug,
+       CASE WHEN e.status = 'published' AND e.deleted_at IS NULL
+                    AND EXISTS (SELECT 1 FROM event_publications pub
+                                JOIN agent_feed_tokens pft ON pft.id = pub.feed_token_id
+                                JOIN sales_channels psc ON psc.id = pft.sales_channel_id
+                                WHERE pub.event_id = e.id AND pft.is_active = true
+                                  AND psc.org_id = o.id AND psc.deleted_at IS NULL
+                                  AND psc.settings #>> '{hosted_page,enabled}' = 'true')
+                   THEN e.slug END AS event_slug,
        ` + ownerReachableSQL + ` AS owner_reachable
 FROM   tickets t
 JOIN   sessions s ON s.id = t.session_id
@@ -374,7 +381,9 @@ type TicketContactRoute struct {
 // page's contact form, or the organization's contact_email (HP-4b review,
 // owner rule 2026-10-13). delivery.ContactRouteFor turns it into the letter's
 // e-mail or form link. EventSlug is set only for a published, not deleted
-// event (any other event page answers 404), so the link then falls back to
+// event that is still published on an active feed token of a hosted-page
+// channel (the hosted event page's own resolution; any other event page
+// answers 404, an unpublished one included), so the link then falls back to
 // the organization's or promoter's page.
 func (q *Queries) GetTicketContactRoute(ctx context.Context, ticketID uuid.UUID) (TicketContactRoute, error) {
 	var r TicketContactRoute

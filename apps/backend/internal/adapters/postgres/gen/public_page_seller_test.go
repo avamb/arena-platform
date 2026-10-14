@@ -49,8 +49,9 @@ func TestOwnerRecipientRule_OneCopyEverywhere(t *testing.T) {
 	t.Parallel()
 	norm := func(s string) string { return strings.Join(strings.Fields(s), " ") }
 	rule := norm(OwnerRecipientWhereSQL)
-	if !strings.Contains(rule, "r.name = 'platform_superadmin'") || !strings.Contains(rule, "NOT EXISTS") {
-		t.Fatalf("the rule must leave out platform superadmins: %s", rule)
+	if !strings.Contains(rule, "ur.org_id IS NULL") || !strings.Contains(rule, "r.name NOT IN ('org_admin', 'organizer', 'agent')") ||
+		!strings.Contains(rule, "NOT EXISTS") {
+		t.Fatalf("the rule must leave out everyone who holds a platform-wide role: %s", rule)
 	}
 	for name, q := range map[string]string{
 		"OwnerRecipientSQL":      OwnerRecipientSQL,

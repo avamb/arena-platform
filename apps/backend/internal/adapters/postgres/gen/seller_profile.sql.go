@@ -153,8 +153,11 @@ func (q *Queries) GetContactFormToTelegram(ctx context.Context, orgID uuid.UUID)
 // account e-mail may receive the contact form's messages" (membership alias
 // m, user alias u, organization alias o): an active org_admin membership, an
 // account neither deactivated nor anonymized, a non-blank e-mail, and never a
-// platform superadmin - the operator is an org_admin of organizations it set
-// up, and a buyer's message must reach the organizer, not the platform. Every
+// person who holds any platform-wide role (a global user_roles row of a role
+// other than the membership roles org_admin, organizer, agent: superadmin,
+// operator, admin, support and the rest) - the operator is an org_admin of
+// organizations it set up, and a buyer's message must reach the organizer,
+// not the platform. Every
 // query that asks for this recipient builds on it
 // (TestOwnerRecipientRule_OneCopyEverywhere); the mirrors in queries/*.sql
 // repeat it literally.
@@ -162,7 +165,7 @@ const OwnerRecipientWhereSQL = `m.org_id = o.id AND m.role = 'org_admin' AND m.s
                  AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
                  AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
                                  WHERE ur.user_id = u.id AND ur.org_id IS NULL
-                                   AND r.org_id IS NULL AND r.name = 'platform_superadmin')`
+                                   AND r.org_id IS NULL AND r.name NOT IN ('org_admin', 'organizer', 'agent'))`
 
 // ownerReachableSQL answers whether such an owner exists - a boolean, never
 // the address.

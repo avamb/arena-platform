@@ -61,7 +61,7 @@ SELECT sc.id,
                  AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
                  AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
                                  WHERE ur.user_id = u.id AND ur.org_id IS NULL
-                                   AND r.org_id IS NULL AND r.name = 'platform_superadmin')) AS has_email
+                                   AND r.org_id IS NULL AND r.name NOT IN ('org_admin', 'organizer', 'agent'))) AS has_email
 FROM sales_channels sc
 JOIN organizations o ON o.id = sc.org_id
 JOIN agent_feed_tokens ft ON ft.sales_channel_id = sc.id
@@ -85,7 +85,7 @@ SELECT COALESCE(btrim(o.contact_email), '') <> ''
                  AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
                  AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
                                  WHERE ur.user_id = u.id AND ur.org_id IS NULL
-                                   AND r.org_id IS NULL AND r.name = 'platform_superadmin'))
+                                   AND r.org_id IS NULL AND r.name NOT IN ('org_admin', 'organizer', 'agent')))
 FROM organizations o WHERE o.id = $1 AND o.deleted_at IS NULL;
 
 -- name: SetContactFormToTelegram :execrows

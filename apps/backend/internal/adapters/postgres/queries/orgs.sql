@@ -124,7 +124,9 @@ WHERE  t.id = $1;
 -- page slug is the event's active promoter's when it has one, else the
 -- organization's; else the organization's contact_email (today's
 -- behaviour for channels without a hosted page). event_slug is given only for
--- a published, not deleted event: the page of any other one answers 404, so
+-- a published, not deleted event that still has a publication on an active
+-- feed token of a hosted-page channel of the organization (the hosted event
+-- page's own resolution): the page of any other one answers 404, so
 -- a cancel or refund letter then links the organization's or promoter's page.
 -- "hosted page enabled" is the page's own rule (#>> = 'true').
 SELECT NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') AS public_email,
@@ -133,13 +135,20 @@ SELECT NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') A
                          AND h.settings #>> '{hosted_page,enabled}' = 'true') END AS hosted_page,
        NULLIF(btrim(o.contact_email), '') AS org_email,
        COALESCE(op.slug, o.slug) AS page_slug,
-       CASE WHEN e.status = 'published' AND e.deleted_at IS NULL THEN e.slug END AS event_slug,
+       CASE WHEN e.status = 'published' AND e.deleted_at IS NULL
+                    AND EXISTS (SELECT 1 FROM event_publications pub
+                                JOIN agent_feed_tokens pft ON pft.id = pub.feed_token_id
+                                JOIN sales_channels psc ON psc.id = pft.sales_channel_id
+                                WHERE pub.event_id = e.id AND pft.is_active = true
+                                  AND psc.org_id = o.id AND psc.deleted_at IS NULL
+                                  AND psc.settings #>> '{hosted_page,enabled}' = 'true')
+                   THEN e.slug END AS event_slug,
        EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
                WHERE m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
                  AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
                  AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
                                  WHERE ur.user_id = u.id AND ur.org_id IS NULL
-                                   AND r.org_id IS NULL AND r.name = 'platform_superadmin')) AS owner_reachable
+                                   AND r.org_id IS NULL AND r.name NOT IN ('org_admin', 'organizer', 'agent'))) AS owner_reachable
 FROM   tickets t
 JOIN   sessions s ON s.id = t.session_id
 JOIN   events   e ON e.id = s.event_id
