@@ -23,6 +23,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
@@ -134,6 +135,56 @@ func TestRefundBuyerEmail_OneLetterPerOperation(t *testing.T) {
 	_ = srv.pgxPool.QueryRow(ctx, `SELECT count(*) FROM refunds WHERE batch_id = $1 AND buyer_notified_at IS NULL`, b1).Scan(&unmarked)
 	if unmarked != 0 {
 		t.Fatalf("%d refunds of the operation are not marked as mailed", unmarked)
+	}
+
+	// Each refund names the letter that carried it (migration 0149).
+	var refundIDs []uuid.UUID
+	rows, err := srv.pgxPool.Query(ctx, `SELECT id FROM refunds WHERE batch_id = $1`, b1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		_ = rows.Scan(&id)
+		refundIDs = append(refundIDs, id)
+	}
+	rows.Close()
+	var linkedToLetter int
+	_ = srv.pgxPool.QueryRow(ctx, `SELECT count(*) FROM refunds r JOIN email_letters l ON l.id = r.buyer_notice_letter_id
+		WHERE r.batch_id = $1 AND l.kind = 'refund'`, b1).Scan(&linkedToLetter)
+	if len(refundIDs) != 2 || linkedToLetter != 2 {
+		t.Fatalf("refunds linked to the refund letter = %d of %d, want both", linkedToLetter, len(refundIDs))
+	}
+
+	// The stale-letter sweep confirms a refund letter only through refunds
+	// linked to IT: a letter of the same order without that link is deleted.
+	linkedLetter, err := emailstatus.Begin(ctx, srv.pgxPool, emailstatus.NewLetter{OrgID: org, OrderID: &f1.order,
+		Kind: emailstatus.KindRefund, Recipient: "one@pay07.test", RefundIDs: refundIDs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	strayLetter, err := emailstatus.Begin(ctx, srv.pgxPool, emailstatus.NewLetter{OrgID: org, OrderID: &f1.order,
+		Kind: emailstatus.KindRefund, Recipient: "one@pay07.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE email_letters SET sent_at = now() - interval '2 days' WHERE id = ANY($1)`,
+		[]uuid.UUID{linkedLetter, strayLetter}); err != nil {
+		t.Fatal(err)
+	}
+	if err := emailstatus.SweepStale(ctx, srv.pgxPool); err != nil {
+		t.Fatal(err)
+	}
+	var sweptStatus string
+	var receiptMissing bool
+	if err := srv.pgxPool.QueryRow(ctx, `SELECT status, receipt_missing FROM email_letters WHERE id = $1`, linkedLetter).
+		Scan(&sweptStatus, &receiptMissing); err != nil || sweptStatus != emailstatus.StatusSent || !receiptMissing {
+		t.Fatalf("refund letter its refunds confirm = %q receipt_missing %v (err %v), want sent", sweptStatus, receiptMissing, err)
+	}
+	var stray int
+	_ = srv.pgxPool.QueryRow(ctx, `SELECT count(*) FROM email_letters WHERE id = $1`, strayLetter).Scan(&stray)
+	if stray != 0 {
+		t.Fatal("a refund letter no refund names was confirmed by the order's other refunds")
 	}
 
 	// ── notify_buyer=false: queued maybe, but never mailed

@@ -451,3 +451,80 @@ func TestBrevoWebhook_LettersStayInsideTheOrganization(t *testing.T) {
 		}
 	}
 }
+
+// TestBrevoWebhook_MessageIDHeldByAnotherLetterIsNotCopied (review 2026-10-14
+// L3): an event that finds letter B by its tracking header but names a
+// message id letter A already holds must not try to store that id on B (the
+// unique index would abort the transaction, Brevo would get 500 and retry the
+// batch for ever).
+func TestBrevoWebhook_MessageIDHeldByAnotherLetterIsNotCopied(t *testing.T) {
+	f := newECOrdersFixture(t)
+	hook := newBrevoHook(t)
+	ctx := context.Background()
+	t.Cleanup(func() {
+		_, _ = f.pool.Exec(ctx, `DELETE FROM email_letters WHERE org_id = $1`, f.orgA)
+	})
+	_, heldMID := sentLetter(t, f, emailstatus.KindChange, "anna@example.com", nil)
+	other, err := emailstatus.Begin(ctx, f.pool, emailstatus.NewLetter{OrgID: f.orgA, OrderID: &f.paidOrder,
+		Kind: emailstatus.KindCancel, Recipient: "anna@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := emailstatus.Accepted(ctx, f.pool, other, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	code, body := hook.post(brevoTestToken, brevoEventJSON("delivered", heldMID, time.Now().Add(-time.Minute),
+		map[string]any{"X-Mailin-custom": emailstatus.TrackingID(other)}))
+	if code != http.StatusOK || body["applied"] != float64(1) {
+		t.Fatalf("event: status %d body %v", code, body)
+	}
+	var mid *string
+	var status string
+	if err := f.pool.QueryRow(ctx, `SELECT provider_message_id, status FROM email_letters WHERE id = $1`, other).
+		Scan(&mid, &status); err != nil {
+		t.Fatal(err)
+	}
+	if mid != nil || status != emailstatus.StatusDelivered {
+		t.Fatalf("letter B = message id %v status %q; want no id, delivered", mid, status)
+	}
+}
+
+// TestBrevoWebhook_RepeatedEventKeepsItsFirstAndLastTime (review 2026-10-14
+// L3): one event type reported twice out of time order keeps the earliest
+// time as first_at and the latest as last_at, and the reason of the latest.
+func TestBrevoWebhook_RepeatedEventKeepsItsFirstAndLastTime(t *testing.T) {
+	f := newECOrdersFixture(t)
+	hook := newBrevoHook(t)
+	ctx := context.Background()
+	t.Cleanup(func() {
+		_, _ = f.pool.Exec(ctx, `DELETE FROM email_letters WHERE org_id = $1`, f.orgA)
+	})
+	letter, mid := sentLetter(t, f, emailstatus.KindRefund, "anna@example.com", nil)
+	early := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Millisecond)
+	late := early.Add(time.Hour)
+	hook.send("soft_bounce", mid, late, map[string]any{"reason": "452 mailbox full, later"})
+	hook.send("soft_bounce", mid, early, map[string]any{"reason": "421 try again, earlier"})
+	var first, last time.Time
+	var reason string
+	if err := f.pool.QueryRow(ctx, `SELECT first_at, last_at, reason FROM email_letter_events
+		WHERE letter_id = $1 AND event = 'soft_bounce'`, letter).Scan(&first, &last, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if !first.Equal(early) || !last.Equal(late) {
+		t.Fatalf("first_at %v last_at %v, want %v and %v", first, last, early, late)
+	}
+	if !strings.Contains(reason, "later") {
+		t.Fatalf("reason = %q, want the one of the latest report", reason)
+	}
+
+	// In time order too: the second, later report must not move first_at.
+	hook.send("deferred", mid, early, nil)
+	hook.send("deferred", mid, late, nil)
+	if err := f.pool.QueryRow(ctx, `SELECT first_at, last_at FROM email_letter_events
+		WHERE letter_id = $1 AND event = 'deferred'`, letter).Scan(&first, &last); err != nil {
+		t.Fatal(err)
+	}
+	if !first.Equal(early) || !last.Equal(late) {
+		t.Fatalf("deferred in order: first_at %v last_at %v, want %v and %v", first, last, early, late)
+	}
+}

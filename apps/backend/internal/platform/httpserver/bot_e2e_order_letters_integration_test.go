@@ -92,7 +92,7 @@ func TestBotE2E_OrderCard_LetterStatus(t *testing.T) {
 	// the list row is marked.
 	exec(`UPDATE delivery_jobs SET status = 'failed', sent_at = NULL, last_error = '550 mailbox unavailable' WHERE ticket_id = $1`, tickets[1])
 	list := d.press("or:b", "найдено 1")
-	if !strings.Contains(list, "⚠️📧 письмо с билетами не отправлено") {
+	if !strings.Contains(list, "⚠️📧 письмо покупателю не дошло") {
 		t.Errorf("the list legend must explain the mark:\n%s", list)
 	}
 	id, _, _ = tg.lastOf(ecOwnerTG)

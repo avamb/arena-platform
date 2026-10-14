@@ -3,10 +3,10 @@ package eventbot
 // order_letters.go — the order card's lines about the letters the buyer got
 // (owner decision 2026-10-13: the organizer did not see whether the tickets
 // reached the buyer). Every letter — the tickets, the refund — goes through
-// ONE rendering, letterLine, from a letterStatus. Today the server knows
-// queued / sent / failed; when the delivery events of the e-mail provider
-// arrive (delivered, opened), only ticketLetterStatus needs to learn them:
-// the states, their order and their texts are already here.
+// ONE rendering, letterLine, from a letterStatus. The statuses come from the
+// order's letters[] (the e-mail provider's delivery events: delivered,
+// opened, delayed, bounced, stuck); the older delivery[] fold is kept only
+// for an order card that carries no letters.
 
 import (
 	"strings"
@@ -28,6 +28,9 @@ const (
 	letterOpened        = "opened"         // the buyer opened it
 	letterPartial       = "partial"        // some sent, the rest failed
 	letterFailed        = "failed"         // not sent
+	letterDelayed       = "delayed"        // the buyer's server asked to try again later
+	letterStuck         = "stuck"          // sent hours ago and still not delivered
+	letterBounced       = "bounced"        // sent, but the buyer's server refused it
 )
 
 // letterFailedMark marks an orders-list row whose ticket letter did not go
@@ -49,10 +52,120 @@ type letterStatus struct {
 }
 
 // failed reports a letter the organizer should act on.
-func (s letterStatus) failed() bool { return s.State == letterFailed || s.State == letterPartial }
+func (s letterStatus) failed() bool {
+	switch s.State {
+	case letterFailed, letterPartial, letterBounced, letterStuck:
+		return true
+	}
+	return false
+}
 
-// ticketLetterStatus folds the order's ticket letters.
+// orderRowLetterMark reports whether an orders-list row gets letterFailedMark:
+// the server's letter_failed (a letter failed, bounced or is stuck), or a
+// ticket letter that never went out.
+func orderRowLetterMark(o openapi.OrderListItem) bool {
+	return o.LetterFailed || (o.DeliveryState != nil && *o.DeliveryState == letterFailed)
+}
+
+// ticketLetterStatus folds the order's ticket letters from letters[].
 func ticketLetterStatus(d openapi.OrderDetail) letterStatus {
+	st := letterStatus{State: letterNone, To: strings.TrimSpace(deref(d.BuyerEmail))}
+	pending, failed, bounced, low := 0, 0, 0, 0
+	delayed, stuck, seen := false, false, false
+	for _, l := range d.Letters {
+		if l.Kind != "ticket" {
+			continue
+		}
+		seen = true
+		n := len(l.TicketIds)
+		if n == 0 {
+			n = 1
+		}
+		st.Total += n
+		if to := strings.TrimSpace(l.Recipient); to != "" {
+			st.To = to
+		}
+		switch {
+		case l.Status == letterQueued:
+			pending += n
+		case l.Status == letterFailed:
+			if l.SentAt != nil {
+				bounced += n
+			} else {
+				failed += n
+			}
+			if st.Why == "" {
+				st.Why = cutRunes(strings.Join(strings.Fields(deref(l.FailureReason)), " "), 120)
+			}
+		case letterRank[l.Status] > 0 || l.Status == letterDelayed:
+			st.Done += n
+			rank := letterRank[l.Status]
+			if l.Status == letterDelayed {
+				rank, delayed = letterRank[letterSent], true
+			}
+			if low == 0 || rank < low {
+				low = rank
+			}
+			stuck = stuck || l.Stuck
+			if at := letterStepTime(l); at != nil && (st.At == nil || at.After(*st.At)) {
+				st.At = at
+			}
+		}
+	}
+	if !seen {
+		return ticketLetterStatusFromDelivery(d)
+	}
+	switch {
+	case st.Total == 0:
+		st.State = letterNone
+	case st.Done == st.Total && stuck:
+		st.State = letterStuck
+	case st.Done == st.Total && delayed:
+		st.State = letterDelayed
+	case st.Done == st.Total:
+		for state, rank := range letterRank {
+			if rank == low {
+				st.State = state
+			}
+		}
+	case pending > 0 && st.Done > 0:
+		st.State = letterPartialQueued
+	case pending > 0:
+		st.State = letterQueued
+	case st.Done > 0:
+		st.State = letterPartial
+	case failed == 0 && bounced > 0:
+		st.State = letterBounced
+	default:
+		st.State = letterFailed
+	}
+	return st
+}
+
+// letterStepTime is when a sent letter reached the step its status names.
+func letterStepTime(l openapi.OrderLetter) *time.Time {
+	switch l.Status {
+	case letterOpened:
+		if l.OpenedAt != nil {
+			return l.OpenedAt
+		}
+	case letterDelivered:
+		for _, t := range []*time.Time{l.DeliveredAt, l.ProxyOpenedAt, l.ClickedAt} {
+			if t != nil {
+				return t
+			}
+		}
+	case letterDelayed:
+		if l.DeferredAt != nil {
+			return l.DeferredAt
+		}
+	}
+	return l.SentAt
+}
+
+// ticketLetterStatusFromDelivery folds delivery[] (the delivery jobs): only
+// queued, sent and failed are known there.
+func ticketLetterStatusFromDelivery(d openapi.OrderDetail) letterStatus {
 	st := letterStatus{State: letterNone, To: strings.TrimSpace(deref(d.BuyerEmail))}
 	pending, failed, low := 0, 0, 0
 	for _, e := range d.Delivery {
@@ -125,12 +238,45 @@ func refundLetterStatus(d openapi.OrderDetail) letterStatus {
 		st.State = letterPartialQueued
 	case "sent":
 		st.State = letterSent
+		withLatestRefundLetter(&st, d.Letters)
 	case "failed":
 		st.State = letterFailed
 	default:
 		return letterStatus{}
 	}
 	return st
+}
+
+// withLatestRefundLetter moves a sent refund letter on to what the e-mail
+// provider reported about the newest refund letter of the order: delivered,
+// opened, delayed, bounced or stuck.
+func withLatestRefundLetter(st *letterStatus, letters []openapi.OrderLetter) {
+	var latest *openapi.OrderLetter
+	for i := range letters {
+		l := &letters[i]
+		if l.Kind != "refund" || l.SentAt == nil {
+			continue
+		}
+		if latest == nil || l.SentAt.After(*latest.SentAt) {
+			latest = l
+		}
+	}
+	if latest == nil {
+		return
+	}
+	if to := strings.TrimSpace(latest.Recipient); to != "" {
+		st.To = to
+	}
+	switch {
+	case latest.Status == letterFailed:
+		st.State = letterBounced
+		st.At = latest.FailedAt
+		st.Why = cutRunes(strings.Join(strings.Fields(deref(latest.FailureReason)), " "), 120)
+	case latest.Stuck:
+		st.State, st.At = letterStuck, latest.SentAt
+	case latest.Status == letterDelayed || letterRank[latest.Status] > letterRank[letterSent]:
+		st.State, st.At = latest.Status, letterStepTime(*latest)
+	}
 }
 
 // relabelButton renames the button carrying data, or leaves kb as it is when

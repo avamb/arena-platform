@@ -89,8 +89,8 @@ func OrderRowLabel(o openapi.OrderListItem, loc string) string {
 		"№" + strconv.FormatInt(o.SystemId, 10),
 		OrderChip(o.Status),
 	}
-	if o.DeliveryState != nil && *o.DeliveryState == letterFailed {
-		// The ticket letter did not go out: seen without opening the order.
+	if orderRowLetterMark(o) {
+		// A letter did not reach the buyer: seen without opening the order.
 		parts = append(parts, letterFailedMark)
 	}
 	parts = append(parts, FormatMoney(int64(o.Total), o.Currency, loc))

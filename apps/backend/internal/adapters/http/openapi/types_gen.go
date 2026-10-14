@@ -8507,7 +8507,12 @@ type OrderDetail struct {
 	// Items Line items of the order.
 	Items []OrderItemSummary `json:"items"`
 
-	// LetterFailed True when one of the letters failed (status failed).
+	// LetterFailed True when the buyer most likely did not get a letter: a
+	// ticket letter that failed (bounced, blocked, refused by the
+	// relay) or is stuck (see OrderLetter.stuck), or a change,
+	// cancellation or refund letter that failed or is stuck and was
+	// not followed by a newer one of the same kind. The same rule
+	// as letter_failed on the orders list.
 	LetterFailed bool `json:"letter_failed"`
 
 	// Letters The buyer letters of the order with their delivery status (see OrderLetter).
@@ -8754,10 +8759,11 @@ type OrderListItem struct {
 	// Id UUIDv7 primary key of the order row.
 	Id openapi_types.UUID `json:"id"`
 
-	// LetterFailed True when the buyer did not get a letter: a ticket whose
-	// letter failed (bounced, blocked, refused by the relay), or a
-	// change, cancellation or refund letter that failed and was not
-	// followed by a newer one of the same kind. Details on the
+	// LetterFailed True when the buyer most likely did not get a letter: a
+	// ticket letter that failed (bounced, blocked, refused by the
+	// relay) or is stuck (see OrderLetter.stuck), or a change,
+	// cancellation or refund letter that failed or is stuck and was
+	// not followed by a newer one of the same kind. Details on the
 	// order card (letters).
 	LetterFailed bool `json:"letter_failed"`
 

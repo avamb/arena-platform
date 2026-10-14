@@ -39,6 +39,13 @@ const acceptedRetryDelay = 500 * time.Millisecond
 func sendRecorded(ctx context.Context, sender email.Sender, db emailstatus.DB, logger *slog.Logger,
 	l emailstatus.NewLetter, msg email.Message, jobIDs []uuid.UUID) error {
 	l.Subject = msg.Subject
+	l.FromAddress = msg.From
+	if l.FromAddress == "" {
+		if d, ok := sender.(interface{ DefaultFrom() string }); ok {
+			l.FromAddress = d.DefaultFrom()
+		}
+	}
+	l.ReplyTo = msg.ReplyTo
 	l.BodySHA256 = emailstatus.BodyDigest(msg.HTMLBody, msg.TextBody)
 	l.Attachments = nil
 	for _, a := range msg.Attachments {
