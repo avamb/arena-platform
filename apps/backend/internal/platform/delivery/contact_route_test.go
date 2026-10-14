@@ -36,6 +36,12 @@ func TestContactRouteFor(t *testing.T) {
 		{"no hosted page keeps the organization's address", gen.TicketContactRoute{OrgEmail: strPtr("box@teatro.example"), PageSlug: strPtr("teatro")},
 			ContactRoute{Email: "box@teatro.example"}},
 		{"no hosted page and no address", gen.TicketContactRoute{PageSlug: strPtr("teatro")}, ContactRoute{}},
+		// Owner decision 2026-10-14: a promoter's event takes the owner only,
+		// so the organization's own address does not make the form available.
+		{"promoter's event with an owner: the promoter page's form", gen.TicketContactRoute{HostedPage: true, ToOwner: true, OwnerReachable: true, OrgEmail: strPtr("box@teatro.example"), PageSlug: strPtr("lumen"), EventSlug: strPtr("hamlet")},
+			ContactRoute{FormURL: "https://tickets.example/lumen/hamlet#contact"}},
+		{"promoter's event without an owner: no link, never the address", gen.TicketContactRoute{HostedPage: true, ToOwner: true, OrgEmail: strPtr("box@teatro.example"), PageSlug: strPtr("lumen"), EventSlug: strPtr("hamlet")},
+			ContactRoute{}},
 	} {
 		if got := ContactRouteFor(c.row, base, true); got != c.want {
 			t.Errorf("%s: got %+v, want %+v", c.name, got, c.want)

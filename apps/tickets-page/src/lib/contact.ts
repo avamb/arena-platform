@@ -23,6 +23,9 @@ export interface ContactContext {
   slug: string;
   /** The event page's feed token; empty on the promoter page. */
   feedToken?: string;
+  /** The event page's slug; empty on a landing page. The API sends a
+   * message about an event of a promoter to the organization's owner. */
+  eventSlug?: string;
   locale: PageLocale;
   form: HostedPageContactForm | null | undefined;
   /** The organizer's public phone from the page's seller block, if any:
@@ -96,7 +99,7 @@ export async function sendContact(
     res = await fetch(`${base}/v1/public/organizer-contact/${encodeURIComponent(ctx.slug)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ ...body, feed_token: ctx.feedToken ?? '', locale: ctx.locale }),
+      body: JSON.stringify({ ...body, feed_token: ctx.feedToken ?? '', event_slug: ctx.eventSlug ?? '', locale: ctx.locale }),
     });
   } catch {
     return 'network';
