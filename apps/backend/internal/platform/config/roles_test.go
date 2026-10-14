@@ -139,6 +139,7 @@ func TestLoadFor_SharedProductionRulesApplyToEveryRole(t *testing.T) {
 		{"dev auth", "ENABLE_DEV_AUTH", "true"},
 		{"stripe seam", "STRIPE_API_BASE_URL", "http://stub:12111/v1"},
 		{"flitt seam", "FLITT_API_BASE_URL", "http://stub:12112"},
+		{"allpay seam", "ALLPAY_API_BASE_URL", "http://stub:12113"},
 	}
 	for role, own := range roleMinimum {
 		for _, tc := range shared {

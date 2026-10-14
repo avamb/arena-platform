@@ -278,7 +278,8 @@ or with a default), — = never read, do not give it.
 | `JWT_SIGNING_SECRET` | ✅ | — | ✅ | — |
 | `JWT_ISSUER`, `JWT_AUDIENCE` | ● | — | ● | — |
 | `CORS_ALLOWED_ORIGINS` (no `*`) | ✅ | — | — | — |
-| `STRIPE_WEBHOOK_SECRET` / `ALLPAY_WEBHOOK_SECRET` (at least one) | ✅ | — | — | — |
+| `STRIPE_WEBHOOK_SECRET` | ✅ | — | — | — |
+| `ALLPAY_WEBHOOK_SECRET` (deprecated, verifies nothing) | ● | — | — | — |
 | `APP_PUBLIC_URL` (`https://`) | ✅ | ✅ | — | — |
 | `API_PUBLIC_URL` | ● (✅ with Bil24 gateway) | ● | — | — |
 | `TRUSTED_PROXY_COUNT`, `PUBLIC_*_RATE_LIMIT`, `HTTP_LISTEN_ADDR` | ● | — | — | — |
@@ -309,7 +310,8 @@ or with a default), — = never read, do not give it.
 Never set in production, on any service: `ENABLE_DEV_AUTH=true`,
 `DB_LOG_QUERIES=true`, `DEBUG_ROUTES_ENABLED=true`,
 `FAULT_INJECT_OUTBOX_AFTER_AUDIT=true`, `STRIPE_API_BASE_URL`,
-`FLITT_API_BASE_URL` (every role refuses to start with them).
+`FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL` (every role refuses to start
+with them).
 
 Before removing a variable from a container, deploy an image that contains
 `config.LoadFor` (2026-10-14 or later): an older image validates every
