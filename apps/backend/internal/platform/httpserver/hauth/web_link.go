@@ -18,7 +18,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
@@ -33,10 +32,6 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ratelimit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 )
-
-// PlatformSuperadminRole works in admin-web: no web link is issued to it
-// (spec 37 section 1, item 4).
-const PlatformSuperadminRole = "platform_superadmin"
 
 // newWebLinkLimiter allows 10 exchanges per client address in 15 minutes.
 // A code is 256 random bits, so this only keeps a broken client from
@@ -143,13 +138,13 @@ func (h *Handler) WebLink(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope("auth.user_deactivated", "this account has been deactivated", r))
 		return
 	}
-	roles, err := q.GetActiveRolesForUser(ctx, used.UserID)
+	platform, err := q.HasPlatformRole(ctx, used.UserID)
 	if err != nil {
 		logger.Error("auth.web_link: read roles failed", "error", err)
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
 		return
 	}
-	if slices.Contains(roles, PlatformSuperadminRole) {
+	if platform {
 		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
 			"auth.web_link_superadmin", "a platform superadmin works in the admin console", r))
 		return

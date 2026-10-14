@@ -221,3 +221,66 @@ func accessSessionClaims(t *testing.T, token string) (string, string) {
 	}
 	return claims.Chn, claims.Sid
 }
+
+// WL-1: the refusal covers EVERY platform-level role, not only the one named
+// platform_superadmin. A platform "admin" (the seed's superuser) holds
+// superadmin.read and works in admin-web: no link is issued to it, and a code
+// that was drawn before the role was granted is void at the exchange.
+func TestWebLink_AnyPlatformRoleGetsNoWebSession(t *testing.T) {
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) {
+		c.BotServiceToken = webLinkServiceToken
+		c.EventCenterPublicURL = "https://events.example.test"
+		c.WebSessionIdleHours = 72
+	})
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+	c := webAuthClient{t: t, ts: ts}
+	pool := srv.pgxPool
+	ctx := context.Background()
+	service := map[string]string{"Authorization": "Bearer " + webLinkServiceToken}
+
+	hash, err := users.HashPassword("a long phrase 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var userID uuid.UUID
+	if err := pool.QueryRow(ctx, `INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id`,
+		"web-link-pr-"+uuid.NewString()[:8]+"@example.test", hash).Scan(&userID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM audit_events WHERE actor_id = $1`, userID)
+		_, _ = pool.Exec(ctx, `DELETE FROM web_login_codes WHERE user_id = $1`, userID)
+		_, _ = pool.Exec(ctx, `DELETE FROM refresh_tokens WHERE user_id = $1`, userID)
+		_, _ = pool.Exec(ctx, `DELETE FROM bot_telegram_links WHERE user_id = $1`, userID)
+		_, _ = pool.Exec(ctx, `DELETE FROM user_roles WHERE user_id = $1`, userID)
+		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	})
+	tg := 7_000_000_000 + rand.Int64N(1_000_000_000)
+	if _, err := gen.New(pool).UpsertBotTelegramLink(ctx, tg, userID, nil, "en", nil); err != nil {
+		t.Fatal(err)
+	}
+	issue := func() (int, map[string]any) {
+		return c.do(http.MethodPost, "/v1/bot/web-login-codes", "", fmt.Sprintf(`{"telegram_user_id":%d}`, tg), service)
+	}
+
+	// An ordinary person gets a code; keep it for the exchange below.
+	status, out := issue()
+	if status != http.StatusCreated {
+		t.Fatalf("ordinary account: %d %v", status, out)
+	}
+	u, _ := out["url"].(string)
+	code := strings.TrimPrefix(u, "https://events.example.test/login/link#code=")
+
+	// A platform "admin" role, with no organization, arrives afterwards.
+	if _, err := pool.Exec(ctx, `INSERT INTO user_roles (user_id, role_id, org_id)
+		SELECT $1, id, NULL FROM roles WHERE name = 'admin' AND org_id IS NULL`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if status, out := issue(); status != http.StatusForbidden || errCode(out) != "bot.web_login_superadmin" {
+		t.Fatalf("platform admin was issued a link: %d %v", status, out)
+	}
+	if status, out := c.do(http.MethodPost, "/v1/auth/web/link", "", fmt.Sprintf(`{"code":%q}`, code), nil); status != http.StatusForbidden || errCode(out) != "auth.web_link_superadmin" {
+		t.Fatalf("platform admin exchanged an older code: %d %v", status, out)
+	}
+}

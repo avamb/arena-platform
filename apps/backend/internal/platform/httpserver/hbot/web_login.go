@@ -18,14 +18,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hauth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 )
@@ -114,14 +112,16 @@ func (h *Handler) HandleCreateWebLoginCode(w http.ResponseWriter, r *http.Reques
 			"auth.user_deactivated", "this account has been deactivated", r))
 		return
 	}
-	roles, err := q.GetActiveRolesForUser(ctx, link.UserID)
+	platform, err := q.HasPlatformRole(ctx, link.UserID)
 	if err != nil {
 		h.logger.Error("hbot: web login: read roles failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r))
 		return
 	}
-	if slices.Contains(roles, hauth.PlatformSuperadminRole) {
+	// Any platform-level role, not only platform_superadmin: a person with one
+	// works in admin-web and gets no password-less web session (WL-1).
+	if platform {
 		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
 			"bot.web_login_superadmin", "a platform superadmin works in the admin console", r))
 		return
