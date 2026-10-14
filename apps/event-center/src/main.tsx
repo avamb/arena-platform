@@ -6,8 +6,13 @@ import { ApiError } from "@/lib/api/http";
 import { AuthProvider } from "@/lib/auth";
 import { StepUpProvider } from "@/components/StepUpDialog";
 import { I18nProvider } from "@/lib/i18n";
+import { captureLinkCode } from "@/lib/linkCode";
 import { router } from "@/router";
 import "@/styles.css";
+
+// A bot link carries its one-time code after "#": take it out of the
+// address before anything renders or sends a request (spec 37 §4.3).
+captureLinkCode();
 
 const queryClient = new QueryClient({
   defaultOptions: {

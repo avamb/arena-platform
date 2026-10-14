@@ -6,6 +6,7 @@
 import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import { RootLayout } from "@/screens/RootLayout";
 import { LoginScreen } from "@/screens/LoginScreen";
+import { LinkLoginScreen } from "@/screens/LinkLoginScreen";
 import { ForgotPasswordScreen } from "@/screens/ForgotPasswordScreen";
 import { SetPasswordScreen } from "@/screens/SetPasswordScreen";
 import { OrgsScreen } from "@/screens/OrgsScreen";
@@ -34,6 +35,14 @@ const loginRoute = createRoute({
   path: "/login",
   validateSearch: parseLoginSearch,
   component: LoginScreen,
+});
+
+// The bot's "Open in browser" link (spec 37 §4.3). Public: the one-time
+// code is the proof; main.tsx has already taken it out of the address.
+const linkLoginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/login/link",
+  component: LinkLoginScreen,
 });
 
 const forgotRoute = createRoute({
@@ -109,6 +118,7 @@ const notificationsRoute = createRoute({
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
+  linkLoginRoute,
   forgotRoute,
   resetPasswordRoute,
   acceptInviteRoute,

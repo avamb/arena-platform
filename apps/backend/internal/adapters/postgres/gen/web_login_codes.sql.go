@@ -103,12 +103,18 @@ func (q *Queries) ClaimWebLoginNotices(ctx context.Context, limit int32) ([]WebL
 
 const revokeWebRefreshTokens = `-- name: RevokeWebRefreshTokens :execrows
 UPDATE refresh_tokens
-SET    revoked_at = now()
-WHERE  user_id = $1 AND client_channel = 'event_center_web' AND revoked_at IS NULL
+SET    expires_at = now()
+WHERE  user_id = $1 AND client_channel = 'event_center_web'
+  AND  revoked_at IS NULL AND expires_at > now()
 `
 
 // RevokeWebRefreshTokens ends every web event center session of a person
 // ("Sign out everywhere"). Sessions of admin-web and of the bot are kept.
+//
+// It EXPIRES the tokens instead of setting revoked_at: an open web tab will
+// still send its token once, and a revoked token coming back is treated as
+// theft (POST /v1/auth/refresh revokes every session of the person, the
+// admin console included). An expired token is just refused.
 func (q *Queries) RevokeWebRefreshTokens(ctx context.Context, userID uuid.UUID) (int64, error) {
 	tag, err := q.db.Exec(ctx, revokeWebRefreshTokens, userID)
 	if err != nil {

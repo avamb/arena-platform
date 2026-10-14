@@ -178,6 +178,30 @@ export async function login(email: string, password: string): Promise<void> {
 }
 
 /**
+ * Signs in with the one-time code of a bot link (spec 37 section 4.3). One
+ * exchange per code: React may run the page's effect twice, and a second
+ * POST of the same code would be refused as already used.
+ */
+let linkExchange: { code: string; done: Promise<void> } | null = null;
+
+export function loginWithLink(code: string): Promise<void> {
+  if (linkExchange?.code === code) return linkExchange.done;
+  const done = (async () => {
+    const res = await readJson<AuthLoginResponse>(
+      await send({ route: API.webLink, body: { code }, authenticated: false }),
+    );
+    await session.signedIn({
+      accessToken: res.access_token,
+      refreshToken: res.refresh_token,
+      expiresAt: res.expires_at,
+      userId: res.user_id,
+    });
+  })();
+  linkExchange = { code, done };
+  return done;
+}
+
+/**
  * Signs out and revokes the refresh token on the server (review finding
  * M1). POST /v1/auth/logout needs a VALID access token, so an expired one
  * is refreshed first, and the token sent is the latest one: a rotated-away
