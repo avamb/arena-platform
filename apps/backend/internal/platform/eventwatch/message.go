@@ -248,3 +248,84 @@ func Diff(old, cur Snapshot) []string {
 	}
 	return lines
 }
+
+// storeStateText is how a storefront's state reads in the status block.
+func storeStateText(s StoreState) string {
+	switch s {
+	case StateWaiting:
+		return "waiting for sync"
+	case StateIdle:
+		return "no catalog fetch for over 7 days"
+	default:
+		return "updated"
+	}
+}
+
+// StorefrontBlock is the status block an announcement ends with: one line per
+// storefront. It is "" when the event has none.
+func StorefrontBlock(fronts []Storefront) string {
+	if len(fronts) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("🛒 <b>Storefronts</b>")
+	for _, sf := range fronts {
+		fmt.Fprintf(&b, "\n• %s: %s", esc(sf.Name), storeStateText(sf.State))
+	}
+	return b.String()
+}
+
+// WithStorefronts appends the status block to an announcement.
+func WithStorefronts(text string, fronts []Storefront) string {
+	block := StorefrontBlock(fronts)
+	if text == "" || block == "" {
+		return text
+	}
+	return text + "\n\n" + block
+}
+
+// humanDuration says how long something took, to the minute.
+func humanDuration(d time.Duration) string {
+	if d < time.Minute {
+		return "under 1 min"
+	}
+	m := int(d.Round(time.Minute) / time.Minute)
+	if m < 60 {
+		return fmt.Sprintf("%d min", m)
+	}
+	if m%60 == 0 {
+		return fmt.Sprintf("%d h", m/60)
+	}
+	return fmt.Sprintf("%d h %d min", m/60, m%60)
+}
+
+// SiteSyncedText is the short follow-up when one or more sites have fetched
+// the catalog since an announced change.
+func SiteSyncedText(eventName string, sites []SiteDelay) string {
+	if len(sites) == 1 {
+		return fmt.Sprintf("✅ <b>%s</b> — %s picked up the change (after %s)",
+			esc(eventName), esc(sites[0].Name), humanDuration(sites[0].After))
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "✅ <b>%s</b> — sites picked up the change", esc(eventName))
+	for _, s := range sites {
+		fmt.Fprintf(&b, "\n• %s (after %s)", esc(s.Name), humanDuration(s.After))
+	}
+	return b.String()
+}
+
+// SiteLateText is the one warning about sites that have not fetched the
+// catalog for SiteSyncWarnAfter since an announced change.
+func SiteLateText(eventName string, sites []string) string {
+	after := humanDuration(SiteSyncWarnAfter)
+	if len(sites) == 1 {
+		return fmt.Sprintf("⚠️ <b>%s</b> — %s has not picked up the change for %s",
+			esc(eventName), esc(sites[0]), after)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "⚠️ <b>%s</b> — sites have not picked up the change for %s", esc(eventName), after)
+	for _, s := range sites {
+		fmt.Fprintf(&b, "\n• %s", esc(s))
+	}
+	return b.String()
+}
