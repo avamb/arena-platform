@@ -100,3 +100,24 @@ func TestBuildDeliveryHandlerOptions_CarriesTheTicketsOrigin(t *testing.T) {
 		t.Errorf("TicketsBaseURL = %q", got)
 	}
 }
+
+// A letter links the contact form only when the page shows it: the worker
+// decides with the same config.ContactFormReady as arena-api, so in production
+// without the Turnstile keys no letter points to a page without a form.
+func TestBuildDeliveryHandlerOptions_ContactFormFollowsTheCaptchaKeys(t *testing.T) {
+	prod := &config.Config{AppEnv: config.EnvProduction}
+	if buildDeliveryHandlerOptions(prod, nil, nil, testLogger()).ContactFormEnabled {
+		t.Error("production without Turnstile keys must not link the contact form")
+	}
+	prod.ContactFormTurnstileSecret = "secret"
+	if buildDeliveryHandlerOptions(prod, nil, nil, testLogger()).ContactFormEnabled {
+		t.Error("a secret without a site key is not a working form")
+	}
+	prod.ContactFormTurnstileSiteKey = "site-key"
+	if !buildDeliveryHandlerOptions(prod, nil, nil, testLogger()).ContactFormEnabled {
+		t.Error("production with both keys links the contact form")
+	}
+	if !buildDeliveryHandlerOptions(&config.Config{AppEnv: config.EnvStaging}, nil, nil, testLogger()).ContactFormEnabled {
+		t.Error("outside production the form needs no captcha keys")
+	}
+}
