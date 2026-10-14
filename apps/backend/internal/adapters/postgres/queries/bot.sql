@@ -8,6 +8,17 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
           accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at;
 
+-- name: InsertWebBotInvitation :one
+-- The record of an invitation sent for the web event center (channel=web): the
+-- membership exists at once and there is no Telegram code to redeem, so the
+-- row is born accepted (accepted_at set, accepted_telegram_user_id NULL - that
+-- pair is what tells it from a Telegram invitation) with a random,
+-- never-disclosed code hash.
+INSERT INTO bot_invitations (org_id, user_id, email, role, code_hash, invited_by, expires_at, membership_created, accepted_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+RETURNING id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
+          accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at;
+
 -- name: GetBotInvitationByCodeHash :one
 SELECT id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
        accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at

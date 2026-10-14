@@ -63,6 +63,20 @@ func (q *Queries) InsertBotInvitation(ctx context.Context, orgID, userID uuid.UU
 	return scanBotInvitationRow(q.db.QueryRow(ctx, insertBotInvitation, orgID, userID, email, role, codeHash, invitedBy, expiresAt, membershipCreated))
 }
 
+const insertWebBotInvitation = `-- name: InsertWebBotInvitation :one
+INSERT INTO bot_invitations (org_id, user_id, email, role, code_hash, invited_by, expires_at, membership_created, accepted_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+RETURNING ` + botInvitationColumns
+
+// InsertWebBotInvitation records an invitation sent for the web event center.
+// The membership exists at once and there is no Telegram code to redeem, so
+// the row is born accepted (accepted_at set, accepted_telegram_user_id NULL:
+// that pair tells it from a Telegram invitation). codeHash is random and
+// never disclosed.
+func (q *Queries) InsertWebBotInvitation(ctx context.Context, orgID, userID uuid.UUID, email, role, codeHash string, invitedBy *uuid.UUID, expiresAt time.Time, membershipCreated bool) (BotInvitationRow, error) {
+	return scanBotInvitationRow(q.db.QueryRow(ctx, insertWebBotInvitation, orgID, userID, email, role, codeHash, invitedBy, expiresAt, membershipCreated))
+}
+
 const getBotInvitationByCodeHash = `-- name: GetBotInvitationByCodeHash :one
 SELECT ` + botInvitationColumns + `
 FROM   bot_invitations

@@ -2595,6 +2595,21 @@ components:
           description: |
             Language of the invitation e-mail and of the bot's first messages
             (`en` default, `ru`, `es`). Unknown values fall back to `en`.
+            With `channel` `web` and no locale, the language of an existing
+            account's own preference is used.
+        channel:
+          type: string
+          description: |
+            How the person is invited: `telegram` (the default when absent)
+            mails the Telegram deep link of the bot; `web` mails the web
+            event center instead, with no deep link and no Telegram code.
+            For `web`, a NEW e-mail gets the one-time password-setup link
+            (valid 7 days) and an EXISTING account gets a letter that says it
+            was added and where to sign in, with no token. In both cases the
+            membership exists at once and an existing membership keeps its
+            role. Any other value is 400 `bot.invalid_channel`. This is a
+            plain string with the two values named here, not an inline
+            enum, so no generated constant is renamed.
     BotInvitation:
       type: object
       description: A bot invitation as the API reports it, never the code.
@@ -2608,6 +2623,7 @@ components:
         - user_created
         - expires_at
         - delivery
+        - channel
       properties:
         id:
           type: string
@@ -2637,10 +2653,13 @@ components:
         expires_at:
           type: string
           format: date-time
-          description: When the one-time code stops working (7 days).
+          description: When the one-time code stops working (7 days). For a `web` invitation, when the password-setup link of a new account stops working.
         delivery:
           type: string
           description: Always `email`; the deep link is mailed by arena-worker (bot.invitation_email).
+        channel:
+          type: string
+          description: The channel the invitation was sent through, `telegram` or `web`. A `web` invitation is recorded as accepted at once and cannot be resent.
     BotInvitationCreateResponse:
       type: object
       description: Response of POST /v1/organizations/{org_id}/bot-invitations.
@@ -2654,7 +2673,8 @@ components:
         deep_link:
           type: string
           description: |
-            `https://t.me/<bot>?start=inv_<code>`, present ONLY when the
+            `https://t.me/<bot>?start=inv_<code>`, present ONLY for a
+            `telegram` invitation when the
             caller is the platform superadmin (X-Admin-Reason on record) and
             the bot username is configured, for the hand-over to
             organizations provisioned by hand. An organization owner never
@@ -20139,6 +20159,15 @@ paths:
         the caller must be a member of the organization, an organization API
         key of it, or the platform superadmin with `X-Admin-Reason`. Only
         the superadmin gets the `deep_link` back in the response.
+
+        With `channel` `web` the same transaction writes the membership, an
+        invitation row that is already accepted (there is no Telegram code),
+        and the letter: a NEW account gets a `password_reset_tokens` row and
+        an `auth.password_reset_email` job (purpose `org_invitation`, the
+        link lands on the event center's `/accept-invite`), an EXISTING
+        account gets an `auth.org_added_email` job with no token. There is no
+        `deep_link`. It answers 503 `bot.web_invitation_not_configured`
+        while the event center address is not configured.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -20171,7 +20200,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/BotInvitationCreateResponse"
         "400":
-          description: Invalid body, e-mail or role (`bot.invalid_body`, `bot.invalid_email`, `bot.invalid_role`), or org_id is not a UUID
+          description: Invalid body, e-mail, role or channel (`bot.invalid_body`, `bot.invalid_email`, `bot.invalid_role`, `bot.invalid_channel`), or org_id is not a UUID
           content:
             application/json:
               schema:
@@ -20201,7 +20230,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: Database not wired
+          description: Database not wired, or `channel` is `web` and the event center address is not configured (`bot.web_invitation_not_configured`)
           content:
             application/json:
               schema:
@@ -20348,7 +20377,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
-          description: The invitation was already accepted (`bot.invitation_accepted`) or revoked (`bot.invitation_revoked`).
+          description: The invitation was already accepted (`bot.invitation_accepted`) or revoked (`bot.invitation_revoked`), or it was sent for the web event center and cannot be resent (`bot.invitation_channel_unsupported`; the person uses the password reset on the sign-in page).
           content:
             application/json:
               schema:
