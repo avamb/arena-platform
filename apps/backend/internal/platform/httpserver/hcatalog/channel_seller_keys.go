@@ -5,10 +5,11 @@ import "encoding/json"
 // sellerDisplayKeys are the members of settings.hosted_page that only the
 // seller-display route writes (PATCH .../channels/{channel_id}/seller-display,
 // HP-4a): whether the sales page shows the seller's legal data, and the
-// public contact buyers' messages go to. That route checks the owner, the
+// public contact buyers' messages go to, and the operator's seller_hidden
+// switch (platform superadmin only). That route checks the owner, the
 // required data and the e-mail; the generic channel routes take the whole
 // settings object from the caller, so they keep the stored values instead.
-var sellerDisplayKeys = []string{"show_seller", "public_contact"}
+var sellerDisplayKeys = []string{"show_seller", "public_contact", "seller_hidden"}
 
 // keepSellerDisplayKeys returns next with the seller-display keys of
 // settings.hosted_page replaced by the stored ones: a value the caller sent

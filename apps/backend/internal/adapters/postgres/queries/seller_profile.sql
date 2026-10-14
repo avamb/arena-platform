@@ -20,6 +20,7 @@ WHERE id = $1 AND deleted_at IS NULL;
 -- never listed.
 SELECT id, name,
        COALESCE(settings #>> '{hosted_page,show_seller}', '') = 'true' AS show_seller,
+       COALESCE(settings #>> '{hosted_page,seller_hidden}', '') = 'true' AS seller_hidden,
        settings #> '{hosted_page,public_contact}' AS public_contact
 FROM sales_channels
 WHERE org_id = $1
@@ -39,6 +40,24 @@ SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hosted_page}',
                   || jsonb_build_object('show_seller', $3::boolean)
              ELSE COALESCE(settings -> 'hosted_page', '{}'::jsonb)
                   || jsonb_build_object('show_seller', $3::boolean, 'public_contact', $4::jsonb)
+        END, true),
+    updated_at = now()
+WHERE id = $1
+  AND org_id = $2
+  AND deleted_at IS NULL
+  AND settings #>> '{hosted_page,enabled}' = 'true';
+
+-- name: SetChannelSellerHidden :execrows
+-- SetChannelSellerHidden sets ($3 true) or removes ($3 false)
+-- settings.hosted_page.seller_hidden of a hosted-page channel of the
+-- organization: the operator's switch that keeps the seller block off the
+-- sales page even when the profile is complete (P1a). Every other settings
+-- key is left as it is.
+UPDATE sales_channels
+SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hosted_page}',
+        CASE WHEN $3::boolean
+             THEN COALESCE(settings -> 'hosted_page', '{}'::jsonb) || jsonb_build_object('seller_hidden', true)
+             ELSE COALESCE(settings -> 'hosted_page', '{}'::jsonb) - 'seller_hidden'
         END, true),
     updated_at = now()
 WHERE id = $1

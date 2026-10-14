@@ -3154,10 +3154,16 @@ other = "<b>Páginas de venta</b>"
 other = "Tu organización aún no tiene página de venta. Aparece cuando publicas el primer evento."
 
 ["bot.og.state_shown"]
-other = "✅ datos del vendedor visibles"
+other = "✅ los datos del vendedor se muestran en la página"
 
-["bot.og.state_hidden"]
-other = "⬜ datos del vendedor ocultos"
+["bot.og.state_incomplete"]
+other = "⬜ los datos del vendedor aún no se muestran: faltan datos"
+
+["bot.og.state_operator_hidden"]
+other = "⬜ el operador de la plataforma ocultó los datos del vendedor"
+
+["bot.og.status_complete"]
+other = "✅ Los datos del vendedor están completos. Se muestran en tus páginas de venta."
 
 ["bot.og.none"]
 other = "sin indicar"
@@ -3166,7 +3172,7 @@ other = "sin indicar"
 other = "Ahora: {{.Value}}"
 
 ["bot.og.missing_title"]
-other = "Para mostrar los datos del vendedor en la página, completa:"
+other = "Los datos del vendedor no están completos, así que aún no se muestran en la página. Por favor, completa:"
 
 ["bot.og.m_legal_name"]
 other = "razón social"
@@ -3291,12 +3297,6 @@ other = "✏ Correo"
 ["bot.og.btn_phone"]
 other = "✏ Teléfono"
 
-["bot.og.btn_show"]
-other = "✅ Mostrar los datos del vendedor en la página"
-
-["bot.og.btn_hide"]
-other = "⬜ Ocultar los datos del vendedor de la página"
-
 ["bot.og.q_email"]
 other = "✏ <b>Correo público</b> de esta página de venta. Por ejemplo, tickets@tu-web.com."
 
@@ -3317,12 +3317,6 @@ other = "✅ Guardado."
 
 ["bot.og.cleared"]
 other = "✅ Borrado."
-
-["bot.og.shown_done"]
-other = "✅ Hecho. Ahora los compradores ven los datos del vendedor en esta página de venta."
-
-["bot.og.hidden_done"]
-other = "✅ Hecho. Los datos del vendedor ya no se muestran en esta página de venta."
 
 ["bot.og.channel_gone"]
 other = "Esta página de venta ya no está en la lista. Aquí tienes los datos actuales."
@@ -3394,7 +3388,7 @@ other = "✅ Los mensajes de compradores ahora también llegan a tu chat de vent
 other = "✅ Los mensajes de compradores ahora solo llegan al correo de la página de venta."
 
 ["bot.og.block_hidden"]
-other = "⚠️ Un campo obligatorio está vacío, así que los datos del vendedor se ocultaron en las páginas de venta: {{.N}}. Rellena el campo y vuelve a activar los datos del vendedor en la ficha de la página."
+other = "⚠️ Un campo obligatorio está vacío, así que los datos del vendedor no se muestran en las páginas de venta: {{.N}}. Volverán a aparecer en cuanto rellenes el campo."
 
 ["contact.email.subject"]
 other = "Mensaje de un comprador: {{.Name}}"
