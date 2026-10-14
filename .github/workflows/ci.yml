@@ -487,6 +487,16 @@ jobs:
           curl -fsS http://127.0.0.1:8091/o/any/events | grep -q '<div id="root"></div>'
           sh apps/event-center/scripts/check-headers.sh http://127.0.0.1:8091
           EVENT_CENTER_BASE_URL=http://127.0.0.1:8091 npm --prefix apps/event-center run test:smoke
+          # The password links carry a one-time token and an e-mail address in
+          # the query: the access log must keep the path and drop the query.
+          curl -fsS -o /dev/null "http://127.0.0.1:8091/reset-password?token=ci-log-secret-1&email=ci-log%40example.test"
+          sleep 1
+          docker logs arena-event-center-smoke > event-center-access.log 2>&1
+          grep -q '"GET /reset-password HTTP/1.1"' event-center-access.log
+          if grep -E 'ci-log-secret-1|ci-log%40example|tok-1|used-token|anna%40example' event-center-access.log; then
+            echo "ERROR: the access log carries a password-link query"
+            exit 1
+          fi
           docker rm -f arena-event-center-smoke
 
   # ─────────────────────────────────────────────────────────────────

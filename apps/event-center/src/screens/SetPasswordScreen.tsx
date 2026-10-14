@@ -107,8 +107,20 @@ export function SetPasswordScreen({ mode }: { mode: "reset" | "invite" }) {
             <p className="muted">{intro}</p>
             <form onSubmit={onSubmit} noValidate>
               {link.email !== undefined && (
-                // Lets a password manager save the pair under the right e-mail.
-                <input type="email" name="email" autoComplete="username" value={link.email} readOnly hidden />
+                // Visible and read-only: password managers save the new
+                // password under this e-mail and skip a hidden field.
+                <>
+                  <label htmlFor="password-email">{t("login.email")}</label>
+                  <input
+                    id="password-email"
+                    type="email"
+                    name="email"
+                    autoComplete="username"
+                    value={link.email}
+                    readOnly
+                    data-testid="password-email"
+                  />
+                </>
               )}
               <label htmlFor="password-new">{t("password.new")}</label>
               <input

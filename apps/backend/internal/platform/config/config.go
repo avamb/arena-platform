@@ -1019,6 +1019,24 @@ func Load() (*Config, error) {
 // no weak secrets, no wildcard CORS, no query logging, safe DB TLS mode,
 // signed media, SMTP email delivery, explicit non-noop outbox mode, and JSON
 // log format.
+// isHTTPSOrigin reports whether raw parses as a bare https origin: scheme
+// https, a non-empty host, no user info, no query or fragment and no path
+// beyond a single "/". A prefix check alone accepted "https://" and
+// "https:///path", which build links without a host.
+func isHTTPSOrigin(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	if !strings.EqualFold(u.Scheme, "https") || u.Hostname() == "" || u.Opaque != "" {
+		return false
+	}
+	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return false
+	}
+	return u.Path == "" || u.Path == "/"
+}
+
 func (c *Config) Validate() error {
 	var errs []error
 
@@ -1360,10 +1378,9 @@ func (c *Config) validateProduction() []error {
 
 	// 10a. EVENT_CENTER_PUBLIC_URL, when set, receives organizers' password
 	// links, so it obeys the same rule as APP_PUBLIC_URL: https only.
-	if ec := strings.TrimSpace(c.EventCenterPublicURL); ec != "" &&
-		!strings.HasPrefix(strings.ToLower(ec), "https://") {
+	if ec := strings.TrimSpace(c.EventCenterPublicURL); ec != "" && !isHTTPSOrigin(ec) {
 		errs = append(errs, fmt.Errorf(
-			"EVENT_CENTER_PUBLIC_URL must start with https:// in production (got %q)", ec,
+			"EVENT_CENTER_PUBLIC_URL must be an https:// address with a host and no path, query or fragment in production (got %q)", ec,
 		))
 	}
 
