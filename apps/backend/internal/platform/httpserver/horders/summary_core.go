@@ -442,3 +442,57 @@ func foldPromos(promos []gen.SessionSummaryPromoRow) []summaryPromo {
 	})
 	return out
 }
+
+// groupBySession splits the rows of many sessions once, so a batch of events
+// reads each session's rows without scanning everything again (forSession is
+// for one session at a time).
+func (r summaryRows) groupBySession() map[uuid.UUID]summaryRows {
+	out := map[uuid.UUID]summaryRows{}
+	for _, x := range r.places {
+		g := out[x.SessionID]
+		g.places = append(g.places, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.tiers {
+		g := out[x.SessionID]
+		g.tiers = append(g.tiers, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.orders {
+		g := out[x.SessionID]
+		g.orders = append(g.orders, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.tickets {
+		g := out[x.SessionID]
+		g.tickets = append(g.tickets, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.refunds {
+		g := out[x.SessionID]
+		g.refunds = append(g.refunds, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.promos {
+		g := out[x.SessionID]
+		g.promos = append(g.promos, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.complimentary {
+		g := out[x.SessionID]
+		g.complimentary = append(g.complimentary, x)
+		out[x.SessionID] = g
+	}
+	return out
+}
+
+// append adds the rows of another set.
+func (r *summaryRows) append(o summaryRows) {
+	r.places = append(r.places, o.places...)
+	r.tiers = append(r.tiers, o.tiers...)
+	r.orders = append(r.orders, o.orders...)
+	r.tickets = append(r.tickets, o.tickets...)
+	r.refunds = append(r.refunds, o.refunds...)
+	r.promos = append(r.promos, o.promos...)
+	r.complimentary = append(r.complimentary, o.complimentary...)
+}
