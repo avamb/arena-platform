@@ -19,7 +19,7 @@
   </table>
   <p style="margin:16px 0 12px 0;">הכסף חוזר לאמצעי התשלום שבו שילמת. הבנק שלך זקוק בדרך כלל ל-5 עד 10 ימי עסקים כדי להציג אותו.</p>
   {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">הכרטיסים שהוחזר עבורם כסף אינם תקפים עוד לכניסה.</p>{{else if .Refund.SomeTicketsCancelled}}<p style="margin:0 0 12px 0;">רק הכרטיסים המסומנים „אינו תקף עוד“ אינם תקפים עוד לכניסה; שאר הכרטיסים ברשימה למעלה נשארים בתוקף.</p>{{end}}
-  <p style="margin:0 0 12px 0;">שאלות? השב להודעה זו.</p>
+  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">שאלות? השב להודעה זו.</p>{{end}}
   <p style="font-size:12px;color:#666">נשלח אל: {{.RecipientEmail}}</p>
   </td></tr>
   <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;text-align:right;">
@@ -56,8 +56,8 @@
 {{if .Refund.TicketsCancelled}}הכרטיסים שהוחזר עבורם כסף אינם תקפים עוד לכניסה.
 {{else if .Refund.SomeTicketsCancelled}}רק הכרטיסים המסומנים „אינו תקף עוד“ אינם תקפים עוד לכניסה; שאר הכרטיסים ברשימה למעלה נשארים בתוקף.
 {{end}}
-שאלות? השב להודעה זו.
-
+{{if .Branding.ContactEmail}}שאלות? השב להודעה זו.
+{{end}}
 נשלח אל: {{.RecipientEmail}}
 
 --
