@@ -503,6 +503,78 @@ label {
   text-align: start;
 }
 
+/* Shared building blocks: DateField, DryRunConfirm. */
+.date-field {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem 1rem;
+  max-width: 24rem;
+}
+
+.date-field-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-block: 0.5rem;
+}
+
+.date-field-grid {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.date-field-grid th {
+  font-weight: 600;
+  color: var(--muted);
+  padding-block: 0.25rem;
+}
+
+.date-field-grid td {
+  padding: 1px;
+  text-align: center;
+}
+
+.date-day {
+  width: 100%;
+  padding-inline: 0;
+}
+
+.date-field-quick,
+.date-field-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 0.75rem;
+}
+
+.date-field-confirm p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.dry-run-figures {
+  display: grid;
+  gap: 0.25rem;
+  margin-block: 0.75rem;
+}
+
+.dry-run-figures div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.dry-run-figures dt {
+  color: var(--muted);
+}
+
+.dry-run-figures dd {
+  margin: 0;
+  font-weight: 600;
+}
+
 /* On a phone a table row becomes a card: every cell names its column. */
 @media (max-width: 599px) {
   .table thead {
