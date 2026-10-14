@@ -25,6 +25,26 @@ export function parseLoginSearch(raw: Record<string, unknown>): LoginSearch {
   return out;
 }
 
+export interface PasswordLinkSearch {
+  token?: string;
+  email?: string;
+}
+
+/**
+ * The query of a password letter's link: ?token=…[&email=…]. It reads the raw
+ * query string, not the router's parsed search: the router turns a value that
+ * looks like JSON (a hex token made only of digits and one "e") into a number.
+ */
+export function parsePasswordLink(query: string): PasswordLinkSearch {
+  const params = new URLSearchParams(query);
+  const out: PasswordLinkSearch = {};
+  const token = params.get("token")?.trim() ?? "";
+  if (token.length > 0) out.token = token;
+  const email = params.get("email")?.trim() ?? "";
+  if (email.includes("@") && email.length <= 320) out.email = email;
+  return out;
+}
+
 export interface EventsSearch {
   f?: EventFilter;
   q?: string;

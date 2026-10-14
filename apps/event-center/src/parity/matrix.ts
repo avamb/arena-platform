@@ -47,7 +47,15 @@ export const PARITY: readonly ParityRow[] = [
     bot: "—",
     web: "R1",
     routes: ["POST /v1/auth/password-reset/request"],
-    note: "Ссылка из письма пока ведёт на APP_PUBLIC_URL (задача A2).",
+    note: "Письмо организатору ведёт на EVENT_CENTER_PUBLIC_URL (раздел 4.2).",
+  },
+  {
+    area: "Вход и организация",
+    fn: "Новый пароль и первый пароль по ссылке из письма",
+    bot: "—",
+    web: "R1",
+    routes: ["POST /v1/auth/password-reset/confirm"],
+    note: "Страницы `/reset-password` и `/accept-invite`, без входа.",
   },
   {
     area: "Вход и организация",
@@ -380,7 +388,7 @@ export const PARITY: readonly ParityRow[] = [
     bot: "bot.go, `/start inv_…`",
     web: "—",
     routes: ["POST /v1/bot/invitations/accept"],
-    note: "В вебе: письмо с установкой пароля (A2).",
+    note: "В вебе: письмо с установкой пароля ведёт на `/accept-invite`. Приглашение из «Команды» с каналом web — задача A2.",
   },
 ];
 

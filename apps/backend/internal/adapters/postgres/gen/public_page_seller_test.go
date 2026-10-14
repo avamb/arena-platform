@@ -58,12 +58,13 @@ func TestOwnerRecipientRule_OneCopyEverywhere(t *testing.T) {
 		"OrgHasPrivateRecipient": orgHasPrivateRecipient,
 		"GetContactFormTarget":   getContactFormTarget,
 		"GetTicketContactRoute":  getTicketContactRoute,
+		"OrgOwnerReachable":      orgOwnerReachable,
 	} {
 		if !strings.Contains(norm(q), rule) {
 			t.Errorf("%s does not use OwnerRecipientWhereSQL", name)
 		}
 	}
-	for file, want := range map[string]int{"../queries/seller_profile.sql": 2, "../queries/orgs.sql": 1} {
+	for file, want := range map[string]int{"../queries/seller_profile.sql": 4, "../queries/orgs.sql": 1} {
 		b, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatal(err)
@@ -71,5 +72,42 @@ func TestOwnerRecipientRule_OneCopyEverywhere(t *testing.T) {
 		if got := strings.Count(norm(string(b)), rule); got != want {
 			t.Errorf("%s repeats the owner rule %d times, want %d", file, got, want)
 		}
+	}
+}
+
+// One rule decides that a message goes to the organization's owner only
+// (owner decision 2026-10-14): the event belongs to a promoter that is not
+// archived. The page's form, the send route and the letters' form link all
+// build on EventPromotedSQL, and the mirrors repeat it literally. A drift
+// would let the page offer a form the send route then addresses elsewhere.
+func TestEventPromotedRule_OneCopyEverywhere(t *testing.T) {
+	t.Parallel()
+	norm := func(s string) string { return strings.Join(strings.Fields(s), " ") }
+	rule := norm(EventPromotedSQL)
+	for _, want := range []string{"opx.archived_at IS NULL", "epx.org_id = e.org_id", "opx.org_id = epx.org_id"} {
+		if !strings.Contains(rule, want) {
+			t.Fatalf("the rule must hold %q: %s", want, rule)
+		}
+	}
+	for name, q := range map[string]string{
+		"GetContactEventPromoted": getContactEventPromoted,
+		"GetTicketContactRoute":   getTicketContactRoute,
+	} {
+		if !strings.Contains(norm(q), rule) {
+			t.Errorf("%s does not use EventPromotedSQL", name)
+		}
+	}
+	for file, want := range map[string]int{"../queries/seller_profile.sql": 1, "../queries/orgs.sql": 1} {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Count(norm(string(b)), rule); got != want {
+			t.Errorf("%s repeats the promoter rule %d times, want %d", file, got, want)
+		}
+	}
+	// The owner is asked for as a boolean only.
+	if q := norm(orgOwnerReachable); !strings.HasPrefix(strings.TrimPrefix(q, "-- name: OrgOwnerReachable :one "), "SELECT EXISTS") {
+		t.Fatalf("OrgOwnerReachable must select a boolean, never an address: %s", q)
 	}
 }

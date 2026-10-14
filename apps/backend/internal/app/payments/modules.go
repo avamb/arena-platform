@@ -65,7 +65,8 @@ func Modules() []domain.Entry {
 // signing secrets (STRIPE_WEBHOOK_SECRET, ALLPAY_WEBHOOK_SECRET): the legacy
 // un-suffixed webhook route's platform-level fallback when no organization
 // config supplies one. Keyed by provider name, so hcheckout can apply them
-// without naming a provider.
+// without naming a provider. The AllPay entry is inert since PAY-14: AllPay
+// is a config-route-only module, which the legacy route never consults.
 func PlatformWebhookSecrets(stripeSecret, allPaySecret string) map[string]string {
 	return map[string]string{stripe.Name: stripeSecret, allpay.Name: allPaySecret}
 }

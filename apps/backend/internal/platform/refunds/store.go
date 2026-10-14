@@ -107,6 +107,17 @@ type Payment struct {
 	Amount            int64
 	Currency          string
 	State             string
+	// OtherRefunded and OtherUncertain are filled by claim only, under the
+	// payment's lock: what OTHER refunds of this payment are known to have
+	// returned through the provider, and what they may have returned (an
+	// earlier call ended without an answer). They travel to the module in
+	// payments.RefundRequest; a provider without an idempotency key (AllPay)
+	// compares them with its own refunded total before it sends anything.
+	OtherRefunded  int64
+	OtherUncertain int64
+	// RefundFirstAttemptAt is the claimed refund's first provider attempt
+	// (claim only), for payments.RefundRequest.FirstAttemptAt.
+	RefundFirstAttemptAt time.Time
 }
 
 const paymentColumns = `id, org_id, checkout_session_id, provider, provider_payment_id, provider_charge_ref, amount, currency, state`

@@ -148,24 +148,32 @@ func TestContactForm_OfferedOnlyWithAPublicEmailAndACaptcha(t *testing.T) {
 	row := fullSellerRow()
 	row.ShowSeller = false // the form does not depend on the seller block
 	h := (&Handler{}).WithContactForm(true, "site-key", "https://arenasoldout.com/legal/privacy")
-	f := h.contactForm(row, nil)
+	f := h.contactForm(row, false, nil)
 	if f == nil || !f.Available || f.TurnstileSiteKey != "site-key" || f.PrivacyURL != "https://arenasoldout.com/legal/privacy" {
 		t.Fatalf("form = %+v", f)
 	}
 	if b, _ := json.Marshal(f); strings.Contains(string(b), "@") {
 		t.Fatalf("the form block must never carry the address: %s", b)
 	}
-	if f := (&Handler{}).WithContactForm(false, "site-key", "").contactForm(row, nil); f != nil {
+	if f := (&Handler{}).WithContactForm(false, "site-key", "").contactForm(row, false, nil); f != nil {
 		t.Fatalf("a deployment that cannot check the captcha offers no form, got %+v", f)
 	}
+	// A promoter's page takes the owner only: the public e-mail does not
+	// make the form available (owner decision 2026-10-14).
+	if f := h.contactForm(row, true, func() bool { return false }); f != nil {
+		t.Fatalf("a promoter's page without an owner offers no form, got %+v", f)
+	}
+	if f := h.contactForm(row, true, func() bool { return true }); f == nil || !f.Available {
+		t.Fatalf("a promoter's page with an owner offers the form, got %+v", f)
+	}
 	row.PublicContact = []byte(`{"phone":"+34 600 000 000"}`)
-	if f := h.contactForm(row, nil); f != nil {
+	if f := h.contactForm(row, false, nil); f != nil {
 		t.Fatalf("a page whose messages would reach nobody offers no form, got %+v", f)
 	}
 	// Without a public e-mail the messages go to the organization's own
 	// address, which the block never carries: the letters of such a page link
 	// this form instead of printing an address.
-	f = h.contactForm(row, func() bool { return true })
+	f = h.contactForm(row, false, func() bool { return true })
 	if f == nil || !f.Available {
 		t.Fatalf("a page whose organization has an address offers the form, got %+v", f)
 	}
