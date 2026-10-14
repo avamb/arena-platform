@@ -108,6 +108,13 @@ type Config struct {
 	// single-host deployments keep working unchanged (feature #535, spec
 	// 22_site_facing_gaps_w1s1_ru.md §2.1). Read through APIPublicBaseURL().
 	APIPublicURL string `env:"API_PUBLIC_URL" required:"false" default:""`
+	// EventCenterPublicURL is the origin of the organizers' web event center
+	// (apps/event-center, e.g. https://events.arenasoldout.com). Password
+	// reset and password setup links of an organizer (a member of an
+	// organization without any platform role) land there instead of on
+	// APP_PUBLIC_URL, the superadmin console. Empty keeps every link on
+	// APP_PUBLIC_URL.
+	EventCenterPublicURL string `env:"EVENT_CENTER_PUBLIC_URL" required:"false" default:""`
 
 	// -------------------------------------------------------------------------
 	// HTTP
@@ -555,6 +562,7 @@ func (c *Config) LogAttrs() []slog.Attr {
 		slog.String("app_commit", c.AppCommit),
 		slog.String("app_public_url", c.AppPublicURL),
 		slog.String("api_public_url", c.APIPublicURL),
+		slog.String("event_center_public_url", c.EventCenterPublicURL),
 		slog.String("http_listen_addr", c.HTTPListenAddr),
 		slog.String("worker_metrics_addr", c.WorkerMetricsAddr),
 		slog.String("database_url", redactDSN(c.DatabaseURL)),
@@ -614,6 +622,8 @@ func Load() (*Config, error) {
 		AppCommit:    getenv("APP_COMMIT", "local"),
 		AppPublicURL: getenv("APP_PUBLIC_URL", ""),
 		APIPublicURL: getenv("API_PUBLIC_URL", ""),
+
+		EventCenterPublicURL: strings.TrimRight(strings.TrimSpace(getenv("EVENT_CENTER_PUBLIC_URL", "")), "/"),
 
 		HTTPListenAddr:     getenv("HTTP_LISTEN_ADDR", ":8080"),
 		WorkerMetricsAddr:  getenv("WORKER_METRICS_ADDR", ":9091"),
@@ -1346,6 +1356,15 @@ func (c *Config) validateProduction() []error {
 				pub,
 			))
 		}
+	}
+
+	// 10a. EVENT_CENTER_PUBLIC_URL, when set, receives organizers' password
+	// links, so it obeys the same rule as APP_PUBLIC_URL: https only.
+	if ec := strings.TrimSpace(c.EventCenterPublicURL); ec != "" &&
+		!strings.HasPrefix(strings.ToLower(ec), "https://") {
+		errs = append(errs, fmt.Errorf(
+			"EVENT_CENTER_PUBLIC_URL must start with https:// in production (got %q)", ec,
+		))
 	}
 
 	// 11. Debug routes expose internal panic/slow endpoints and must never be

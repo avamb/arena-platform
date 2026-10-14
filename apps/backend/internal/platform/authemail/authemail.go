@@ -16,9 +16,10 @@
 // # Locales
 //
 // The verification email is rendered in the requested locale (currently "en"
-// and "ru"); all other locales fall back to English.  The password-reset email
-// is always rendered in English because the locale of the original request is
-// not reliably available at reset time.
+// and "ru"); all other locales fall back to English. The password emails of a
+// platform user are rendered in English. An organizer's password email lands
+// on the web event center and is rendered in the user's preferred_locale
+// (en, ru, es; organizer_password.go).
 //
 // # Failure behaviour
 //
@@ -38,6 +39,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	emailadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 )
@@ -137,6 +140,14 @@ type HandlerOptions struct {
 	// OnboardingSiteURL is the origin of the website that hosts the application
 	// form (ONBOARDING_SITE_URL). Only onboarding.email links use it.
 	OnboardingSiteURL string
+	// EventCenterURL is the origin of the organizers' web event center
+	// (EVENT_CENTER_PUBLIC_URL). Password links of an organizer land there
+	// when it is set and Recipients is wired; otherwise on AppPublicURL.
+	EventCenterURL string
+	// Recipients tells an organizer from a platform user. Optional.
+	Recipients RecipientLookup
+	// Now is the clock of the letters. Defaults to time.Now; tests set it.
+	Now func() time.Time
 }
 
 // Handler provides worker.HandlerFunc implementations for auth email jobs.
@@ -149,6 +160,9 @@ type Handler struct {
 	logger       *slog.Logger
 	botUsername  string
 	siteURL      string
+	eventCenter  string // pre-trimmed; empty = console links only
+	recipients   RecipientLookup
+	now          func() time.Time
 }
 
 // NewHandler constructs a Handler from the given options.
@@ -161,6 +175,10 @@ func NewHandler(opts HandlerOptions) *Handler {
 	if base == "" {
 		base = "http://localhost:8080"
 	}
+	now := opts.Now
+	if now == nil {
+		now = time.Now
+	}
 	return &Handler{
 		sender:       opts.Sender,
 		appPublicURL: base,
@@ -168,6 +186,9 @@ func NewHandler(opts HandlerOptions) *Handler {
 		logger:       logger,
 		botUsername:  strings.TrimPrefix(strings.TrimSpace(opts.BotUsername), "@"),
 		siteURL:      strings.TrimRight(strings.TrimSpace(opts.OnboardingSiteURL), "/"),
+		eventCenter:  strings.TrimRight(strings.TrimSpace(opts.EventCenterURL), "/"),
+		recipients:   opts.Recipients,
+		now:          now,
 	}
 }
 
@@ -221,8 +242,12 @@ func (h *Handler) HandleEmailVerification(ctx context.Context, payload []byte) e
 // Links always land on an SPA page that POSTs the token to
 // /v1/auth/password-reset/confirm with the separately configured API URL:
 //
-//	password_reset                  {AppPublicURL}/reset-password?token=<token>
-//	account_setup, org_invitation   {AppPublicURL}/accept-invite?token=<token>&email=<email>
+//	password_reset                  {base}/reset-password?token=<token>
+//	account_setup, org_invitation   {base}/accept-invite?token=<token>&email=<email>
+//
+// base is EventCenterURL for an organizer (see recipient.go) and AppPublicURL
+// for everyone else. An organizer's letter is also written in their language
+// and explains every step (organizer_password.go).
 func (h *Handler) HandlePasswordResetEmail(ctx context.Context, payload []byte) error {
 	var p PasswordResetEmailPayload
 	if err := json.Unmarshal(payload, &p); err != nil {
@@ -248,9 +273,25 @@ func (h *Handler) HandlePasswordResetEmail(ctx context.Context, payload []byte) 
 		purpose = PurposePasswordReset
 	}
 
+	organizer, locale, err := h.organizerRecipient(ctx, p.UserID)
+	if err != nil {
+		// Retry rather than send a link to the wrong application.
+		return fmt.Errorf("authemail: look up recipient of user %s: %w", p.UserID, err)
+	}
+
 	var subject, htmlBody, textBody string
-	switch purpose {
-	case PurposeAccountSetup, PurposeOrgInvitation:
+	switch {
+	case organizer:
+		var link string
+		if purpose == PurposePasswordReset {
+			link = h.eventCenter + "/reset-password?token=" + url.QueryEscape(p.Token)
+		} else {
+			link = h.eventCenter + "/accept-invite?token=" + url.QueryEscape(p.Token) +
+				"&email=" + url.QueryEscape(p.Email)
+		}
+		subject, htmlBody, textBody = renderOrganizerPasswordEmail(
+			locale, purpose, p.OrgName, p.Email, h.eventCenter, link, p.ExpiresAt, h.now())
+	case purpose == PurposeAccountSetup || purpose == PurposeOrgInvitation:
 		// Onboarding lands on the SPA's welcome / choose-a-password page.
 		setupURL := h.appPublicURL + "/accept-invite?token=" + url.QueryEscape(p.Token) +
 			"&email=" + url.QueryEscape(p.Email)
@@ -266,6 +307,7 @@ func (h *Handler) HandlePasswordResetEmail(ctx context.Context, payload []byte) 
 	h.logger.Info("authemail: sending password email",
 		slog.String("user_id", p.UserID),
 		slog.String("purpose", purpose),
+		slog.Bool("event_center", organizer),
 		// token and URL intentionally omitted
 	)
 
@@ -520,4 +562,23 @@ func renderResetTextEn(rawURL, expiry string) string {
 	b.WriteString("Your password will not change.\n")
 	b.WriteString("\n--\nArena Platform -- automated message\n")
 	return b.String()
+}
+
+// organizerRecipient reports whether userID's password link goes to the event
+// center, and in which language. It is false, with no lookup, while the event
+// center address or the lookup is not configured, or the payload carries no
+// valid user id (jobs queued before the field existed).
+func (h *Handler) organizerRecipient(ctx context.Context, userID string) (bool, string, error) {
+	if h.eventCenter == "" || h.recipients == nil {
+		return false, "", nil
+	}
+	id, err := uuid.Parse(userID)
+	if err != nil {
+		return false, "", nil
+	}
+	rec, err := h.recipients.PasswordRecipient(ctx, id)
+	if err != nil {
+		return false, "", err
+	}
+	return rec.Organizer, rec.Locale, nil
 }

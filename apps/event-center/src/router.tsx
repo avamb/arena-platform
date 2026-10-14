@@ -7,6 +7,7 @@ import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/
 import { RootLayout } from "@/screens/RootLayout";
 import { LoginScreen } from "@/screens/LoginScreen";
 import { ForgotPasswordScreen } from "@/screens/ForgotPasswordScreen";
+import { SetPasswordScreen } from "@/screens/SetPasswordScreen";
 import { OrgsScreen } from "@/screens/OrgsScreen";
 import { OrgLayout } from "@/screens/OrgLayout";
 import { EventsScreen } from "@/screens/EventsScreen";
@@ -39,6 +40,20 @@ const forgotRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/forgot-password",
   component: ForgotPasswordScreen,
+});
+
+// The pages a password letter opens (arena-worker sends organizers here when
+// EVENT_CENTER_PUBLIC_URL is set). Public: the one-time token is the proof.
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/reset-password",
+  component: () => <SetPasswordScreen mode="reset" />,
+});
+
+const acceptInviteRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/accept-invite",
+  component: () => <SetPasswordScreen mode="invite" />,
 });
 
 const orgsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/orgs", component: OrgsScreen });
@@ -95,6 +110,8 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   forgotRoute,
+  resetPasswordRoute,
+  acceptInviteRoute,
   orgsRoute,
   orgRoute.addChildren([
     orgIndexRoute,
