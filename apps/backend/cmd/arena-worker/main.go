@@ -89,7 +89,7 @@ func main() {
 
 func run() error {
 	// 1. Configuration --------------------------------------------------------
-	cfg, err := config.Load()
+	cfg, err := config.LoadFor(config.RoleWorker)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -106,6 +106,9 @@ func run() error {
 	slog.SetDefault(logger)
 
 	logger.Info("arena-worker starting")
+	for _, w := range cfg.Warnings() {
+		logger.Warn("config warning", "detail", w)
+	}
 
 	// 3. Signal-bound root context --------------------------------------------
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
