@@ -193,7 +193,8 @@
 | Раздел | Функция | Бот | Веб | Маршруты API | Примечание |
 |---|---|---|---|---|---|
 | Вход и организация | Вход по e-mail и паролю | — (бот знает человека по Telegram) | R1 | `POST /v1/auth/login`<br>`POST /v1/auth/refresh`<br>`POST /v1/auth/logout` |  |
-| Вход и организация | Забыли пароль | — | R1 | `POST /v1/auth/password-reset/request` | Ссылка из письма пока ведёт на APP_PUBLIC_URL (задача A2). |
+| Вход и организация | Забыли пароль | — | R1 | `POST /v1/auth/password-reset/request` | Письмо организатору ведёт на EVENT_CENTER_PUBLIC_URL (раздел 4.2). |
+| Вход и организация | Новый пароль и первый пароль по ссылке из письма | — | R1 | `POST /v1/auth/password-reset/confirm` | Страницы `/reset-password` и `/accept-invite`, без входа. |
 | Вход и организация | Выбор организации | bot.go, `org:` | R1 | `GET /v1/me` |  |
 | Вход и организация | Роль и права в организации | bot.go (`canViewSales`, `isOwner` по роли из /v1/me) | R1 | `GET /v1/organizations/{org_id}/me` | Бот пока решает по роли. Веб решает по правам A1. |
 | Вход и организация | Язык интерфейса | bot.go, `lang:` | R1 | — | Хранится на устройстве. |
@@ -233,7 +234,7 @@
 | Команда | Команда, приглашение, удаление | team.go, `team:` | R3 | `GET /v1/organizations/{org_id}/bot-team`<br>`POST /v1/organizations/{org_id}/bot-invitations`<br>`DELETE /v1/organizations/{org_id}/bot-invitations/{id}`<br>`POST /v1/organizations/{org_id}/bot-invitations/{id}/resend`<br>`DELETE /v1/organizations/{org_id}/members/{user_id}` | Ждёт A2: приглашение с каналом web или telegram. |
 | Промоутеры | Список, правка, архив | promoters.go, `pr:` | R3 | `GET /v1/organizations/{org_id}/promoters`<br>`PATCH /v1/organizations/{org_id}/promoters/{id}` |  |
 | Не в ивент-центре | Анкета организатора | onboarding_dialog.go, `onb` | — | `GET /v1/onboarding/form-schema`<br>`POST /v1/onboarding/applications` | В вебе анкета живёт на сайте arenasoldout.com. |
-| Не в ивент-центре | Принять приглашение в команду | bot.go, `/start inv_…` | — | `POST /v1/bot/invitations/accept` | В вебе: письмо с установкой пароля (A2). |
+| Не в ивент-центре | Принять приглашение в команду | bot.go, `/start inv_…` | — | `POST /v1/bot/invitations/accept` | В вебе: письмо с установкой пароля ведёт на `/accept-invite`. Приглашение из «Команды» с каналом web — задача A2. |
 <!-- PARITY:END -->
 
 ## 12. Фазы и серверные задачи

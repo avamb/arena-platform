@@ -24,6 +24,7 @@ export const API = {
   refresh: { method: "POST", path: "/v1/auth/refresh" },
   logout: { method: "POST", path: "/v1/auth/logout" },
   passwordResetRequest: { method: "POST", path: "/v1/auth/password-reset/request" },
+  passwordResetConfirm: { method: "POST", path: "/v1/auth/password-reset/confirm" },
   me: { method: "GET", path: "/v1/me" },
   orgMe: { method: "GET", path: "/v1/organizations/{org_id}/me" },
   events: { method: "GET", path: "/v1/organizations/{org_id}/events" },
