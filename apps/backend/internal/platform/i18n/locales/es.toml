@@ -3003,6 +3003,9 @@ other = "No se envía ningún correo al comprador."
 ["bot.ref.cancelled"]
 other = "Cancelado. No se devolvió nada."
 
+["bot.ref.cancel_maybe_started"]
+other = "Es posible que la devolución del pedido n.º {{.Num}} ya haya empezado: el bot no recibió respuesta del servidor. Por eso el bot no la canceló.\n\nRevisa el pedido. Si el dinero no se devolvió, pulsa otra vez «💸 Devolver dinero» en el pedido. El bot envía la misma operación y el dinero no se devuelve dos veces."
+
 ["bot.ref.sending"]
 other = "Enviando la devolución… El proveedor de pago puede tardar unos minutos; mientras tanto el bot sigue funcionando y escribirá aquí cuando llegue la respuesta."
 

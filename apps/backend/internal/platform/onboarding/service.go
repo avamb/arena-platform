@@ -103,7 +103,10 @@ func New(o Options) *Service {
 		s.now = func() time.Time { return time.Now().UTC() }
 	}
 	if s.notifier == nil {
-		s.notifier = opsalert.New("", "", "", s.logger)
+		// arena-api builds a Service per request and never sends from it
+		// (arena-worker tells the operator), so the silent no-op: New would
+		// log "Telegram not configured" on every bot poll.
+		s.notifier = opsalert.NewNoop(s.logger)
 	}
 	return s
 }

@@ -3148,6 +3148,9 @@ other = "No letter is sent to the buyer."
 ["bot.ref.cancelled"]
 other = "Canceled. Nothing was refunded."
 
+["bot.ref.cancel_maybe_started"]
+other = "The refund for order #{{.Num}} may have started already: the bot did not get an answer from the server. So the bot did not cancel it.\n\nCheck the order. If the money did not go back, press «💸 Refund» on the order again. The bot sends the same operation, and the money does not go back twice."
+
 ["bot.ref.sending"]
 other = "Sending the refund… The payment provider may take a few minutes; the bot keeps working meanwhile and will write here when the answer is in."
 

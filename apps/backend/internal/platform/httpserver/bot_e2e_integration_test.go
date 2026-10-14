@@ -328,6 +328,34 @@ func (s *stubTelegram) liveMessage(chat int64, data string) int {
 	return best
 }
 
+// waitButton waits until a live message of the chat carries a button with
+// this callback data, so a press is not pushed while the bot is still drawing
+// the screen that has it (the press would then land on an older message and
+// the feed would refuse it as stale). It reports false when no such button
+// appeared in time: the test then presses anyway, as for a made-up press.
+func (s *stubTelegram) waitButton(chat int64, data string, within time.Duration) bool {
+	deadline := time.Now().Add(within)
+	for {
+		s.mu.Lock()
+		found := false
+		for _, m := range s.msgs {
+			if m.chat != chat {
+				continue
+			}
+			for _, d := range m.data {
+				if d == data {
+					found = true
+				}
+			}
+		}
+		s.mu.Unlock()
+		if found || time.Now().After(deadline) {
+			return found
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // push queues an update. A callback built by e2eCallback names the
 // placeholder message 5; it is delivered on the message a person would have
 // pressed: the live one that carries the button (or the newest live one, for

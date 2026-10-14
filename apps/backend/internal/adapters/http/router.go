@@ -202,6 +202,10 @@ func NewRouter(deps Deps) chi.Router {
 	//    error envelope.  In development mode the stack trace is also
 	//    included in the response body for developer convenience; in
 	//    production / staging it is omitted to prevent information leaks.
+	// 0. X-Content-Type-Options: nosniff on every response, set before the
+	//    recoverer so a panic's 500 carries it too. Every API answer has an
+	//    explicit Content-Type, so a browser never needs to sniff one.
+	r.Use(noSniffMiddleware)
 	r.Use(panicRecoverer(deps.Logger, deps.Metrics, deps.AppEnv))
 	// 2. Trusted real IP — must run before any middleware that reads
 	//    r.RemoteAddr. Registered only when TrustedProxyCount > 0 (a reverse
@@ -280,6 +284,16 @@ func (d Deps) withDefaults() Deps {
 		out.AppEnv = "development"
 	}
 	return out
+}
+
+// noSniffMiddleware sets X-Content-Type-Options: nosniff before the handler
+// runs. Set, not Add: a handler that sets the same header itself (media,
+// PDF and SVG answers do) still sends one copy.
+func noSniffMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {

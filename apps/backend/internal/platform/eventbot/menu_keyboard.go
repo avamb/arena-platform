@@ -214,24 +214,24 @@ func (b *Bot) menuPress(ctx context.Context, chatID int64, from *models.User, da
 // deleted: "+ Event" offers to continue it. A NEW dialog kind must be ended
 // here (TestLeaveAllDialogs_EndsEveryDialogKind).
 func (b *Bot) leaveAllDialogs(ctx context.Context, tg int64, id *Identity, jwt string, keepRefund bool) {
-	b.leaveEvents(ctx, tg)
-	b.leaveOrders(ctx, tg)
-	b.leaveEvStatus(ctx, tg)
-	b.leavePromo(ctx, tg)
-	if !keepRefund {
-		b.leaveIdleRefund(ctx, tg)
-	}
-	b.leaveScanExc(ctx, tg)
-	b.leaveOrgData(ctx, tg) // an organization data question (HP-4a)
-	b.leaveResend(ctx, tg)
-	b.leaveInvite(ctx, tg)
-	b.leavePromoter(ctx, tg)
-	b.leaveCategories(ctx, tg)
-	b.clearTeamDialog(ctx, tg)
-	if err := b.dialogs.Delete(ctx, tg, sesDialogKind); err != nil {
-		b.logger.Warn("eventbot: sessions dialog clear failed", slog.Int64("telegram_user_id", tg), slog.String("error", err.Error()))
+	for _, kind := range dialogOwnerOrder {
+		if keepRefund && kind == refundDialogKind {
+			continue
+		}
+		dialogOwners[kind].leave(b, ctx, tg)
 	}
 	b.pauseDraft(ctx, tg, id, jwt)
+}
+
+// leaveForCommand ends every dialog before a command runs, like the menu
+// does. A refund already with the server, or one that may have started,
+// keeps its key (leaveIdleRefund).
+func (b *Bot) leaveForCommand(ctx context.Context, tg int64) {
+	id, jwt, err := b.resolveIdentity(ctx, tg)
+	if err != nil {
+		id, jwt = nil, "" // a stranger, or the API is down: the draft stays as it is
+	}
+	b.leaveAllDialogs(ctx, tg, id, jwt, false)
 }
 
 // pauseDraft marks an unfinished event draft as paused: it no longer takes

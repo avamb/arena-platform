@@ -191,6 +191,9 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	}
 	press := func(data, expect string) string {
 		t.Helper()
+		// A button the bot is about to draw (the event card after a save)
+		// must be on screen before it is pressed.
+		tg.waitButton(e2eWizardTelegramUser, data, 2*time.Second)
 		m := tg.mark()
 		tg.push(e2eWizardCallback(data))
 		return tg.waitSince(t, m, expect)

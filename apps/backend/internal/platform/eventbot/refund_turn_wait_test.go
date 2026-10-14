@@ -164,3 +164,42 @@ func TestSendRefund_DuringShutdownSendsNothing(t *testing.T) {
 		t.Fatalf("dialog after a refused start: step=%q found=%v key=%q err=%v; want the final step with the same key", step, found, got.Key, err)
 	}
 }
+
+// B-7: when the person's lane refuses every new job (it is full), writing a
+// send's answer back pauses between attempts and stops as soon as the bot
+// shuts down, instead of spinning until the send window is spent.
+func TestFinishRefundSend_FullLaneStopsOnShutdown(t *testing.T) {
+	savedWait, savedPause := refundTurnWait, refundTurnRetryPause
+	refundTurnWait, refundTurnRetryPause = 50*time.Millisecond, 20*time.Millisecond
+	t.Cleanup(func() { refundTurnWait, refundTurnRetryPause = savedWait, savedPause })
+	var calls atomic.Int32
+	b, _ := newTurnWaitBot(t, &calls)
+	st, _ := turnWaitDialog()
+
+	hold := make(chan struct{})
+	t.Cleanup(func() { close(hold) })
+	if err := b.serial.submit(42, func() { <-hold }); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < maxQueuedPerUser; i++ {
+		if err := b.serial.submit(42, func() {}); err != nil {
+			t.Fatalf("queue %d: %v", i, err)
+		}
+	}
+	if err := b.serial.submit(42, func() {}); err == nil {
+		t.Fatal("the lane must be full")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		b.finishRefundSend(ctx, 42, 7, 42, st, true, "answer", nil)
+	}()
+	time.Sleep(200 * time.Millisecond)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the answer's write kept retrying after the bot shut down")
+	}
+}

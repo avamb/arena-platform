@@ -486,6 +486,11 @@ func TestWizard_CancelAndBack(t *testing.T) {
 	if _, err := r.w.Apply(context.Background(), r.ws, r.d, WizInput{Data: "cancel:keep"}); !errors.Is(err, ErrSavedExit) || r.d.Step != stEvAge {
 		t.Fatalf("keep: err=%v step=%s", err, r.d.Step)
 	}
+	// A "delete" button of an older confirmation screen deletes nothing once
+	// the draft has moved on: only the screen open now can delete.
+	if _, err := r.w.Apply(context.Background(), r.ws, r.d, WizInput{Data: "cancel:drop"}); err != nil || r.d.Step != stEvAge {
+		t.Fatalf("a stale delete button: err=%v step=%s", err, r.d.Step)
+	}
 	r.press("cancel", stCancel)
 	if _, err := r.w.Apply(context.Background(), r.ws, r.d, WizInput{Data: "cancel:drop"}); !errors.Is(err, ErrCancelled) {
 		t.Fatalf("drop: %v", err)
