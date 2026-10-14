@@ -269,3 +269,119 @@ describe("TabSession across tabs", () => {
     expect(a.store.get()?.refreshToken).toBe("r1");
   });
 });
+
+/** A bus that can stop listening, like a tab that is busy or closing. */
+function deafBus(hub: FakeHub): { bus: Bus; deaf: { on: boolean } } {
+  const inner = hub.bus();
+  const deaf = { on: false };
+  return {
+    deaf,
+    bus: {
+      post: (msg) => inner.post(msg),
+      onMessage: (fn) => inner.onMessage((m) => {
+        if (!deaf.on) fn(m);
+      }),
+    },
+  };
+}
+
+function tabWith(server: FakeServer, bus: Bus | null, locks: Locks | null, store = memoryStore(), askTimeoutMs = 10_000) {
+  return {
+    store,
+    session: new TabSession({
+      store,
+      bus,
+      locks,
+      refresh: server.refresh,
+      makeError: (status, code, message) => Object.assign(new Error(message), { status, code }),
+      newId: () => `id-${Math.random().toString(36).slice(2)}`,
+      askTimeoutMs,
+    }),
+  };
+}
+
+describe("TabSession review follow-ups", () => {
+  it("R-1: a browser that refuses the lock still signs in, the tab acts alone", async () => {
+    const server = new FakeServer();
+    const refusing: Locks = { acquire: () => Promise.reject(new Error("SecurityError")) };
+    const a = tabWith(server, new FakeHub().bus(), refusing);
+    await signIn(server, a);
+    expect(a.session.isLeader()).toBe(true);
+    await a.session.refresh();
+    expect(server.calls).toBe(1);
+    expect(a.store.get()?.refreshToken).toBe("r1");
+
+    const reloaded = tabWith(server, new FakeHub().bus(), refusing, memoryStore(a.store.get()));
+    a.session.signOut(false);
+    await expect(reloaded.session.start()).resolves.toBeUndefined();
+    await reloaded.session.ensureFresh();
+    expect(reloaded.store.get()?.refreshToken).toBe("r2");
+  });
+
+  it("R-3: a duplicate that missed a rotation gets the latest refresh token with its answer", async () => {
+    const server = new FakeServer();
+    const hub = new FakeHub();
+    const locks = new FakeLocks();
+    const a = tab(server, hub, locks);
+    await signIn(server, a);
+    const copied = memoryStore(a.store.get()); // sessionStorage copied with r0
+    await a.session.refresh(); // rotated to r1 before the duplicate listens
+    const b = tab(server, hub, locks, copied);
+    expect(b.store.get()?.refreshToken).toBe("r0");
+    await b.session.start();
+    await b.session.ensureFresh();
+    expect(b.store.get()?.refreshToken).toBe("r1");
+
+    a.session.signOut(false);
+    await settle();
+    await b.session.refresh();
+    expect(server.compromised).toBe(false);
+  });
+
+  it("R-4: a tab that becomes the leader answers its own question at once", async () => {
+    const server = new FakeServer();
+    const hub = new FakeHub();
+    const locks = new FakeLocks();
+    const da = deafBus(hub);
+    const a = tabWith(server, da.bus, locks);
+    await signIn(server, a);
+    const b = tabWith(server, hub.bus(), locks, memoryStore(a.store.get()));
+    await b.session.start();
+
+    da.deaf.on = true; // the leader is closing and answers nothing
+    const asked = b.session.refresh();
+    await settle();
+    a.session.signOut(false); // its lock goes to b
+    const started = Date.now();
+    await asked;
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(b.session.isLeader()).toBe(true);
+    expect(server.calls).toBe(1);
+    expect(server.compromised).toBe(false);
+  });
+
+  it("R-4: a follower asks the new leader again when the old one closed", async () => {
+    const server = new FakeServer();
+    const hub = new FakeHub();
+    const locks = new FakeLocks();
+    const da = deafBus(hub);
+    const a = tabWith(server, da.bus, locks);
+    await signIn(server, a);
+    const b = tabWith(server, hub.bus(), locks, memoryStore(a.store.get()));
+    await b.session.start();
+    const c = tabWith(server, hub.bus(), locks, memoryStore(a.store.get()));
+    await c.session.start();
+
+    da.deaf.on = true;
+    const asked = c.session.refresh();
+    await settle();
+    a.session.signOut(false); // b is first in line for the lock
+    const started = Date.now();
+    await asked;
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(b.session.isLeader()).toBe(true);
+    expect(c.session.isLeader()).toBe(false);
+    expect(c.session.getAccessToken()).toBe(b.session.getAccessToken());
+    expect(server.compromised).toBe(false);
+  });
+});

@@ -23,6 +23,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgperm"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
@@ -45,10 +46,6 @@ func MembershipCheck(q *gen.Queries) MemberCheck {
 		return actorIsMemberOfOrg(ctx, q, orgID)
 	}
 }
-
-// platformRoles never count from a membership row: the checker resolves
-// them only from the global, org-less user_roles (GetActiveRolesForUserInOrg).
-var platformRoles = map[string]bool{"platform_superadmin": true, "platform_operator": true}
 
 // orgMeResponse is the body of GET /v1/organizations/{org_id}/me.
 type orgMeResponse struct {
@@ -160,7 +157,7 @@ func HandleOrgMe(q OrgMeQuerier, isMember MemberCheck, resolver permissions.OrgE
 				return
 			}
 			for _, m := range memberships {
-				if m.OrgID == orgID && m.Status == "active" && !platformRoles[m.Role] {
+				if m.OrgID == orgID && m.Status == "active" && !orgperm.IsPlatformRole(m.Role) {
 					resp.MembershipRoles = append(resp.MembershipRoles, m.Role)
 				}
 			}

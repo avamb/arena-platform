@@ -17,6 +17,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgperm"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
@@ -41,12 +42,7 @@ func actorIsMemberOfOrgServer(ctx context.Context, q *gen.Queries, orgID uuid.UU
 	if err != nil {
 		return false, err
 	}
-	for _, m := range memberships {
-		if m.OrgID == orgID {
-			return true, nil
-		}
-	}
-	return false, nil
+	return orgperm.HasMembershipRow(memberships, orgID), nil
 }
 
 // enforceOrgMembership extracts the URL parameter named paramName as a UUID,

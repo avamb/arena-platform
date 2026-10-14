@@ -11,6 +11,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgperm"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
@@ -35,14 +36,12 @@ func actorIsMemberOfOrg(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (b
 	if err != nil {
 		return false, err
 	}
-	for _, m := range memberships {
-		if m.OrgID == orgID {
-			// A membership is not enough: the gate's permission must be held
-			// in THIS organization, not through a role of another one.
-			return permissions.AllowedInOrg(ctx, orgID)
-		}
+	if !orgperm.HasMembershipRow(memberships, orgID) {
+		return false, nil
 	}
-	return false, nil
+	// A membership is not enough: the gate's permission must be held in
+	// THIS organization, not through a role of another one.
+	return permissions.AllowedInOrg(ctx, orgID)
 }
 
 // requireOrgMembership verifies the authenticated actor is an active member of

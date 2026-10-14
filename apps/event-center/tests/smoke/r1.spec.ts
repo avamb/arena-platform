@@ -95,6 +95,8 @@ test.describe("R1 read-only event center", () => {
     // Event card.
     await page.getByRole("link", { name: /Serebryanoe kopyttse/ }).click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Serebryanoe kopyttse");
+    // Review finding L6: the focus moves to the new screen's heading.
+    await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
     await expect(page.getByTestId("sales-figures").first()).toContainText("Paid: €540.00");
     await expect(page.getByTestId("session-row")).toContainText("(Prague)");
     await noHorizontalScroll(page);
@@ -108,6 +110,7 @@ test.describe("R1 read-only event center", () => {
     // Session.
     await page.getByTestId("session-row").getByRole("link").click();
     await expect(page.getByRole("heading", { level: 1 })).toContainText("20:00");
+    await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
     await expect(page.getByText("Doors open")).toBeVisible();
     await expect(page.getByTestId("tiers-table")).toContainText("Parter");
     const pdf = page.waitForEvent("download");
@@ -138,6 +141,34 @@ test.describe("R1 read-only event center", () => {
     await expect(page.getByTestId("buyer").locator("a[href^=mailto]")).toHaveAttribute("href", "mailto:anna%40example.test");
     await noA11yViolations(page);
     await noHorizontalScroll(page);
+  });
+
+  test("the orders search survives a visit elsewhere and is forgotten at sign-out", async ({ page }) => {
+    const state = await mockApi(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/orders`);
+    await page.getByLabel("Search for an order").fill("anna@example.test");
+    await page.getByRole("button", { name: "Search" }).click();
+    await expect(page.getByTestId("order-row")).toBeVisible();
+
+    // In-app navigation keeps the text.
+    await page.getByRole("navigation").getByRole("link", { name: "Events" }).click();
+    await page.getByRole("navigation").getByRole("link", { name: "Orders" }).click();
+    await expect(page.getByLabel("Search for an order")).toHaveValue("anna@example.test");
+
+    // Sign-out wipes it, without a page reload in between.
+    await page.getByTestId("logout").click();
+    await expect(page).toHaveURL(/\/login/);
+    await page.getByLabel("E-mail").fill("manager@example.test");
+    await page.getByLabel("Password").fill("right-password");
+    const before = state.requests.length;
+    await page.getByTestId("login-submit").click();
+    await expect(page).toHaveURL(new RegExp(`/o/${ORG_A}/orders`));
+    await expect(page.getByLabel("Search for an order")).toHaveValue("");
+    await expect(page.getByTestId("order-row").first()).toBeVisible();
+    const after = state.requests.slice(before).filter((r) => r.includes("/orders?"));
+    expect(after.length).toBeGreaterThan(0);
+    expect(after.some((r) => r.includes("q="))).toBe(false);
   });
 
   test("an agent sees no orders and no sales figures", async ({ page }) => {

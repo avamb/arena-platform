@@ -15,6 +15,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgperm"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
@@ -78,8 +79,8 @@ func newOrgMeFixture() orgMeFixture {
 	return f
 }
 
-// memberOf is the test stand-in for MembershipCheck: an active,
-// non-platform membership row of the fake querier.
+// memberOf is the test stand-in for MembershipCheck. It decides with the
+// shared rule of every guard, orgperm.HasMembershipRow.
 func memberOf(q OrgMeQuerier) MemberCheck {
 	if q == nil {
 		return nil
@@ -89,12 +90,7 @@ func memberOf(q OrgMeQuerier) MemberCheck {
 		if err != nil {
 			return false, err
 		}
-		for _, m := range rows {
-			if m.OrgID == org && m.Status == "active" && !platformRoles[m.Role] {
-				return true, nil
-			}
-		}
-		return false, nil
+		return orgperm.HasMembershipRow(rows, org), nil
 	}
 }
 
