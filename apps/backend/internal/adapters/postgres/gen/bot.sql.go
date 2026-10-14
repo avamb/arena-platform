@@ -526,6 +526,46 @@ func (q *Queries) UpsertBotDialog(ctx context.Context, telegramUserID int64, org
 	return scanBotDialogRow(q.db.QueryRow(ctx, upsertBotDialog, telegramUserID, orgID, kind, step, state, expiresAt))
 }
 
+const updateBotDialogQuiet = `-- name: UpdateBotDialogQuiet :execrows
+UPDATE bot_dialogs
+SET    org_id     = $2,
+       step       = $4,
+       state      = $5,
+       expires_at = $6
+WHERE  telegram_user_id = $1
+  AND  kind = $3`
+
+// UpdateBotDialogQuiet rewrites an existing dialog without touching
+// updated_at, so work done in the background does not make it the newest
+// dialog. It reports how many rows it changed (0: the dialog is gone).
+func (q *Queries) UpdateBotDialogQuiet(ctx context.Context, telegramUserID int64, orgID *uuid.UUID, kind, step string, state json.RawMessage, expiresAt time.Time) (int64, error) {
+	if len(state) == 0 {
+		state = json.RawMessage(`{}`)
+	}
+	tag, err := q.db.Exec(ctx, updateBotDialogQuiet, telegramUserID, orgID, kind, step, state, expiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+const pauseBotDrafts = `-- name: PauseBotDrafts :execrows
+UPDATE bot_drafts
+SET    state = jsonb_set(state, '{paused}', 'true'::jsonb)
+WHERE  telegram_user_id = $1
+  AND  step <> 'done'
+  AND  coalesce((state->>'paused')::boolean, false) = false`
+
+// PauseBotDrafts pauses every unfinished event draft of a person without
+// touching updated_at.
+func (q *Queries) PauseBotDrafts(ctx context.Context, telegramUserID int64) (int64, error) {
+	tag, err := q.db.Exec(ctx, pauseBotDrafts, telegramUserID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 const getBotDialog = `-- name: GetBotDialog :one
 SELECT ` + botDialogColumns + `
 FROM   bot_dialogs

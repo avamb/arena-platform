@@ -210,6 +210,31 @@ SET    org_id     = EXCLUDED.org_id,
        updated_at = now()
 RETURNING id, telegram_user_id, org_id, kind, step, state, expires_at, created_at, updated_at;
 
+-- name: UpdateBotDialogQuiet :execrows
+-- Rewrites an existing dialog WITHOUT touching updated_at: work that runs
+-- outside the person's own action (a refund answer arriving in the
+-- background) must not make its dialog the newest one, or it would take a
+-- text typed for the dialog the person opened meanwhile. A missing row stays
+-- missing.
+UPDATE bot_dialogs
+SET    org_id     = $2,
+       step       = $4,
+       state      = $5,
+       expires_at = $6
+WHERE  telegram_user_id = $1
+  AND  kind = $3;
+
+-- name: PauseBotDrafts :execrows
+-- Pauses every unfinished event draft of a person (any organization): a
+-- command or the menu was chosen, so the draft takes no typed text until a
+-- wizard button continues it. updated_at is left alone, so the idle-draft
+-- reminder keeps counting from the last real answer.
+UPDATE bot_drafts
+SET    state = jsonb_set(state, '{paused}', 'true'::jsonb)
+WHERE  telegram_user_id = $1
+  AND  step <> 'done'
+  AND  coalesce((state->>'paused')::boolean, false) = false;
+
 -- name: GetBotDialog :one
 -- The dialog whatever its expiry: the caller reports an expired one once.
 SELECT id, telegram_user_id, org_id, kind, step, state, expires_at, created_at, updated_at

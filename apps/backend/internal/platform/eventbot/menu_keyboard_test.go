@@ -114,7 +114,7 @@ func TestLeaveAllDialogs_EndsEveryDialogKind(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		b.leaveAllDialogs(ctx, 42, nil, "", keepRefund)
+		b.leaveAllDialogs(ctx, 42, keepRefund)
 		for kind, name := range kinds {
 			var state map[string]any
 			_, found, _, err := b.dialogs.Load(ctx, 42, kind, &state)
@@ -140,7 +140,7 @@ func TestLeaveAllDialogs_KeepsTheKeyOfARefundThatMayHaveStarted(t *testing.T) {
 	if err := b.dialogs.Save(ctx, 42, &st.OrgID, refundDialogKind, refStepFinal, st, dialogTTL); err != nil {
 		t.Fatal(err)
 	}
-	b.leaveAllDialogs(ctx, 42, nil, "", false)
+	b.leaveAllDialogs(ctx, 42, false)
 	var got refundDialog
 	step, found, _, err := b.dialogs.Load(ctx, 42, refundDialogKind, &got)
 	if err != nil || !found || step != refStepFinal || got.Key != "tg-same" || !got.Parked {
@@ -151,7 +151,7 @@ func TestLeaveAllDialogs_KeepsTheKeyOfARefundThatMayHaveStarted(t *testing.T) {
 	if err := b.dialogs.Save(ctx, 43, &st.OrgID, refundDialogKind, refStepFinal, st, dialogTTL); err != nil {
 		t.Fatal(err)
 	}
-	b.leaveAllDialogs(ctx, 43, nil, "", false)
+	b.leaveAllDialogs(ctx, 43, false)
 	if _, found, _, _ := b.dialogs.Load(ctx, 43, refundDialogKind, &got); found {
 		t.Fatal("a refund that was never sent must end with the menu")
 	}

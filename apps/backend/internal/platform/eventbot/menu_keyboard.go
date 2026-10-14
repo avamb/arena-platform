@@ -120,7 +120,7 @@ func (b *Bot) ensureMenuKeyboard(ctx context.Context, chatID int64, loc string, 
 // left and the main menu is a new message. A stranger gets the application
 // instead (replyIdentityError).
 func (b *Bot) openMenu(ctx context.Context, chatID int64, from *models.User, force bool) {
-	id, jwt, err := b.resolveIdentity(ctx, from.ID)
+	id, _, err := b.resolveIdentity(ctx, from.ID)
 	if err != nil {
 		b.replyIdentityError(ctx, chatID, from, err)
 		return
@@ -128,10 +128,10 @@ func (b *Bot) openMenu(ctx context.Context, chatID int64, from *models.User, for
 	if b.askLeaveRefund(ctx, chatID, from, id) {
 		// Everything else still ends now: only the refund waits for the
 		// answer, so no other dialog takes a text typed meanwhile.
-		b.leaveAllDialogs(ctx, from.ID, id, jwt, true)
+		b.leaveAllDialogs(ctx, from.ID, true)
 		return
 	}
-	b.leaveAllDialogs(ctx, from.ID, id, jwt, false)
+	b.leaveAllDialogs(ctx, from.ID, false)
 	if force {
 		b.ensureMenuKeyboard(ctx, chatID, id.Locale(), true)
 	}
@@ -197,12 +197,11 @@ func (b *Bot) menuPress(ctx context.Context, chatID int64, from *models.User, da
 	if data != "leave" {
 		return
 	}
-	id, jwt, err := b.resolveIdentity(ctx, from.ID)
-	if err != nil {
+	if _, _, err := b.resolveIdentity(ctx, from.ID); err != nil {
 		b.replyIdentityError(ctx, chatID, from, err)
 		return
 	}
-	b.leaveAllDialogs(ctx, from.ID, id, jwt, false)
+	b.leaveAllDialogs(ctx, from.ID, false)
 	b.showHome(ctx, chatID, nil, from, "")
 }
 
@@ -213,40 +212,33 @@ func (b *Bot) menuPress(ctx context.Context, chatID int64, from *models.User, da
 // menu's question about it is on screen). An event draft is paused, not
 // deleted: "+ Event" offers to continue it. A NEW dialog kind must be ended
 // here (TestLeaveAllDialogs_EndsEveryDialogKind).
-func (b *Bot) leaveAllDialogs(ctx context.Context, tg int64, id *Identity, jwt string, keepRefund bool) {
+func (b *Bot) leaveAllDialogs(ctx context.Context, tg int64, keepRefund bool) {
 	for _, kind := range dialogOwnerOrder {
 		if keepRefund && kind == refundDialogKind {
 			continue
 		}
 		dialogOwners[kind].leave(b, ctx, tg)
 	}
-	b.pauseDraft(ctx, tg, id, jwt)
+	b.pauseDrafts(ctx, tg)
 }
 
 // leaveForCommand ends every dialog before a command runs, like the menu
 // does. A refund already with the server, or one that may have started,
-// keeps its key (leaveIdleRefund).
+// keeps its key (leaveIdleRefund). It costs database writes only: no call
+// to arena-api, so a command stays as cheap as before.
 func (b *Bot) leaveForCommand(ctx context.Context, tg int64) {
-	id, jwt, err := b.resolveIdentity(ctx, tg)
-	if err != nil {
-		id, jwt = nil, "" // a stranger, or the API is down: the draft stays as it is
-	}
-	b.leaveAllDialogs(ctx, tg, id, jwt, false)
+	b.leaveAllDialogs(ctx, tg, false)
 }
 
-// pauseDraft marks an unfinished event draft as paused: it no longer takes
-// typed text or a poster until the person continues it with a wizard button.
-func (b *Bot) pauseDraft(ctx context.Context, tg int64, id *Identity, jwt string) {
-	if id == nil || id.Current == nil {
+// pauseDrafts marks the person's unfinished event drafts as paused (one
+// statement, every organization): a paused draft takes no typed text or
+// poster until the person continues it with a wizard button, and "+ Event"
+// offers to continue it. A stranger has no draft, so nothing happens.
+func (b *Bot) pauseDrafts(ctx context.Context, tg int64) {
+	if b.queries == nil {
 		return
 	}
-	ws := b.wizardSession(id, jwt)
-	d, _, err := b.loadDraft(ctx, tg, ws)
-	if err != nil || d == nil || d.Step == stDone || d.Paused {
-		return
-	}
-	d.Paused = true
-	if _, err := b.storeDraft(ctx, tg, ws, d); err != nil {
+	if _, err := b.queries.PauseBotDrafts(ctx, tg); err != nil {
 		b.logger.Warn("eventbot: draft pause failed", slog.Int64("telegram_user_id", tg), slog.String("error", err.Error()))
 	}
 }

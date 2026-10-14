@@ -56,6 +56,11 @@ type DialogStore interface {
 	Save(ctx context.Context, tg int64, orgID *uuid.UUID, kind, step string, state any, ttl time.Duration) error
 	Load(ctx context.Context, tg int64, kind string, into any) (step string, found, expired bool, err error)
 	Delete(ctx context.Context, tg int64, kind string) error
+	// SaveQuiet rewrites an EXISTING dialog without making it the newest one
+	// for text routing (Recent): work done in the background (a refund answer)
+	// uses it, so the dialog the person opened meanwhile keeps their typed
+	// text. found is false when the dialog is gone; nothing is created then.
+	SaveQuiet(ctx context.Context, tg int64, orgID *uuid.UUID, kind, step string, state any, ttl time.Duration) (found bool, err error)
 	// Recent lists the kinds of the person's dialogs (expired or not), the
 	// one touched last first.
 	Recent(ctx context.Context, tg int64) ([]string, error)
@@ -69,6 +74,7 @@ type dialogQueries interface {
 	GetBotDialog(ctx context.Context, telegramUserID int64, kind string) (gen.BotDialogRow, error)
 	DeleteBotDialog(ctx context.Context, telegramUserID int64, kind string) error
 	ListBotDialogKindsByRecency(ctx context.Context, telegramUserID int64) ([]string, error)
+	UpdateBotDialogQuiet(ctx context.Context, telegramUserID int64, orgID *uuid.UUID, kind, step string, state json.RawMessage, expiresAt time.Time) (int64, error)
 }
 
 // errNoDialogDatabase is what the store answers when the bot was built
@@ -104,6 +110,21 @@ func (s *pgDialogStore) Save(ctx context.Context, tg int64, orgID *uuid.UUID, ki
 		return fmt.Errorf("eventbot: save %s dialog: %w", kind, err)
 	}
 	return nil
+}
+
+func (s *pgDialogStore) SaveQuiet(ctx context.Context, tg int64, orgID *uuid.UUID, kind, step string, state any, ttl time.Duration) (bool, error) {
+	if s.q == nil {
+		return false, errNoDialogDatabase
+	}
+	raw, err := json.Marshal(state)
+	if err != nil {
+		return false, fmt.Errorf("eventbot: encode %s dialog: %w", kind, err)
+	}
+	n, err := s.q.UpdateBotDialogQuiet(ctx, tg, orgID, kind, step, raw, s.now().Add(ttl))
+	if err != nil {
+		return false, fmt.Errorf("eventbot: quiet save %s dialog: %w", kind, err)
+	}
+	return n > 0, nil
 }
 
 func (s *pgDialogStore) Load(ctx context.Context, tg int64, kind string, into any) (string, bool, bool, error) {
