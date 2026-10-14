@@ -1,0 +1,14 @@
+{
+  "task_id": "m0-local-preflight-example",
+  "objective": "Проверить локальную структуру workflow без API-вызова",
+  "inputs": ["sdk_experiments/README_RU.md"],
+  "allowed_paths": ["sdk_experiments", "orchestration", "PRODUCT_SPEC.md", "ROADMAP.md", "AGENT_WORKFLOW.md", "BUDGET_POLICY.md"],
+  "forbidden_paths": ["arena_new", "ChatExport_2026-10-11/files", "sdk_experiments/results", "**/.env", "**/console-confirmation.json"],
+  "commands": ["npm run check", "node orchestration/workflow.mjs --self-test"],
+  "budget_usd": 0,
+  "max_turns": 0,
+  "max_retries": 0,
+  "api_allowed": false,
+  "acceptance": ["JSON валиден", "API не вызывается", "запрещённые пути не входят в inputs"],
+  "status": "draft"
+}

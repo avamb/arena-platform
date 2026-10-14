@@ -1,0 +1,8 @@
+{
+  "organization": "Andrei’s Individual Org",
+  "workspace_name": "Default",
+  "workspace_id": null,
+  "confirmed": false,
+  "checked_at": null,
+  "notes": "Copy to workspace-confirmation.json only after confirming the real wrkspc_... ID in Anthropic Console. Never use the display name as the ID."
+}
