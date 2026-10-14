@@ -3,10 +3,12 @@ import {
   contactAvailable,
   contactDraft,
   contactFallbackURL,
+  errorText,
   openContactForm,
   openContactFromHash,
   renderContactButton,
   renderContactFooter,
+  SCROLL_LOCK_CLASS,
   sendContact,
   validateContact,
   type ContactContext,
@@ -45,6 +47,27 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   document.querySelectorAll('.asa-contact, .asa-contact-notice').forEach((el) => el.remove());
+  document.body.classList.remove(SCROLL_LOCK_CLASS);
+});
+
+describe('errorText', () => {
+  it('says what to do and offers the public phone when a message cannot be sent', () => {
+    for (const loc of PAGE_LOCALES) {
+      const s = t(loc);
+      const withPhone = errorText('contact.unavailable', loc, ' +34 600 111 222 ');
+      expect(withPhone).toContain(s.contactErrGeneric);
+      expect(withPhone).toContain(s.contactErrCall);
+      expect(withPhone).toContain('+34 600 111 222');
+      const without = errorText('contact.unavailable', loc);
+      expect(without).toContain(s.contactErrGeneric);
+      expect(without).toContain(s.contactErrElsewhere);
+      expect(without).not.toContain(s.contactErrCall);
+    }
+  });
+
+  it('keeps a fixable error to its own sentence', () => {
+    expect(errorText('contact.invalid_email', 'en', '+34 600 111 222')).toBe(t('en').contactErrEmail);
+  });
 });
 
 describe('contactAvailable', () => {
@@ -217,6 +240,30 @@ describe('openContactForm', () => {
     overlay = openContactForm({ ...CTX, slug });
     expect((overlay.querySelector('textarea[name="message"]') as HTMLTextAreaElement).value).toBe('Is there parking near the venue?');
     expect(contactDraft(slug)?.message).toBe('Is there parking near the venue?');
+  });
+
+  it('never brings the consent back from a draft', () => {
+    const slug = 'draft-consent';
+    let overlay = openContactForm({ ...CTX, slug });
+    const consent = overlay.querySelector('input[name="consent"]') as HTMLInputElement;
+    consent.checked = true;
+    consent.dispatchEvent(new Event('change', { bubbles: true }));
+    const message = overlay.querySelector('textarea[name="message"]') as HTMLTextAreaElement;
+    message.value = 'Can I bring a child?';
+    message.dispatchEvent(new Event('input', { bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    overlay = openContactForm({ ...CTX, slug });
+    expect((overlay.querySelector('textarea[name="message"]') as HTMLTextAreaElement).value).toBe('Can I bring a child?');
+    expect((overlay.querySelector('input[name="consent"]') as HTMLInputElement).checked).toBe(false);
+    expect(contactDraft(slug)).not.toHaveProperty('consent');
+  });
+
+  it('stops the page scrolling while the dialog is open', () => {
+    expect(document.body.classList.contains(SCROLL_LOCK_CLASS)).toBe(false);
+    openContactForm(CTX);
+    expect(document.body.classList.contains(SCROLL_LOCK_CLASS)).toBe(true);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(document.body.classList.contains(SCROLL_LOCK_CLASS)).toBe(false);
   });
 
   it('keeps keyboard focus inside and gives it back on close', () => {

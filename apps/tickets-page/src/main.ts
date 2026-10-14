@@ -60,7 +60,13 @@ async function main(): Promise<void> {
         const data = await fetchPromoterPage(API_BASE, route.orgSlug);
         applyDocumentChrome(locale, { title: data.org.name });
         renderSellerFooter(data.seller, locale);
-        const contactCtx = { apiBase: API_BASE, slug: route.orgSlug, locale, form: data.contact_form };
+        const contactCtx = {
+          apiBase: API_BASE,
+          slug: route.orgSlug,
+          locale,
+          form: data.contact_form,
+          phone: data.seller?.public_contact?.phone ?? undefined,
+        };
         renderContactFooter(contactCtx);
         renderPromoterPage(mainEl, data, locale, {
           apiBase: API_BASE,
@@ -101,6 +107,7 @@ async function main(): Promise<void> {
         feedToken: data.feed_token,
         locale,
         form: data.contact_form,
+        phone: data.seller?.public_contact?.phone ?? undefined,
       };
       renderContactFooter(contactCtx);
       openContactFromHash(contactCtx);

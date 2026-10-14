@@ -424,6 +424,11 @@ a {
   outline-offset: 2px;
 }
 
+/* The page under the contact dialog does not scroll (contact.ts SCROLL_LOCK_CLASS). */
+.asa-contact-open {
+  overflow: hidden;
+}
+
 .asa-contact {
   position: fixed;
   inset: 0;

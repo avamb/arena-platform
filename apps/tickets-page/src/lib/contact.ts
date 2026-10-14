@@ -25,6 +25,9 @@ export interface ContactContext {
   feedToken?: string;
   locale: PageLocale;
   form: HostedPageContactForm | null | undefined;
+  /** The organizer's public phone from the page's seller block, if any:
+   * offered when a message cannot be sent. */
+  phone?: string;
 }
 
 /** Cloudflare Turnstile's global, as far as this module uses it. */
@@ -119,8 +122,10 @@ function field(label: string, input: HTMLInputElement | HTMLTextAreaElement, id:
   return wrap;
 }
 
-/** Maps an API error code onto the sentence the buyer reads. */
-function errorText(code: string, locale: PageLocale): string {
+/** Maps an API error code onto the sentence the buyer reads. A failure the
+ * buyer cannot fix also says how else to reach the organizer: the page's
+ * public phone when it has one. */
+export function errorText(code: string, locale: PageLocale, phone?: string): string {
   const s = t(locale);
   switch (code) {
     case 'contact.invalid_name':
@@ -141,8 +146,12 @@ function errorText(code: string, locale: PageLocale): string {
       return s.contactErrCaptcha;
     case 'contact.rate_limited':
       return s.contactErrRate;
-    default:
-      return s.contactErrGeneric;
+    default: {
+      const tel = (phone ?? '').trim();
+      // The phone stays left-to-right inside a Hebrew sentence.
+      if (tel) return `${s.contactErrGeneric} ${s.contactErrCall} \u2066${tel}\u2069`;
+      return `${s.contactErrGeneric} ${s.contactErrElsewhere}`;
+    }
   }
 }
 
@@ -167,12 +176,12 @@ let seq = 0;
 
 /** What the buyer typed, kept per page while the tab lives: closing the form
  * (Esc, Cancel, a click beside it) never throws the text away. Cleared once
- * the message is sent. */
+ * the message is sent. The consent is not kept: the buyer gives it again
+ * each time the form opens. */
 interface ContactDraft {
   name: string;
   email: string;
   message: string;
-  consent: boolean;
 }
 const drafts = new Map<string, ContactDraft>();
 
@@ -180,6 +189,9 @@ const drafts = new Map<string, ContactDraft>();
 export function contactDraft(slug: string): ContactDraft | undefined {
   return drafts.get(slug);
 }
+
+/** Set on <body> while the dialog is open (style.css stops the page scrolling). */
+export const SCROLL_LOCK_CLASS = 'asa-contact-open';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
 
@@ -291,10 +303,9 @@ export function openContactForm(ctx: ContactContext): HTMLElement {
     name.value = draft.name;
     email.value = draft.email;
     message.value = draft.message;
-    consent.checked = draft.consent;
   }
   const saveDraft = () => {
-    drafts.set(ctx.slug, { name: name.value, email: email.value, message: message.value, consent: consent.checked });
+    drafts.set(ctx.slug, { name: name.value, email: email.value, message: message.value });
   };
   form.addEventListener('input', () => {
     saveDraft();
@@ -337,10 +348,13 @@ export function openContactForm(ctx: ContactContext): HTMLElement {
     });
   }
 
+  // The page under the dialog does not scroll while it is open.
+  document.body.classList.add(SCROLL_LOCK_CLASS);
   const close = () => {
     if (widgetId && window.turnstile?.remove) window.turnstile.remove(widgetId);
     document.removeEventListener('keydown', onKey);
     overlay.remove();
+    if (!document.querySelector('.asa-contact')) document.body.classList.remove(SCROLL_LOCK_CLASS);
     if (opener && opener.isConnected) opener.focus();
   };
   // Keyboard focus stays inside the dialog while it is open.
@@ -401,7 +415,7 @@ export function openContactForm(ctx: ContactContext): HTMLElement {
         done.focus();
         return;
       }
-      status.textContent = errorText(code, ctx.locale);
+      status.textContent = errorText(code, ctx.locale, ctx.phone);
       const bad = fieldOfError(code);
       if (bad) markInvalid(bad);
       if (code === 'contact.captcha_failed' && widgetId && window.turnstile) {

@@ -66,6 +66,10 @@ export interface PageStrings {
   contactErrCaptcha: string;
   contactErrRate: string;
   contactErrGeneric: string;
+  /** Follows contactErrGeneric when the page publishes the organizer's phone; the phone is appended. */
+  contactErrCall: string;
+  /** Follows contactErrGeneric when the page publishes no phone. */
+  contactErrElsewhere: string;
   /** A letter's #contact link reached a page that shows no form. */
   contactUnavailable: string;
 }
@@ -113,8 +117,10 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrMessage: "Write a message of 10 to 2000 characters.",
     contactErrConsent: "Tick the box to agree that we pass your message to the organizer.",
     contactErrCaptcha: "Complete the anti-robot check, then send the message again.",
-    contactErrRate: "You have sent many messages in a row. Try again in an hour.",
-    contactErrGeneric: "We could not send your message. Try again in a minute. If it still does not work, try later: your text stays in the form.",
+    contactErrRate: "This page accepts a limited number of messages each hour. Try again in an hour.",
+    contactErrGeneric: "We could not send your message. Your text stays in the form. Try again in a few minutes.",
+    contactErrCall: "If it is urgent, call the organizer:",
+    contactErrElsewhere: "If it is urgent, look for the organizer's phone or e-mail on their own website or social pages.",
     contactUnavailable: "You cannot write to the organizer through this page right now. Try again later.",
   },
   ru: {
@@ -159,8 +165,10 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrMessage: "Напишите сообщение от 10 до 2000 символов.",
     contactErrConsent: "Отметьте согласие, чтобы мы передали сообщение организатору.",
     contactErrCaptcha: "Пройдите проверку «не робот» и отправьте сообщение ещё раз.",
-    contactErrRate: "Вы отправили много сообщений подряд. Попробуйте ещё раз через час.",
-    contactErrGeneric: "Не удалось отправить сообщение. Попробуйте ещё раз через минуту. Если снова не получится, попробуйте позже: ваш текст останется в форме.",
+    contactErrRate: "Эта страница принимает ограниченное число сообщений в час. Попробуйте ещё раз через час.",
+    contactErrGeneric: "Не удалось отправить сообщение. Ваш текст остался в форме. Попробуйте ещё раз через несколько минут.",
+    contactErrCall: "Если вопрос срочный, позвоните организатору:",
+    contactErrElsewhere: "Если вопрос срочный, найдите телефон или e-mail организатора на его сайте или в соцсетях.",
     contactUnavailable: "Сейчас написать организатору через эту страницу нельзя. Попробуйте позже.",
   },
   cs: {
@@ -205,8 +213,10 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrMessage: "Napište zprávu o délce 10 až 2000 znaků.",
     contactErrConsent: "Zaškrtněte souhlas, abychom zprávu předali pořadateli.",
     contactErrCaptcha: "Dokončete ověření, že nejste robot, a zprávu odešlete znovu.",
-    contactErrRate: "Odeslali jste mnoho zpráv za sebou. Zkuste to znovu za hodinu.",
-    contactErrGeneric: "Zprávu se nepodařilo odeslat. Zkuste to znovu za minutu. Pokud to znovu nepůjde, zkuste to později: váš text ve formuláři zůstane.",
+    contactErrRate: "Tato stránka přijímá jen omezený počet zpráv za hodinu. Zkuste to znovu za hodinu.",
+    contactErrGeneric: "Zprávu se nepodařilo odeslat. Váš text ve formuláři zůstal. Zkuste to znovu za pár minut.",
+    contactErrCall: "Pokud je to naléhavé, zavolejte pořadateli:",
+    contactErrElsewhere: "Pokud je to naléhavé, najděte telefon nebo e-mail pořadatele na jeho webu nebo sociálních sítích.",
     contactUnavailable: "Pořadateli teď přes tuto stránku napsat nelze. Zkuste to později.",
   },
   he: {
@@ -251,8 +261,10 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrMessage: "כתבו הודעה באורך 10 עד 2000 תווים.",
     contactErrConsent: "סמנו את תיבת ההסכמה כדי שנעביר את ההודעה למארגן.",
     contactErrCaptcha: "השלימו את בדיקת האנטי-רובוט ושלחו שוב.",
-    contactErrRate: "שלחתם הרבה הודעות ברצף. נסו שוב בעוד שעה.",
-    contactErrGeneric: "לא הצלחנו לשלוח את ההודעה. נסו שוב בעוד דקה. אם זה לא יעבוד שוב, נסו מאוחר יותר: הטקסט שלכם יישאר בטופס.",
+    contactErrRate: "הדף הזה מקבל מספר מוגבל של הודעות בכל שעה. נסו שוב בעוד שעה.",
+    contactErrGeneric: "לא הצלחנו לשלוח את ההודעה. הטקסט שלכם נשאר בטופס. נסו שוב בעוד כמה דקות.",
+    contactErrCall: "אם זה דחוף, התקשרו למארגן:",
+    contactErrElsewhere: "אם זה דחוף, חפשו את הטלפון או האימייל של המארגן באתר שלו או ברשתות החברתיות.",
     contactUnavailable: "כרגע אי אפשר לכתוב למארגן דרך הדף הזה. נסו שוב מאוחר יותר.",
   },
   es: {
@@ -297,8 +309,10 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrMessage: "Escribe un mensaje de 10 a 2000 caracteres.",
     contactErrConsent: "Marca la casilla para aceptar que pasemos tu mensaje al organizador.",
     contactErrCaptcha: "Completa la verificación anti-robot y vuelve a enviar el mensaje.",
-    contactErrRate: "Has enviado muchos mensajes seguidos. Inténtalo de nuevo dentro de una hora.",
-    contactErrGeneric: "No pudimos enviar tu mensaje. Inténtalo de nuevo dentro de un minuto. Si vuelve a fallar, inténtalo más tarde: tu texto se queda en el formulario.",
+    contactErrRate: "Esta página acepta un número limitado de mensajes por hora. Inténtalo de nuevo dentro de una hora.",
+    contactErrGeneric: "No pudimos enviar tu mensaje. Tu texto se queda en el formulario. Inténtalo de nuevo dentro de unos minutos.",
+    contactErrCall: "Si es urgente, llama al organizador:",
+    contactErrElsewhere: "Si es urgente, busca el teléfono o el correo del organizador en su web o en sus redes sociales.",
     contactUnavailable: "Ahora no puedes escribir al organizador desde esta página. Inténtalo más tarde.",
   },
 };
