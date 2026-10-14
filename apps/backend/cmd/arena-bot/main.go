@@ -49,7 +49,7 @@ func main() {
 }
 
 func run() error {
-	cfg, err := config.Load()
+	cfg, err := config.LoadFor(config.RoleBot)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -62,6 +62,9 @@ func run() error {
 		Version: cfg.AppVersion,
 	}).With(slog.String("commit", cfg.AppCommit))
 	slog.SetDefault(logger)
+	for _, w := range cfg.Warnings() {
+		logger.Warn("config warning", "detail", w)
+	}
 
 	if cfg.EventsTelegramBotToken == "" {
 		return errors.New("EVENTS_TELEGRAM_BOT_TOKEN is required")
