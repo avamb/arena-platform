@@ -93,7 +93,7 @@ func TestBuildMIMEMessage_MultipartWithCyrillicSubjectParses(t *testing.T) {
 		t.Fatalf("content type = %q, %v", mediaType, err)
 	}
 	mr := multipart.NewReader(m.Body, params["boundary"])
-	var types []string
+	var types, altTypes []string
 	for {
 		p, perr := mr.NextPart()
 		if perr == io.EOF {
@@ -102,13 +102,69 @@ func TestBuildMIMEMessage_MultipartWithCyrillicSubjectParses(t *testing.T) {
 		if perr != nil {
 			t.Fatalf("NextPart: %v", perr)
 		}
+		ct := p.Header.Get("Content-Type")
+		types = append(types, ct)
+		if mt, ap, _ := mime.ParseMediaType(ct); mt == "multipart/alternative" {
+			altTypes = partTypes(t, p, ap["boundary"])
+		}
+	}
+	// The plain and HTML bodies are two versions of ONE letter: they must sit
+	// together in multipart/alternative. As siblings in multipart/mixed a mail
+	// client shows both, the raw text above the designed letter.
+	if len(types) != 2 || !strings.HasPrefix(types[0], "multipart/alternative") {
+		t.Fatalf("parts = %v, want multipart/alternative + pdf", types)
+	}
+	if !strings.HasPrefix(types[1], "application/pdf") {
+		t.Fatalf("second part = %q, want the PDF", types[1])
+	}
+	if len(altTypes) != 2 || !strings.HasPrefix(altTypes[0], "text/plain") ||
+		!strings.HasPrefix(altTypes[1], "text/html") {
+		t.Fatalf("alternative parts = %v, want text/plain then text/html", altTypes)
+	}
+}
+
+// Without a plain-text version the HTML body sits directly beside the
+// attachments; there is nothing to offer as an alternative.
+func TestBuildMIMEMessage_AttachmentWithoutTextBody(t *testing.T) {
+	raw, err := buildMIMEMessage("noreply@arena.example", Message{
+		To:       "buyer@example.com",
+		Subject:  "Ticket",
+		HTMLBody: "<p>x</p>",
+		Attachments: []Attachment{{
+			Filename: "t.pdf", ContentType: "application/pdf", Data: []byte("%PDF"),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("buildMIMEMessage() error = %v", err)
+	}
+	m, err := mail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("mail.ReadMessage: %v", err)
+	}
+	_, params, err := mime.ParseMediaType(m.Header.Get("Content-Type"))
+	if err != nil {
+		t.Fatalf("content type: %v", err)
+	}
+	types := partTypes(t, m.Body, params["boundary"])
+	if len(types) != 2 || !strings.HasPrefix(types[0], "text/html") ||
+		!strings.HasPrefix(types[1], "application/pdf") {
+		t.Fatalf("parts = %v, want text/html + pdf", types)
+	}
+}
+
+func partTypes(t *testing.T, body io.Reader, boundary string) []string {
+	t.Helper()
+	mr := multipart.NewReader(body, boundary)
+	var types []string
+	for {
+		p, err := mr.NextPart()
+		if err == io.EOF {
+			return types
+		}
+		if err != nil {
+			t.Fatalf("NextPart: %v", err)
+		}
 		types = append(types, p.Header.Get("Content-Type"))
-	}
-	if len(types) != 3 {
-		t.Fatalf("parts = %v, want text/plain + text/html + pdf", types)
-	}
-	if !strings.HasPrefix(types[2], "application/pdf") {
-		t.Fatalf("third part = %q, want the PDF", types[2])
 	}
 }
 

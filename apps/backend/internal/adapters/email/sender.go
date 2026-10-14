@@ -212,10 +212,11 @@ func NewSMTPSender(cfg SMTPConfig) *SMTPSender {
 //
 // The MIME structure is:
 //
-//	multipart/mixed  (when attachments are present)
-//	  text/plain     (quoted-printable)
-//	  text/html      (quoted-printable)
-//	  application/X  (base64, one per attachment)
+//	multipart/mixed            (when attachments are present)
+//	  multipart/alternative    (when a plain-text body is set)
+//	    text/plain             (quoted-printable)
+//	    text/html              (quoted-printable)
+//	  application/X            (base64, one per attachment)
 //
 // Without attachments:
 //
@@ -365,7 +366,8 @@ var _ ReceiptSender = (*SMTPSender)(nil)
 
 // buildMIMEMessage constructs the raw RFC 5322 / MIME bytes for an email.
 //
-// With attachments → multipart/mixed containing text/plain + text/html + attachments.
+// With attachments → multipart/mixed containing the body (multipart/alternative
+// of text/plain + text/html, or text/html alone) followed by the attachments.
 // Without attachments → single text/html part (simpler, sufficient for tickets).
 func buildMIMEMessage(from string, msg Message) ([]byte, error) {
 	if msg.ReplyTo != "" {
@@ -403,36 +405,35 @@ func buildMIMEMessage(from string, msg Message) ([]byte, error) {
 	// (password reset, invitations) worked.
 	buf.WriteString("\r\n")
 
-	// text/plain part
+	// The body. With a plain-text version it is ONE multipart/alternative
+	// part holding text/plain and text/html: the two are versions of the same
+	// letter and a mail client shows exactly one of them. Placing them side by
+	// side directly in multipart/mixed made Gmail and other clients show both,
+	// the raw text above the designed letter (found on a test purchase,
+	// 2026-10-14).
 	if msg.TextBody != "" {
-		pw, err := mw.CreatePart(textproto.MIMEHeader{
-			"Content-Type":              {"text/plain; charset=utf-8"},
-			"Content-Transfer-Encoding": {"quoted-printable"},
+		var alt bytes.Buffer
+		aw := multipart.NewWriter(&alt)
+		if err := writeQPPart(aw, "text/plain; charset=utf-8", msg.TextBody); err != nil {
+			return nil, fmt.Errorf("buildMIMEMessage: text/plain part: %w", err)
+		}
+		if err := writeQPPart(aw, "text/html; charset=utf-8", msg.HTMLBody); err != nil {
+			return nil, fmt.Errorf("buildMIMEMessage: text/html part: %w", err)
+		}
+		if err := aw.Close(); err != nil {
+			return nil, fmt.Errorf("buildMIMEMessage: close alternative part: %w", err)
+		}
+		ap, err := mw.CreatePart(textproto.MIMEHeader{
+			"Content-Type": {"multipart/alternative; boundary=\"" + aw.Boundary() + "\""},
 		})
 		if err != nil {
-			return nil, fmt.Errorf("buildMIMEMessage: create text/plain part: %w", err)
+			return nil, fmt.Errorf("buildMIMEMessage: create alternative part: %w", err)
 		}
-		qpw := quotedprintable.NewWriter(pw)
-		if _, err := qpw.Write([]byte(msg.TextBody)); err != nil {
-			return nil, fmt.Errorf("buildMIMEMessage: write text body: %w", err)
+		if _, err := ap.Write(alt.Bytes()); err != nil {
+			return nil, fmt.Errorf("buildMIMEMessage: write alternative part: %w", err)
 		}
-		_ = qpw.Close()
-	}
-
-	// text/html part
-	{
-		hw, err := mw.CreatePart(textproto.MIMEHeader{
-			"Content-Type":              {"text/html; charset=utf-8"},
-			"Content-Transfer-Encoding": {"quoted-printable"},
-		})
-		if err != nil {
-			return nil, fmt.Errorf("buildMIMEMessage: create text/html part: %w", err)
-		}
-		qpw := quotedprintable.NewWriter(hw)
-		if _, err := qpw.Write([]byte(msg.HTMLBody)); err != nil {
-			return nil, fmt.Errorf("buildMIMEMessage: write HTML body: %w", err)
-		}
-		_ = qpw.Close()
+	} else if err := writeQPPart(mw, "text/html; charset=utf-8", msg.HTMLBody); err != nil {
+		return nil, fmt.Errorf("buildMIMEMessage: text/html part: %w", err)
 	}
 
 	// Attachment parts
@@ -459,6 +460,22 @@ func buildMIMEMessage(from string, msg Message) ([]byte, error) {
 		return nil, fmt.Errorf("buildMIMEMessage: close multipart writer: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// writeQPPart adds one quoted-printable text part of the given content type to w.
+func writeQPPart(w *multipart.Writer, contentType, body string) error {
+	pw, err := w.CreatePart(textproto.MIMEHeader{
+		"Content-Type":              {contentType},
+		"Content-Transfer-Encoding": {"quoted-printable"},
+	})
+	if err != nil {
+		return err
+	}
+	qpw := quotedprintable.NewWriter(pw)
+	if _, err := qpw.Write([]byte(body)); err != nil {
+		return err
+	}
+	return qpw.Close()
 }
 
 // writeRFC5322HeaderWithReplyTo writes the standard email headers plus an
