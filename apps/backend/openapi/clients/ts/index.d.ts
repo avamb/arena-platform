@@ -6605,6 +6605,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/sales-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sales figures of a list of events
+         * @description The numbers a list of events shows next to each name, for up to 50
+         *     events in ONE request (WEB-LIST): for every id the same figures as the
+         *     top level of `GET .../events/{event_id}/summary` (places, money per
+         *     currency, orders, tickets, door count, refunds, promo codes,
+         *     invitations, session count) without the per-category table and the
+         *     per-session list. An id of another organization, a deleted event and
+         *     an unknown id are absent from the answer, never an error. The entries
+         *     come in the order the ids were given, a repeated id counts once.
+         *     Read-only and free of buyer data. Requires the `order.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsSalesSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/summary": {
         parameters: {
             query?: never;
@@ -12122,6 +12150,75 @@ export interface components {
             complimentary: components["schemas"]["SummaryComplimentary"];
             /** @description Every non-deleted session of the event in start order, each with its own figures. */
             sessions: components["schemas"]["EventSummarySession"][];
+        };
+        /**
+         * @description The top level of EventSummary for one event, without the per-category
+         *     table (`tiers`) and the per-session list (`sessions`): the numbers a
+         *     list of events shows next to each name. Built by the same assembly as
+         *     EventSummary, so for one event every field here equals the field of
+         *     the same name in `GET .../events/{event_id}/summary`. Read-only, no
+         *     buyer data.
+         */
+        EventSalesSummary: {
+            /** @description The event the figures are about. */
+            event: {
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the event.
+                 */
+                id: string;
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the owning organization.
+                 */
+                org_id: string;
+                /** @description Name of the event as stored. */
+                name: string;
+                /** @description Event status (draft, published, cancelled, archived). */
+                status: string;
+                /**
+                 * Format: date-time
+                 * @description Earliest start over the event's active, non-cancelled sessions, RFC3339 in UTC.
+                 */
+                first_session_at: string | null;
+                /**
+                 * Format: date-time
+                 * @description Latest end over the same sessions, RFC3339 in UTC.
+                 */
+                last_session_at: string | null;
+                /** @description Number of non-deleted sessions of the event, cancelled ones included. */
+                session_count: number;
+            };
+            /** @description Places of every session, split by kind. */
+            places: {
+                /** @description Seats of the seating plans. */
+                seats: components["schemas"]["SessionPlaceCounts"];
+                /** @description General admission places. */
+                ga: components["schemas"]["SessionPlaceCounts"];
+            };
+            /** @description The bottom line of the whole event, one entry per currency. */
+            money: components["schemas"]["SummaryMoneyItem"][];
+            /** @description Order totals of every session grouped by status, source and currency. */
+            orders: components["schemas"]["SummaryOrdersItem"][];
+            /** @description Tickets of every session by status. */
+            tickets: components["schemas"]["SummaryTickets"];
+            /** @description The door count over every session. */
+            entered: components["schemas"]["SummaryEntered"];
+            /** @description Refund totals of every session grouped by settlement, state and currency. */
+            refunds: components["schemas"]["SummaryRefundsItem"][];
+            /** @description Promo codes the paid orders of every session used, merged by code and sorted. */
+            promos: components["schemas"]["SummaryPromoItem"][];
+            /** @description Invitations over every session. */
+            complimentary: components["schemas"]["SummaryComplimentary"];
+        };
+        /** @description The sales figures of the requested events, one entry per event found. */
+        EventSalesSummaryList: {
+            /**
+             * @description One entry per requested event that exists in the organization, in
+             *     the order the ids were given. An id of another organization, a
+             *     deleted event or an unknown id has no entry.
+             */
+            items: components["schemas"]["EventSalesSummary"][];
         };
         /**
          * @description A single active venue (physical event location owned by one organization).
@@ -44721,6 +44818,86 @@ export interface operations {
             };
             /** @description Event not found, or not part of this organization. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsSalesSummary: {
+        parameters: {
+            query: {
+                /**
+                 * @description Event ids as ONE string separated by commas (`ids=a,b,c`), at most
+                 *     50. Repeating the parameter (`ids=a&ids=b`) is not supported: only
+                 *     the first value is read.
+                 */
+                ids: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sales figures of the events found. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSalesSummaryList"];
+                };
+            };
+            /**
+             * @description org_id is not a valid UUID, `ids` is missing or empty
+             *     (`events.ids_required`), holds an id that is not a UUID
+             *     (`events.invalid_ids`) or names more than 50 ids
+             *     (`events.too_many_ids`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`) in this organization. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
