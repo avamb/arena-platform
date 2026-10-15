@@ -219,7 +219,7 @@ test.describe("cancel an unpaid order (live)", () => {
 
   test("a paid order has no button, and the API answers 409", async ({ page, request }) => {
     await openCard(page, "org_admin", ORDER_PAID);
-    await expect(page.getByTestId("ticket-list")).toBeVisible();
+    await expect(page.getByText("Paid", { exact: true }).first()).toBeVisible();
     await expect(page.getByTestId("cancel-order")).toHaveCount(0);
     // A stale client that presses anyway meets the server's own rule.
     const ask = await request.post(`${env.api_base_url}/v1/auth/step-up`, {
