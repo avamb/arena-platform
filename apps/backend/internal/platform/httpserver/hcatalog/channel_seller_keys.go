@@ -6,10 +6,12 @@ import "encoding/json"
 // seller-display route writes (PATCH .../channels/{channel_id}/seller-display,
 // HP-4a): whether the sales page shows the seller's legal data, and the
 // public contact buyers' messages go to, and the operator's seller_hidden
-// switch (platform superadmin only). That route checks the owner, the
-// required data and the e-mail; the generic channel routes take the whole
-// settings object from the caller, so they keep the stored values instead.
-var sellerDisplayKeys = []string{"show_seller", "public_contact", "seller_hidden"}
+// switch (platform superadmin only), and the buyer consent at checkout
+// (consent_required, P2: switched on only while the seller profile is
+// complete). That route checks the owner, the required data and the e-mail;
+// the generic channel routes take the whole settings object from the caller,
+// so they keep the stored values instead.
+var sellerDisplayKeys = []string{"show_seller", "public_contact", "seller_hidden", "consent_required"}
 
 // keepSellerDisplayKeys returns next with the seller-display keys of
 // settings.hosted_page replaced by the stored ones: a value the caller sent

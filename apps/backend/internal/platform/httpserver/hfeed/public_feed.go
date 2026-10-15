@@ -286,6 +286,10 @@ type publicFeedSessionResponse struct {
 	// on a specific date carry no right of withdrawal. False everywhere
 	// else, including an unknown country.
 	ShowWithdrawalNotice bool `json:"show_withdrawal_notice"`
+	// Consent tells the widget whether the buyer must tick "I accept the sale
+	// terms of the organizer <seller_legal_name> and the platform policy"
+	// before paying (P2), and which two pages the text links to.
+	Consent publicConsentBlock `json:"consent"`
 	// Timezone is the IANA zone of the session's venue (`venues.timezone`),
 	// "" when the venue has none. The widget formats the session chips in
 	// it: a buyer whose phone lives in another zone (found 2026-09-29 — an
@@ -733,6 +737,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	defaultBuyerFields := buildBuyerFields(false, false)
 	serviceFeePercent := "0.00"
 	promoCodesAvailable := false
+	consentRequired, consentLegalName := false, ""
 	if h.publicFeedQueries != nil {
 		flags, flagsErr := h.publicFeedQueries.GetFeedTokenBuyerFlags(ctx, feedToken)
 		if flagsErr == nil {
@@ -741,6 +746,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 				serviceFeePercent = flags.FeePercent
 			}
 			promoCodesAvailable = flags.PromoCodesAvailable
+			consentRequired, consentLegalName = consentFromFlags(flags)
 		} else if !errors.Is(flagsErr, pgx.ErrNoRows) {
 			h.logger.Error("public_feed: get buyer flags failed",
 				slog.String("feed_token", feedToken),
@@ -750,6 +756,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	}
 
 	showWithdrawalNotice := h.showWithdrawalNotice(ctx, event.OrgID)
+	consent := h.consentBlock(consentRequired, consentLegalName)
 
 	if h.sessionQueries != nil {
 		sessions, err := h.sessionQueries.ListSessionsByEvent(ctx, eventID)
@@ -784,6 +791,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 				sessResp.ServiceFeePercent = serviceFeePercent
 				sessResp.PromoCodesAvailable = promoCodesAvailable
 				sessResp.ShowWithdrawalNotice = showWithdrawalNotice
+				sessResp.Consent = consent
 				sessResp.Timezone = h.venueTimezone(ctx, sess.VenueID, venueTimezones)
 				sessResp.applySeatingLinks(admissionByID[sess.ID.String()])
 				sessResp.applyPosterFallback(eventResp.PosterMediaID, eventResp.PosterURL)

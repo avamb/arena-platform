@@ -127,6 +127,11 @@ export interface BuyerFormValues {
   email: string;
   name: string;
   phone: string;
+  /**
+   * The buyer ticked the checkout consent box (P2). Only set when the session
+   * asks for it; never stored anywhere.
+   */
+  consentAccepted?: boolean;
 }
 
 /** Per-field validation errors (undefined = no error). */
@@ -178,6 +183,12 @@ export interface CheckoutStartPayload {
    * so any locale tag is safe to send.
    */
   locale?: string;
+  /**
+   * The buyer's tick on the checkout consent box (P2), sent only when ticked.
+   * A session whose `consent.required` is true refuses a body without it
+   * (422 `checkout.consent_required`).
+   */
+  consent?: import('./consent.js').CheckoutConsentPayload;
 }
 
 /**

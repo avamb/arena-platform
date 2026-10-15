@@ -40,6 +40,14 @@ func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 	s.ordersHandler().HandleGet(w, r)
 }
 
+// handleOrderConsents serves GET .../orders/{order_id}/consents (P2).
+func (s *Server) handleOrderConsents(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.ordersHandler().HandleConsents(w, r)
+}
+
 func (s *Server) handleSessionSummary(w http.ResponseWriter, r *http.Request) {
 	if !s.enforceOrgMembership(w, r, "org_id") {
 		return

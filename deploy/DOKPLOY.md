@@ -327,6 +327,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `EVENT_CENTER_PUBLIC_URL` (`https://` when set) | ● | ● | — | — |
 | `PUBLIC_TICKETS_BASE_URL` | ● | ● | ● | — |
 | `ONBOARDING_ENABLED`, `ONBOARDING_TERMS_URL`, `ONBOARDING_PRIVACY_URL` | ● | — | — | — |
+| `PLATFORM_TERMS_URL` (buyer checkout consent; empty = `<ONBOARDING_SITE_URL>/legal/terms`) | ● | — | — | — |
 | `ONBOARDING_SITE_URL` | ● | ● | — | — |
 | `ONBOARDING_TURNSTILE_SECRET`, `CONTACT_FORM_TURNSTILE_SECRET`, `CONTACT_FORM_TURNSTILE_SITE_KEY` | ● | ● | — | — |
 | `MEDIA_BACKEND`, `MEDIA_LOCAL_ROOT`, `MEDIA_S3_ENDPOINT`, `MEDIA_S3_REGION`, `MEDIA_S3_BUCKET`, `MEDIA_S3_ACCESS_KEY_ID`, `MEDIA_S3_SECRET_ACCESS_KEY`, `MEDIA_S3_USE_PATH_STYLE` | ● | ● | — | — |

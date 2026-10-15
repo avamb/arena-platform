@@ -120,9 +120,20 @@ SELECT
           AND (p.valid_until IS NULL OR p.valid_until >  now())
           AND (p.max_uses IS NULL
                OR p.max_uses > (SELECT COUNT(*) FROM promo_code_redemptions r WHERE r.promo_code_id = p.id))
-    ) AS promo_codes_available
+    ) AS promo_codes_available,
+    -- P2: the consent switch and the seller profile inputs of the rule that
+    -- decides it (hfeed.consentFromFlags); never contact_email/contact_phone.
+    COALESCE(sc.settings #>> '{hosted_page,consent_required}', '') = 'true' AS consent_required,
+    o.name,
+    o.legal_name,
+    o.tax_id,
+    o.legal_address_line1,
+    o.legal_address_city,
+    o.legal_address_postal_code,
+    sc.settings #> '{hosted_page,public_contact}' AS public_contact
 FROM agent_feed_tokens ft
 JOIN sales_channels sc ON sc.id = ft.sales_channel_id
+JOIN organizations o ON o.id = sc.org_id
 WHERE ft.token     = $1
   AND ft.is_active  = true
   AND sc.deleted_at IS NULL;

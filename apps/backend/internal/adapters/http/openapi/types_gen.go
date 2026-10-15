@@ -9241,6 +9241,57 @@ type OrderChannelSummary struct {
 	Name string `json:"name"`
 }
 
+// OrderConsentItem One consent the buyer gave at checkout (P2). Dispute evidence; personal data.
+type OrderConsentItem struct {
+	// AcceptedAt When the buyer accepted (RFC 3339, UTC).
+	AcceptedAt time.Time `json:"accepted_at"`
+
+	// CheckoutSessionId The checkout session the consent was given in.
+	CheckoutSessionId openapi_types.UUID `json:"checkout_session_id"`
+
+	// ClientIp The buyer's real IP address at purchase; null when it could not be read.
+	ClientIp *string `json:"client_ip"`
+
+	// Id Consent record id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind What was accepted. Only `sale_terms` so far (the organizer's sale terms and the platform policy).
+	Kind string `json:"kind"`
+
+	// Locale Language the checkbox was shown in, null when not stated.
+	Locale *string `json:"locale"`
+
+	// OriginHost The site the buyer bought on, scheme and host only (from the request's Origin header, else its Referer); null when neither was sent.
+	OriginHost *string `json:"origin_host"`
+
+	// PrivacyUrl The privacy policy link the checkbox showed.
+	PrivacyUrl *string `json:"privacy_url"`
+
+	// SellerLegalName The seller name the checkbox showed.
+	SellerLegalName *string `json:"seller_legal_name"`
+
+	// TermsUrl The sale terms link the checkbox showed.
+	TermsUrl *string `json:"terms_url"`
+
+	// TermsVersion The version accepted, `platform-terms:<version>;seller:<organization id>` until the organizer's rendered terms exist.
+	TermsVersion string `json:"terms_version"`
+
+	// UserAgent The buyer's browser string at purchase (at most 512 characters); null when none was sent.
+	UserAgent *string `json:"user_agent"`
+
+	// WithdrawalNoticeShown Whether this purchase showed the no-right-of-withdrawal notice (seller country at that moment).
+	WithdrawalNoticeShown bool `json:"withdrawal_notice_shown"`
+}
+
+// OrderConsentsResponse The consents of one order (P2).
+type OrderConsentsResponse struct {
+	// Consents The consents, oldest first; empty when the order was bought without one.
+	Consents []OrderConsentItem `json:"consents"`
+
+	// OrderId The order.
+	OrderId openapi_types.UUID `json:"order_id"`
+}
+
 // OrderDeliveryEntry The ticket e-mail delivery job of one ticket (delivery_jobs).
 type OrderDeliveryEntry struct {
 	// LastError Error of the last failed attempt, if any.
@@ -11423,6 +11474,17 @@ type PublicBuyerInfo struct {
 	Phone *string `json:"phone"`
 }
 
+// PublicCheckoutConsent The buyer's answer to the checkout consent checkbox (P2).
+type PublicCheckoutConsent struct {
+	// Accepted True when the buyer ticked the checkbox.
+	Accepted bool `json:"accepted"`
+
+	// Locale The language the checkbox text was shown in (the widget's active
+	// locale). Folded like `locale` (`cs`, `de`, `en`, `es`, `fr`, `he`,
+	// `ru`); anything else falls back to the checkout's `locale`.
+	Locale *string `json:"locale,omitempty"`
+}
+
 // PublicEventMaterials The materials of an event's page (task 1-2c), the same block on the
 // hosted page (`GET /v1/public/pages/{org_slug}/{event_slug}`) and on
 // the widget feed (`GET /v1/public/feeds/{feed_token}/events/{event_id}`).
@@ -11487,6 +11549,16 @@ type PublicFeedCheckoutStartRequest struct {
 	// `name` and `phone` are optional unless the channel's `buyer_fields`
 	// mark them `required`.
 	Buyer *PublicBuyerInfo `json:"buyer,omitempty"`
+
+	// Consent The buyer's tick on "I accept the sale terms (seller: <legal
+	// name>) and the privacy policy" (P2). Required (with
+	// `accepted: true`) when the feed session's `consent.required` is
+	// true. Only then is it recorded with the checkout session, together
+	// with the buyer's IP address and browser string at purchase, the
+	// site the buyer bought on and what the checkbox showed (dispute
+	// evidence, never answered on a public route). Sent to a channel
+	// that does not ask for it, it is ignored and nothing is stored.
+	Consent *PublicCheckoutConsent `json:"consent,omitempty"`
 
 	// GaItems GA items for GA or hybrid sessions.
 	GaItems *[]PublicGAItem `json:"ga_items,omitempty"`
@@ -12760,6 +12832,16 @@ type SellerProfile struct {
 type SellerProfileChannel struct {
 	// Complete True when no required data is missing for this channel (`missing` is empty).
 	Complete bool `json:"complete"`
+
+	// ConsentActive Whether checkout asks for the consent now: `consent_required` and
+	// the data is complete. A profile emptied after the switch was set
+	// turns the question off until it is complete again.
+	ConsentActive bool `json:"consent_active"`
+
+	// ConsentRequired The stored switch `settings.hosted_page.consent_required` (P2): the
+	// buyer must tick "I accept the sale terms of the organizer and the
+	// platform policy" before paying. Off by default.
+	ConsentRequired bool `json:"consent_required"`
 
 	// EmailLooksPersonal True when the public e-mail is at a free mailbox provider (gmail.com,
 	// inbox.ru, outlook.com, ...). A hint for the owner to use a role
@@ -14528,8 +14610,18 @@ type UpdateSeatingPlanRequestVisibility string
 // `seller.incomplete` (details.missing) while required data is empty, and
 // so is clearing the e-mail of a channel that keeps the block on.
 // `seller_hidden` may be changed by a platform superadmin only (403
-// `seller.hide_superadmin_only` for anyone else).
+// `seller.hide_superadmin_only` for anyone else). `consent_required:
+// true` is refused the same way as `show_seller: true` while required
+// data is empty, and so is clearing the e-mail of a channel that keeps
+// the consent on.
 type UpdateSellerDisplayRequest struct {
+	// ConsentRequired True makes checkout ask the buyer to accept the organizer's sale
+	// terms and the platform policy before paying (P2); a cart without
+	// the tick is refused with 422 `checkout.consent_required`. May be
+	// switched on only while the seller data is complete (422
+	// `seller.incomplete` with details.missing). False switches it off.
+	ConsentRequired *bool `json:"consent_required,omitempty"`
+
 	// PublicContact The published contact; null removes it.
 	PublicContact *SellerDisplayContactPatch `json:"public_contact"`
 

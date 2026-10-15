@@ -67,6 +67,23 @@ func (s *Server) contactFormPrivacyURL() string {
 	return ""
 }
 
+// platformTermsURL is the platform terms page the buyer consent at checkout
+// links to (P2): PLATFORM_TERMS_URL, else <ONBOARDING_SITE_URL>/legal/terms.
+// The checkbox's privacy link is contactFormPrivacyURL, the same page the
+// contact form's consent names.
+func (s *Server) platformTermsURL() string {
+	if s.cfg == nil {
+		return ""
+	}
+	if u := strings.TrimSpace(s.cfg.PlatformTermsURL); u != "" {
+		return u
+	}
+	if site := strings.TrimRight(strings.TrimSpace(s.cfg.OnboardingSiteURL), "/"); site != "" {
+		return site + "/legal/terms"
+	}
+	return ""
+}
+
 // contactFormHostnames is the host the hosted pages are served from
 // (PUBLIC_TICKETS_BASE_URL): a token solved anywhere else is refused. Empty
 // when the base URL is not set (local development), which skips the check.
