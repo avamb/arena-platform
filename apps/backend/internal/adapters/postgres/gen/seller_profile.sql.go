@@ -41,6 +41,9 @@ type SellerChannelRow struct {
 	ShowSeller bool
 	// SellerHidden: an operator hid the block (settings.hosted_page.seller_hidden).
 	SellerHidden bool
+	// ConsentRequired: the buyer must accept the sale terms at checkout
+	// (settings.hosted_page.consent_required, P2).
+	ConsentRequired bool
 	// PublicContact is settings.hosted_page.public_contact as raw JSON, nil
 	// when the channel has none.
 	PublicContact []byte
@@ -50,7 +53,8 @@ const listSellerChannels = `-- name: ListSellerChannels :many
 SELECT id, name,
        COALESCE(settings #>> '{hosted_page,show_seller}', '') = 'true' AS show_seller,
        COALESCE(settings #>> '{hosted_page,seller_hidden}', '') = 'true' AS seller_hidden,
-       settings #> '{hosted_page,public_contact}' AS public_contact
+       settings #> '{hosted_page,public_contact}' AS public_contact,
+       COALESCE(settings #>> '{hosted_page,consent_required}', '') = 'true' AS consent_required
 FROM sales_channels
 WHERE org_id = $1
   AND deleted_at IS NULL
@@ -68,7 +72,7 @@ func (q *Queries) ListSellerChannels(ctx context.Context, orgID uuid.UUID) ([]Se
 	var out []SellerChannelRow
 	for rows.Next() {
 		var r SellerChannelRow
-		if err := rows.Scan(&r.ID, &r.Name, &r.ShowSeller, &r.SellerHidden, &r.PublicContact); err != nil {
+		if err := rows.Scan(&r.ID, &r.Name, &r.ShowSeller, &r.SellerHidden, &r.PublicContact, &r.ConsentRequired); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -124,6 +128,32 @@ WHERE id = $1
 // channel was updated. Only a platform superadmin's request reaches it.
 func (q *Queries) SetChannelSellerHidden(ctx context.Context, channelID, orgID uuid.UUID, hidden bool) (bool, error) {
 	tag, err := q.db.Exec(ctx, setChannelSellerHidden, channelID, orgID, hidden)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+const setChannelConsentRequired = `-- name: SetChannelConsentRequired :execrows
+UPDATE sales_channels
+SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hosted_page}',
+        CASE WHEN $3::boolean
+             THEN COALESCE(settings -> 'hosted_page', '{}'::jsonb) || jsonb_build_object('consent_required', true)
+             ELSE COALESCE(settings -> 'hosted_page', '{}'::jsonb) - 'consent_required'
+        END, true),
+    updated_at = now()
+WHERE id = $1
+  AND org_id = $2
+  AND deleted_at IS NULL
+  AND settings #>> '{hosted_page,enabled}' = 'true'`
+
+// SetChannelConsentRequired sets or removes
+// settings.hosted_page.consent_required of a hosted-page channel of the
+// organization (P2: the buyer must accept the sale terms at checkout) and
+// reports whether such a channel was updated. The seller-display route calls
+// it only while the seller profile is complete.
+func (q *Queries) SetChannelConsentRequired(ctx context.Context, channelID, orgID uuid.UUID, required bool) (bool, error) {
+	tag, err := q.db.Exec(ctx, setChannelConsentRequired, channelID, orgID, required)
 	if err != nil {
 		return false, err
 	}

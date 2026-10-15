@@ -32,6 +32,7 @@
   import type { PromoState } from './lib/promoController.js';
   import { getPromoStrings } from './lib/promoI18n.js';
   import { MAX_CART_SEATS, cartLimitMessage, seatCapMessage } from './lib/cartLimits.js';
+  import { consentErrorMessage, consentPayload } from './lib/consent.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
   import {
@@ -624,6 +625,9 @@
       if (typeof normLocale === 'string' && normLocale.length > 0) {
         payload.locale = normLocale;
       }
+      // P2: a ticked consent box goes along with the language it was read in.
+      const consent = consentPayload(values.consentAccepted === true, normLocale);
+      if (consent) payload.consent = consent;
       const response = await postCheckoutStart(normFeedToken, payload, resolvedApiBase);
       // Save token in case user returns after the payment page.
       rememberCheckoutToken(response.checkout_token);
@@ -663,6 +667,10 @@
         conflictKeys = new Set();
         checkoutError = `${promoErrorMessage(err.code, promoStrings)} ${promoStrings.removed}`;
         promoCtl.drop();
+      } else if (err instanceof ApiError && consentErrorMessage(err.code, normLocale) !== null) {
+        // The channel asks for the consent and the platform did not get it.
+        conflictKeys = new Set();
+        checkoutError = consentErrorMessage(err.code, normLocale);
       } else if (err instanceof ApiError && cartLimitMessage(err.code, normLocale) !== null) {
         // The platform refused the size of the cart: say so in the buyer's language.
         conflictKeys = new Set();
@@ -1001,6 +1009,7 @@
         serviceFeePercent={selectedSession.service_fee_percent}
         promoAvailable={selectedSession.promo_codes_available === true}
         showWithdrawalNotice={selectedSession.show_withdrawal_notice === true}
+        consent={selectedSession.consent ?? null}
         locale={normLocale}
         submitting={checkoutSubmitting}
         submitError={checkoutError}

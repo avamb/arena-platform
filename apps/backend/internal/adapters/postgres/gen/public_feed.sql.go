@@ -182,6 +182,21 @@ type FeedTokenBuyerFlagsRow struct {
 	// code that is active, inside its date window and not used up. Existence
 	// only: whether a code fits a cart is the quote route's decision.
 	PromoCodesAvailable bool
+	// ConsentRequired is the channel's stored switch
+	// settings.hosted_page.consent_required (P2). Checkout asks for the
+	// consent only while the seller profile below is also complete
+	// (sellerinfo.Missing), the rule hfeed.consentFromFlags applies.
+	ConsentRequired bool
+	// The seller profile inputs of that rule, from the channel's own
+	// organization, and the channel's public contact (raw JSON, nil when
+	// none). Deliberately no organizations.contact_email / contact_phone.
+	OrgName           string
+	LegalName         *string
+	TaxID             *string
+	AddressLine1      *string
+	AddressCity       *string
+	AddressPostalCode *string
+	PublicContact     []byte
 }
 
 const getFeedTokenBuyerFlags = `-- name: GetFeedTokenBuyerFlags :one
@@ -199,9 +214,18 @@ SELECT
           AND (p.valid_until IS NULL OR p.valid_until >  now())
           AND (p.max_uses IS NULL
                OR p.max_uses > (SELECT COUNT(*) FROM promo_code_redemptions r WHERE r.promo_code_id = p.id))
-    ) AS promo_codes_available
+    ) AS promo_codes_available,
+    COALESCE(sc.settings #>> '{hosted_page,consent_required}', '') = 'true' AS consent_required,
+    o.name,
+    o.legal_name,
+    o.tax_id,
+    o.legal_address_line1,
+    o.legal_address_city,
+    o.legal_address_postal_code,
+    sc.settings #> '{hosted_page,public_contact}' AS public_contact
 FROM agent_feed_tokens ft
 JOIN sales_channels sc ON sc.id = ft.sales_channel_id
+JOIN organizations o ON o.id = sc.org_id
 WHERE ft.token     = $1
   AND ft.is_active  = true
   AND sc.deleted_at IS NULL`
@@ -215,6 +239,8 @@ WHERE ft.token     = $1
 func (q *Queries) GetFeedTokenBuyerFlags(ctx context.Context, feedToken string) (FeedTokenBuyerFlagsRow, error) {
 	row := q.db.QueryRow(ctx, getFeedTokenBuyerFlags, feedToken)
 	var r FeedTokenBuyerFlagsRow
-	err := row.Scan(&r.CollectName, &r.CollectPhone, &r.FeePercent, &r.PromoCodesAvailable)
+	err := row.Scan(&r.CollectName, &r.CollectPhone, &r.FeePercent, &r.PromoCodesAvailable,
+		&r.ConsentRequired, &r.OrgName, &r.LegalName, &r.TaxID,
+		&r.AddressLine1, &r.AddressCity, &r.AddressPostalCode, &r.PublicContact)
 	return r, err
 }

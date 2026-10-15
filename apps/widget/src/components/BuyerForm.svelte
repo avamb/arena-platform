@@ -24,6 +24,14 @@
     type BuyerFormValues,
     type BuyerFormErrors,
   } from '../lib/checkout.js';
+  import {
+    consentRequired,
+    consentPayBlocked,
+    consentSegments,
+    safeConsentUrl,
+    type SessionConsent,
+  } from '../lib/consent.js';
+  import { getConsentStrings } from '../lib/consentI18n.js';
 
   interface Props {
     buyerFields: BuyerFieldConfig[];
@@ -40,6 +48,12 @@
      * button (the session's `show_withdrawal_notice`).
      */
     withdrawalNotice?: boolean;
+    /**
+     * The session's `consent` block (P2). When it is required, a checkbox
+     * "I accept the sale terms of the organizer … and the platform policy"
+     * is shown above the pay button, which stays disabled until it is ticked.
+     */
+    consent?: SessionConsent | null;
     onSubmit: (values: BuyerFormValues) => void;
   }
 
@@ -49,8 +63,19 @@
     submitting = false,
     submitText,
     withdrawalNotice = false,
+    consent = null,
     onSubmit,
   }: Props = $props();
+
+  // The checkout consent (P2). The tick lives in this component only: it is
+  // never stored, so a buyer who comes back starts unticked.
+  const needsConsent = $derived(consentRequired(consent));
+  const consentWords = $derived(getConsentStrings(locale));
+  const consentParts = $derived(consentSegments(locale, consent?.seller_legal_name));
+  const termsHref = $derived(safeConsentUrl(consent?.terms_url));
+  const privacyHref = $derived(safeConsentUrl(consent?.privacy_url));
+  let consentAccepted = $state(false);
+  const payWaitsForConsent = $derived(consentPayBlocked(needsConsent, consentAccepted));
 
   const t = $derived(getCheckoutI18n(locale));
   const commit = $derived(getPaymentCommitStrings(locale));
@@ -89,6 +114,8 @@
     const values: BuyerFormValues = { email, name, phone };
     errors = validateBuyerForm(values, buyerFields, locale as never);
     if (!isBuyerFormValid(errors)) return;
+    if (payWaitsForConsent) return;
+    if (needsConsent) values.consentAccepted = consentAccepted;
     onSubmit(values);
   }
 
@@ -175,13 +202,46 @@
     </div>
   {/if}
 
+  {#if needsConsent}
+    <!-- P2: the buyer accepts the organizer's sale terms and the platform
+         policy before the obligation to pay; the pay button waits for it. -->
+    <div class="consent" data-testid="checkout-consent">
+      <label class="consent-label">
+        <input
+          type="checkbox"
+          class="consent-box"
+          bind:checked={consentAccepted}
+          disabled={submitting}
+          aria-describedby={payWaitsForConsent ? 'bf-consent-hint' : undefined}
+          data-testid="checkout-consent-box"
+        />
+        <span class="consent-text">
+          {#each consentParts as part}
+            {#if part.kind === 'terms' && termsHref}
+              <a href={termsHref} target="_blank" rel="noopener noreferrer" title={consentWords.new_tab}>{part.text}</a>
+            {:else if part.kind === 'privacy' && privacyHref}
+              <a href={privacyHref} target="_blank" rel="noopener noreferrer" title={consentWords.new_tab}>{part.text}</a>
+            {:else if part.kind === 'seller'}
+              <bdi class="consent-seller">{part.text}</bdi>
+            {:else}
+              {part.text}
+            {/if}
+          {/each}
+        </span>
+      </label>
+      {#if payWaitsForConsent}
+        <p id="bf-consent-hint" class="consent-hint">{consentWords.hint}</p>
+      {/if}
+    </div>
+  {/if}
+
   {#if withdrawalNotice}
     <!-- Date-bound tickets carry no right of withdrawal; say so right where the
          buyer takes on the obligation to pay. -->
     <p class="withdrawal-notice" data-testid="withdrawal-notice">{commit.withdrawal_notice}</p>
   {/if}
 
-  <button type="submit" class="submit-btn" disabled={submitting} aria-busy={submitting}>
+  <button type="submit" class="submit-btn" disabled={submitting || payWaitsForConsent} aria-busy={submitting}>
     {#if submitting}
       <span class="spinner" aria-hidden="true"></span>
     {/if}
@@ -263,6 +323,54 @@
     text-decoration: underline;
     padding: 0;
     margin-left: 0.25rem;
+  }
+
+  /* Checkout consent (P2): checkbox and text in the reading direction;
+     logical properties only (he is rtl). */
+  .consent {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .consent-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    color: var(--arena-color-primary, #1a1a1a);
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .consent-box {
+    flex: none;
+    margin-block-start: 0.15rem;
+    inline-size: 1rem;
+    block-size: 1rem;
+    accent-color: var(--arena-accent, #4f46e5);
+  }
+
+  .consent-box:focus-visible {
+    outline: 3px solid var(--arena-focus-ring, var(--arena-accent, #4f46e5));
+    outline-offset: 2px;
+  }
+
+  .consent-text a {
+    color: var(--arena-accent, #4f46e5);
+    text-decoration: underline;
+  }
+
+  .consent-seller {
+    font-weight: 600;
+  }
+
+  .consent-hint {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--arena-color-secondary, #6b7280);
+    text-align: start;
   }
 
   /* "No right of withdrawal" notice, directly above the pay button. Plain

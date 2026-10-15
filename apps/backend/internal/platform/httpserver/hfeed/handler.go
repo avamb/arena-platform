@@ -117,6 +117,10 @@ type Handler struct {
 	contactFormReady      bool
 	contactFormSiteKey    string
 	contactFormPrivacyURL string
+	// consentTermsURL / consentPrivacyURL are the two pages the checkout
+	// consent checkbox links to (P2, WithCheckoutConsent).
+	consentTermsURL   string
+	consentPrivacyURL string
 }
 
 // WithContactForm configures the hosted page's "Write to the organizer" form:

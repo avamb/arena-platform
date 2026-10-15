@@ -20,6 +20,9 @@ func (s *Server) mountOrderRoutes(r chi.Router) {
 		// The same search with the filters in the body: a buyer's e-mail or
 		// phone never reaches a URL that proxies log (spec 37 §13 item 5).
 		pr.Post("/organizations/{org_id}/orders/search", s.handleSearchOrders)
+		// The buyer's consent at checkout (P2): dispute evidence with the
+		// buyer's IP address and browser, for the order's organization only.
+		pr.Get("/organizations/{org_id}/orders/{order_id}/consents", s.handleOrderConsents)
 		// One-screen session overview: places, categories, money, tickets, refunds.
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/summary", s.handleSessionSummary)
 		// The same overview for every session of an event, totals plus a list (EC-06).

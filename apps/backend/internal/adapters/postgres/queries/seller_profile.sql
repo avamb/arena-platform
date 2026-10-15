@@ -21,7 +21,8 @@ WHERE id = $1 AND deleted_at IS NULL;
 SELECT id, name,
        COALESCE(settings #>> '{hosted_page,show_seller}', '') = 'true' AS show_seller,
        COALESCE(settings #>> '{hosted_page,seller_hidden}', '') = 'true' AS seller_hidden,
-       settings #> '{hosted_page,public_contact}' AS public_contact
+       settings #> '{hosted_page,public_contact}' AS public_contact,
+       COALESCE(settings #>> '{hosted_page,consent_required}', '') = 'true' AS consent_required
 FROM sales_channels
 WHERE org_id = $1
   AND deleted_at IS NULL
@@ -150,3 +151,20 @@ WHERE org_id = $1
   AND deleted_at IS NULL
   AND settings #>> '{hosted_page,show_seller}' = 'true'
 RETURNING id;
+
+-- name: SetChannelConsentRequired :execrows
+-- SetChannelConsentRequired sets ($3 true) or removes ($3 false)
+-- settings.hosted_page.consent_required of a hosted-page channel of the
+-- organization: the buyer must accept the sale terms at checkout (P2). Only
+-- the seller-display route writes it, and only while the profile is complete.
+UPDATE sales_channels
+SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hosted_page}',
+        CASE WHEN $3::boolean
+             THEN COALESCE(settings -> 'hosted_page', '{}'::jsonb) || jsonb_build_object('consent_required', true)
+             ELSE COALESCE(settings -> 'hosted_page', '{}'::jsonb) - 'consent_required'
+        END, true),
+    updated_at = now()
+WHERE id = $1
+  AND org_id = $2
+  AND deleted_at IS NULL
+  AND settings #>> '{hosted_page,enabled}' = 'true';

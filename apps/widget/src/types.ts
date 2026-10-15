@@ -233,6 +233,13 @@ export interface FeedSession {
    */
   show_withdrawal_notice?: boolean;
   /**
+   * The checkout consent (P2): whether the buyer must tick "I accept the sale
+   * terms of the organizer <seller_legal_name> and the platform policy"
+   * before paying, and the two pages the text links to. Absent on older
+   * backends (treated as not required).
+   */
+  consent?: import('./lib/consent.js').SessionConsent;
+  /**
    * IANA zone of the session's venue ("Europe/Madrid"); "" or absent when
    * unknown. Session chips are formatted in it — the time on the door —
    * never in the buyer's own zone.
