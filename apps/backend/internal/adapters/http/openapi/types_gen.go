@@ -989,6 +989,15 @@ const (
 	ReviewReconciliationReportJSONBodyDecisionDisputed ReviewReconciliationReportJSONBodyDecision = "disputed"
 )
 
+// AddEventReportPhotoRequest Body of POST .../events/{event_id}/photo-report.
+type AddEventReportPhotoRequest struct {
+	// Caption Optional caption, up to 200 characters; blank means none.
+	Caption *string `json:"caption"`
+
+	// MediaId An active media object of the same organization with owner type `event_report` (422 `event.invalid_report_media` otherwise).
+	MediaId openapi_types.UUID `json:"media_id"`
+}
+
 // AdminAddMemberRequest Request body for POST /v1/admin/organizations/{org_id}/members
 // (feature #234). Exactly one of user_id and email must be supplied.
 type AdminAddMemberRequest struct {
@@ -4489,6 +4498,15 @@ type CreateCustomerImportRequestLegalBasis string
 // CreateCustomerImportRequestSourceLabel Source format of the uploaded file, selecting the parser used by dry-run/apply.
 type CreateCustomerImportRequestSourceLabel string
 
+// CreateEventPartnerLinkRequest Body of POST .../events/{event_id}/partner-links.
+type CreateEventPartnerLinkRequest struct {
+	// SellerName Who sells there, 1 to 120 characters. Absent, null or blank means the host of the address without a leading `www.`.
+	SellerName *string `json:"seller_name"`
+
+	// Url A full https address without spaces (400 `event.invalid_partner_url`), up to 500 characters.
+	Url string `json:"url"`
+}
+
 // CreateEventRequest Create-time payload for POST /v1/organizations/{org_id}/events.
 // The owning organization is taken from the path; the body MUST NOT
 // repeat it. Dates and venue are NOT collected here (AB-36/AB-37):
@@ -6022,6 +6040,66 @@ type EventListResponse struct {
 	Events []EventItem `json:"events"`
 }
 
+// EventMapPoint The one map point of an event.
+type EventMapPoint struct {
+	// CreatedAt When the point was first set.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Label Optional text shown with the point, up to 200 characters.
+	Label *string `json:"label"`
+
+	// Latitude Latitude in degrees, -90 to 90, six decimals kept.
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in degrees, -180 to 180, six decimals kept.
+	Longitude float64 `json:"longitude"`
+
+	// UpdatedAt When the point was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// EventPartnerLink One "where else to buy" link of an event.
+type EventPartnerLink struct {
+	// CreatedAt When the link was added.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event the link belongs to.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Id UUIDv7 of the link.
+	Id openapi_types.UUID `json:"id"`
+
+	// Position Display order, 0 to 2.
+	Position int `json:"position"`
+
+	// SellerName Who sells there; shown beside the link so the buyer knows. The host of the address unless the client named a seller.
+	SellerName string `json:"seller_name"`
+
+	// UpdatedAt When the link was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Url The seller's page for this event; always an https address.
+	Url string `json:"url"`
+}
+
+// EventPartnerLinkList The partner links of an event in display order.
+type EventPartnerLinkList struct {
+	// Items The links, first to last.
+	Items []EventPartnerLink `json:"items"`
+
+	// MaxItems The most links one event may carry (3).
+	MaxItems int `json:"max_items"`
+}
+
+// EventPartnerLinkOrderRequest Body of PUT .../partner-links/order.
+type EventPartnerLinkOrderRequest struct {
+	// LinkIds Every partner link id of the event exactly once, in the new display order.
+	LinkIds []openapi_types.UUID `json:"link_ids"`
+}
+
 // EventPromoterResponse The promoter of an event after PUT .../events/{id}/promoter.
 type EventPromoterResponse struct {
 	// EventId The event.
@@ -6067,6 +6145,45 @@ type EventPublicationListResponse struct {
 	// Publications Zero or more publication rows for the event. May be
 	// empty when the event has not yet been published.
 	Publications []EventPublication `json:"publications"`
+}
+
+// EventReportPhoto One photo of an event's photo report.
+type EventReportPhoto struct {
+	// Caption Optional caption, up to 200 characters.
+	Caption *string `json:"caption"`
+
+	// CreatedAt When the photo was added.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Id UUIDv7 of the report entry.
+	Id openapi_types.UUID `json:"id"`
+
+	// MediaId UUIDv7 of the media object holding the picture (`GET /v1/media/{id}` signs a download address).
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Position Display order, 0 to 29.
+	Position int `json:"position"`
+
+	// UpdatedAt When the photo was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// EventReportPhotoList The photo report of an event in display order.
+type EventReportPhotoList struct {
+	// Items The photos, first to last.
+	Items []EventReportPhoto `json:"items"`
+
+	// MaxItems The most photos one report may carry (30).
+	MaxItems int `json:"max_items"`
+}
+
+// EventReportPhotoOrderRequest Body of PUT .../photo-report/order.
+type EventReportPhotoOrderRequest struct {
+	// PhotoIds Every photo id of the report exactly once, in the new display order.
+	PhotoIds []openapi_types.UUID `json:"photo_ids"`
 }
 
 // EventSalesSummary The top level of EventSummary for one event, without the per-category
@@ -12996,6 +13113,18 @@ type SetEventContactRequest struct {
 	PhoneHidden *bool `json:"phone_hidden,omitempty"`
 }
 
+// SetEventMapPointRequest Body of PUT .../events/{event_id}/map-point; replaces the point as a whole.
+type SetEventMapPointRequest struct {
+	// Label Optional text shown with the point, up to 200 characters; absent, null or blank clears it.
+	Label *string `json:"label"`
+
+	// Latitude Latitude in degrees, -90 to 90 (400 `event.invalid_map_point`).
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in degrees, -180 to 180 (400 `event.invalid_map_point`).
+	Longitude float64 `json:"longitude"`
+}
+
 // SetEventPromoterRequest Body of PUT /v1/organizations/{org_id}/events/{id}/promoter.
 type SetEventPromoterRequest struct {
 	// PromoterId An active promoter of the organization, or null (or absent) to
@@ -13719,6 +13848,21 @@ type UpdateChannelRequestPaymentMode string
 // registered payment module, otherwise 400
 // `channel.invalid_config`.
 type UpdateChannelRequestProvider string
+
+// UpdateEventPartnerLinkRequest Body of PATCH .../partner-links/{link_id}. At least one member is required; an absent member keeps its stored value.
+type UpdateEventPartnerLinkRequest struct {
+	// SellerName A new seller name, 1 to 120 characters. Blank keeps the current name (or, when the address changed and the name was derived from the old one, derives it again).
+	SellerName *string `json:"seller_name,omitempty"`
+
+	// Url A new https address (400 `event.invalid_partner_url`).
+	Url *string `json:"url,omitempty"`
+}
+
+// UpdateEventReportPhotoRequest Body of PATCH .../photo-report/{photo_id}.
+type UpdateEventReportPhotoRequest struct {
+	// Caption The new caption, up to 200 characters; null or blank removes it.
+	Caption *string `json:"caption"`
+}
 
 // UpdateEventRequest Partial update for PATCH /v1/organizations/{org_id}/events/{id}.
 // All fields are optional; omitted (or empty) fields leave the
@@ -16016,6 +16160,9 @@ type CreateEventJSONRequestBody = CreateEventRequest
 // SetEventContactJSONRequestBody defines body for SetEventContact for application/json ContentType.
 type SetEventContactJSONRequestBody = SetEventContactRequest
 
+// SetEventMapPointJSONRequestBody defines body for SetEventMapPoint for application/json ContentType.
+type SetEventMapPointJSONRequestBody = SetEventMapPointRequest
+
 // AddEventGalleryItemJSONRequestBody defines body for AddEventGalleryItem for application/json ContentType.
 type AddEventGalleryItemJSONRequestBody = EventGalleryAddRequest
 
@@ -16024,6 +16171,24 @@ type ReorderEventGalleryJSONRequestBody = EventGalleryOrderRequest
 
 // UpdateEventGalleryItemJSONRequestBody defines body for UpdateEventGalleryItem for application/json ContentType.
 type UpdateEventGalleryItemJSONRequestBody = EventGalleryCaptionRequest
+
+// CreateEventPartnerLinkJSONRequestBody defines body for CreateEventPartnerLink for application/json ContentType.
+type CreateEventPartnerLinkJSONRequestBody = CreateEventPartnerLinkRequest
+
+// ReorderEventPartnerLinksJSONRequestBody defines body for ReorderEventPartnerLinks for application/json ContentType.
+type ReorderEventPartnerLinksJSONRequestBody = EventPartnerLinkOrderRequest
+
+// UpdateEventPartnerLinkJSONRequestBody defines body for UpdateEventPartnerLink for application/json ContentType.
+type UpdateEventPartnerLinkJSONRequestBody = UpdateEventPartnerLinkRequest
+
+// AddEventReportPhotoJSONRequestBody defines body for AddEventReportPhoto for application/json ContentType.
+type AddEventReportPhotoJSONRequestBody = AddEventReportPhotoRequest
+
+// ReorderEventReportPhotosJSONRequestBody defines body for ReorderEventReportPhotos for application/json ContentType.
+type ReorderEventReportPhotosJSONRequestBody = EventReportPhotoOrderRequest
+
+// UpdateEventReportPhotoJSONRequestBody defines body for UpdateEventReportPhoto for application/json ContentType.
+type UpdateEventReportPhotoJSONRequestBody = UpdateEventReportPhotoRequest
 
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = CreateSessionRequest

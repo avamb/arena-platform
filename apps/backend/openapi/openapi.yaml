@@ -8442,6 +8442,222 @@ components:
           type: boolean
           description: True keeps the phone out of letters to buyers. Absent means false.
 
+    # ── task 1-2b: partner links, map point, photo report ─────────────────
+
+    EventPartnerLink:
+      type: object
+      required: [id, event_id, url, seller_name, position, created_at, updated_at]
+      description: One "where else to buy" link of an event.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the link.
+        event_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the event the link belongs to.
+        url:
+          type: string
+          description: The seller's page for this event; always an https address.
+          example: "https://ticketportal.cz/event/12345"
+        seller_name:
+          type: string
+          description: Who sells there; shown beside the link so the buyer knows. The host of the address unless the client named a seller.
+          example: "ticketportal.cz"
+        position:
+          type: integer
+          description: Display order, 0 to 2.
+        created_at:
+          type: string
+          format: date-time
+          description: When the link was added.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the link was last changed.
+
+    EventPartnerLinkList:
+      type: object
+      required: [items, max_items]
+      description: The partner links of an event in display order.
+      properties:
+        items:
+          type: array
+          description: The links, first to last.
+          items:
+            $ref: "#/components/schemas/EventPartnerLink"
+        max_items:
+          type: integer
+          description: The most links one event may carry (3).
+
+    CreateEventPartnerLinkRequest:
+      type: object
+      required: [url]
+      description: Body of POST .../events/{event_id}/partner-links.
+      properties:
+        url:
+          type: string
+          description: A full https address without spaces (400 `event.invalid_partner_url`), up to 500 characters.
+          example: "https://ticketportal.cz/event/12345"
+        seller_name:
+          type: [string, "null"]
+          description: Who sells there, 1 to 120 characters. Absent, null or blank means the host of the address without a leading `www.`.
+          example: "Ticketportal"
+
+    UpdateEventPartnerLinkRequest:
+      type: object
+      description: Body of PATCH .../partner-links/{link_id}. At least one member is required; an absent member keeps its stored value.
+      properties:
+        url:
+          type: string
+          description: A new https address (400 `event.invalid_partner_url`).
+        seller_name:
+          type: string
+          description: A new seller name, 1 to 120 characters. Blank keeps the current name (or, when the address changed and the name was derived from the old one, derives it again).
+
+    EventPartnerLinkOrderRequest:
+      type: object
+      required: [link_ids]
+      description: Body of PUT .../partner-links/order.
+      properties:
+        link_ids:
+          type: array
+          description: Every partner link id of the event exactly once, in the new display order.
+          items:
+            type: string
+            format: uuid
+
+    EventReportPhotoOrderRequest:
+      type: object
+      required: [photo_ids]
+      description: Body of PUT .../photo-report/order.
+      properties:
+        photo_ids:
+          type: array
+          description: Every photo id of the report exactly once, in the new display order.
+          items:
+            type: string
+            format: uuid
+
+    EventMapPoint:
+      type: object
+      required: [event_id, latitude, longitude, label, created_at, updated_at]
+      description: The one map point of an event.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the event.
+        latitude:
+          type: number
+          format: double
+          description: Latitude in degrees, -90 to 90, six decimals kept.
+          example: 50.075538
+        longitude:
+          type: number
+          format: double
+          description: Longitude in degrees, -180 to 180, six decimals kept.
+          example: 14.4378
+        label:
+          type: [string, "null"]
+          description: Optional text shown with the point, up to 200 characters.
+        created_at:
+          type: string
+          format: date-time
+          description: When the point was first set.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the point was last changed.
+
+    SetEventMapPointRequest:
+      type: object
+      required: [latitude, longitude]
+      description: Body of PUT .../events/{event_id}/map-point; replaces the point as a whole.
+      properties:
+        latitude:
+          type: number
+          format: double
+          description: Latitude in degrees, -90 to 90 (400 `event.invalid_map_point`).
+          example: 50.0755
+        longitude:
+          type: number
+          format: double
+          description: Longitude in degrees, -180 to 180 (400 `event.invalid_map_point`).
+          example: 14.4378
+        label:
+          type: [string, "null"]
+          description: Optional text shown with the point, up to 200 characters; absent, null or blank clears it.
+
+    EventReportPhoto:
+      type: object
+      required: [id, event_id, media_id, position, caption, created_at, updated_at]
+      description: One photo of an event's photo report.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the report entry.
+        event_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the event.
+        media_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the media object holding the picture (`GET /v1/media/{id}` signs a download address).
+        position:
+          type: integer
+          description: Display order, 0 to 29.
+        caption:
+          type: [string, "null"]
+          description: Optional caption, up to 200 characters.
+        created_at:
+          type: string
+          format: date-time
+          description: When the photo was added.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the photo was last changed.
+
+    EventReportPhotoList:
+      type: object
+      required: [items, max_items]
+      description: The photo report of an event in display order.
+      properties:
+        items:
+          type: array
+          description: The photos, first to last.
+          items:
+            $ref: "#/components/schemas/EventReportPhoto"
+        max_items:
+          type: integer
+          description: The most photos one report may carry (30).
+
+    AddEventReportPhotoRequest:
+      type: object
+      required: [media_id]
+      description: Body of POST .../events/{event_id}/photo-report.
+      properties:
+        media_id:
+          type: string
+          format: uuid
+          description: An active media object of the same organization with owner type `event_report` (422 `event.invalid_report_media` otherwise).
+        caption:
+          type: [string, "null"]
+          description: Optional caption, up to 200 characters; blank means none.
+
+    UpdateEventReportPhotoRequest:
+      type: object
+      required: [caption]
+      description: Body of PATCH .../photo-report/{photo_id}.
+      properties:
+        caption:
+          type: [string, "null"]
+          description: The new caption, up to 200 characters; null or blank removes it.
+
     EventContactResponse:
       type: object
       required: [contact]
@@ -26299,6 +26515,921 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ── task 1-2b: partner links, map point, photo report ──
+  /v1/organizations/{org_id}/events/{event_id}/partner-links:
+    get:
+      operationId: listEventPartnerLinks
+      summary: List the "where else to buy" links of an event
+      description: |
+        Returns the event's links to other sellers in display order (at most 3).
+        Requires `event.read` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The links, in display order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventPartnerLinkList"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    post:
+      operationId: createEventPartnerLink
+      summary: Add a "where else to buy" link
+      description: |
+        Adds a link to another seller of the same event. The address must be a full
+        https address without spaces (400 `event.invalid_partner_url`). The seller shown
+        beside the link is `seller_name`, or, when it is omitted or blank, the host of
+        the address without a leading `www.` (for example `ticketportal.cz`). An event
+        holds at most 3 links (409 `event.partner_links_full`); the new link takes the
+        lowest free position.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEventPartnerLinkRequest"
+      responses:
+        "201":
+          description: The link that was added.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventPartnerLink"
+        "400":
+          description: Invalid body, address or seller name (`event.invalid_body`, `event.invalid_partner_url`, `event.invalid_seller_name`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The event already holds 3 links (`event.partner_links_full`, `error.details.max_items`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+
+  /v1/organizations/{org_id}/events/{event_id}/partner-links/order:
+    put:
+      operationId: reorderEventPartnerLinks
+      summary: Reorder the "where else to buy" links
+      description: |
+        Sets the display order. `link_ids` must be distinct UUIDs (400
+        `event.invalid_order` otherwise) and must list every link of the event exactly
+        once (409 `event.partner_links_order_mismatch`: reload and retry). The whole
+        reorder is one statement; the answer is the list in its new order.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventPartnerLinkOrderRequest"
+      responses:
+        "200":
+          description: The links in their new order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventPartnerLinkList"
+        "400":
+          description: Invalid body, or `link_ids` is not a list of distinct UUIDs (`event.invalid_body`, `event.invalid_order`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "`link_ids` does not list every stored item exactly once (`event.partner_links_order_mismatch`); reload the list and try again."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+
+  /v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}:
+    patch:
+      operationId: updateEventPartnerLink
+      summary: Change a "where else to buy" link
+      description: |
+        Changes the address, the seller name or both; an absent member keeps its
+        stored value, and so does an empty string `""` for `seller_name` (it never
+        clears the name). When only the address changes, a seller name that was derived
+        from the old address follows the new one, while a name the client typed is
+        kept.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: link_id
+          in: path
+          required: true
+          description: UUIDv7 of the partner link
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEventPartnerLinkRequest"
+      responses:
+        "200":
+          description: The link after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventPartnerLink"
+        "400":
+          description: Invalid body, address or seller name (`event.invalid_body`, `event.invalid_partner_url`, `event.invalid_seller_name`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`) or no such link on it (`event.partner_link_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    delete:
+      operationId: deleteEventPartnerLink
+      summary: Remove a "where else to buy" link
+      description: |
+        Removes the link; the links behind it move up so positions stay 0 to n-1.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: link_id
+          in: path
+          required: true
+          description: UUIDv7 of the partner link
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Removed.
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`) or no such link on it (`event.partner_link_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+
+  /v1/organizations/{org_id}/events/{event_id}/map-point:
+    get:
+      operationId: getEventMapPoint
+      summary: Read the map point of an event
+      description: |
+        Returns the event's one map point as a bare object. An event without a point
+        answers 404 `event.map_point_not_found`.
+        Requires `event.read` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The map point.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventMapPoint"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    put:
+      operationId: setEventMapPoint
+      summary: Set the map point of an event
+      description: |
+        Creates the point or replaces it as a whole (an absent `label` clears the
+        label). Latitude must be between -90 and 90 and longitude between -180 and 180
+        (400 `event.invalid_map_point`); six decimals are kept.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetEventMapPointRequest"
+      responses:
+        "200":
+          description: The map point as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventMapPoint"
+        "400":
+          description: Invalid body or coordinates (`event.invalid_body`, `event.invalid_map_point`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    delete:
+      operationId: deleteEventMapPoint
+      summary: Remove the map point of an event
+      description: |
+        Removes the point.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Removed.
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`) or the event has no map point (`event.map_point_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+
+  /v1/organizations/{org_id}/events/{event_id}/photo-report:
+    get:
+      operationId: listEventReportPhotos
+      summary: List the photo report of an event
+      description: |
+        Returns every photo of the photo report in display order, always: the
+        organizer sees the report before the event. Buyers see it only after the event
+        has ended (the public routes read it through a query that hides it until then).
+        Requires `event.read` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The photos, in display order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventReportPhotoList"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    post:
+      operationId: addEventReportPhoto
+      summary: Add a photo to the photo report
+      description: |
+        Adds an uploaded photo. `media_id` must be an active media object of the
+        same organization with owner type `event_report` (422 `event.invalid_report_media`
+        otherwise, also for another organization's file). A report holds at most 30
+        photos (409 `event.report_photos_full`) and the same file only once (409
+        `event.report_photos_duplicate`); the new photo takes the lowest free position.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddEventReportPhotoRequest"
+      responses:
+        "201":
+          description: The photo that was added.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventReportPhoto"
+        "400":
+          description: Invalid body or caption (`event.invalid_body`, `event.invalid_caption`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The report holds 30 photos (`event.report_photos_full`, `error.details.max_items`), or the file is already in it (`event.report_photos_duplicate`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The media object is unknown, another organization's, deleted or not an `event_report` file (`event.invalid_report_media`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+
+  /v1/organizations/{org_id}/events/{event_id}/photo-report/order:
+    put:
+      operationId: reorderEventReportPhotos
+      summary: Reorder the photo report
+      description: |
+        Sets the display order. `photo_ids` must be distinct UUIDs (400
+        `event.invalid_order` otherwise) and must list every photo of the report
+        exactly once (409 `event.report_photos_order_mismatch`: reload and retry). The
+        whole reorder is one statement; the answer is the list in its new order.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventReportPhotoOrderRequest"
+      responses:
+        "200":
+          description: The photos in their new order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventReportPhotoList"
+        "400":
+          description: Invalid body, or `photo_ids` is not a list of distinct UUIDs (`event.invalid_body`, `event.invalid_order`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "`photo_ids` does not list every stored item exactly once (`event.report_photos_order_mismatch`); reload the list and try again."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+
+  /v1/organizations/{org_id}/events/{event_id}/photo-report/{photo_id}:
+    patch:
+      operationId: updateEventReportPhoto
+      summary: Change the caption of a report photo
+      description: |
+        Sets the caption; `caption: null` or a blank text removes it.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: photo_id
+          in: path
+          required: true
+          description: UUIDv7 of the photo-report photo
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEventReportPhotoRequest"
+      responses:
+        "200":
+          description: The photo after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventReportPhoto"
+        "400":
+          description: Invalid body or caption (`event.invalid_body`, `event.invalid_caption`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`) or no such photo on it (`event.photo_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    delete:
+      operationId: deleteEventReportPhoto
+      summary: Remove a photo from the photo report
+      description: |
+        Removes the photo; the photos behind it move up so positions stay 0 to n-1. The uploaded file itself is kept.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: photo_id
+          in: path
+          required: true
+          description: UUIDv7 of the photo-report photo
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Removed.
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`) or no such photo on it (`event.photo_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
 
   /v1/organizations/{org_id}/events/{event_id}/delete-impact:
     get:

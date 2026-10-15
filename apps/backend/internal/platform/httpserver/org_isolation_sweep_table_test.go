@@ -264,6 +264,26 @@ var orgIsolationAuditedSafe = map[string]string{
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/change-impact":         "events (requireEventInOrg on the session's event)",
 	"GET /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/macs-export": "macs_export.go checks the session against event AND organization",
 
+	// hmaterials.ExtrasHandler (task 1-2b): every handler starts with scope(),
+	// which loads the event and answers 404 event.not_found unless its
+	// organization is the path organization; the child rows (link, photo) are
+	// then read and written by (id, event_id), and a photo's media_id must be an
+	// event_report object of the path organization. Covered by
+	// TestEventMaterialsExtras_StayInsideTheOrganization (all routes, as an org-B owner).
+	"GET /v1/organizations/{org_id}/events/{event_id}/partner-links":              "hmaterials",
+	"POST /v1/organizations/{org_id}/events/{event_id}/partner-links":             "hmaterials",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/partner-links/order":        "hmaterials",
+	"PATCH /v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}":  "hmaterials",
+	"DELETE /v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}": "hmaterials",
+	"GET /v1/organizations/{org_id}/events/{event_id}/map-point":                  "hmaterials",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/map-point":                  "hmaterials",
+	"DELETE /v1/organizations/{org_id}/events/{event_id}/map-point":               "hmaterials",
+	"GET /v1/organizations/{org_id}/events/{event_id}/photo-report":               "hmaterials",
+	"POST /v1/organizations/{org_id}/events/{event_id}/photo-report":              "hmaterials",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/photo-report/order":         "hmaterials",
+	"PATCH /v1/organizations/{org_id}/events/{event_id}/photo-report/{photo_id}":  "hmaterials",
+	"DELETE /v1/organizations/{org_id}/events/{event_id}/photo-report/{photo_id}": "hmaterials",
+
 	// hcatalog channels CRUD, gateway credential, WordPress webhook: queries scoped by (id, org_id).
 	"DELETE /v1/organizations/{org_id}/channels/{id}":                    "channels",
 	"DELETE /v1/organizations/{org_id}/channels/{id}/gateway-credential": "channels",
