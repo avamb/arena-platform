@@ -22,9 +22,7 @@ package eventbot
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -39,7 +37,7 @@ import (
 // under Telegram's limit for the odd 40-ticket group booking).
 const maxOrderTickets = 12
 
-// orderMeta is what the card borrows from the list row of its order.
+// orderMeta is the event line of the card: name, session start and venue zone.
 type orderMeta struct {
 	EventName string
 	StartAt   time.Time
@@ -57,7 +55,7 @@ func (b *Bot) showOrderCard(ctx context.Context, chatID int64, editMsgID *int, f
 		b.ecError(ctx, chatID, editMsgID, id, err, "or:b")
 		return
 	}
-	meta := b.orderMeta(ctx, jwt, orgID, detail)
+	meta := orderMetaOf(detail)
 
 	st.CardID = &orderID
 	if editMsgID != nil {
@@ -81,24 +79,14 @@ func (b *Bot) showOrderCard(ctx context.Context, chatID int64, editMsgID *int, f
 	}
 }
 
-// orderMeta finds the order's event name, date and zone in the list row of the
-// same order (searched by its number inside its own date). A failure only
-// costs the event lines, never the card.
-func (b *Bot) orderMeta(ctx context.Context, jwt string, orgID uuid.UUID, d openapi.OrderDetail) *orderMeta {
-	session := d.SessionId
-	page, err := b.arena.ListOrders(ctx, jwt, orgID, OrderListQuery{
-		Q: "#" + strconv.FormatInt(d.SystemId, 10), SessionID: &session, Limit: 50,
-	})
-	if err != nil {
-		b.logger.Warn("eventbot: order meta lookup failed", slog.String("order_id", d.Id.String()), slog.String("error", routeOnly(err)))
+// orderMetaOf reads the order's event name, date and zone from the card
+// itself (OrderDetail carries them since 0-2); nil when the name is empty, so
+// the card simply has no event line.
+func orderMetaOf(d openapi.OrderDetail) *orderMeta {
+	if strings.TrimSpace(d.EventName) == "" {
 		return nil
 	}
-	for _, o := range page.Orders {
-		if o.Id == d.Id {
-			return &orderMeta{EventName: o.EventName, StartAt: o.SessionStartAt, TZ: o.SessionTimezone}
-		}
-	}
-	return nil
+	return &orderMeta{EventName: d.EventName, StartAt: d.SessionStartAt, TZ: d.VenueTimezone}
 }
 
 // orderCardText is the card. plain leaves the call / WhatsApp links out
