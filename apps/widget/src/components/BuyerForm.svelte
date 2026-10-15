@@ -4,7 +4,8 @@
    *
    * Driven by the session's `buyer_fields` array:
    *   - email is always shown (mandatory for all checkouts)
-   *   - name and phone shown only when their field is `enabled`
+   *   - name (one field: first and last name) and phone shown when their
+   *     field is `enabled`; marked "(optional)" unless `required`
    *
    * Features:
    *  • Real-time email typo suggestions (gmail/outlook/yandex/seznam…)
@@ -131,7 +132,7 @@
     <div class="field" class:has-error={!!errors.name}>
       <label for="bf-name" class="field-label">
         {t.name_label}
-        {#if !nameField?.required}<span class="optional">(optional)</span>{/if}
+        {#if !nameField?.required}<span class="optional" data-testid="bf-name-optional">{t.optional_label}</span>{/if}
       </label>
       <input
         id="bf-name"
@@ -155,7 +156,7 @@
     <div class="field" class:has-error={!!errors.phone}>
       <label for="bf-phone" class="field-label">
         {t.phone_label}
-        {#if !phoneField?.required}<span class="optional">(optional)</span>{/if}
+        {#if !phoneField?.required}<span class="optional" data-testid="bf-phone-optional">{t.optional_label}</span>{/if}
       </label>
       <input
         id="bf-phone"
