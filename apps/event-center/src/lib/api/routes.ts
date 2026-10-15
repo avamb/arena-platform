@@ -52,6 +52,13 @@ export const API = {
   order: { method: "GET", path: "/v1/organizations/{org_id}/orders/{id}" },
   // 4-2: cancel an unpaid order. Asks for the password again (spec 37 4.6).
   cancelOrder: { method: "POST", path: "/v1/organizations/{org_id}/orders/{id}/cancel" },
+  // 4-7: the owner's "Organization data".
+  orgDetail: { method: "GET", path: "/v1/organizations/{id}" },
+  orgUpdate: { method: "PATCH", path: "/v1/organizations/{id}" },
+  sellerProfile: { method: "GET", path: "/v1/organizations/{org_id}/seller-profile" },
+  sellerProfileUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/seller-profile" },
+  sellerDisplayUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/channels/{channel_id}/seller-display" },
+  paymentConfigs: { method: "GET", path: "/v1/organizations/{org_id}/payment-configs" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;

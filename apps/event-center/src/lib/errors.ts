@@ -94,7 +94,17 @@ export type ApiErrorStem =
   | "promoPerCustomer"
   | "promoRateLimited"
   | "promoDuplicate"
-  | "eventHasPaidOrders";
+  | "eventHasPaidOrders"
+  // 4-7
+  | "taxIdInvalid"
+  | "legalCountryInvalid"
+  | "legalFormInvalid"
+  | "emailInvalid"
+  | "phoneInvalid"
+  | "sellerIncomplete"
+  | "apiKeyForbidden"
+  | "sellerHideOperatorOnly"
+  | "kybOperatorOnly";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -104,6 +114,9 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "refundNotRetryable", "refundKeyReused", "tierNotOnSale", "tierSoldOut", "tierSeated", "tierBelowUsed",
   "tierSaleWindow", "promoNotApplicable", "promoMinimum", "promoExhausted", "promoPerCustomer",
   "promoRateLimited", "promoDuplicate", "eventHasPaidOrders",
+  // 4-7
+  "taxIdInvalid", "legalCountryInvalid", "legalFormInvalid", "emailInvalid", "phoneInvalid", "sellerIncomplete",
+  "apiKeyForbidden", "sellerHideOperatorOnly", "kybOperatorOnly",
 ];
 
 /**
@@ -137,6 +150,20 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "promo.rate_limited": "promoRateLimited",
   "promo.duplicate": "promoDuplicate",
   "event.has_paid_orders": "eventHasPaidOrders",
+  // 4-7
+  "org.invalid_tax_id": "taxIdInvalid",
+  "org.invalid_tax_id_scheme": "taxIdInvalid",
+  "org.invalid_legal_address_country": "legalCountryInvalid",
+  "org.invalid_legal_form": "legalFormInvalid",
+  "org.invalid_contact_email": "emailInvalid",
+  "seller.invalid_email": "emailInvalid",
+  "seller.invalid_phone": "phoneInvalid",
+  "seller.incomplete": "sellerIncomplete",
+  "seller.api_key_forbidden": "apiKeyForbidden",
+  "org.identity_fields_api_key_forbidden": "apiKeyForbidden",
+  "seller.hide_superadmin_only": "sellerHideOperatorOnly",
+  "org.kyb_status_superadmin_only": "kybOperatorOnly",
+  "seller.channel_not_found": "notFound",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",

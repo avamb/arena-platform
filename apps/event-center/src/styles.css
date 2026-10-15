@@ -606,3 +606,58 @@ label {
     justify-content: space-between;
   }
 }
+
+/* 4-7: Organization data. */
+.org-data {
+  display: grid;
+  gap: 1.25rem;
+  max-width: 640px;
+}
+
+.org-data section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.org-form {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.org-form input,
+.org-form select {
+  width: 100%;
+}
+
+.field-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.field-error {
+  margin: 0;
+  color: var(--bad-text);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.org-form .btn,
+.channel-form .btn {
+  margin-block-start: 0.75rem;
+  justify-self: start;
+}
+
+.channel-form {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.channel-form input {
+  width: 100%;
+}
+
+.plain-list {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+}

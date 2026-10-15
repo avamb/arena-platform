@@ -18,6 +18,7 @@ import { OrdersScreen } from "@/screens/OrdersScreen";
 import { OrderScreen } from "@/screens/OrderScreen";
 import { NotificationsScreen } from "@/screens/NotificationsScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
+import { OrgDataScreen } from "@/screens/OrgDataScreen";
 import { parseEventsSearch, parseLoginSearch, parseOrdersSearch } from "@/lib/search";
 
 const rootRoute = createRootRoute({ component: RootLayout, notFoundComponent: NotFoundScreen });
@@ -115,6 +116,14 @@ const notificationsRoute = createRoute({
   component: NotificationsScreen,
 });
 
+// 4-7: the owner's "Organization data". Reachable by the address for everyone,
+// the screen itself explains it is the owner's.
+const orgDataRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/org-data",
+  component: OrgDataScreen,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -131,6 +140,7 @@ export const routeTree = rootRoute.addChildren([
     ordersRoute,
     orderRoute,
     notificationsRoute,
+    orgDataRoute,
   ]),
 ]);
 
