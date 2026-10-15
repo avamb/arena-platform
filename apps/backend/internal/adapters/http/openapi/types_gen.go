@@ -5804,6 +5804,60 @@ type EventEnvelope struct {
 	Event EventItem `json:"event"`
 }
 
+// EventGalleryAddRequest Body of POST .../media-items.
+type EventGalleryAddRequest struct {
+	// Caption Optional caption, up to 200 characters; blank means none.
+	Caption *string `json:"caption"`
+
+	// MediaId UUIDv7 of a live media object of this organization with owner type `event_gallery`.
+	MediaId openapi_types.UUID `json:"media_id"`
+}
+
+// EventGalleryCaptionRequest Body of PATCH .../media-items/{item_id}.
+type EventGalleryCaptionRequest struct {
+	// Caption The new caption, up to 200 characters. Null or a blank string clears it.
+	Caption *string `json:"caption"`
+}
+
+// EventGalleryItem One photo of an event's gallery.
+type EventGalleryItem struct {
+	// Caption Caption shown under the photo, up to 200 characters; null when there is none.
+	Caption *string `json:"caption"`
+
+	// CreatedAt ISO-8601 UTC timestamp of creation.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Id UUIDv7 of the gallery entry.
+	Id openapi_types.UUID `json:"id"`
+
+	// MediaId UUIDv7 of the media object (owner type `event_gallery`) that holds the picture.
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Position Display position, 0-based. Positions are always 0..n-1 without gaps.
+	Position int `json:"position"`
+
+	// UpdatedAt ISO-8601 UTC timestamp of the last change.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// EventGalleryList The gallery photos of an event in display order.
+type EventGalleryList struct {
+	// Items The photos, first to last.
+	Items []EventGalleryItem `json:"items"`
+
+	// MaxItems The most photos one event may carry (6).
+	MaxItems int `json:"max_items"`
+}
+
+// EventGalleryOrderRequest Body of PUT .../media-items/order.
+type EventGalleryOrderRequest struct {
+	// ItemIds Every gallery entry id of the event exactly once, in the new display order.
+	ItemIds []openapi_types.UUID `json:"item_ids"`
+}
+
 // EventItem A single event organized by one organization. Since Wave 4
 // (AB-36/AB-37) the event carries no venue and no own dates — both
 // belong to its sessions. `first_session_at` / `last_session_at`
@@ -6256,6 +6310,54 @@ type EventTranslations map[string]struct {
 
 	// Name Translated event name for this locale.
 	Name *string `json:"name,omitempty"`
+}
+
+// EventVideo One video link of an event. Only the link is stored, never the video.
+type EventVideo struct {
+	// CreatedAt ISO-8601 UTC timestamp of creation.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Id UUIDv7 of the video entry.
+	Id openapi_types.UUID `json:"id"`
+
+	// Position Display position, 0-based. Positions are always 0..n-1 without gaps.
+	Position int `json:"position"`
+
+	// Provider One of `youtube`, `vimeo`, `rutube` (recognized, embeddable) or `https` (any other link, shown as a plain link).
+	Provider string `json:"provider"`
+
+	// UpdatedAt ISO-8601 UTC timestamp of the last change.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Url The link as pasted (trimmed), always https, up to 500 characters.
+	Url string `json:"url"`
+
+	// VideoId The id parsed out of the link; null for provider `https`.
+	VideoId *string `json:"video_id"`
+}
+
+// EventVideoAddRequest Body of POST .../videos.
+type EventVideoAddRequest struct {
+	// Url The video link, https only, no blanks, up to 500 characters.
+	Url string `json:"url"`
+}
+
+// EventVideoList The video links of an event in display order.
+type EventVideoList struct {
+	// Items The videos, first to last.
+	Items []EventVideo `json:"items"`
+
+	// MaxItems The most videos one event may carry (4).
+	MaxItems int `json:"max_items"`
+}
+
+// EventVideoOrderRequest Body of PUT .../videos/order.
+type EventVideoOrderRequest struct {
+	// VideoIds Every video id of the event exactly once, in the new display order.
+	VideoIds []openapi_types.UUID `json:"video_ids"`
 }
 
 // ExternalAllocation A quota of seats pre-allocated to an external distribution partner
@@ -15887,6 +15989,15 @@ type CreateEventJSONRequestBody = CreateEventRequest
 // SetEventContactJSONRequestBody defines body for SetEventContact for application/json ContentType.
 type SetEventContactJSONRequestBody = SetEventContactRequest
 
+// AddEventGalleryItemJSONRequestBody defines body for AddEventGalleryItem for application/json ContentType.
+type AddEventGalleryItemJSONRequestBody = EventGalleryAddRequest
+
+// ReorderEventGalleryJSONRequestBody defines body for ReorderEventGallery for application/json ContentType.
+type ReorderEventGalleryJSONRequestBody = EventGalleryOrderRequest
+
+// UpdateEventGalleryItemJSONRequestBody defines body for UpdateEventGalleryItem for application/json ContentType.
+type UpdateEventGalleryItemJSONRequestBody = EventGalleryCaptionRequest
+
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = CreateSessionRequest
 
@@ -15925,6 +16036,12 @@ type UpdateTicketTierJSONRequestBody = UpdateTicketTierRequest
 
 // PutTierPriceScheduleJSONRequestBody defines body for PutTierPriceSchedule for application/json ContentType.
 type PutTierPriceScheduleJSONRequestBody = PutTierPriceScheduleRequest
+
+// AddEventVideoJSONRequestBody defines body for AddEventVideo for application/json ContentType.
+type AddEventVideoJSONRequestBody = EventVideoAddRequest
+
+// ReorderEventVideosJSONRequestBody defines body for ReorderEventVideos for application/json ContentType.
+type ReorderEventVideosJSONRequestBody = EventVideoOrderRequest
 
 // UpdateEventJSONRequestBody defines body for UpdateEvent for application/json ContentType.
 type UpdateEventJSONRequestBody = UpdateEventRequest
