@@ -372,7 +372,7 @@ describe('CHECKOUT_I18N', () => {
   const LOCALES: Array<keyof typeof CHECKOUT_I18N> = ['en', 'ru', 'cs', 'he'];
   const REQUIRED_KEYS: Array<keyof typeof CHECKOUT_I18N['en']> = [
     'email_label', 'email_required', 'email_invalid', 'email_suggestion',
-    'name_label', 'name_required', 'phone_label', 'phone_required',
+    'name_label', 'name_required', 'optional_label', 'phone_label', 'phone_required',
     'submit_label', 'status_paid', 'status_expired', 'status_failed',
     'status_pending', 'recover_label', 'retry_label', 'send_again',
     'error_load_event', 'error_checkout', 'error_order_status', 'error_recovery',

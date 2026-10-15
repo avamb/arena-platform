@@ -9,9 +9,7 @@
 //   - Static analysis: public_feed_checkout.go has PublicBuyerInfo struct
 //   - Static analysis: checkout handler validates collect_name/collect_phone
 //   - Compile-time: *gen.Queries still satisfies gen.Querier (includes new method)
-//   - Unit: BuildBuyerFields returns correct buyer_fields list for flags off
-//   - Unit: BuildBuyerFields returns correct buyer_fields list for name flag on
-//   - Unit: BuildBuyerFields returns correct buyer_fields list for both flags on
+//   - Unit: BuildBuyerFields for all four flag combinations (P1b)
 //   - HTTP: buyer.email supersedes holder_email
 //   - HTTP: flags off — name/phone omitted → request passes validation (reaches DB)
 //   - HTTP: buyer.name + buyer.phone present → passes validation (reaches DB)
@@ -200,71 +198,36 @@ func TestWID0d321_Step6_CheckoutHandlerValidatesBuyerFlags(t *testing.T) {
 // Unit: BuildBuyerFields logic
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestWID0d321_BuildBuyerFields_FlagsOff(t *testing.T) {
-	fields := hfeed.BuildBuyerFields(false, false)
-	if len(fields) != 3 {
-		t.Fatalf("expected 3 buyer_fields items, got %d", len(fields))
+// P1b: name and phone are always offered (enabled) and optional unless the
+// channel flag is on, which makes the field required. All four flag
+// combinations; email is always required and enabled.
+func TestWID0d321_BuildBuyerFields_FlagCombinations(t *testing.T) {
+	cases := []struct {
+		name                    string
+		collectName, collectPhn bool
+	}{
+		{"both_optional", false, false},
+		{"name_required", true, false},
+		{"phone_required", false, true},
+		{"both_required", true, true},
 	}
-	// email: always required + enabled
-	if fields[0].Key != "email" {
-		t.Errorf("fields[0].Key: expected 'email', got %q", fields[0].Key)
-	}
-	if !fields[0].Required {
-		t.Error("fields[0] (email): expected Required=true")
-	}
-	if !fields[0].Enabled {
-		t.Error("fields[0] (email): expected Enabled=true")
-	}
-	// name: disabled when collect_name=false
-	if fields[1].Key != "name" {
-		t.Errorf("fields[1].Key: expected 'name', got %q", fields[1].Key)
-	}
-	if fields[1].Enabled {
-		t.Error("fields[1] (name): expected Enabled=false when collect_name=false")
-	}
-	if fields[1].Required {
-		t.Error("fields[1] (name): expected Required=false when collect_name=false")
-	}
-	// phone: disabled when collect_phone=false
-	if fields[2].Key != "phone" {
-		t.Errorf("fields[2].Key: expected 'phone', got %q", fields[2].Key)
-	}
-	if fields[2].Enabled {
-		t.Error("fields[2] (phone): expected Enabled=false when collect_phone=false")
-	}
-	if fields[2].Required {
-		t.Error("fields[2] (phone): expected Required=false when collect_phone=false")
-	}
-}
-
-func TestWID0d321_BuildBuyerFields_NameEnabled(t *testing.T) {
-	fields := hfeed.BuildBuyerFields(true, false)
-	if len(fields) != 3 {
-		t.Fatalf("expected 3 buyer_fields items, got %d", len(fields))
-	}
-	if !fields[1].Enabled {
-		t.Error("fields[1] (name): expected Enabled=true when collect_name=true")
-	}
-	if !fields[1].Required {
-		t.Error("fields[1] (name): expected Required=true when collect_name=true")
-	}
-	if fields[2].Enabled {
-		t.Error("fields[2] (phone): expected Enabled=false when collect_phone=false")
-	}
-}
-
-func TestWID0d321_BuildBuyerFields_BothEnabled(t *testing.T) {
-	fields := hfeed.BuildBuyerFields(true, true)
-	if len(fields) != 3 {
-		t.Fatalf("expected 3 buyer_fields items, got %d", len(fields))
-	}
-	for _, f := range fields {
-		if !f.Enabled {
-			t.Errorf("field %q: expected Enabled=true when both flags on, got false", f.Key)
-		}
-		if !f.Required {
-			t.Errorf("field %q: expected Required=true when both flags on, got false", f.Key)
-		}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fields := hfeed.BuildBuyerFields(tc.collectName, tc.collectPhn)
+			if len(fields) != 3 {
+				t.Fatalf("expected 3 buyer_fields items, got %d", len(fields))
+			}
+			want := []hfeed.BuyerFieldItem{
+				{Key: "email", Required: true, Enabled: true},
+				{Key: "name", Required: tc.collectName, Enabled: true},
+				{Key: "phone", Required: tc.collectPhn, Enabled: true},
+			}
+			for i := range want {
+				if fields[i] != want[i] {
+					t.Errorf("fields[%d]: got %+v, want %+v", i, fields[i], want[i])
+				}
+			}
+		})
 	}
 }
 
