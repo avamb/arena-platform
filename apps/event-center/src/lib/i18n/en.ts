@@ -372,6 +372,12 @@ export const en = {
   "dateField.error.past": "That date has already passed. Pick today or later.",
   "dateField.error.early": "That date is too early. Pick one of the days that are open in the calendar.",
   "dateField.error.late": "That date is too late. Pick one of the days that are open in the calendar.",
+
+  // 4-2
+  "order.cancel.button": "Cancel order",
+  "order.cancel.done": "The order is canceled and its seats are free again.",
+  "order.cancel.changed.title": "The order changed while you were working.",
+  "order.cancel.changed.next": "It is no longer waiting for payment (now: {status}), so nothing was canceled. The card shows the latest data.",
 } as const;
 
 export type MessageKey = keyof typeof en;

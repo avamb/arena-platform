@@ -93,6 +93,21 @@ func TestAllowedOwnerTypes_SeatingPlanSVGIsMigrated(t *testing.T) {
 	}
 }
 
+func TestAllowedOwnerTypes_EventMaterialsAreMigrated(t *testing.T) {
+	// HP-1 (migration 0153): the gallery and the photo report of an event page
+	// upload their photos under these owner types.
+	filename, upSQL := latestOwnerTypeCheckSQL(t)
+	for _, ownerType := range []string{"event_gallery", "event_report"} {
+		if _, ok := AllowedOwnerTypes[ownerType]; !ok {
+			t.Fatalf("AllowedOwnerTypes is missing %s", ownerType)
+		}
+		if !strings.Contains(upSQL, "'"+ownerType+"'") {
+			t.Errorf("migration %s does not widen %s to accept %q",
+				filename, ownerTypeConstraintName, ownerType)
+		}
+	}
+}
+
 func TestAllowedOwnerTypes_SessionPosterIsMigrated(t *testing.T) {
 	// AB-47 specifically: each session may carry its own poster artwork
 	// uploaded under this owner type, overriding the event-level poster.

@@ -6952,7 +6952,8 @@ export interface paths {
         put?: never;
         /**
          * Cancel a pending order
-         * @description Cancels an order (feature #489, W1-A6d, spec §14.2). Only an order
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Cancels an order (feature #489, W1-A6d, spec §14.2). Only an order
          *     in `pending_payment` status can be cancelled; any other status
          *     answers 409. A successful cancellation also releases the order's
          *     reservation hold. Requires the `order.write` permission.
@@ -8004,10 +8005,13 @@ export interface components {
              * @description Polymorphic owner kind. Future migrations widen the
              *     enumeration as new media-bearing surfaces appear.
              *     `seating_plan_svg` (migration 0078) carries the authoring SVG
-             *     referenced by a seating_plan_versions row.
+             *     referenced by a seating_plan_versions row. `session_poster`
+             *     is a session-level poster. `event_gallery` and `event_report`
+             *     (migration 0153) are photos of an event page gallery and of its
+             *     photo report.
              * @enum {string}
              */
-            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg";
+            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report";
             /**
              * Format: uuid
              * @description UUID of the owning row in the table implied by
@@ -39811,7 +39815,7 @@ export interface operations {
                     /** Format: binary */
                     file: string;
                     /** @enum {string} */
-                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg";
+                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report";
                     /** Format: uuid */
                     owner_id?: string;
                     /** Format: uuid */
