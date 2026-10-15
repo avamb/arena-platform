@@ -265,6 +265,14 @@ func (h *Handler) checkArenaReferences(ctx context.Context, q *gen.Queries, tx p
 		return f
 	}
 
+	// A bundle that names no venue keeps the addressed session's; when that
+	// session could not be resolved there is nothing to check, and
+	// "venue.venueName is required" would only echo the session error.
+	v := req.Venue
+	if !matched && trimSpace(v.VenueName) == "" && trimSpace(v.ArenaVenueID) == "" && v.VenueID <= 0 {
+		h.noteNewEventSlug(ctx, q, plan, &f, issues)
+		return f
+	}
 	d, err := h.planArenaVenue(ctx, q, tx, plan, match, warnings)
 	if err != nil {
 		if issues.add(err) {
