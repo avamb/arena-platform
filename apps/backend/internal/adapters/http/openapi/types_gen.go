@@ -465,9 +465,12 @@ const (
 // Defines values for MediaObjectOwnerType.
 const (
 	MediaObjectOwnerTypeArtistPhoto    MediaObjectOwnerType = "artist_photo"
+	MediaObjectOwnerTypeEventGallery   MediaObjectOwnerType = "event_gallery"
 	MediaObjectOwnerTypeEventPoster    MediaObjectOwnerType = "event_poster"
+	MediaObjectOwnerTypeEventReport    MediaObjectOwnerType = "event_report"
 	MediaObjectOwnerTypeOrgLogo        MediaObjectOwnerType = "org_logo"
 	MediaObjectOwnerTypeSeatingPlanSvg MediaObjectOwnerType = "seating_plan_svg"
+	MediaObjectOwnerTypeSessionPoster  MediaObjectOwnerType = "session_poster"
 )
 
 // Defines values for MediaObjectStorageBackend.
@@ -953,9 +956,12 @@ const (
 // Defines values for PostV1MediaMultipartBodyOwnerType.
 const (
 	PostV1MediaMultipartBodyOwnerTypeArtistPhoto    PostV1MediaMultipartBodyOwnerType = "artist_photo"
+	PostV1MediaMultipartBodyOwnerTypeEventGallery   PostV1MediaMultipartBodyOwnerType = "event_gallery"
 	PostV1MediaMultipartBodyOwnerTypeEventPoster    PostV1MediaMultipartBodyOwnerType = "event_poster"
+	PostV1MediaMultipartBodyOwnerTypeEventReport    PostV1MediaMultipartBodyOwnerType = "event_report"
 	PostV1MediaMultipartBodyOwnerTypeOrgLogo        PostV1MediaMultipartBodyOwnerType = "org_logo"
 	PostV1MediaMultipartBodyOwnerTypeSeatingPlanSvg PostV1MediaMultipartBodyOwnerType = "seating_plan_svg"
+	PostV1MediaMultipartBodyOwnerTypeSessionPoster  PostV1MediaMultipartBodyOwnerType = "session_poster"
 )
 
 // Defines values for GetSessionMACSExportParamsDownload.
@@ -7806,7 +7812,10 @@ type MediaObject struct {
 	// OwnerType Polymorphic owner kind. Future migrations widen the
 	// enumeration as new media-bearing surfaces appear.
 	// `seating_plan_svg` (migration 0078) carries the authoring SVG
-	// referenced by a seating_plan_versions row.
+	// referenced by a seating_plan_versions row. `session_poster`
+	// is a session-level poster. `event_gallery` and `event_report`
+	// (migration 0153) are photos of an event page gallery and of its
+	// photo report.
 	OwnerType MediaObjectOwnerType `json:"owner_type"`
 
 	// SignedUrl Short-lived download URL. Present on `GET /v1/media/{id}`
@@ -7835,7 +7844,10 @@ type MediaObject struct {
 // MediaObjectOwnerType Polymorphic owner kind. Future migrations widen the
 // enumeration as new media-bearing surfaces appear.
 // `seating_plan_svg` (migration 0078) carries the authoring SVG
-// referenced by a seating_plan_versions row.
+// referenced by a seating_plan_versions row. `session_poster`
+// is a session-level poster. `event_gallery` and `event_report`
+// (migration 0153) are photos of an event page gallery and of its
+// photo report.
 type MediaObjectOwnerType string
 
 // MediaObjectStorageBackend Which storage adapter holds the bytes. `s3` covers any
