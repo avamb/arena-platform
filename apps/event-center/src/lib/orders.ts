@@ -64,3 +64,12 @@ export function seatText(t: {
   if (t.seat_label !== null && t.seat_label.length > 0) return t.seat_label;
   return [t.seat_sector, t.seat_row, t.seat_number].filter((p): p is string => p !== null && p.length > 0).join(" · ");
 }
+
+/**
+ * 4-2: the "Cancel order" button exists only for an order that waits for
+ * payment (the one status the API cancels) and only for a person who holds
+ * `order.write` in THIS organization. Any other status has no button.
+ */
+export function canCancelOrder(status: string, canWrite: boolean): boolean {
+  return canWrite && status === "pending_payment";
+}

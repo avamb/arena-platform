@@ -12,6 +12,7 @@ import type {
   MeResponse,
   OrderDetail,
   OrderListResponse,
+  OrderSummary,
   OrgMeResponse,
   PromoCodeEnvelope,
   PromoCodeListResponse,
@@ -185,4 +186,13 @@ export function downloadPromoCsv(orgId: string, codeId: string, locale: string):
     accept: "text/csv",
     fallbackName: "promo-usage.csv",
   });
+}
+
+/**
+ * Cancels a `pending_payment` order and ends the hold on its seats (4-2).
+ * The caller has already checked the typed word. `headers` carries the
+ * step-up token (`withStepUp`). A paid order answers 409 `orders.invalid_transition`.
+ */
+export function cancelOrder(orgId: string, orderId: string, headers: Record<string, string>): Promise<OrderSummary> {
+  return call<OrderSummary>({ route: API.cancelOrder, params: { org_id: orgId, id: orderId }, body: {}, headers });
 }
