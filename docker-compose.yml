@@ -156,6 +156,11 @@ services:
       # the username the invitation deep links point at.
       BOT_SERVICE_TOKEN: "${BOT_SERVICE_TOKEN:-dev-bot-service-token}"
       EVENTS_TELEGRAM_BOT_USERNAME: "${EVENTS_TELEGRAM_BOT_USERNAME:-ArenaEventsCentrBot}"
+      # Optional: an Anthropic key switches on reading a poster into wizard
+      # hints (POST .../media/{id}/poster-facts, internal/platform/posterread).
+      # The key lives on the api only; the bot calls the route. Empty = off.
+      POSTER_LLM_API_KEY: "${POSTER_LLM_API_KEY:-}"
+      POSTER_LLM_MODEL: "${POSTER_LLM_MODEL:-claude-sonnet-5}"
       JWT_ISSUER: "arena-dev"
       JWT_AUDIENCE: "arena-api"
       JWT_DEFAULT_TTL: "1h"
@@ -320,10 +325,6 @@ services:
       BOT_ARENA_API_URL: "http://api:8080"
       BOT_METRICS_ADDR: ":9092"
       HEALTH_ADDR: "http://localhost:9092"
-      # Optional: an Anthropic key switches on reading a sent poster into
-      # wizard hints (internal/platform/posterread); empty = off.
-      POSTER_LLM_API_KEY: "${POSTER_LLM_API_KEY:-}"
-      POSTER_LLM_MODEL: "${POSTER_LLM_MODEL:-claude-sonnet-5}"
 
       DEFAULT_LOCALE: "en"
       ACTIVE_LOCALES: "ru,en"

@@ -144,6 +144,24 @@ api service's internal address) as the linked user, so it needs the API's
 | `BOT_METRICS_ADDR` | bot | `:9092` |
 | `JWT_SIGNING_SECRET` | api, bot | the same value on both |
 
+**Poster reading (since 2026-10-14) lives on `arena-api`, not on the bot.**
+The model key `POSTER_LLM_API_KEY` (and `POSTER_LLM_MODEL`,
+`POSTER_LLM_BASE_URL`) belongs to the api service only: the bot sends the
+poster it uploaded to `POST /v1/organizations/{org_id}/media/{media_id}/poster-facts`
+and the api calls the model, counting at most `POSTER_READS_PER_ORG_PER_DAY`
+(default 50, `0` = no cap) reads per organization per sliding day. A bot that
+still holds the key logs a "set but unused" warning (the value is never
+printed); an api without the key answers 503
+`media.poster_reader_not_configured` and the wizard asks every question by
+hand. **Roll out in this order:** (1) deploy `arena-api` of this release and
+add `POSTER_LLM_API_KEY` to its environment (check:
+`docker inspect` of the api container shows the variable, and the route
+answers 422/404, not 503, for a real media id); (2) deploy `arena-bot` of the
+same release, which calls the route; (3) only then delete `POSTER_LLM_API_KEY`
+from the bot's environment. Doing (3) before (2) switches the old bot's
+poster hints off, doing (2) before (1) makes every poster answer "nothing
+found".
+
 ### 2.4 Env passthrough checklist (all services)
 
 Every binary loads its configuration with `config.LoadFor(<its role>)`, and
@@ -325,8 +343,9 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `SALES_TELEGRAM_BOT_TOKEN` | — | ● | — | — |
 | `EVENTS_TELEGRAM_BOT_TOKEN` | — | — | ✅ | — |
 | `BOT_ARENA_API_URL`, `BOT_METRICS_ADDR`, `BOT_SELF_ONBOARDING_ENABLED`, `BOT_ONBOARDING_SITE_BUTTON` | — | — | ● | — |
-| `POSTER_LLM_API_KEY`, `POSTER_LLM_MODEL` | — | — | ● | — |
-| `POSTER_LLM_BASE_URL` (production: unset or `https://api.anthropic.com`) | — | — | ● | — |
+| `POSTER_LLM_API_KEY` (secret), `POSTER_LLM_MODEL` | ● | — | — | — |
+| `POSTER_LLM_BASE_URL` (production: unset or `https://api.anthropic.com`) | ● | — | — | — |
+| `POSTER_READS_PER_ORG_PER_DAY` (default 50, `0` = no cap) | ● | — | — | — |
 | `ENABLE_DEV_AUTH`, `DB_LOG_QUERIES`, `DEBUG_ROUTES_ENABLED`, `FAULT_INJECT_OUTBOX_AFTER_AUDIT` (leave unset; `true` is refused in production) | — | — | — | — |
 | `STRIPE_API_BASE_URL`, `FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL` (test seams; refused in production) | — | — | — | — |
 | `REDIS_URL`, `IDEMPOTENCY_TTL`, `IDEMPOTENCY_KEY_MAX_LENGTH`, `WORKER_CONCURRENCY`, `WORKER_JOB_TIMEOUT`, `WORKER_RETRY_BACKOFF_BASE`, `WORKER_RETRY_BACKOFF_MAX`, `OUTBOX_BATCH_SIZE` (parsed, but no binary uses them today) | — | — | — | — |
