@@ -444,3 +444,17 @@ LEFT JOIN LATERAL (
 LEFT JOIN delivery_jobs dj ON dj.ticket_id = t.id
 WHERE  oi.order_id = $1
 ORDER  BY oi.ordinal ASC;
+
+-- name: GetOrderEventFacts :one
+-- WEB-ORDER-EVENT (0-2): what the order card prints about the event without
+-- a second call: event name, session start and the venue's IANA zone. Plain
+-- inner joins with NO deleted_at filter on events or sessions, so a card of
+-- an order whose session was soft-deleted (cancelled by the bot) still
+-- carries them; org-scoped like GetOrderByID.
+SELECT e.name AS event_name, s.start_at AS session_start_at, v.timezone AS venue_timezone
+FROM   orders o
+JOIN   events   e ON e.id = o.event_id
+JOIN   sessions s ON s.id = o.session_id
+JOIN   venues   v ON v.id = s.venue_id
+WHERE  o.id = $1
+  AND  o.org_id = $2;

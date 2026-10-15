@@ -8552,6 +8552,9 @@ type OrderDetail struct {
 	// EventId Event the order's session belongs to.
 	EventId openapi_types.UUID `json:"event_id"`
 
+	// EventName Name of the event the order's session belongs to. Present even when the session was cancelled (soft-deleted).
+	EventName string `json:"event_name"`
+
 	// Events Audit-trail events recorded against the order.
 	Events []OrderEventSummary `json:"events"`
 
@@ -8602,6 +8605,9 @@ type OrderDetail struct {
 	// SessionId Session the order was placed for.
 	SessionId openapi_types.UUID `json:"session_id"`
 
+	// SessionStartAt Start of the order's session, RFC 3339 in UTC.
+	SessionStartAt time.Time `json:"session_start_at"`
+
 	// Source Where the order originated (e.g. widget, bil24, admin).
 	Source string `json:"source"`
 
@@ -8636,6 +8642,9 @@ type OrderDetail struct {
 
 	// UpdatedAt When the order was last updated.
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// VenueTimezone IANA zone of the session's venue (`venues.timezone`) - render session_start_at in it.
+	VenueTimezone string `json:"venue_timezone"`
 }
 
 // OrderEventSummary One audit-trail event recorded against an order.
