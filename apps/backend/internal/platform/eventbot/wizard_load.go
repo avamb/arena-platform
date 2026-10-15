@@ -156,6 +156,8 @@ func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, e
 		d.Sessions = append(d.Sessions, ds)
 	}
 	d.Cur = len(d.Sessions) - 1
+	// What every undo on the card goes back to (wizard_undo.go).
+	d.Loaded = snapshotLoaded(d)
 	if d.ticketsDiffer() {
 		notes = append(notes, w.texts.T(ws.Locale, "bot.wz.edit_tickets_differ", nil))
 	}
@@ -262,6 +264,7 @@ func CopyDraft(src *Draft) *Draft {
 	// A copy sells one set of categories on every date: the first date's.
 	d.Tickets = withoutTierIDs(src.Tickets)
 	d.Changed = nil
+	d.Loaded = nil
 	d.Channels = nil
 	d.Publish = true
 	// The tickets and the rest are already there: once the dates are in, the

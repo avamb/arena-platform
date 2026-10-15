@@ -554,7 +554,10 @@ func TestPosterCheck(t *testing.T) {
 type fakeSave struct {
 	posts   []bil24compat.ImportSessionRequest
 	failRef map[string]error
-	next    int64
+	// failSession fails the post of an existing date, addressed by its arena
+	// session id (an existing date carries no external ref).
+	failSession map[string]error
+	next        int64
 }
 
 func (f *fakeSave) MediaSignedURL(context.Context, string, string) (string, error) {
@@ -565,6 +568,9 @@ func (f *fakeSave) ImportEventBundle(_ context.Context, _ string, _ uuid.UUID, r
 	if err := f.failRef[req.ExternalRef]; err != nil {
 		return ImportResult{}, err
 	}
+	if err := f.failSession[req.ActionEvent.ArenaSessionID]; err != nil && req.ActionEvent.ArenaSessionID != "" {
+		return ImportResult{}, err
+	}
 	if req.ExternalRef == "" && req.ActionEvent.ArenaSessionID == "" {
 		return ImportResult{}, errors.New("externalRef must be set unless the session is addressed by id")
 	}
@@ -573,6 +579,10 @@ func (f *fakeSave) ImportEventBundle(_ context.Context, _ string, _ uuid.UUID, r
 	var res ImportResult
 	res.EventID = "event-1"
 	res.SessionID = fmt.Sprintf("session-%d", f.next)
+	if req.ActionEvent.ArenaSessionID != "" {
+		// An existing date keeps its id, as the import answers.
+		res.SessionID = req.ActionEvent.ArenaSessionID
+	}
 	res.CompatIDs.ActionID = 4242
 	res.Warnings = append(res.Warnings, struct {
 		Code    string `json:"code"`

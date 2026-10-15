@@ -15,6 +15,11 @@ import (
 func (w *Wizard) Apply(ctx context.Context, ws WizSession, d *Draft, in WizInput) (string, error) {
 	before := d.Step
 	note, err := w.apply(ctx, ws, d, in)
+	if err == nil {
+		// What the edit card lists is the draft against the loaded event,
+		// worked out after every answer (wizard_undo.go).
+		d.refreshChanged()
+	}
 	if err != nil || note != "" || d.Step == before {
 		return note, err
 	}

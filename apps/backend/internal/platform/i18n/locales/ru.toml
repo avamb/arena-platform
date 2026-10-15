@@ -970,16 +970,16 @@ other = "Выберите сеанс, у которого меняем цены 
 other = "Для всех сеансов"
 
 ["bot.wz.t_for_all"]
-other = "Для всех сеансов мероприятия."
+other = "Категории всех сеансов"
 
 ["bot.wz.t_for_date"]
-other = "Для сеанса {{.When}}."
+other = "Категории сеанса {{.When}}"
 
 ["bot.wz.ask_s_tickets"]
 other = "Категории сеанса {{.N}}.\nНа сеансе {{.Prev}}: {{.List}}\nВзять такие же категории или задать новые для этого сеанса?"
 
 ["bot.wz.s_tickets_same_btn"]
-other = "Такие же, как {{.Prev}}"
+other = "Как на сеансе {{.Prev}}"
 
 ["bot.wz.s_tickets_own_btn"]
 other = "Задать новые"
@@ -1015,7 +1015,7 @@ other = "Жду афишу файлом или фото. Чтобы ввести
 other = "<b>✏️ Правка · {{.Title}}</b>\n"
 
 ["bot.wz.edit_home_btn"]
-other = "⬅ К мероприятию"
+other = "↩ Назад, ничего не сохранять"
 
 ["bot.wz.edit_field_name"]
 other = "Название"
@@ -1074,9 +1074,6 @@ other = "Удалить описание"
 ["bot.wz.edit_card_title"]
 other = "<b>✏️ Правка мероприятия</b>\n"
 
-["bot.wz.edit_card_changed"]
-other = "✎ Изменено: {{.List}}. На сайте этого ещё нет: нажмите «Опубликовать изменения», когда всё готово."
-
 ["bot.wz.edit_card_clean"]
 other = "Выберите, что поправить. Каждая правка — отдельный короткий экран."
 
@@ -1108,7 +1105,7 @@ other = "Цены и категории"
 other = "✅ Опубликовать изменения"
 
 ["bot.wz.edit_exit_btn"]
-other = "Выйти"
+other = "✖ Выйти без публикации"
 
 ["bot.wz.ask_t_cat_last"]
 other = "«{{.Name}}» — последняя категория или после неё будет ещё одна? Последняя продаётся до начала сеанса."
@@ -1138,7 +1135,7 @@ other = "Выйти из правки? Изменения ещё не опубл
 other = "▶ Продолжить"
 
 ["bot.wz.cancel_keep_btn"]
-other = "💾 Сохранить и выйти"
+other = "💾 Оставить черновик"
 
 ["bot.wz.cancel_drop_btn"]
 other = "🗑 Удалить черновик"
@@ -3609,3 +3606,146 @@ other = "Готово. Все входы в веб-ивент-центр зак�
 
 ["bot.web.signout_failed"]
 other = "Не получилось закрыть входы. Попробуйте ещё раз через минуту."
+
+# U-5b: undo, preview and the new date's summary on the edit card
+
+["bot.wz.edit_undone"]
+other = "↩ Отменено: {{.What}}. Остальное в черновике не изменилось."
+
+["bot.wz.edit_undo_btn"]
+other = "↩ Отменить: {{.What}}"
+
+["bot.wz.edit_undo_date"]
+other = "новая дата {{.When}}"
+
+["bot.wz.edit_undo_tickets"]
+other = "категории {{.When}}"
+
+["bot.wz.edit_card_changes"]
+other = "<b>✎ Изменено:</b>\n{{.List}}"
+
+["bot.wz.edit_card_hint"]
+other = "Изменения не на сайте, пока не нажата «Опубликовать изменения». Отменить одно изменение можно кнопкой «↩ Отменить» под ним. Отменить всё — «Выйти без публикации»."
+
+["bot.wz.edit_card_partly_saved"]
+other = "Часть изменений уже на сайте: сохранение остановилось на полпути. Нажмите «Опубликовать изменения», чтобы отправить остальное."
+
+["bot.wz.edit_to_card_btn"]
+other = "⬅ К карточке мероприятия"
+
+["bot.wz.edit_chg_none"]
+other = "нет"
+
+["bot.wz.edit_chg_field"]
+other = "{{.What}}: {{.Old}} → {{.New}}"
+
+["bot.wz.edit_chg_name"]
+other = "Название: «{{.Old}}» → «{{.New}}»"
+
+["bot.wz.edit_chg_description"]
+other = "Описание: новый текст"
+
+["bot.wz.edit_chg_description_removed"]
+other = "Описание: убрано"
+
+["bot.wz.edit_chg_poster"]
+other = "Афиша: новая"
+
+["bot.wz.edit_chg_date"]
+other = "Новая дата {{.When}} · {{.Venue}}, {{.Capacity}} мест. {{.List}}"
+
+["bot.wz.edit_chg_tickets"]
+other = "Категории сеанса {{.When}}: {{.List}}"
+
+["bot.wz.cancel_draft_empty"]
+other = "В черновике изменений нет."
+
+["bot.wz.cancel_draft_has"]
+other = "<b>В черновике:</b>\n{{.List}}"
+
+["bot.wz.summary_no_categories"]
+other = "без категорий"
+
+["bot.wz.t_for_one"]
+other = "Категории"
+
+["bot.wz.t_progress"]
+other = "<b>{{.What}} · шаг {{.N}} из {{.Total}}</b>"
+
+["bot.wz.t_nothing_yet"]
+other = "Ничего не меняется, пока вы не ответите на последний вопрос."
+
+["bot.wz.t_date_all_note"]
+other = "Кнопка «Для всех сеансов» даёт всем сеансам способ продажи первого: «{{.Value}}»."
+
+["bot.wz.s_tickets_trimmed"]
+other = "Изменения цены и этапы продаж после {{.Date}} не подходят этому сеансу. Я убрал их или перенёс на {{.Date}} ({{.Count}})."
+
+["bot.wz.s_removed"]
+other = "Сеанс {{.When}} убран из черновика."
+
+["bot.wz.s_confirm"]
+other = "<b>Сеанс {{.N}}</b>: {{.When}}, {{.Venue}}, {{.City}}, {{.Capacity}} мест.\nКатегории: {{.List}}\n\nВсё верно? Нажмите «Дальше». На сайт это уйдёт только после «Опубликовать изменения»."
+
+["bot.wz.s_confirm_same"]
+other = "как на сеансе {{.Prev}}:"
+
+["bot.wz.s_confirm_own_btn"]
+other = "✏️ Задать свои категории"
+
+["bot.wz.s_confirm_cap_btn"]
+other = "🔢 Изменить места"
+
+["bot.wz.s_confirm_drop_btn"]
+other = "🗑 Убрать эту дату"
+
+["bot.wz.s_confirm_next_btn"]
+other = "Дальше →"
+
+["bot.wz.preview_title"]
+other = "<b>Что уйдёт на сайт</b>\n"
+
+["bot.wz.preview_new_date"]
+other = "Новая дата {{.When}} · {{.Venue}}, {{.Capacity}} мест. {{.List}}"
+
+["bot.wz.preview_date_tickets"]
+other = "Сеанс {{.When}}, новые категории: {{.List}}"
+
+["bot.wz.preview_date_resent"]
+other = "Сеанс {{.When}} отправится заново, его категории не меняются."
+
+["bot.wz.preview_unchanged"]
+other = "Не меняются: {{.List}}."
+
+["bot.wz.preview_already"]
+other = "Уже на сайте: {{.List}}."
+
+["bot.wz.preview_no_categories"]
+other = "У сеанса {{.When}} нет категорий. Новую валюту он не получит. Дайте ему категории через «Цены и категории»."
+
+["bot.wz.preview_warn_closed"]
+other = "Сеанс {{.When}}: категория {{.Old}} будет закрыта. Проданные в ней билеты остаются в силе."
+
+["bot.wz.preview_warn_renamed"]
+other = "Сеанс {{.When}}: категория {{.Old}} будет закрыта, вместо неё будет создана {{.New}}. Новое название — это новая категория. Проданные билеты остаются в силе."
+
+["bot.wz.preview_warn_closed_many"]
+other = "Сеанс {{.When}}: категории {{.Old}} будут закрыты. Проданные в них билеты остаются в силе."
+
+["bot.wz.preview_warn_renamed_many"]
+other = "Сеанс {{.When}}: категории {{.Old}} будут закрыты. Вместо них появятся новые: {{.New}}. Новое название — это новая категория. Проданные билеты остаются в силе."
+["bot.wz.preview_warn_places"]
+other = "Места закрытой категории остаются за ней. Поэтому всего мест у сеанса станет больше."
+
+
+["bot.wz.preview_footer"]
+other = "Нажмите «Опубликовать», чтобы отправить. Проданные билеты не меняются: новая цена действует для следующих покупок."
+
+["bot.wz.preview_publish_btn"]
+other = "✅ Опубликовать"
+
+["bot.wz.preview_back_btn"]
+other = "← Назад к карточке"
+
+["bot.wz.warn_tier_not_in_payload"]
+other = "Категории, которых нет в новом списке, закрыты. Проданные в них билеты остаются в силе."

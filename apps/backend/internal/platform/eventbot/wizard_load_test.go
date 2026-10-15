@@ -150,7 +150,8 @@ func TestLoadEventDraft_SingleCategoryWithSchedule(t *testing.T) {
 	r.text("16.12.2026", stSTime)
 	r.press("default", stSSame)
 	r.press("same", stSTickets)
-	r.press("st:same", stSMore) // the categories of the date before, as new ones
+	r.press("st:same", stSConfirm) // the categories of the date before, as new ones
+	r.press("sc:next", stSMore)
 	r.press("next", stEditMenu)
 	if nt := d.Sessions[1].Tickets; nt == nil || len(nt.Categories) != 1 || nt.Categories[0].TierID != "" || nt.Categories[0].Name != "Вход в зал" {
 		t.Fatalf("the added date's categories = %+v", nt)

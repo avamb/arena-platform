@@ -224,7 +224,22 @@ func (b *Bot) wizardCallback(ctx context.Context, chatID int64, msgID int, from 
 	switch data {
 	case "resume":
 		b.wizardRender(ctx, chatID, &msgID, ws, d, "")
-	case "publish", "retry":
+	case "publish":
+		if d.Mode == ModeEdit {
+			// An edited event first shows what goes to the site; the
+			// preview's own "Publish" button (publish:go) saves.
+			b.wizardApply(ctx, chatID, &msgID, from, ws, d, WizInput{Data: data})
+			return
+		}
+		b.wizardSave(ctx, chatID, &msgID, from, ws, d, row.ID.String(), false)
+	case "publish:go":
+		if d.Mode != ModeEdit || d.Step != stPreview {
+			// A button of an older preview: the draft has moved on.
+			b.wizardRender(ctx, chatID, &msgID, ws, d, "")
+			return
+		}
+		b.wizardSave(ctx, chatID, &msgID, from, ws, d, row.ID.String(), false)
+	case "retry":
 		b.wizardSave(ctx, chatID, &msgID, from, ws, d, row.ID.String(), false)
 	case "publish:force":
 		b.wizardSave(ctx, chatID, &msgID, from, ws, d, row.ID.String(), true)
@@ -242,7 +257,8 @@ func (b *Bot) wizardText(ctx context.Context, chatID int64, from *models.User, t
 	}
 	ws := b.wizardSession(id, jwt)
 	d, _, err := b.loadDraft(ctx, from.ID, ws)
-	if err != nil || d == nil || d.Paused || d.Step == stDone || d.Step == stSummary || d.Step == stEditMenu || d.Step == stCancel {
+	if err != nil || d == nil || d.Paused || d.Step == stDone || d.Step == stSummary || d.Step == stEditMenu || d.Step == stCancel ||
+		d.Step == stPreview || d.Step == stSConfirm {
 		return false
 	}
 	b.wizardApply(ctx, chatID, nil, from, ws, d, WizInput{Text: text})
