@@ -264,7 +264,10 @@ type ChangeData struct {
 // when the organisation has no logo_media_id).
 //
 // Legal-identification fields back the EU minimum-identification rule
-// for commercial communications and unsubscribe/contact footers.
+// for commercial communications and the organizer contact footer. No
+// letter carries an unsubscribe: they are all transactional and a pressed
+// unsubscribe blocks the buyer's address in Brevo for every later letter
+// (templates_no_unsubscribe_test.go).
 type Branding struct {
 	// OrgName is the public display name printed in the header next to
 	// the logo. Empty falls back to PlatformOrgName.
