@@ -7,7 +7,7 @@
  * the last day ends at 23:59:59 UTC. Limits, last day and currency are set
  * here only: the API cannot clear them afterwards.
  */
-import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createPromoCode, listPromoCodes, listSessions } from "@/lib/api/endpoints";
@@ -15,7 +15,7 @@ import { filterEvents } from "@/lib/events";
 import { formatMoney } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
-import { buildCreateRequest, parseAmountMinor, readPromoForm, type PromoDraft, type PromoFieldErrors, type PromoFormRaw } from "@/lib/promo";
+import { buildCreateRequest, dropOtherCurrencySessions, parseAmountMinor, readPromoForm, type PromoDraft, type PromoFieldErrors, type PromoFormRaw } from "@/lib/promo";
 import { DateField } from "@/components/DateField";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { PromoSessionPicker } from "@/components/PromoSessionPicker";
@@ -45,6 +45,8 @@ function CreateForm() {
   const queryClient = useQueryClient();
   const [raw, setRaw] = useState<PromoFormRaw>(START);
   const [sessionIds, setSessionIds] = useState<string[]>([]);
+  const [sessionCurrencies, setSessionCurrencies] = useState<Record<string, string>>({});
+  const [droppedNote, setDroppedNote] = useState<{ count: number; fixed: string } | null>(null);
   const [errors, setErrors] = useState<PromoFieldErrors>({});
   const [draft, setDraft] = useState<PromoDraft | null>(null); // set = the check screen
 
@@ -88,14 +90,26 @@ function CreateForm() {
 
   const onReview = (e: FormEvent) => {
     e.preventDefault();
-    const read = readPromoForm(raw, sessionIds, existing);
+    const read = readPromoForm(raw, sessionIds, existing, sessionCurrencies);
     setErrors(read.errors);
     create.reset();
     if (read.draft !== null) setDraft(read.draft);
   };
 
   const fixed = raw.type === "fixed_amount";
-  const fixedCurrency = fixed ? raw.currency.trim().toUpperCase() : "";
+  // Only a complete three-letter currency judges sessions: "EU" is still being typed.
+  const fixedCurrency = fixed && raw.currency.trim().length === 3 ? raw.currency.trim().toUpperCase() : "";
+
+  // A session sold in another currency than a fixed discount cannot stay ticked: the code would never apply there.
+  useEffect(() => {
+    const { kept, dropped } = dropOtherCurrencySessions(sessionIds, sessionCurrencies, fixedCurrency);
+    if (dropped.length === 0) return;
+    setSessionIds(kept);
+    setDroppedNote({ count: dropped.length, fixed: fixedCurrency });
+  }, [sessionIds, sessionCurrencies, fixedCurrency]);
+  const rememberCurrencies = useCallback((seen: Record<string, string>) => {
+    setSessionCurrencies((prev) => (Object.entries(seen).every(([id, c]) => prev[id] === c) ? prev : { ...prev, ...seen }));
+  }, []);
 
   if (draft !== null) {
     const preview = {
@@ -246,7 +260,22 @@ function CreateForm() {
             <span>{t("promo.scope.pick")}</span>
           </label>
           {!raw.all && (
-            <PromoSessionPicker orgId={orgId} selected={sessionIds} onChange={setSessionIds} fixedCurrency={fixedCurrency} canSummary={access.can("order.read")} />
+            <PromoSessionPicker
+              orgId={orgId}
+              selected={sessionIds}
+              onChange={(next) => {
+                setDroppedNote(null);
+                setSessionIds(next);
+              }}
+              fixedCurrency={fixedCurrency}
+              canSummary={access.can("order.read")}
+              onCurrencies={rememberCurrencies}
+            />
+          )}
+          {!raw.all && droppedNote !== null && (
+            <p className="muted" role="status" data-testid="promo-pick-dropped">
+              {t("promo.pick.dropped", { count: droppedNote.count, fixed: droppedNote.fixed })}
+            </p>
           )}
           <FieldError id={`${ids}-scope-err`} error={errors.scope} />
         </fieldset>

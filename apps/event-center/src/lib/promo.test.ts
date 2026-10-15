@@ -16,6 +16,8 @@ import {
   parsePercent,
   promoCurrencyOf,
   promoState,
+  draftProblem,
+  dropOtherCurrencySessions,
   readPromoForm,
   sessionTakesCode,
   untilInstant,
@@ -53,6 +55,9 @@ describe("the code name", () => {
     expect(normalizePromoCode("   ")).toMatchObject({ ok: false, error: "promo.err.codeEmpty" });
     expect(normalizePromoCode("two words")).toMatchObject({ ok: false, error: "promo.err.codeChars" });
     expect(normalizePromoCode("a$b")).toMatchObject({ ok: false, error: "promo.err.codeChars" });
+    // Only decimal digits count, like the bot: a fraction or a Roman numeral is no digit.
+    expect(normalizePromoCode("a½")).toMatchObject({ ok: false, error: "promo.err.codeChars" });
+    expect(normalizePromoCode("aⅧ")).toMatchObject({ ok: false, error: "promo.err.codeChars" });
     expect(normalizePromoCode("A".repeat(65))).toMatchObject({ ok: false, error: "promo.err.codeLong" });
     expect(normalizePromoCode("A".repeat(64)).ok).toBe(true);
   });
@@ -140,6 +145,15 @@ describe("the sessions of a code", () => {
   });
 });
 
+describe("dropping sessions of another currency", () => {
+  it("keeps the ones that fit or are unknown, drops the rest", () => {
+    expect(dropOtherCurrencySessions(["a", "b", "c"], { a: "EUR", b: "CZK" }, "EUR")).toEqual({ kept: ["a", "c"], dropped: ["b"] });
+  });
+  it("drops nothing for a percent code", () => {
+    expect(dropOtherCurrencySessions(["a", "b"], { a: "EUR", b: "CZK" }, "")).toEqual({ kept: ["a", "b"], dropped: [] });
+  });
+});
+
 describe("the form", () => {
   const raw = (over: Partial<PromoFormRaw>): PromoFormRaw => ({
     code: "club15",
@@ -177,6 +191,22 @@ describe("the form", () => {
   it("the limit per buyer cannot be above the total", () => {
     expect(readPromoForm(raw({ total: "5", per: "6" }), [], []).errors.per).toBe("promo.err.perGtTotal");
     expect(readPromoForm(raw({ total: "5", per: "5" }), [], []).errors).toEqual({});
+  });
+  it("a fixed code is refused when a ticked session is sold in another currency", () => {
+    const cur = { s1: "EUR", s2: "CZK" };
+    const mixed = readPromoForm(raw({ type: "fixed_amount", value: "5", currency: "eur", all: false }), ["s1", "s2"], [], cur);
+    expect(mixed.draft).toBeNull();
+    expect(mixed.errors.scope).toBe("promo.err.otherCurrency");
+    const ok = readPromoForm(raw({ type: "fixed_amount", value: "5", currency: "eur", all: false }), ["s1"], [], cur);
+    expect(ok.errors).toEqual({});
+    // A percent code takes any currency, and a session never seen cannot be judged.
+    expect(readPromoForm(raw({ all: false }), ["s1", "s2"], [], cur).errors).toEqual({});
+    expect(readPromoForm(raw({ type: "fixed_amount", value: "5", currency: "eur", all: false }), ["s9"], [], cur).errors).toEqual({});
+  });
+  it("draftProblem judges the same mix", () => {
+    const d = readPromoForm(raw({ type: "fixed_amount", value: "5", currency: "eur", all: false }), ["s1"], [], { s1: "EUR" }).draft!;
+    expect(draftProblem(d, { s1: "CZK" })).toBe("promo.err.otherCurrency");
+    expect(draftProblem(d, { s1: "EUR" })).toBeNull();
   });
   it("every field is checked in one go", () => {
     const read = readPromoForm(raw({ code: "", value: "x", total: "0" }), [], []);

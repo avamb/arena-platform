@@ -9,7 +9,7 @@
  * currency than a fixed discount can never take the code, so it cannot be
  * ticked.
  */
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchEventSummary, listSessions } from "@/lib/api/endpoints";
 import { filterEvents } from "@/lib/events";
@@ -28,9 +28,11 @@ export interface PromoSessionPickerProps {
   /** The summary route needs order.read; without it the zone is not known and UTC is said. */
   canSummary: boolean;
   disabled?: boolean;
+  /** Called with the currency of every session of the event shown, so the form can judge a ticked one later. */
+  onCurrencies?: (currencies: Record<string, string>) => void;
 }
 
-export function PromoSessionPicker({ orgId, selected, onChange, fixedCurrency, canSummary, disabled = false }: PromoSessionPickerProps) {
+export function PromoSessionPicker({ orgId, selected, onChange, fixedCurrency, canSummary, disabled = false, onCurrencies }: PromoSessionPickerProps) {
   const { t, locale } = useI18n();
   const ids = useId();
   const events = useEventsList(orgId);
@@ -51,6 +53,10 @@ export function PromoSessionPicker({ orgId, selected, onChange, fixedCurrency, c
   });
 
   const live = (sessions.data?.sessions ?? []).filter((s) => s.status !== "cancelled");
+  useEffect(() => {
+    if (onCurrencies === undefined || sessions.data === undefined) return;
+    onCurrencies(Object.fromEntries(sessions.data.sessions.map((s) => [s.id, s.currency.trim().toUpperCase()])));
+  }, [sessions.data, onCurrencies]);
   const eventSessionIds = new Set(live.map((s) => s.id));
   const chosen = new Set(selected);
   const zoneOf = (id: string): string | null => summary.data?.sessions.find((x) => x.id === id)?.venue_timezone ?? null;

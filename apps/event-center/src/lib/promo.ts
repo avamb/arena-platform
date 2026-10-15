@@ -32,7 +32,7 @@ export function normalizePromoCode(raw: string): Parsed<string> {
   const s = raw.trim().toUpperCase();
   if (s === "") return { ok: false, error: "promo.err.codeEmpty" };
   if (Array.from(s).length > MAX_PROMO_CODE_LENGTH) return { ok: false, error: "promo.err.codeLong" };
-  if (!/^[\p{L}\p{N}\-_.]+$/u.test(s)) return { ok: false, error: "promo.err.codeChars" };
+  if (!/^[\p{L}\p{Nd}\-_.]+$/u.test(s)) return { ok: false, error: "promo.err.codeChars" };
   return { ok: true, value: s };
 }
 
@@ -167,6 +167,29 @@ export function mergeSessions(
   return out;
 }
 
+/** Session id -> the currency it is sold in, for the sessions the person has seen. */
+export type SessionCurrencies = Readonly<Record<string, string>>;
+
+/**
+ * Splits a selection for a fixed discount in `fixedCurrency`: the sessions
+ * that can take the code stay, the ones sold in another currency are
+ * dropped. A session whose currency was never seen stays (it cannot be
+ * judged). With no fixed currency nothing is dropped.
+ */
+export function dropOtherCurrencySessions(
+  selected: readonly string[],
+  currencies: SessionCurrencies,
+  fixedCurrency: string,
+): { kept: string[]; dropped: string[] } {
+  const kept: string[] = [];
+  const dropped: string[] = [];
+  for (const id of selected) {
+    if (sessionTakesCode(fixedCurrency, currencies[id] ?? "")) kept.push(id);
+    else dropped.push(id);
+  }
+  return { kept, dropped };
+}
+
 /** True when a session sold in `sessionCurrency` can take a fixed code in `fixedCurrency`. */
 export function sessionTakesCode(fixedCurrency: string, sessionCurrency: string): boolean {
   return fixedCurrency === "" || sessionCurrency === "" || fixedCurrency.toUpperCase() === sessionCurrency.toUpperCase();
@@ -207,11 +230,14 @@ export function emptyDraft(): PromoDraft {
 }
 
 /** The reason a draft cannot be created yet, or null. */
-export function draftProblem(d: PromoDraft): MessageKey | null {
+export function draftProblem(d: PromoDraft, currencies: SessionCurrencies = {}): MessageKey | null {
   if (d.code === "") return "promo.err.codeEmpty";
   if (d.value <= 0) return d.type === "percent" ? "promo.err.percent" : "promo.err.amount";
   if (d.type === "fixed_amount" && d.currency === "") return "promo.err.currency";
   if (!d.all && d.sessionIds.length === 0) return "promo.err.pickNone"; // an empty list would be a club code
+  if (d.type === "fixed_amount" && !d.all && dropOtherCurrencySessions(d.sessionIds, currencies, d.currency).dropped.length > 0) {
+    return "promo.err.otherCurrency"; // a fixed code never applies on a session sold in another currency
+  }
   if (d.maxUses !== null && d.perBuyer !== null && d.perBuyer > d.maxUses) return "promo.err.perGtTotal";
   if (d.until !== null && untilInstant(d.until) === null) return "promo.err.limit";
   return null;
@@ -253,7 +279,12 @@ export interface PromoFormRaw {
 export type PromoFieldErrors = Partial<Record<"code" | "value" | "currency" | "scope" | "total" | "per", MessageKey>>;
 
 /** Reads every field. The first problem of each field is kept, so the person fixes them in one go. */
-export function readPromoForm(raw: PromoFormRaw, sessionIds: readonly string[], existingNames: readonly string[]): { draft: PromoDraft | null; errors: PromoFieldErrors } {
+export function readPromoForm(
+  raw: PromoFormRaw,
+  sessionIds: readonly string[],
+  existingNames: readonly string[],
+  currencies: SessionCurrencies = {},
+): { draft: PromoDraft | null; errors: PromoFieldErrors } {
   const errors: PromoFieldErrors = {};
   const d = emptyDraft();
   const code = normalizePromoCode(raw.code);
@@ -281,6 +312,9 @@ export function readPromoForm(raw: PromoFormRaw, sessionIds: readonly string[], 
   d.all = raw.all;
   d.sessionIds = raw.all ? [] : sessionIds;
   if (!raw.all && sessionIds.length === 0) errors.scope = "promo.err.pickNone";
+  else if (raw.type === "fixed_amount" && !raw.all && d.currency !== "" && dropOtherCurrencySessions(sessionIds, currencies, d.currency).dropped.length > 0) {
+    errors.scope = "promo.err.otherCurrency";
+  }
 
   if (raw.total.trim() !== "") {
     const n = parseLimit(raw.total);
@@ -295,7 +329,7 @@ export function readPromoForm(raw: PromoFormRaw, sessionIds: readonly string[], 
   if (d.maxUses !== null && d.perBuyer !== null && d.perBuyer > d.maxUses) errors.per = "promo.err.perGtTotal";
   d.until = raw.until;
   d.status = raw.status;
-  return { draft: Object.keys(errors).length === 0 && draftProblem(d) === null ? d : null, errors };
+  return { draft: Object.keys(errors).length === 0 && draftProblem(d, currencies) === null ? d : null, errors };
 }
 
 

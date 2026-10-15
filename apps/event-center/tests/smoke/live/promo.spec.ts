@@ -200,6 +200,21 @@ test.describe.serial("promo codes twin (live)", () => {
     expect(row.valid_until).toBe(`${until}T23:59:59Z`);
   });
 
+  test("owner: switching a percent code with a CZK session to fixed EUR unticks the session", async ({ page }) => {
+    await signInAs(page, person(env, "org_admin"));
+    await page.goto(`/o/${env.org_id}/promo/new`);
+    await page.getByTestId("promo-f-scope-pick").check();
+    await page.getByTestId("promo-pick-event").selectOption({ label: CZECH });
+    await page.getByTestId("promo-pick-session").first().check();
+    await expect(page.getByTestId("promo-pick-count")).toContainText("Chosen sessions: 1");
+    // Now the discount becomes a fixed one in EUR: the CZK session cannot stay ticked.
+    await page.getByTestId("promo-f-type-fixed_amount").check();
+    await page.getByTestId("promo-f-currency").fill("eur");
+    await expect(page.getByTestId("promo-pick-count")).toContainText("Chosen sessions: 0");
+    await expect(page.getByTestId("promo-pick-session").first()).not.toBeChecked();
+    await expect(page.getByTestId("promo-pick-dropped")).toContainText("another currency than EUR");
+  });
+
   test("owner: pause and activate change the status", async ({ page, request }) => {
     const row = (await codeByName(request, FIXED)) as PromoCode;
     await signInAs(page, person(env, "org_admin"));
