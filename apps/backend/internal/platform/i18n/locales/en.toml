@@ -2133,6 +2133,12 @@ other = "A new e-mail with a fresh link went to {{.Email}}. The old link no long
 ["bot.team.resend_too_soon"]
 other = "The last e-mail to {{.Email}} went out less than ten minutes ago. Try again a little later."
 
+["bot.team.readonly"]
+other = "Only the owner can change the team. To invite, resend or remove someone, please ask the owner."
+
+["bot.team.readonly_hint"]
+other = "You can see the team here, but only the owner can change it. To invite or remove someone, please ask the owner."
+
 ["bot.team.invitation_gone"]
 other = "That invitation no longer exists, or the person already accepted it."
 

@@ -1988,6 +1988,12 @@ other = "Un correo nuevo con un enlace nuevo ha salido a {{.Email}}. El enlace a
 ["bot.team.resend_too_soon"]
 other = "El último correo a {{.Email}} salió hace menos de diez minutos. Inténtalo un poco más tarde."
 
+["bot.team.readonly"]
+other = "Solo el propietario puede cambiar el equipo. Para invitar o quitar a alguien, pídeselo al propietario."
+
+["bot.team.readonly_hint"]
+other = "Aquí puedes ver el equipo, pero solo el propietario puede cambiarlo. Para invitar o quitar a alguien, pídeselo al propietario."
+
 ["bot.team.invitation_gone"]
 other = "Esa invitación ya no existe o ya fue aceptada."
 

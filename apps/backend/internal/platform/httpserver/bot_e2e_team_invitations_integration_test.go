@@ -6,7 +6,7 @@ package httpserver
 // bot and a stub Telegram: the Team screen shows where each invitation stands,
 // the owner resends a letter (the ten-minute limit answers in plain words) and
 // revokes an invitation after one confirmation, a stale button ends in a note,
-// and a manager gets the owner-only answer and changes nothing. The stub
+// and a manager reads the list, gets the read-only answer and changes nothing. The stub
 // records message TEXT only, so buttons are proven by pressing their
 // callback_data and checking the database.
 
@@ -109,10 +109,15 @@ func TestBotE2E_TeamInvitations_OwnerResendsAndRevokes_ManagerCannot(t *testing.
 	}
 
 	// ── the manager: owner-only answer, nothing changes ─────────────────────
-	for _, data := range []string{"team", "team:rs:" + expiredUser.String(), "team:ri:" + expiredUser.String() + ":yes"} {
+	// Since V-11 the manager READS the Team screen (no buttons: see
+	// bot_e2e_team_readonly_integration_test.go), and every action is refused.
+	m = tg.mark()
+	tg.push(e2eCallbackAs(managerTG, "team"))
+	tg.waitSince(t, m, "Здесь вы видите команду")
+	for _, data := range []string{"team:rs:" + expiredUser.String(), "team:ri:" + expiredUser.String() + ":yes"} {
 		m = tg.mark()
 		tg.push(e2eCallbackAs(managerTG, data))
-		tg.waitSince(t, m, "управляет только владелец")
+		tg.waitSince(t, m, "Команду меняет только владелец")
 	}
 	if revoked(expiredInv) || !member(expiredUser) || jobs(expiredEmail) != 1 {
 		t.Fatal("a manager's press changed something")
