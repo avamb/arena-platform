@@ -11444,6 +11444,15 @@ export interface components {
          *     reason and channel.
          */
         OrderDetail: components["schemas"]["OrderSummary"] & {
+            /** @description Name of the event the order's session belongs to. Present even when the session was cancelled (soft-deleted). */
+            event_name: string;
+            /**
+             * Format: date-time
+             * @description Start of the order's session, RFC 3339 in UTC.
+             */
+            session_start_at: string;
+            /** @description IANA zone of the session's venue (`venues.timezone`) - render session_start_at in it. */
+            venue_timezone: string;
             /** @description Line items of the order. */
             items: components["schemas"]["OrderItemSummary"][];
             /** @description Tickets issued for this order's line items, in line order. */
