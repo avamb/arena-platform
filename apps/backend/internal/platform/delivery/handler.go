@@ -867,6 +867,7 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, brandin
 		SeatNumber:             p.SeatNumber,
 		PriceMinor:             p.PriceMinor,
 		Currency:               p.Currency,
+		Invitation:             p.Template == TemplateInvitation,
 		EAN13:                  p.EAN13,
 		OrgLogo:                logoBytes,
 		PosterImage:            posterBytes,

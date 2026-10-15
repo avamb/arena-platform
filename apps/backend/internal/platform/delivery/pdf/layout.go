@@ -703,11 +703,17 @@ type infoCell struct{ label, value string }
 // cell, and a personal name wraps to three lines in that — the arena
 // addition must not degrade the row the original already tuned.
 func infoRows(t Ticket, s ticketStrings) [][]infoCell {
+	price := priceValue(t)
+	if t.Invitation && strings.TrimSpace(t.PriceLabel) == "" {
+		// An invitation has no price: the cell carries the word instead of
+		// being dropped.
+		price = s.Invitation
+	}
 	top := make([]infoCell, 0, 3)
 	for _, c := range []infoCell{
 		{label: s.Category, value: strings.TrimSpace(t.TierName)},
 		{label: s.Seat, value: seatValue(t, s)},
-		{label: s.Price, value: priceValue(t)},
+		{label: s.Price, value: price},
 	} {
 		if c.value != "" {
 			top = append(top, c)
