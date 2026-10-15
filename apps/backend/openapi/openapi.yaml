@@ -4333,7 +4333,7 @@ components:
           description: Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
         kind:
           type: string
-          description: ticket, change, cancel or refund. Invitation letters have no order and are not listed on an order.
+          description: ticket, change, cancel or refund on an order; invitation for the letter of a complimentary issuance (read through the invitations list, which has no order).
         status:
           type: string
           description: |
@@ -14037,11 +14037,11 @@ components:
 
     ComplimentaryListItem:
       type: object
-      required: [id, org_id, session_id, tier_id, qty, recipients, batch_id, status, state, ticket_count, tickets, created_at, updated_at]
+      required: [id, org_id, session_id, tier_id, qty, recipients, batch_id, status, state, ticket_count, tickets, letters, created_at, updated_at]
       description: |
         One complimentary issuance in the paged list: the issuance row with
-        the event, date and category it is for, its tickets and a derived
-        state.
+        the event, date and category it is for, its tickets, the letters the
+        guests were sent and a derived state.
       properties:
         id:
           type: string
@@ -14113,6 +14113,17 @@ components:
           description: The tickets of the issuance, oldest first.
           items:
             $ref: "#/components/schemas/ComplimentaryTicketItem"
+        letters:
+          type: array
+          description: |
+            The invitation letters of the issuance with their delivery status
+            (same shape as the letters of an order card). An invitation has
+            no order: the letters are found through the tickets' delivery
+            jobs. One entry per sent letter, one for tickets still queued,
+            one for those the mail relay refused, one for tickets sent before
+            letters were recorded. Empty while nothing was queued yet.
+          items:
+            $ref: "#/components/schemas/OrderLetter"
         created_at:
           type: string
           format: date-time
@@ -14189,7 +14200,7 @@ components:
 
     ComplimentaryCreateResponse:
       type: object
-      required: [issuance, tickets, idempotent_replay]
+      required: [issuance, tickets, letters, idempotent_replay]
       description: The issuance that was created, or the existing one on a replay.
       properties:
         issuance:
@@ -14201,6 +14212,11 @@ components:
           items:
             type: object
             description: One ticket (id, complimentary_issuance_id, session_id, tier_id, holder_email, holder_name, system_ticket_id, status, issued_at, created_at, updated_at).
+        letters:
+          type: array
+          description: The invitation letters of the issuance with their delivery status, as in the invitations list. Right after the issue the letters are queued (or empty while no delivery job exists).
+          items:
+            $ref: "#/components/schemas/OrderLetter"
         idempotent_replay:
           type: boolean
           description: True when the batch_id already existed and nothing new was created.

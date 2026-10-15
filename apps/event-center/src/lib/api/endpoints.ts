@@ -6,10 +6,12 @@
 import { call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type {
+  ComplimentaryListResponse,
   EventListResponse,
   EventSummary,
   MeResponse,
   OrderDetail,
+  OrderLetter,
   OrderListResponse,
   OrderSummary,
   OrgMeResponse,
@@ -133,4 +135,69 @@ export function downloadSampleTicket(orgId: string, sessionId: string, locale: s
  */
 export function cancelOrder(orgId: string, orderId: string, headers: Record<string, string>): Promise<OrderSummary> {
   return call<OrderSummary>({ route: API.cancelOrder, params: { org_id: orgId, id: orderId }, body: {}, headers });
+}
+
+// ─── 4-4: invitations ───────────────────────────────────────────────────────
+
+export type InvitationState = "valid" | "used" | "revoked";
+
+export interface InvitationQuery {
+  state?: InvitationState;
+  limit?: number;
+  offset?: number;
+}
+
+/** One page of the issued invitations, newest first, each with its `letters[]`. */
+export function listInvitations(orgId: string, query: InvitationQuery): Promise<ComplimentaryListResponse> {
+  return call<ComplimentaryListResponse>({
+    route: API.complimentaryList,
+    params: { org_id: orgId },
+    query: { state: query.state, limit: query.limit, offset: query.offset },
+  });
+}
+
+export interface InvitationInput {
+  sessionId: string;
+  tierId: string;
+  email: string;
+  name: string;
+  /** `web-<operation>-<index>` (lib/invitations.ts batchId): a repeat replays, it never mails twice. */
+  batchId: string;
+}
+
+export interface InvitationIssued {
+  issuance: { id: string };
+  tickets: { id: string; system_ticket_id: number }[];
+  letters: OrderLetter[];
+  idempotent_replay: boolean;
+}
+
+/** Issues ONE free ticket to ONE guest, so each invitation can be annulled on its own. */
+export function issueInvitation(orgId: string, input: InvitationInput): Promise<InvitationIssued> {
+  return call<InvitationIssued>({
+    route: API.complimentaryIssue,
+    params: { org_id: orgId },
+    body: {
+      session_id: input.sessionId,
+      tier_id: input.tierId,
+      qty: 1,
+      recipients: [input.email],
+      recipient_names: input.name === "" ? undefined : [input.name],
+      batch_id: input.batchId,
+      issued_by: "event_center_web",
+    },
+  });
+}
+
+/**
+ * Annuls every ticket of an invitation: its barcode stops working and the
+ * place goes back on sale. Arena does not tell the guest. 409
+ * `complimentary.already_revoked` or `complimentary.scanned_ticket_requires_manual_review`.
+ */
+export function revokeInvitation(issuanceId: string): Promise<void> {
+  return call<void>({
+    route: API.complimentaryRevoke,
+    params: { id: issuanceId },
+    body: { reason: "revoked from the web event center" },
+  });
 }

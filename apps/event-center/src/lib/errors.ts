@@ -94,7 +94,11 @@ export type ApiErrorStem =
   | "promoPerCustomer"
   | "promoRateLimited"
   | "promoDuplicate"
-  | "eventHasPaidOrders";
+  | "eventHasPaidOrders"
+  | "invitationTooMany"
+  | "invitationRecipient"
+  | "invitationAlreadyRevoked"
+  | "invitationScanned";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -103,7 +107,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "changeMessageTooLong", "refundScanned", "refundInProgress", "refundNotRefundable", "refundNotSupported",
   "refundNotRetryable", "refundKeyReused", "tierNotOnSale", "tierSoldOut", "tierSeated", "tierBelowUsed",
   "tierSaleWindow", "promoNotApplicable", "promoMinimum", "promoExhausted", "promoPerCustomer",
-  "promoRateLimited", "promoDuplicate", "eventHasPaidOrders",
+  "promoRateLimited", "promoDuplicate", "eventHasPaidOrders", "invitationTooMany", "invitationRecipient",
+  "invitationAlreadyRevoked", "invitationScanned",
 ];
 
 /**
@@ -137,6 +142,13 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "promo.rate_limited": "promoRateLimited",
   "promo.duplicate": "promoDuplicate",
   "event.has_paid_orders": "eventHasPaidOrders",
+  "complimentary.qty_too_large": "invitationTooMany",
+  "complimentary.too_many_recipients": "invitationTooMany",
+  "complimentary.invalid_recipient": "invitationRecipient",
+  "complimentary.invalid_recipient_name": "invitationRecipient",
+  "complimentary.already_revoked": "invitationAlreadyRevoked",
+  "complimentary.scanned_ticket_requires_manual_review": "invitationScanned",
+  "complimentary.capacity_overflow": "tierSoldOut",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",

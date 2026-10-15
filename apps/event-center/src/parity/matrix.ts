@@ -399,6 +399,7 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Выдача пригласительных",
     bot: "invite.go, `iv:i`",
     web: "R3",
+    ready: { twin: "live/invitations.spec.ts" },
     routes: [`POST ${O}/complimentary`],
   },
   {
@@ -406,7 +407,9 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Список и аннулирование",
     bot: "invite_list.go, `iv:l`, `iv:rv` (слово)",
     web: "R3",
+    ready: { twin: "live/invitations.spec.ts" },
     routes: [`GET ${O}/complimentary`, "POST /v1/complimentary/{id}/revoke"],
+    note: "Статус письма гостя (`letters[]`) идёт через билет пригласительного, у пригласительного нет заказа.",
   },
   // ── Команда ─────────────────────────────────────────────────────────
   {

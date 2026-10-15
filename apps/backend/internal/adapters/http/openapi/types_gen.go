@@ -4088,6 +4088,9 @@ type ComplimentaryCreateResponse struct {
 	// Issuance The issuance row (id, org_id, session_id, tier_id, qty, recipients, batch_id, status, issued_by, notes, created_at, updated_at).
 	Issuance map[string]interface{} `json:"issuance"`
 
+	// Letters The invitation letters of the issuance with their delivery status, as in the invitations list. Right after the issue the letters are queued (or empty while no delivery job exists).
+	Letters []OrderLetter `json:"letters"`
+
 	// Tickets The tickets of the issuance with their numbers and holders.
 	Tickets []map[string]interface{} `json:"tickets"`
 }
@@ -4138,8 +4141,8 @@ type ComplimentaryIssuance struct {
 type ComplimentaryIssuanceStatus string
 
 // ComplimentaryListItem One complimentary issuance in the paged list: the issuance row with
-// the event, date and category it is for, its tickets and a derived
-// state.
+// the event, date and category it is for, its tickets, the letters the
+// guests were sent and a derived state.
 type ComplimentaryListItem struct {
 	// BatchId Idempotency key the issuance was created under.
 	BatchId string `json:"batch_id"`
@@ -4158,6 +4161,14 @@ type ComplimentaryListItem struct {
 
 	// IssuedBy Free-text label of who issued it, when given.
 	IssuedBy *string `json:"issued_by"`
+
+	// Letters The invitation letters of the issuance with their delivery status
+	// (same shape as the letters of an order card). An invitation has
+	// no order: the letters are found through the tickets' delivery
+	// jobs. One entry per sent letter, one for tickets still queued,
+	// one for those the mail relay refused, one for tickets sent before
+	// letters were recorded. Empty while nothing was queued yet.
+	Letters []OrderLetter `json:"letters"`
 
 	// Notes Internal note, when given.
 	Notes *string `json:"notes"`
@@ -9052,7 +9063,7 @@ type OrderLetter struct {
 	// Id Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
 	Id *openapi_types.UUID `json:"id"`
 
-	// Kind ticket, change, cancel or refund. Invitation letters have no order and are not listed on an order.
+	// Kind ticket, change, cancel or refund on an order; invitation for the letter of a complimentary issuance (read through the invitations list, which has no order).
 	Kind string `json:"kind"`
 
 	// OpenedAt When Brevo first reported an open.

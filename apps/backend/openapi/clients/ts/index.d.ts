@@ -11554,7 +11554,7 @@ export interface components {
              * @description Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
              */
             id: string | null;
-            /** @description ticket, change, cancel or refund. Invitation letters have no order and are not listed on an order. */
+            /** @description ticket, change, cancel or refund on an order; invitation for the letter of a complimentary issuance (read through the invitations list, which has no order). */
             kind: string;
             /**
              * @description queued (the delivery job waits), sent (the mail relay accepted
@@ -20032,8 +20032,8 @@ export interface components {
         };
         /**
          * @description One complimentary issuance in the paged list: the issuance row with
-         *     the event, date and category it is for, its tickets and a derived
-         *     state.
+         *     the event, date and category it is for, its tickets, the letters the
+         *     guests were sent and a derived state.
          */
         ComplimentaryListItem: {
             /**
@@ -20101,6 +20101,15 @@ export interface components {
             /** @description The tickets of the issuance, oldest first. */
             tickets: components["schemas"]["ComplimentaryTicketItem"][];
             /**
+             * @description The invitation letters of the issuance with their delivery status
+             *     (same shape as the letters of an order card). An invitation has
+             *     no order: the letters are found through the tickets' delivery
+             *     jobs. One entry per sent letter, one for tickets still queued,
+             *     one for those the mail relay refused, one for tickets sent before
+             *     letters were recorded. Empty while nothing was queued yet.
+             */
+            letters: components["schemas"]["OrderLetter"][];
+            /**
              * Format: date-time
              * @description When the issuance was created.
              */
@@ -20167,6 +20176,8 @@ export interface components {
             issuance: Record<string, never>;
             /** @description The tickets of the issuance with their numbers and holders. */
             tickets: Record<string, never>[];
+            /** @description The invitation letters of the issuance with their delivery status, as in the invitations list. Right after the issue the letters are queued (or empty while no delivery job exists). */
+            letters: components["schemas"]["OrderLetter"][];
             /** @description True when the batch_id already existed and nothing new was created. */
             idempotent_replay: boolean;
         };
