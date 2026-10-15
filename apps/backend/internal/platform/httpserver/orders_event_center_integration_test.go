@@ -510,3 +510,51 @@ func TestEventCenterOrders_ExactOrderNumberListedBeforePhoneSuffix(t *testing.T)
 		t.Fatalf("q=%s: decoy (phone suffix) should be listed after the exact hit: ids %v total %v", number, ids, total)
 	}
 }
+
+// TestEventCenterOrders_CardCarriesEventFacts pins 0-2 (WEB-ORDER-EVENT): the
+// card itself answers event_name, session_start_at and venue_timezone, so no
+// client borrows them from the list row — and they stay filled after the
+// session was soft-deleted (the bot's session cancel), because the card's
+// joins carry no deleted_at filter.
+func TestEventCenterOrders_CardCarriesEventFacts(t *testing.T) {
+	f := newECOrdersFixture(t)
+	ctx := context.Background()
+
+	var wantName, wantZone string
+	var wantStart time.Time
+	if err := f.pool.QueryRow(ctx, `SELECT e.name, s.start_at, v.timezone
+		FROM sessions s JOIN events e ON e.id = s.event_id JOIN venues v ON v.id = s.venue_id
+		WHERE s.id = $1`, f.sessionA).Scan(&wantName, &wantStart, &wantZone); err != nil {
+		t.Fatalf("read back event facts: %v", err)
+	}
+	if wantZone != "Europe/Madrid" {
+		t.Fatalf("fixture venue zone = %q", wantZone)
+	}
+
+	check := func(label string) {
+		t.Helper()
+		for _, id := range []uuid.UUID{f.paidOrder, f.expiredOrder} {
+			code, body := f.get("/v1/organizations/"+f.orgA.String()+"/orders/"+id.String(), f.managerTok)
+			if code != http.StatusOK {
+				t.Fatalf("%s: card %s: %d %v", label, id, code, body)
+			}
+			if body["event_name"] != wantName || body["venue_timezone"] != wantZone {
+				t.Fatalf("%s: event facts: name %v zone %v", label, body["event_name"], body["venue_timezone"])
+			}
+			got, ok := body["session_start_at"].(string)
+			if !ok {
+				t.Fatalf("%s: session_start_at missing: %v", label, body["session_start_at"])
+			}
+			ts, err := time.Parse(time.RFC3339, got)
+			if err != nil || !ts.Equal(wantStart) {
+				t.Fatalf("%s: session_start_at = %q (%v), want %s", label, got, err, wantStart.Format(time.RFC3339))
+			}
+		}
+	}
+	check("live session")
+
+	if _, err := f.pool.Exec(ctx, `UPDATE sessions SET deleted_at = now() WHERE id = $1`, f.sessionA); err != nil {
+		t.Fatalf("soft-delete session: %v", err)
+	}
+	check("soft-deleted session")
+}
