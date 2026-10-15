@@ -9954,7 +9954,8 @@ components:
             - external_ticketing_operator
             - platform_superadmin
             - network_operator
-          description: The specific role binding to revoke.
+            - org_admin
+          description: The specific role binding to revoke. org_admin is the organization owner; the last active owner cannot be revoked (409 `membership.last_owner`).
           example: "organizer"
 
     InventoryRowItem:
@@ -20807,6 +20808,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            The role is `org_admin` and the user is the organization's last
+            active owner (`membership.last_owner`). Nothing is changed;
+            appoint another owner first. The platform superadmin is not
+            exempt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: Internal server error while revoking (`membership.revoke_failed`).
           content:
@@ -22266,7 +22277,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
-          description: User already holds the requested role in this organization.
+          description: |
+            Either the user already holds the requested role in this
+            organization (`admin_membership.duplicate`), or the membership is
+            the organization's last active owner and the new role is not
+            `org_admin` (`membership.last_owner`).
           content:
             application/json:
               schema:
@@ -22350,6 +22365,15 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: No active membership matches the (org_id, membership_id) pair.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            The membership is the organization's last active owner
+            (`membership.last_owner`). Nothing is changed; appoint another
+            owner first.
           content:
             application/json:
               schema:

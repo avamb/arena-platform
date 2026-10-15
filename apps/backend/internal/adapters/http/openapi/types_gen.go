@@ -677,6 +677,7 @@ const (
 	Agent                     RevokeMembershipRequestRole = "agent"
 	ExternalTicketingOperator RevokeMembershipRequestRole = "external_ticketing_operator"
 	NetworkOperator           RevokeMembershipRequestRole = "network_operator"
+	OrgAdmin                  RevokeMembershipRequestRole = "org_admin"
 	Organizer                 RevokeMembershipRequestRole = "organizer"
 	PlatformOperator          RevokeMembershipRequestRole = "platform_operator"
 	PlatformSuperadmin        RevokeMembershipRequestRole = "platform_superadmin"
@@ -11642,11 +11643,11 @@ type ResolveOrderRefundRequest struct {
 // must be supplied because a user may hold multiple roles in the
 // same organization.
 type RevokeMembershipRequest struct {
-	// Role The specific role binding to revoke.
+	// Role The specific role binding to revoke. org_admin is the organization owner; the last active owner cannot be revoked (409 `membership.last_owner`).
 	Role RevokeMembershipRequestRole `json:"role"`
 }
 
-// RevokeMembershipRequestRole The specific role binding to revoke.
+// RevokeMembershipRequestRole The specific role binding to revoke. org_admin is the organization owner; the last active owner cannot be revoked (409 `membership.last_owner`).
 type RevokeMembershipRequestRole string
 
 // ScanRequest Request body for `POST /v1/scan`. The scan flow resolves the

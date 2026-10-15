@@ -16525,11 +16525,11 @@ export interface components {
          */
         RevokeMembershipRequest: {
             /**
-             * @description The specific role binding to revoke.
+             * @description The specific role binding to revoke. org_admin is the organization owner; the last active owner cannot be revoked (409 `membership.last_owner`).
              * @example organizer
              * @enum {string}
              */
-            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator";
+            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator" | "org_admin";
         };
         /**
          * @description A single inventory_ledger row. Tracks real-time capacity state for a
@@ -26240,6 +26240,20 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description The role is `org_admin` and the user is the organization's last
+             *     active owner (`membership.last_owner`). Nothing is changed;
+             *     appoint another owner first. The platform superadmin is not
+             *     exempt.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal server error while revoking (`membership.revoke_failed`). */
             500: {
                 headers: {
@@ -27811,6 +27825,19 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description The membership is the organization's last active owner
+             *     (`membership.last_owner`). Nothing is changed; appoint another
+             *     owner first.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal server error */
             500: {
                 headers: {
@@ -27899,7 +27926,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description User already holds the requested role in this organization. */
+            /**
+             * @description Either the user already holds the requested role in this
+             *     organization (`admin_membership.duplicate`), or the membership is
+             *     the organization's last active owner and the new role is not
+             *     `org_admin` (`membership.last_owner`).
+             */
             409: {
                 headers: {
                     [name: string]: unknown;

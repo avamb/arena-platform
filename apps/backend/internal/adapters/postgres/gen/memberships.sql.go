@@ -344,3 +344,37 @@ func (q *Queries) DeactivateMembership(ctx context.Context, id, orgID uuid.UUID)
 	row := q.db.QueryRow(ctx, deactivateMembership, id, orgID)
 	return scanMembershipRow(row)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LockOrgOwners / CountOtherActiveOrgAdmins — the "last owner" guard (U-4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const lockOrgOwners = `-- name: LockOrgOwners :exec
+SELECT pg_advisory_xact_lock(hashtextextended('org_owners:' || $1::text, 0))`
+
+// LockOrgOwners serialises every change that can take an owner away from the
+// organization. Call it as the first statement of the transaction, then count
+// with CountOtherActiveOrgAdmins. The lock is released at commit or rollback.
+func (q *Queries) LockOrgOwners(ctx context.Context, orgID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockOrgOwners, orgID)
+	return err
+}
+
+const countOtherActiveOrgAdmins = `-- name: CountOtherActiveOrgAdmins :one
+SELECT count(*)
+FROM   memberships m
+JOIN   users u ON u.id = m.user_id
+WHERE  m.org_id = $1
+  AND  m.role = 'org_admin'
+  AND  m.status = 'active'
+  AND  u.deactivated_at IS NULL
+  AND  m.user_id <> $2`
+
+// CountOtherActiveOrgAdmins counts the organization's active owners besides
+// exceptUserID (a deactivated account is no owner). Zero means exceptUserID is
+// the last one. The caller must hold LockOrgOwners.
+func (q *Queries) CountOtherActiveOrgAdmins(ctx context.Context, orgID, exceptUserID uuid.UUID) (int64, error) {
+	var n int64
+	err := q.db.QueryRow(ctx, countOtherActiveOrgAdmins, orgID, exceptUserID).Scan(&n)
+	return n, err
+}

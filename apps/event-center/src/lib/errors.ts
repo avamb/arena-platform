@@ -94,7 +94,8 @@ export type ApiErrorStem =
   | "promoPerCustomer"
   | "promoRateLimited"
   | "promoDuplicate"
-  | "eventHasPaidOrders";
+  | "eventHasPaidOrders"
+  | "lastOwner";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -103,7 +104,7 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "changeMessageTooLong", "refundScanned", "refundInProgress", "refundNotRefundable", "refundNotSupported",
   "refundNotRetryable", "refundKeyReused", "tierNotOnSale", "tierSoldOut", "tierSeated", "tierBelowUsed",
   "tierSaleWindow", "promoNotApplicable", "promoMinimum", "promoExhausted", "promoPerCustomer",
-  "promoRateLimited", "promoDuplicate", "eventHasPaidOrders",
+  "promoRateLimited", "promoDuplicate", "eventHasPaidOrders", "lastOwner",
 ];
 
 /**
@@ -137,6 +138,7 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "promo.rate_limited": "promoRateLimited",
   "promo.duplicate": "promoDuplicate",
   "event.has_paid_orders": "eventHasPaidOrders",
+  "membership.last_owner": "lastOwner",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",

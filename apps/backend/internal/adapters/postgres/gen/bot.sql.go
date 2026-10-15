@@ -201,16 +201,6 @@ func (q *Queries) BotUserWorksInOrg(ctx context.Context, userID, orgID uuid.UUID
 	return b, err
 }
 
-const countActiveOrgAdmins = `-- name: CountActiveOrgAdmins :one
-SELECT count(*) FROM memberships WHERE org_id = $1 AND role = 'org_admin' AND status = 'active'`
-
-// CountActiveOrgAdmins counts the organization's active owners.
-func (q *Queries) CountActiveOrgAdmins(ctx context.Context, orgID uuid.UUID) (int64, error) {
-	var n int64
-	err := q.db.QueryRow(ctx, countActiveOrgAdmins, orgID).Scan(&n)
-	return n, err
-}
-
 const resendBotInvitation = `-- name: ResendBotInvitation :one
 UPDATE bot_invitations
 SET    code_hash    = $3,
