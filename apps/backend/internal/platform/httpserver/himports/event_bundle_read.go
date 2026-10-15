@@ -347,6 +347,7 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 		}
 		ae.DoorsOpenTime = &doors
 		checkBundleTimes(ae, s, loc, warn)
+		checkBundleInstants(ss, src.Windows, warn)
 
 		req := bil24compat.ImportSessionRequest{
 			Source: bil24compat.SourceArena,
@@ -396,6 +397,26 @@ func checkBundleTimes(ae bil24compat.ImportSessionActionEvent, s gen.SessionRow,
 	if err != nil || end == nil || !end.Equal(s.EndAt.Truncate(time.Minute)) {
 		warn(WarnBundleTimeNotRepresentable,
 			"session %s: the end time cannot be written as a local time exactly (a session of 24 hours or more, or seconds)", s.ID)
+	}
+}
+
+// checkBundleInstants warns once per session when an RFC 3339 instant of its
+// bundle (sales end, doors, a category window, a price window) carries a
+// fraction of a second: the format has none, so the import would store the
+// value cut to the whole second.
+func checkBundleInstants(ss bundleSessionSource, windows map[uuid.UUID][]gen.TicketTierPriceRow, warn func(string, string, ...any)) {
+	fractional := func(t *time.Time) bool { return t != nil && t.Nanosecond() != 0 }
+	s := ss.Session
+	bad := fractional(&s.SalesEndAt) || fractional(s.DoorsOpenAt)
+	for _, t := range ss.Tiers {
+		bad = bad || fractional(t.SaleWindowStart) || fractional(t.SaleWindowEnd)
+		for _, w := range windows[t.ID] {
+			bad = bad || fractional(&w.ValidFrom) || fractional(w.ValidTo)
+		}
+	}
+	if bad {
+		warn(WarnBundleTimeNotRepresentable,
+			"session %s: a sales end, doors or sale-window time has a fraction of a second; the bundle writes whole seconds", s.ID)
 	}
 }
 

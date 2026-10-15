@@ -197,6 +197,18 @@ func TestBuildEventBundles_PromoterAndTimeNotes(t *testing.T) {
 	}
 }
 
+func TestBuildEventBundles_FractionalSecondInstantIsAWarning(t *testing.T) {
+	src, _ := bundleFixtureSource(t)
+	if w := buildEventBundles(src).Warnings; len(w) != 0 {
+		t.Fatalf("whole-second instants say nothing: %+v", w)
+	}
+	src.Sessions[0].Tiers[0].SaleWindowEnd = ptr(src.Sessions[0].Session.StartAt.Add(-time.Hour + 250*time.Millisecond))
+	out := buildEventBundles(src)
+	if len(out.Warnings) != 1 || out.Warnings[0].Code != WarnBundleTimeNotRepresentable {
+		t.Fatalf("a category window with a fraction of a second is not silently cut: %+v", out.Warnings)
+	}
+}
+
 func TestBuildEventBundles_DraftEventDoesNotPublish(t *testing.T) {
 	src, _ := bundleFixtureSource(t)
 	src.Event.Status = "draft"
