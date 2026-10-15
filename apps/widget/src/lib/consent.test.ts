@@ -16,6 +16,7 @@ import {
   consentPayload,
   consentRequired,
   consentSegments,
+  forceConsent,
   safeConsentUrl,
 } from './consent.js';
 import { CONSENT_I18N, getConsentStrings } from './consentI18n.js';
@@ -63,6 +64,17 @@ describe('consent rules', () => {
     expect(consentErrorMessage(undefined, 'en')).toBeNull();
   });
 
+  it('shows the box after a refusal the feed did not announce', () => {
+    expect(forceConsent({ required: false, terms_url: 'https://x.example/t' }, true)).toEqual({
+      required: true,
+      terms_url: 'https://x.example/t',
+    });
+    expect(forceConsent(undefined, true)).toEqual({ required: true });
+    expect(forceConsent({ required: false }, false)).toEqual({ required: false });
+    expect(forceConsent(REQUIRED, true)).toBe(REQUIRED);
+    expect(forceConsent(undefined, false)).toBeNull();
+  });
+
   it('links only to http(s) pages', () => {
     expect(safeConsentUrl('https://arenasoldout.com/legal/terms')).toBe('https://arenasoldout.com/legal/terms');
     expect(safeConsentUrl('javascript:alert(1)')).toBeNull();
@@ -72,13 +84,15 @@ describe('consent rules', () => {
 });
 
 describe('consent words', () => {
-  it('has every language with both links and the seller slot', () => {
+  it('has every language with both links and the seller slot in brackets', () => {
     for (const loc of LOCALES) {
       const s = CONSENT_I18N[loc];
       expect(s, loc).toBeDefined();
       expect(s!.label, loc).toMatch(/\[terms\][^[]+\[\/terms\]/);
       expect(s!.label, loc).toMatch(/\[privacy\][^[]+\[\/privacy\]/);
-      expect(s!.label, loc).toContain('{seller}');
+      // Until P3 the link is the platform terms: the seller is named in
+      // brackets, never as the author of the terms.
+      expect(s!.label, loc).toMatch(/\([^()]*\{seller\}\)/);
       expect(s!.hint.length, loc).toBeGreaterThan(0);
       expect(s!.error_required.length, loc).toBeGreaterThan(0);
       expect(s!.new_tab.length, loc).toBeGreaterThan(0);
@@ -93,7 +107,9 @@ describe('consent words', () => {
   it('speaks Russian with the glossary words', () => {
     const ru = CONSENT_I18N.ru!;
     expect(ru.label).toContain('условия продажи');
-    expect(ru.label).toContain('организатора');
+    expect(ru.label).toContain('продавец');
+    expect(ru.label).toContain('политику конфиденциальности');
+    expect(ru.label).not.toContain('организатора');
     expect(`${ru.label} ${ru.hint} ${ru.error_required}`).not.toMatch(/ивент|событи|сесси/);
   });
 
@@ -101,11 +117,14 @@ describe('consent words', () => {
     const parts = consentSegments('en', 'Teatro Demo S.L.');
     expect(parts.map((p) => p.kind)).toEqual(['text', 'terms', 'text', 'seller', 'text', 'privacy', 'text']);
     expect(parts.map((p) => p.text).join('')).toBe(
-      'I accept the sale terms of the organizer Teatro Demo S.L. and the platform policy.',
+      'I accept the sale terms (seller: Teatro Demo S.L.) and the privacy policy.',
     );
     const noName = consentSegments('en', '');
     expect(noName.some((p) => p.kind === 'seller')).toBe(false);
-    expect(noName.map((p) => p.text).join('')).toBe('I accept the sale terms of the organizer and the platform policy.');
+    expect(noName.map((p) => p.text).join('')).toBe('I accept the sale terms and the privacy policy.');
+    for (const loc of LOCALES) {
+      expect(consentSegments(loc, '').map((p) => p.text).join(''), loc).not.toMatch(/[()]/);
+    }
     for (const loc of LOCALES) {
       const kinds = consentSegments(loc, 'X').map((p) => p.kind);
       expect(kinds, loc).toContain('terms');
@@ -146,7 +165,8 @@ describe('consent checkbox in the buyer form', () => {
     expect(buyerFormSource).not.toMatch(/localStorage|sessionStorage/);
     expect(buyerFormSource).toContain('values.consentAccepted = consentAccepted');
     expect(cartSheetSource).toContain('{consent}');
-    expect(widgetSource).toContain('consent={selectedSession.consent ?? null}');
+    expect(widgetSource).toContain('consent={forceConsent(selectedSession.consent, consentForcedFor === selectedSession.id)}');
+    expect(widgetSource).toContain('consentForcedFor = selectedSession?.id ?? null');
     expect(widgetSource).toContain('consentPayload(values.consentAccepted === true, normLocale)');
     expect(widgetSource).toContain('consentErrorMessage(err.code, normLocale)');
   });

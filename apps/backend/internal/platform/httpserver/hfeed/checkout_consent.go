@@ -12,14 +12,24 @@
 //
 // The record (checkout_consents, migration 0155) is dispute evidence. It
 // stores the buyer's real IP address and browser string (owner decision
-// 2026-10-15). Neither is ever written to a log, an audit row, a public answer
-// or a Telegram message; only GET .../orders/{order_id}/consents answers them,
-// to the order's organization and the platform operator.
+// 2026-10-15), the site the buyer bought on and what the checkbox showed. It
+// is written only when the channel asks for the consent: a tick sent to a
+// channel that does not is ignored (data minimization). This code never
+// writes the address or browser to a log, an audit row, a public answer or a
+// Telegram message; only GET .../orders/{order_id}/consents answers them, to
+// the order's organization (users, not API keys) and the platform operator.
+// The router's request log records remote_addr and user_agent of EVERY
+// request, this one included; the consent row is the only stored copy with
+// a retention rule.
+//
+// A platform superadmin hiding the seller block (seller_hidden) does not turn
+// the consent off: the organization is still the seller.
 package hfeed
 
 import (
 	"net/http"
 	"net/netip"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -41,6 +51,15 @@ const ConsentKindSaleTerms = "sale_terms"
 
 // maxUserAgentRunes caps the stored browser string (CHECK in 0155).
 const maxUserAgentRunes = 512
+
+// maxOriginHostLen caps the stored site (CHECK in 0155).
+const maxOriginHostLen = 255
+
+// maxShownRunes caps the stored seller name (CHECK in 0155: 500).
+const maxShownRunes = 500
+
+// maxShownURLLen caps a stored link (CHECK in 0155: 2000).
+const maxShownURLLen = 2000
 
 // PublicCheckoutConsent is the optional consent member of the checkout/start
 // body: the buyer ticked the box (accepted) in the widget's language (locale).
@@ -123,6 +142,13 @@ func consentRefused(required bool, c *PublicCheckoutConsent) bool {
 	return required && !consentAccepted(c)
 }
 
+// consentRecorded reports whether checkout/start stores a consent row: only
+// a ticked consent for a channel that asks for it. Anything else stores
+// nothing of the buyer.
+func consentRecorded(required bool, c *PublicCheckoutConsent) bool {
+	return required && consentAccepted(c)
+}
+
 // pendingConsent is the consent row checkout/start writes in the checkout
 // transaction, gathered before any transaction opens.
 type pendingConsent struct {
@@ -132,13 +158,19 @@ type pendingConsent struct {
 	clientIP     *string
 	userAgent    *string
 	withdrawal   bool
+	originHost   *string
+	sellerName   *string
+	termsURL     *string
+	privacyURL   *string
 }
 
 // newPendingConsent builds the row from the request. clientIP comes from
 // httputil.TrustedClientIP(r, 0): the router's trusted-proxy handling has
 // already rewritten RemoteAddr, so no hop count is applied here. An address
-// that does not parse is stored as NULL rather than failing the sale.
-func newPendingConsent(r *http.Request, orgID uuid.UUID, consentLocale, buyerLocale string, withdrawal bool, now time.Time) *pendingConsent {
+// that does not parse is stored as NULL rather than failing the sale. shown
+// is the consent block the feed answers for this channel: the seller name and
+// the two links the checkbox showed.
+func newPendingConsent(r *http.Request, orgID uuid.UUID, consentLocale, buyerLocale string, withdrawal bool, now time.Time, shown publicConsentBlock) *pendingConsent {
 	locale := normalizeBuyerLocale(consentLocale)
 	if locale == "" {
 		locale = buyerLocale
@@ -150,7 +182,46 @@ func newPendingConsent(r *http.Request, orgID uuid.UUID, consentLocale, buyerLoc
 		clientIP:     consentClientIP(httputil.TrustedClientIP(r, 0)),
 		userAgent:    capUserAgent(r.UserAgent()),
 		withdrawal:   withdrawal,
+		originHost:   consentOriginHost(r.Header.Get("Origin"), r.Referer()),
+		sellerName:   capShown(shown.SellerLegalName, maxShownRunes),
+		termsURL:     capShown(shown.TermsURL, maxShownURLLen),
+		privacyURL:   capShown(shown.PrivacyURL, maxShownURLLen),
 	}
+}
+
+// consentOriginHost is the site the buyer bought on: scheme and host of the
+// Origin header, else of the Referer; nothing else of the URL (no path, no
+// query, no user info). nil when neither is an http(s) URL with a host or the
+// result would exceed maxOriginHostLen.
+func consentOriginHost(origin, referer string) *string {
+	for _, raw := range []string{origin, referer} {
+		raw = strings.TrimSpace(raw)
+		if raw == "" || raw == "null" {
+			continue
+		}
+		u, err := url.Parse(raw)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			continue
+		}
+		s := strings.ToLower(u.Scheme + "://" + u.Host)
+		if len(s) > maxOriginHostLen || !utf8.ValidString(s) {
+			continue
+		}
+		return &s
+	}
+	return nil
+}
+
+// capShown stores a shown value cut to max characters; nil when empty.
+func capShown(raw string, max int) *string {
+	s := strings.TrimSpace(strings.ReplaceAll(strings.ToValidUTF8(raw, ""), "\x00", ""))
+	if s == "" {
+		return nil
+	}
+	if utf8.RuneCountInString(s) > max {
+		s = string([]rune(s)[:max])
+	}
+	return &s
 }
 
 // consentClientIP parses the textual address; nil when it is not one.
@@ -191,5 +262,9 @@ func (p *pendingConsent) params(orgID, checkoutSessionID uuid.UUID) gen.InsertCh
 		ClientIP:              p.clientIP,
 		UserAgent:             p.userAgent,
 		WithdrawalNoticeShown: p.withdrawal,
+		OriginHost:            p.originHost,
+		SellerLegalName:       p.sellerName,
+		TermsURL:              p.termsURL,
+		PrivacyURL:            p.privacyURL,
 	}
 }

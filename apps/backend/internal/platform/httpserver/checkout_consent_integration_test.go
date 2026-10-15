@@ -10,11 +10,12 @@
 //     seller's legal name and the two links.
 //   - POST .../checkout/start: without the tick 422 checkout.consent_required
 //     and no hold; with it 201 and a checkout_consents row carrying the
-//     request's peer address, the browser string and the withdrawal flag the
-//     feed answered.
-//   - Flag off: 201 without a consent and no row; a tick sent anyway is kept.
+//     request's peer address (never X-Forwarded-For), the browser string, the
+//     site, what the checkbox showed and the withdrawal flag the feed answered.
+//   - Flag off: 201 and no row, even with a tick sent (data minimization).
 //   - GET .../orders/{order_id}/consents answers the row to the order's
-//     organization only.
+//     organization (users) and the platform superadmin; an organization API
+//     key is refused with 403 orders.consents_api_key_forbidden.
 //
 // The cart is free (zero total), so no payment provider is involved.
 //
@@ -36,6 +37,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/apikeys"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
@@ -75,6 +77,7 @@ func newConsentFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, la
 func (f *consentFixture) close() {
 	ctx := context.Background()
 	_, _ = f.pool.Exec(ctx, `DELETE FROM audit_events WHERE action = 'v1.channel.seller_display_update' AND metadata->>'org_id' = $1`, f.orgID.String())
+	_, _ = f.pool.Exec(ctx, `DELETE FROM api_keys WHERE org_id = $1`, f.orgID)
 	_, _ = f.pool.Exec(ctx, `DELETE FROM memberships WHERE org_id = $1`, f.orgID)
 	f.cleanup()
 	_, _ = f.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, f.ownerID)
@@ -106,8 +109,18 @@ func consentAuthed(t *testing.T, srv *Server, asUser uuid.UUID, method, path, bo
 	if err != nil {
 		t.Fatalf("IssueJWT: %v", err)
 	}
+	return consentBearer(t, srv, token, "", method, path, body)
+}
+
+// consentBearer calls the router with any bearer (a JWT or an API key) and
+// an optional X-Admin-Reason.
+func consentBearer(t *testing.T, srv *Server, bearer, reason, method, path, body string) (int, []byte) {
+	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+bearer)
+	if reason != "" {
+		req.Header.Set("X-Admin-Reason", reason)
+	}
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -135,6 +148,10 @@ func (f *consentFixture) startWithConsent(t *testing.T, srv *Server, consent map
 	req := httptest.NewRequest(http.MethodPost, "/v1/public/feeds/"+f.feedToken+"/checkout/start", bytes.NewReader(raw))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", consentTestUA)
+	req.Header.Set("Origin", "https://Shop.Consent.example")
+	// A client-supplied X-Forwarded-For is never the stored address: the
+	// server trusts no proxy here, so the peer address is what counts.
+	req.Header.Set("X-Forwarded-For", "198.51.100.9")
 	req.RemoteAddr = "203.0.113.42:51000"
 	rec := httptest.NewRecorder()
 	srv.router.ServeHTTP(rec, req)
@@ -190,6 +207,10 @@ type consentRowWire struct {
 	ClientIP              *string `json:"client_ip"`
 	UserAgent             *string `json:"user_agent"`
 	WithdrawalNoticeShown bool    `json:"withdrawal_notice_shown"`
+	OriginHost            *string `json:"origin_host"`
+	SellerLegalName       *string `json:"seller_legal_name"`
+	TermsURL              *string `json:"terms_url"`
+	PrivacyURL            *string `json:"privacy_url"`
 }
 
 func countConsents(t *testing.T, ctx context.Context, pool *pgxpool.Pool, orgID uuid.UUID) int {
@@ -303,7 +324,14 @@ func TestCheckoutConsent_FlagOnRequiresAndRecordsTheConsent(t *testing.T) {
 		t.Errorf("kind/version = %q / %q", c.Kind, c.TermsVersion)
 	}
 	if c.ClientIP == nil || *c.ClientIP != "203.0.113.42" {
-		t.Errorf("client_ip = %v, want 203.0.113.42 (the request's RemoteAddr)", c.ClientIP)
+		t.Errorf("client_ip = %v, want 203.0.113.42 (the request's RemoteAddr, not X-Forwarded-For)", c.ClientIP)
+	}
+	if c.OriginHost == nil || *c.OriginHost != "https://shop.consent.example" {
+		t.Errorf("origin_host = %v", c.OriginHost)
+	}
+	if c.SellerLegalName == nil || *c.SellerLegalName != s.Consent.SellerLegalName ||
+		c.TermsURL == nil || *c.TermsURL != s.Consent.TermsURL || c.PrivacyURL == nil || *c.PrivacyURL != s.Consent.PrivacyURL {
+		t.Errorf("shown values = %v / %v / %v, the feed showed %+v", c.SellerLegalName, c.TermsURL, c.PrivacyURL, s.Consent)
 	}
 	if c.UserAgent == nil || *c.UserAgent != consentTestUA {
 		t.Errorf("user_agent = %v", c.UserAgent)
@@ -325,6 +353,40 @@ func TestCheckoutConsent_FlagOnRequiresAndRecordsTheConsent(t *testing.T) {
 	}
 	if leaked != 0 {
 		t.Errorf("%d audit rows carry the buyer's address or browser", leaked)
+	}
+
+	// ── an organization API key never reads the buyer's address ──────────
+	_, rawKey, err := apikeys.Issue(ctx, apikeys.NewStoreFromQueries(gen.New(pool)), apikeys.IssueInput{
+		OrgID: f.orgID, Name: "consent-" + uuid.NewString()[:6], Scopes: []string{"order.read"}, CreatedBy: f.ownerID,
+	})
+	if err != nil {
+		t.Fatalf("apikeys.Issue: %v", err)
+	}
+	code, raw = consentBearer(t, srv, rawKey, "", http.MethodGet, base+"/orders/"+orderID.String()+"/consents", "")
+	if code != http.StatusForbidden || buyerFieldsErrorCode(t, raw) != "orders.consents_api_key_forbidden" {
+		t.Fatalf("API key read: %d %s", code, raw)
+	}
+
+	// ── the platform superadmin reads it ──────────────────────────────────
+	admin, err := gen.New(pool).InsertUser(ctx, "consent-admin-"+uuid.NewString()[:8]+"@arena-integration.test", "x", "en")
+	if err != nil {
+		t.Fatalf("InsertUser admin: %v", err)
+	}
+	defer func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM user_roles WHERE user_id = $1`, admin.ID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id = $1`, admin.ID)
+	}()
+	if _, err := pool.Exec(ctx, `INSERT INTO user_roles (user_id, role_id, org_id)
+		SELECT $1, id, NULL FROM roles WHERE name = 'platform_superadmin' AND org_id IS NULL`, admin.ID); err != nil {
+		t.Fatalf("grant superadmin: %v", err)
+	}
+	adminToken, _, err := auth.IssueJWT(botTestJWTSecret, admin.ID, nil, nil, botTestJWTIssuer, botTestJWTAudience, time.Hour)
+	if err != nil {
+		t.Fatalf("IssueJWT admin: %v", err)
+	}
+	code, raw = consentBearer(t, srv, adminToken, "P2 dispute evidence check", http.MethodGet, base+"/orders/"+orderID.String()+"/consents", "")
+	if code != http.StatusOK || !strings.Contains(string(raw), "203.0.113.42") {
+		t.Fatalf("superadmin read: %d %s", code, raw)
 	}
 
 	// ── another organization's owner: the route's own 404, and 403 in A ──
@@ -349,7 +411,7 @@ func TestCheckoutConsent_FlagOnRequiresAndRecordsTheConsent(t *testing.T) {
 	}
 }
 
-func TestCheckoutConsent_FlagOffNeedsNoConsentButKeepsAGivenOne(t *testing.T) {
+func TestCheckoutConsent_FlagOffNeedsNoConsentAndStoresNone(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := t.Context()
 	srv := buildConsentServer(t, pool)
@@ -368,20 +430,14 @@ func TestCheckoutConsent_FlagOffNeedsNoConsentButKeepsAGivenOne(t *testing.T) {
 		t.Fatalf("no consent sent, yet %d rows", n)
 	}
 
-	// A tick the buyer gave anyway is still a consent: recorded.
+	// A tick sent to a channel that does not ask for it is ignored: the
+	// sale goes through and nothing of the buyer is stored.
 	code, raw = f.startWithConsent(t, srv, map[string]any{"accepted": true})
 	if code != http.StatusCreated {
 		t.Fatalf("checkout with an unrequested consent: %d %s", code, raw)
 	}
-	if n := countConsents(t, ctx, pool, f.orgID); n != 1 {
-		t.Fatalf("an unrequested tick was not recorded: %d rows", n)
-	}
-	var locale *string
-	if err := pool.QueryRow(ctx, `SELECT locale FROM checkout_consents WHERE org_id = $1`, f.orgID).Scan(&locale); err != nil {
-		t.Fatalf("read locale: %v", err)
-	}
-	if locale == nil || *locale != "ru" {
-		t.Errorf("locale = %v, want the checkout's own ru", locale)
+	if n := countConsents(t, ctx, pool, f.orgID); n != 0 {
+		t.Fatalf("an unrequested tick stored %d rows", n)
 	}
 }
 
@@ -395,6 +451,12 @@ func TestCheckoutConsent_OrderConsentsStayInsideTheOrganization(t *testing.T) {
 	defer a.close()
 	b := newConsentFixture(t, ctx, pool, "cs-iso-b")
 	defer b.close()
+	// A asks for the consent: complete profile, switch on.
+	a.completeProfile(t, ctx)
+	if _, err := pool.Exec(ctx, `UPDATE sales_channels SET settings = jsonb_set(settings, '{hosted_page,consent_required}', 'true'::jsonb)
+		WHERE id = $1`, a.channelID); err != nil {
+		t.Fatalf("switch the consent on: %v", err)
+	}
 
 	code, raw := a.startWithConsent(t, srv, map[string]any{"accepted": true})
 	if code != http.StatusCreated {

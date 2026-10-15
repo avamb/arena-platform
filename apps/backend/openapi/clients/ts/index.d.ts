@@ -5581,8 +5581,8 @@ export interface paths {
          *         country (Israel included, which has its own cancellation
          *         regime) and when the country is unknown.
          *       * `consent` — `PublicCheckoutConsentBlock` (P2): whether the
-         *         buyer must tick "I accept the sale terms of the organizer and
-         *         the platform policy" before paying, the seller's legal name
+         *         buyer must tick "I accept the sale terms (seller: <legal name>)
+         *         and the privacy policy" before paying, the seller's legal name
          *         for that text and the two pages it links to.
          *       * `poster_media_id` — resolved cover: session's own value when
          *         set, otherwise the event fallback. Same on `poster_url`.
@@ -7464,6 +7464,9 @@ export interface paths {
          *     months from the event date. Requires the `order.read` permission. An
          *     order of another organization answers the route's own 404
          *     `orders.not_found`. An order bought without a consent lists none.
+         *     Only people read it: a member of the organization or the platform
+         *     superadmin; an organization API key is refused (403
+         *     `orders.consents_api_key_forbidden`).
          */
         get: operations["getV1OrganizationsOrgIdOrdersOrderIdConsents"];
         put?: never;
@@ -18632,12 +18635,14 @@ export interface components {
              */
             locale?: string;
             /**
-             * @description The buyer's tick on "I accept the sale terms of the organizer and
-             *     the platform policy" (P2). Required (with `accepted: true`) when
-             *     the feed session's `consent.required` is true, otherwise optional.
-             *     A ticked consent is recorded with the checkout session in either
-             *     case, together with the buyer's IP address and browser string at
-             *     purchase (dispute evidence, never answered on a public route).
+             * @description The buyer's tick on "I accept the sale terms (seller: <legal
+             *     name>) and the privacy policy" (P2). Required (with
+             *     `accepted: true`) when the feed session's `consent.required` is
+             *     true. Only then is it recorded with the checkout session, together
+             *     with the buyer's IP address and browser string at purchase, the
+             *     site the buyer bought on and what the checkbox showed (dispute
+             *     evidence, never answered on a public route). Sent to a channel
+             *     that does not ask for it, it is ignored and nothing is stored.
              */
             consent?: components["schemas"]["PublicCheckoutConsent"];
         };
@@ -18654,11 +18659,12 @@ export interface components {
         };
         /**
          * @description The `consent` member of every session of the public feed event (P2):
-         *     whether the widget must show the checkbox "I accept the sale terms of
-         *     the organizer <seller_legal_name> and the platform policy" with links
-         *     to `terms_url` and `privacy_url`, and keep the pay button disabled
-         *     until it is ticked. Required only while the sales channel's
-         *     `consent_required` switch is on AND the seller data is complete.
+         *     whether the widget must show the checkbox "I accept the sale terms
+         *     (seller: <seller_legal_name>) and the privacy policy" with links to
+         *     `terms_url` and `privacy_url`, and keep the pay button disabled until
+         *     it is ticked. Required only while the sales channel's
+         *     `consent_required` switch is on AND the seller data is complete; a
+         *     seller block hidden by the operator does not switch it off.
          */
         PublicCheckoutConsentBlock: {
             /** @description True when checkout/start refuses a cart without the consent. */
@@ -18714,6 +18720,20 @@ export interface components {
             user_agent: string | null;
             /** @description Whether this purchase showed the no-right-of-withdrawal notice (seller country at that moment). */
             withdrawal_notice_shown: boolean;
+            /**
+             * @description The site the buyer bought on, scheme and host only (from the request's Origin header, else its Referer); null when neither was sent.
+             * @example https://tickets.example.com
+             */
+            origin_host: string | null;
+            /**
+             * @description The seller name the checkbox showed.
+             * @example Teatro Demo S.L.
+             */
+            seller_legal_name: string | null;
+            /** @description The sale terms link the checkbox showed. */
+            terms_url: string | null;
+            /** @description The privacy policy link the checkbox showed. */
+            privacy_url: string | null;
         };
         /** @description The consents of one order (P2). */
         OrderConsentsResponse: {
@@ -44119,6 +44139,8 @@ export interface operations {
             };
             /**
              * @description Database unavailable (dependency.database_unavailable), or
+             *     `checkout.unavailable` when the channel's checkout settings (buyer
+             *     fields, consent) could not be read, or
              *     `checkout.payment_start_failed` — the payment provider refused to
              *     create the hosted checkout page. Nothing was charged and no
              *     redirect URL exists; the hold expires on its own.
@@ -49692,7 +49714,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold the required permission (`order.read`) or is not a member of the organization. */
+            /** @description Actor does not hold the required permission (`order.read`), is not a member of the organization, or is an organization API key (`orders.consents_api_key_forbidden`). */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -2,8 +2,8 @@
  * consent.ts — the checkout consent checkbox (P2), without Svelte.
  *
  * The feed session's `consent` block says whether the buyer must tick "I
- * accept the sale terms of the organizer <legal name> and the platform
- * policy" before paying. While it is required and not ticked, the pay button
+ * accept the sale terms (seller: <legal name>) and the privacy policy" before
+ * paying. While it is required and not ticked, the pay button
  * waits; a ticked box travels as `consent: {accepted: true, locale}` in
  * checkout/start, and the platform records it with the order. The tick is
  * never remembered: no storage, a new cart sheet starts unticked.
@@ -39,6 +39,17 @@ export function consentRequired(c: SessionConsent | null | undefined): boolean {
   return c?.required === true;
 }
 
+/**
+ * The consent block the buyer form uses. `forced` is set after the platform
+ * refused a checkout with checkout.consent_required although the feed session
+ * did not ask for it: the box is then shown (required) with whatever links
+ * the feed session carried, instead of leaving the buyer at a dead end.
+ */
+export function forceConsent(c: SessionConsent | null | undefined, forced: boolean): SessionConsent | null {
+  if (!forced || consentRequired(c)) return c ?? null;
+  return { ...(c ?? {}), required: true };
+}
+
 /** Whether the pay button waits for the box. */
 export function consentPayBlocked(required: boolean, accepted: boolean): boolean {
   return required && !accepted;
@@ -69,13 +80,14 @@ export function safeConsentUrl(raw: string | null | undefined): string | null {
 
 /**
  * The checkbox text in the buyer's language, cut into plain text, the two
- * links and the seller's name. Without a name the "{seller}" slot and the
- * space before it are dropped.
+ * links and the seller's name. Without a name the bracketed "(seller: …)"
+ * part and the space before it are dropped.
  */
 export function consentSegments(locale: string, seller: string | null | undefined): ConsentSegment[] {
   const name = (seller ?? '').trim();
   let label = getConsentStrings(locale).label;
-  if (!name) label = label.replace(/\s?\{seller\}/, '');
+  // Without a name the bracketed "(seller: …)" goes away as a whole.
+  if (!name) label = label.replace(/\s?\([^()]*\{seller\}[^()]*\)/, '');
   const out: ConsentSegment[] = [];
   const re = /\[terms\]([\s\S]*?)\[\/terms\]|\[privacy\]([\s\S]*?)\[\/privacy\]|\{seller\}/g;
   let last = 0;

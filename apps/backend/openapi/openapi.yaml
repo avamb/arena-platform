@@ -11921,12 +11921,14 @@ components:
             another.
         consent:
           description: |
-            The buyer's tick on "I accept the sale terms of the organizer and
-            the platform policy" (P2). Required (with `accepted: true`) when
-            the feed session's `consent.required` is true, otherwise optional.
-            A ticked consent is recorded with the checkout session in either
-            case, together with the buyer's IP address and browser string at
-            purchase (dispute evidence, never answered on a public route).
+            The buyer's tick on "I accept the sale terms (seller: <legal
+            name>) and the privacy policy" (P2). Required (with
+            `accepted: true`) when the feed session's `consent.required` is
+            true. Only then is it recorded with the checkout session, together
+            with the buyer's IP address and browser string at purchase, the
+            site the buyer bought on and what the checkbox showed (dispute
+            evidence, never answered on a public route). Sent to a channel
+            that does not ask for it, it is ignored and nothing is stored.
           allOf:
             - $ref: "#/components/schemas/PublicCheckoutConsent"
 
@@ -11950,11 +11952,12 @@ components:
       required: [required]
       description: |
         The `consent` member of every session of the public feed event (P2):
-        whether the widget must show the checkbox "I accept the sale terms of
-        the organizer <seller_legal_name> and the platform policy" with links
-        to `terms_url` and `privacy_url`, and keep the pay button disabled
-        until it is ticked. Required only while the sales channel's
-        `consent_required` switch is on AND the seller data is complete.
+        whether the widget must show the checkbox "I accept the sale terms
+        (seller: <seller_legal_name>) and the privacy policy" with links to
+        `terms_url` and `privacy_url`, and keep the pay button disabled until
+        it is ticked. Required only while the sales channel's
+        `consent_required` switch is on AND the seller data is complete; a
+        seller block hidden by the operator does not switch it off.
       properties:
         required:
           type: boolean
@@ -11972,7 +11975,7 @@ components:
 
     OrderConsentItem:
       type: object
-      required: [id, checkout_session_id, kind, terms_version, locale, accepted_at, client_ip, user_agent, withdrawal_notice_shown]
+      required: [id, checkout_session_id, kind, terms_version, locale, accepted_at, client_ip, user_agent, withdrawal_notice_shown, origin_host, seller_legal_name, terms_url, privacy_url]
       description: One consent the buyer gave at checkout (P2). Dispute evidence; personal data.
       properties:
         id:
@@ -12009,6 +12012,20 @@ components:
         withdrawal_notice_shown:
           type: boolean
           description: Whether this purchase showed the no-right-of-withdrawal notice (seller country at that moment).
+        origin_host:
+          type: [string, "null"]
+          description: The site the buyer bought on, scheme and host only (from the request's Origin header, else its Referer); null when neither was sent.
+          example: "https://tickets.example.com"
+        seller_legal_name:
+          type: [string, "null"]
+          description: The seller name the checkbox showed.
+          example: "Teatro Demo S.L."
+        terms_url:
+          type: [string, "null"]
+          description: The sale terms link the checkbox showed.
+        privacy_url:
+          type: [string, "null"]
+          description: The privacy policy link the checkbox showed.
 
     OrderConsentsResponse:
       type: object
@@ -38119,8 +38136,8 @@ paths:
             country (Israel included, which has its own cancellation
             regime) and when the country is unknown.
           * `consent` — `PublicCheckoutConsentBlock` (P2): whether the
-            buyer must tick "I accept the sale terms of the organizer and
-            the platform policy" before paying, the seller's legal name
+            buyer must tick "I accept the sale terms (seller: <legal name>)
+            and the privacy policy" before paying, the seller's legal name
             for that text and the two pages it links to.
           * `poster_media_id` — resolved cover: session's own value when
             set, otherwise the event fallback. Same on `poster_url`.
@@ -38447,6 +38464,8 @@ paths:
         "503":
           description: |
             Database unavailable (dependency.database_unavailable), or
+            `checkout.unavailable` when the channel's checkout settings (buyer
+            fields, consent) could not be read, or
             `checkout.payment_start_failed` — the payment provider refused to
             create the hosted checkout page. Nothing was charged and no
             redirect URL exists; the hold expires on its own.
@@ -43589,6 +43608,9 @@ paths:
         months from the event date. Requires the `order.read` permission. An
         order of another organization answers the route's own 404
         `orders.not_found`. An order bought without a consent lists none.
+        Only people read it: a member of the organization or the platform
+        superadmin; an organization API key is refused (403
+        `orders.consents_api_key_forbidden`).
       tags: [v1]
       security:
         - bearerAuth: []
@@ -43623,7 +43645,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor does not hold the required permission (`order.read`) or is not a member of the organization.
+          description: Actor does not hold the required permission (`order.read`), is not a member of the organization, or is an organization API key (`orders.consents_api_key_forbidden`).
           content:
             application/json:
               schema:

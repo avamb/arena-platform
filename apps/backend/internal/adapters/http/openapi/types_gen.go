@@ -9261,6 +9261,18 @@ type OrderConsentItem struct {
 	// Locale Language the checkbox was shown in, null when not stated.
 	Locale *string `json:"locale"`
 
+	// OriginHost The site the buyer bought on, scheme and host only (from the request's Origin header, else its Referer); null when neither was sent.
+	OriginHost *string `json:"origin_host"`
+
+	// PrivacyUrl The privacy policy link the checkbox showed.
+	PrivacyUrl *string `json:"privacy_url"`
+
+	// SellerLegalName The seller name the checkbox showed.
+	SellerLegalName *string `json:"seller_legal_name"`
+
+	// TermsUrl The sale terms link the checkbox showed.
+	TermsUrl *string `json:"terms_url"`
+
 	// TermsVersion The version accepted, `platform-terms:<version>;seller:<organization id>` until the organizer's rendered terms exist.
 	TermsVersion string `json:"terms_version"`
 
@@ -11538,12 +11550,14 @@ type PublicFeedCheckoutStartRequest struct {
 	// mark them `required`.
 	Buyer *PublicBuyerInfo `json:"buyer,omitempty"`
 
-	// Consent The buyer's tick on "I accept the sale terms of the organizer and
-	// the platform policy" (P2). Required (with `accepted: true`) when
-	// the feed session's `consent.required` is true, otherwise optional.
-	// A ticked consent is recorded with the checkout session in either
-	// case, together with the buyer's IP address and browser string at
-	// purchase (dispute evidence, never answered on a public route).
+	// Consent The buyer's tick on "I accept the sale terms (seller: <legal
+	// name>) and the privacy policy" (P2). Required (with
+	// `accepted: true`) when the feed session's `consent.required` is
+	// true. Only then is it recorded with the checkout session, together
+	// with the buyer's IP address and browser string at purchase, the
+	// site the buyer bought on and what the checkbox showed (dispute
+	// evidence, never answered on a public route). Sent to a channel
+	// that does not ask for it, it is ignored and nothing is stored.
 	Consent *PublicCheckoutConsent `json:"consent,omitempty"`
 
 	// GaItems GA items for GA or hybrid sessions.

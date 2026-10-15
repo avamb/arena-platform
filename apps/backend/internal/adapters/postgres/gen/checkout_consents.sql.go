@@ -24,7 +24,12 @@ type CheckoutConsentRow struct {
 	ClientIP              *string // host(client_ip): the address without a mask
 	UserAgent             *string
 	WithdrawalNoticeShown bool
-	CreatedAt             time.Time
+	// What the checkbox showed and where (spec 38, 5.1 item 3).
+	OriginHost      *string // scheme and host only
+	SellerLegalName *string
+	TermsURL        *string
+	PrivacyURL      *string
+	CreatedAt       time.Time
 }
 
 // InsertCheckoutConsentParams carries one consent row. ClientIP is a textual
@@ -39,23 +44,30 @@ type InsertCheckoutConsentParams struct {
 	ClientIP              *string
 	UserAgent             *string
 	WithdrawalNoticeShown bool
+	OriginHost            *string
+	SellerLegalName       *string
+	TermsURL              *string
+	PrivacyURL            *string
 }
 
 const checkoutConsentColumns = `id, org_id, checkout_session_id, kind, terms_version, locale,
-       accepted_at, host(client_ip), user_agent, withdrawal_notice_shown, created_at`
+       accepted_at, host(client_ip), user_agent, withdrawal_notice_shown,
+       origin_host, seller_legal_name, terms_url, privacy_url, created_at`
 
 func scanCheckoutConsent(row interface{ Scan(...any) error }) (CheckoutConsentRow, error) {
 	var r CheckoutConsentRow
 	err := row.Scan(&r.ID, &r.OrgID, &r.CheckoutSessionID, &r.Kind, &r.TermsVersion, &r.Locale,
-		&r.AcceptedAt, &r.ClientIP, &r.UserAgent, &r.WithdrawalNoticeShown, &r.CreatedAt)
+		&r.AcceptedAt, &r.ClientIP, &r.UserAgent, &r.WithdrawalNoticeShown,
+		&r.OriginHost, &r.SellerLegalName, &r.TermsURL, &r.PrivacyURL, &r.CreatedAt)
 	return r, err
 }
 
 const insertCheckoutConsent = `-- name: InsertCheckoutConsent :one
 INSERT INTO checkout_consents (
     org_id, checkout_session_id, kind, terms_version, locale,
-    accepted_at, client_ip, user_agent, withdrawal_notice_shown
-) VALUES ($1, $2, $3, $4, $5, $6, $7::inet, $8, $9)
+    accepted_at, client_ip, user_agent, withdrawal_notice_shown,
+    origin_host, seller_legal_name, terms_url, privacy_url
+) VALUES ($1, $2, $3, $4, $5, $6, $7::inet, $8, $9, $10, $11, $12, $13)
 RETURNING ` + checkoutConsentColumns
 
 // InsertCheckoutConsent writes one consent row. It runs on the checkout
@@ -63,7 +75,8 @@ RETURNING ` + checkoutConsentColumns
 func (q *Queries) InsertCheckoutConsent(ctx context.Context, p InsertCheckoutConsentParams) (CheckoutConsentRow, error) {
 	return scanCheckoutConsent(q.db.QueryRow(ctx, insertCheckoutConsent,
 		p.OrgID, p.CheckoutSessionID, p.Kind, p.TermsVersion, p.Locale,
-		p.AcceptedAt, p.ClientIP, p.UserAgent, p.WithdrawalNoticeShown))
+		p.AcceptedAt, p.ClientIP, p.UserAgent, p.WithdrawalNoticeShown,
+		p.OriginHost, p.SellerLegalName, p.TermsURL, p.PrivacyURL))
 }
 
 const listCheckoutConsentsBySession = `-- name: ListCheckoutConsentsBySession :many

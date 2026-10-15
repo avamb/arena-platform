@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
@@ -25,6 +26,10 @@ type orderConsent struct {
 	ClientIP              *string `json:"client_ip"`
 	UserAgent             *string `json:"user_agent"`
 	WithdrawalNoticeShown bool    `json:"withdrawal_notice_shown"`
+	OriginHost            *string `json:"origin_host"`
+	SellerLegalName       *string `json:"seller_legal_name"`
+	TermsURL              *string `json:"terms_url"`
+	PrivacyURL            *string `json:"privacy_url"`
 }
 
 func orderConsentFromRow(c gen.CheckoutConsentRow) orderConsent {
@@ -38,6 +43,10 @@ func orderConsentFromRow(c gen.CheckoutConsentRow) orderConsent {
 		ClientIP:              c.ClientIP,
 		UserAgent:             c.UserAgent,
 		WithdrawalNoticeShown: c.WithdrawalNoticeShown,
+		OriginHost:            c.OriginHost,
+		SellerLegalName:       c.SellerLegalName,
+		TermsURL:              c.TermsURL,
+		PrivacyURL:            c.PrivacyURL,
 	}
 }
 
@@ -46,8 +55,18 @@ func orderConsentFromRow(c gen.CheckoutConsentRow) orderConsent {
 // the path organization, so an order of another organization is the route's
 // own 404 orders.not_found. The answer carries the buyer's IP address and
 // user agent; this route is the only place they are read, and neither is
-// logged here.
+// logged here. An organization API key is refused (403
+// orders.consents_api_key_forbidden): the buyer's address goes to people of
+// the organization and to the platform operator, never to an integration.
 func (h *Handler) HandleConsents(w http.ResponseWriter, r *http.Request) {
+	if actor, ok := auth.ActorFromContext(r.Context()); ok && actor.IsService() {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+			"orders.consents_api_key_forbidden",
+			"an API key cannot read the buyer's consent record; a member of the organization reads it signed in",
+			r,
+		))
+		return
+	}
 	if h.queries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable,
 			httputil.ErrorEnvelope("dependency.database_unavailable", "orders store not configured", r))

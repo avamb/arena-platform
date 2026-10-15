@@ -102,7 +102,17 @@ func TestNewPendingConsent(t *testing.T) {
 	r.Header.Set("X-Forwarded-For", "198.51.100.9")
 	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.FixedZone("x", 7200))
 
-	p := newPendingConsent(r, org, "ES-es", "ru", true, now)
+	r.Header.Set("Origin", "https://Shop.Example:8443")
+	shown := publicConsentBlock{Required: true, SellerLegalName: "Teatro Demo S.L.",
+		TermsURL: "https://arenasoldout.com/legal/terms", PrivacyURL: "https://arenasoldout.com/legal/privacy"}
+	p := newPendingConsent(r, org, "ES-es", "ru", true, now, shown)
+	if p.originHost == nil || *p.originHost != "https://shop.example:8443" {
+		t.Fatalf("origin host = %v", p.originHost)
+	}
+	if p.sellerName == nil || *p.sellerName != "Teatro Demo S.L." || p.termsURL == nil || p.privacyURL == nil ||
+		*p.termsURL != shown.TermsURL || *p.privacyURL != shown.PrivacyURL {
+		t.Fatalf("shown values = %v %v %v", p.sellerName, p.termsURL, p.privacyURL)
+	}
 	if p.clientIP == nil || *p.clientIP != "203.0.113.7" {
 		t.Fatalf("client ip = %v, want 203.0.113.7", p.clientIP)
 	}
@@ -123,16 +133,56 @@ func TestNewPendingConsent(t *testing.T) {
 		t.Fatalf("terms version = %q, want %q", p.termsVersion, want)
 	}
 	params := p.params(org, uuid.New())
-	if params.Kind != ConsentKindSaleTerms || params.OrgID != org {
+	if params.Kind != ConsentKindSaleTerms || params.OrgID != org || params.OriginHost != p.originHost || params.TermsURL != p.termsURL {
 		t.Fatalf("params = %+v", params)
 	}
 
 	// An unknown consent language falls back to the buyer's; none at all is NULL.
-	if p := newPendingConsent(r, org, "xx", "ru", false, now); p.locale == nil || *p.locale != "ru" {
+	if p := newPendingConsent(r, org, "xx", "ru", false, now, shown); p.locale == nil || *p.locale != "ru" {
 		t.Fatalf("fallback locale = %v, want ru", p.locale)
 	}
-	if p := newPendingConsent(r, org, "", "", false, now); p.locale != nil {
+	if p := newPendingConsent(r, org, "", "", false, now, publicConsentBlock{}); p.locale != nil || p.sellerName != nil || p.termsURL != nil {
 		t.Fatalf("no locale must be NULL, got %v", *p.locale)
+	}
+}
+
+func TestConsentRecorded_OnlyWhenTheChannelAsks(t *testing.T) {
+	t.Parallel()
+	ticked := &PublicCheckoutConsent{Accepted: true}
+	if !consentRecorded(true, ticked) {
+		t.Fatal("a ticked consent of a channel that asks for it is recorded")
+	}
+	if consentRecorded(false, ticked) {
+		t.Fatal("a tick sent to a channel that does not ask for it must store nothing")
+	}
+	if consentRecorded(true, &PublicCheckoutConsent{}) || consentRecorded(true, nil) {
+		t.Fatal("an unticked consent is never recorded")
+	}
+}
+
+func TestConsentOriginHost(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ origin, referer, want string }{
+		{"https://shop.example", "", "https://shop.example"},
+		{"", "https://www.Site.example/events/x?utm=1#frag", "https://www.site.example"},
+		{"null", "https://ref.example/path", "https://ref.example"},
+		{"https://user:pw@shop.example/p?q=1", "", "https://shop.example"},
+		{"ftp://shop.example", "javascript:alert(1)", ""},
+		{"", "", ""},
+		{"not a url", "/relative/path", ""},
+		{"https://" + strings.Repeat("a", 300) + ".example", "", ""},
+	}
+	for _, c := range cases {
+		got := consentOriginHost(c.origin, c.referer)
+		if c.want == "" {
+			if got != nil {
+				t.Errorf("(%q, %q) = %q, want nil", c.origin, c.referer, *got)
+			}
+			continue
+		}
+		if got == nil || *got != c.want {
+			t.Errorf("(%q, %q) = %v, want %q", c.origin, c.referer, got, c.want)
+		}
 	}
 }
 
