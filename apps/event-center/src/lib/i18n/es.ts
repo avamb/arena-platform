@@ -372,4 +372,10 @@ export const es: Record<MessageKey, string> = {
   "dateField.error.past": "Esa fecha ya ha pasado. Elige hoy o una posterior.",
   "dateField.error.early": "Esa fecha es demasiado temprana. Elige uno de los días abiertos del calendario.",
   "dateField.error.late": "Esa fecha es demasiado tardía. Elige uno de los días abiertos del calendario.",
+
+  // 4-2
+  "order.cancel.button": "Cancelar pedido",
+  "order.cancel.done": "El pedido está cancelado y sus plazas vuelven a estar libres.",
+  "order.cancel.changed.title": "El pedido cambió mientras trabajabas.",
+  "order.cancel.changed.next": "Ya no espera el pago (ahora: {status}), así que no se canceló nada. La ficha muestra los datos más recientes.",
 };

@@ -30,6 +30,8 @@ func (s *Server) mountOrderRoutes(r chi.Router) {
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "order.write", "orders")
+		// The web asks for the password again before it cancels (spec 37 4.6, task 4-2).
+		pr.Use(s.requireWebStepUp)
 		pr.Post("/organizations/{org_id}/orders/{id}/cancel", s.handleCancelOrder)
 	})
 	r.Group(func(pr chi.Router) {
