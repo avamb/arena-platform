@@ -25,8 +25,6 @@ import { PromoListScreen } from "@/screens/PromoListScreen";
 import { PromoCreateScreen } from "@/screens/PromoCreateScreen";
 import { PromoScreen } from "@/screens/PromoScreen";
 import { TeamScreen } from "@/screens/TeamScreen";
-import { NotFoundScreen } from "@/screens/NotFoundScreen";
-import { parseEventsSearch, parseLoginSearch, parseOrdersSearch } from "@/lib/search";
 import { parsePromoCardSearch, parsePromoListSearch } from "@/lib/promo";
 
 const rootRoute = createRootRoute({ component: RootLayout, notFoundComponent: NotFoundScreen });
@@ -136,6 +134,8 @@ const promoterRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/promoters/$promoterId",
   component: PromoterScreen,
+});
+
 // 4-3: promo codes. "new" is listed before "$codeId" so it is never read as an id.
 const promoRoute = createRoute({
   getParentRoute: () => orgRoute,
@@ -155,6 +155,8 @@ const promoCodeRoute = createRoute({
   path: "/promo/$codeId",
   validateSearch: parsePromoCardSearch,
   component: PromoScreen,
+});
+
 // 4-5
 const teamRoute = createRoute({
   getParentRoute: () => orgRoute,
