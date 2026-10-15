@@ -23,6 +23,9 @@ func (s *Server) mountOrderRoutes(r chi.Router) {
 		// The buyer's consent at checkout (P2): dispute evidence with the
 		// buyer's IP address and browser, for the order's organization only.
 		pr.Get("/organizations/{org_id}/orders/{order_id}/consents", s.handleOrderConsents)
+		// Every open and click of the order's letters with the reader's
+		// browser string (U-7): dispute evidence, same audience as consents.
+		pr.Get("/organizations/{org_id}/orders/{order_id}/letter-interactions", s.handleOrderLetterInteractions)
 		// One-screen session overview: places, categories, money, tickets, refunds.
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/summary", s.handleSessionSummary)
 		// The same overview for every session of an event, totals plus a list (EC-06).
