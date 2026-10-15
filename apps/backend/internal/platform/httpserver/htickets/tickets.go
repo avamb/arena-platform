@@ -42,7 +42,6 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/mint"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
@@ -361,21 +360,12 @@ func (h *Handler) IssueTicketsForCheckoutWithOptions(ctx context.Context, cs gen
 	// is won do we write the dependent ticket_credentials row with the
 	// same payload.
 	if len(newTickets) > 0 {
-		platformAuthority, err := txQ.GetBarcodeAuthorityByType(ctx, "platform")
-		if err != nil {
-			return nil, fmt.Errorf("IssueTicketsForCheckout: get platform barcode authority: %w", err)
+		ids := make([]uuid.UUID, len(newTickets))
+		for i, t := range newTickets {
+			ids[i] = t.ID
 		}
-		for _, t := range newTickets {
-			ticketID := t.ID
-			code, err := mint.EAN13(ctx, txQ, platformAuthority.ID, &ticketID, nil)
-			if err != nil {
-				return nil, fmt.Errorf("IssueTicketsForCheckout: mint ean13 barcode for ticket %s: %w",
-					t.ID.String(), err)
-			}
-			if _, err := txQ.InsertTicketCredential(ctx, t.ID, "ean13", code); err != nil {
-				return nil, fmt.Errorf("IssueTicketsForCheckout: insert ean13 credential for ticket %s: %w",
-					t.ID.String(), err)
-			}
+		if err := mintTicketEAN13s(ctx, txQ, ids); err != nil {
+			return nil, fmt.Errorf("IssueTicketsForCheckout: %w", err)
 		}
 	}
 
