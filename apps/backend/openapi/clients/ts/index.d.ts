@@ -2923,6 +2923,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/materials/copy-from/{source_event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copy the page materials of another event onto this one
+         * @description Task 1-2c. Copies the gallery photos, video links, partner links and
+         *     the map point of the SOURCE event (`source_event_id`) onto the event in
+         *     the path, which must hold none of them (409 `event.materials_not_empty`;
+         *     that also makes a repeated call harmless: the second one finds the
+         *     first one's rows and refuses). The photo report is not copied: it is
+         *     about a show that already happened. Gallery rows keep the same media
+         *     object as the source (nothing ties a media object to one event, and
+         *     removing a photo from one event never deletes it), a photo whose media
+         *     object was deleted is skipped, and positions are renumbered from 0.
+         *     Both events must be live events of the organization in the path; the
+         *     route is for the client-side "copy an event" flow: read the source with
+         *     GET .../event-bundle, import its bundles as a new event, then call this.
+         *     Runs in one transaction under the target's materials locks and writes
+         *     one audit event (`v1.event.materials.copy`). Requires `event.update` and
+         *     membership of the organization.
+         */
+        post: operations["copyEventMaterials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{event_id}/event-bundle": {
         parameters: {
             query?: never;
@@ -14653,6 +14687,96 @@ export interface components {
             name: string;
         };
         /**
+         * @description One picture of an event's gallery or photo report, as buyers see it
+         *     (task 1-2c).
+         */
+        PublicMaterialPhoto: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the media object that holds the picture.
+             */
+            media_id: string;
+            /**
+             * @description Absolute signed address of the picture (the same mechanism as the
+             *     poster and the logo of the page); host-relative only on a
+             *     deployment without media storage.
+             */
+            url: string;
+            /** @description Optional caption, up to 200 characters. */
+            caption: string | null;
+            /** @description Width in pixels when the upload pipeline knew it, else null. */
+            width: number | null;
+            /** @description Height in pixels when the upload pipeline knew it, else null. */
+            height: number | null;
+        };
+        /** @description One video link of an event, as buyers see it (task 1-2c). */
+        PublicMaterialVideo: {
+            /**
+             * @description Where the video lives: `youtube`, `vimeo`, `rutube`, or `https`
+             *     (any other https page, shown as a plain link).
+             * @example youtube
+             */
+            provider: string;
+            /** @description The id parsed out of the link; null for `https`. */
+            video_id: string | null;
+            /**
+             * @description Address for an iframe: `https://www.youtube-nocookie.com/embed/<id>`,
+             *     `https://player.vimeo.com/video/<id>` or
+             *     `https://rutube.ru/play/embed/<id>`. Null for `https`, which has
+             *     no embed.
+             */
+            embed_url: string | null;
+            /** @description The original https link the organizer pasted. */
+            url: string;
+        };
+        /** @description One "where else to buy" link of an event, as buyers see it (task 1-2c). */
+        PublicMaterialPartnerLink: {
+            /** @description The other seller's page for this event; always an https address. */
+            url: string;
+            /** @description Who sells there; shown beside the link so the buyer knows. */
+            seller_name: string;
+        };
+        /** @description The one map point of an event, as buyers see it (task 1-2c). */
+        PublicMaterialMapPoint: {
+            /**
+             * Format: double
+             * @description Latitude in degrees, -90 to 90.
+             */
+            latitude: number;
+            /**
+             * Format: double
+             * @description Longitude in degrees, -180 to 180.
+             */
+            longitude: number;
+            /** @description Optional text shown with the point. */
+            label: string | null;
+        };
+        /**
+         * @description The materials of an event's page (task 1-2c), the same block on the
+         *     hosted page (`GET /v1/public/pages/{org_slug}/{event_slug}`) and on
+         *     the widget feed (`GET /v1/public/feeds/{feed_token}/events/{event_id}`).
+         *     Always present; every list is `[]` when empty, never null. Read in
+         *     one query for a live, published event. The organizer edits these under
+         *     `/v1/organizations/{org_id}/events/{event_id}/…`.
+         */
+        PublicEventMaterials: {
+            /** @description Gallery photos in display order (at most 6). A photo whose media object was deleted is left out. */
+            gallery: components["schemas"]["PublicMaterialPhoto"][];
+            /** @description Video links in display order (at most 4). */
+            videos: components["schemas"]["PublicMaterialVideo"][];
+            /** @description "Where else to buy" links in display order (at most 3), each with its seller. */
+            partner_links: components["schemas"]["PublicMaterialPartnerLink"][];
+            /** @description The event's map point, null when it has none. */
+            map_point: components["schemas"]["PublicMaterialMapPoint"] | null;
+            /**
+             * @description The photo report in display order (at most 30). Empty until the
+             *     event is over: it opens when the end of the event's last live
+             *     (not deleted, not cancelled) session has passed, follows a session
+             *     that moves, and stays empty for an event without a live session.
+             */
+            report_photos: components["schemas"]["PublicMaterialPhoto"][];
+        };
+        /**
          * @description Response envelope for GET /v1/public/pages/{org_slug}/{event_slug} —
          *     the resolver behind the shared hosted sales page
          *     (tickets.arenasoldout.com/{org_slug}/{event_slug}). `feed_token` is
@@ -14694,6 +14818,12 @@ export interface components {
              *     without a public e-mail link this form as <page>#contact.
              */
             contact_form?: components["schemas"]["HostedPageContactForm"];
+            /**
+             * @description The event's gallery, videos, "where else to buy" links, map point
+             *     and, once the event is over, its photo report (task 1-2c). Always
+             *     present; every list is `[]` when empty.
+             */
+            materials: components["schemas"]["PublicEventMaterials"];
         };
         /**
          * @description Response envelope for GET /v1/public/pages/{org_slug} — the promoter
@@ -21747,6 +21877,92 @@ export interface components {
             /** @description Human-readable explanation of the reason. */
             message: string;
         };
+        /** @description One gallery photo of the event, in the organizer's view. */
+        EventBundleGalleryItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the media object (owner type `event_gallery`) that holds the picture.
+             */
+            media_id: string;
+            /** @description Optional caption, up to 200 characters. */
+            caption: string | null;
+            /** @description Display order, 0 to 5. */
+            position: number;
+        };
+        /** @description One video link of the event, in the organizer's view. */
+        EventBundleVideo: {
+            /** @description `youtube`, `vimeo`, `rutube` or `https` (a plain link). */
+            provider: string;
+            /** @description The id parsed out of the link; null for `https`. */
+            video_id: string | null;
+            /** @description The https link as stored. */
+            url: string;
+            /** @description Display order, 0 to 3. */
+            position: number;
+        };
+        /** @description One "where else to buy" link of the event, in the organizer's view. */
+        EventBundlePartnerLink: {
+            /** @description The other seller's https page for this event. */
+            url: string;
+            /** @description Who sells there. */
+            seller_name: string;
+            /** @description Display order, 0 to 2. */
+            position: number;
+        };
+        /** @description The one map point of the event, in the organizer's view. */
+        EventBundleMapPoint: {
+            /**
+             * Format: double
+             * @description Latitude in degrees, -90 to 90.
+             */
+            latitude: number;
+            /**
+             * Format: double
+             * @description Longitude in degrees, -180 to 180.
+             */
+            longitude: number;
+            /** @description Optional text shown with the point. */
+            label: string | null;
+        };
+        /**
+         * @description The page materials of the event (task 1-2c), read BESIDE the bundles:
+         *     an import does not read them. A client that copies an event imports
+         *     the bundles as a new event and then calls
+         *     `POST .../events/{new_event_id}/materials/copy-from/{event_id}` to
+         *     move these four lists onto it. The photo report is not listed: it is
+         *     about a show that already happened and is never copied.
+         */
+        EventBundleMaterials: {
+            /** @description Gallery photos in display order. Never null. */
+            gallery: components["schemas"]["EventBundleGalleryItem"][];
+            /** @description Video links in display order. Never null. */
+            videos: components["schemas"]["EventBundleVideo"][];
+            /** @description Partner links in display order. Never null. */
+            partner_links: components["schemas"]["EventBundlePartnerLink"][];
+            /** @description The event's map point, null when it has none. */
+            map_point: components["schemas"]["EventBundleMapPoint"] | null;
+        };
+        /** @description What `POST .../materials/copy-from/{source_event_id}` copied. */
+        CopyEventMaterialsResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event that received the materials.
+             */
+            event_id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event the materials were copied from.
+             */
+            source_event_id: string;
+            /** @description Gallery photos copied (a photo whose media object was deleted is skipped). */
+            gallery: number;
+            /** @description Video links copied. */
+            videos: number;
+            /** @description Partner links copied. */
+            partner_links: number;
+            /** @description True when the source had a map point and it was copied. */
+            map_point: boolean;
+        };
         /**
          * @description Answer of GET /v1/organizations/{org_id}/events/{event_id}/event-bundle
          *     (task 3-2): the event read back as `ImportEventBundleRequest`
@@ -21783,6 +21999,13 @@ export interface components {
              * @description UUIDv7 of the event.
              */
             event_id: string;
+            /**
+             * @description The event's gallery, videos, partner links and map point, beside
+             *     the bundles (an import does not read them). See
+             *     `EventBundleMaterials` and
+             *     `POST .../events/{event_id}/materials/copy-from/{source_event_id}`.
+             */
+            materials: components["schemas"]["EventBundleMaterials"];
             /**
              * @description The event's own status (`draft`, `published`, `cancelled` or `archived`). A draft event is readable.
              * @example published
@@ -33860,6 +34083,96 @@ export interface operations {
             };
         };
     };
+    copyEventMaterials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event that receives the materials. */
+                event_id: string;
+                /** @description UUIDv7 of the event the materials are copied from. */
+                source_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The materials were copied; the counts say how many rows of each list. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopyEventMaterialsResponse"];
+                };
+            };
+            /** @description The source is the event itself (`event.materials_copy_same_event`), or org_id or event_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The target or the source is not a live event of this organization, or the source id is not a UUID (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The target event already has gallery photos, videos, partner links or a map point (`event.materials_not_empty`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getEventBundle: {
         parameters: {
             query?: never;
@@ -43402,7 +43715,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        event: components["schemas"]["EventItem"];
+                        /**
+                         * @description The event with its sessions and, since task 1-2c, a
+                         *     `materials` block (see `PublicEventMaterials`): gallery,
+                         *     videos, "where else to buy" links, map point and the
+                         *     photo report (empty until the event is over). The block
+                         *     is the same as on the hosted page.
+                         */
+                        event: components["schemas"]["EventItem"] & {
+                            /** @description The event's page materials; every list is `[]` when empty. */
+                            materials: components["schemas"]["PublicEventMaterials"];
+                        };
                     };
                 };
             };

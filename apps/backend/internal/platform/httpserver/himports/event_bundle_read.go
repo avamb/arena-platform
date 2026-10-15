@@ -114,6 +114,10 @@ type EventBundleReadResponse struct {
 	Skipped []EventBundleSkipped `json:"skipped"`
 	// Warnings are notes about what a bundle cannot say exactly. Never null.
 	Warnings []Warning `json:"warnings"`
+	// Materials are the event's gallery, videos, partner links and map point
+	// (task 1-2c), BESIDE the bundles: the import does not read them. A client
+	// that copies the event moves them with POST .../materials/copy-from/{id}.
+	Materials EventBundleMaterials `json:"materials"`
 }
 
 // bundleSessionSource is everything the mapping needs about one session.
@@ -134,6 +138,7 @@ type bundleSource struct {
 	ChannelIDs       []uuid.UUID
 	Sessions         []bundleSessionSource
 	Windows          map[uuid.UUID][]gen.TicketTierPriceRow
+	Materials        EventBundleMaterials
 }
 
 // HandleEventBundleRead serves GET .../events/{event_id}/event-bundle.
@@ -219,6 +224,9 @@ func loadBundleSource(ctx context.Context, q *gen.Queries, orgID, eventID uuid.U
 	if src.ChannelIDs, err = q.ListEventPublicationChannelIDs(ctx, eventID, orgID); err != nil {
 		return bundleSource{}, fmt.Errorf("read event channels: %w", err)
 	}
+	if src.Materials, err = loadBundleMaterials(ctx, q, eventID); err != nil {
+		return bundleSource{}, err
+	}
 
 	sessions, err := q.ListSessionsByEvent(ctx, eventID)
 	if err != nil {
@@ -278,6 +286,7 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 		Bundles:       []bil24compat.ImportSessionRequest{},
 		Skipped:       []EventBundleSkipped{},
 		Warnings:      []Warning{},
+		Materials:     normalizeBundleMaterials(src.Materials),
 	}
 	warn := func(code, format string, args ...any) {
 		out.Warnings = append(out.Warnings, Warning{Code: code, Message: fmt.Sprintf(format, args...)})

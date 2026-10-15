@@ -718,11 +718,14 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	type eventDetailResponse struct {
 		publicFeedEventResponse
 		Sessions []publicFeedSessionResponse `json:"sessions"`
+		// Materials: the same block as the hosted page's (task 1-2c).
+		Materials publicMaterials `json:"materials"`
 	}
 
 	detail := eventDetailResponse{
 		publicFeedEventResponse: eventResp,
 		Sessions:                []publicFeedSessionResponse{},
+		Materials:               h.loadPublicMaterials(ctx, eventID, time.Now().UTC()),
 	}
 
 	// Fetch buyer-field flags from the channel linked to this feed token
