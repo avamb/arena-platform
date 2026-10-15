@@ -17,6 +17,7 @@ import { SessionScreen } from "@/screens/SessionScreen";
 import { OrdersScreen } from "@/screens/OrdersScreen";
 import { OrderScreen } from "@/screens/OrderScreen";
 import { NotificationsScreen } from "@/screens/NotificationsScreen";
+import { TeamScreen } from "@/screens/TeamScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
 import { parseEventsSearch, parseLoginSearch, parseOrdersSearch } from "@/lib/search";
 
@@ -115,6 +116,13 @@ const notificationsRoute = createRoute({
   component: NotificationsScreen,
 });
 
+// 4-5
+const teamRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/team",
+  component: TeamScreen,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -131,6 +139,7 @@ export const routeTree = rootRoute.addChildren([
     ordersRoute,
     orderRoute,
     notificationsRoute,
+    teamRoute,
   ]),
 ]);
 

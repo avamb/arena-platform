@@ -31,3 +31,11 @@ export type OrderTicketSummary = S["OrderTicketSummary"];
 export type OrderDeliveryEntry = S["OrderDeliveryEntry"];
 export type OrderListResponse =
   paths["/v1/organizations/{org_id}/orders"]["get"]["responses"]["200"]["content"]["application/json"];
+
+// 4-5: the team screen.
+export type BotTeamMember = S["BotTeamMember"];
+export type BotTeamResponse = S["BotTeamResponse"];
+export type BotInvitation = S["BotInvitation"];
+export type BotInvitationCreateResponse = S["BotInvitationCreateResponse"];
+export type BotInvitationResendResponse = S["BotInvitationResendResponse"];
+export type BotInvitationRevokeResponse = S["BotInvitationRevokeResponse"];

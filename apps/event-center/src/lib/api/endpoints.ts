@@ -6,6 +6,10 @@
 import { call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type {
+  BotInvitationCreateResponse,
+  BotInvitationResendResponse,
+  BotInvitationRevokeResponse,
+  BotTeamResponse,
   EventListResponse,
   EventSummary,
   MeResponse,
@@ -133,4 +137,57 @@ export function downloadSampleTicket(orgId: string, sessionId: string, locale: s
  */
 export function cancelOrder(orgId: string, orderId: string, headers: Record<string, string>): Promise<OrderSummary> {
   return call<OrderSummary>({ route: API.cancelOrder, params: { org_id: orgId, id: orderId }, body: {}, headers });
+}
+
+// ─── 4-5: the team ───────────────────────────────────────────────────────────
+
+/** The organization's owners and managers with where each invitation stands. */
+export function fetchTeam(orgId: string): Promise<BotTeamResponse> {
+  return call<BotTeamResponse>({ route: API.botTeam, params: { org_id: orgId } });
+}
+
+export type InviteChannel = "web" | "telegram";
+export type InviteRole = "owner" | "manager";
+
+export interface InviteInput {
+  email: string;
+  role: InviteRole;
+  channel: InviteChannel;
+  /** The language of the letter: en, ru or es. */
+  locale: string;
+}
+
+/**
+ * Invites a person. The membership exists at once (a person who is already a
+ * member keeps their role); `channel` decides what the letter opens.
+ */
+export function inviteMember(orgId: string, input: InviteInput): Promise<BotInvitationCreateResponse> {
+  return call<BotInvitationCreateResponse>({ route: API.inviteMember, params: { org_id: orgId }, body: input });
+}
+
+/** Sends a Telegram invitation again. A web invitation answers 409. Too soon is 429. */
+export function resendInvitation(orgId: string, invitationId: string, locale?: string): Promise<BotInvitationResendResponse> {
+  return call<BotInvitationResendResponse>({
+    route: API.resendInvitation,
+    params: { org_id: orgId, id: invitationId },
+    body: locale === undefined ? {} : { locale },
+  });
+}
+
+/** Annuls an invitation. The membership it created goes too, when the person never took part. */
+export function revokeInvitation(orgId: string, invitationId: string): Promise<BotInvitationRevokeResponse> {
+  return call<BotInvitationRevokeResponse>({ route: API.revokeInvitation, params: { org_id: orgId, id: invitationId } });
+}
+
+/**
+ * Removes ONE role of a member. The body names it: an empty body is 400
+ * `membership.empty_body`. The role is the row's `membership_role`.
+ * (The generated body type lists no `org_admin`, which the server accepts.)
+ */
+export function removeMember(orgId: string, userId: string, membershipRole: string): Promise<{ revoked: boolean }> {
+  return call<{ revoked: boolean }>({
+    route: API.removeMember,
+    params: { org_id: orgId, user_id: userId },
+    body: { role: membershipRole },
+  });
 }

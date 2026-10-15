@@ -52,6 +52,13 @@ export const API = {
   order: { method: "GET", path: "/v1/organizations/{org_id}/orders/{id}" },
   // 4-2: cancel an unpaid order. Asks for the password again (spec 37 4.6).
   cancelOrder: { method: "POST", path: "/v1/organizations/{org_id}/orders/{id}/cancel" },
+  // 4-5: the team. The invitation has two channels (web, telegram); removing a
+  // member names the ONE role to revoke in the body (AGENTS.md).
+  botTeam: { method: "GET", path: "/v1/organizations/{org_id}/bot-team" },
+  inviteMember: { method: "POST", path: "/v1/organizations/{org_id}/bot-invitations" },
+  revokeInvitation: { method: "DELETE", path: "/v1/organizations/{org_id}/bot-invitations/{id}" },
+  resendInvitation: { method: "POST", path: "/v1/organizations/{org_id}/bot-invitations/{id}/resend" },
+  removeMember: { method: "DELETE", path: "/v1/organizations/{org_id}/members/{user_id}" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;

@@ -92,8 +92,13 @@ func run(args []string) error {
 	out := fs.String("out", "", "write the JSON description to this file instead of stdout")
 	cancelOp := fs.String("cancel-order-op", "", "4-2 twin helper: reset, inspect or pay (see cancel_order_fixture.go)")
 	cancelOrder := fs.String("order-id", "", "the order --cancel-order-op inspect or pay works on")
+	teamOp := fs.String("team-op", "", "4-5 twin helper: reset, age, expire or inspect (see team_fixture.go)")
+	teamEmail := fs.String("team-email", "", "the address --team-op age, expire or inspect works on")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *teamOp != "" {
+		return runTeamOp(*teamOp, *teamEmail)
 	}
 	if *cancelOp != "" {
 		return runCancelOrderOp(*cancelOp, *cancelOrder)
@@ -212,5 +217,8 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 			return fmt.Errorf("materialize places: %w", err)
 		}
 	}
-	return applyCancelOrderFixture(ctx, tx)
+	if err := applyCancelOrderFixture(ctx, tx); err != nil {
+		return err
+	}
+	return applyTeamFixture(ctx, tx)
 }

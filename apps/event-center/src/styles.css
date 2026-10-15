@@ -606,3 +606,21 @@ label {
     justify-content: space-between;
   }
 }
+
+/* 4-5: the team screen. */
+.team-invite {
+  max-width: 28rem;
+  margin-block-start: 1.5rem;
+}
+
+.team-invite input,
+.team-invite select {
+  width: 100%;
+}
+
+.team-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-start: 0.5rem;
+}
