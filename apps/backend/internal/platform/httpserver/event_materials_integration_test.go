@@ -568,3 +568,24 @@ func TestEventMaterials_GatesAndOrganizationBoundary(t *testing.T) {
 		t.Errorf("bad item id: %d", st)
 	}
 }
+
+// Review 141: a pasted link with an upper-case scheme used to pass the parser
+// and then fail the case-sensitive CHECK url ~ '^https://' (23514, a 500), and
+// a caption with a NUL byte failed the text column (22021, a 500).
+func TestEventMaterials_UpperCaseSchemeAndNulCaptionAreNot500(t *testing.T) {
+	f := newEvMatFixture(t)
+	orgA := f.org(t, "A")
+	keyA := f.key(t, orgA, "event.read", "event.update")
+	evA := f.event(t, orgA)
+	base := "/v1/organizations/" + orgA.String() + "/events/" + evA.String()
+
+	st, body := f.do(t, http.MethodPost, base+"/videos", keyA, `{"url":"HTTPS://YouTu.be/dQw4w9WgXcQ"}`)
+	if st != http.StatusCreated || body["provider"] != "youtube" || body["url"] != "https://YouTu.be/dQw4w9WgXcQ" {
+		t.Fatalf("upper-case scheme: %d %v", st, body)
+	}
+	media := f.media(t, &orgA, "event_gallery", false)
+	st, body = f.do(t, http.MethodPost, base+"/media-items", keyA, fmt.Sprintf(`{"media_id":%q,"caption":"a\u0000b"}`, media))
+	if st != http.StatusCreated || body["caption"] != "ab" {
+		t.Fatalf("NUL caption: %d %v", st, body)
+	}
+}

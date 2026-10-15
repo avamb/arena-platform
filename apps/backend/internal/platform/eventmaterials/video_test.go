@@ -45,8 +45,13 @@ func TestParseVideoURL(t *testing.T) {
 			if got.Provider != c.provider || got.VideoID != c.id {
 				t.Fatalf("got provider=%q id=%q, want %q %q", got.Provider, got.VideoID, c.provider, c.id)
 			}
-			if got.URL != strings.TrimSpace(c.in) {
-				t.Fatalf("stored url %q, want the trimmed input", got.URL)
+			want := strings.TrimSpace(c.in)
+			want = "https" + want[len("https"):] // the scheme is stored in lower case
+			if got.URL != want {
+				t.Fatalf("stored url %q, want %q", got.URL, want)
+			}
+			if !strings.HasPrefix(got.URL, "https://") {
+				t.Fatalf("stored url %q must start with the lower-case https:// the CHECK needs", got.URL)
 			}
 		})
 	}

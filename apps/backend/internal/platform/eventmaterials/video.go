@@ -45,6 +45,11 @@ func ParseVideoURL(raw string) (VideoRef, error) {
 	if err != nil || !strings.EqualFold(u.Scheme, "https") || u.Hostname() == "" || u.User != nil || u.Opaque != "" {
 		return VideoRef{}, ErrInvalidVideoURL
 	}
+	// The scheme is case-insensitive in a URL but the stored value must satisfy
+	// the case-sensitive CHECK url ~ '^https://' of migration 0153: store it
+	// in lower case (a pasted "HTTPS://..." used to pass here and then fail
+	// the insert with 23514, a 500).
+	s = "https" + s[len("https"):]
 	host := strings.ToLower(u.Hostname())
 	host = strings.TrimPrefix(strings.TrimPrefix(host, "www."), "m.")
 	segs := splitPath(u.Path)

@@ -101,7 +101,8 @@ func VideoFromRow(v gen.EventVideoRow) VideoResponse {
 // NormalizeGalleryCaption trims a caption; blank means "no caption" (NULL).
 // ok is false when it is longer than eventmaterials.MaxCaptionRunes.
 func NormalizeGalleryCaption(raw string) (value *string, ok bool) {
-	s := strings.TrimSpace(raw)
+	// A NUL byte cannot be stored in a PostgreSQL text column (22021, a 500).
+	s := strings.TrimSpace(strings.ReplaceAll(raw, "\x00", ""))
 	if s == "" {
 		return nil, true
 	}
