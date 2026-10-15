@@ -201,6 +201,11 @@ type Ticket struct {
 	// ported `price_label_override`, used for a complimentary ticket where
 	// the nominal category price would be misleading ("Invitation").
 	PriceLabel string
+	// Invitation marks a complimentary ticket (U-3): the Price cell prints the
+	// locale's "Invitation" word instead of a price, and everything else (the
+	// EAN-13, the QR, the layout) is the bought ticket's. PriceLabel still wins
+	// when both are set.
+	Invitation bool
 
 	// OrgLogo is the organization logo image bytes (PNG or JPEG), drawn
 	// centred in the header band. Empty (or undecodable) falls back to the
