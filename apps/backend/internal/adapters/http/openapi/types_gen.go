@@ -6176,6 +6176,12 @@ type GeoCitiesResponse struct {
 	// Clients use this object to implement "load more" buttons or
 	// paginator UI components. All fields are always present in list responses.
 	Meta *PaginationMeta `json:"meta,omitempty"`
+
+	// Suggestions Present only when the request carried `q`: up to 20 places of the
+	// `country` named in the request that start with the typed text,
+	// the biggest cities first, leaving out cities already listed in
+	// `cities`. Empty when `country` is absent.
+	Suggestions *[]GeoCitySuggestion `json:"suggestions,omitempty"`
 }
 
 // GeoCityItem defines model for GeoCityItem.
@@ -6194,6 +6200,16 @@ type GeoCityItem struct {
 
 	// Slug URL-safe slug
 	Slug string `json:"slug"`
+
+	// Source Where the item comes from. Always `platform` on a city row (list route only).
+	Source *string `json:"source,omitempty"`
+
+	// Timezone IANA time zone the city is in, best effort: the zone the city's
+	// name points at in the embedded GeoNames data, else the country's
+	// only zone. Absent when it cannot be told (a city of a country
+	// with several zones that the data does not know). Only the list
+	// route fills it.
+	Timezone *string `json:"timezone,omitempty"`
 }
 
 // GeoCityResponse defines model for GeoCityResponse.
@@ -6211,6 +6227,25 @@ type GeoCityResponse struct {
 	Slug string `json:"slug"`
 }
 
+// GeoCitySuggestion A place from the embedded GeoNames data offered by the city search
+// (GET /v1/geo/cities with `q`). It is NOT a platform city: it has no id.
+// Choosing it means creating the city through
+// POST /v1/organizations/{org_id}/cities (a name that matches an
+// existing city returns that city).
+type GeoCitySuggestion struct {
+	// CountryIso2 ISO 3166-1 alpha-2 code of the country that was searched.
+	CountryIso2 string `json:"country_iso2"`
+
+	// Name Display name of the place (the spelling of the top-cities list when it is on it, else its main name capitalised).
+	Name string `json:"name"`
+
+	// Source Always `geonames`.
+	Source string `json:"source"`
+
+	// Timezone IANA time zone the place is in.
+	Timezone string `json:"timezone"`
+}
+
 // GeoCountriesResponse defines model for GeoCountriesResponse.
 type GeoCountriesResponse struct {
 	// Countries Ordered list of reference countries with localised names
@@ -6220,6 +6255,12 @@ type GeoCountriesResponse struct {
 	// Clients use this object to implement "load more" buttons or
 	// paginator UI components. All fields are always present in list responses.
 	Meta *PaginationMeta `json:"meta,omitempty"`
+}
+
+// GeoCountryCurrencyResponse Response of GET /v1/geo/countries/{iso2}/currency.
+type GeoCountryCurrencyResponse struct {
+	// Currency ISO 4217 currency of the country, as stored on the platform's country row.
+	Currency string `json:"currency"`
 }
 
 // GeoCountryItem defines model for GeoCountryItem.
@@ -6269,6 +6310,17 @@ type GeoCountryResponse struct {
 	Slug string `json:"slug"`
 }
 
+// GeoCountryTimezonesResponse Response of GET /v1/geo/countries/{iso2}/timezones.
+type GeoCountryTimezonesResponse struct {
+	// Single True when the country has exactly one zone, so a client may fill
+	// it in without asking. False when it has several (Spain and
+	// Portugal among them) and the person must choose.
+	Single bool `json:"single"`
+
+	// Timezones The zones of the country, the zone of its biggest city first.
+	Timezones []GeoTimezoneItem `json:"timezones"`
+}
+
 // GeoCreateCityRequest defines model for GeoCreateCityRequest.
 type GeoCreateCityRequest struct {
 	// CountryId UUID of the parent country
@@ -6305,6 +6357,15 @@ type GeoCreateCountryRequest struct {
 
 	// Slug URL-safe slug
 	Slug string `json:"slug"`
+}
+
+// GeoTimezoneItem One IANA time zone of a country.
+type GeoTimezoneItem struct {
+	// Id IANA zone name, the value to store as a venue's timezone.
+	Id string `json:"id"`
+
+	// Label Name for a person to pick by, the largest city in the zone.
+	Label string `json:"label"`
 }
 
 // GeoUpdateCityRequest defines model for GeoUpdateCityRequest.
@@ -14609,6 +14670,14 @@ type GetEventParams struct {
 type GetV1GeoCitiesParams struct {
 	// CountryId Filter cities by country UUID
 	CountryId *openapi_types.UUID `form:"country_id,omitempty" json:"country_id,omitempty"`
+
+	// Country Filter cities by ISO 3166-1 alpha-2 country code (any case); ignored
+	// when `country_id` is also given. Names the country whose GeoNames
+	// data `q` draws suggestions from.
+	Country *string `form:"country,omitempty" json:"country,omitempty"`
+
+	// Q City search text, at most 64 characters. Blank counts as absent.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
 	// Lang Preferred language code (e.g. "en", "ru"). Overrides Accept-Language.
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`

@@ -26,6 +26,8 @@ func (s *Server) mountGeoRoutes(r chi.Router) {
 	if s.geoQueries != nil {
 		r.Get("/geo/countries", s.handleListCountries)
 		r.Get("/geo/cities", s.handleListCities)
+		r.Get("/geo/countries/{iso2}/timezones", s.handleCountryTimezones)
+		r.Get("/geo/countries/{iso2}/currency", s.handleCountryCurrency)
 	}
 	if s.authEnabled() && s.geoQueries != nil && s.pool != nil {
 		r.Route("/admin/geo", func(ar chi.Router) {

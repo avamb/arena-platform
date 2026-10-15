@@ -125,6 +125,8 @@ var flatRouteFamilies = []flatFamily{
 	{"GET", "/v1/media-files/{id}", flatPublic, "signed URL"},
 	{"GET", "/v1/geo/countries", flatPublic, "reference data"},
 	{"GET", "/v1/geo/cities", flatPublic, "reference data"},
+	{"GET", "/v1/geo/countries/{iso2}/currency", flatPublic, "reference data"},
+	{"GET", "/v1/geo/countries/{iso2}/timezones", flatPublic, "reference data"},
 	// /v1/onboarding/*  (flatPublic): applicant access token
 	{"GET", "/v1/onboarding/applications/{id}", flatPublic, "applicant access token"},
 	{"GET", "/v1/onboarding/form-schema", flatPublic, "applicant access token"},
