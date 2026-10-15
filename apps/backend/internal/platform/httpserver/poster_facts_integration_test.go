@@ -171,8 +171,8 @@ func TestPosterFacts_RouteReadsOwnPosterAndKeepsOrganizationsApart(t *testing.T)
 
 	// Another organization's owner, whichever organization the path names.
 	foreign := other.posterToken(srv, other.ownerID)
-	if rec := readPosterAs(srv, foreign, f.orgID, mediaID); rec.Code == http.StatusOK {
-		t.Errorf("foreign owner on the victim's path read the poster: %s", rec.Body.String())
+	if rec := readPosterAs(srv, foreign, f.orgID, mediaID); rec.Code != http.StatusForbidden && rec.Code != http.StatusNotFound {
+		t.Errorf("foreign owner on the victim's path: %d %s, want 403 or 404", rec.Code, rec.Body.String())
 	}
 	if rec := readPosterAs(srv, foreign, other.orgID, mediaID); rec.Code != http.StatusNotFound || posterErrCode(rec) != "media.not_found" {
 		t.Errorf("foreign owner on own path: %d %s", rec.Code, rec.Body.String())

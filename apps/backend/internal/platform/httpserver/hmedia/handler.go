@@ -5,7 +5,6 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/posterread"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/ratelimit"
 )
 
 // Handler holds the narrow set of dependencies needed by the /v1/media
@@ -23,7 +22,7 @@ type Handler struct {
 	// per-organization daily cap, nil = no cap. posterStore is the media
 	// lookup of that route (the same Repo, narrowed for tests).
 	poster        posterread.Reader
-	posterLimiter ratelimit.Limiter
+	posterLimiter PosterQuota
 	posterStore   posterMediaStore
 }
 

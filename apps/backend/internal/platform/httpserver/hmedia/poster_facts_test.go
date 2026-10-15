@@ -264,7 +264,8 @@ func TestPosterFacts_OnlyJPEGAndPNGAndAtMost5MiB(t *testing.T) {
 
 func TestPosterFacts_DailyCapPerOrganization429(t *testing.T) {
 	rig := newPosterRig(t)
-	rig.h.WithPosterReader(rig.reader, ratelimit.New(ratelimit.Config{MaxAttempts: 2, Window: PosterReadsWindow}))
+	lim := ratelimit.New(ratelimit.Config{MaxAttempts: 2, Window: PosterReadsWindow})
+	rig.h.WithPosterReader(rig.reader, lim)
 	for i := 0; i < 2; i++ {
 		if rec := rig.call(rig.orgID.String(), rig.mediaI.String()); rec.Code != http.StatusOK {
 			t.Fatalf("read %d: %d %s", i+1, rec.Code, rec.Body.String())
@@ -276,6 +277,16 @@ func TestPosterFacts_DailyCapPerOrganization429(t *testing.T) {
 	}
 	if rig.reader.calls != 2 {
 		t.Errorf("the model was called %d times, want 2", rig.reader.calls)
+	}
+	// A refused (429) request takes no slot either: asking again after the
+	// cap must not push the organization's window further out.
+	for i := 0; i < 3; i++ {
+		if rec := rig.call(rig.orgID.String(), rig.mediaI.String()); rec.Code != http.StatusTooManyRequests {
+			t.Fatalf("read after the cap: %d", rec.Code)
+		}
+	}
+	if n := lim.Count(rig.orgID.String()); n != 2 {
+		t.Errorf("the window holds %d reads after refused requests, want 2", n)
 	}
 
 	// Another organization has its own counter.

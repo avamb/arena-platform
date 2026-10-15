@@ -15,7 +15,6 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/posterread"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/ratelimit"
 )
 
 const (
@@ -30,6 +29,14 @@ const (
 	PosterReadsWindow = 24 * time.Hour
 )
 
+// PosterQuota is the per-organization daily cap of the route.
+// ratelimit.SlidingWindow implements it: Take records a read only when the
+// organization is still under its limit, so a refused (429) request takes no
+// slot and does not push the window further out.
+type PosterQuota interface {
+	Take(key string) bool
+}
+
 // posterMediaStore is the part of mediastore.Repo the route reads, narrow so
 // the handler is testable without a database.
 type posterMediaStore interface {
@@ -42,7 +49,7 @@ type posterMediaStore interface {
 // leaves the route answering 503 media.poster_reader_not_configured; a nil
 // limiter switches the per-organization daily cap off. The receiver is
 // returned for chaining.
-func (h *Handler) WithPosterReader(reader posterread.Reader, limiter ratelimit.Limiter) *Handler {
+func (h *Handler) WithPosterReader(reader posterread.Reader, limiter PosterQuota) *Handler {
 	h.poster = reader
 	h.posterLimiter = limiter
 	return h
@@ -132,7 +139,7 @@ func (h *Handler) PosterFacts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Only a request that passed every check above takes a slot of the cap.
-	if h.posterLimiter != nil && !h.posterLimiter.Allow(orgID.String()) {
+	if h.posterLimiter != nil && !h.posterLimiter.Take(orgID.String()) {
 		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
 			"media.poster_reads_exhausted", "this organization has used its poster readings for today", r,
 		))

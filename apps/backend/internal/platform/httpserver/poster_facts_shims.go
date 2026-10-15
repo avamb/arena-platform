@@ -38,7 +38,7 @@ func resolvePosterReader(opts Options) PosterReader {
 // posterReadLimiter builds the per-organization daily cap of the route, or
 // nil when POSTER_READS_PER_ORG_PER_DAY is 0 (no cap). A config built without
 // the field (tests that fill config.Config by hand) gets no cap too.
-func posterReadLimiter(cfg *config.Config) ratelimit.Limiter {
+func posterReadLimiter(cfg *config.Config) hmedia.PosterQuota {
 	if cfg == nil || cfg.PosterReadsPerOrgPerDay <= 0 {
 		return nil
 	}
