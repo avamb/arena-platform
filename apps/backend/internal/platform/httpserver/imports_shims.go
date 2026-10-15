@@ -42,6 +42,13 @@ func (s *Server) handleImportEventBundle(w http.ResponseWriter, r *http.Request)
 	s.importsHandler().HandleEventBundle(w, r)
 }
 
+// handleEventBundleRead serves GET .../events/{event_id}/event-bundle (task
+// 3-2): the event read back as importable event-bundles. Mounted with the
+// event routes (mount_catalog.go) under `event.read`.
+func (s *Server) handleEventBundleRead(w http.ResponseWriter, r *http.Request) {
+	s.importsHandler().HandleEventBundleRead(w, r)
+}
+
 // mountImportRoutes mounts the operator-facing bulk import surface
 // (spec §13.2, event-bundle spec §2):
 //
