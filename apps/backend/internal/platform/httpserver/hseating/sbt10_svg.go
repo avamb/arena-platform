@@ -52,7 +52,6 @@ package hseating
 import (
 	"bytes"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -106,7 +105,11 @@ func RenderSBT10SVG(
 	seatStatusVersion int64,
 ) []byte {
 	seatGeomByKey := seatKeyIndex(g)
-	categoryToTier := resolveCategoryTiers(g, seats, tiers, seatGeomByKey)
+	// A seat's category comes from its own session_seats.tier_id (S1a), see
+	// seat_categories.go: a repainted seat points at the category that
+	// carries its tier, a synthetic one when no plan category does.
+	res := resolveSeatCategories(g, seats, tiers, seatGeomByKey)
+	categoryToTier := res.CategoryTiers()
 
 	liveByKey := make(map[string]gen.SessionSeatRow, len(seats))
 	for _, s := range seats {
@@ -129,10 +132,7 @@ func RenderSBT10SVG(
 	// ── <metadata>: one <sbt:category> per seated category, index ASC ────
 	// GA categories are NOT listed here: they carry no clickable seats, so
 	// the picker has nothing to bind them to (they render as decor below).
-	sortedCats := append([]seating.Category(nil), g.Categories...)
-	sort.SliceStable(sortedCats, func(i, j int) bool {
-		return sortedCats[i].Index < sortedCats[j].Index
-	})
+	sortedCats := res.Categories(g)
 	buf.WriteString(`  <metadata>` + "\n")
 	for _, cat := range sortedCats {
 		if cat.IsGA() {
@@ -186,12 +186,12 @@ func RenderSBT10SVG(
 					`        <circle sbt:id="%d" sbt:state="%d" sbt:cat="%d" sbt:seat=%s cx="%s" cy="%s" r="%s" fill=%s/>`+"\n",
 					live.SystemSeatID,
 					sbt10State(live.Status),
-					seat.CategoryIndex,
+					res.EffectiveIndex(key, seat.CategoryIndex),
 					xmlAttrString(seat.Number),
 					formatFloat(seat.X),
 					formatFloat(seat.Y),
 					formatFloat(seat.Radius),
-					xmlAttrString(categoryColor(sortedCats, seat.CategoryIndex)),
+					xmlAttrString(categoryColor(sortedCats, res.EffectiveIndex(key, seat.CategoryIndex))),
 				)
 			}
 			if rowBuf.Len() == 0 {
@@ -282,6 +282,10 @@ func formatMajor(minor int64) string {
 // single source of truth — a category can never advertise the price of one
 // tier under the id of another.
 //
+// Since S1a the map also lists the synthetic categories (indexes above the
+// plan's last one) that RenderSBT10SVG appends for a tier carrying repainted
+// seats while anchoring no plan category.
+//
 // Categories with no resolvable tier are simply absent from the map; the
 // caller emits sbt:id="0" for them (see RenderSBT10SVG's categoryIDs
 // contract) so the attribute surface never varies by row.
@@ -290,7 +294,7 @@ func SBT10CategoryTierIDs(
 	seats []gen.SessionSeatRow,
 	tiers []gen.TicketTierRow,
 ) map[int]uuid.UUID {
-	byCat := resolveCategoryTiers(g, seats, tiers, seatKeyIndex(g))
+	byCat := resolveSeatCategories(g, seats, tiers, seatKeyIndex(g)).CategoryTiers()
 	out := make(map[int]uuid.UUID, len(byCat))
 	for idx, tier := range byCat {
 		out[idx] = tier.ID

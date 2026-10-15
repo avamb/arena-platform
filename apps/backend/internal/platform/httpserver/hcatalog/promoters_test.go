@@ -3,6 +3,8 @@ package hcatalog
 import (
 	"reflect"
 	"testing"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 func TestNormalizePromoterName(t *testing.T) {
@@ -68,5 +70,19 @@ func TestNormalizeCityLocale(t *testing.T) {
 		if got := normalizeCityLocale(in); got != want {
 			t.Errorf("normalizeCityLocale(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestPromoterResponse_PublicURL(t *testing.T) {
+	slug := "teatrkolibel"
+	h := &Handler{ticketsBaseURL: "https://tickets.example/"}
+	if got := h.promoterResponse(gen.OrgPromoterRow{Slug: &slug}).PublicURL; got != "https://tickets.example/teatrkolibel" {
+		t.Errorf("public_url = %q", got)
+	}
+	if got := h.promoterResponse(gen.OrgPromoterRow{}).PublicURL; got != "" {
+		t.Errorf("a promoter without a slug has no page: %q", got)
+	}
+	if got := (&Handler{}).promoterResponse(gen.OrgPromoterRow{Slug: &slug}).PublicURL; got != "" {
+		t.Errorf("no tickets base, no address: %q", got)
 	}
 }
