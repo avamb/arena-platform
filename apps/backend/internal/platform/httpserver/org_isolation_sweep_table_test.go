@@ -232,9 +232,14 @@ var orgIsolationAuditedSafe = map[string]string{
 
 	// hcatalog events, artists, contact, promoter link, status, delete impact:
 	// requireEventInOrg or a query scoped by (id, org_id).
-	"DELETE /v1/organizations/{org_id}/events/{id}":                              "events",
-	"DELETE /v1/organizations/{org_id}/events/{id}/artists/{aid}":                "events",
-	"GET /v1/organizations/{org_id}/events/{event_id}/delete-impact":             "events",
+	"DELETE /v1/organizations/{org_id}/events/{id}":                  "events",
+	"DELETE /v1/organizations/{org_id}/events/{id}/artists/{aid}":    "events",
+	"GET /v1/organizations/{org_id}/events/{event_id}/delete-impact": "events",
+	// himports.HandleEventBundleRead (task 3-2): GetEventRaw, then the event's
+	// organization must equal the path organization (404 event.not_found).
+	// TestEventBundleRead_OrganizationBoundary drives a foreign, unknown and
+	// deleted event and a foreign organization.
+	"GET /v1/organizations/{org_id}/events/{event_id}/event-bundle":              "himports",
 	"GET /v1/organizations/{org_id}/events/{id}/artists":                         "events",
 	"PATCH /v1/organizations/{org_id}/events/{id}":                               "events",
 	"PATCH /v1/organizations/{org_id}/events/{id}/artists/{aid}":                 "events",
