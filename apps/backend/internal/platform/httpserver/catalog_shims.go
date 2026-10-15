@@ -36,7 +36,8 @@ func (s *Server) catalogHandler() *hcatalog.Handler {
 	).WithMembershipQueries(s.membershipQueries).
 		WithSeatingBinder(s.bindSeatingForSessionCreate).
 		WithCatalogEventPublisher(s.publishCatalogEvent).
-		WithPublicBaseURL(s.apiPublicURL())
+		WithPublicBaseURL(s.apiPublicURL()).
+		WithTicketsBaseURL(s.ticketsBaseURL())
 }
 
 // bindSeatingForSessionCreate adapts hseating's inline bind (AB-36 step 3)
