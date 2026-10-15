@@ -94,6 +94,7 @@ func run(args []string) error {
 	cancelOrder := fs.String("order-id", "", "the order --cancel-order-op inspect or pay works on")
 	teamOp := fs.String("team-op", "", "4-5 twin helper: reset, age, expire or inspect (see team_fixture.go)")
 	teamEmail := fs.String("team-email", "", "the address --team-op age, expire or inspect works on")
+	orgDataOp := fs.String("org-data-op", "", "4-7 twin helper: reset, inspect or hide (see org_data_fixture.go)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -102,6 +103,9 @@ func run(args []string) error {
 	}
 	if *cancelOp != "" {
 		return runCancelOrderOp(*cancelOp, *cancelOrder)
+	}
+	if *orgDataOp != "" {
+		return runOrgDataOp(*orgDataOp)
 	}
 	cfg, err := config.LoadFor(config.RoleMigrate)
 	if err != nil {
@@ -216,6 +220,9 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 		if err := gaquota.CreateCategory(ctx, gen.New(tx), sid, tid, 30); err != nil {
 			return fmt.Errorf("materialize places: %w", err)
 		}
+	}
+	if err := applyOrgDataFixture(ctx, tx); err != nil {
+		return err
 	}
 	if err := applyCancelOrderFixture(ctx, tx); err != nil {
 		return err

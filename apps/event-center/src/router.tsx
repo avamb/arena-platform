@@ -20,6 +20,7 @@ import { NotificationsScreen } from "@/screens/NotificationsScreen";
 import { PromotersScreen } from "@/screens/PromotersScreen";
 import { PromoterScreen } from "@/screens/PromoterScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
+import { OrgDataScreen } from "@/screens/OrgDataScreen";
 import { parseEventsSearch, parseLoginSearch, parseOrdersSearch, parsePromotersSearch } from "@/lib/search";
 import { PromoListScreen } from "@/screens/PromoListScreen";
 import { PromoCreateScreen } from "@/screens/PromoCreateScreen";
@@ -164,6 +165,14 @@ const teamRoute = createRoute({
   component: TeamScreen,
 });
 
+// 4-7: the owner's "Organization data". Reachable by the address for everyone,
+// the screen itself explains it is the owner's.
+const orgDataRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/org-data",
+  component: OrgDataScreen,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -186,6 +195,7 @@ export const routeTree = rootRoute.addChildren([
     promoNewRoute,
     promoCodeRoute,
     teamRoute,
+    orgDataRoute,
   ]),
 ]);
 

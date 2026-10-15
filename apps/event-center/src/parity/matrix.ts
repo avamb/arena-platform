@@ -127,6 +127,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Заметка «оплата не подключена»",
     bot: "payments.go",
     web: "R3",
+    // 4-7
+    ready: { twin: "live/org-data.spec.ts" },
     routes: [`GET ${O}/payment-configs`],
   },
   // ── Мероприятия ─────────────────────────────────────────────────────
@@ -448,9 +450,13 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Данные организации, блок продавца и контакт на странице продаж",
     bot: "org_data.go, `og:` (владелец и оператор платформы)",
     web: "R3",
+    // 4-7
+    ready: { twin: "live/org-data.spec.ts" },
     routes: [
       `GET ${O}/seller-profile`,
+      `PATCH ${O}/seller-profile`,
       `PATCH ${O}/channels/{channel_id}/seller-display`,
+      "GET /v1/organizations/{id}",
       "PATCH /v1/organizations/{id}",
       `GET ${O}/me`,
     ],

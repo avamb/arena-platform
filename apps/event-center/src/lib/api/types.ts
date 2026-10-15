@@ -35,6 +35,11 @@ export type OrderResendTicketsResponse = S["OrderResendTicketsResponse"];
 export type OrderListResponse =
   paths["/v1/organizations/{org_id}/orders"]["get"]["responses"]["200"]["content"]["application/json"];
 
+// 4-7
+export type OrganizationItem = S["OrganizationItem"];
+export type SellerProfile = S["SellerProfile"];
+export type SellerProfileChannel = S["SellerProfileChannel"];
+export type PaymentProviderConfigItem = S["PaymentProviderConfigItem"];
 // 4-6
 export type Promoter = S["Promoter"];
 export type PromoterListEnvelope = S["PromoterListEnvelope"];
