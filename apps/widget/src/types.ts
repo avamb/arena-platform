@@ -123,6 +123,14 @@ export interface SchemaResponse {
   capacity_standing: number;
   geometry: Geometry;
   category_prices: CategoryPrice[];
+  /**
+   * S1a: seat_key -> category index of the seat's OWN tier, only for seats
+   * repainted away from their plan category. Applied over the geometry by
+   * `applySeatCategoryOverlay` right after the fetch; absent on older servers.
+   */
+  seat_category_index?: Record<string, number>;
+  /** S1a: synthetic categories (same shape as category_prices) for tiers that anchor no plan category. */
+  extra_categories?: CategoryPrice[];
 }
 
 /** Cached schema with ETag for conditional requests. */
