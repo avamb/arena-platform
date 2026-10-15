@@ -40,6 +40,10 @@ func TestDeliveryInvitation_PrintsTheEAN13WhenTheTicketHasACredential(t *testing
 			t.Errorf("the invitation PDF does not print the EAN-13 digits %q of %s", run, seed.EAN13)
 		}
 	}
+	// The Price cell carries the word, not an amount.
+	if !pdfDrawsRun(doc, "Invitation") {
+		t.Error("the invitation PDF does not print the Invitation word in the Price cell")
+	}
 }
 
 // The control that makes the test above mean something: with no credential
