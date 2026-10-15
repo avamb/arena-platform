@@ -77,18 +77,17 @@ type Options struct {
 	// NEVER set this to false in production — an uncredentialled gateway allows
 	// unauthenticated inventory mutation.
 	Bil24RequireToken bool
-	// Bil24TokenCacheTTL overrides how long a successful gateway token
-	// verification is cached (perf fix, hbil24/token_cache.go). Corresponds
-	// to env var BIL24_TOKEN_CACHE_TTL. Zero falls back to hbil24's own
-	// default (5 minutes).
+	// Bil24TokenCacheTTL is how long a successful gateway token verification is
+	// cached (hbil24/token_cache.go, env BIL24_TOKEN_CACHE_TTL; zero = 5 minutes).
 	Bil24TokenCacheTTL time.Duration
 
-	// StripeAPIBaseURL overrides the Stripe REST endpoint used when creating
-	// a hosted Checkout Session for a widget purchase. Empty means the real
-	// api.stripe.com. Integration tests point it at a stub server — there is
-	// no other seam, because the adapter is built per request from each
-	// organizer's OWN secret key and never injected as an object.
+	// StripeAPIBaseURL overrides the Stripe REST endpoint of a widget purchase's
+	// hosted Checkout Session (empty = api.stripe.com). Tests point it at a stub:
+	// the adapter is built per request from each organizer's OWN secret key.
 	StripeAPIBaseURL string
+	// PosterReader reads a poster for POST .../media/{id}/poster-facts. Nil =
+	// built from POSTER_LLM_API_KEY (none: the route answers 503). Tests inject a stub.
+	PosterReader PosterReader
 
 	// Per-domain sqlc *Queries. See struct docs above.
 	SuperadminQueries     *gen.Queries
@@ -307,6 +306,7 @@ func New(opts Options) *Server {
 		bil24Enabled:                opts.Bil24CompatEnabled,
 		bil24RequireToken:           opts.Bil24RequireToken,
 		stripeAPIBaseURL:            opts.StripeAPIBaseURL,
+		posterReader:                resolvePosterReader(opts),
 		bil24TokenCache:             hbil24.NewTokenCache(opts.Bil24TokenCacheTTL),
 
 		geoQueries:            pickQueries(opts.GeoQueries, opts.PgxPool),
