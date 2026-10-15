@@ -177,7 +177,8 @@ SELECT pg_advisory_xact_lock(hashtextextended('org_owners:' || $1::text, 0));
 
 -- name: CountOtherActiveOrgAdmins :one
 -- How many active owners the organization has besides $2: active org_admin
--- memberships whose user is not deactivated. A person who cannot sign in is no
+-- memberships whose user is neither deactivated nor anonymized (GDPR erasure
+-- sets anonymized_at only). A person who cannot sign in is no
 -- owner. The caller holds LockOrgOwners.
 SELECT count(*)
 FROM   memberships m
@@ -186,4 +187,5 @@ WHERE  m.org_id = $1
   AND  m.role = 'org_admin'
   AND  m.status = 'active'
   AND  u.deactivated_at IS NULL
+  AND  u.anonymized_at IS NULL
   AND  m.user_id <> $2;

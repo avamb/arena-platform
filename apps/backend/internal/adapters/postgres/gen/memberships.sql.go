@@ -368,10 +368,11 @@ WHERE  m.org_id = $1
   AND  m.role = 'org_admin'
   AND  m.status = 'active'
   AND  u.deactivated_at IS NULL
+  AND  u.anonymized_at IS NULL
   AND  m.user_id <> $2`
 
 // CountOtherActiveOrgAdmins counts the organization's active owners besides
-// exceptUserID (a deactivated account is no owner). Zero means exceptUserID is
+// exceptUserID (a deactivated or anonymized account is no owner). Zero means exceptUserID is
 // the last one. The caller must hold LockOrgOwners.
 func (q *Queries) CountOtherActiveOrgAdmins(ctx context.Context, orgID, exceptUserID uuid.UUID) (int64, error) {
 	var n int64
