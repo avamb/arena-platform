@@ -110,6 +110,11 @@ function OrgShell() {
             >
               {t("nav.notifications")}
             </Link>
+            {access.can("membership.read") && (
+              <Link to="/o/$orgId/team" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
+                {t("nav.team")}
+              </Link>
+            )}
             {orgCount > 1 && <Link to="/orgs">{t("nav.switchOrg")}</Link>}
           </nav>
           <div className="topbar-tools">

@@ -24,6 +24,7 @@ import { parseEventsSearch, parseLoginSearch, parseOrdersSearch, parsePromotersS
 import { PromoListScreen } from "@/screens/PromoListScreen";
 import { PromoCreateScreen } from "@/screens/PromoCreateScreen";
 import { PromoScreen } from "@/screens/PromoScreen";
+import { TeamScreen } from "@/screens/TeamScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
 import { parseEventsSearch, parseLoginSearch, parseOrdersSearch } from "@/lib/search";
 import { parsePromoCardSearch, parsePromoListSearch } from "@/lib/promo";
@@ -154,6 +155,11 @@ const promoCodeRoute = createRoute({
   path: "/promo/$codeId",
   validateSearch: parsePromoCardSearch,
   component: PromoScreen,
+// 4-5
+const teamRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/team",
+  component: TeamScreen,
 });
 
 export const routeTree = rootRoute.addChildren([
@@ -177,6 +183,7 @@ export const routeTree = rootRoute.addChildren([
     promoRoute,
     promoNewRoute,
     promoCodeRoute,
+    teamRoute,
   ]),
 ]);
 

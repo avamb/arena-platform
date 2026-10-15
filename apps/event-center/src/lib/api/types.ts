@@ -46,3 +46,10 @@ export type PromoCodeEnvelope = S["PromoCodeEnvelope"];
 export type PromoRedemptionItem = S["PromoRedemptionItem"];
 export type PromoRedemptionListResponse = S["PromoRedemptionListResponse"];
 export type CreatePromoCodeRequest = S["CreatePromoCodeRequest"];
+// 4-5: the team screen.
+export type BotTeamMember = S["BotTeamMember"];
+export type BotTeamResponse = S["BotTeamResponse"];
+export type BotInvitation = S["BotInvitation"];
+export type BotInvitationCreateResponse = S["BotInvitationCreateResponse"];
+export type BotInvitationResendResponse = S["BotInvitationResendResponse"];
+export type BotInvitationRevokeResponse = S["BotInvitationRevokeResponse"];
