@@ -96,8 +96,8 @@ type hostedPageResponse struct {
 	Event         hostedPageEventResponse `json:"event"`
 	FeedToken     string                  `json:"feed_token"`
 	DefaultLocale string                  `json:"default_locale"`
-	// Seller / Promoter are present only on a channel that switched
-	// settings.hosted_page.show_seller on.
+	// Seller / Promoter are present when the seller's profile is complete
+	// and no platform superadmin hid the block (settings.hosted_page.seller_hidden).
 	Seller   *hostedPageSellerResponse   `json:"seller,omitempty"`
 	Promoter *hostedPagePromoterResponse `json:"promoter,omitempty"`
 	// ContactForm is present when the page offers "Write to the organizer".
