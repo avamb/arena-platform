@@ -4749,6 +4749,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/media/{media_id}/poster-facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read a poster with the vision model
+         * @description Reads the event poster stored as a media object of this organization
+         *     and answers what is printed on it: the name, the date and time, the
+         *     venue, the city, the age rating and the ticket prices. The values are
+         *     hints for an event wizard (the Telegram bot, the web event center) to
+         *     offer as buttons; nothing is stored and the answer is never cached.
+         *     Only the poster image travels to the model, never buyer data.
+         *
+         *     The model key lives on arena-api only. Without it the route answers
+         *     503 `media.poster_reader_not_configured` and a wizard asks every
+         *     question by hand. Each read costs money, so an organization gets at
+         *     most `POSTER_READS_PER_ORG_PER_DAY` reads (default 50) in a sliding
+         *     24 hours, then 429 `media.poster_reads_exhausted`; the counter lives
+         *     in the memory of one arena-api process. A refused request never takes
+         *     a slot. The image must be a JPEG or PNG of at most 5 MiB. The call may
+         *     take up to 45 seconds.
+         *
+         *     Requires the `event.update` permission in the path organization (the
+         *     owner and the manager hold it). A media object of another
+         *     organization is a 404.
+         */
+        post: operations["postV1OrganizationsOrgIdMediaMediaIdPosterFacts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/media-files/{id}": {
         parameters: {
             query?: never;
@@ -7767,6 +7805,46 @@ export interface components {
                     [key: string]: unknown;
                 };
             };
+        };
+        /** @description One ticket price printed on a poster. */
+        PosterFactsCategory: {
+            /** @description Category name as printed (for example "Stalls"); empty when the poster gives only a price. */
+            name: string;
+            /**
+             * Format: int64
+             * @description Price in minor currency units (3490 is 34.90).
+             */
+            price_minor: number;
+            /** @description ISO 4217 code, or an empty string when the poster shows no currency symbol. */
+            currency: string;
+        };
+        /**
+         * @description What a poster says, normalized. An empty string, or an empty list,
+         *     means "not on the poster". Every value is a HINT for a wizard to
+         *     offer as a button; nothing is written from it.
+         */
+        PosterFacts: {
+            /** @description Event name as printed. */
+            name: string;
+            /** @description First date, `YYYY-MM-DD`, or empty. */
+            date: string;
+            /** @description Start time, `HH:MM` 24-hour, or empty. */
+            time: string;
+            /** @description Venue name as printed, or empty. */
+            venue_name: string;
+            /** @description City as printed, or empty. */
+            city: string;
+            /** @description Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty. */
+            age: string;
+            /** @description A short description printed on the poster, or empty. */
+            description: string;
+            /** @description The ticket prices printed on the poster; empty when there are none. */
+            categories: components["schemas"]["PosterFactsCategory"][];
+        };
+        /** @description The answer of the poster-reading route. */
+        PosterFactsResponse: {
+            /** @description What the model read from the poster. */
+            facts: components["schemas"]["PosterFacts"];
         };
         /**
          * @description A registered binary media object (org logo, event poster, artist
@@ -39151,6 +39229,103 @@ export interface operations {
                 };
             };
             /** @description Media storage backend is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdMediaMediaIdPosterFacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUID of the poster's media object (`POST /v1/media`, owner type `event_poster`). */
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What the model read from the poster. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosterFactsResponse"];
+                };
+            };
+            /** @description org_id or media_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Media object not found, deleted, or owned by another organization (`media.not_found`), or its bytes are gone (`media.bytes_missing`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The image is not a JPEG or PNG (`media.poster_unsupported_type`) or is larger than 5 MiB (`media.poster_too_large`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization used its poster readings for today (`media.poster_reads_exhausted`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Media lookup or byte read failed (`media.get_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Poster reading is not configured (`media.poster_reader_not_configured`), the model could not be reached (`media.poster_read_failed`), or media storage is not configured. */
             503: {
                 headers: {
                     [name: string]: unknown;

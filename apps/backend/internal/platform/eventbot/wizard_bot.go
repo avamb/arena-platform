@@ -321,7 +321,7 @@ func (b *Bot) wizardPoster(ctx context.Context, chatID int64, from *models.User,
 		return true
 	}
 	if d.Mode != ModeEdit { // a replaced poster of an existing event has nothing to prefill
-		b.readPosterHints(ctx, chatID, loc, d, data, contentType)
+		b.readPosterHints(ctx, chatID, loc, jwt, ws.OrgID, up.ID, d)
 	}
 	b.wizardApply(ctx, chatID, nil, from, ws, d, WizInput{Poster: &PosterAccepted{MediaID: up.ID, W: cfg.Width, H: cfg.Height}})
 	return true
@@ -341,22 +341,38 @@ func waitsForPoster(d *Draft) bool {
 	return false
 }
 
-// posterReadTimeout bounds the model call; the person sees "reading…"
-// meanwhile and the wizard goes on without hints when it runs out.
-const posterReadTimeout = 45 * time.Second
+// posterReadingDelay is how long a poster reading runs before the person is
+// told "reading…": an API without a model key answers at once and then nothing
+// is said at all.
+const posterReadingDelay = 1500 * time.Millisecond
 
-// readPosterHints asks the vision model what the poster says and keeps the
-// answer in the draft as hints (wizard_hints.go). Without a reader, or when
-// the reading fails, the wizard simply asks everything as before.
-func (b *Bot) readPosterHints(ctx context.Context, chatID int64, loc string, d *Draft, data []byte, contentType string) {
-	if b.poster == nil {
+// posterOffFor is how long the bot stops asking after the API said it cannot
+// read posters (no model key), so every poster is not one more wasted call.
+const posterOffFor = 10 * time.Minute
+
+// readPosterHints asks arena-api what the uploaded poster says and keeps the
+// answer in the draft as hints (wizard_hints.go). The model key is on the API
+// (POST .../media/{id}/poster-facts); when the API has none, or the reading
+// fails, the wizard simply asks everything as before.
+func (b *Bot) readPosterHints(ctx context.Context, chatID int64, loc, jwt string, orgID uuid.UUID, mediaID string, d *Draft) {
+	if time.Now().Unix() < b.posterOffUntil.Load() {
 		return
 	}
-	b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_reading", nil), nil)
-	readCtx, cancel := context.WithTimeout(ctx, posterReadTimeout)
-	defer cancel()
-	facts, err := b.poster.Read(readCtx, data, contentType)
+	done := make(chan struct{})
+	notice := time.AfterFunc(posterReadingDelay, func() {
+		defer close(done)
+		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_reading", nil), nil)
+	})
+	facts, err := b.arena.PosterFacts(ctx, jwt, orgID, mediaID)
+	if !notice.Stop() {
+		<-done // the notice is already on its way: let it finish first
+	}
 	if err != nil {
+		if posterReaderOff(err) {
+			b.posterOffUntil.Store(time.Now().Add(posterOffFor).Unix())
+			b.logger.Info("eventbot: poster reading is off on arena-api")
+			return
+		}
 		b.logger.Warn("eventbot: poster reading failed", slog.String("error", err.Error()))
 		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_read_none", nil), nil)
 		return

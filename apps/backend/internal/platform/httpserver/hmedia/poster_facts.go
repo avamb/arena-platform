@@ -22,6 +22,8 @@ const (
 	// posterReadTimeout bounds one model call, the same 45 seconds the
 	// Telegram bot always allowed it; the wizards show "reading…" meanwhile.
 	posterReadTimeout = 45 * time.Second
+	// posterWriteSlack is the time after the model deadline left to write the answer.
+	posterWriteSlack = 10 * time.Second
 	// posterMaxBytes is the model API's own per-image ceiling.
 	posterMaxBytes = 5 << 20
 	// PosterReadsWindow is the sliding window of the per-organization cap.
@@ -165,7 +167,12 @@ func (h *Handler) PosterFacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	readCtx, cancel := context.WithTimeout(ctx, posterReadTimeout)
+	// The router's request timeout (30 s) and the server's write deadline are
+	// shorter than a slow model call, so the read runs on its own deadline and
+	// the connection's write deadline moves past it, as the refund routes do.
+	// A caller that hangs up does not stop a read that was already paid for.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(posterReadTimeout + posterWriteSlack))
+	readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), posterReadTimeout)
 	defer cancel()
 	facts, err := h.poster.Read(readCtx, data, mediaType)
 	if err != nil {

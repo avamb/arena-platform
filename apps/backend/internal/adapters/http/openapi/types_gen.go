@@ -10190,6 +10190,53 @@ type PaymentProviderConfigItemStatus string
 // via POST /v1/organizations/{org_id}/payment-configs/{id}/verify.
 type PaymentProviderConfigItemVerificationStatus string
 
+// PosterFacts What a poster says, normalized. An empty string, or an empty list,
+// means "not on the poster". Every value is a HINT for a wizard to
+// offer as a button; nothing is written from it.
+type PosterFacts struct {
+	// Age Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty.
+	Age string `json:"age"`
+
+	// Categories The ticket prices printed on the poster; empty when there are none.
+	Categories []PosterFactsCategory `json:"categories"`
+
+	// City City as printed, or empty.
+	City string `json:"city"`
+
+	// Date First date, `YYYY-MM-DD`, or empty.
+	Date string `json:"date"`
+
+	// Description A short description printed on the poster, or empty.
+	Description string `json:"description"`
+
+	// Name Event name as printed.
+	Name string `json:"name"`
+
+	// Time Start time, `HH:MM` 24-hour, or empty.
+	Time string `json:"time"`
+
+	// VenueName Venue name as printed, or empty.
+	VenueName string `json:"venue_name"`
+}
+
+// PosterFactsCategory One ticket price printed on a poster.
+type PosterFactsCategory struct {
+	// Currency ISO 4217 code, or an empty string when the poster shows no currency symbol.
+	Currency string `json:"currency"`
+
+	// Name Category name as printed (for example "Stalls"); empty when the poster gives only a price.
+	Name string `json:"name"`
+
+	// PriceMinor Price in minor currency units (3490 is 34.90).
+	PriceMinor int64 `json:"price_minor"`
+}
+
+// PosterFactsResponse The answer of the poster-reading route.
+type PosterFactsResponse struct {
+	// Facts What the model read from the poster.
+	Facts PosterFacts `json:"facts"`
+}
+
 // PriceBreakdownEnvelope Top-level response envelope returned by
 // `GET /v1/checkout/{id}/price-breakdown`.
 type PriceBreakdownEnvelope struct {
