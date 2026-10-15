@@ -5,6 +5,7 @@ import type { OrderDetail } from "@/lib/api/types";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { DELIVERY_STATES, UNPAID_REASONS, orderNumber, seatText, ticketDelivery } from "@/lib/orders";
+import { CancelOrder } from "@/components/CancelOrder";
 import { Badge, ErrorBox, Loading } from "@/components/ui";
 import { useOrg } from "@/screens/OrgLayout";
 import { OrderStatusBadge } from "@/screens/OrdersScreen";
@@ -46,7 +47,7 @@ function DeliveryState({ order }: { order: OrderDetail }) {
 
 export function OrderScreen() {
   const { t, locale } = useI18n();
-  const { orgId } = useOrg();
+  const { orgId, access } = useOrg();
   const { orderId } = useParams({ from: "/o/$orgId/orders/$orderId" });
   const order = useQuery({ queryKey: ["order", orgId, orderId], queryFn: () => fetchOrder(orgId, orderId) });
 
@@ -80,6 +81,8 @@ export function OrderScreen() {
           · {formatDateTime(o.session_start_at, tz, locale)}
         </p>
       )}
+
+      <CancelOrder orgId={orgId} orderId={o.id} systemId={o.system_id} status={o.status} canWrite={access.can("order.write")} />
 
       <DeliveryState order={o} />
       {unpaid !== null && o.unpaid_reason.length > 0 && (

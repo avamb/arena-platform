@@ -153,6 +153,8 @@ var stepUpMoneyRoutes = []string{
 	"POST /v1/refunds",
 	"POST /v1/refunds/{id}/approve",
 	"POST /v1/refunds/{id}/reject",
+	// 4-2: the web cancels an unpaid order after the password question.
+	"POST /v1/organizations/{org_id}/orders/{id}/cancel",
 }
 
 // stepUpExempt are writes whose path looks like money but which are not a
