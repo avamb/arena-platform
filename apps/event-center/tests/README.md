@@ -125,7 +125,12 @@ users cannot play these parts.
    `signInAs`, `noA11yViolations` from `./liveEnv`, and loop over the three
    roles. Assert what the server's `/me` allowed, not what you expect from the
    role name.
-4. Database rows: no SQL driver is bundled. Read the result back through the
+4. Database rows: the live twins assert through the API only, because the
+   Playwright harness has no database access. For a resend that is the
+   `delivery[]` recipient and state, the order's `buyer_email` and the 409 of a
+   seller site's order. The `worker_jobs` and `order_events` rows of the same
+   scenario are proven by the Go e2e `bot_e2e_resend_integration_test.go`.
+   No SQL driver is bundled. Read the result back through the
    API (the order, the refund, the audit list), or, when only SQL can prove it,
    add a `pg` dev dependency by installing it **from inside `apps/event-center`**
    (`npm --prefix` adds the repository root as a `file:../..` dependency and

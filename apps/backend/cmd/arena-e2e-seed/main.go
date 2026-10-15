@@ -220,5 +220,8 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applyCancelOrderFixture(ctx, tx); err != nil {
 		return err
 	}
+	if err := applyResendOrders(ctx, tx); err != nil { // 4-1: paid orders for the resend twin test.
+		return err
+	}
 	return applyInvitationsFixture(ctx, tx)
 }
