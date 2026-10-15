@@ -172,4 +172,8 @@ type Server struct {
 	// exportMaxRows lowers the CSV exports' row cap (hexport.DefaultMaxRows)
 	// when positive. Tests set it directly after New to reach the 413 path.
 	exportMaxRows int64
+	// posterReader reads posters for POST .../media/{id}/poster-facts: the
+	// Options.PosterReader stub, else the Anthropic reader built from
+	// POSTER_LLM_API_KEY, else nil (the route answers 503). See poster_facts_shims.go.
+	posterReader PosterReader
 }

@@ -829,11 +829,68 @@ export interface paths {
         };
         /**
          * List reference cities, optionally filtered by country
-         * @description Returns reference cities ordered by slug. Pass ?country_id=<uuid> to
-         *     restrict results to one country. Names are locale-resolved from i18n_text.
+         * @description Returns reference cities ordered by slug. Pass ?country_id=<uuid> or
+         *     ?country=<iso2> to restrict results to one country. Names are
+         *     locale-resolved from i18n_text.
+         *
+         *     With `q` (a typed beginning of a name, in Latin, Cyrillic or Hebrew
+         *     script, compared without case or accents) the list keeps the cities
+         *     whose name or slug starts with it (at most 20) and the answer gains a
+         *     `suggestions` array with up to 20 places of the `country` from the
+         *     embedded GeoNames data, each with its time zone. A suggestion is only
+         *     a hint: nothing is created by this route. A single-zone country
+         *     suggests only its largest cities.
+         *
          *     No authentication required.
          */
         get: operations["getV1GeoCities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geo/countries/{iso2}/timezones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the time zones of a country
+         * @description Returns the IANA zones of the country, the zone of its biggest city
+         *     first, from the embedded GeoNames data. `single` tells a client whether
+         *     it may fill the zone in without asking: Spain (Europe/Madrid,
+         *     Atlantic/Canary, Africa/Ceuta) and Portugal (Europe/Lisbon,
+         *     Atlantic/Madeira, Atlantic/Azores) have several, the Czech Republic
+         *     one. No authentication required.
+         */
+        get: operations["getV1GeoCountryTimezones"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geo/countries/{iso2}/currency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the currency of a country
+         * @description Returns the ISO 4217 currency stored on the platform's country row
+         *     (the base of the session currency chain). A country the platform has
+         *     no row for is 404. No authentication required.
+         */
+        get: operations["getV1GeoCountryCurrency"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1203,6 +1260,15 @@ export interface paths {
          *     the caller must be a member of the organization, an organization API
          *     key of it, or the platform superadmin with `X-Admin-Reason`. Only
          *     the superadmin gets the `deep_link` back in the response.
+         *
+         *     With `channel` `web` the same transaction writes the membership, an
+         *     invitation row that is already accepted (there is no Telegram code),
+         *     and the letter: a NEW account gets a `password_reset_tokens` row and
+         *     an `auth.password_reset_email` job (purpose `org_invitation`, the
+         *     link lands on the event center's `/accept-invite`), an EXISTING
+         *     account gets an `auth.org_added_email` job with no token. There is no
+         *     `deep_link`. It answers 503 `bot.web_invitation_not_configured`
+         *     while the event center address is not configured.
          */
         post: operations["createOrganizationBotInvitation"];
         delete?: never;
@@ -2656,6 +2722,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/event-bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an event back as importable event-bundles
+         * @description The reverse of POST .../imports/event-bundle (task 3-2): the event as
+         *     one `source: arena` bundle per session, oldest first, each addressed
+         *     by arena UUID (`arenaEventId`, `arenaSessionId`, `arenaVenueId`,
+         *     `arenaTierId`) and importable as it is. It is what the web event
+         *     center loads to edit or copy an event. A bundle posted back
+         *     unchanged is accepted by `?dry_run=true` with no error and leaves the
+         *     stored rows as they are; a second read answers the same bundles. See
+         *     `EventBundleReadResponse` for how each field is written and what is
+         *     left out. A draft event is readable; a deleted event, an unknown one
+         *     and an event of another organization are all a 404. Requires the
+         *     `event.read` permission in the organization. Writes nothing.
+         */
+        get: operations["getEventBundle"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{id}/artists": {
         parameters: {
             query?: never;
@@ -2771,8 +2867,8 @@ export interface paths {
          * Read the organization's seller data and its sales-page channels
          * @description The owner's "Organization data" (HP-4a): the legal data the hosted sales
          *     page prints in its seller block, every hosted-page channel with
-         *     `show_seller` and its public contact, and what is still missing before
-         *     the block may be shown. Requires `org.update` in the organization (the
+         *     `seller_shown` (whether the page shows the seller block now), whether
+         *     the data is `complete`, its public contact, and what is still missing. Requires `org.update` in the organization (the
          *     owner; the manager does not hold it).
          */
         get: operations["getSellerProfile"];
@@ -2806,14 +2902,16 @@ export interface paths {
         head?: never;
         /**
          * Switch the seller block and set the public contact of a sales-page channel
-         * @description Writes `settings.hosted_page.show_seller` and
-         *     `settings.hosted_page.public_contact` of one hosted-page channel of the
-         *     organization; every other setting is kept. Requires `org.update` in the
+         * @description Writes `settings.hosted_page.public_contact`, the legacy
+         *     `show_seller` and the operator's `seller_hidden` of one hosted-page
+         *     channel of the organization; every other setting is kept. The seller
+         *     block is shown by default once the profile is complete; only a platform
+         *     superadmin (with `X-Admin-Reason`) can hide it with `seller_hidden`. Requires `org.update` in the
          *     organization. A channel of another organization, or one without a hosted
          *     page, answers 404 `seller.channel_not_found`. Audited as
          *     `v1.channel.seller_display_update` without the addresses.
          *
-         *     This is the only route that writes these two keys: the generic channel
+         *     This is the only route that writes these keys: the generic channel
          *     create and PATCH keep the stored values whatever `settings` they are
          *     sent, and an organization API key is refused here.
          */
@@ -4749,6 +4847,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/media/{media_id}/poster-facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read a poster with the vision model
+         * @description Reads the event poster stored as a media object of this organization
+         *     and answers what is printed on it: the name, the date and time, the
+         *     venue, the city, the age rating and the ticket prices. The values are
+         *     hints for an event wizard (the Telegram bot, the web event center) to
+         *     offer as buttons; nothing is stored and the answer is never cached.
+         *     Only the poster image travels to the model, never buyer data.
+         *
+         *     The model key lives on arena-api only. Without it the route answers
+         *     503 `media.poster_reader_not_configured` and a wizard asks every
+         *     question by hand. Each read costs money, so an organization gets at
+         *     most `POSTER_READS_PER_ORG_PER_DAY` reads (default 50) in a sliding
+         *     24 hours, then 429 `media.poster_reads_exhausted`; the counter lives
+         *     in the memory of one arena-api process. A refused request never takes
+         *     a slot. The image must be a JPEG or PNG of at most 5 MiB. The call may
+         *     take up to 45 seconds.
+         *
+         *     Requires the `event.update` permission in the path organization (the
+         *     owner and the manager hold it). A media object of another
+         *     organization is a 404.
+         */
+        post: operations["postV1OrganizationsOrgIdMediaMediaIdPosterFacts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/media-files/{id}": {
         parameters: {
             query?: never;
@@ -6548,6 +6684,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/sales-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sales figures of a list of events
+         * @description The numbers a list of events shows next to each name, for up to 50
+         *     events in ONE request (WEB-LIST): for every id the same figures as the
+         *     top level of `GET .../events/{event_id}/summary` (places, money per
+         *     currency, orders, tickets, door count, refunds, promo codes,
+         *     invitations, session count) without the per-category table and the
+         *     per-session list. An id of another organization, a deleted event and
+         *     an unknown id are absent from the answer, never an error. The entries
+         *     come in the order the ids were given, a repeated id counts once.
+         *     Read-only and free of buyer data. Requires the `order.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsSalesSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/summary": {
         parameters: {
             query?: never;
@@ -7172,6 +7336,12 @@ export interface paths {
          *     (`Authorization: Bearer ak_…`) carrying that scope is the primary
          *     caller — the site-side "Мероприятия (arena)" tab (event-bundle spec
          *     §10) and, in future iterations, chat-bot integrations.
+         *
+         *     With `?dry_run=true` the bundle is only checked: the same validation
+         *     code runs inside a transaction that is rolled back, nothing is
+         *     written and nothing outside is touched, and the answer is an
+         *     `ImportEventBundleDryRunResponse` listing ALL errors at once, each
+         *     with its field as a JSON pointer, instead of the import's first 4xx.
          */
         post: operations["importEventBundle"];
         delete?: never;
@@ -7767,6 +7937,46 @@ export interface components {
                     [key: string]: unknown;
                 };
             };
+        };
+        /** @description One ticket price printed on a poster. */
+        PosterFactsCategory: {
+            /** @description Category name as printed (for example "Stalls"); empty when the poster gives only a price. */
+            name: string;
+            /**
+             * Format: int64
+             * @description Price in minor currency units (3490 is 34.90).
+             */
+            price_minor: number;
+            /** @description ISO 4217 code, or an empty string when the poster shows no currency symbol. */
+            currency: string;
+        };
+        /**
+         * @description What a poster says, normalized. An empty string, or an empty list,
+         *     means "not on the poster". Every value is a HINT for a wizard to
+         *     offer as a button; nothing is written from it.
+         */
+        PosterFacts: {
+            /** @description Event name as printed. */
+            name: string;
+            /** @description First date, `YYYY-MM-DD`, or empty. */
+            date: string;
+            /** @description Start time, `HH:MM` 24-hour, or empty. */
+            time: string;
+            /** @description Venue name as printed, or empty. */
+            venue_name: string;
+            /** @description City as printed, or empty. */
+            city: string;
+            /** @description Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty. */
+            age: string;
+            /** @description A short description printed on the poster, or empty. */
+            description: string;
+            /** @description The ticket prices printed on the poster; empty when there are none. */
+            categories: components["schemas"]["PosterFactsCategory"][];
+        };
+        /** @description The answer of the poster-reading route. */
+        PosterFactsResponse: {
+            /** @description What the model read from the poster. */
+            facts: components["schemas"]["PosterFacts"];
         };
         /**
          * @description A registered binary media object (org logo, event poster, artist
@@ -9960,8 +10170,23 @@ export interface components {
             /**
              * @description Language of the invitation e-mail and of the bot's first messages
              *     (`en` default, `ru`, `es`). Unknown values fall back to `en`.
+             *     With `channel` `web` and no locale, the language of an existing
+             *     account's own preference is used.
              */
             locale?: string;
+            /**
+             * @description How the person is invited: `telegram` (the default when absent)
+             *     mails the Telegram deep link of the bot; `web` mails the web
+             *     event center instead, with no deep link and no Telegram code.
+             *     For `web`, a NEW e-mail gets the one-time password-setup link
+             *     (valid 7 days) and an EXISTING account gets a letter that says it
+             *     was added and where to sign in, with no token. In both cases the
+             *     membership exists at once and an existing membership keeps its
+             *     role. Any other value is 400 `bot.invalid_channel`. This is a
+             *     plain string with the two values named here, not an inline
+             *     enum, so no generated constant is renamed.
+             */
+            channel?: string;
         };
         /** @description A bot invitation as the API reports it, never the code. */
         BotInvitation: {
@@ -9993,18 +10218,21 @@ export interface components {
             user_created: boolean;
             /**
              * Format: date-time
-             * @description When the one-time code stops working (7 days).
+             * @description When the one-time code stops working (7 days). For a `web` invitation, when the password-setup link of a new account stops working.
              */
             expires_at: string;
             /** @description Always `email`; the deep link is mailed by arena-worker (bot.invitation_email). */
             delivery: string;
+            /** @description The channel the invitation was sent through, `telegram` or `web`. A `web` invitation is recorded as accepted at once and cannot be resent. */
+            channel: string;
         };
         /** @description Response of POST /v1/organizations/{org_id}/bot-invitations. */
         BotInvitationCreateResponse: {
             /** @description The invitation that was created. */
             invitation: components["schemas"]["BotInvitation"];
             /**
-             * @description `https://t.me/<bot>?start=inv_<code>`, present ONLY when the
+             * @description `https://t.me/<bot>?start=inv_<code>`, present ONLY for a
+             *     `telegram` invitation when the
              *     caller is the platform superadmin (X-Admin-Reason on record) and
              *     the bot username is configured, for the hand-over to
              *     organizations provisioned by hand. An organization owner never
@@ -10092,8 +10320,22 @@ export interface components {
              *     (sent, not opened, not expired) or `expired`. Absent for a member
              *     who has no bot invitation (added another way). Plain string on
              *     purpose: an inline enum would rename generated Go constants.
+             *
+             *     For an invitation sent for the web event center (`invitation_channel`
+             *     `web`) the invitation row is accepted at once, so the state comes
+             *     from the setup link: `waiting` while the account that invitation
+             *     created has an unused, unexpired password-setup token, `accepted`
+             *     once it was used or none is left. For an account that already
+             *     existed it is always `accepted`: the API cannot tell whether it
+             *     ever chose a password.
              */
             invitation_state?: string;
+            /**
+             * @description How the invitation was sent, `telegram` or `web`. Absent with
+             *     `invitation_state`. A `web` invitation cannot be resent
+             *     (`resend_available_at` is never present for it).
+             */
+            invitation_channel?: string;
             /**
              * Format: uuid
              * @description Id of that invitation, what the revoke and resend routes take. Absent with `invitation_state`.
@@ -10101,7 +10343,7 @@ export interface components {
             invitation_id?: string;
             /**
              * Format: date-time
-             * @description When the invitation's code stops working. Absent with `invitation_state`.
+             * @description When the invitation's code stops working (for a `web` invitation that is still `waiting`, when its setup link stops working). Absent with `invitation_state`.
              */
             invitation_expires_at?: string;
             /**
@@ -11387,6 +11629,15 @@ export interface components {
          *     reason and channel.
          */
         OrderDetail: components["schemas"]["OrderSummary"] & {
+            /** @description Name of the event the order's session belongs to. Present even when the session was cancelled (soft-deleted). */
+            event_name: string;
+            /**
+             * Format: date-time
+             * @description Start of the order's session, RFC 3339 in UTC.
+             */
+            session_start_at: string;
+            /** @description IANA zone of the session's venue (`venues.timezone`) - render session_start_at in it. */
+            venue_timezone: string;
             /** @description Line items of the order. */
             items: components["schemas"]["OrderItemSummary"][];
             /** @description Tickets issued for this order's line items, in line order. */
@@ -12058,6 +12309,75 @@ export interface components {
             sessions: components["schemas"]["EventSummarySession"][];
         };
         /**
+         * @description The top level of EventSummary for one event, without the per-category
+         *     table (`tiers`) and the per-session list (`sessions`): the numbers a
+         *     list of events shows next to each name. Built by the same assembly as
+         *     EventSummary, so for one event every field here equals the field of
+         *     the same name in `GET .../events/{event_id}/summary`. Read-only, no
+         *     buyer data.
+         */
+        EventSalesSummary: {
+            /** @description The event the figures are about. */
+            event: {
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the event.
+                 */
+                id: string;
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the owning organization.
+                 */
+                org_id: string;
+                /** @description Name of the event as stored. */
+                name: string;
+                /** @description Event status (draft, published, cancelled, archived). */
+                status: string;
+                /**
+                 * Format: date-time
+                 * @description Earliest start over the event's active, non-cancelled sessions, RFC3339 in UTC.
+                 */
+                first_session_at: string | null;
+                /**
+                 * Format: date-time
+                 * @description Latest end over the same sessions, RFC3339 in UTC.
+                 */
+                last_session_at: string | null;
+                /** @description Number of non-deleted sessions of the event, cancelled ones included. */
+                session_count: number;
+            };
+            /** @description Places of every session, split by kind. */
+            places: {
+                /** @description Seats of the seating plans. */
+                seats: components["schemas"]["SessionPlaceCounts"];
+                /** @description General admission places. */
+                ga: components["schemas"]["SessionPlaceCounts"];
+            };
+            /** @description The bottom line of the whole event, one entry per currency. */
+            money: components["schemas"]["SummaryMoneyItem"][];
+            /** @description Order totals of every session grouped by status, source and currency. */
+            orders: components["schemas"]["SummaryOrdersItem"][];
+            /** @description Tickets of every session by status. */
+            tickets: components["schemas"]["SummaryTickets"];
+            /** @description The door count over every session. */
+            entered: components["schemas"]["SummaryEntered"];
+            /** @description Refund totals of every session grouped by settlement, state and currency. */
+            refunds: components["schemas"]["SummaryRefundsItem"][];
+            /** @description Promo codes the paid orders of every session used, merged by code and sorted. */
+            promos: components["schemas"]["SummaryPromoItem"][];
+            /** @description Invitations over every session. */
+            complimentary: components["schemas"]["SummaryComplimentary"];
+        };
+        /** @description The sales figures of the requested events, one entry per event found. */
+        EventSalesSummaryList: {
+            /**
+             * @description One entry per requested event that exists in the organization, in
+             *     the order the ids were given. An id of another organization, a
+             *     deleted event or an unknown id has no entry.
+             */
+            items: components["schemas"]["EventSalesSummary"][];
+        };
+        /**
          * @description A single active venue (physical event location owned by one organization).
          *     Any authenticated org may read venue data, but only the owning org may
          *     create, update, or soft-delete a venue.
@@ -12687,12 +13007,94 @@ export interface components {
              * @example Tel Aviv
              */
             name: string;
+            /**
+             * @description IANA time zone the city is in, best effort: the zone the city's
+             *     name points at in the embedded GeoNames data, else the country's
+             *     only zone. Absent when it cannot be told (a city of a country
+             *     with several zones that the data does not know). Only the list
+             *     route fills it.
+             * @example Asia/Jerusalem
+             */
+            timezone?: string;
+            /**
+             * @description Where the item comes from. Always `platform` on a city row (list route only).
+             * @example platform
+             */
+            source?: string;
+        };
+        /**
+         * @description A place from the embedded GeoNames data offered by the city search
+         *     (GET /v1/geo/cities with `q`). It is NOT a platform city: it has no id.
+         *     Choosing it means creating the city through
+         *     POST /v1/organizations/{org_id}/cities (a name that matches an
+         *     existing city returns that city).
+         */
+        GeoCitySuggestion: {
+            /**
+             * @description Display name of the place (the spelling of the top-cities list when it is on it, else its main name capitalised).
+             * @example Barcelona
+             */
+            name: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the country that was searched.
+             * @example ES
+             */
+            country_iso2: string;
+            /**
+             * @description IANA time zone the place is in.
+             * @example Europe/Madrid
+             */
+            timezone: string;
+            /**
+             * @description Always `geonames`.
+             * @example geonames
+             */
+            source: string;
         };
         GeoCitiesResponse: {
             /** @description Ordered list of reference cities with localised names */
             cities: components["schemas"]["GeoCityItem"][];
+            /**
+             * @description Present only when the request carried `q`: up to 20 places of the
+             *     `country` named in the request that start with the typed text,
+             *     the biggest cities first, leaving out cities already listed in
+             *     `cities`. Empty when `country` is absent.
+             */
+            suggestions?: components["schemas"]["GeoCitySuggestion"][];
             /** @description Optional pagination metadata for clients that render paginated city lists. */
             meta?: components["schemas"]["PaginationMeta"];
+        };
+        /** @description One IANA time zone of a country. */
+        GeoTimezoneItem: {
+            /**
+             * @description IANA zone name, the value to store as a venue's timezone.
+             * @example Atlantic/Canary
+             */
+            id: string;
+            /**
+             * @description Name for a person to pick by, the largest city in the zone.
+             * @example Las Palmas de Gran Canaria
+             */
+            label: string;
+        };
+        /** @description Response of GET /v1/geo/countries/{iso2}/timezones. */
+        GeoCountryTimezonesResponse: {
+            /** @description The zones of the country, the zone of its biggest city first. */
+            timezones: components["schemas"]["GeoTimezoneItem"][];
+            /**
+             * @description True when the country has exactly one zone, so a client may fill
+             *     it in without asking. False when it has several (Spain and
+             *     Portugal among them) and the person must choose.
+             */
+            single: boolean;
+        };
+        /** @description Response of GET /v1/geo/countries/{iso2}/currency. */
+        GeoCountryCurrencyResponse: {
+            /**
+             * @description ISO 4217 currency of the country, as stored on the platform's country row.
+             * @example EUR
+             */
+            currency: string;
         };
         GeoCountryResponse: {
             /**
@@ -13018,6 +13420,18 @@ export interface components {
              * @example Partner Agency s.r.o.
              */
             promoter_name?: string | null;
+            /**
+             * @description Buyers' page of the event on the hosted sales site:
+             *     `<PUBLIC_TICKETS_BASE_URL>/<page slug>/<event slug>`, where the
+             *     page slug is the promoter's slug when the event has an active
+             *     promoter with a page of its own, else the organization's slug.
+             *     Empty string when the event has no slug yet or the server has no
+             *     tickets base configured. It is the address, not a sign that the
+             *     page is reachable: it is built whatever the publication status,
+             *     so a draft event already carries it.
+             * @example https://tickets.arenasoldout.com/teatrkolibel/silver-hoof
+             */
+            public_url: string;
             /**
              * @description Where the event stands in its sale, computed on the server from
              *     its active, non-cancelled sessions (EC-02) so every client shows
@@ -13593,9 +14007,11 @@ export interface components {
         };
         /**
          * @description Legal identity of the seller of record, i.e. the organization that owns
-         *     the page. Present only when the channel the page is sold through has
-         *     `settings.hosted_page.show_seller = true` (default off). Empty values
-         *     are omitted.
+         *     the page. Present whenever the seller's profile is complete (legal name,
+         *     tax number, street, city, postal code and the channel's public e-mail
+         *     are all filled) unless a platform superadmin hid it for the channel
+         *     (`settings.hosted_page.seller_hidden`). The older `show_seller` flag no
+         *     longer decides. Empty values are omitted.
          */
         HostedPageSeller: {
             /**
@@ -13661,8 +14077,18 @@ export interface components {
              * @example Hosted page
              */
             name: string;
-            /** @description Whether the sales page of this channel shows the seller block (`settings.hosted_page.show_seller`). */
+            /**
+             * @description Legacy flag (`settings.hosted_page.show_seller`), kept for older
+             *     clients. It no longer decides whether the sales page shows the
+             *     block; read `seller_shown`.
+             */
             show_seller: boolean;
+            /** @description A platform superadmin hid the seller block of this channel (`settings.hosted_page.seller_hidden`). Only a platform superadmin can set it. */
+            seller_hidden: boolean;
+            /** @description True when no required data is missing for this channel (`missing` is empty). */
+            complete: boolean;
+            /** @description Whether the channel's sales page shows the seller block now, that is the data is complete and the block is not hidden by a platform superadmin. */
+            seller_shown: boolean;
             /** @description The channel's published contact, null when it has none. */
             public_contact: components["schemas"]["SellerProfileContact"] | null;
             /**
@@ -13672,9 +14098,9 @@ export interface components {
              */
             email_looks_personal: boolean;
             /**
-             * @description Required data still empty before `show_seller` may be turned on, in a
-             *     stable order: legal_name, tax_id, address_line1, address_city,
-             *     address_postal_code, public_email. Empty when the block may be shown.
+             * @description Required data still empty, in a stable order: legal_name, tax_id,
+             *     address_line1, address_city, address_postal_code, public_email.
+             *     Empty when the block is shown.
              */
             missing: string[];
         };
@@ -13718,6 +14144,10 @@ export interface components {
             legal_address_country?: string | null;
             /** @description Required organization fields still empty (the channel list adds public_email per channel). */
             missing: string[];
+            /** @description True when no required organization field is missing (`missing` is empty). Each channel also needs its public e-mail, see `channels[].complete`. */
+            complete: boolean;
+            /** @description True when at least one channel's sales page shows the seller block now (`channels[].seller_shown`). */
+            seller_shown: boolean;
             /** @description The organization's hosted-page channels, oldest first. */
             channels: components["schemas"]["SellerProfileChannel"][];
             /** @description Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true). */
@@ -13751,10 +14181,14 @@ export interface components {
          *     the stored value. `show_seller: true` is refused with 422
          *     `seller.incomplete` (details.missing) while required data is empty, and
          *     so is clearing the e-mail of a channel that keeps the block on.
+         *     `seller_hidden` may be changed by a platform superadmin only (403
+         *     `seller.hide_superadmin_only` for anyone else).
          */
         UpdateSellerDisplayRequest: {
-            /** @description Show the seller block on this channel's sales page. */
+            /** @description Legacy flag kept for older clients. It no longer decides whether the page shows the block. */
             show_seller?: boolean;
+            /** @description True keeps the seller block off this channel's sales page even when the data is complete; false shows it again. Only a platform superadmin (with `X-Admin-Reason`) may change it. */
+            seller_hidden?: boolean;
             /** @description The published contact; null removes it. */
             public_contact?: components["schemas"]["SellerDisplayContactPatch"] | null;
         };
@@ -13793,8 +14227,9 @@ export interface components {
              */
             default_locale: string;
             /**
-             * @description Legal identity of the seller. Omitted unless the channel has
-             *     `settings.hosted_page.show_seller = true`.
+             * @description Legal identity of the seller. Omitted while the seller's profile is
+             *     incomplete or a platform superadmin hid it for the channel
+             *     (`settings.hosted_page.seller_hidden`).
              */
             seller?: components["schemas"]["HostedPageSeller"];
             /**
@@ -13842,8 +14277,9 @@ export interface components {
              */
             events: components["schemas"]["HostedPageEvent"][];
             /**
-             * @description Legal identity of the seller. Omitted unless the channel has
-             *     `settings.hosted_page.show_seller = true`.
+             * @description Legal identity of the seller. Omitted while the seller's profile is
+             *     incomplete or a platform superadmin hid it for the channel
+             *     (`settings.hosted_page.seller_hidden`).
              */
             seller?: components["schemas"]["HostedPageSeller"];
             /**
@@ -17172,7 +17608,12 @@ export interface components {
          * @description Describes a single buyer-form field exposed by the sales channel.
          *     The widget uses the `enabled` flag to decide whether to render the
          *     field and `required` to enforce client-side validation.
-         *     Feature #321 WID-0d.
+         *     Feature #321 WID-0d. Since P1b `name` (one field for first and last
+         *     name) and `phone` are always `enabled: true`; they are `required`
+         *     only when the sales channel's `collect_name` / `collect_phone` flag
+         *     is on, otherwise they are optional (the buyer may leave them empty).
+         *     A third mode, `off` (field not offered at all), will be added later
+         *     and will then show as `enabled: false`.
          */
         BuyerFieldItem: {
             /**
@@ -17180,7 +17621,10 @@ export interface components {
              * @enum {string}
              */
             key: "email" | "name" | "phone";
-            /** @description When true the field must be filled before submission. */
+            /**
+             * @description When true the field must be filled before submission. When false
+             *     and `enabled` is true the field is optional.
+             */
             required: boolean;
             /** @description When false the field should not be shown or submitted. */
             enabled: boolean;
@@ -17188,7 +17632,8 @@ export interface components {
         /**
          * @description Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
          *     `email` supersedes the top-level `holder_email` when both are present.
-         *     `name` and `phone` are validated against the channel's `buyer_fields` flags.
+         *     `name` and `phone` are optional unless the channel's `buyer_fields`
+         *     mark them `required`.
          */
         PublicBuyerInfo: {
             /**
@@ -17196,9 +17641,9 @@ export interface components {
              * @description Buyer's email address (ticket holder).
              */
             email: string;
-            /** @description Buyer's full name; required when the channel has collect_name enabled. */
+            /** @description Buyer's first and last name in one field; required only when the channel's `buyer_fields` entry `name` has `required` true, otherwise optional and may be empty or null. */
             name?: string | null;
-            /** @description Buyer's phone number; required when the channel has collect_phone enabled. */
+            /** @description Buyer's phone number; required only when the channel's `buyer_fields` entry `phone` has `required` true, otherwise optional and may be empty or null. */
             phone?: string | null;
         };
         PublicFeedCheckoutStartRequest: {
@@ -17221,8 +17666,9 @@ export interface components {
             ga_items?: components["schemas"]["PublicGAItem"][];
             /**
              * @description Structured buyer contact info (WID-0d). When present `buyer.email`
-             *     supersedes `holder_email`; name and phone are validated against the
-             *     channel's `buyer_fields` flags.
+             *     supersedes `holder_email`; an empty name or phone is refused only
+             *     (422 `checkout.buyer_name_required` / `checkout.buyer_phone_required`)
+             *     when the channel's `buyer_fields` mark that field `required`.
              */
             buyer?: components["schemas"]["PublicBuyerInfo"];
             /**
@@ -20317,6 +20763,181 @@ export interface components {
             code: string;
             /** @description Human-readable explanation of the warning. */
             message: string;
+        };
+        /**
+         * @description One error an event-bundle dry run found (`?dry_run=true`): exactly the
+         *     error the import would answer, plus the bundle field it is about.
+         */
+        ImportDryRunError: {
+            /**
+             * @description The machine code the import's error envelope would carry.
+             * @example import.invalid_price
+             */
+            code: string;
+            /** @description Human-readable explanation, the same text the import would answer. */
+            message: string;
+            /**
+             * @description RFC 6901 JSON pointer of the bundle field the error is about
+             *     (`/categoryList/1/price`, `/channelIds/0`), or an empty string
+             *     when the error concerns the bundle as a whole (for example
+             *     `organization.contact_missing`).
+             * @example /categoryList/1/price
+             */
+            field: string;
+            /**
+             * @description The HTTP status the import would answer with (404, 409 or 422).
+             * @example 422
+             */
+            status: number;
+        };
+        /** @description One value the import would fill in because the bundle leaves it out. */
+        ImportDryRunDefault: {
+            /**
+             * @description Stable key of the default: `start_time` (00:00), `session_end_time`
+             *     (start plus 3 hours), `sales_end_time` (the session start, new
+             *     sessions only), `venue_timezone` (the stored venue zone),
+             *     `category_name`, `event_slug` (the public address of a new event)
+             *     or `session_status` (draft, or scheduled with publish).
+             * @example session_end_time
+             */
+            name: string;
+            /**
+             * @description JSON pointer of the bundle field the value stands in for, or an
+             *     empty string when the value has no field in the bundle
+             *     (`event_slug`).
+             * @example /actionEvent/endTime
+             */
+            field: string;
+            /**
+             * @description The value, as text; instants are RFC 3339 in the venue's zone.
+             * @example 2026-04-26T20:00:00+02:00
+             */
+            value: string;
+        };
+        /**
+         * @description Answer of POST .../imports/event-bundle?dry_run=true (task 3-1). The
+         *     bundle was checked with the import's own code and NOTHING was
+         *     written: no catalog row, poster download, media object, audit event,
+         *     publication, feed token, session-change journal, letter job or
+         *     webhook. Errors that depend on earlier writes (a chain cycle through
+         *     stored links, a refused session move) are only looked for when every
+         *     other check passed, so they appear one at a time.
+         */
+        ImportEventBundleDryRunResponse: {
+            /** @description Always true; tells this answer apart from an import's. */
+            dry_run: boolean;
+            /** @description True when `errors` is empty, i.e. the same bundle imported now would be accepted. */
+            valid: boolean;
+            /**
+             * @description The resolved source (`bil24` or `arena`); an empty string when the bundle's `source` is refused.
+             * @example arena
+             */
+            source: string;
+            /**
+             * @description The bundle as the import reads it: strings trimmed, `source` and
+             *     `externalRef` resolved, the currency upper-cased. Defaults are not
+             *     filled in here; they are listed in `defaults`.
+             */
+            normalized: components["schemas"]["ImportEventBundleRequest"];
+            /** @description Values the import would fill in where the bundle is silent. Never null. */
+            defaults: components["schemas"]["ImportDryRunDefault"][];
+            /** @description The warnings the import would raise. Never null. */
+            warnings: components["schemas"]["ImportWarning"][];
+            /**
+             * @description Every error found, in the order found; a field is reported once.
+             *     Never null; empty when the bundle is valid.
+             */
+            errors: components["schemas"]["ImportDryRunError"][];
+            /**
+             * Format: uuid
+             * @description The existing event the bundle edits; null when the import would create one (or could not tell).
+             */
+            event_id: string | null;
+            /**
+             * Format: uuid
+             * @description The existing session the bundle edits; null when the import would create one (or could not tell).
+             */
+            session_id: string | null;
+        };
+        /**
+         * @description A live session of the event that has no bundle in
+         *     `EventBundleReadResponse`, with the reason.
+         */
+        EventBundleSkipped: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the session that was left out.
+             */
+            session_id: string;
+            /**
+             * @description Stable reason: `event_bundle.session_cancelled`,
+             *     `event_bundle.session_seated` (a seating plan or assigned seats:
+             *     a bundle carries general admission only),
+             *     `event_bundle.session_pay_what_you_want` (a category a bundle
+             *     cannot say) or `event_bundle.session_venue_missing` (the venue
+             *     was deleted).
+             * @example event_bundle.session_seated
+             */
+            code: string;
+            /** @description Human-readable explanation of the reason. */
+            message: string;
+        };
+        /**
+         * @description Answer of GET /v1/organizations/{org_id}/events/{event_id}/event-bundle
+         *     (task 3-2): the event read back as `ImportEventBundleRequest`
+         *     bundles, one per session (the import takes one date per call),
+         *     oldest first. Every bundle is `source: arena` and addresses its rows
+         *     by arena UUID (`action.arenaEventId`, `actionEvent.arenaSessionId`,
+         *     `venue.arenaVenueId`, `categoryList[].arenaTierId`), so it needs no
+         *     `externalRef` and can be posted back to
+         *     POST .../imports/event-bundle as it is — `?dry_run=true` accepts it
+         *     with no error, and importing it leaves the stored rows unchanged.
+         *     Reading again returns the same bundles.
+         *
+         *     How the stored data is written: times are the venue's wall clock
+         *     (`day` DD.MM.YYYY, `time` and `endTime` HH:MM) and RFC 3339 instants
+         *     (`sellEndTime`, `doorsOpenTime`, the categories' windows and price
+         *     schedule); `availability` is the quantity the category owns, and in a
+         *     chain the head carries the whole chain's places and every successor
+         *     0; `nextCategoryIndex` is set on every category (-1 = no link),
+         *     `sellLimit` only on a linked one, `priceSchedule` is always a list;
+         *     `publish` is true while the event is published and `channelIds` are
+         *     the organization's channels it is published into; `promoterId` is ""
+         *     when the organization itself promotes the event. `bigPosterUrl` is
+         *     left empty on purpose (an import without one keeps the stored
+         *     poster): the poster is `poster_media_id`.
+         *
+         *     Left out: deleted and cancelled sessions, sessions a bundle cannot
+         *     carry (listed in `skipped` with the reason), the open/closed flag of
+         *     a category, compat ids and the session's external ref. No buyer data
+         *     and no secret is read.
+         */
+        EventBundleReadResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event.
+             */
+            event_id: string;
+            /**
+             * @description The event's own status (`draft`, `published`, `cancelled` or `archived`). A draft event is readable.
+             * @example published
+             */
+            status: string;
+            /**
+             * Format: uuid
+             * @description Media id of the event's poster, null when it has none. The bundles carry no `bigPosterUrl`.
+             */
+            poster_media_id: string | null;
+            /** @description One importable bundle per session, oldest first. Never null. */
+            bundles: components["schemas"]["ImportEventBundleRequest"][];
+            /** @description The live sessions that have no bundle, with the reason. Never null. */
+            skipped: components["schemas"]["EventBundleSkipped"][];
+            /**
+             * @description What a bundle cannot say exactly (`event_bundle.time_not_representable`,
+             *     `event_bundle.venue_timezone_missing`, `event_bundle.promoter_archived`,
+             *     `event_bundle.chain_link_missing`). Never null.
+             */
+            warnings: components["schemas"]["ImportWarning"][];
         };
         /**
          * @description The compat-identifier set the caller must persist on its side
@@ -23964,6 +24585,18 @@ export interface operations {
             query?: {
                 /** @description Filter cities by country UUID */
                 country_id?: string;
+                /**
+                 * @description Filter cities by ISO 3166-1 alpha-2 country code (any case); ignored
+                 *     when `country_id` is also given. Names the country whose GeoNames
+                 *     data `q` draws suggestions from.
+                 * @example ES
+                 */
+                country?: string;
+                /**
+                 * @description City search text, at most 64 characters. Blank counts as absent.
+                 * @example barc
+                 */
+                q?: string;
                 /** @description Preferred language code (e.g. "en", "ru"). Overrides Accept-Language. */
                 lang?: string;
             };
@@ -23980,6 +24613,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GeoCitiesResponse"];
+                };
+            };
+            /**
+             * @description `country_id` is not a UUID (`geo.invalid_country_id`), `country` is
+             *     not a two-letter code (`geo.invalid_country`) or `q` is longer than
+             *     64 characters (`geo.invalid_query`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1GeoCountryTimezones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description ISO 3166-1 alpha-2 country code, any case.
+                 * @example ES
+                 */
+                iso2: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The country's zones */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoCountryTimezonesResponse"];
+                };
+            };
+            /** @description The code is not two letters (`geo.invalid_iso2`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The data knows no such country (`geo.country_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1GeoCountryCurrency: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description ISO 3166-1 alpha-2 country code, any case.
+                 * @example ES
+                 */
+                iso2: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The country's currency */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoCountryCurrencyResponse"];
+                };
+            };
+            /** @description The code is not two letters (`geo.invalid_iso2`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The platform has no such country (`geo.country_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Geo queries not available */
@@ -25535,7 +26287,7 @@ export interface operations {
                     "application/json": components["schemas"]["BotInvitationCreateResponse"];
                 };
             };
-            /** @description Invalid body, e-mail or role (`bot.invalid_body`, `bot.invalid_email`, `bot.invalid_role`), or org_id is not a UUID */
+            /** @description Invalid body, e-mail, role or channel (`bot.invalid_body`, `bot.invalid_email`, `bot.invalid_role`, `bot.invalid_channel`), or org_id is not a UUID */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -25580,7 +26332,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database not wired */
+            /** @description Database not wired, or `channel` is `web` and the event center address is not configured (`bot.web_invitation_not_configured`) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -25733,7 +26485,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The invitation was already accepted (`bot.invitation_accepted`) or revoked (`bot.invitation_revoked`). */
+            /** @description The invitation was already accepted (`bot.invitation_accepted`) or revoked (`bot.invitation_revoked`), or it was sent for the web event center and cannot be resent (`bot.invitation_channel_unsupported`; the person uses the password reset on the sign-in page). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -31163,6 +31915,85 @@ export interface operations {
             };
         };
     };
+    getEventBundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The event's bundles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventBundleReadResponse"];
+                };
+            };
+            /** @description org_id or event_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found (`event.not_found`), already deleted, or owned by a different organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event_bundle.read_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listEventArtists: {
         parameters: {
             query?: never;
@@ -31855,7 +32686,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`). */
+            /** @description Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`), or is not a platform superadmin but tries to change `seller_hidden` (`seller.hide_superadmin_only`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -39152,6 +39983,103 @@ export interface operations {
             };
         };
     };
+    postV1OrganizationsOrgIdMediaMediaIdPosterFacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUID of the poster's media object (`POST /v1/media`, owner type `event_poster`). */
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What the model read from the poster. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosterFactsResponse"];
+                };
+            };
+            /** @description org_id or media_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Media object not found, deleted, or owned by another organization (`media.not_found`), or its bytes are gone (`media.bytes_missing`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The image is not a JPEG or PNG (`media.poster_unsupported_type`) or is larger than 5 MiB (`media.poster_too_large`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization used its poster readings for today (`media.poster_reads_exhausted`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Media lookup or byte read failed (`media.get_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Poster reading is not configured (`media.poster_reader_not_configured`), the model could not be reached (`media.poster_read_failed`), or media storage is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getV1MediaFile: {
         parameters: {
             query: {
@@ -44459,6 +45387,86 @@ export interface operations {
             };
         };
     };
+    getV1OrganizationsOrgIdEventsSalesSummary: {
+        parameters: {
+            query: {
+                /**
+                 * @description Event ids as ONE string separated by commas (`ids=a,b,c`), at most
+                 *     50. Repeating the parameter (`ids=a&ids=b`) is not supported: only
+                 *     the first value is read.
+                 */
+                ids: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sales figures of the events found. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSalesSummaryList"];
+                };
+            };
+            /**
+             * @description org_id is not a valid UUID, `ids` is missing or empty
+             *     (`events.ids_required`), holds an id that is not a UUID
+             *     (`events.invalid_ids`) or names more than 50 ids
+             *     (`events.too_many_ids`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`) in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getV1OrganizationsOrgIdSessionsSessionIdSummary: {
         parameters: {
             query?: never;
@@ -46316,7 +47324,15 @@ export interface operations {
     };
     importEventBundle: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description `true` checks the bundle and writes nothing (task 3-1); the answer
+                 *     is then always 200 with `ImportEventBundleDryRunResponse`, the
+                 *     bundle's errors inside it. Absent or `false` imports. Any other
+                 *     value is 400 `import.invalid_dry_run`.
+                 */
+                dry_run?: boolean;
+            };
             header?: never;
             path: {
                 /** @description Organization UUID that scopes this request (tenant isolation). */
@@ -46334,16 +47350,18 @@ export interface operations {
              * @description Import applied. `created` distinguishes a first import from an
              *     idempotent repeat (matched by `externalRef` for source=arena, by
              *     `actionEvent.actionEventId` for source=bil24); both answer 200.
+             *     With `dry_run=true`: the dry-run report
+             *     (`ImportEventBundleDryRunResponse`), valid or not.
              */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ImportBil24SessionResponse"];
+                    "application/json": components["schemas"]["ImportBil24SessionResponse"] | components["schemas"]["ImportEventBundleDryRunResponse"];
                 };
             };
-            /** @description Request body is not valid JSON or exceeds the 8 MB limit. */
+            /** @description Request body is not valid JSON or exceeds the 8 MB limit, or `dry_run` is not a boolean. */
             400: {
                 headers: {
                     [name: string]: unknown;

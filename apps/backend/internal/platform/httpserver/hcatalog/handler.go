@@ -79,6 +79,10 @@ type Handler struct {
 	// operator does not have to type them in by hand. Wired via
 	// WithPublicBaseURL from the httpserver shim layer.
 	publicBaseURL string
+	// ticketsBaseURL is PUBLIC_TICKETS_BASE_URL, the origin of the hosted
+	// sales pages; it feeds the event card's public_url (publicurl.Page).
+	// Empty when unset: public_url is then "". Wired via WithTicketsBaseURL.
+	ticketsBaseURL string
 }
 
 // New constructs a Handler from the caller's dependencies.
@@ -135,5 +139,13 @@ func (h *Handler) notifyCatalogChange(ctx context.Context, eventType, eventID, o
 // spec text "empty string if unset".
 func (h *Handler) WithPublicBaseURL(u string) *Handler {
 	h.publicBaseURL = u
+	return h
+}
+
+// WithTicketsBaseURL wires PUBLIC_TICKETS_BASE_URL, the origin of the hosted
+// sales pages, for the event card's public_url. An empty string is valid:
+// public_url is then empty.
+func (h *Handler) WithTicketsBaseURL(u string) *Handler {
+	h.ticketsBaseURL = u
 	return h
 }

@@ -374,6 +374,9 @@ export async function mockApi(
     if (rest === `/orders/${ORDER}`) {
       return json(route, 200, {
         ...orderSummary,
+        event_name: "Serebryanoe kopyttse",
+        session_start_at: "2026-11-20T19:00:00Z",
+        venue_timezone: "Europe/Prague",
         items: [],
         events: [],
         tickets: [

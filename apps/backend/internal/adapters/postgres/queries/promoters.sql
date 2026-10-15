@@ -50,7 +50,7 @@ SET    promoter_id = EXCLUDED.promoter_id,
 DELETE FROM event_promoters WHERE event_id = $1 AND org_id = $2;
 
 -- name: ListEventPromoters :many
-SELECT ep.event_id, p.id, p.name
+SELECT ep.event_id, p.id, p.name, COALESCE(p.slug, ''), p.archived_at IS NOT NULL
 FROM   event_promoters ep
 JOIN   org_promoters   p ON p.id = ep.promoter_id
 WHERE  ep.event_id = ANY($1::uuid[]);

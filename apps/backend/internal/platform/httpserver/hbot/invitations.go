@@ -27,6 +27,8 @@ type createInvitationRequest struct {
 	Email  string `json:"email"`
 	Role   string `json:"role"`
 	Locale string `json:"locale"`
+	// Channel is telegram (the default) or web, see ParseChannel.
+	Channel string `json:"channel"`
 }
 
 // invitationDTO is the invitation as the API reports it — never the code.
@@ -40,6 +42,29 @@ type invitationDTO struct {
 	UserCreated    bool   `json:"user_created"`
 	ExpiresAt      string `json:"expires_at"`
 	Delivery       string `json:"delivery"`
+	// Channel is how the person is invited: telegram or web.
+	Channel string `json:"channel"`
+}
+
+// The channels of an invitation. Telegram (the default) mails the bot deep
+// link; web mails the web event center (spec 08_architecture/40 section 5.0,
+// task 0-5).
+const (
+	ChannelTelegram = "telegram"
+	ChannelWeb      = "web"
+)
+
+// ParseChannel normalizes the optional `channel` of a request body: empty
+// means telegram, anything but telegram / web is not ok.
+func ParseChannel(raw string) (channel string, ok bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", ChannelTelegram:
+		return ChannelTelegram, true
+	case ChannelWeb:
+		return ChannelWeb, true
+	default:
+		return "", false
+	}
 }
 
 // HandleCreateInvitation serves POST /v1/organizations/{org_id}/bot-invitations
@@ -98,6 +123,23 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 		))
 		return
 	}
+	channel, ok := ParseChannel(req.Channel)
+	if !ok {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"bot.invalid_channel", "channel must be telegram or web", r,
+			map[string]any{"field": "channel", "allowed": []string{ChannelTelegram, ChannelWeb}},
+		))
+		return
+	}
+	if channel == ChannelWeb && h.eventCenterURL == "" {
+		// The letter names the web event center; without its address there is
+		// nothing to send, so nothing is written (same rule as the bot's
+		// web sign-in link).
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"bot.web_invitation_not_configured", "the web event center address is not configured", r,
+		))
+		return
+	}
 	locale := NormalizeLocale(req.Locale)
 
 	org, err := h.queries.GetOrganizationByID(ctx, orgID)
@@ -147,6 +189,9 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		userID = userRow.ID
+		if channel == ChannelWeb && req.Locale == "" {
+			locale = NormalizeLocale(userRow.PreferredLocale)
+		}
 	case errors.Is(lookupErr, pgx.ErrNoRows):
 		// A bot-only user never types a password; the placeholder is random
 		// and unknown to everyone, and the self-service reset flow is the way
@@ -229,29 +274,48 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 			invitedBy = &parsed
 		}
 	}
-	inv, err := q.InsertBotInvitation(ctx, orgID, userID, email, effectiveRole, users.TokenHash(code), invitedBy, expiresAt, membershipCreated)
-	if err != nil {
-		h.logger.Error("hbot: insert invitation failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"bot.invite_failed", "failed to save the invitation", r,
-		))
-		return
-	}
-	jobID, err := worker.EnqueueInTx(ctx, tx, authemail.JobTypeBotInvitationEmail, authemail.BotInvitationEmailPayload{
-		UserID:    userID.String(),
-		Email:     email,
-		Code:      code,
-		ExpiresAt: expiresAt,
-		OrgName:   org.Name,
-		Role:      effectiveRole,
-		Locale:    locale,
-	}, invitationEmailMaxAttempts)
-	if err != nil {
-		h.logger.Error("hbot: enqueue invitation email failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"bot.invite_failed", "failed to queue the invitation email", r,
-		))
-		return
+	var (
+		inv   gen.BotInvitationRow
+		jobID string
+	)
+	if channel == ChannelWeb {
+		inv, jobID, err = h.webInvitation(ctx, tx, q, webInvitationInput{
+			OrgID: orgID, OrgName: org.Name, UserID: userID, Email: email, Role: effectiveRole,
+			Locale: locale, InvitedBy: invitedBy, ExpiresAt: expiresAt,
+			UserCreated: userCreated, MembershipCreated: membershipCreated,
+		})
+		if err != nil {
+			h.logger.Error("hbot: web invitation failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"bot.invite_failed", "failed to queue the invitation email", r,
+			))
+			return
+		}
+	} else {
+		inv, err = q.InsertBotInvitation(ctx, orgID, userID, email, effectiveRole, users.TokenHash(code), invitedBy, expiresAt, membershipCreated)
+		if err != nil {
+			h.logger.Error("hbot: insert invitation failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"bot.invite_failed", "failed to save the invitation", r,
+			))
+			return
+		}
+		jobID, err = worker.EnqueueInTx(ctx, tx, authemail.JobTypeBotInvitationEmail, authemail.BotInvitationEmailPayload{
+			UserID:    userID.String(),
+			Email:     email,
+			Code:      code,
+			ExpiresAt: expiresAt,
+			OrgName:   org.Name,
+			Role:      effectiveRole,
+			Locale:    locale,
+		}, invitationEmailMaxAttempts)
+		if err != nil {
+			h.logger.Error("hbot: enqueue invitation email failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"bot.invite_failed", "failed to queue the invitation email", r,
+			))
+			return
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		h.logger.Error("hbot: commit failed", slog.String("error", err.Error()))
@@ -267,6 +331,7 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 		"role":            effectiveRole,
 		"membership_role": membershipRole,
 		"user_created":    userCreated,
+		"channel":         channel,
 		"superadmin":      superadmin,
 	})
 	// Identifiers only — never the code or the link.
@@ -288,9 +353,11 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 			UserCreated:    userCreated,
 			ExpiresAt:      expiresAt.Format(time.RFC3339),
 			Delivery:       "email",
+			Channel:        channel,
 		},
 	}
-	if superadmin && h.botUsername != "" {
+	// A web invitation has no Telegram code, so there is no deep link.
+	if channel == ChannelTelegram && superadmin && h.botUsername != "" {
 		response["deep_link"] = authemail.BotDeepLink(h.botUsername, code)
 	}
 	httputil.WriteJSON(w, http.StatusCreated, response)

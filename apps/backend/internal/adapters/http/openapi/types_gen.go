@@ -3230,13 +3230,16 @@ type BindSessionSeatingResponse struct {
 
 // BotInvitation A bot invitation as the API reports it, never the code.
 type BotInvitation struct {
+	// Channel The channel the invitation was sent through, `telegram` or `web`. A `web` invitation is recorded as accepted at once and cannot be resent.
+	Channel string `json:"channel"`
+
 	// Delivery Always `email`; the deep link is mailed by arena-worker (bot.invitation_email).
 	Delivery string `json:"delivery"`
 
 	// Email The normalized invitee e-mail.
 	Email string `json:"email"`
 
-	// ExpiresAt When the one-time code stops working (7 days).
+	// ExpiresAt When the one-time code stops working (7 days). For a `web` invitation, when the password-setup link of a new account stops working.
 	ExpiresAt time.Time `json:"expires_at"`
 
 	// Id bot_invitations.id.
@@ -3313,6 +3316,18 @@ type BotInvitationAcceptResponseRole string
 // BotInvitationCreateRequest Body of POST /v1/organizations/{org_id}/bot-invitations: invite a
 // person into the Telegram event-center bot (spec 28 §3.3).
 type BotInvitationCreateRequest struct {
+	// Channel How the person is invited: `telegram` (the default when absent)
+	// mails the Telegram deep link of the bot; `web` mails the web
+	// event center instead, with no deep link and no Telegram code.
+	// For `web`, a NEW e-mail gets the one-time password-setup link
+	// (valid 7 days) and an EXISTING account gets a letter that says it
+	// was added and where to sign in, with no token. In both cases the
+	// membership exists at once and an existing membership keeps its
+	// role. Any other value is 400 `bot.invalid_channel`. This is a
+	// plain string with the two values named here, not an inline
+	// enum, so no generated constant is renamed.
+	Channel *string `json:"channel,omitempty"`
+
 	// Email The invitee's e-mail. An unknown address creates the user (with
 	// no usable password; the self-service reset sets one later), a
 	// known one is reused.
@@ -3320,6 +3335,8 @@ type BotInvitationCreateRequest struct {
 
 	// Locale Language of the invitation e-mail and of the bot's first messages
 	// (`en` default, `ru`, `es`). Unknown values fall back to `en`.
+	// With `channel` `web` and no locale, the language of an existing
+	// account's own preference is used.
 	Locale *string `json:"locale,omitempty"`
 
 	// Role The bot role the membership is created with: owner maps to the
@@ -3337,7 +3354,8 @@ type BotInvitationCreateRequestRole string
 
 // BotInvitationCreateResponse Response of POST /v1/organizations/{org_id}/bot-invitations.
 type BotInvitationCreateResponse struct {
-	// DeepLink `https://t.me/<bot>?start=inv_<code>`, present ONLY when the
+	// DeepLink `https://t.me/<bot>?start=inv_<code>`, present ONLY for a
+	// `telegram` invitation when the
 	// caller is the platform superadmin (X-Admin-Reason on record) and
 	// the bot username is configured, for the hand-over to
 	// organizations provisioned by hand. An organization owner never
@@ -3395,7 +3413,12 @@ type BotTeamMember struct {
 	// Email The member's e-mail, the name the bot shows.
 	Email string `json:"email"`
 
-	// InvitationExpiresAt When the invitation's code stops working. Absent with `invitation_state`.
+	// InvitationChannel How the invitation was sent, `telegram` or `web`. Absent with
+	// `invitation_state`. A `web` invitation cannot be resent
+	// (`resend_available_at` is never present for it).
+	InvitationChannel *string `json:"invitation_channel,omitempty"`
+
+	// InvitationExpiresAt When the invitation's code stops working (for a `web` invitation that is still `waiting`, when its setup link stops working). Absent with `invitation_state`.
 	InvitationExpiresAt *time.Time `json:"invitation_expires_at,omitempty"`
 
 	// InvitationId Id of that invitation, what the revoke and resend routes take. Absent with `invitation_state`.
@@ -3408,6 +3431,14 @@ type BotTeamMember struct {
 	// (sent, not opened, not expired) or `expired`. Absent for a member
 	// who has no bot invitation (added another way). Plain string on
 	// purpose: an inline enum would rename generated Go constants.
+	//
+	// For an invitation sent for the web event center (`invitation_channel`
+	// `web`) the invitation row is accepted at once, so the state comes
+	// from the setup link: `waiting` while the account that invitation
+	// created has an unused, unexpired password-setup token, `accepted`
+	// once it was used or none is left. For an account that already
+	// existed it is always `accepted`: the API cannot tell whether it
+	// ever chose a password.
 	InvitationState *string `json:"invitation_state,omitempty"`
 
 	// JoinedAt When the membership was created.
@@ -5628,6 +5659,74 @@ type EventArtistListEnvelope struct {
 	Artists []EventArtist `json:"artists"`
 }
 
+// EventBundleReadResponse Answer of GET /v1/organizations/{org_id}/events/{event_id}/event-bundle
+// (task 3-2): the event read back as `ImportEventBundleRequest`
+// bundles, one per session (the import takes one date per call),
+// oldest first. Every bundle is `source: arena` and addresses its rows
+// by arena UUID (`action.arenaEventId`, `actionEvent.arenaSessionId`,
+// `venue.arenaVenueId`, `categoryList[].arenaTierId`), so it needs no
+// `externalRef` and can be posted back to
+// POST .../imports/event-bundle as it is — `?dry_run=true` accepts it
+// with no error, and importing it leaves the stored rows unchanged.
+// Reading again returns the same bundles.
+//
+// How the stored data is written: times are the venue's wall clock
+// (`day` DD.MM.YYYY, `time` and `endTime` HH:MM) and RFC 3339 instants
+// (`sellEndTime`, `doorsOpenTime`, the categories' windows and price
+// schedule); `availability` is the quantity the category owns, and in a
+// chain the head carries the whole chain's places and every successor
+// 0; `nextCategoryIndex` is set on every category (-1 = no link),
+// `sellLimit` only on a linked one, `priceSchedule` is always a list;
+// `publish` is true while the event is published and `channelIds` are
+// the organization's channels it is published into; `promoterId` is ""
+// when the organization itself promotes the event. `bigPosterUrl` is
+// left empty on purpose (an import without one keeps the stored
+// poster): the poster is `poster_media_id`.
+//
+// Left out: deleted and cancelled sessions, sessions a bundle cannot
+// carry (listed in `skipped` with the reason), the open/closed flag of
+// a category, compat ids and the session's external ref. No buyer data
+// and no secret is read.
+type EventBundleReadResponse struct {
+	// Bundles One importable bundle per session, oldest first. Never null.
+	Bundles []ImportEventBundleRequest `json:"bundles"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// PosterMediaId Media id of the event's poster, null when it has none. The bundles carry no `bigPosterUrl`.
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// Skipped The live sessions that have no bundle, with the reason. Never null.
+	Skipped []EventBundleSkipped `json:"skipped"`
+
+	// Status The event's own status (`draft`, `published`, `cancelled` or `archived`). A draft event is readable.
+	Status string `json:"status"`
+
+	// Warnings What a bundle cannot say exactly (`event_bundle.time_not_representable`,
+	// `event_bundle.venue_timezone_missing`, `event_bundle.promoter_archived`,
+	// `event_bundle.chain_link_missing`). Never null.
+	Warnings []ImportWarning `json:"warnings"`
+}
+
+// EventBundleSkipped A live session of the event that has no bundle in
+// `EventBundleReadResponse`, with the reason.
+type EventBundleSkipped struct {
+	// Code Stable reason: `event_bundle.session_cancelled`,
+	// `event_bundle.session_seated` (a seating plan or assigned seats:
+	// a bundle carries general admission only),
+	// `event_bundle.session_pay_what_you_want` (a category a bundle
+	// cannot say) or `event_bundle.session_venue_missing` (the venue
+	// was deleted).
+	Code string `json:"code"`
+
+	// Message Human-readable explanation of the reason.
+	Message string `json:"message"`
+
+	// SessionId UUIDv7 of the session that was left out.
+	SessionId openapi_types.UUID `json:"session_id"`
+}
+
 // EventContactResponse The organizer contact of an event after PUT .../events/{event_id}/contact.
 type EventContactResponse struct {
 	// Contact Who buyers write to when a session changes: the event's promoter when
@@ -5785,6 +5884,16 @@ type EventItem struct {
 	// "Organizer". Null when the organization itself is the promoter.
 	PromoterName *string `json:"promoter_name"`
 
+	// PublicUrl Buyers' page of the event on the hosted sales site:
+	// `<PUBLIC_TICKETS_BASE_URL>/<page slug>/<event slug>`, where the
+	// page slug is the promoter's slug when the event has an active
+	// promoter with a page of its own, else the organization's slug.
+	// Empty string when the event has no slug yet or the server has no
+	// tickets base configured. It is the address, not a sign that the
+	// page is reachable: it is built whatever the publication status,
+	// so a draft event already carries it.
+	PublicUrl string `json:"public_url"`
+
 	// SalesState Where the event stands in its sale, computed on the server from
 	// its active, non-cancelled sessions (EC-02) so every client shows
 	// the same chip. One of `on_sale` (a session that has not ended,
@@ -5898,6 +6007,76 @@ type EventPublicationListResponse struct {
 	// Publications Zero or more publication rows for the event. May be
 	// empty when the event has not yet been published.
 	Publications []EventPublication `json:"publications"`
+}
+
+// EventSalesSummary The top level of EventSummary for one event, without the per-category
+// table (`tiers`) and the per-session list (`sessions`): the numbers a
+// list of events shows next to each name. Built by the same assembly as
+// EventSummary, so for one event every field here equals the field of
+// the same name in `GET .../events/{event_id}/summary`. Read-only, no
+// buyer data.
+type EventSalesSummary struct {
+	// Complimentary Invitations over every session.
+	Complimentary SummaryComplimentary `json:"complimentary"`
+
+	// Entered The door count over every session.
+	Entered SummaryEntered `json:"entered"`
+
+	// Event The event the figures are about.
+	Event struct {
+		// FirstSessionAt Earliest start over the event's active, non-cancelled sessions, RFC3339 in UTC.
+		FirstSessionAt *time.Time `json:"first_session_at"`
+
+		// Id UUIDv7 of the event.
+		Id openapi_types.UUID `json:"id"`
+
+		// LastSessionAt Latest end over the same sessions, RFC3339 in UTC.
+		LastSessionAt *time.Time `json:"last_session_at"`
+
+		// Name Name of the event as stored.
+		Name string `json:"name"`
+
+		// OrgId UUIDv7 of the owning organization.
+		OrgId openapi_types.UUID `json:"org_id"`
+
+		// SessionCount Number of non-deleted sessions of the event, cancelled ones included.
+		SessionCount int `json:"session_count"`
+
+		// Status Event status (draft, published, cancelled, archived).
+		Status string `json:"status"`
+	} `json:"event"`
+
+	// Money The bottom line of the whole event, one entry per currency.
+	Money []SummaryMoneyItem `json:"money"`
+
+	// Orders Order totals of every session grouped by status, source and currency.
+	Orders []SummaryOrdersItem `json:"orders"`
+
+	// Places Places of every session, split by kind.
+	Places struct {
+		// Ga General admission places.
+		Ga SessionPlaceCounts `json:"ga"`
+
+		// Seats Seats of the seating plans.
+		Seats SessionPlaceCounts `json:"seats"`
+	} `json:"places"`
+
+	// Promos Promo codes the paid orders of every session used, merged by code and sorted.
+	Promos []SummaryPromoItem `json:"promos"`
+
+	// Refunds Refund totals of every session grouped by settlement, state and currency.
+	Refunds []SummaryRefundsItem `json:"refunds"`
+
+	// Tickets Tickets of every session by status.
+	Tickets SummaryTickets `json:"tickets"`
+}
+
+// EventSalesSummaryList The sales figures of the requested events, one entry per event found.
+type EventSalesSummaryList struct {
+	// Items One entry per requested event that exists in the organization, in
+	// the order the ids were given. An id of another organization, a
+	// deleted event or an unknown id has no entry.
+	Items []EventSalesSummary `json:"items"`
 }
 
 // EventSummary The session summary over every session of an event (EC-06): the same
@@ -6145,6 +6324,12 @@ type GeoCitiesResponse struct {
 	// Clients use this object to implement "load more" buttons or
 	// paginator UI components. All fields are always present in list responses.
 	Meta *PaginationMeta `json:"meta,omitempty"`
+
+	// Suggestions Present only when the request carried `q`: up to 20 places of the
+	// `country` named in the request that start with the typed text,
+	// the biggest cities first, leaving out cities already listed in
+	// `cities`. Empty when `country` is absent.
+	Suggestions *[]GeoCitySuggestion `json:"suggestions,omitempty"`
 }
 
 // GeoCityItem defines model for GeoCityItem.
@@ -6163,6 +6348,16 @@ type GeoCityItem struct {
 
 	// Slug URL-safe slug
 	Slug string `json:"slug"`
+
+	// Source Where the item comes from. Always `platform` on a city row (list route only).
+	Source *string `json:"source,omitempty"`
+
+	// Timezone IANA time zone the city is in, best effort: the zone the city's
+	// name points at in the embedded GeoNames data, else the country's
+	// only zone. Absent when it cannot be told (a city of a country
+	// with several zones that the data does not know). Only the list
+	// route fills it.
+	Timezone *string `json:"timezone,omitempty"`
 }
 
 // GeoCityResponse defines model for GeoCityResponse.
@@ -6180,6 +6375,25 @@ type GeoCityResponse struct {
 	Slug string `json:"slug"`
 }
 
+// GeoCitySuggestion A place from the embedded GeoNames data offered by the city search
+// (GET /v1/geo/cities with `q`). It is NOT a platform city: it has no id.
+// Choosing it means creating the city through
+// POST /v1/organizations/{org_id}/cities (a name that matches an
+// existing city returns that city).
+type GeoCitySuggestion struct {
+	// CountryIso2 ISO 3166-1 alpha-2 code of the country that was searched.
+	CountryIso2 string `json:"country_iso2"`
+
+	// Name Display name of the place (the spelling of the top-cities list when it is on it, else its main name capitalised).
+	Name string `json:"name"`
+
+	// Source Always `geonames`.
+	Source string `json:"source"`
+
+	// Timezone IANA time zone the place is in.
+	Timezone string `json:"timezone"`
+}
+
 // GeoCountriesResponse defines model for GeoCountriesResponse.
 type GeoCountriesResponse struct {
 	// Countries Ordered list of reference countries with localised names
@@ -6189,6 +6403,12 @@ type GeoCountriesResponse struct {
 	// Clients use this object to implement "load more" buttons or
 	// paginator UI components. All fields are always present in list responses.
 	Meta *PaginationMeta `json:"meta,omitempty"`
+}
+
+// GeoCountryCurrencyResponse Response of GET /v1/geo/countries/{iso2}/currency.
+type GeoCountryCurrencyResponse struct {
+	// Currency ISO 4217 currency of the country, as stored on the platform's country row.
+	Currency string `json:"currency"`
 }
 
 // GeoCountryItem defines model for GeoCountryItem.
@@ -6238,6 +6458,17 @@ type GeoCountryResponse struct {
 	Slug string `json:"slug"`
 }
 
+// GeoCountryTimezonesResponse Response of GET /v1/geo/countries/{iso2}/timezones.
+type GeoCountryTimezonesResponse struct {
+	// Single True when the country has exactly one zone, so a client may fill
+	// it in without asking. False when it has several (Spain and
+	// Portugal among them) and the person must choose.
+	Single bool `json:"single"`
+
+	// Timezones The zones of the country, the zone of its biggest city first.
+	Timezones []GeoTimezoneItem `json:"timezones"`
+}
+
 // GeoCreateCityRequest defines model for GeoCreateCityRequest.
 type GeoCreateCityRequest struct {
 	// CountryId UUID of the parent country
@@ -6274,6 +6505,15 @@ type GeoCreateCountryRequest struct {
 
 	// Slug URL-safe slug
 	Slug string `json:"slug"`
+}
+
+// GeoTimezoneItem One IANA time zone of a country.
+type GeoTimezoneItem struct {
+	// Id IANA zone name, the value to store as a venue's timezone.
+	Id string `json:"id"`
+
+	// Label Name for a person to pick by, the largest city in the zone.
+	Label string `json:"label"`
 }
 
 // GeoUpdateCityRequest defines model for GeoUpdateCityRequest.
@@ -6469,15 +6709,18 @@ type HostedPageResponse struct {
 	// present and the event has a promoter.
 	Promoter *HostedPagePromoter `json:"promoter,omitempty"`
 
-	// Seller Legal identity of the seller. Omitted unless the channel has
-	// `settings.hosted_page.show_seller = true`.
+	// Seller Legal identity of the seller. Omitted while the seller's profile is
+	// incomplete or a platform superadmin hid it for the channel
+	// (`settings.hosted_page.seller_hidden`).
 	Seller *HostedPageSeller `json:"seller,omitempty"`
 }
 
 // HostedPageSeller Legal identity of the seller of record, i.e. the organization that owns
-// the page. Present only when the channel the page is sold through has
-// `settings.hosted_page.show_seller = true` (default off). Empty values
-// are omitted.
+// the page. Present whenever the seller's profile is complete (legal name,
+// tax number, street, city, postal code and the channel's public e-mail
+// are all filled) unless a platform superadmin hid it for the channel
+// (`settings.hosted_page.seller_hidden`). The older `show_seller` flag no
+// longer decides. Empty values are omitted.
 type HostedPageSeller struct {
 	// Address Registered address; omitted when no address part is stored.
 	Address *HostedPageSellerAddress `json:"address,omitempty"`
@@ -6574,8 +6817,9 @@ type HostedPromoterPageResponse struct {
 	// present and the slug names a promoter rather than the organization.
 	Promoter *HostedPagePromoter `json:"promoter,omitempty"`
 
-	// Seller Legal identity of the seller. Omitted unless the channel has
-	// `settings.hosted_page.show_seller = true`.
+	// Seller Legal identity of the seller. Omitted while the seller's profile is
+	// incomplete or a platform superadmin hid it for the channel
+	// (`settings.hosted_page.seller_hidden`).
 	Seller *HostedPageSeller `json:"seller,omitempty"`
 }
 
@@ -7039,6 +7283,82 @@ type ImportCompatIDs struct {
 
 	// VenueId Compat id of the arena venue — venue.venueId, minted or echoed.
 	VenueId int64 `json:"venue_id"`
+}
+
+// ImportDryRunDefault One value the import would fill in because the bundle leaves it out.
+type ImportDryRunDefault struct {
+	// Field JSON pointer of the bundle field the value stands in for, or an
+	// empty string when the value has no field in the bundle
+	// (`event_slug`).
+	Field string `json:"field"`
+
+	// Name Stable key of the default: `start_time` (00:00), `session_end_time`
+	// (start plus 3 hours), `sales_end_time` (the session start, new
+	// sessions only), `venue_timezone` (the stored venue zone),
+	// `category_name`, `event_slug` (the public address of a new event)
+	// or `session_status` (draft, or scheduled with publish).
+	Name string `json:"name"`
+
+	// Value The value, as text; instants are RFC 3339 in the venue's zone.
+	Value string `json:"value"`
+}
+
+// ImportDryRunError One error an event-bundle dry run found (`?dry_run=true`): exactly the
+// error the import would answer, plus the bundle field it is about.
+type ImportDryRunError struct {
+	// Code The machine code the import's error envelope would carry.
+	Code string `json:"code"`
+
+	// Field RFC 6901 JSON pointer of the bundle field the error is about
+	// (`/categoryList/1/price`, `/channelIds/0`), or an empty string
+	// when the error concerns the bundle as a whole (for example
+	// `organization.contact_missing`).
+	Field string `json:"field"`
+
+	// Message Human-readable explanation, the same text the import would answer.
+	Message string `json:"message"`
+
+	// Status The HTTP status the import would answer with (404, 409 or 422).
+	Status int `json:"status"`
+}
+
+// ImportEventBundleDryRunResponse Answer of POST .../imports/event-bundle?dry_run=true (task 3-1). The
+// bundle was checked with the import's own code and NOTHING was
+// written: no catalog row, poster download, media object, audit event,
+// publication, feed token, session-change journal, letter job or
+// webhook. Errors that depend on earlier writes (a chain cycle through
+// stored links, a refused session move) are only looked for when every
+// other check passed, so they appear one at a time.
+type ImportEventBundleDryRunResponse struct {
+	// Defaults Values the import would fill in where the bundle is silent. Never null.
+	Defaults []ImportDryRunDefault `json:"defaults"`
+
+	// DryRun Always true; tells this answer apart from an import's.
+	DryRun bool `json:"dry_run"`
+
+	// Errors Every error found, in the order found; a field is reported once.
+	// Never null; empty when the bundle is valid.
+	Errors []ImportDryRunError `json:"errors"`
+
+	// EventId The existing event the bundle edits; null when the import would create one (or could not tell).
+	EventId *openapi_types.UUID `json:"event_id"`
+
+	// Normalized The bundle as the import reads it: strings trimmed, `source` and
+	// `externalRef` resolved, the currency upper-cased. Defaults are not
+	// filled in here; they are listed in `defaults`.
+	Normalized ImportEventBundleRequest `json:"normalized"`
+
+	// SessionId The existing session the bundle edits; null when the import would create one (or could not tell).
+	SessionId *openapi_types.UUID `json:"session_id"`
+
+	// Source The resolved source (`bil24` or `arena`); an empty string when the bundle's `source` is refused.
+	Source string `json:"source"`
+
+	// Valid True when `errors` is empty, i.e. the same bundle imported now would be accepted.
+	Valid bool `json:"valid"`
+
+	// Warnings The warnings the import would raise. Never null.
+	Warnings []ImportWarning `json:"warnings"`
 }
 
 // ImportEventBundleRequest defines model for ImportEventBundleRequest.
@@ -8552,6 +8872,9 @@ type OrderDetail struct {
 	// EventId Event the order's session belongs to.
 	EventId openapi_types.UUID `json:"event_id"`
 
+	// EventName Name of the event the order's session belongs to. Present even when the session was cancelled (soft-deleted).
+	EventName string `json:"event_name"`
+
 	// Events Audit-trail events recorded against the order.
 	Events []OrderEventSummary `json:"events"`
 
@@ -8602,6 +8925,9 @@ type OrderDetail struct {
 	// SessionId Session the order was placed for.
 	SessionId openapi_types.UUID `json:"session_id"`
 
+	// SessionStartAt Start of the order's session, RFC 3339 in UTC.
+	SessionStartAt time.Time `json:"session_start_at"`
+
 	// Source Where the order originated (e.g. widget, bil24, admin).
 	Source string `json:"source"`
 
@@ -8636,6 +8962,9 @@ type OrderDetail struct {
 
 	// UpdatedAt When the order was last updated.
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// VenueTimezone IANA zone of the session's venue (`venues.timezone`) - render session_start_at in it.
+	VenueTimezone string `json:"venue_timezone"`
 }
 
 // OrderEventSummary One audit-trail event recorded against an order.
@@ -10181,6 +10510,53 @@ type PaymentProviderConfigItemStatus string
 // via POST /v1/organizations/{org_id}/payment-configs/{id}/verify.
 type PaymentProviderConfigItemVerificationStatus string
 
+// PosterFacts What a poster says, normalized. An empty string, or an empty list,
+// means "not on the poster". Every value is a HINT for a wizard to
+// offer as a button; nothing is written from it.
+type PosterFacts struct {
+	// Age Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty.
+	Age string `json:"age"`
+
+	// Categories The ticket prices printed on the poster; empty when there are none.
+	Categories []PosterFactsCategory `json:"categories"`
+
+	// City City as printed, or empty.
+	City string `json:"city"`
+
+	// Date First date, `YYYY-MM-DD`, or empty.
+	Date string `json:"date"`
+
+	// Description A short description printed on the poster, or empty.
+	Description string `json:"description"`
+
+	// Name Event name as printed.
+	Name string `json:"name"`
+
+	// Time Start time, `HH:MM` 24-hour, or empty.
+	Time string `json:"time"`
+
+	// VenueName Venue name as printed, or empty.
+	VenueName string `json:"venue_name"`
+}
+
+// PosterFactsCategory One ticket price printed on a poster.
+type PosterFactsCategory struct {
+	// Currency ISO 4217 code, or an empty string when the poster shows no currency symbol.
+	Currency string `json:"currency"`
+
+	// Name Category name as printed (for example "Stalls"); empty when the poster gives only a price.
+	Name string `json:"name"`
+
+	// PriceMinor Price in minor currency units (3490 is 34.90).
+	PriceMinor int64 `json:"price_minor"`
+}
+
+// PosterFactsResponse The answer of the poster-reading route.
+type PosterFactsResponse struct {
+	// Facts What the model read from the poster.
+	Facts PosterFacts `json:"facts"`
+}
+
 // PriceBreakdownEnvelope Top-level response envelope returned by
 // `GET /v1/checkout/{id}/price-breakdown`.
 type PriceBreakdownEnvelope struct {
@@ -10585,15 +10961,16 @@ type PromoterListEnvelope struct {
 
 // PublicBuyerInfo Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
 // `email` supersedes the top-level `holder_email` when both are present.
-// `name` and `phone` are validated against the channel's `buyer_fields` flags.
+// `name` and `phone` are optional unless the channel's `buyer_fields`
+// mark them `required`.
 type PublicBuyerInfo struct {
 	// Email Buyer's email address (ticket holder).
 	Email openapi_types.Email `json:"email"`
 
-	// Name Buyer's full name; required when the channel has collect_name enabled.
+	// Name Buyer's first and last name in one field; required only when the channel's `buyer_fields` entry `name` has `required` true, otherwise optional and may be empty or null.
 	Name *string `json:"name"`
 
-	// Phone Buyer's phone number; required when the channel has collect_phone enabled.
+	// Phone Buyer's phone number; required only when the channel's `buyer_fields` entry `phone` has `required` true, otherwise optional and may be empty or null.
 	Phone *string `json:"phone"`
 }
 
@@ -10632,7 +11009,8 @@ type PublicFeedCheckoutQuoteResponse struct {
 type PublicFeedCheckoutStartRequest struct {
 	// Buyer Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
 	// `email` supersedes the top-level `holder_email` when both are present.
-	// `name` and `phone` are validated against the channel's `buyer_fields` flags.
+	// `name` and `phone` are optional unless the channel's `buyer_fields`
+	// mark them `required`.
 	Buyer *PublicBuyerInfo `json:"buyer,omitempty"`
 
 	// GaItems GA items for GA or hybrid sessions.
@@ -11771,6 +12149,9 @@ type SellerProfile struct {
 	// Channels The organization's hosted-page channels, oldest first.
 	Channels []SellerProfileChannel `json:"channels"`
 
+	// Complete True when no required organization field is missing (`missing` is empty). Each channel also needs its public e-mail, see `channels[].complete`.
+	Complete bool `json:"complete"`
+
 	// ContactFormToTelegram Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true).
 	ContactFormToTelegram *bool `json:"contact_form_to_telegram,omitempty"`
 
@@ -11810,6 +12191,9 @@ type SellerProfile struct {
 	// RegistrationNumber Company registration number.
 	RegistrationNumber *string `json:"registration_number"`
 
+	// SellerShown True when at least one channel's sales page shows the seller block now (`channels[].seller_shown`).
+	SellerShown bool `json:"seller_shown"`
+
 	// TaxId Tax or VAT identifier.
 	TaxId *string `json:"tax_id"`
 
@@ -11819,6 +12203,9 @@ type SellerProfile struct {
 
 // SellerProfileChannel One channel of the organization that runs a hosted sales page.
 type SellerProfileChannel struct {
+	// Complete True when no required data is missing for this channel (`missing` is empty).
+	Complete bool `json:"complete"`
+
 	// EmailLooksPersonal True when the public e-mail is at a free mailbox provider (gmail.com,
 	// inbox.ru, outlook.com, ...). A hint for the owner to use a role
 	// address; it never blocks a save.
@@ -11827,9 +12214,9 @@ type SellerProfileChannel struct {
 	// Id Sales channel id.
 	Id openapi_types.UUID `json:"id"`
 
-	// Missing Required data still empty before `show_seller` may be turned on, in a
-	// stable order: legal_name, tax_id, address_line1, address_city,
-	// address_postal_code, public_email. Empty when the block may be shown.
+	// Missing Required data still empty, in a stable order: legal_name, tax_id,
+	// address_line1, address_city, address_postal_code, public_email.
+	// Empty when the block is shown.
 	Missing []string `json:"missing"`
 
 	// Name Sales channel name.
@@ -11838,7 +12225,15 @@ type SellerProfileChannel struct {
 	// PublicContact The channel's published contact, null when it has none.
 	PublicContact *SellerProfileContact `json:"public_contact"`
 
-	// ShowSeller Whether the sales page of this channel shows the seller block (`settings.hosted_page.show_seller`).
+	// SellerHidden A platform superadmin hid the seller block of this channel (`settings.hosted_page.seller_hidden`). Only a platform superadmin can set it.
+	SellerHidden bool `json:"seller_hidden"`
+
+	// SellerShown Whether the channel's sales page shows the seller block now, that is the data is complete and the block is not hidden by a platform superadmin.
+	SellerShown bool `json:"seller_shown"`
+
+	// ShowSeller Legacy flag (`settings.hosted_page.show_seller`), kept for older
+	// clients. It no longer decides whether the sales page shows the
+	// block; read `seller_shown`.
 	ShowSeller bool `json:"show_seller"`
 }
 
@@ -13531,11 +13926,16 @@ type UpdateSeatingPlanRequestVisibility string
 // the stored value. `show_seller: true` is refused with 422
 // `seller.incomplete` (details.missing) while required data is empty, and
 // so is clearing the e-mail of a channel that keeps the block on.
+// `seller_hidden` may be changed by a platform superadmin only (403
+// `seller.hide_superadmin_only` for anyone else).
 type UpdateSellerDisplayRequest struct {
 	// PublicContact The published contact; null removes it.
 	PublicContact *SellerDisplayContactPatch `json:"public_contact"`
 
-	// ShowSeller Show the seller block on this channel's sales page.
+	// SellerHidden True keeps the seller block off this channel's sales page even when the data is complete; false shows it again. Only a platform superadmin (with `X-Admin-Reason`) may change it.
+	SellerHidden *bool `json:"seller_hidden,omitempty"`
+
+	// ShowSeller Legacy flag kept for older clients. It no longer decides whether the page shows the block.
 	ShowSeller *bool `json:"show_seller,omitempty"`
 }
 
@@ -14570,6 +14970,14 @@ type GetV1GeoCitiesParams struct {
 	// CountryId Filter cities by country UUID
 	CountryId *openapi_types.UUID `form:"country_id,omitempty" json:"country_id,omitempty"`
 
+	// Country Filter cities by ISO 3166-1 alpha-2 country code (any case); ignored
+	// when `country_id` is also given. Names the country whose GeoNames
+	// data `q` draws suggestions from.
+	Country *string `form:"country,omitempty" json:"country,omitempty"`
+
+	// Q City search text, at most 64 characters. Blank counts as absent.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
 	// Lang Preferred language code (e.g. "en", "ru"). Overrides Accept-Language.
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
@@ -14779,6 +15187,14 @@ type ListOrgEventsParams struct {
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdEventsSalesSummaryParams defines parameters for GetV1OrganizationsOrgIdEventsSalesSummary.
+type GetV1OrganizationsOrgIdEventsSalesSummaryParams struct {
+	// Ids Event ids as ONE string separated by commas (`ids=a,b,c`), at most
+	// 50. Repeating the parameter (`ids=a&ids=b`) is not supported: only
+	// the first value is read.
+	Ids string `form:"ids" json:"ids"`
+}
+
 // GetV1OrganizationsOrgIdEventsEventIdSalesCsvParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdSalesCsv.
 type GetV1OrganizationsOrgIdEventsEventIdSalesCsvParams struct {
 	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
@@ -14863,6 +15279,15 @@ type CreateExternalAllocationJSONBody struct {
 // UpdateExternalAllocationJSONBody defines parameters for UpdateExternalAllocation.
 type UpdateExternalAllocationJSONBody struct {
 	Quantity *int `json:"quantity,omitempty"`
+}
+
+// ImportEventBundleParams defines parameters for ImportEventBundle.
+type ImportEventBundleParams struct {
+	// DryRun `true` checks the bundle and writes nothing (task 3-1); the answer
+	// is then always 200 with `ImportEventBundleDryRunResponse`, the
+	// bundle's errors inside it. Absent or `false` imports. Any other
+	// value is 400 `import.invalid_dry_run`.
+	DryRun *bool `form:"dry_run,omitempty" json:"dry_run,omitempty"`
 }
 
 // GrantOrganizationMembershipParams defines parameters for GrantOrganizationMembership.

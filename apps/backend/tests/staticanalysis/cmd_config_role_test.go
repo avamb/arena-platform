@@ -25,6 +25,8 @@ var cmdConfigRole = map[string]string{
 	"arena-bot":     "config.RoleBot",
 	"arena-migrate": "config.RoleMigrate",
 	"arena-seed":    "config.RoleMigrate",
+	// The web event center's live twin tests fixture (a one-shot database tool).
+	"arena-e2e-seed": "config.RoleMigrate",
 }
 
 var (

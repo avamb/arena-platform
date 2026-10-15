@@ -25,6 +25,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
@@ -62,11 +63,13 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 	}
 	startAt, err := plan.Request.ActionEvent.ParseLocalStart(loc)
 	if err != nil {
-		return importResult{}, failImport(http.StatusUnprocessableEntity, "import.invalid_start_time", err.Error())
+		return importResult{}, failImportAt(http.StatusUnprocessableEntity, "import.invalid_start_time",
+			startField(plan.Request.ActionEvent), err.Error())
 	}
 	endAt, err := plan.Request.ActionEvent.ParseLocalEnd(loc)
 	if err != nil {
-		return importResult{}, failImport(http.StatusUnprocessableEntity, "import.end_time_invalid", err.Error())
+		return importResult{}, failImportAt(http.StatusUnprocessableEntity, "import.end_time_invalid",
+			"/actionEvent/endTime", err.Error())
 	}
 	startAt = startAt.UTC()
 	finish := startAt.Add(defaultSessionDuration)
@@ -124,6 +127,11 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 		return importResult{}, err
 	}
 
+	// A dry run mints no compat id: the sequence would move for rows that
+	// are rolled back, and the ids would mean nothing to the caller.
+	if plan.Mode.DryRun {
+		return importResult{EventID: eventID, SessionID: sessionID, Created: created}, nil
+	}
 	compat, err := ensureCompatIDs(ctx, tx, eventID, sessionID, venueID, orderedTiers)
 	if err != nil {
 		return importResult{}, err
@@ -177,19 +185,19 @@ func (h *Handler) matchArenaSession(ctx context.Context, q *gen.Queries, tx pgx.
 	if raw := trimSpace(ae.ArenaSessionID); raw != "" {
 		sessionID, err := uuid.Parse(raw)
 		if err != nil {
-			return m, failImport(http.StatusUnprocessableEntity, "import.invalid_session",
+			return m, failImportAt(http.StatusUnprocessableEntity, "import.invalid_session", "/actionEvent/arenaSessionId",
 				"actionEvent.arenaSessionId "+raw+" is not a UUID")
 		}
 		sctx, err := q.GetSessionImportContext(ctx, sessionID)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows), err == nil && sctx.OrgID != plan.OrgID:
-			return m, failImport(http.StatusUnprocessableEntity, "import.invalid_session",
+			return m, failImportAt(http.StatusUnprocessableEntity, "import.invalid_session", "/actionEvent/arenaSessionId",
 				"actionEvent.arenaSessionId "+raw+" is not a session of this organization")
 		case err != nil:
 			return m, fmt.Errorf("read session %s: %w", sessionID, err)
 		}
 		if m.SessionID != uuid.Nil && m.SessionID != sessionID {
-			return m, failImport(http.StatusConflict, "import.external_ref_conflict",
+			return m, failImportAt(http.StatusConflict, "import.external_ref_conflict", "/externalRef",
 				"externalRef "+plan.ExternalRef+" is bound to a different session than actionEvent.arenaSessionId "+raw)
 		}
 		m.SessionID = sessionID
@@ -204,7 +212,7 @@ func (h *Handler) matchArenaSession(ctx context.Context, q *gen.Queries, tx pgx.
 			return m, fmt.Errorf("resolve action event compat id: %w", resolveErr)
 		}
 		if m.SessionID != uuid.Nil && byID != m.SessionID {
-			return m, failImport(http.StatusConflict, "import.external_ref_conflict",
+			return m, failImportAt(http.StatusConflict, "import.external_ref_conflict", "/externalRef",
 				"externalRef "+plan.ExternalRef+" is bound to a different session than actionEventId "+
 					strconv.FormatInt(ae.ActionEventID, 10))
 		}
@@ -221,7 +229,7 @@ func (h *Handler) matchArenaSession(ctx context.Context, q *gen.Queries, tx pgx.
 			// The ref row or the compat mapping outlived the session. Minting a
 			// second session under the same key would break idempotency for
 			// good, so this needs an operator, not a silent recovery.
-			return m, failImport(http.StatusConflict, "import.session_deleted",
+			return m, failImportAt(http.StatusConflict, "import.session_deleted", "/externalRef",
 				"externalRef "+plan.ExternalRef+" points at a deleted arena session")
 		}
 		return m, fmt.Errorf("read session %s: %w", m.SessionID, err)
@@ -243,7 +251,7 @@ func (h *Handler) matchArenaSession(ctx context.Context, q *gen.Queries, tx pgx.
 		switch {
 		case refErr == nil:
 			if existing != plan.ExternalRef {
-				return m, failImport(http.StatusConflict, "import.external_ref_conflict",
+				return m, failImportAt(http.StatusConflict, "import.external_ref_conflict", "/externalRef",
 					"session addressed by actionEventId "+strconv.FormatInt(ae.ActionEventID, 10)+
 						" is already bound to a different externalRef")
 			}
@@ -260,7 +268,7 @@ func (h *Handler) matchArenaSession(ctx context.Context, q *gen.Queries, tx pgx.
 func arenaRefInsertError(err error, ref string) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return failImport(http.StatusConflict, "import.external_ref_conflict",
+		return failImportAt(http.StatusConflict, "import.external_ref_conflict", "/externalRef",
 			"externalRef "+ref+" is already bound to another session of this organization")
 	}
 	return fmt.Errorf("bind session external ref: %w", err)
@@ -275,57 +283,11 @@ func arenaRefInsertError(err error, ref string) error {
 // folding them together would be unrecoverable.
 func (h *Handler) resolveArenaEvent(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, m arenaMatch) (uuid.UUID, error) {
 	a := plan.Request.Action
-	var eventID uuid.UUID
-
-	switch {
-	case trimSpace(a.ArenaEventID) != "":
-		// An event center addresses the event by the UUID it listed; a UUID
-		// that is not this organization's is invalid, never foreign.
-		raw := trimSpace(a.ArenaEventID)
-		parsed, err := uuid.Parse(raw)
-		if err != nil {
-			return uuid.Nil, failImport(http.StatusUnprocessableEntity, "import.invalid_event",
-				"action.arenaEventId "+raw+" is not a UUID")
-		}
-		row, err := q.GetEventRaw(ctx, parsed)
-		switch {
-		case errors.Is(err, pgx.ErrNoRows), err == nil && row.OrgID != plan.OrgID:
-			return uuid.Nil, failImport(http.StatusUnprocessableEntity, "import.invalid_event",
-				"action.arenaEventId "+raw+" is not an event of this organization")
-		case err != nil:
-			return uuid.Nil, fmt.Errorf("read event %s: %w", parsed, err)
-		}
-		eventID = parsed
-		if m.SessionID != uuid.Nil && m.Ctx.EventID != eventID {
-			return uuid.Nil, failImport(http.StatusConflict, "import.action_mismatch",
-				"the addressed session belongs to a different event than action.arenaEventId "+raw)
-		}
-	case a.ActionID > 0:
-		resolved, err := compatids.Resolve(ctx, tx, compatids.KindAction, a.ActionID)
-		switch {
-		case errors.Is(err, compatids.ErrNotFound):
-			return uuid.Nil, errCompatIDUnknown("action.actionId", a.ActionID)
-		case err != nil:
-			return uuid.Nil, fmt.Errorf("resolve action compat id: %w", err)
-		}
-		row, err := q.GetEventRaw(ctx, resolved)
-		switch {
-		case errors.Is(err, pgx.ErrNoRows), err == nil && row.OrgID != plan.OrgID:
-			return uuid.Nil, errCompatIDUnknown("action.actionId", a.ActionID)
-		case err != nil:
-			return uuid.Nil, fmt.Errorf("read event %s: %w", resolved, err)
-		}
-		eventID = resolved
-		if m.SessionID != uuid.Nil && m.Ctx.EventID != eventID {
-			// A session cannot be moved between events by a bundle: its tiers,
-			// tickets and publication state hang off the current one.
-			return uuid.Nil, failImport(http.StatusConflict, "import.action_mismatch",
-				"the addressed session belongs to a different action than actionId "+
-					strconv.FormatInt(a.ActionID, 10))
-		}
-	case m.SessionID != uuid.Nil:
-		eventID = m.Ctx.EventID
-	default:
+	eventID, err := h.findArenaEvent(ctx, q, tx, plan, m)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if eventID == uuid.Nil {
 		created, err := q.InsertEvent(ctx, plan.OrgID, a.Name(), optString(a.Description), "draft", "public", nil)
 		if err != nil {
 			return uuid.Nil, fmt.Errorf("insert event: %w", err)
@@ -347,18 +309,134 @@ func (h *Handler) resolveArenaEvent(ctx context.Context, q *gen.Queries, tx pgx.
 	return eventID, nil
 }
 
+// findArenaEvent finds the existing event the bundle addresses — by
+// action.arenaEventId, by action.actionId, or as the addressed session's own
+// event. uuid.Nil means the import creates one.
+func (h *Handler) findArenaEvent(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, m arenaMatch) (uuid.UUID, error) {
+	a := plan.Request.Action
+	var eventID uuid.UUID
+
+	switch {
+	case trimSpace(a.ArenaEventID) != "":
+		// An event center addresses the event by the UUID it listed; a UUID
+		// that is not this organization's is invalid, never foreign.
+		raw := trimSpace(a.ArenaEventID)
+		parsed, err := uuid.Parse(raw)
+		if err != nil {
+			return uuid.Nil, failImportAt(http.StatusUnprocessableEntity, "import.invalid_event", "/action/arenaEventId",
+				"action.arenaEventId "+raw+" is not a UUID")
+		}
+		row, err := q.GetEventRaw(ctx, parsed)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows), err == nil && row.OrgID != plan.OrgID:
+			return uuid.Nil, failImportAt(http.StatusUnprocessableEntity, "import.invalid_event", "/action/arenaEventId",
+				"action.arenaEventId "+raw+" is not an event of this organization")
+		case err != nil:
+			return uuid.Nil, fmt.Errorf("read event %s: %w", parsed, err)
+		}
+		eventID = parsed
+		if m.SessionID != uuid.Nil && m.Ctx.EventID != eventID {
+			return uuid.Nil, failImportAt(http.StatusConflict, "import.action_mismatch", "/action/arenaEventId",
+				"the addressed session belongs to a different event than action.arenaEventId "+raw)
+		}
+	case a.ActionID > 0:
+		resolved, err := compatids.Resolve(ctx, tx, compatids.KindAction, a.ActionID)
+		switch {
+		case errors.Is(err, compatids.ErrNotFound):
+			return uuid.Nil, errCompatIDUnknown("action.actionId", a.ActionID)
+		case err != nil:
+			return uuid.Nil, fmt.Errorf("resolve action compat id: %w", err)
+		}
+		row, err := q.GetEventRaw(ctx, resolved)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows), err == nil && row.OrgID != plan.OrgID:
+			return uuid.Nil, errCompatIDUnknown("action.actionId", a.ActionID)
+		case err != nil:
+			return uuid.Nil, fmt.Errorf("read event %s: %w", resolved, err)
+		}
+		eventID = resolved
+		if m.SessionID != uuid.Nil && m.Ctx.EventID != eventID {
+			// A session cannot be moved between events by a bundle: its tiers,
+			// tickets and publication state hang off the current one.
+			return uuid.Nil, failImportAt(http.StatusConflict, "import.action_mismatch", "/action/actionId",
+				"the addressed session belongs to a different action than actionId "+
+					strconv.FormatInt(a.ActionID, 10))
+		}
+	case m.SessionID != uuid.Nil:
+		eventID = m.Ctx.EventID
+	}
+	return eventID, nil
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Spec §3.2 step 4 — venue
 // ─────────────────────────────────────────────────────────────────────────────
 
 // resolveArenaVenue finds or creates the venue and returns the location the
-// payload's local day/time must be interpreted in.
+// payload's local day/time must be interpreted in. planArenaVenue decides;
+// this function performs the writes the decision calls for.
+func (h *Handler) resolveArenaVenue(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, m arenaMatch, warnings *warningSink) (uuid.UUID, *time.Location, error) {
+	v := plan.Request.Venue
+	d, err := h.planArenaVenue(ctx, q, tx, plan, m, warnings)
+	if err != nil {
+		return uuid.Nil, nil, err
+	}
+	switch d.action {
+	case venueRefresh:
+		cityID, country, geoErr := h.resolveGeography(ctx, q, tx, plan, warnings)
+		if geoErr != nil {
+			return uuid.Nil, nil, geoErr
+		}
+		if err := q.UpdateImportedVenueGeography(ctx, d.venueID, cityID, optString(v.Address), d.storeTZ, v.GeoLat, v.GeoLon, country); err != nil {
+			return uuid.Nil, nil, fmt.Errorf("update venue geography: %w", err)
+		}
+		return d.venueID, d.loc, nil
+	case venueCreate:
+		cityID, country, geoErr := h.resolveGeography(ctx, q, tx, plan, warnings)
+		if geoErr != nil {
+			return uuid.Nil, nil, geoErr
+		}
+		created, err := q.InsertArenaVenue(ctx, plan.OrgID, cityID, trimSpace(v.VenueName), optString(v.Address), d.storeTZ, v.GeoLat, v.GeoLon, country)
+		if err != nil {
+			return uuid.Nil, nil, fmt.Errorf("insert venue: %w", err)
+		}
+		return created.ID, d.loc, nil
+	default:
+		return d.venueID, d.loc, nil
+	}
+}
+
+// venueAction is what resolveArenaVenue does with the venue planArenaVenue
+// picked.
+type venueAction int
+
+const (
+	// venueUse reuses an existing venue as it is.
+	venueUse venueAction = iota
+	// venueRefresh reuses the venue addressed by its compat id and refreshes
+	// its geography from the payload.
+	venueRefresh
+	// venueCreate creates a new venue from the payload.
+	venueCreate
+)
+
+// venueDecision is planArenaVenue's answer. venueID is uuid.Nil for
+// venueCreate; storeTZ is the zone to write to venues.timezone ("" = keep).
+type venueDecision struct {
+	action  venueAction
+	venueID uuid.UUID
+	loc     *time.Location
+	storeTZ string
+}
+
+// planArenaVenue decides, reading only, which venue the bundle means and the
+// location its local day/time is interpreted in.
 //
 // A venue matched BY NAME is reused as is: the bundle only proves the operator
 // typed the same name, not that it may overwrite an address, geo point or
 // timezone that other events already depend on. A venue addressed by its
 // compat id is the caller's own and its geography is refreshed.
-func (h *Handler) resolveArenaVenue(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, m arenaMatch, warnings *warningSink) (uuid.UUID, *time.Location, error) {
+func (h *Handler) planArenaVenue(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, m arenaMatch, warnings *warningSink) (venueDecision, error) {
 	v := plan.Request.Venue
 	payloadTZ := trimSpace(v.Timezone)
 	name := trimSpace(v.VenueName)
@@ -368,51 +446,44 @@ func (h *Handler) resolveArenaVenue(ctx context.Context, q *gen.Queries, tx pgx.
 	if raw := trimSpace(v.ArenaVenueID); raw != "" {
 		venueID, err := uuid.Parse(raw)
 		if err != nil {
-			return uuid.Nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_venue",
+			return venueDecision{}, failImportAt(http.StatusUnprocessableEntity, "import.invalid_venue", "/venue/arenaVenueId",
 				"venue.arenaVenueId "+raw+" is not a UUID")
 		}
 		vctx, err := q.GetVenueImportContext(ctx, venueID)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows), err == nil && vctx.OrgID != plan.OrgID:
-			return uuid.Nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_venue",
+			return venueDecision{}, failImportAt(http.StatusUnprocessableEntity, "import.invalid_venue", "/venue/arenaVenueId",
 				"venue.arenaVenueId "+raw+" is not a venue of this organization")
 		case err != nil:
-			return uuid.Nil, nil, fmt.Errorf("read venue %s: %w", venueID, err)
+			return venueDecision{}, fmt.Errorf("read venue %s: %w", venueID, err)
 		}
 		loc, _, err := arenaLocation(derefString(vctx.Timezone), payloadTZ, warnings)
 		if err != nil {
-			return uuid.Nil, nil, err
+			return venueDecision{}, err
 		}
-		return venueID, loc, nil
+		return venueDecision{action: venueUse, venueID: venueID, loc: loc}, nil
 	}
 
 	if v.VenueID > 0 {
 		venueID, err := compatids.Resolve(ctx, tx, compatids.KindVenue, v.VenueID)
 		switch {
 		case errors.Is(err, compatids.ErrNotFound):
-			return uuid.Nil, nil, errCompatIDUnknown("venue.venueId", v.VenueID)
+			return venueDecision{}, errCompatIDUnknown("venue.venueId", v.VenueID)
 		case err != nil:
-			return uuid.Nil, nil, fmt.Errorf("resolve venue compat id: %w", err)
+			return venueDecision{}, fmt.Errorf("resolve venue compat id: %w", err)
 		}
 		vctx, err := q.GetVenueImportContext(ctx, venueID)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows), err == nil && vctx.OrgID != plan.OrgID:
-			return uuid.Nil, nil, errCompatIDUnknown("venue.venueId", v.VenueID)
+			return venueDecision{}, errCompatIDUnknown("venue.venueId", v.VenueID)
 		case err != nil:
-			return uuid.Nil, nil, fmt.Errorf("read venue %s: %w", venueID, err)
+			return venueDecision{}, fmt.Errorf("read venue %s: %w", venueID, err)
 		}
 		loc, store, err := arenaLocation(derefString(vctx.Timezone), payloadTZ, warnings)
 		if err != nil {
-			return uuid.Nil, nil, err
+			return venueDecision{}, err
 		}
-		cityID, country, geoErr := h.resolveGeography(ctx, q, tx, plan, warnings)
-		if geoErr != nil {
-			return uuid.Nil, nil, geoErr
-		}
-		if err := q.UpdateImportedVenueGeography(ctx, venueID, cityID, optString(v.Address), store, v.GeoLat, v.GeoLon, country); err != nil {
-			return uuid.Nil, nil, fmt.Errorf("update venue geography: %w", err)
-		}
-		return venueID, loc, nil
+		return venueDecision{action: venueRefresh, venueID: venueID, loc: loc, storeTZ: store}, nil
 	}
 
 	if name != "" {
@@ -421,18 +492,18 @@ func (h *Handler) resolveArenaVenue(ctx context.Context, q *gen.Queries, tx pgx.
 		case err == nil:
 			vctx, ctxErr := q.GetVenueImportContext(ctx, existing.ID)
 			if ctxErr != nil {
-				return uuid.Nil, nil, fmt.Errorf("read venue %s: %w", existing.ID, ctxErr)
+				return venueDecision{}, fmt.Errorf("read venue %s: %w", existing.ID, ctxErr)
 			}
 			warnings.add(WarnVenueMatchedByName,
 				"venue \""+name+"\" matched an existing venue of this organization and was reused unchanged; "+
 					"send venue.venueId to address it explicitly")
 			loc, _, locErr := arenaLocation(derefString(vctx.Timezone), payloadTZ, warnings)
 			if locErr != nil {
-				return uuid.Nil, nil, locErr
+				return venueDecision{}, locErr
 			}
-			return existing.ID, loc, nil
+			return venueDecision{action: venueUse, venueID: existing.ID, loc: loc}, nil
 		case !errors.Is(err, pgx.ErrNoRows):
-			return uuid.Nil, nil, fmt.Errorf("lookup venue by name: %w", err)
+			return venueDecision{}, fmt.Errorf("lookup venue by name: %w", err)
 		}
 	}
 
@@ -442,31 +513,23 @@ func (h *Handler) resolveArenaVenue(ctx context.Context, q *gen.Queries, tx pgx.
 		if m.SessionID != uuid.Nil {
 			vctx, err := q.GetVenueImportContext(ctx, m.Ctx.VenueID)
 			if err != nil {
-				return uuid.Nil, nil, fmt.Errorf("read venue %s: %w", m.Ctx.VenueID, err)
+				return venueDecision{}, fmt.Errorf("read venue %s: %w", m.Ctx.VenueID, err)
 			}
 			loc, _, locErr := arenaLocation(derefString(vctx.Timezone), payloadTZ, warnings)
 			if locErr != nil {
-				return uuid.Nil, nil, locErr
+				return venueDecision{}, locErr
 			}
-			return m.Ctx.VenueID, loc, nil
+			return venueDecision{action: venueUse, venueID: m.Ctx.VenueID, loc: loc}, nil
 		}
-		return uuid.Nil, nil, failImport(http.StatusUnprocessableEntity, "import.venue_name_required",
+		return venueDecision{}, failImportAt(http.StatusUnprocessableEntity, "import.venue_name_required", "/venue/venueName",
 			"venue.venueName is required when venue.venueId is not supplied")
 	}
 
 	loc, store, err := arenaLocation("", payloadTZ, warnings)
 	if err != nil {
-		return uuid.Nil, nil, err
+		return venueDecision{}, err
 	}
-	cityID, country, geoErr := h.resolveGeography(ctx, q, tx, plan, warnings)
-	if geoErr != nil {
-		return uuid.Nil, nil, geoErr
-	}
-	created, err := q.InsertArenaVenue(ctx, plan.OrgID, cityID, name, optString(v.Address), store, v.GeoLat, v.GeoLon, country)
-	if err != nil {
-		return uuid.Nil, nil, fmt.Errorf("insert venue: %w", err)
-	}
-	return created.ID, loc, nil
+	return venueDecision{action: venueCreate, loc: loc, storeTZ: store}, nil
 }
 
 // arenaLocation decides which timezone interprets the payload's local
@@ -486,12 +549,12 @@ func arenaLocation(storedTZ, payloadTZ string, warnings *warningSink) (*time.Loc
 		}
 	}
 	if payloadTZ == "" {
-		return nil, "", failImport(http.StatusUnprocessableEntity, "venue.timezone_required",
+		return nil, "", failImportAt(http.StatusUnprocessableEntity, "venue.timezone_required", "/venue/timezone",
 			"venue.timezone is required (IANA zone name) when the venue is not yet known to arena")
 	}
 	loc, err := time.LoadLocation(payloadTZ)
 	if err != nil {
-		return nil, "", failImport(http.StatusUnprocessableEntity, "venue.timezone_required",
+		return nil, "", failImportAt(http.StatusUnprocessableEntity, "venue.timezone_required", "/venue/timezone",
 			"venue.timezone "+payloadTZ+" is not a known IANA zone name")
 	}
 	return loc, payloadTZ, nil
@@ -515,8 +578,7 @@ func (h *Handler) upsertArenaSession(
 
 	if m.SessionID == uuid.Nil {
 		if capacity <= 0 {
-			return uuid.Nil, false, failImport(http.StatusUnprocessableEntity, "import.capacity_required",
-				"categoryList must declare a positive total availability for a new general-admission session")
+			return uuid.Nil, false, errCapacityRequired()
 		}
 		status := "draft"
 		if plan.Request.Publish {
@@ -568,7 +630,7 @@ func (h *Handler) upsertArenaSession(
 	if err := applyImportSaleTimes(ctx, q, plan, m.SessionID, eventID, startAt); err != nil {
 		return uuid.Nil, false, err
 	}
-	if err := applySessionChange(ctx, tx, m.SessionID, before.State, plan.Request.ChangeMessage); err != nil {
+	if err := applySessionChange(ctx, tx, plan, before); err != nil {
 		return uuid.Nil, false, err
 	}
 	return m.SessionID, false, nil
@@ -615,9 +677,8 @@ func (h *Handler) upsertArenaTiers(
 			name = "Category " + strconv.Itoa(i+1)
 		}
 		price := c.PriceMinorUnits()
-		if price < 0 {
-			return nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_price",
-				fmt.Sprintf("categoryList[%d].price must not be negative", i))
+		if err := checkCategoryPrice(i, price); err != nil {
+			return nil, nil, err
 		}
 		mode := "fixed"
 		if price == 0 {
@@ -634,42 +695,16 @@ func (h *Handler) upsertArenaTiers(
 		// or extending the session's sale later would leave every category
 		// closing at the old time. A category's own sellEndTime still sets
 		// its own window.
-		saleStart, saleEnd, winErr := c.ParseSellWindow(plan.SaleWindowStart, nil)
+		saleStart, saleEnd, winErr := categorySaleWindow(i, c, plan.SaleWindowStart)
 		if winErr != nil {
-			return nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_sale_window",
-				fmt.Sprintf("categoryList[%d]: %s", i, winErr.Error()))
+			return nil, nil, winErr
 		}
 
-		var target uuid.UUID
-		switch {
-		case trimSpace(c.ArenaTierID) != "":
-			// An event center addresses the category it is editing by the UUID
-			// it listed, so a renamed category is updated, not minted anew.
-			raw := trimSpace(c.ArenaTierID)
-			parsed, parseErr := uuid.Parse(raw)
-			if parseErr != nil {
-				return nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_category",
-					fmt.Sprintf("categoryList[%d].arenaTierId %s is not a UUID", i, raw))
-			}
-			for _, t := range existing {
-				if t.ID == parsed {
-					target = parsed
-				}
-			}
-			if target == uuid.Nil {
-				return nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_category",
-					fmt.Sprintf("categoryList[%d].arenaTierId %s is not a category of this session", i, raw))
-			}
-		case c.CategoryPriceID > 0:
-			resolved, resErr := compatids.Resolve(ctx, tx, compatids.KindCategoryPrice, c.CategoryPriceID)
-			switch {
-			case errors.Is(resErr, compatids.ErrNotFound):
-				return nil, nil, errCompatIDUnknown(fmt.Sprintf("categoryList[%d].categoryPriceId", i), c.CategoryPriceID)
-			case resErr != nil:
-				return nil, nil, fmt.Errorf("resolve category compat id: %w", resErr)
-			}
-			target = resolved
-		default:
+		target, refErr := arenaTierRef(ctx, tx, i, c, existing)
+		if refErr != nil {
+			return nil, nil, refErr
+		}
+		if trimSpace(c.ArenaTierID) == "" && c.CategoryPriceID <= 0 {
 			if match, ok := byName[normalizeTierName(name)]; ok {
 				target = match.ID
 			}
@@ -696,7 +731,8 @@ func (h *Handler) upsertArenaTiers(
 		if errors.Is(updErr, pgx.ErrNoRows) {
 			// The compat id points at a tier of ANOTHER session. Re-pointing it
 			// would corrupt that session's outbound ids.
-			return nil, nil, failImport(http.StatusConflict, "import.category_bound_elsewhere",
+			return nil, nil, failImportAt(http.StatusConflict, "import.category_bound_elsewhere",
+				fmt.Sprintf("/categoryList/%d/categoryPriceId", i),
 				"categoryPriceId "+strconv.FormatInt(c.CategoryPriceID, 10)+
 					" is already bound to a ticket tier of a different session")
 		}
@@ -715,13 +751,9 @@ func (h *Handler) upsertArenaTiers(
 		}
 	}
 	if len(untouched) > 0 {
-		ids, err := compatids.EnsureMany(ctx, tx, compatids.KindCategoryPrice, untouched)
+		labels, err := untouchedTierLabels(ctx, q, tx, plan, untouched)
 		if err != nil {
-			return nil, nil, fmt.Errorf("mint compat ids for untouched tiers: %w", err)
-		}
-		labels := make([]string, 0, len(untouched))
-		for _, id := range untouched {
-			labels = append(labels, strconv.FormatInt(ids[id], 10))
+			return nil, nil, err
 		}
 		warnings.add(WarnTierNotInPayload,
 			"the session carries ticket tiers the bundle did not mention; they were closed "+
@@ -730,6 +762,90 @@ func (h *Handler) upsertArenaTiers(
 	}
 
 	return ordered, cats, nil
+}
+
+// untouchedTierLabels names the session's categories the bundle did not
+// mention by their compat ids, minting the missing ones. A dry run mints
+// nothing: a category without an id yet is named by its arena UUID.
+func untouchedTierLabels(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, untouched []uuid.UUID) ([]string, error) {
+	labels := make([]string, 0, len(untouched))
+	if plan.Mode.DryRun {
+		rows, err := q.ListCompatibilityIDsByPlatformIDs(ctx, string(compatids.KindCategoryPrice), untouched)
+		if err != nil {
+			return nil, fmt.Errorf("read compat ids of untouched tiers: %w", err)
+		}
+		known := make(map[uuid.UUID]int64, len(rows))
+		for _, r := range rows {
+			known[r.PlatformID] = r.SystemID
+		}
+		for _, id := range untouched {
+			if sys, ok := known[id]; ok {
+				labels = append(labels, strconv.FormatInt(sys, 10))
+			} else {
+				labels = append(labels, id.String())
+			}
+		}
+		return labels, nil
+	}
+	ids, err := compatids.EnsureMany(ctx, tx, compatids.KindCategoryPrice, untouched)
+	if err != nil {
+		return nil, fmt.Errorf("mint compat ids for untouched tiers: %w", err)
+	}
+	for _, id := range untouched {
+		labels = append(labels, strconv.FormatInt(ids[id], 10))
+	}
+	return labels, nil
+}
+
+// categorySaleWindow is a category's own sale window (its sellStartTime /
+// sellEndTime over the session's sales start), refused when it does not
+// parse or ends before it starts.
+func categorySaleWindow(i int, c bil24compat.ImportSessionCategory, sessionStart *time.Time) (*time.Time, *time.Time, error) {
+	start, end, err := c.ParseSellWindow(sessionStart, nil)
+	if err != nil {
+		field := fmt.Sprintf("/categoryList/%d/sellEndTime", i)
+		if strings.HasPrefix(err.Error(), "sellStartTime") {
+			field = fmt.Sprintf("/categoryList/%d/sellStartTime", i)
+		}
+		return nil, nil, failImportAt(http.StatusUnprocessableEntity, "import.invalid_sale_window", field,
+			fmt.Sprintf("categoryList[%d]: %s", i, err.Error()))
+	}
+	return start, end, nil
+}
+
+// arenaTierRef resolves the category a categoryList entry addresses
+// explicitly — by arenaTierId among the session's categories (existing), or
+// by its compat categoryPriceId. uuid.Nil when the entry addresses none.
+func arenaTierRef(ctx context.Context, tx pgx.Tx, i int, c bil24compat.ImportSessionCategory, existing []gen.TicketTierRow) (uuid.UUID, error) {
+	switch {
+	case trimSpace(c.ArenaTierID) != "":
+		// An event center addresses the category it is editing by the UUID
+		// it listed, so a renamed category is updated, not minted anew.
+		raw := trimSpace(c.ArenaTierID)
+		field := fmt.Sprintf("/categoryList/%d/arenaTierId", i)
+		parsed, parseErr := uuid.Parse(raw)
+		if parseErr != nil {
+			return uuid.Nil, failImportAt(http.StatusUnprocessableEntity, "import.invalid_category", field,
+				fmt.Sprintf("categoryList[%d].arenaTierId %s is not a UUID", i, raw))
+		}
+		for _, t := range existing {
+			if t.ID == parsed {
+				return parsed, nil
+			}
+		}
+		return uuid.Nil, failImportAt(http.StatusUnprocessableEntity, "import.invalid_category", field,
+			fmt.Sprintf("categoryList[%d].arenaTierId %s is not a category of this session", i, raw))
+	case c.CategoryPriceID > 0:
+		resolved, resErr := compatids.Resolve(ctx, tx, compatids.KindCategoryPrice, c.CategoryPriceID)
+		switch {
+		case errors.Is(resErr, compatids.ErrNotFound):
+			return uuid.Nil, errCompatIDUnknown(fmt.Sprintf("categoryList[%d].categoryPriceId", i), c.CategoryPriceID)
+		case resErr != nil:
+			return uuid.Nil, fmt.Errorf("resolve category compat id: %w", resErr)
+		}
+		return resolved, nil
+	}
+	return uuid.Nil, nil
 }
 
 // normalizeTierName is the case- and whitespace-insensitive key spec §3.2 step
@@ -744,8 +860,16 @@ func normalizeTierName(s string) string { return strings.ToLower(strings.TrimSpa
 // object of YOUR organization" (spec §5). A foreign-organization id is
 // deliberately indistinguishable from a nonexistent one.
 func errCompatIDUnknown(field string, id int64) error {
-	return failImport(http.StatusNotFound, "import.compat_id_unknown",
+	return failImportAt(http.StatusNotFound, "import.compat_id_unknown", dottedToPointer(field),
 		field+"="+strconv.FormatInt(id, 10)+" is not known to this organization")
+}
+
+// dottedToPointer turns the dotted field name used in error messages
+// ("categoryList[2].categoryPriceId") into its RFC 6901 JSON pointer
+// ("/categoryList/2/categoryPriceId").
+func dottedToPointer(field string) string {
+	r := strings.NewReplacer("[", ".", "]", "")
+	return "/" + strings.ReplaceAll(r.Replace(field), ".", "/")
 }
 
 func derefString(s *string) string {
@@ -762,34 +886,54 @@ func derefString(s *string) string {
 // import.invalid_promoter — the same rule as
 // PUT /v1/organizations/{org_id}/events/{id}/promoter (hcatalog.SetEventPromoterTx).
 func applyArenaPromoter(ctx context.Context, q *gen.Queries, plan importPlan, eventID uuid.UUID) error {
-	raw := plan.Request.Action.PromoterID
-	if raw == nil {
-		return nil
+	change, err := resolveArenaPromoter(ctx, q, plan)
+	if err != nil || !change.set {
+		return err
 	}
-	value := strings.TrimSpace(*raw)
-	if value == "" {
+	if change.promoterID == uuid.Nil {
 		if err := q.DeleteEventPromoter(ctx, eventID, plan.OrgID); err != nil {
 			return fmt.Errorf("clear event promoter: %w", err)
 		}
 		return nil
 	}
-	invalid := failImport(http.StatusUnprocessableEntity, "import.invalid_promoter",
+	if err := q.SetEventPromoter(ctx, eventID, plan.OrgID, change.promoterID); err != nil {
+		return fmt.Errorf("set event promoter: %w", err)
+	}
+	return nil
+}
+
+// promoterChange is what action.promoterId asks for: nothing (set false),
+// removing the link (promoterID uuid.Nil) or linking one promoter.
+type promoterChange struct {
+	set        bool
+	promoterID uuid.UUID
+}
+
+// resolveArenaPromoter reads action.promoterId and checks, reading only, that
+// a named promoter is an active one of the organization.
+func resolveArenaPromoter(ctx context.Context, q *gen.Queries, plan importPlan) (promoterChange, error) {
+	raw := plan.Request.Action.PromoterID
+	if raw == nil {
+		return promoterChange{}, nil
+	}
+	value := strings.TrimSpace(*raw)
+	if value == "" {
+		return promoterChange{set: true}, nil
+	}
+	invalid := failImportAt(http.StatusUnprocessableEntity, "import.invalid_promoter", "/action/promoterId",
 		"action.promoterId is not an active promoter of this organization")
 	promoterID, err := uuid.Parse(value)
 	if err != nil {
-		return invalid
+		return promoterChange{}, invalid
 	}
 	p, err := q.GetOrgPromoter(ctx, promoterID, plan.OrgID)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		return invalid
+		return promoterChange{}, invalid
 	case err != nil:
-		return fmt.Errorf("read promoter %s: %w", promoterID, err)
+		return promoterChange{}, fmt.Errorf("read promoter %s: %w", promoterID, err)
 	case p.ArchivedAt != nil:
-		return invalid
+		return promoterChange{}, invalid
 	}
-	if err := q.SetEventPromoter(ctx, eventID, plan.OrgID, p.ID); err != nil {
-		return fmt.Errorf("set event promoter: %w", err)
-	}
-	return nil
+	return promoterChange{set: true, promoterID: p.ID}, nil
 }

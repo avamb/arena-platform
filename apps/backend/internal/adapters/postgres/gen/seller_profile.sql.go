@@ -39,6 +39,8 @@ type SellerChannelRow struct {
 	ID         uuid.UUID
 	Name       string
 	ShowSeller bool
+	// SellerHidden: an operator hid the block (settings.hosted_page.seller_hidden).
+	SellerHidden bool
 	// PublicContact is settings.hosted_page.public_contact as raw JSON, nil
 	// when the channel has none.
 	PublicContact []byte
@@ -47,6 +49,7 @@ type SellerChannelRow struct {
 const listSellerChannels = `-- name: ListSellerChannels :many
 SELECT id, name,
        COALESCE(settings #>> '{hosted_page,show_seller}', '') = 'true' AS show_seller,
+       COALESCE(settings #>> '{hosted_page,seller_hidden}', '') = 'true' AS seller_hidden,
        settings #> '{hosted_page,public_contact}' AS public_contact
 FROM sales_channels
 WHERE org_id = $1
@@ -65,7 +68,7 @@ func (q *Queries) ListSellerChannels(ctx context.Context, orgID uuid.UUID) ([]Se
 	var out []SellerChannelRow
 	for rows.Next() {
 		var r SellerChannelRow
-		if err := rows.Scan(&r.ID, &r.Name, &r.ShowSeller, &r.PublicContact); err != nil {
+		if err := rows.Scan(&r.ID, &r.Name, &r.ShowSeller, &r.SellerHidden, &r.PublicContact); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -97,6 +100,30 @@ func (q *Queries) SetChannelSellerDisplay(ctx context.Context, channelID, orgID 
 		contact = string(publicContact)
 	}
 	tag, err := q.db.Exec(ctx, setChannelSellerDisplay, channelID, orgID, showSeller, contact)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+const setChannelSellerHidden = `-- name: SetChannelSellerHidden :execrows
+UPDATE sales_channels
+SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hosted_page}',
+        CASE WHEN $3::boolean
+             THEN COALESCE(settings -> 'hosted_page', '{}'::jsonb) || jsonb_build_object('seller_hidden', true)
+             ELSE COALESCE(settings -> 'hosted_page', '{}'::jsonb) - 'seller_hidden'
+        END, true),
+    updated_at = now()
+WHERE id = $1
+  AND org_id = $2
+  AND deleted_at IS NULL
+  AND settings #>> '{hosted_page,enabled}' = 'true'`
+
+// SetChannelSellerHidden sets or removes settings.hosted_page.seller_hidden of
+// a hosted-page channel of the organization and reports whether such a
+// channel was updated. Only a platform superadmin's request reaches it.
+func (q *Queries) SetChannelSellerHidden(ctx context.Context, channelID, orgID uuid.UUID, hidden bool) (bool, error) {
+	tag, err := q.db.Exec(ctx, setChannelSellerHidden, channelID, orgID, hidden)
 	if err != nil {
 		return false, err
 	}

@@ -500,6 +500,161 @@ jobs:
           docker rm -f arena-event-center-smoke
 
   # ─────────────────────────────────────────────────────────────────
+  # Job: Event center live twin tests (task 0-9, spec 40 5.0).
+  #
+  # The mocked smoke above cannot catch a screen that disagrees with the
+  # real API. This job runs the web event center against a REAL arena-api
+  # on a migrated Postgres, as the owner, the manager and the agent of one
+  # organization (plan 8.2: every screen is proven on three roles).
+  # apps/event-center/scripts/live-harness.mjs seeds the fixture with
+  # arena-e2e-seed, starts arena-api and the Playwright config starts vite.
+  # ─────────────────────────────────────────────────────────────────
+  event-center-live:
+    name: Event center (live twin tests, real backend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: arena
+          POSTGRES_PASSWORD: arena_secret
+          POSTGRES_DB: arena_ec_live
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U arena"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://arena:arena_secret@localhost:5432/arena_ec_live?sslmode=disable
+      APP_ENV: development
+      ARENA_API_BIN: /tmp/arena-api
+      ARENA_E2E_SEED_BIN: /tmp/arena-e2e-seed
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - name: Build Go binaries
+        run: |
+          go build -o /tmp/arena-migrate     ./apps/backend/cmd/arena-migrate
+          go build -o /tmp/arena-e2e-seed    ./apps/backend/cmd/arena-e2e-seed
+          go build -o /tmp/arena-api         ./apps/backend/cmd/arena-api
+
+      - name: Run database migrations
+        run: /tmp/arena-migrate up
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/event-center/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix apps/event-center ci
+
+      - name: Install Chromium for the live test
+        run: npx --prefix apps/event-center playwright install --with-deps chromium
+
+      # The Playwright config starts live-harness.mjs (fixture + arena-api)
+      # and the vite dev server, then runs tests/smoke/live/*.spec.ts.
+      - name: Live twin tests on three roles (375x812)
+        run: npm --prefix apps/event-center run test:e2e:live
+
+      - name: Upload live-test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: event-center-live
+          path: |
+            apps/event-center/test-results/
+            apps/event-center/tests/smoke/event-center-live.xml
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────
+  # Venue SVG generator (apps/venue-svg-generator, Python) — pytest +
+  # docker build. Runs only when that folder or this job changes: the
+  # first step compares the change set and every later step is gated on
+  # it, so the job stays green (and a required check stays satisfiable)
+  # on an unrelated PR. A path filter on the whole workflow would
+  # disable every other job, so the filter lives here.
+  #
+  # Not run in CI (needs private, git-ignored client data, see
+  # apps/venue-svg-generator/conftest.py): benchmark_v1 (imports the
+  # seating_poc package), and nine tests that read client XLSX / frozen
+  # results. conftest.py skips those nine when the data is absent.
+  # ─────────────────────────────────────────────────────────────────
+  venue-svg-generator:
+    name: Venue SVG generator (pytest / docker build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes in the generator
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          run=true
+          # Compare against the base only when there is one; a new branch or a
+          # force push has no usable "before" and runs the job.
+          if [ -n "$BASE_SHA" ] && ! echo "$BASE_SHA" | grep -qE '^0+$' && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            if git diff --name-only "$BASE_SHA" HEAD | grep -qE '^(apps/venue-svg-generator/|\.github/workflows/ci\.yml$)'; then
+              run=true
+            else
+              run=false
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "venue-svg-generator job runs: $run"
+
+      - name: Set up Python
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/venue-svg-generator/requirements-dev.txt
+
+      - name: Install dependencies
+        if: steps.changes.outputs.run == 'true'
+        run: pip install -r apps/venue-svg-generator/requirements-dev.txt
+
+      - name: Unit tests (pytest)
+        if: steps.changes.outputs.run == 'true'
+        working-directory: apps/venue-svg-generator
+        run: python -m pytest -q -rs
+
+      - name: Build the Docker image
+        if: steps.changes.outputs.run == 'true'
+        run: docker build -t arena_new/arena-venue-gen:ci apps/venue-svg-generator
+
+      - name: Image smoke (the CLI starts)
+        if: steps.changes.outputs.run == 'true'
+        run: docker run --rm arena_new/arena-venue-gen:ci python -m m1_product --help
+
+  # ─────────────────────────────────────────────────────────────────
   # Job 6: Widget — Svelte 5 custom element (arena-tickets)
   #
   # Runs on every push/PR. Steps: install → type-check → unit tests
