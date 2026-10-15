@@ -41,7 +41,7 @@ func TestArenaClient_PosterFacts_CallsTheRouteAndDecodesFacts(t *testing.T) {
 }
 
 func TestArenaClient_PosterFacts_ANotConfiguredAPIIsToldApart(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte(`{"error":{"code":"media.poster_reader_not_configured","message":"reading posters is not configured on this server"}}`))
@@ -53,7 +53,7 @@ func TestArenaClient_PosterFacts_ANotConfiguredAPIIsToldApart(t *testing.T) {
 		t.Fatalf("err = %v, want the not-configured answer", err)
 	}
 
-	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusTooManyRequests)
 		_, _ = w.Write([]byte(`{"error":{"code":"media.poster_reads_exhausted","message":"x"}}`))
