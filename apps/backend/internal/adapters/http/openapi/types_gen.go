@@ -3230,13 +3230,16 @@ type BindSessionSeatingResponse struct {
 
 // BotInvitation A bot invitation as the API reports it, never the code.
 type BotInvitation struct {
+	// Channel The channel the invitation was sent through, `telegram` or `web`. A `web` invitation is recorded as accepted at once and cannot be resent.
+	Channel string `json:"channel"`
+
 	// Delivery Always `email`; the deep link is mailed by arena-worker (bot.invitation_email).
 	Delivery string `json:"delivery"`
 
 	// Email The normalized invitee e-mail.
 	Email string `json:"email"`
 
-	// ExpiresAt When the one-time code stops working (7 days).
+	// ExpiresAt When the one-time code stops working (7 days). For a `web` invitation, when the password-setup link of a new account stops working.
 	ExpiresAt time.Time `json:"expires_at"`
 
 	// Id bot_invitations.id.
@@ -3313,6 +3316,18 @@ type BotInvitationAcceptResponseRole string
 // BotInvitationCreateRequest Body of POST /v1/organizations/{org_id}/bot-invitations: invite a
 // person into the Telegram event-center bot (spec 28 §3.3).
 type BotInvitationCreateRequest struct {
+	// Channel How the person is invited: `telegram` (the default when absent)
+	// mails the Telegram deep link of the bot; `web` mails the web
+	// event center instead, with no deep link and no Telegram code.
+	// For `web`, a NEW e-mail gets the one-time password-setup link
+	// (valid 7 days) and an EXISTING account gets a letter that says it
+	// was added and where to sign in, with no token. In both cases the
+	// membership exists at once and an existing membership keeps its
+	// role. Any other value is 400 `bot.invalid_channel`. This is a
+	// plain string with the two values named here, not an inline
+	// enum, so no generated constant is renamed.
+	Channel *string `json:"channel,omitempty"`
+
 	// Email The invitee's e-mail. An unknown address creates the user (with
 	// no usable password; the self-service reset sets one later), a
 	// known one is reused.
@@ -3320,6 +3335,8 @@ type BotInvitationCreateRequest struct {
 
 	// Locale Language of the invitation e-mail and of the bot's first messages
 	// (`en` default, `ru`, `es`). Unknown values fall back to `en`.
+	// With `channel` `web` and no locale, the language of an existing
+	// account's own preference is used.
 	Locale *string `json:"locale,omitempty"`
 
 	// Role The bot role the membership is created with: owner maps to the
@@ -3337,7 +3354,8 @@ type BotInvitationCreateRequestRole string
 
 // BotInvitationCreateResponse Response of POST /v1/organizations/{org_id}/bot-invitations.
 type BotInvitationCreateResponse struct {
-	// DeepLink `https://t.me/<bot>?start=inv_<code>`, present ONLY when the
+	// DeepLink `https://t.me/<bot>?start=inv_<code>`, present ONLY for a
+	// `telegram` invitation when the
 	// caller is the platform superadmin (X-Admin-Reason on record) and
 	// the bot username is configured, for the hand-over to
 	// organizations provisioned by hand. An organization owner never
@@ -3395,7 +3413,12 @@ type BotTeamMember struct {
 	// Email The member's e-mail, the name the bot shows.
 	Email string `json:"email"`
 
-	// InvitationExpiresAt When the invitation's code stops working. Absent with `invitation_state`.
+	// InvitationChannel How the invitation was sent, `telegram` or `web`. Absent with
+	// `invitation_state`. A `web` invitation cannot be resent
+	// (`resend_available_at` is never present for it).
+	InvitationChannel *string `json:"invitation_channel,omitempty"`
+
+	// InvitationExpiresAt When the invitation's code stops working (for a `web` invitation that is still `waiting`, when its setup link stops working). Absent with `invitation_state`.
 	InvitationExpiresAt *time.Time `json:"invitation_expires_at,omitempty"`
 
 	// InvitationId Id of that invitation, what the revoke and resend routes take. Absent with `invitation_state`.
@@ -3408,6 +3431,14 @@ type BotTeamMember struct {
 	// (sent, not opened, not expired) or `expired`. Absent for a member
 	// who has no bot invitation (added another way). Plain string on
 	// purpose: an inline enum would rename generated Go constants.
+	//
+	// For an invitation sent for the web event center (`invitation_channel`
+	// `web`) the invitation row is accepted at once, so the state comes
+	// from the setup link: `waiting` while the account that invitation
+	// created has an unused, unexpired password-setup token, `accepted`
+	// once it was used or none is left. For an account that already
+	// existed it is always `accepted`: the API cannot tell whether it
+	// ever chose a password.
 	InvitationState *string `json:"invitation_state,omitempty"`
 
 	// JoinedAt When the membership was created.

@@ -63,6 +63,20 @@ func (q *Queries) InsertBotInvitation(ctx context.Context, orgID, userID uuid.UU
 	return scanBotInvitationRow(q.db.QueryRow(ctx, insertBotInvitation, orgID, userID, email, role, codeHash, invitedBy, expiresAt, membershipCreated))
 }
 
+const insertWebBotInvitation = `-- name: InsertWebBotInvitation :one
+INSERT INTO bot_invitations (org_id, user_id, email, role, code_hash, invited_by, expires_at, membership_created, accepted_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+RETURNING ` + botInvitationColumns
+
+// InsertWebBotInvitation records an invitation sent for the web event center.
+// The membership exists at once and there is no Telegram code to redeem, so
+// the row is born accepted (accepted_at set, accepted_telegram_user_id NULL:
+// that pair tells it from a Telegram invitation). codeHash is random and
+// never disclosed.
+func (q *Queries) InsertWebBotInvitation(ctx context.Context, orgID, userID uuid.UUID, email, role, codeHash string, invitedBy *uuid.UUID, expiresAt time.Time, membershipCreated bool) (BotInvitationRow, error) {
+	return scanBotInvitationRow(q.db.QueryRow(ctx, insertWebBotInvitation, orgID, userID, email, role, codeHash, invitedBy, expiresAt, membershipCreated))
+}
+
 const getBotInvitationByCodeHash = `-- name: GetBotInvitationByCodeHash :one
 SELECT ` + botInvitationColumns + `
 FROM   bot_invitations
@@ -693,6 +707,11 @@ type BotTeamMemberRow struct {
 	InvitationAcceptedAt *time.Time `json:"invitation_accepted_at"`
 	InvitationExpiresAt  *time.Time `json:"invitation_expires_at"`
 	InvitationLastSentAt *time.Time `json:"invitation_last_sent_at"`
+	// InvitationWeb: the invitation was sent for the web event center (accepted
+	// at once, no Telegram account). WebSetupExpiresAt is the end of the
+	// still-unused setup link of an account that invitation created, else nil.
+	InvitationWeb     bool       `json:"invitation_web"`
+	WebSetupExpiresAt *time.Time `json:"web_setup_expires_at"`
 }
 
 const listBotTeam = `-- name: ListBotTeam :many
@@ -709,11 +728,18 @@ SELECT u.id      AS user_id,
        inv.id           AS invitation_id,
        inv.accepted_at  AS invitation_accepted_at,
        inv.expires_at   AS invitation_expires_at,
-       inv.last_sent_at AS invitation_last_sent_at
+       inv.last_sent_at AS invitation_last_sent_at,
+       (inv.accepted_at IS NOT NULL AND inv.accepted_telegram_user_id IS NULL) AS invitation_web,
+       -- A web invitation of an account that invitation CREATED (same
+       -- transaction, so the same now()) is still waiting while its setup link
+       -- is unused and alive.
+       (SELECT max(t.expires_at) FROM password_reset_tokens t
+        WHERE t.user_id = u.id AND t.used_at IS NULL AND t.expires_at > now()
+          AND u.created_at = inv.created_at) AS web_setup_expires_at
 FROM   memberships m
 JOIN   users u ON u.id = m.user_id
 LEFT JOIN LATERAL (
-           SELECT i.id, i.accepted_at, i.expires_at, i.last_sent_at
+           SELECT i.id, i.accepted_at, i.accepted_telegram_user_id, i.created_at, i.expires_at, i.last_sent_at
            FROM   bot_invitations i
            WHERE  i.user_id = u.id AND i.org_id = m.org_id AND i.revoked_at IS NULL
            ORDER  BY (i.accepted_at IS NOT NULL) DESC, i.created_at DESC
@@ -735,7 +761,8 @@ func (q *Queries) ListBotTeam(ctx context.Context, orgID uuid.UUID) ([]BotTeamMe
 	for rows.Next() {
 		var r BotTeamMemberRow
 		if err := rows.Scan(&r.UserID, &r.Email, &r.MembershipRole, &r.JoinedAt, &r.TelegramLinked, &r.InvitationPending,
-			&r.InvitationID, &r.InvitationAcceptedAt, &r.InvitationExpiresAt, &r.InvitationLastSentAt); err != nil {
+			&r.InvitationID, &r.InvitationAcceptedAt, &r.InvitationExpiresAt, &r.InvitationLastSentAt,
+			&r.InvitationWeb, &r.WebSetupExpiresAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

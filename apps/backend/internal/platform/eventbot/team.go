@@ -33,6 +33,12 @@ type TeamMember struct {
 	// revoke and resend routes take.
 	InvitationState string    `json:"invitation_state"`
 	InvitationID    uuid.UUID `json:"invitation_id"`
+	// InvitationChannel is "telegram" or "web" (empty from an older API, read as
+	// telegram). A web invitation has no letter to send again and its row is
+	// accepted at once, so the screen shows its state but no resend or revoke
+	// button: a person who lost the link uses "forgot password" on the sign-in
+	// page, and a wrongly added person is removed with the Remove button.
+	InvitationChannel string `json:"invitation_channel"`
 }
 
 // Invitation states as GET .../bot-team prints them.
@@ -45,7 +51,8 @@ const (
 // revokable reports whether the member has an invitation the owner can still
 // annul or send again.
 func (m TeamMember) revokable() bool {
-	return (m.InvitationState == invStateWaiting || m.InvitationState == invStateExpired) && m.InvitationID != uuid.Nil
+	return (m.InvitationState == invStateWaiting || m.InvitationState == invStateExpired) &&
+		m.InvitationID != uuid.Nil && m.InvitationChannel != "web"
 }
 
 // Team lists the organization's owners and managers.
