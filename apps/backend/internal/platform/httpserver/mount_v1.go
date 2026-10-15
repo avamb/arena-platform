@@ -32,6 +32,7 @@ func (s *Server) mountV1Routes() {
 		s.mountOrgRoutes(r)
 		s.mountChannelRoutes(r)
 		s.mountSellerRoutes(r)
+		s.mountMaterialsExtrasRoutes(r)
 		s.mountCustomerRoutes(r)
 		s.mountOrderRoutes(r)
 		s.mountExportRoutes(r)

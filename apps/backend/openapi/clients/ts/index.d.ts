@@ -2696,6 +2696,202 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/partner-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the "where else to buy" links of an event
+         * @description Returns the event's links to other sellers in display order (at most 3).
+         *     Requires `event.read` and membership of the organization.
+         */
+        get: operations["listEventPartnerLinks"];
+        put?: never;
+        /**
+         * Add a "where else to buy" link
+         * @description Adds a link to another seller of the same event. The address must be a full
+         *     https address without spaces (400 `event.invalid_partner_url`). The seller shown
+         *     beside the link is `seller_name`, or, when it is omitted or blank, the host of
+         *     the address without a leading `www.` (for example `ticketportal.cz`). An event
+         *     holds at most 3 links (409 `event.partner_links_full`); the new link takes the
+         *     lowest free position.
+         *     Requires `event.update` and membership of the organization.
+         */
+        post: operations["createEventPartnerLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/partner-links/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder the "where else to buy" links
+         * @description Sets the display order. `ids` must list every link of the event exactly once
+         *     (400 `event.invalid_order` otherwise); the answer is the list in its new order.
+         *     Requires `event.update` and membership of the organization.
+         */
+        put: operations["reorderEventPartnerLinks"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a "where else to buy" link
+         * @description Removes the link; the links behind it move up so positions stay 0 to n-1.
+         *     Requires `event.update` and membership of the organization.
+         */
+        delete: operations["deleteEventPartnerLink"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a "where else to buy" link
+         * @description Changes the address, the seller name or both; an absent member keeps its
+         *     stored value. When only the address changes, a seller name that was derived
+         *     from the old address follows the new one, while a name the client typed is
+         *     kept.
+         *     Requires `event.update` and membership of the organization.
+         */
+        patch: operations["updateEventPartnerLink"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/map-point": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the map point of an event
+         * @description Returns the event's one map point, or `map_point: null` when it has none.
+         *     Requires `event.read` and membership of the organization.
+         */
+        get: operations["getEventMapPoint"];
+        /**
+         * Set the map point of an event
+         * @description Creates the point or replaces it as a whole (an absent `label` clears the
+         *     label). Latitude must be between -90 and 90 and longitude between -180 and 180
+         *     (400 `event.invalid_map_point`); six decimals are kept.
+         *     Requires `event.update` and membership of the organization.
+         */
+        put: operations["setEventMapPoint"];
+        post?: never;
+        /**
+         * Remove the map point of an event
+         * @description Removes the point.
+         *     Requires `event.update` and membership of the organization.
+         */
+        delete: operations["deleteEventMapPoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/photo-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the photo report of an event
+         * @description Returns every photo of the photo report in display order, always: the
+         *     organizer sees the report before the event. Buyers see it only after the event
+         *     has ended (the public routes read it through a query that hides it until then).
+         *     Requires `event.read` and membership of the organization.
+         */
+        get: operations["listEventReportPhotos"];
+        put?: never;
+        /**
+         * Add a photo to the photo report
+         * @description Adds an uploaded photo. `media_id` must be an active media object of the
+         *     same organization with owner type `event_report` (422 `event.invalid_report_media`
+         *     otherwise, also for another organization's file). A report holds at most 30
+         *     photos (409 `event.photo_report_full`) and the same file only once (409
+         *     `event.photo_report_duplicate`); the new photo takes the lowest free position.
+         *     Requires `event.update` and membership of the organization.
+         */
+        post: operations["addEventReportPhoto"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/photo-report/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder the photo report
+         * @description Sets the display order. `ids` must list every photo of the report exactly
+         *     once (400 `event.invalid_order` otherwise); the answer is the list in its new
+         *     order.
+         *     Requires `event.update` and membership of the organization.
+         */
+        put: operations["reorderEventReportPhotos"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/photo-report/{photo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a photo from the photo report
+         * @description Removes the photo; the photos behind it move up so positions stay 0 to n-1. The uploaded file itself is kept.
+         *     Requires `event.update` and membership of the organization.
+         */
+        delete: operations["deleteEventReportPhoto"];
+        options?: never;
+        head?: never;
+        /**
+         * Change the caption of a report photo
+         * @description Sets the caption; `caption: null` or a blank text removes it.
+         *     Requires `event.update` and membership of the organization.
+         */
+        patch: operations["updateEventReportPhoto"];
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{event_id}/delete-impact": {
         parameters: {
             query?: never;
@@ -15068,6 +15264,183 @@ export interface components {
             phone?: string | null;
             /** @description True keeps the phone out of letters to buyers. Absent means false. */
             phone_hidden?: boolean;
+        };
+        /** @description One "where else to buy" link of an event. */
+        EventPartnerLink: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the link.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event the link belongs to.
+             */
+            event_id: string;
+            /**
+             * @description The seller's page for this event; always an https address.
+             * @example https://ticketportal.cz/event/12345
+             */
+            url: string;
+            /**
+             * @description Who sells there; shown beside the link so the buyer knows. The host of the address unless the client named a seller.
+             * @example ticketportal.cz
+             */
+            seller_name: string;
+            /** @description Display order, 0 to 2. */
+            position: number;
+            /**
+             * Format: date-time
+             * @description When the link was added.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the link was last changed.
+             */
+            updated_at: string;
+        };
+        /** @description One partner link. */
+        EventPartnerLinkResponse: {
+            /** @description The link. */
+            partner_link: components["schemas"]["EventPartnerLink"];
+        };
+        /** @description The partner links of an event in display order (at most 3). */
+        EventPartnerLinkList: {
+            /** @description The links, in display order. */
+            partner_links: components["schemas"]["EventPartnerLink"][];
+        };
+        /** @description Body of POST .../events/{event_id}/partner-links. */
+        CreateEventPartnerLinkRequest: {
+            /**
+             * @description A full https address without spaces (400 `event.invalid_partner_url`), up to 500 characters.
+             * @example https://ticketportal.cz/event/12345
+             */
+            url: string;
+            /**
+             * @description Who sells there, 1 to 120 characters. Absent, null or blank means the host of the address without a leading `www.`.
+             * @example Ticketportal
+             */
+            seller_name?: string | null;
+        };
+        /** @description Body of PATCH .../partner-links/{link_id}. At least one member is required; an absent member keeps its stored value. */
+        UpdateEventPartnerLinkRequest: {
+            /** @description A new https address (400 `event.invalid_partner_url`). */
+            url?: string;
+            /** @description A new seller name, 1 to 120 characters. Blank keeps the current name (or, when the address changed and the name was derived from the old one, derives it again). */
+            seller_name?: string;
+        };
+        /** @description Body of the PUT .../order routes of the partner links and the photo report. */
+        EventMaterialOrderRequest: {
+            /** @description Every item id of the event exactly once, in the wanted display order (400 `event.invalid_order` otherwise). */
+            ids: string[];
+        };
+        /** @description The one map point of an event. */
+        EventMapPoint: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event.
+             */
+            event_id: string;
+            /**
+             * @description Latitude in degrees, -90 to 90, six decimals kept.
+             * @example 50.075538
+             */
+            latitude: number;
+            /**
+             * @description Longitude in degrees, -180 to 180, six decimals kept.
+             * @example 14.4378
+             */
+            longitude: number;
+            /** @description Optional text shown with the point, up to 200 characters. */
+            label: string | null;
+            /**
+             * Format: date-time
+             * @description When the point was first set.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the point was last changed.
+             */
+            updated_at: string;
+        };
+        /** @description The map point of an event. */
+        EventMapPointResponse: {
+            /** @description The point, or null when the event has none. */
+            map_point: components["schemas"]["EventMapPoint"] | null;
+        };
+        /** @description Body of PUT .../events/{event_id}/map-point; replaces the point as a whole. */
+        SetEventMapPointRequest: {
+            /**
+             * @description Latitude in degrees, -90 to 90 (400 `event.invalid_map_point`).
+             * @example 50.0755
+             */
+            latitude: number;
+            /**
+             * @description Longitude in degrees, -180 to 180 (400 `event.invalid_map_point`).
+             * @example 14.4378
+             */
+            longitude: number;
+            /** @description Optional text shown with the point, up to 200 characters; absent, null or blank clears it. */
+            label?: string | null;
+        };
+        /** @description One photo of an event's photo report. */
+        EventReportPhoto: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the report entry.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event.
+             */
+            event_id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the media object holding the picture (`GET /v1/media/{id}` signs a download address).
+             */
+            media_id: string;
+            /** @description Display order, 0 to 29. */
+            position: number;
+            /** @description Optional caption, up to 200 characters. */
+            caption: string | null;
+            /**
+             * Format: date-time
+             * @description When the photo was added.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the photo was last changed.
+             */
+            updated_at: string;
+        };
+        /** @description One photo of the photo report. */
+        EventReportPhotoResponse: {
+            /** @description The photo. */
+            photo: components["schemas"]["EventReportPhoto"];
+        };
+        /** @description The photo report of an event in display order (at most 30). */
+        EventReportPhotoList: {
+            /** @description The photos, in display order. */
+            photos: components["schemas"]["EventReportPhoto"][];
+        };
+        /** @description Body of POST .../events/{event_id}/photo-report. */
+        AddEventReportPhotoRequest: {
+            /**
+             * Format: uuid
+             * @description An active media object of the same organization with owner type `event_report` (422 `event.invalid_report_media` otherwise).
+             */
+            media_id: string;
+            /** @description Optional caption, up to 200 characters; blank means none. */
+            caption?: string | null;
+        };
+        /** @description Body of PATCH .../photo-report/{photo_id}. */
+        UpdateEventReportPhotoRequest: {
+            /** @description The new caption, up to 200 characters; null or blank removes it. */
+            caption: string | null;
         };
         /** @description The organizer contact of an event after PUT .../events/{event_id}/contact. */
         EventContactResponse: {
@@ -31830,6 +32203,1036 @@ export interface operations {
                 };
             };
             /** @description Database pool or event queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listEventPartnerLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The links, in display order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPartnerLinkList"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createEventPartnerLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEventPartnerLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description The link that was added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPartnerLinkResponse"];
+                };
+            };
+            /** @description Invalid body, address or seller name (`event.invalid_body`, `event.invalid_partner_url`, `event.invalid_seller_name`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The event already holds 3 links (`event.partner_links_full`), or the list changed at the same moment (`event.concurrent_update`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reorderEventPartnerLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventMaterialOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description The links in their new order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPartnerLinkList"];
+                };
+            };
+            /** @description Invalid body or `ids` is not exactly the event's links (`event.invalid_body`, `event.invalid_order`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteEventPartnerLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+                /** @description UUIDv7 of the partner link */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`) or no such link on it (`event.partner_link_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateEventPartnerLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+                /** @description UUIDv7 of the partner link */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEventPartnerLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description The link after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPartnerLinkResponse"];
+                };
+            };
+            /** @description Invalid body, address or seller name (`event.invalid_body`, `event.invalid_partner_url`, `event.invalid_seller_name`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`) or no such link on it (`event.partner_link_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getEventMapPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The map point, or null. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventMapPointResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setEventMapPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetEventMapPointRequest"];
+            };
+        };
+        responses: {
+            /** @description The map point as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventMapPointResponse"];
+                };
+            };
+            /** @description Invalid body or coordinates (`event.invalid_body`, `event.invalid_map_point`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteEventMapPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`) or the event has no map point (`event.map_point_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listEventReportPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The photos, in display order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventReportPhotoList"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    addEventReportPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddEventReportPhotoRequest"];
+            };
+        };
+        responses: {
+            /** @description The photo that was added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventReportPhotoResponse"];
+                };
+            };
+            /** @description Invalid body or caption (`event.invalid_body`, `event.invalid_caption`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The report holds 30 photos (`event.photo_report_full`), the file is already in it (`event.photo_report_duplicate`), or the list changed at the same moment (`event.concurrent_update`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The media object is unknown, another organization's, deleted or not an `event_report` file (`event.invalid_report_media`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reorderEventReportPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventMaterialOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description The photos in their new order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventReportPhotoList"];
+                };
+            };
+            /** @description Invalid body or `ids` is not exactly the report's photos (`event.invalid_body`, `event.invalid_order`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteEventReportPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+                /** @description UUIDv7 of the photo-report photo */
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`) or no such photo on it (`event.photo_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateEventReportPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+                /** @description UUIDv7 of the photo-report photo */
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEventReportPhotoRequest"];
+            };
+        };
+        responses: {
+            /** @description The photo after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventReportPhotoResponse"];
+                };
+            };
+            /** @description Invalid body or caption (`event.invalid_body`, `event.invalid_caption`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`) or no such photo on it (`event.photo_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;
