@@ -346,7 +346,10 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Отмена неоплаченного заказа",
     bot: "order_card.go, `or:c:` (слово)",
     web: "R3",
+    // 4-2
+    ready: { twin: "live/cancel-order.spec.ts" },
     routes: [`POST ${O}/orders/{id}/cancel`],
+    note: "Слово отмены заказа не равно слову отмены сеанса. Из веба перед отменой просят пароль ещё раз (раздел 4.6).",
   },
   {
     area: "Заказы",
