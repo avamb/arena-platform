@@ -317,14 +317,17 @@ type publicFeedMediaItem struct {
 }
 
 // BuildBuyerFields constructs the buyer_fields list from channel flags.
-// The email field is always required and enabled; name and phone follow
-// the channel's collect_name / collect_phone flags.
+// The email field is always required and enabled. Name and phone are always
+// offered (enabled) and are optional unless the channel's collect_name /
+// collect_phone flag is on, which makes the field required (P1b, owner
+// decision 2026-10-14: a buyer may leave them empty). The third state "off"
+// (field not shown at all) arrives with migration 0160, not here.
 // Exported so tests can invoke it directly without a live DB.
 func BuildBuyerFields(collectName, collectPhone bool) []BuyerFieldItem {
 	return []BuyerFieldItem{
 		{Key: "email", Required: true, Enabled: true},
-		{Key: "name", Required: collectName, Enabled: collectName},
-		{Key: "phone", Required: collectPhone, Enabled: collectPhone},
+		{Key: "name", Required: collectName, Enabled: true},
+		{Key: "phone", Required: collectPhone, Enabled: true},
 	}
 }
 
