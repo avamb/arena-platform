@@ -17,21 +17,31 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 )
 
-// globalSideEffects counts the rows a leaked effect would add anywhere in the
-// database, not just under the fixture's organization.
-func globalSideEffects(ctx context.Context, t *testing.T, pool *pgxpool.Pool) map[string]int {
+// attributableSideEffects counts the rows a leaked effect of THIS fixture would
+// add outside the org footprint: queue and outbox rows that name the
+// fixture's organization, and compat ids registered for its Bil24 wire ids.
+// It deliberately does not count whole tables. CI runs the integration
+// packages in parallel against one shared database, so a table-wide count
+// (media_objects went 2 -> 0 on 2026-10-15 while another package's fixture
+// cleaned up) moves for reasons that have nothing to do with the dry run.
+func attributableSideEffects(ctx context.Context, t *testing.T, pool *pgxpool.Pool, f *import517Fixture) map[string]int {
 	t.Helper()
+	org := f.orgID.String()
+	wireIDs := []int64{f.actionID, f.actionEventID, f.venueID, f.categoryA, f.categoryB}
 	out := map[string]int{}
-	for name, sql := range map[string]string{
-		"outbox_events":   `SELECT count(*) FROM outbox_events`,
-		"worker_jobs":     `SELECT count(*) FROM worker_jobs`,
-		"session_changes": `SELECT count(*) FROM session_changes`,
-		"compat_ids":      `SELECT count(*) FROM compatibility_id_map`,
-		"media_objects":   `SELECT count(*) FROM media_objects`,
+	for name, q := range map[string]struct {
+		sql  string
+		args []any
+	}{
+		"outbox_events":   {`SELECT count(*) FROM outbox_events WHERE aggregate_id = $1 OR payload::text LIKE '%' || $1 || '%'`, []any{org}},
+		"worker_jobs":     {`SELECT count(*) FROM worker_jobs WHERE payload::text LIKE '%' || $1 || '%'`, []any{org}},
+		"session_changes": {`SELECT count(*) FROM session_changes WHERE org_id = $1::uuid`, []any{org}},
+		"compat_ids":      {`SELECT count(*) FROM compatibility_id_map WHERE system_id = ANY($1)`, []any{wireIDs}},
+		"media_objects":   {`SELECT count(*) FROM media_objects WHERE org_id = $1::uuid`, []any{org}},
 	} {
 		var n int
-		if err := pool.QueryRow(ctx, sql).Scan(&n); err != nil {
-			t.Fatalf("global count %s: %v", name, err)
+		if err := pool.QueryRow(ctx, q.sql, q.args...).Scan(&n); err != nil {
+			t.Fatalf("attributable count %s: %v", name, err)
 		}
 		out[name] = n
 	}
@@ -51,13 +61,13 @@ func TestEventBundleDryRun_Bil24SourceWritesNothing(t *testing.T) {
 	fresh.Source = bil24compat.SourceBil24
 	fresh.Publish = true
 	fresh.Action.BigPosterURL = "https://posters.example.test/bil24.png"
-	globalBefore := globalSideEffects(ctx, t, pool)
+	globalBefore := attributableSideEffects(ctx, t, pool, f)
 	orgBefore := orgFootprint(ctx, t, pool, f.orgID)
 	out := dryRun(t, shim, rig.h, fresh)
 	if !out.Valid || out.EventID != nil || out.SessionID != nil {
 		t.Fatalf("new bil24 session dry run: %+v", out)
 	}
-	assertSameFootprint(t, "bil24 new (global)", globalBefore, globalSideEffects(ctx, t, pool))
+	assertSameFootprint(t, "bil24 new (attributable)", globalBefore, attributableSideEffects(ctx, t, pool, f))
 	assertSameFootprint(t, "bil24 new (org)", orgBefore, orgFootprint(ctx, t, pool, f.orgID))
 	rig.assertNoOutsideEffects(t, "bil24 new")
 
@@ -76,7 +86,7 @@ func TestEventBundleDryRun_Bil24SourceWritesNothing(t *testing.T) {
 	move.ActionEvent.Day = "03.05.2026"
 	move.ChangeMessage = "Moved by a week."
 
-	globalBefore = globalSideEffects(ctx, t, pool)
+	globalBefore = attributableSideEffects(ctx, t, pool, f)
 	orgBefore = orgFootprint(ctx, t, pool, f.orgID)
 	out = dryRun(t, shim, rig.h, move)
 	if out.Valid || len(out.Errors) != 1 || out.Errors[0].Code != "organization.contact_missing" || out.Errors[0].Status != 422 {
@@ -89,7 +99,7 @@ func TestEventBundleDryRun_Bil24SourceWritesNothing(t *testing.T) {
 	if !out.Valid || out.SessionID == nil || *out.SessionID != created.SessionID {
 		t.Fatalf("bil24 allowed move: %+v", out)
 	}
-	assertSameFootprint(t, "bil24 move (global)", globalBefore, globalSideEffects(ctx, t, pool))
+	assertSameFootprint(t, "bil24 move (attributable)", globalBefore, attributableSideEffects(ctx, t, pool, f))
 	assertSameFootprint(t, "bil24 move (org)", orgBefore, orgFootprint(ctx, t, pool, f.orgID))
 	rig.assertNoOutsideEffects(t, "bil24 move")
 
