@@ -52,6 +52,26 @@ function die(msg) {
 
 if (!process.env.DATABASE_URL) die("DATABASE_URL is required (a database migrated by arena-migrate up).");
 
+// The fixture writes an organization, three accounts and an event: only into
+// a scratch database on this machine, never a remote one and never the shared
+// dev-stand database `arena` (the same refusal as ops/loadtest provision.mjs).
+{
+  let dsn;
+  try {
+    dsn = new URL(process.env.DATABASE_URL);
+  } catch {
+    die("DATABASE_URL is not a valid URL.");
+  }
+  const localHosts = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+  if (!localHosts.has(dsn.hostname)) {
+    die(`DATABASE_URL points at ${dsn.hostname}: the live harness runs only against a local scratch database.`);
+  }
+  const dbName = decodeURIComponent(dsn.pathname.replace(/^\//, ""));
+  if (dbName === "" || dbName === "arena") {
+    die(`DATABASE_URL names the database "${dbName}": use a scratch database such as arena_ci_w09 (tests/README.md), never the shared stand.`);
+  }
+}
+
 // A file left by a killed run would hand the specs a stale fixture.
 rmSync(envFile, { force: true });
 

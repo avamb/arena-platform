@@ -36,7 +36,8 @@ and never by `/v1/me` (AGENTS.md, A1).
 
 The harness needs a **migrated database of its own**. Never point it at the
 shared dev database `arena`: the fixture is small, but a scratch base keeps the
-runs repeatable.
+runs repeatable. The harness enforces it: it exits with an error when `DATABASE_URL`
+names a non-local host or the database `arena`.
 
 1. Create the database on the dev stand (once). Run each statement as its own
    command, `DROP` cannot run inside a transaction:

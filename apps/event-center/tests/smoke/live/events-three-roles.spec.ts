@@ -36,6 +36,12 @@ test.describe("events list on the three roles (live)", () => {
       const me = await orgMe(request, role);
       expect(me.role).toBe(role);
       expect(me.permissions.includes("order.read"), "order.read per the server").toBe(sees_money);
+      // The server itself refuses the agent what it does not hold: the screen
+      // hiding the figures is not the only guard.
+      const summary = await request.get(`${env.api_base_url}/v1/organizations/${env.org_id}/events/${env.event_id}/summary`, {
+        headers: { Authorization: `Bearer ${person(env, role).access_token}` },
+      });
+      expect(summary.status(), `GET event summary as ${role}`).toBe(sees_money ? 200 : 403);
 
       const apiCalls: string[] = [];
       page.on("request", (req) => {
