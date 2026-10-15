@@ -162,3 +162,23 @@ func validVideoID(provider, id string) bool {
 	}
 	return false
 }
+
+// EmbedURL is the address a page puts in an iframe for a stored video: the
+// privacy-friendly YouTube domain, Vimeo's player and Rutube's embed. It is ""
+// for ProviderHTTPS (a plain link has no embed) and for an id that no longer
+// matches its provider's format, so a row the page cannot embed safely is
+// shown as its plain link.
+func EmbedURL(provider, videoID string) string {
+	if !validVideoID(provider, videoID) {
+		return ""
+	}
+	switch provider {
+	case ProviderYouTube:
+		return "https://www.youtube-nocookie.com/embed/" + videoID
+	case ProviderVimeo:
+		return "https://player.vimeo.com/video/" + videoID
+	case ProviderRutube:
+		return "https://rutube.ru/play/embed/" + videoID
+	}
+	return ""
+}

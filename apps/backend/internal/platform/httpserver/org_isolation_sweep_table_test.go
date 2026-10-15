@@ -283,6 +283,12 @@ var orgIsolationAuditedSafe = map[string]string{
 	"PUT /v1/organizations/{org_id}/events/{event_id}/photo-report/order":         "hmaterials",
 	"PATCH /v1/organizations/{org_id}/events/{event_id}/photo-report/{photo_id}":  "hmaterials",
 	"DELETE /v1/organizations/{org_id}/events/{event_id}/photo-report/{photo_id}": "hmaterials",
+	// Task 1-2c: HandleCopyMaterials starts with scope() (the target event of
+	// the path organization) and then requires the SOURCE event to be a live
+	// event of the same organization (404 event.not_found otherwise); the
+	// copy statements filter the source rows by org_id too.
+	// TestEventMaterialsCopy_StaysInsideTheOrganization drives both sides.
+	"POST /v1/organizations/{org_id}/events/{event_id}/materials/copy-from/{source_event_id}": "hmaterials",
 
 	// hcatalog channels CRUD, gateway credential, WordPress webhook: queries scoped by (id, org_id).
 	"DELETE /v1/organizations/{org_id}/channels/{id}":                    "channels",
