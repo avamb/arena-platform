@@ -5628,6 +5628,74 @@ type EventArtistListEnvelope struct {
 	Artists []EventArtist `json:"artists"`
 }
 
+// EventBundleReadResponse Answer of GET /v1/organizations/{org_id}/events/{event_id}/event-bundle
+// (task 3-2): the event read back as `ImportEventBundleRequest`
+// bundles, one per session (the import takes one date per call),
+// oldest first. Every bundle is `source: arena` and addresses its rows
+// by arena UUID (`action.arenaEventId`, `actionEvent.arenaSessionId`,
+// `venue.arenaVenueId`, `categoryList[].arenaTierId`), so it needs no
+// `externalRef` and can be posted back to
+// POST .../imports/event-bundle as it is — `?dry_run=true` accepts it
+// with no error, and importing it leaves the stored rows unchanged.
+// Reading again returns the same bundles.
+//
+// How the stored data is written: times are the venue's wall clock
+// (`day` DD.MM.YYYY, `time` and `endTime` HH:MM) and RFC 3339 instants
+// (`sellEndTime`, `doorsOpenTime`, the categories' windows and price
+// schedule); `availability` is the quantity the category owns, and in a
+// chain the head carries the whole chain's places and every successor
+// 0; `nextCategoryIndex` is set on every category (-1 = no link),
+// `sellLimit` only on a linked one, `priceSchedule` is always a list;
+// `publish` is true while the event is published and `channelIds` are
+// the organization's channels it is published into; `promoterId` is ""
+// when the organization itself promotes the event. `bigPosterUrl` is
+// left empty on purpose (an import without one keeps the stored
+// poster): the poster is `poster_media_id`.
+//
+// Left out: deleted and cancelled sessions, sessions a bundle cannot
+// carry (listed in `skipped` with the reason), the open/closed flag of
+// a category, compat ids and the session's external ref. No buyer data
+// and no secret is read.
+type EventBundleReadResponse struct {
+	// Bundles One importable bundle per session, oldest first. Never null.
+	Bundles []ImportEventBundleRequest `json:"bundles"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// PosterMediaId Media id of the event's poster, null when it has none. The bundles carry no `bigPosterUrl`.
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// Skipped The live sessions that have no bundle, with the reason. Never null.
+	Skipped []EventBundleSkipped `json:"skipped"`
+
+	// Status The event's own status (`draft`, `published`, `cancelled` or `archived`). A draft event is readable.
+	Status string `json:"status"`
+
+	// Warnings What a bundle cannot say exactly (`event_bundle.time_not_representable`,
+	// `event_bundle.venue_timezone_missing`, `event_bundle.promoter_archived`,
+	// `event_bundle.chain_link_missing`). Never null.
+	Warnings []ImportWarning `json:"warnings"`
+}
+
+// EventBundleSkipped A live session of the event that has no bundle in
+// `EventBundleReadResponse`, with the reason.
+type EventBundleSkipped struct {
+	// Code Stable reason: `event_bundle.session_cancelled`,
+	// `event_bundle.session_seated` (a seating plan or assigned seats:
+	// a bundle carries general admission only),
+	// `event_bundle.session_pay_what_you_want` (a category a bundle
+	// cannot say) or `event_bundle.session_venue_missing` (the venue
+	// was deleted).
+	Code string `json:"code"`
+
+	// Message Human-readable explanation of the reason.
+	Message string `json:"message"`
+
+	// SessionId UUIDv7 of the session that was left out.
+	SessionId openapi_types.UUID `json:"session_id"`
+}
+
 // EventContactResponse The organizer contact of an event after PUT .../events/{event_id}/contact.
 type EventContactResponse struct {
 	// Contact Who buyers write to when a session changes: the event's promoter when

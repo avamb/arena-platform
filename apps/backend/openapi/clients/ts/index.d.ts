@@ -2713,6 +2713,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/event-bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an event back as importable event-bundles
+         * @description The reverse of POST .../imports/event-bundle (task 3-2): the event as
+         *     one `source: arena` bundle per session, oldest first, each addressed
+         *     by arena UUID (`arenaEventId`, `arenaSessionId`, `arenaVenueId`,
+         *     `arenaTierId`) and importable as it is. It is what the web event
+         *     center loads to edit or copy an event. A bundle posted back
+         *     unchanged is accepted by `?dry_run=true` with no error and leaves the
+         *     stored rows as they are; a second read answers the same bundles. See
+         *     `EventBundleReadResponse` for how each field is written and what is
+         *     left out. A draft event is readable; a deleted event, an unknown one
+         *     and an event of another organization are all a 404. Requires the
+         *     `event.read` permission in the organization. Writes nothing.
+         */
+        get: operations["getEventBundle"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{id}/artists": {
         parameters: {
             query?: never;
@@ -20578,6 +20608,86 @@ export interface components {
             session_id: string | null;
         };
         /**
+         * @description A live session of the event that has no bundle in
+         *     `EventBundleReadResponse`, with the reason.
+         */
+        EventBundleSkipped: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the session that was left out.
+             */
+            session_id: string;
+            /**
+             * @description Stable reason: `event_bundle.session_cancelled`,
+             *     `event_bundle.session_seated` (a seating plan or assigned seats:
+             *     a bundle carries general admission only),
+             *     `event_bundle.session_pay_what_you_want` (a category a bundle
+             *     cannot say) or `event_bundle.session_venue_missing` (the venue
+             *     was deleted).
+             * @example event_bundle.session_seated
+             */
+            code: string;
+            /** @description Human-readable explanation of the reason. */
+            message: string;
+        };
+        /**
+         * @description Answer of GET /v1/organizations/{org_id}/events/{event_id}/event-bundle
+         *     (task 3-2): the event read back as `ImportEventBundleRequest`
+         *     bundles, one per session (the import takes one date per call),
+         *     oldest first. Every bundle is `source: arena` and addresses its rows
+         *     by arena UUID (`action.arenaEventId`, `actionEvent.arenaSessionId`,
+         *     `venue.arenaVenueId`, `categoryList[].arenaTierId`), so it needs no
+         *     `externalRef` and can be posted back to
+         *     POST .../imports/event-bundle as it is — `?dry_run=true` accepts it
+         *     with no error, and importing it leaves the stored rows unchanged.
+         *     Reading again returns the same bundles.
+         *
+         *     How the stored data is written: times are the venue's wall clock
+         *     (`day` DD.MM.YYYY, `time` and `endTime` HH:MM) and RFC 3339 instants
+         *     (`sellEndTime`, `doorsOpenTime`, the categories' windows and price
+         *     schedule); `availability` is the quantity the category owns, and in a
+         *     chain the head carries the whole chain's places and every successor
+         *     0; `nextCategoryIndex` is set on every category (-1 = no link),
+         *     `sellLimit` only on a linked one, `priceSchedule` is always a list;
+         *     `publish` is true while the event is published and `channelIds` are
+         *     the organization's channels it is published into; `promoterId` is ""
+         *     when the organization itself promotes the event. `bigPosterUrl` is
+         *     left empty on purpose (an import without one keeps the stored
+         *     poster): the poster is `poster_media_id`.
+         *
+         *     Left out: deleted and cancelled sessions, sessions a bundle cannot
+         *     carry (listed in `skipped` with the reason), the open/closed flag of
+         *     a category, compat ids and the session's external ref. No buyer data
+         *     and no secret is read.
+         */
+        EventBundleReadResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event.
+             */
+            event_id: string;
+            /**
+             * @description The event's own status (`draft`, `published`, `cancelled` or `archived`). A draft event is readable.
+             * @example published
+             */
+            status: string;
+            /**
+             * Format: uuid
+             * @description Media id of the event's poster, null when it has none. The bundles carry no `bigPosterUrl`.
+             */
+            poster_media_id: string | null;
+            /** @description One importable bundle per session, oldest first. Never null. */
+            bundles: components["schemas"]["ImportEventBundleRequest"][];
+            /** @description The live sessions that have no bundle, with the reason. Never null. */
+            skipped: components["schemas"]["EventBundleSkipped"][];
+            /**
+             * @description What a bundle cannot say exactly (`event_bundle.time_not_representable`,
+             *     `event_bundle.venue_timezone_missing`, `event_bundle.promoter_archived`,
+             *     `event_bundle.chain_link_missing`). Never null.
+             */
+            warnings: components["schemas"]["ImportWarning"][];
+        };
+        /**
          * @description The compat-identifier set the caller must persist on its side
          *     (event-bundle spec §4): for source=arena these are the ids arena just
          *     minted, for source=bil24 they are the ids the payload supplied,
@@ -31543,6 +31653,85 @@ export interface operations {
                 };
             };
             /** @description Database or event queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getEventBundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The event's bundles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventBundleReadResponse"];
+                };
+            };
+            /** @description org_id or event_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found (`event.not_found`), already deleted, or owned by a different organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event_bundle.read_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;
