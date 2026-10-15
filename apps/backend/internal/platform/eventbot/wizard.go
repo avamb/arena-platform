@@ -30,7 +30,7 @@ import (
 
 // draftSchemaVersion is bumped when Draft changes shape; an older draft is
 // discarded rather than half-understood.
-const draftSchemaVersion = 3
+const draftSchemaVersion = 4
 
 // Steps of the wizard (Draft.Step).
 const (
@@ -73,12 +73,14 @@ const (
 	stTCatMore      = "t_cat_more"
 	stTDate         = "t_date"    // edited event: which date's categories change
 	stSTickets      = "s_tickets" // edited event, new date: same categories or its own
+	stSConfirm      = "s_confirm" // edited event, new date: its summary before "one more date?"
 	stXDescription  = "x_description"
 	stXCurrency     = "x_currency"
 	stXChannels     = "x_channels"
 	stXPublish      = "x_publish"
 	stSummary       = "summary"
 	stEditMenu      = "edit_menu"
+	stPreview       = "publish_preview" // edited event: what "Publish changes" sends
 	stCancel        = "cancel_confirm"
 	stDone          = "done"
 )
@@ -117,10 +119,15 @@ type Draft struct {
 	// Hints is what the poster said (wizard_hints.go): offered as buttons,
 	// never applied on its own.
 	Hints DraftHints `json:"hints,omitempty"`
-	// Changed lists the parts of an edited event the person has touched since
-	// the card opened ("name", "description", …): the edit card marks them and
-	// offers "Publish changes" only once there is something to publish.
+	// Changed lists the parts of an edited event that differ from what was
+	// loaded ("name", "description", "dates", "tickets", …). It is worked out
+	// again after every answer (refreshChanged, wizard_undo.go), so an undone
+	// change leaves it: the edit card marks these parts and offers "Publish
+	// changes" only while there is something to publish.
 	Changed []string `json:"changed,omitempty"`
+	// Loaded is the edited event as it was read from arena: what an undo on
+	// the card goes back to (wizard_undo.go). Nil for a new event.
+	Loaded *DraftLoaded `json:"loaded,omitempty"`
 	// Paused is set when the person opened the menu with the draft half
 	// way (menu_keyboard.go): a typed text or a poster is then not taken as
 	// an answer until a wizard button continues the draft.
@@ -176,6 +183,9 @@ type DraftSession struct {
 	// Dirty marks an existing date whose categories were changed in this
 	// edit: only such dates (and new ones) are sent again on save.
 	Dirty bool `json:"dirty,omitempty"`
+	// CopiedFrom names the date ("18.12.2026 18:00") whose categories a date
+	// added to an edited event copied; "" when it has categories of its own.
+	CopiedFrom string `json:"copied_from,omitempty"`
 }
 
 // DraftTickets is the ticket part of the draft.
@@ -627,14 +637,11 @@ func (d *Draft) nextSection(step string) {
 }
 
 // goHome shows the summary of a new event, or the edit card of an edited
-// one (marking the part that was just changed).
+// one (whose list of changes Apply works out again after every answer).
 func (d *Draft) goHome() {
 	if d.Mode != ModeEdit {
 		d.goTo(stSummary)
 		return
-	}
-	if d.Scratch.Edit != "" {
-		d.markChanged(d.Scratch.Edit)
 	}
 	d.Scratch.Edit = ""
 	d.Scratch.ReturnToSummary = false
@@ -642,15 +649,6 @@ func (d *Draft) goHome() {
 	d.Scratch.Work, d.Scratch.WorkFor, d.Scratch.WorkAll = nil, 0, false
 	d.History = nil
 	d.Step = stEditMenu
-}
-
-func (d *Draft) markChanged(field string) {
-	for _, c := range d.Changed {
-		if c == field {
-			return
-		}
-	}
-	d.Changed = append(d.Changed, field)
 }
 
 // startEdit opens one part of an edited event from the edit card.
@@ -673,9 +671,6 @@ func (d *Draft) cancelEdit() {
 				break // a finished date (place and categories chosen) stays
 			}
 			d.Sessions = d.Sessions[:n-1]
-		}
-		if len(d.Sessions) > d.Scratch.PrevSessions {
-			d.markChanged("dates")
 		}
 		d.Cur = len(d.Sessions) - 1
 		if d.Cur < 0 {
@@ -794,6 +789,10 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			return "", nil
 		}
 		if d.Step == stEditMenu || d.Step == stCancel {
+			return "", nil
+		}
+		if d.Step == stPreview {
+			d.Step = stEditMenu
 			return "", nil
 		}
 		d.back()
@@ -1471,7 +1470,22 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		d.goTo(stSummary)
 
 	case stEditMenu:
+		if key, ok := strings.CutPrefix(data, "e:undo:"); ok {
+			// One change is taken back: the part returns to what was loaded.
+			what := w.undoLabel(loc, d, key)
+			if d.undo(key) {
+				return t("bot.wz.edit_undone", map[string]any{"What": what}), nil
+			}
+			return "", nil
+		}
 		switch data {
+		case "publish":
+			// "Publish changes" first shows what will go to the site; only
+			// the preview's own button saves (wizard_bot.go).
+			if len(d.changes()) > 0 {
+				d.History = nil
+				d.Step = stPreview
+			}
 		case "e:name":
 			d.startEdit("name", stEvName)
 		case "e:desc":
@@ -1511,13 +1525,52 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 	case stSTickets:
 		// A date added to an edited event: a copy of the categories of the
 		// date before it (as new categories of this date), or its own.
+		if d.Cur < 1 || d.Cur >= len(d.Sessions) {
+			return "", nil
+		}
 		prev := d.ticketsOf(d.Cur - 1)
 		switch data {
 		case "st:same":
-			d.setDateTickets(d.Cur, withoutTierIDs(*prev))
-			d.goTo(stSMore)
+			// The copy keeps nothing that would end after the new date: a
+			// price change or a stage end later than it is dropped or moved
+			// onto the date, as the "own categories" questions would demand.
+			copied := withoutTierIDs(*prev)
+			if n := fitTicketsToDate(&copied, d.Sessions[d.Cur].Date); n > 0 {
+				note = t("bot.wz.s_tickets_trimmed", map[string]any{"Count": n, "Date": DisplayDate(d.Sessions[d.Cur].Date)})
+			}
+			d.setDateTickets(d.Cur, copied)
+			d.Sessions[d.Cur].CopiedFrom = dateLabel(d.Sessions[d.Cur-1])
+			d.goTo(stSConfirm)
 		case "st:own":
 			d.goTo(d.startTickets(d.Cur+1, *prev, false))
+		}
+
+	case stSConfirm:
+		// The new date, summed up: its own categories, other places, away
+		// with it, or on to "one more date?".
+		if d.Cur < 0 || d.Cur >= len(d.Sessions) {
+			return "", nil
+		}
+		s := &d.Sessions[d.Cur]
+		switch data {
+		case "sc:next":
+			d.goTo(stSMore)
+		case "sc:own":
+			d.goTo(d.startTickets(d.Cur+1, *d.ticketsOf(d.Cur), false))
+		case "sc:cap":
+			if d.ticketsOf(d.Cur).Mode != ModeParallel {
+				d.goTo(stSCapacity)
+			}
+		case "sc:drop":
+			if !d.canRemoveDate(d.Cur) {
+				return "", nil
+			}
+			when := dateLabel(*s)
+			d.removeDate(d.Cur)
+			d.History = nil
+			d.clearDateDialog()
+			d.Step = stSMore
+			return t("bot.wz.s_removed", map[string]any{"When": when}), nil
 		}
 
 	case stSummary:

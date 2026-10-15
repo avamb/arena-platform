@@ -831,16 +831,16 @@ other = "Elige la sesión cuyos precios y categorías quieres cambiar. O pulsa �
 other = "Para todas las sesiones"
 
 ["bot.wz.t_for_all"]
-other = "Para todas las sesiones del evento."
+other = "Categorías de todas las sesiones"
 
 ["bot.wz.t_for_date"]
-other = "Para la sesión {{.When}}."
+other = "Categorías de la sesión {{.When}}"
 
 ["bot.wz.ask_s_tickets"]
 other = "Categorías de la sesión {{.N}}.\nEn la sesión {{.Prev}}: {{.List}}\n¿Usas las mismas categorías o defines otras nuevas para esta sesión?"
 
 ["bot.wz.s_tickets_same_btn"]
-other = "Las mismas que {{.Prev}}"
+other = "Las mismas que en {{.Prev}}"
 
 ["bot.wz.s_tickets_own_btn"]
 other = "Definir nuevas"
@@ -876,7 +876,7 @@ other = "Estoy esperando un cartel como archivo o foto. Para escribir el nombre 
 other = "<b>✏️ Editando · {{.Title}}</b>\n"
 
 ["bot.wz.edit_home_btn"]
-other = "⬅ Volver al evento"
+other = "↩ Volver sin guardar"
 
 ["bot.wz.edit_field_name"]
 other = "Nombre"
@@ -935,9 +935,6 @@ other = "Quitar la descripción"
 ["bot.wz.edit_card_title"]
 other = "<b>✏️ Editando el evento</b>\n"
 
-["bot.wz.edit_card_changed"]
-other = "✎ Cambiado: {{.List}}. Nada de esto está aún en la web: pulsa «Publicar cambios» cuando todo esté listo."
-
 ["bot.wz.edit_card_clean"]
 other = "Elige qué cambiar. Cada cambio tiene su propia pantalla corta."
 
@@ -969,7 +966,7 @@ other = "Precios y categorías"
 other = "✅ Publicar cambios"
 
 ["bot.wz.edit_exit_btn"]
-other = "Salir"
+other = "✖ Salir sin publicar"
 
 ["bot.wz.ask_t_cat_last"]
 other = "¿«{{.Name}}» es la última categoría o le seguirá otra? La última se vende hasta que empieza la sesión."
@@ -999,7 +996,7 @@ other = "¿Salir de la edición? Los cambios aún no están publicados. Puedes c
 other = "▶ Continuar"
 
 ["bot.wz.cancel_keep_btn"]
-other = "💾 Guardar y salir"
+other = "💾 Conservar el borrador"
 
 ["bot.wz.cancel_drop_btn"]
 other = "🗑 Eliminar el borrador"
@@ -3470,3 +3467,143 @@ other = "Listo. Todas las sesiones del centro de eventos web están cerradas. Un
 
 ["bot.web.signout_failed"]
 other = "No pudimos cerrar las sesiones. Inténtalo de nuevo dentro de un minuto."
+
+# U-5b: undo, preview and the new date's summary on the edit card
+
+["bot.wz.edit_undone"]
+other = "↩ Deshecho: {{.What}}. El resto del borrador no cambia."
+
+["bot.wz.edit_undo_btn"]
+other = "↩ Deshacer: {{.What}}"
+
+["bot.wz.edit_undo_date"]
+other = "nueva fecha {{.When}}"
+
+["bot.wz.edit_undo_tickets"]
+other = "categorías de {{.When}}"
+
+["bot.wz.edit_card_changes"]
+other = "<b>✎ Cambiado:</b>\n{{.List}}"
+
+["bot.wz.edit_card_hint"]
+other = "Los cambios no están en la web hasta que pulses «Publicar cambios». Para deshacer un cambio, pulsa su botón «↩ Deshacer». Para deshacerlo todo, pulsa «Salir sin publicar»."
+
+["bot.wz.edit_card_partly_saved"]
+other = "Parte de los cambios ya está en la web: el guardado se detuvo a medias. Pulsa «Publicar cambios» para enviar el resto."
+
+["bot.wz.edit_to_card_btn"]
+other = "⬅ A la ficha del evento"
+
+["bot.wz.edit_chg_none"]
+other = "ninguno"
+
+["bot.wz.edit_chg_field"]
+other = "{{.What}}: {{.Old}} → {{.New}}"
+
+["bot.wz.edit_chg_name"]
+other = "Nombre: «{{.Old}}» → «{{.New}}»"
+
+["bot.wz.edit_chg_description"]
+other = "Descripción: texto nuevo"
+
+["bot.wz.edit_chg_description_removed"]
+other = "Descripción: eliminada"
+
+["bot.wz.edit_chg_poster"]
+other = "Cartel: uno nuevo"
+
+["bot.wz.edit_chg_date"]
+other = "Nueva fecha {{.When}} · {{.Venue}}, {{.Capacity}} plazas. {{.List}}"
+
+["bot.wz.edit_chg_tickets"]
+other = "Categorías de la sesión {{.When}}: {{.List}}"
+
+["bot.wz.cancel_draft_empty"]
+other = "El borrador no tiene cambios."
+
+["bot.wz.cancel_draft_has"]
+other = "<b>El borrador contiene:</b>\n{{.List}}"
+
+["bot.wz.summary_no_categories"]
+other = "sin categorías"
+
+["bot.wz.t_for_one"]
+other = "Categorías"
+
+["bot.wz.t_progress"]
+other = "<b>{{.What}} · paso {{.N}} de {{.Total}}</b>"
+
+["bot.wz.t_nothing_yet"]
+other = "Nada cambia hasta que respondas la última pregunta."
+
+["bot.wz.t_date_all_note"]
+other = "«Para todas las sesiones» da a todas la forma de venta de la primera: «{{.Value}}»."
+
+["bot.wz.s_tickets_trimmed"]
+other = "Los cambios de precio y finales de etapa posteriores al {{.Date}} no encajan en esta fecha. Los quité o los moví al {{.Date}} ({{.Count}})."
+
+["bot.wz.s_removed"]
+other = "Quité la fecha {{.When}} del borrador."
+
+["bot.wz.s_confirm"]
+other = "<b>Fecha {{.N}}</b>: {{.When}}, {{.Venue}}, {{.City}}, {{.Capacity}} plazas.\nCategorías: {{.List}}\n\n¿Todo correcto? Pulsa «Siguiente». Llega a la web solo después de «Publicar cambios»."
+
+["bot.wz.s_confirm_same"]
+other = "como en la sesión {{.Prev}}:"
+
+["bot.wz.s_confirm_own_btn"]
+other = "✏️ Definir sus propias categorías"
+
+["bot.wz.s_confirm_cap_btn"]
+other = "🔢 Cambiar las plazas"
+
+["bot.wz.s_confirm_drop_btn"]
+other = "🗑 Quitar esta fecha"
+
+["bot.wz.s_confirm_next_btn"]
+other = "Siguiente →"
+
+["bot.wz.preview_title"]
+other = "<b>Lo que va a la web</b>\n"
+
+["bot.wz.preview_new_date"]
+other = "Nueva fecha {{.When}} · {{.Venue}}, {{.Capacity}} plazas. {{.List}}"
+
+["bot.wz.preview_date_tickets"]
+other = "Sesión {{.When}}, categorías nuevas: {{.List}}"
+
+["bot.wz.preview_date_resent"]
+other = "La sesión {{.When}} se envía de nuevo, sus categorías no cambian."
+
+["bot.wz.preview_unchanged"]
+other = "Sin cambios: {{.List}}."
+
+["bot.wz.preview_already"]
+other = "Ya en la web: {{.List}}."
+
+["bot.wz.preview_no_categories"]
+other = "La sesión {{.When}} no tiene categorías. No recibe la moneda nueva. Dale categorías con «Precios y categorías»."
+
+["bot.wz.preview_warn_closed"]
+other = "Sesión {{.When}}: la categoría {{.Old}} quedará cerrada. Las entradas vendidas siguen siendo válidas."
+
+["bot.wz.preview_warn_renamed"]
+other = "Sesión {{.When}}: la categoría {{.Old}} quedará cerrada y en su lugar se creará {{.New}}. Un nombre nuevo es una categoría nueva. Las entradas vendidas siguen siendo válidas."
+
+["bot.wz.preview_warn_closed_many"]
+other = "Sesión {{.When}}: las categorías {{.Old}} quedarán cerradas. Las entradas vendidas siguen siendo válidas."
+
+["bot.wz.preview_warn_renamed_many"]
+other = "Sesión {{.When}}: las categorías {{.Old}} quedarán cerradas. En su lugar habrá otras nuevas: {{.New}}. Un nombre nuevo es una categoría nueva. Las entradas vendidas siguen siendo válidas."
+
+["bot.wz.preview_footer"]
+other = "Pulsa «Publicar» para enviarlo. Las entradas vendidas no cambian: un precio nuevo se aplica a las próximas compras."
+
+["bot.wz.preview_publish_btn"]
+other = "✅ Publicar"
+
+["bot.wz.preview_back_btn"]
+other = "← Volver a la ficha"
+
+["bot.wz.warn_tier_not_in_payload"]
+other = "Las categorías que no están en la lista nueva quedaron cerradas. Las entradas vendidas siguen siendo válidas."

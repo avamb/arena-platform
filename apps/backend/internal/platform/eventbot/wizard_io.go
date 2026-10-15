@@ -268,6 +268,8 @@ func (w *Wizard) warningText(loc, code string) string {
 		return w.texts.T(loc, "bot.wz.warn_publish_skipped", nil)
 	case "poster_skipped":
 		return w.texts.T(loc, "bot.wz.warn_poster_skipped", nil)
+	case "tier_not_in_payload":
+		return w.texts.T(loc, "bot.wz.warn_tier_not_in_payload", nil)
 	}
 	return ""
 }

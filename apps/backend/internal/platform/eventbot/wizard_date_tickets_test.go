@@ -114,8 +114,8 @@ func TestDateTickets_AnotherDateWithItsOwnCategories(t *testing.T) {
 	}
 	r.press("st:own", stTCatName)
 	screen, _ = r.w.Render(context.Background(), r.ws, d)
-	if !strings.Contains(screen.Text, "Для сеанса 18.12.2026 18:00") {
-		t.Fatalf("the ticket question does not say which date: %q", screen.Text)
+	if !strings.Contains(screen.Text, "Категории сеанса 18.12.2026 18:00 · шаг 1 из 4") || !strings.Contains(screen.Text, "Ничего не меняется") {
+		t.Fatalf("the ticket question does not say which date and which step: %q", screen.Text)
 	}
 	r.text("Ребёнок 4–9 лет + взрослый", stTCatPrice)
 	r.text("50", stTCatPlaces)
@@ -124,10 +124,22 @@ func TestDateTickets_AnotherDateWithItsOwnCategories(t *testing.T) {
 	r.text("Дополнительный детский", stTCatPrice)
 	r.text("35", stTCatPlaces)
 	r.text("3", stTCatMore)
-	note := r.press("done", stSMore)
-	if !strings.Contains(note, "Ребёнок 4–9 лет") {
-		t.Fatalf("ack = %q", note)
+	r.press("done", stSConfirm)
+	// The new date is summed up before "one more date?".
+	screen, _ = r.w.Render(context.Background(), r.ws, d)
+	if !strings.Contains(screen.Text, "Сеанс 3") || !strings.Contains(screen.Text, "18.12.2026 18:00") || !strings.Contains(screen.Text, "Ребёнок 4–9 лет") ||
+		strings.Contains(screen.Text, "как на сеансе") {
+		t.Fatalf("new date summary = %q", screen.Text)
 	}
+	for _, want := range []string{"sc:own", "sc:drop", "sc:next"} {
+		if !strings.Contains(buttonsData(screen), want) {
+			t.Fatalf("summary buttons lack %s: %s", want, buttonsData(screen))
+		}
+	}
+	if strings.Contains(buttonsData(screen), "sc:cap") {
+		t.Fatal("categories sold at once have their own places: no 'change the places' button")
+	}
+	r.press("sc:next", stSMore)
 	r.press("next", stEditMenu)
 
 	s3 := d.Sessions[2]
@@ -168,7 +180,7 @@ func TestDateTickets_AnotherDateSameAsThePrevious(t *testing.T) {
 	r.text("18.12.2026", stSTime)
 	r.text("18:00", stSSame)
 	r.press("same", stSTickets)
-	r.press("st:same", stSMore)
+	r.press("st:same", stSConfirm)
 	s3 := d.Sessions[2]
 	if s3.Tickets == nil || len(s3.Tickets.Categories) != 2 || s3.Tickets.Categories[0].Name != "Ребёнок от 6 лет + взрослый" || s3.Tickets.Categories[0].TierID != "" || s3.Capacity != 14 {
 		t.Fatalf("copied date = %+v %+v", s3, s3.Tickets)
@@ -280,7 +292,7 @@ func TestDateTickets_SendPlan(t *testing.T) {
 		t.Fatalf("name change plan = %v", got)
 	}
 	r.press("e:currency", stXCurrency)
-	r.press("cur:CZK", stEditMenu)
+	r.press("cur:EUR", stEditMenu)
 	if got := d.sendPlan(); !got[0] || !got[1] {
 		t.Fatalf("currency change plan = %v", got)
 	}

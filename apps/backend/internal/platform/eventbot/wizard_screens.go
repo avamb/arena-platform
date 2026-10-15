@@ -36,7 +36,13 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		if d.Mode == ModeEdit && d.Scratch.Edit != "" {
 			// Changing one part of an event: the way out is the event's card,
 			// not "cancel" (which would read as throwing the whole edit away).
-			last = append(last, btn("bot.wz.edit_home_btn", "e:home"))
+			// Inside a question it leaves the part as it was; once a new date
+			// is finished (its summary, "one more date?") the date stays.
+			key := "bot.wz.edit_home_btn"
+			if d.Scratch.Edit == "dates" && (d.Step == stSConfirm || d.Step == stSMore) {
+				key = "bot.wz.edit_to_card_btn"
+			}
+			last = append(last, btn(key, "e:home"))
 		} else {
 			last = append(last, btn("bot.wz.cancel_btn", "cancel"))
 		}
@@ -363,6 +369,9 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 				[]Button{btn("bot.wz.s_tickets_own_btn", "st:own")},
 			)}, nil
 
+	case stSConfirm:
+		return w.confirmDateScreen(loc, d, header(2, "bot.wz.title_when"), nav), nil
+
 	case stTDate:
 		rows := [][]Button{}
 		for i, s := range d.Sessions {
@@ -377,7 +386,10 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		if d.ticketsDiffer() {
 			now = w.ticketsByDate(loc, d)
 		}
-		return Screen{Text: clipMessage(header(3, "bot.wz.title_tickets")+now+"\n\n"+t("bot.wz.ask_t_date", nil), maxMessageRunes), Buttons: nav(rows...)}, nil
+		// "For all dates" takes the first date's way of selling (one category,
+		// at once, one after another) for every date: say so before the press.
+		allNote := t("bot.wz.t_date_all_note", map[string]any{"Value": w.modeLabel(loc, d.ticketsOf(0).Mode)})
+		return Screen{Text: clipMessage(header(3, "bot.wz.title_tickets")+now+"\n\n"+t("bot.wz.ask_t_date", nil)+"\n"+allNote, maxMessageRunes), Buttons: nav(rows...)}, nil
 
 	case stTMode:
 		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_mode", nil),
@@ -487,23 +499,33 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 
 	case stEditMenu:
 		text := t("bot.wz.edit_card_title", nil) + w.Summary(loc, d)
+		changes := d.changes()
+		marked := map[string]bool{}
+		for _, c := range changes {
+			marked[c.Field] = true
+		}
 		mark := func(field, key string) string {
-			label := t(key, nil)
-			for _, c := range d.Changed {
-				if c == field {
-					return "✎ " + label
-				}
+			if marked[field] {
+				return "✎ " + t(key, nil)
 			}
-			return label
+			return t(key, nil)
 		}
 		rows := [][]Button{}
-		if len(d.Changed) > 0 {
-			names := make([]string, 0, len(d.Changed))
-			for _, c := range d.Changed {
-				names = append(names, t("bot.wz.edit_field_"+c, nil))
+		if len(changes) > 0 {
+			// Each change on a line of its own, with what it was and what it
+			// becomes, and a button that takes just that one back.
+			text += "\n\n" + t("bot.wz.edit_card_changes", map[string]any{"List": strings.Join(w.changeLines(loc, ws.OrgName, d), "\n")})
+			if d.partlySaved() {
+				text += "\n\n" + t("bot.wz.edit_card_partly_saved", nil)
 			}
-			text += "\n\n" + t("bot.wz.edit_card_changed", map[string]any{"List": strings.Join(names, ", ")})
+			text += "\n\n" + t("bot.wz.edit_card_hint", nil)
 			rows = append(rows, []Button{btn("bot.wz.edit_publish_btn", "publish")})
+			if d.canUndo() {
+				for _, c := range changes {
+					label := t("bot.wz.edit_undo_btn", map[string]any{"What": w.undoLabel(loc, d, c.Key)})
+					rows = append(rows, []Button{{Label: truncate(label, 56), Data: "e:undo:" + c.Key}})
+				}
+			}
 		} else {
 			text += "\n\n" + t("bot.wz.edit_card_clean", nil)
 		}
@@ -520,15 +542,27 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		return Screen{Text: clipMessage(text, maxMessageRunes), Buttons: rows}, nil
 
 	case stCancel:
-		ask, drop := "bot.wz.cancel_ask_create", "bot.wz.cancel_drop_btn"
 		if d.Mode == ModeEdit {
-			ask, drop = "bot.wz.cancel_ask_edit", "bot.wz.cancel_drop_edit_btn"
+			// Leaving an edit says what the draft holds, so "keep" and
+			// "delete" are about something the person can see.
+			text := t("bot.wz.cancel_ask_edit", nil) + "\n\n" + t("bot.wz.cancel_draft_empty", nil)
+			if lines := w.changeLines(loc, ws.OrgName, d); len(lines) > 0 {
+				text = t("bot.wz.cancel_ask_edit", nil) + "\n\n" + t("bot.wz.cancel_draft_has", map[string]any{"List": strings.Join(lines, "\n")})
+			}
+			return Screen{Text: clipMessage(text, maxMessageRunes), Buttons: [][]Button{
+				{btn("bot.wz.cancel_keep_btn", "cancel:keep")},
+				{btn("bot.wz.cancel_drop_edit_btn", "cancel:drop")},
+				{btn("bot.wz.cancel_continue_btn", "cancel:no")},
+			}}, nil
 		}
-		return Screen{Text: t(ask, nil), Buttons: [][]Button{
+		return Screen{Text: t("bot.wz.cancel_ask_create", nil), Buttons: [][]Button{
 			{btn("bot.wz.cancel_continue_btn", "cancel:no")},
 			{btn("bot.wz.cancel_keep_btn", "cancel:keep")},
-			{btn(drop, "cancel:drop")},
+			{btn("bot.wz.cancel_drop_btn", "cancel:drop")},
 		}}, nil
+
+	case stPreview:
+		return w.previewScreen(loc, ws.OrgName, d), nil
 
 	case stSummary:
 		text := header(5, "bot.wz.title_summary") + w.Summary(loc, d) + "\n\n" + t("bot.wz.summary_footer", nil)
@@ -603,6 +637,10 @@ func (w *Wizard) Summary(loc string, d *Draft) string {
 // …" or "In stages: …".
 func (w *Wizard) ticketsText(loc, cur string, tk *DraftTickets) string {
 	t := func(key string, data map[string]any) string { return w.texts.T(loc, key, data) }
+	if len(tk.Categories) == 0 {
+		// A date read back with no category yet sells nothing.
+		return t("bot.wz.summary_no_categories", nil)
+	}
 	switch tk.Mode {
 	case ModeSingle:
 		if len(tk.Categories) > 0 {
@@ -632,20 +670,70 @@ func (w *Wizard) ticketsByDate(loc string, d *Draft) string {
 	return strings.Join(lines, "\n")
 }
 
-// ticketsForLine names, on a ticket question of an edited event, which date
-// the categories are for (or that they are for every date); an event with
-// one date needs no such line.
+// ticketsForLine heads a ticket question of an edited event: which date the
+// categories are for (or every date), where the person is among the
+// questions of one category ("step 2 of 4"), and that nothing changes until
+// the last of them is answered.
 func (w *Wizard) ticketsForLine(loc string, d *Draft) string {
-	if d.Scratch.Work == nil || !isTicketStep(d.Step) || len(d.Sessions) < 2 {
+	if d.Scratch.Work == nil || !isTicketStep(d.Step) {
 		return ""
 	}
-	if d.Scratch.WorkAll {
-		return w.texts.T(loc, "bot.wz.t_for_all", nil) + "\n"
+	t := func(key string, data map[string]any) string { return w.texts.T(loc, key, data) }
+	what := t("bot.wz.t_for_one", nil)
+	switch i := d.Scratch.WorkFor - 1; {
+	case d.Scratch.WorkAll:
+		what = t("bot.wz.t_for_all", nil)
+	case len(d.Sessions) > 1 && i >= 0 && i < len(d.Sessions):
+		what = t("bot.wz.t_for_date", map[string]any{"When": dateLabel(d.Sessions[i])})
 	}
-	if i := d.Scratch.WorkFor - 1; i >= 0 && i < len(d.Sessions) {
-		return w.texts.T(loc, "bot.wz.t_for_date", map[string]any{"When": dateLabel(d.Sessions[i])}) + "\n"
+	n, total := ticketStepNo(d.tk().Mode, d.Step)
+	return t("bot.wz.t_progress", map[string]any{"What": what, "N": n, "Total": total}) + "\n" +
+		t("bot.wz.t_nothing_yet", nil) + "\n"
+}
+
+// ticketStepNo places a ticket question among the questions of one category:
+// one category asks its name, its price and its price changes; categories
+// sold at once ask name, price, places and "another?"; categories sold one
+// after another ask name, price and where the category ends.
+func ticketStepNo(mode, step string) (n, total int) {
+	switch mode {
+	case ModeSingle:
+		switch step {
+		case stTName:
+			return 1, 3
+		case stTPrice:
+			return 2, 3
+		}
+		return 3, 3
+	case ModeParallel:
+		switch step {
+		case stTCatName:
+			return 1, 4
+		case stTCatPrice:
+			return 2, 4
+		case stTCatPlaces:
+			return 3, 4
+		}
+		return 4, 4
 	}
-	return ""
+	switch step {
+	case stTCatName:
+		return 1, 3
+	case stTCatPrice:
+		return 2, 3
+	}
+	return 3, 3
+}
+
+// modeLabel names a way of selling: one category, at once, one after another.
+func (w *Wizard) modeLabel(loc, mode string) string {
+	switch mode {
+	case ModeParallel:
+		return w.texts.T(loc, "bot.wz.t_kind_parallel", nil)
+	case ModeSequence:
+		return w.texts.T(loc, "bot.wz.t_kind_sequence", nil)
+	}
+	return w.texts.T(loc, "bot.wz.t_mode_single", nil)
 }
 
 // isTicketStep reports whether the step is one of the ticket questions.

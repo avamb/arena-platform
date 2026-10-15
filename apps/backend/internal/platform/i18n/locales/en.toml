@@ -976,10 +976,10 @@ other = "Choose the date whose prices and categories you want to change. Or pres
 other = "For all dates"
 
 ["bot.wz.t_for_all"]
-other = "For all dates of the event."
+other = "Categories of all dates"
 
 ["bot.wz.t_for_date"]
-other = "For the date {{.When}}."
+other = "Categories of {{.When}}"
 
 ["bot.wz.ask_s_tickets"]
 other = "Categories of date {{.N}}.\nOn {{.Prev}}: {{.List}}\nUse the same categories, or set new ones for this date?"
@@ -1021,7 +1021,7 @@ other = "I am waiting for a poster as a file or photo. To type the name instead,
 other = "<b>✏️ Editing · {{.Title}}</b>\n"
 
 ["bot.wz.edit_home_btn"]
-other = "⬅ Back to the event"
+other = "↩ Back, save nothing"
 
 ["bot.wz.edit_field_name"]
 other = "Name"
@@ -1080,9 +1080,6 @@ other = "Remove the description"
 ["bot.wz.edit_card_title"]
 other = "<b>✏️ Editing the event</b>\n"
 
-["bot.wz.edit_card_changed"]
-other = "✎ Changed: {{.List}}. None of it is on the site yet: press “Publish changes” when everything is ready."
-
 ["bot.wz.edit_card_clean"]
 other = "Choose what to change. Each change is a short screen of its own."
 
@@ -1114,7 +1111,7 @@ other = "Prices and categories"
 other = "✅ Publish changes"
 
 ["bot.wz.edit_exit_btn"]
-other = "Exit"
+other = "✖ Exit without publishing"
 
 ["bot.wz.ask_t_cat_last"]
 other = "Is “{{.Name}}” the last category, or will another follow? The last one sells until the session starts."
@@ -1144,7 +1141,7 @@ other = "Leave editing? The changes are not published yet. You can keep them as 
 other = "▶ Continue"
 
 ["bot.wz.cancel_keep_btn"]
-other = "💾 Keep and leave"
+other = "💾 Keep the draft"
 
 ["bot.wz.cancel_drop_btn"]
 other = "🗑 Delete the draft"
@@ -3615,3 +3612,143 @@ other = "Done. We closed every sign-in to the web event center. A page that is a
 
 ["bot.web.signout_failed"]
 other = "We could not close the sign-ins. Please try again in a minute."
+
+# U-5b: undo, preview and the new date's summary on the edit card
+
+["bot.wz.edit_undone"]
+other = "↩ Undone: {{.What}}. The rest of the draft stays as it was."
+
+["bot.wz.edit_undo_btn"]
+other = "↩ Undo: {{.What}}"
+
+["bot.wz.edit_undo_date"]
+other = "new date {{.When}}"
+
+["bot.wz.edit_undo_tickets"]
+other = "categories of {{.When}}"
+
+["bot.wz.edit_card_changes"]
+other = "<b>✎ Changed:</b>\n{{.List}}"
+
+["bot.wz.edit_card_hint"]
+other = "The changes are not on the site until you press “Publish changes”. To undo one change, press its “↩ Undo” button. To undo everything, press “Exit without publishing”."
+
+["bot.wz.edit_card_partly_saved"]
+other = "Part of the changes is on the site already: the save stopped half way. Press “Publish changes” to send the rest."
+
+["bot.wz.edit_to_card_btn"]
+other = "⬅ To the event card"
+
+["bot.wz.edit_chg_none"]
+other = "none"
+
+["bot.wz.edit_chg_field"]
+other = "{{.What}}: {{.Old}} → {{.New}}"
+
+["bot.wz.edit_chg_name"]
+other = "Name: “{{.Old}}” → “{{.New}}”"
+
+["bot.wz.edit_chg_description"]
+other = "Description: new text"
+
+["bot.wz.edit_chg_description_removed"]
+other = "Description: removed"
+
+["bot.wz.edit_chg_poster"]
+other = "Poster: a new one"
+
+["bot.wz.edit_chg_date"]
+other = "New date {{.When}} · {{.Venue}}, {{.Capacity}} places. {{.List}}"
+
+["bot.wz.edit_chg_tickets"]
+other = "Categories of {{.When}}: {{.List}}"
+
+["bot.wz.cancel_draft_empty"]
+other = "The draft has no changes."
+
+["bot.wz.cancel_draft_has"]
+other = "<b>The draft holds:</b>\n{{.List}}"
+
+["bot.wz.summary_no_categories"]
+other = "no categories"
+
+["bot.wz.t_for_one"]
+other = "Categories"
+
+["bot.wz.t_progress"]
+other = "<b>{{.What}} · step {{.N}} of {{.Total}}</b>"
+
+["bot.wz.t_nothing_yet"]
+other = "Nothing changes until you answer the last question."
+
+["bot.wz.t_date_all_note"]
+other = "“For all dates” gives every date the way the first date sells: “{{.Value}}”."
+
+["bot.wz.s_tickets_trimmed"]
+other = "Price changes and stage ends after {{.Date}} do not fit this date. I removed them or moved them to {{.Date}} ({{.Count}})."
+
+["bot.wz.s_removed"]
+other = "I removed the date {{.When}} from the draft."
+
+["bot.wz.s_confirm"]
+other = "<b>Date {{.N}}</b>: {{.When}}, {{.Venue}}, {{.City}}, {{.Capacity}} places.\nCategories: {{.List}}\n\nAll correct? Press “Next”. It reaches the site only after “Publish changes”."
+
+["bot.wz.s_confirm_same"]
+other = "as on {{.Prev}}:"
+
+["bot.wz.s_confirm_own_btn"]
+other = "✏️ Set its own categories"
+
+["bot.wz.s_confirm_cap_btn"]
+other = "🔢 Change the places"
+
+["bot.wz.s_confirm_drop_btn"]
+other = "🗑 Remove this date"
+
+["bot.wz.s_confirm_next_btn"]
+other = "Next →"
+
+["bot.wz.preview_title"]
+other = "<b>What goes to the site</b>\n"
+
+["bot.wz.preview_new_date"]
+other = "New date {{.When}} · {{.Venue}}, {{.Capacity}} places. {{.List}}"
+
+["bot.wz.preview_date_tickets"]
+other = "{{.When}}, new categories: {{.List}}"
+
+["bot.wz.preview_date_resent"]
+other = "The date {{.When}} goes again, its categories stay the same."
+
+["bot.wz.preview_unchanged"]
+other = "No change: {{.List}}."
+
+["bot.wz.preview_already"]
+other = "On the site already: {{.List}}."
+
+["bot.wz.preview_no_categories"]
+other = "The date {{.When}} has no categories. It does not get the new currency. Give it categories with “Prices and categories”."
+
+["bot.wz.preview_warn_closed"]
+other = "{{.When}}: Arena closes the category {{.Old}}. Tickets sold in it stay valid."
+
+["bot.wz.preview_warn_renamed"]
+other = "{{.When}}: Arena closes the category {{.Old}} and opens {{.New}} in its place. A new name makes a new category. Tickets sold stay valid."
+
+["bot.wz.preview_warn_closed_many"]
+other = "{{.When}}: Arena closes the categories {{.Old}}. Tickets sold in them stay valid."
+
+["bot.wz.preview_warn_renamed_many"]
+other = "{{.When}}: Arena closes the categories {{.Old}}. New ones open in their place: {{.New}}. A new name makes a new category. Tickets sold stay valid."
+
+["bot.wz.preview_footer"]
+other = "Press “Publish” to send it. Sold tickets do not change: a new price applies to the next purchases."
+
+["bot.wz.preview_publish_btn"]
+other = "✅ Publish"
+
+["bot.wz.preview_back_btn"]
+other = "← Back to the card"
+
+["bot.wz.warn_tier_not_in_payload"]
+other = "Arena closed the categories that are not in the new list. Tickets sold in them stay valid."

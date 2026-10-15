@@ -86,13 +86,13 @@ func (d *Draft) startTickets(n int, src DraftTickets, carry bool) string {
 }
 
 // ticketsDone ends the ticket questions: an edited event writes the working
-// copy to its date(s) and returns to "one more date?" (a new date) or to the
+// copy to its date(s) and shows the new date's summary (a new date) or the
 // card; a new event walks on to the next section.
 func (d *Draft) ticketsDone() {
 	if d.Scratch.Work != nil {
 		d.commitTickets()
 		if d.Scratch.Edit == "dates" {
-			d.goTo(stSMore)
+			d.goTo(stSConfirm)
 			return
 		}
 	}
@@ -135,6 +135,12 @@ func (d *Draft) setDateTickets(i int, t DraftTickets) {
 	}
 	s.Tickets = &t
 	s.Dirty = true
+	s.CopiedFrom = ""
+	if i < len(d.Saved.Sessions) {
+		// A date changed after a save that stopped half way is sent again,
+		// with what it has now.
+		d.Saved.Sessions[i].Done = false
+	}
 	if t.Mode == ModeParallel {
 		if n := placesOf(t); n > 0 {
 			s.Capacity = n
@@ -176,14 +182,48 @@ func placesOf(t DraftTickets) int {
 }
 
 // afterSessionStep is the question after a date's place and capacity: a date
-// added to an edited event first asks about its categories; otherwise "one
-// more date?".
+// added to an edited event first asks about its categories (or, when it has
+// them already and only its places changed, shows its summary again);
+// otherwise "one more date?".
 func (d *Draft) afterSessionStep() string {
 	if d.Mode == ModeEdit && d.Cur > 0 && d.Cur < len(d.Sessions) && d.Sessions[d.Cur].SessionID == "" {
+		if d.Sessions[d.Cur].Tickets != nil {
+			return stSConfirm
+		}
 		return stSTickets
 	}
 	return stSMore
 }
+
+// fitTicketsToDate makes copied categories fit a date: a price change that
+// starts after the date is dropped, and a stage that would sell past the date
+// ends on it (the same last day the "own categories" questions allow). It
+// returns how many were changed.
+func fitTicketsToDate(t *DraftTickets, date string) int {
+	if date == "" {
+		return 0
+	}
+	n := 0
+	kept := t.Schedule[:0]
+	for _, s := range t.Schedule {
+		if s.From > date {
+			n++
+			continue
+		}
+		kept = append(kept, s)
+	}
+	t.Schedule = kept
+	for i := range t.Categories {
+		if c := &t.Categories[i]; c.SellUntil != "" && c.SellUntil > date {
+			c.SellUntil = date
+			n++
+		}
+	}
+	return n
+}
+
+// hasCategories reports whether a ticket part sells anything.
+func hasCategories(t DraftTickets) bool { return len(t.Categories) > 0 }
 
 // sameTicketsShape reports whether two dates sell the same categories (by
 // name, price, places and ends — tier ids aside), which is when the card
@@ -221,11 +261,12 @@ func (d *Draft) ticketsDiffer() bool {
 
 // sendPlan says which dates the save posts. A new event posts every date. An
 // edited event posts a date it adds and a date whose categories changed; a
-// changed currency touches every date (it is stored per date); any other
-// change of the event itself (name, poster, …) rides on the first date. A
-// date nobody touched is not posted again: a re-import would close any of
-// its categories the bundle cannot describe and bump its seat version for
-// nothing.
+// changed currency touches every date that sells something (it is stored per
+// date — a date without categories is left alone, a bundle with none would
+// describe nothing); any other change of the event itself (name, poster, …)
+// rides on the first date. A date nobody touched is not posted again: a
+// re-import would close any of its categories the bundle cannot describe and
+// bump its seat version for nothing.
 func (d *Draft) sendPlan() []bool {
 	out := make([]bool, len(d.Sessions))
 	if d.Mode != ModeEdit {
@@ -235,8 +276,9 @@ func (d *Draft) sendPlan() []bool {
 		return out
 	}
 	anything := false
+	currency := contains(d.Changed, "currency")
 	for i, s := range d.Sessions {
-		if s.SessionID == "" || s.Dirty || contains(d.Changed, "currency") {
+		if s.SessionID == "" || s.Dirty || (currency && hasCategories(*d.ticketsOf(i))) {
 			out[i] = true
 			anything = true
 		}

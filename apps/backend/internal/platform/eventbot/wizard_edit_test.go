@@ -163,7 +163,7 @@ func TestEdit_BackToTheEventRestoresWhatWasHalfEdited(t *testing.T) {
 	r.text("20.12.2026", stSTime)
 	r.press("default", stSSame)
 	r.press("same", stSTickets)
-	r.press("st:same", stSMore)
+	r.press("st:same", stSConfirm)
 	r.press("e:home", stEditMenu)
 	if len(d.Sessions) != 2 || !contains(d.Changed, "dates") {
 		t.Fatalf("finished date: sessions=%d changed=%v", len(d.Sessions), d.Changed)
@@ -196,11 +196,19 @@ func TestEdit_EveryScreenRendersInBothLocales(t *testing.T) {
 		}
 		d.Scratch = DraftScratch{}
 		d.Step = stEditMenu
-		d.Changed = []string{"name", "tickets"}
-		screen, err := r.w.Render(context.Background(), r.ws, d)
-		if err != nil || strings.Contains(screen.Text, "<no value>") || !strings.Contains(fmt.Sprint(screen.Buttons), "publish") {
-			t.Fatalf("%s card: %q %v %v", loc, screen.Text, screen.Buttons, err)
+		d.Event.Name, d.Event.Age = "Другое имя", "18+"
+		d.refreshChanged()
+		for _, st := range []string{stEditMenu, stPreview, stCancel} {
+			d.Step = st
+			screen, err := r.w.Render(context.Background(), r.ws, d)
+			if err != nil || strings.Contains(screen.Text, "<no value>") || strings.Contains(screen.Text, "bot.wz.") {
+				t.Fatalf("%s/%s: %q %v %v", loc, st, screen.Text, screen.Buttons, err)
+			}
+			if st == stEditMenu && (!strings.Contains(fmt.Sprint(screen.Buttons), "publish") || !strings.Contains(fmt.Sprint(screen.Buttons), "e:undo:age")) {
+				t.Fatalf("%s card: %q %v", loc, screen.Text, screen.Buttons)
+			}
 		}
+		d.Step = stEditMenu
 	}
 }
 
