@@ -8005,10 +8005,13 @@ export interface components {
              * @description Polymorphic owner kind. Future migrations widen the
              *     enumeration as new media-bearing surfaces appear.
              *     `seating_plan_svg` (migration 0078) carries the authoring SVG
-             *     referenced by a seating_plan_versions row.
+             *     referenced by a seating_plan_versions row. `session_poster`
+             *     is a session-level poster. `event_gallery` and `event_report`
+             *     (migration 0153) are photos of an event page gallery and of its
+             *     photo report.
              * @enum {string}
              */
-            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg";
+            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report";
             /**
              * Format: uuid
              * @description UUID of the owning row in the table implied by
@@ -39799,7 +39802,7 @@ export interface operations {
                     /** Format: binary */
                     file: string;
                     /** @enum {string} */
-                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg";
+                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report";
                     /** Format: uuid */
                     owner_id?: string;
                     /** Format: uuid */

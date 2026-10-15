@@ -1,0 +1,1098 @@
+<title>Автораскладка мест</title>
+<style>
+/* Layout: one phone-width column. On wide screens a state panel sits left of a 390 px phone frame. */
+:root {
+  --bg: #f4f4f2;
+  --surface: #ffffff;
+  --surface-2: #ececea;
+  --surface-3: #fafaf8;
+  --line: #e2e2de;
+  --line-strong: #d6d6d1;
+  --ink: #141413;
+  --on-ink: #ffffff;
+  --muted: #5f5f5a;
+  --faint: #767670;
+  --link: #1d4ed8;
+  --warn-bg: #fff7ed;
+  --warn-line: #fdba74;
+  --warn-fg: #9a3412;
+  --ok-bg: #ecfdf3;
+  --ok-line: #86d9a8;
+  --ok-fg: #166534;
+  --c1: #b91c1c; --c1e: #7f1d1d;
+  --c2: #c2410c; --c2e: #7c2d12;
+  --c3: #0e7490; --c3e: #155e75;
+  --c4: #1d4ed8; --c4e: #1e3a8a;
+  --c5: #6d28d9; --c5e: #4c1d95;
+  --c6: #15803d; --c6e: #14532d;
+  --sold-bg: #e5e7eb;
+  --sold-line: #c4c8ce;
+  --shadow: rgba(20, 20, 19, 0.12);
+  --font: 'Golos Text', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121211; --surface: #1b1b1a; --surface-2: #2a2a28; --surface-3: #222220;
+    --line: #353532; --line-strong: #4a4a46; --ink: #f4f4f2; --on-ink: #141413;
+    --muted: #b4b4ac; --faint: #9a9a93; --link: #8fb4ff;
+    --warn-bg: #2d1c10; --warn-line: #8a4a1a; --warn-fg: #fdba74;
+    --ok-bg: #12261a; --ok-line: #2f6a45; --ok-fg: #86d9a8;
+    --c1: #dc2626; --c1e: #fca5a5; --c2: #ea580c; --c2e: #fdba74; --c3: #0891b2; --c3e: #67e8f9;
+    --c4: #3b82f6; --c4e: #93c5fd; --c5: #8b5cf6; --c5e: #c4b5fd; --c6: #22c55e; --c6e: #86efac;
+    --sold-bg: #3a3a37; --sold-line: #55554f; --shadow: rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121211; --surface: #1b1b1a; --surface-2: #2a2a28; --surface-3: #222220;
+  --line: #353532; --line-strong: #4a4a46; --ink: #f4f4f2; --on-ink: #141413;
+  --muted: #b4b4ac; --faint: #9a9a93; --link: #8fb4ff;
+  --warn-bg: #2d1c10; --warn-line: #8a4a1a; --warn-fg: #fdba74;
+  --ok-bg: #12261a; --ok-line: #2f6a45; --ok-fg: #86d9a8;
+  --c1: #dc2626; --c1e: #fca5a5; --c2: #ea580c; --c2e: #fdba74; --c3: #0891b2; --c3e: #67e8f9;
+  --c4: #3b82f6; --c4e: #93c5fd; --c5: #8b5cf6; --c5e: #c4b5fd; --c6: #22c55e; --c6e: #86efac;
+  --sold-bg: #3a3a37; --sold-line: #55554f; --shadow: rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 14px; line-height: 1.4; padding-inline: 0; }
+button { font-family: inherit; color: inherit; }
+a { color: var(--link); }
+:focus-visible { outline: 3px solid var(--link); outline-offset: 2px; border-radius: 6px; }
+
+.stage { display: flex; flex-direction: column; gap: 12px; max-width: 390px; margin: 0 auto; }
+.proto { padding: 12px 16px 0; display: flex; flex-direction: column; gap: 8px; }
+.proto h1 { font-size: 15px; font-weight: 700; margin: 0; }
+.proto p { margin: 0; font-size: 12px; color: var(--muted); }
+.states { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.states button { flex-shrink: 0; min-height: 44px; padding: 0 14px; border: 1px dashed var(--line-strong); border-radius: 12px; background: transparent; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.states button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); border: 1px solid var(--ink); }
+.proto .links { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; }
+.proto .links a { display: inline-flex; align-items: center; min-height: 44px; }
+.proto .q { display: none; }
+
+.phone { position: relative; display: flex; flex-direction: column; background: var(--bg); min-height: calc(100dvh - 150px); }
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; flex-shrink: 0; background: var(--surface); border-bottom: 1px solid var(--line); padding: 4px 8px 0 4px; }
+.top-row { display: flex; align-items: center; gap: 6px; min-height: 52px; }
+.iconbtn { width: 44px; height: 44px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; border-radius: 12px; cursor: pointer; }
+.top-text { min-width: 0; flex-grow: 1; }
+.top-title { font-size: 15px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.top-sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.steps { display: flex; gap: 4px; padding: 0 12px 8px; align-items: center; }
+.steps i { flex: 1; height: 4px; border-radius: 2px; background: var(--line-strong); }
+.steps i.on { background: var(--ink); }
+.steps span { font-size: 12px; color: var(--muted); margin-left: 8px; white-space: nowrap; }
+
+.screen { flex-grow: 1; min-height: 0; padding: 14px 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+.screen h2 { margin: 0; font-size: 18px; line-height: 1.25; font-weight: 700; text-wrap: balance; }
+.screen h2:focus { outline: none; }
+.lead { margin: 0; color: var(--muted); font-size: 13px; }
+.label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0; }
+
+.bar { position: sticky; bottom: 0; z-index: 5; flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px)); background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -6px 24px var(--shadow); }
+.bar .hint { flex-basis: 100%; font-size: 12px; color: var(--muted); margin: 0; }
+.btn { min-height: 48px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--surface); font-size: 15px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-align: center; }
+.btn.primary { background: var(--ink); color: var(--on-ink); border-color: var(--ink); flex-grow: 2; }
+.btn.sec { flex-grow: 1; }
+.btn.block { width: 100%; flex-grow: 1; }
+.btn[disabled] { background: var(--surface-2); color: var(--faint); border-color: var(--surface-2); cursor: not-allowed; }
+.btn.ghost.small { font-size: 13px; font-weight: 500; color: var(--muted); }
+.btn.ghost { border-color: transparent; background: transparent; min-height: 44px; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+.card.flat { background: var(--surface-3); }
+.mapcard { padding: 8px 8px 10px; }
+.map { width: 100%; height: auto; display: block; }
+.map .seat { stroke-width: 1.3; }
+.map .k0 { fill: var(--surface-2); stroke: var(--line-strong); }
+.map .k1 { fill: var(--c1); stroke: var(--c1e); } .map .k2 { fill: var(--c2); stroke: var(--c2e); }
+.map .k3 { fill: var(--c3); stroke: var(--c3e); } .map .k4 { fill: var(--c4); stroke: var(--c4e); }
+.map .k5 { fill: var(--c5); stroke: var(--c5e); } .map .k6 { fill: var(--c6); stroke: var(--c6e); }
+.map .sold { fill: var(--sold-bg); stroke: var(--sold-line); }
+.map .held { fill: var(--surface); stroke-dasharray: 2.2 1.6; stroke-width: 1.6; }
+.map .ring { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+.map .xm { stroke: var(--ink); stroke-width: 1.3; stroke-linecap: round; fill: none; }
+.map .rl { font-size: 8.5px; font-weight: 700; fill: var(--muted); font-family: var(--font); }
+.map .stage-r { fill: var(--surface-2); }
+.map .stage-t { font-size: 9px; font-weight: 700; letter-spacing: 0.2em; fill: var(--muted); font-family: var(--font); }
+.map .hb { fill: var(--surface-2); } .map .hl { fill: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); padding: 8px 4px 0; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--line-strong); background: var(--surface-2); flex-shrink: 0; }
+.dot.sold { background: var(--sold-bg); border-color: var(--sold-line); }
+.dot.held { background: var(--surface); border: 1.5px dashed var(--ink); }
+.dot.ring { background: var(--c3); border-color: var(--ink); outline: 1.5px solid var(--ink); outline-offset: 1px; }
+.dot.x { position: relative; background: var(--sold-bg); border-color: var(--sold-line); }
+.dot.x::after { content: "×"; position: absolute; inset: 0; font-size: 12px; line-height: 10px; text-align: center; color: var(--ink); font-weight: 700; }
+.cdot { width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; }
+.k1b { background: var(--c1); } .k2b { background: var(--c2); } .k3b { background: var(--c3); }
+.k4b { background: var(--c4); } .k5b { background: var(--c5); } .k6b { background: var(--c6); }
+
+.list { display: flex; flex-direction: column; gap: 8px; }
+.row-btn { width: 100%; min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; text-align: left; cursor: pointer; }
+.row-btn[aria-pressed="true"], .row-btn[aria-checked="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.row-main { min-width: 0; flex-grow: 1; display: flex; flex-direction: column; gap: 2px; }
+.row-title { font-size: 14px; font-weight: 600; }
+.row-sub { font-size: 12px; color: var(--muted); }
+.row-sub.lock { display: flex; align-items: center; gap: 4px; color: var(--ink); }
+.chev { color: var(--faint); flex-shrink: 0; }
+.radio { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line-strong); flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+[aria-checked="true"] .radio { border-color: var(--ink); }
+[aria-checked="true"] .radio::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--ink); }
+
+.rule { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.rule.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.rule > button { width: 100%; min-height: 64px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: transparent; border: 0; text-align: left; cursor: pointer; }
+.rule .icon { width: 40px; height: 40px; border-radius: 10px; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.rule .params { padding: 4px 12px 14px; display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+
+.stepper { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line-strong); border-radius: 12px; padding: 6px; background: var(--surface); }
+.stepper .v { text-align: center; flex-grow: 1; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stepper .v small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); }
+.stepper button { flex-shrink: 0; width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); font-size: 22px; line-height: 1; cursor: pointer; }
+.stepper button[disabled] { color: var(--faint); background: var(--surface-2); cursor: not-allowed; }
+.two .stepper { padding: 4px; gap: 2px; }
+.two .stepper .v { min-width: 0; white-space: nowrap; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.two > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.two .label { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--surface); font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.chip .cdot { width: 12px; height: 12px; }
+.seg { display: flex; padding: 3px; gap: 2px; background: var(--surface-2); border-radius: 12px; }
+.seg button { flex: 1; min-height: 44px; border: 0; border-radius: 9px; background: transparent; font-size: 13px; font-weight: 600; cursor: pointer; padding: 0 4px; }
+.seg button[aria-pressed="true"] { background: var(--surface); box-shadow: 0 1px 2px var(--shadow); }
+.switch { display: flex; align-items: center; gap: 12px; min-height: 44px; width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer; padding: 0; font-size: 14px; }
+.switch .track { width: 46px; height: 28px; border-radius: 14px; background: var(--line-strong); position: relative; flex-shrink: 0; }
+.switch .track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px var(--shadow); }
+.switch[aria-pressed="true"] .track { background: var(--ink); }
+.switch[aria-pressed="true"] .track::after { left: 21px; background: var(--on-ink); }
+
+.sector { display: grid; grid-template-columns: 52px repeat(3, minmax(0, 1fr)); gap: 6px; align-items: stretch; }
+.sector .hd { font-size: 11px; color: var(--muted); text-align: center; align-self: end; }
+.sector .rh { font-size: 11px; color: var(--muted); display: flex; align-items: center; }
+.sector .cell { min-height: 56px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); cursor: pointer; font-size: 13px; font-weight: 700; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.sector .cell small { font-size: 11px; font-weight: 500; color: var(--muted); }
+.sector .cell[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.sector .cell[aria-pressed="true"] small { color: var(--on-ink); }
+.sector .stagebar { grid-column: 2 / 5; height: 24px; border-radius: 6px; background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 0.2em; display: flex; align-items: center; justify-content: center; }
+
+.live { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--surface-3); border: 1px solid var(--line); font-size: 13px; }
+.live.warn, .notice.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-fg); }
+.live.ok, .notice.ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok-fg); }
+.live svg { flex-shrink: 0; margin-top: 1px; }
+.notice { padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-size: 13px; }
+
+.tbl { display: flex; flex-direction: column; }
+.tr { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto auto; gap: 8px 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.tr:last-child { border-bottom: 0; }
+.tr .n { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.tr .n small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+.tr .a { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.tr .d { font-variant-numeric: tabular-nums; font-weight: 700; min-width: 40px; text-align: right; }
+.sum { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding-top: 8px; font-variant-numeric: tabular-nums; }
+.sum b { font-weight: 700; }
+.fine { font-size: 12px; color: var(--muted); margin: 0; }
+details summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: 13px; font-weight: 600; }
+details p { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
+
+.rowstrip { width: 132px; height: 14px; flex-shrink: 0; }
+.rowstrip .seat { stroke-width: 1; }
+.rowstrip .k0 { fill: var(--surface-2); stroke: var(--line-strong); }
+.rowstrip .k1 { fill: var(--c1); stroke: var(--c1e); } .rowstrip .k2 { fill: var(--c2); stroke: var(--c2e); }
+.rowstrip .k3 { fill: var(--c3); stroke: var(--c3e); } .rowstrip .k4 { fill: var(--c4); stroke: var(--c4e); }
+.rowstrip .k5 { fill: var(--c5); stroke: var(--c5e); } .rowstrip .k6 { fill: var(--c6); stroke: var(--c6e); }
+.rowstrip .sold { fill: var(--sold-bg); stroke: var(--sold-line); }
+.rowstrip .held { fill: var(--surface); stroke-dasharray: 1.6 1.2; }
+.rowstrip .ring { fill: none; stroke: var(--ink); stroke-width: 1.3; }
+.brushcats { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-inline: -16px; padding-inline: 16px; scrollbar-width: none; }
+.brushcats button { flex-shrink: 0; min-height: 52px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; text-align: left; }
+.brushcats button[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+
+.empty { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 8px; }
+.empty h2 { font-size: 17px; }
+.empty .art { color: var(--muted); }
+.stack { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+
+.scrim { position: fixed; inset: 0; z-index: 20; background: rgba(20, 20, 19, 0.5); display: flex; align-items: flex-end; justify-content: center; }
+.sheet { width: 100%; max-width: 390px; max-height: 92dvh; overflow: auto; background: var(--surface); border-radius: 20px 20px 0 0; padding: 10px 16px calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 12px; box-shadow: 0 -8px 30px var(--shadow); }
+.sheet .grab { width: 40px; height: 4px; border-radius: 2px; background: var(--line-strong); align-self: center; }
+.sheet h2 { font-size: 17px; margin: 0; }
+.sheet p { margin: 0; font-size: 14px; }
+.success { align-items: center; text-align: center; padding-top: 28px; }
+.success .big { width: 64px; height: 64px; border-radius: 50%; background: var(--ok-bg); border: 1px solid var(--ok-line); color: var(--ok-fg); display: flex; align-items: center; justify-content: center; }
+
+.tr .sub { grid-column: 2 / -1; font-size: 12px; color: var(--muted); line-height: 1.45; }
+.sum.tot { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 8px; }
+.map .seat { pointer-events: none; }
+.map .soldc { fill-opacity: 0.4; }
+.map .lk { fill: none; stroke: var(--ink); stroke-width: 0.8; stroke-linecap: round; }
+.map .lkb { fill: var(--ink); }
+.map .hit { fill: transparent; pointer-events: all; cursor: pointer; }
+.map .anc { fill: none; stroke: var(--link); stroke-width: 1.6; stroke-dasharray: 2.4 1.6; }
+.bmap { overflow: auto; max-height: 340px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 8px 0; overscroll-behavior: contain; }
+.binner { position: relative; }
+.rhc { position: absolute; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.rhc span { width: 34px; height: 34px; border-radius: 50%; background: var(--surface); border: 2px solid var(--line-strong); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rhc[aria-pressed="true"] span { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.rhc.anc span { outline: 2px dashed var(--link); outline-offset: 2px; }
+.toolrow { display: flex; gap: 8px; align-items: center; }
+.toolrow .seg { flex-grow: 1; }
+.chip[disabled] { color: var(--faint); border-style: dashed; cursor: not-allowed; }
+.check { width: 22px; height: 22px; border: 2px solid var(--line-strong); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+[aria-checked="true"] .check { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.kept p { margin: 0 0 6px; font-size: 13px; }
+@media (min-width: 760px) {
+  body { padding-block: 8px; }
+  .stage { max-width: 760px; display: grid; grid-template-columns: 300px 390px; gap: 28px; align-items: start; }
+  .proto { padding: 0; position: sticky; top: 16px; gap: 12px; }
+  .states { flex-direction: column; overflow: visible; }
+  .states button { white-space: normal; text-align: left; }
+  .proto .q { display: block; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-size: 12px; color: var(--muted); }
+  .proto .q b { color: var(--ink); }
+  .phone { height: 812px; min-height: 0; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 28px; transform: translateZ(0); background: var(--bg); box-shadow: 0 20px 50px var(--shadow); }
+  .top { position: static; }
+  .screen { overflow-y: auto; }
+  .bar { position: static; }
+  .scrim { position: absolute; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sheet { animation: up 0.18s ease-out; }
+  @keyframes up { from { transform: translateY(24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap">
+
+<div class="stage">
+  <aside class="proto" aria-label="Состояния макета">
+    <h1>Автораскладка мест на телефоне</h1>
+    <p>Макет без данных API. Музыкальный концерт, партер, 360 мест. Выберите состояние, чтобы увидеть экран.</p>
+    <div class="states" role="group" aria-label="Показать состояние" id="states"></div>
+    <div class="links">
+      <a href="https://claude.ai/artifact/LVD8uqJxjdycw1yi8CCQTH" target="_blank" rel="noopener">Десктоп, кисть и экран «Предложить раскладку»</a>
+    </div>
+    <div class="q">
+      <b>Что посмотреть.</b> Сеанс с продажами: «Изменить раскладку», категория «Вторая», правило «По рядам», предпросмотр с замками и выручкой по факту, «Применить», «Вернуть». Цена одной категории: «Изменить цену категории». Выбор ряда: «Вручную: ряды» (ручки рядов, «Диапазон», долгое касание места) и «Вручную: два сектора» (номера рядов с буквой сектора).
+    </div>
+  </aside>
+  <main class="phone" id="app" aria-live="off"></main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var NB = ' ';
+  var PALETTE = [
+    { id: 'c1', name: 'VIP' }, { id: 'c2', name: 'Первая' }, { id: 'c3', name: 'Вторая' },
+    { id: 'c4', name: 'Третья' }, { id: 'c5', name: 'Четвёртая' }, { id: 'c6', name: 'Пятая' }
+  ];
+  var PRICES = { c1: 2000, c2: 1750, c3: 1500, c4: 1250, c5: 1000 };
+  var SOLD = { '1-5': 1, '1-6': 1, '1-13': 1, '1-14': 1, '1-15': 1, '2-3': 1, '2-4': 1, '2-11': 1, '2-12': 1, '5-9': 1, '5-10': 1, '5-11': 1, '6-7': 1, '6-8': 1, '9-2': 1, '9-3': 1, '12-15': 1, '12-16': 1, '4-10': 1, '4-11': 1 };
+  var HELD = { '3-12': 1, '3-13': 1, '7-5': 1, '12-3': 1, '13-4': 1 };
+  var CLOSED = { '18-1': 1, '18-2': 1, '18-19': 1, '18-20': 1, '14-10': 1 };
+  var EARLY = { 9: 1400 };
+  var SIDES = [[1, 6], [7, 14], [15, 20]];
+  var SIDE_NAMES = ['Левый край', 'Центр', 'Правый край'];
+  var DEPTHS = [[1, 6], [7, 12], [13, 18]];
+  var RULES = [
+    { id: 'rows', title: 'По рядам', sub: 'Отдать категории ряды подряд.', icon: 'rows' },
+    { id: 'blocks', title: 'По секторам', sub: 'Отметить части схемы: край, центр, глубину.', icon: 'grid' },
+    { id: 'band', title: 'По ценовой полосе', sub: 'Взять места, которые сейчас стоят в выбранных ценах.', icon: 'tag' },
+    { id: 'best', title: 'Лучшие места от сцены', sub: 'Взять нужное число мест от сцены и центра.', icon: 'target' }
+  ];
+
+  function fmt(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, NB) + NB + 'Kč'; }
+  function sgn(n, f) { return (n > 0 ? '+' : n < 0 ? '−' : '') + (f ? f(Math.abs(n)) : Math.abs(n)); }
+  function plural(n, one, few, many) {
+    var a = Math.abs(n), m10 = a % 10, m100 = a % 100;
+    if (m10 === 1 && m100 !== 11) return n + NB + one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return n + NB + few;
+    return n + NB + many;
+  }
+  function places(n) { return plural(n, 'место', 'места', 'мест'); }
+  function nameOf(id) { for (var i = 0; i < PALETTE.length; i++) if (PALETTE[i].id === id) return PALETTE[i].name; return 'Без категории'; }
+  function catOfRow(r) { return r <= 3 ? 'c1' : r <= 7 ? 'c2' : r <= 11 ? 'c3' : r <= 15 ? 'c4' : 'c5'; }
+  function score(s) { return (s.row - 1) + Math.abs(s.num - 10.5) / 9.5 * 0.9; }
+
+  function buildSeats(withData, withCats) {
+    var out = [];
+    for (var r = 1; r <= 18; r++) for (var n = 1; n <= 20; n++) {
+      var id = r + '-' + n;
+      var st0 = withData && SOLD[id] ? 'sold' : (withData && HELD[id] ? 'held' : 'free');
+      out.push({ id: id, row: r, num: n, cat: withCats ? catOfRow(r) : null, status: st0,
+        paid: st0 === 'free' ? 0 : (EARLY[r] || PRICES[catOfRow(r)]), closed: withData && !!CLOSED[id] });
+    }
+    return out;
+  }
+  function defaultCats() { return [1, 2, 3, 4, 5].map(function (i) { return { id: 'c' + i, price: PRICES['c' + i] }; }); }
+
+  var S = {};
+  function freshFlow() {
+    return { mode: 'rule', priceTo: null, cat: null, rule: null, rows: [1, 2], blocks: {}, band: {}, n: 40, keep: true };
+  }
+  function load(name) {
+    S = { scenario: name, plan: true, seats: buildSeats(true, true), cats: defaultCats(), screen: 'hub', notice: '', noticeKind: '',
+      sheet: null, flow: freshFlow(), brush: newBrush('c1'), draftCat: null, sections: false, resetBmap: false, whole: { n: 4, maxP: 2000, minP: 900, t: 'pyramid' }, last: null, race: false };
+    if (name === 'noplan') { S.plan = false; S.seats = []; S.cats = []; }
+    if (name === 'nocats') { S.seats = buildSeats(false, false); S.cats = []; }
+    if (name === 'fresh') S.seats = buildSeats(false, true);
+    if (name === 'price') { S.flow.mode = 'price'; S.flow.cat = 'c3'; S.flow.priceTo = 1100; S.screen = 'price'; }
+    if (name === 'brush' || name === 'sections') {
+      S.sections = name === 'sections'; S.flow.mode = 'brush'; S.screen = 'brush'; S.brush = newBrush('c3'); S.brush.zoom = 3; S.brush.tool = 'rows'; S.resetBmap = true;
+      S.brush.msg = 'Коснитесь ручки ряда слева или справа. Ручка выбирает все свободные места ряда.';
+    }
+    if (name === 'sold' || name === 'race' || name === 'success') {
+      S.flow.cat = 'c3'; S.flow.rule = 'rows'; S.flow.rows = [12, 13]; S.screen = 'preview';
+      if (name === 'race') S.race = true;
+      if (name === 'success') { var p = currentPlan(); applyPlan(p); S.screen = 'success'; }
+    }
+  }
+
+  function catById(cats, id) { for (var i = 0; i < cats.length; i++) if (cats[i].id === id) return cats[i]; return null; }
+  function priceOf(cats, id) { var c = catById(cats, id); return c ? c.price : 0; }
+  function stats(seats, cats) {
+    var m = {};
+    cats.forEach(function (c) { m[c.id] = { total: 0, sold: 0, held: 0, free: 0 }; });
+    seats.forEach(function (s) {
+      var k = m[s.cat]; if (!k) return; k.total++;
+      if (s.status === 'sold') k.sold++; else if (s.status === 'held') k.held++; else if (!s.closed) k.free++;
+    });
+    return m;
+  }
+  function revFacts(seats, cats) {
+    var r = { sold: 0, held: 0, free: 0, total: 0, per: {} };
+    cats.forEach(function (c) { r.per[c.id] = { sold: 0, held: 0, free: 0 }; });
+    seats.forEach(function (s) {
+      var p = s.cat && r.per[s.cat]; if (!p) return;
+      if (s.status === 'sold') { p.sold += s.paid; r.sold += s.paid; }
+      else if (s.status === 'held') { p.held += s.paid; r.held += s.paid; }
+      else if (!s.closed) { var v = priceOf(cats, s.cat); p.free += v; r.free += v; }
+    });
+    r.total = r.sold + r.held + r.free;
+    return r;
+  }
+  function revSentence(rf) {
+    if (!rf.sold && !rf.held) return 'Если продать все места, выручка будет ' + fmt(rf.total) + '.';
+    return 'Продано на ' + fmt(rf.sold) + ' по факту' + (rf.held ? ' + в брони на ' + fmt(rf.held) + ' по цене брони' : '') + ' + ещё ' + fmt(rf.free) + ' при продаже остатка по новым ценам = ' + fmt(rf.total) + '.';
+  }
+  function revRows(rf, rf0) {
+    function row(l, v, old, cls) { return '<div class="sum' + (cls ? ' ' + cls : '') + '"><span>' + l + '</span><span>' + (old != null && old !== v ? fmt(old) + ' → ' : '') + '<b>' + fmt(v) + '</b></span></div>'; }
+    var h = '<p class="label" style="margin:12px 0 0">Выручка</p>';
+    if (rf.sold || rf.held) {
+      h += row('Продано, по фактическим ценам', rf.sold);
+      if (rf.held) h += row('В брони, по цене брони', rf.held);
+      h += row('Свободно, по новым ценам', rf.free, rf0 ? rf0.free : null);
+    } else h += row('Все места по этим ценам', rf.free);
+    h += row('Итого', rf.total, rf0 ? rf0.total : null, 'tot');
+    if (rf0) { var d = rf.total - rf0.total; h += '<div class="sum"><span>Разница</span><b>' + (d ? sgn(d, fmt) : fmt(0)) + '</b></div>'; }
+    return h + '<p class="fine" style="margin-top:6px">Проданное считаем по ценам продажи. Свободное считаем так, будто его продадут целиком. Это не прогноз спроса.</p>';
+  }
+  function hasSales(seats) { return seats.some(function (s) { return s.status !== 'free'; }); }
+  function seatById(id) { for (var i = 0; i < S.seats.length; i++) if (S.seats[i].id === id) return S.seats[i]; return null; }
+  function secOf(s) { return S.sections ? (s.num <= 10 ? 'Л' : 'П') : ''; }
+  function rowLbl(r, sec) { return sec ? sec + '·' + r : String(r); }
+  function secName(sec) { return sec === 'Л' ? 'Левый сектор' : sec === 'П' ? 'Правый сектор' : 'Партер'; }
+  function rowSeats(r, sec) { return S.seats.filter(function (s) { return s.row === r && secOf(s) === sec; }); }
+  function newBrush(cat) { return { cat: cat || 'c1', pend: {}, tool: 'seat', range: false, zoom: 1, anchor: null, msg: '', rl: { a: 1, b: 5 } }; }
+
+  /* ---------- plans ---------- */
+  function emptyPlan(target, cats) { return { changes: {}, skipSold: [], skipHeld: [], already: 0, target: target, cats: cats, scope: 0, newCats: null }; }
+  function visit(seat, target, out) {
+    if (seat.cat === target) { out.already++; return; }
+    if (seat.status === 'sold') { out.skipSold.push(seat.id); return; }
+    if (seat.status === 'held') { out.skipHeld.push(seat.id); return; }
+    out.changes[seat.id] = target;
+  }
+  function scopeSeats(f) {
+    var all = S.seats;
+    if (f.rule === 'rows') {
+      var a = Math.min(f.rows[0], f.rows[1]), b = Math.max(f.rows[0], f.rows[1]);
+      return all.filter(function (s) { return s.row >= a && s.row <= b; });
+    }
+    if (f.rule === 'blocks') {
+      return all.filter(function (s) {
+        var d = DEPTHS.findIndex(function (x) { return s.row >= x[0] && s.row <= x[1]; });
+        var c = SIDES.findIndex(function (x) { return s.num >= x[0] && s.num <= x[1]; });
+        return f.blocks['d' + d + 's' + c];
+      });
+    }
+    if (f.rule === 'band') return all.filter(function (s) { return s.cat && f.band[s.cat]; });
+    if (f.rule === 'best') {
+      var sorted = all.slice().sort(function (x, y) { return score(x) - score(y) || x.num - y.num; });
+      var take = sorted.slice(0, f.n);
+      if (!f.keep) return take;
+      var per = {};
+      take.forEach(function (s) { per[s.row] = (per[s.row] || 0) + 1; });
+      return all.filter(function (s) { return (per[s.row] || 0) >= 10; });
+    }
+    return [];
+  }
+  function rulePlan() {
+    var f = S.flow, out = emptyPlan(f.cat, S.cats);
+    var sc = scopeSeats(f); out.scope = sc.length;
+    sc.forEach(function (s) { visit(s, f.cat, out); });
+    return out;
+  }
+  function brushPlan() {
+    var out = emptyPlan(null, S.cats), pend = S.brush.pend;
+    Object.keys(pend).forEach(function (id) { out.changes[id] = pend[id]; });
+    out.scope = Object.keys(pend).length;
+    return out;
+  }
+  function pricePlan() {
+    var f = S.flow, out = emptyPlan(f.cat, S.cats), from = priceOf(S.cats, f.cat);
+    out.priceFrom = from; out.priceTo = f.priceTo == null ? from : f.priceTo;
+    S.seats.forEach(function (s) {
+      if (s.cat !== f.cat) return;
+      if (s.status === 'sold') out.skipSold.push(s.id);
+      else if (s.status === 'held') out.skipHeld.push(s.id);
+      else if (out.priceTo !== from) out.changes[s.id] = f.cat;
+    });
+    out.scope = Object.keys(out.changes).length;
+    return out;
+  }
+  function catsAfter(plan) {
+    if (plan.newCats) return plan.newCats;
+    if (plan.priceTo != null) return S.cats.map(function (c) { return c.id === plan.target ? { id: c.id, price: plan.priceTo } : c; });
+    return S.cats;
+  }
+  function wholeLayout() {
+    var w = S.whole, n = w.n, seats = buildSeats(false, false), i;
+    var wt = [];
+    if (w.t === 'equal') for (i = 0; i < n; i++) wt.push(1);
+    else if (w.t === 'pyramid') for (i = 0; i < n; i++) wt.push(i + 1);
+    else for (i = 0; i < n; i++) wt.push((i === 0 || i === n - 1) ? 1 : 2);
+    var sum = wt.reduce(function (a, b) { return a + b; }, 0), cum = 0, cut = [];
+    wt.forEach(function (x) { cum += x / sum; cut.push(Math.round(cum * seats.length)); });
+    var sorted = seats.slice().sort(function (x, y) { return score(x) - score(y); });
+    sorted.forEach(function (s, idx) { var c = 0; while (c < n - 1 && idx >= cut[c]) c++; s.catIdx = c; });
+    var byRow = {};
+    seats.forEach(function (s) { (byRow[s.row] = byRow[s.row] || []).push(s); });
+    Object.keys(byRow).forEach(function (r) {
+      var cnt = {}, best = 0, bn = -1;
+      byRow[r].forEach(function (s) { cnt[s.catIdx] = (cnt[s.catIdx] || 0) + 1; });
+      Object.keys(cnt).forEach(function (k) { if (cnt[k] > bn) { bn = cnt[k]; best = Number(k); } });
+      byRow[r].forEach(function (s) { s.catIdx = best; });
+    });
+    var cats = [];
+    for (i = 0; i < n; i++) {
+      var p = n === 1 ? w.maxP : w.maxP - (w.maxP - w.minP) * i / (n - 1);
+      cats.push({ id: PALETTE[i].id, price: Math.round(p / 50) * 50 });
+    }
+    var plan = emptyPlan(null, cats); plan.newCats = cats;
+    seats.forEach(function (s) { plan.changes[s.id] = cats[s.catIdx].id; });
+    plan.scope = seats.length;
+    return plan;
+  }
+  function currentPlan() {
+    if (S.flow.mode === 'brush') return brushPlan();
+    if (S.flow.mode === 'price') return pricePlan();
+    if (S.flow.mode === 'whole') return wholeLayout();
+    return rulePlan();
+  }
+  function seatsAfter(plan) {
+    return S.seats.map(function (s) { var c = plan.changes[s.id]; return c ? Object.assign({}, s, { cat: c }) : s; });
+  }
+  function applyPlan(plan) {
+    var prev = {};
+    Object.keys(plan.changes).forEach(function (id) { prev[id] = S.seats.filter(function (s) { return s.id === id; })[0].cat; });
+    S.last = { prev: prev, prevCats: S.cats.filter(function (c) { return c.id !== S.draftCat; }), plan: plan, count: Object.keys(plan.changes).length };
+    S.seats = seatsAfter(plan);
+    if (plan.newCats) S.cats = plan.newCats; else if (plan.priceTo != null) S.cats = catsAfter(plan);
+    S.draftCat = null;
+  }
+  function undo() {
+    if (!S.last) return;
+    var prev = S.last.prev;
+    S.seats = S.seats.map(function (s) { return Object.prototype.hasOwnProperty.call(prev, s.id) ? Object.assign({}, s, { cat: prev[s.id] }) : s; });
+    S.cats = S.last.prevCats; S.last = null;
+  }
+
+  /* ---------- icons and map ---------- */
+  var IC = {
+    back: '<path d="M15 18l-6-6 6-6"/>',
+    lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>',
+    spark: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
+    brush: '<path d="M18 3l3 3-9 9-3-3z"/><path d="M9 12c-3 0-4 2-4 4 0 1.6-1 3-2 4 3 1 8 1 9-3 .5-1.8-.2-3.2-3-5"/>',
+    rows: '<path d="M4 6h16M4 10h16M4 14h16M4 18h16"/>',
+    grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+    tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/>',
+    target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    undo: '<path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 010 12"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+    warn: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>',
+    chev: '<path d="M9 6l6 6-6 6"/>'
+  };
+  function ic(name, size, sw) {
+    return '<svg width="' + (size || 20) + '" height="' + (size || 20) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + (sw || 2) + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + IC[name] + '</svg>';
+  }
+  var seq = 0;
+  function mapSVG(seats, o) {
+    o = o || {};
+    var changes = o.changes || {}, skipped = o.skipped || {}, hl = o.hold || {};
+    var P = 14.5, R = 5.2, X0 = 22, GAP = 12, W = 348, Y0 = 7, H = Y0 + 18 * P + 28, pid = 'hp' + (++seq), i;
+    var out = ['<svg class="map" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + (o.label || 'Схема партера, 18 рядов по 20 мест. Сцена внизу.') + '">'];
+    out.push('<defs><pattern id="' + pid + '" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="3" class="hb"/><rect width="1.2" height="3" class="hl"/></pattern></defs>');
+    for (var r = 18; r >= 1; r--) {
+      var cy = Y0 + (18 - r) * P + P / 2;
+      out.push('<text class="rl" x="9" y="' + (cy + 3) + '" text-anchor="middle">' + r + '</text>');
+      out.push('<text class="rl" x="' + (W - 11) + '" y="' + (cy + 3) + '" text-anchor="middle">' + r + '</text>');
+    }
+    seats.forEach(function (s) {
+      var idx = s.num - 1, cx = idx < 10 ? X0 + P * (idx + 0.5) : X0 + P * 10 + GAP + P * (idx - 10 + 0.5);
+      var cy2 = Y0 + (18 - s.row) * P + P / 2, cat = changes[s.id] || s.cat, cls, extra = '';
+      if (s.status === 'sold') cls = cat ? 'seat soldc k' + cat.slice(1) : 'seat sold';
+      else if (s.status === 'held') cls = 'seat held k' + (cat ? cat.slice(1) : 0);
+      else { cls = 'seat k' + (cat ? cat.slice(1) : 0); if (s.closed) extra = ' style="fill:url(#' + pid + ')"'; }
+      out.push('<circle class="' + cls + '" cx="' + cx.toFixed(1) + '" cy="' + cy2 + '" r="' + R + '"' + extra + '/>');
+      if (changes[s.id]) out.push('<circle class="ring" cx="' + cx.toFixed(1) + '" cy="' + cy2 + '" r="' + (R + 2) + '"/>');
+      if (s.status === 'sold' && cat) out.push('<path class="lk" d="M' + (cx - 1.5).toFixed(1) + ' ' + (cy2 + 0.4).toFixed(1) + 'v-1.3a1.5 1.5 0 0 1 3 0v1.3"/><rect class="lkb" x="' + (cx - 2).toFixed(1) + '" y="' + (cy2 + 0.2).toFixed(1) + '" width="4" height="3" rx="0.6"/>');
+      if ((skipped[s.id] && s.status !== 'sold') || hl[s.id]) {
+        out.push('<path class="xm" d="M' + (cx - 2.6).toFixed(1) + ' ' + (cy2 - 2.6) + 'L' + (cx + 2.6).toFixed(1) + ' ' + (cy2 + 2.6) + 'M' + (cx + 2.6).toFixed(1) + ' ' + (cy2 - 2.6) + 'L' + (cx - 2.6).toFixed(1) + ' ' + (cy2 + 2.6) + '"/>');
+      }
+    });
+    var sy = Y0 + 18 * P + 6;
+    out.push('<rect class="stage-r" x="20" y="' + sy + '" width="' + (W - 40) + '" height="18" rx="6"/><text class="stage-t" x="' + (W / 2) + '" y="' + (sy + 12.5) + '" text-anchor="middle">СЦЕНА</text>');
+    out.push('</svg>');
+    return out.join('');
+  }
+  function rowStrip(row, pendCat) {
+    var out = ['<svg class="rowstrip" viewBox="0 0 132 14" aria-hidden="true">'];
+    S.seats.filter(function (s) { return s.row === row; }).forEach(function (s) {
+      var cx = 3.5 + (s.num - 1) * 6.4 + (s.num > 10 ? 3 : 0), cat = (pendCat && s.status === 'free' && s.cat !== pendCat) ? pendCat : s.cat;
+      var cls = s.status === 'sold' ? 'seat sold' : (s.status === 'held' ? 'seat held k' + (cat ? cat.slice(1) : 0) : 'seat k' + (cat ? cat.slice(1) : 0));
+      out.push('<circle class="' + cls + '" cx="' + cx.toFixed(1) + '" cy="7" r="2.7"/>');
+      if (pendCat && s.status === 'free' && s.cat !== pendCat) out.push('<circle class="ring" cx="' + cx.toFixed(1) + '" cy="7" r="3.9"/>');
+    });
+    out.push('</svg>');
+    return out.join('');
+  }
+  function legend(items) {
+    var map = { sold: '<span><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" style="fill:var(--c3);fill-opacity:.4;stroke:var(--c3e);stroke-width:1.3"/><path d="M5.5 7.4v-1.3a1.5 1.5 0 0 1 3 0v1.3" style="fill:none;stroke:var(--ink);stroke-width:.9"/><rect x="5" y="7.2" width="4" height="3" rx=".6" style="fill:var(--ink)"/></svg>продано, цена заморожена</span>', held: '<span><i class="dot held"></i>в брони</span>', closed: '<span><i class="dot"></i>закрыто или без категории</span>',
+      chg: '<span><i class="dot ring"></i>изменится</span>', skip: '<span><i class="dot x"></i>пропущено, не меняется</span>' };
+    return '<div class="legend">' + items.map(function (k) { return map[k]; }).join('') + '</div>';
+  }
+  function cdot(id) { return '<span class="cdot k' + id.slice(1) + 'b" aria-hidden="true"></span>'; }
+
+  /* ---------- helpers for text ---------- */
+  function groupByRow(ids) {
+    var g = {};
+    ids.forEach(function (id) { var p = id.split('-'); (g[p[0]] = g[p[0]] || []).push(Number(p[1])); });
+    return Object.keys(g).map(Number).sort(function (a, b) { return a - b; }).map(function (r) { return 'Ряд ' + r + ', места ' + g[r].sort(function (a, b) { return a - b; }).join(', '); }).join('. ');
+  }
+  function skippedLine(plan) {
+    var a = [];
+    if (plan.skipSold.length) a.push(plan.skipSold.length + NB + (plan.skipSold.length === 1 ? 'проданное' : 'проданных'));
+    if (plan.skipHeld.length) a.push(plan.skipHeld.length + NB + 'в брони');
+    return a.join(' и ');
+  }
+  function liveText(plan, f) {
+    var n = Object.keys(plan.changes).length, sk = skippedLine(plan);
+    if (n === 0) {
+      if (f.rule === 'band' && !Object.keys(f.band).some(function (k) { return f.band[k]; })) return { kind: 'warn', text: 'Выберите хотя бы одну ценовую полосу.' };
+      if (f.rule === 'blocks' && !Object.keys(f.blocks).some(function (k) { return f.blocks[k]; })) return { kind: 'warn', text: 'Коснитесь секторов на схеме. Хотя бы один.' };
+      return { kind: 'warn', text: 'Менять нечего. Эти места уже в категории «' + nameOf(f.cat) + '» или заняты. Выберите другие места.' };
+    }
+    return { kind: '', text: 'Подойдёт ' + places(n) + '.' + (sk ? ' Не меняем: ' + sk + '.' : '') + (f.rule === 'best' && f.keep ? ' Ряды не режем, поэтому число может отличаться от заданного.' : '') };
+  }
+  function defaultsFor(catId) {
+    var rows = S.seats.filter(function (s) { return s.cat === catId; }).map(function (s) { return s.row; });
+    var lo = Math.min.apply(null, rows), hi = Math.max.apply(null, rows);
+    if (!rows.length) return [1, 2];
+    return hi + 2 <= 18 ? [hi + 1, hi + 2] : [Math.max(1, lo - 2), Math.max(1, lo - 1)];
+  }
+
+  /* ---------- screens ---------- */
+  var HOME_URL = 'https://claude.ai/artifact/LVD8uqJxjdycw1yi8CCQTH';
+  function subtitle() { return '3 окт 2028, 20:00 · Партер, 360 мест'; }
+
+  function stepsHTML(n, total, label) {
+    var h = '<div class="steps" role="img" aria-label="Шаг ' + n + ' из ' + total + '">';
+    for (var i = 1; i <= total; i++) h += '<i class="' + (i <= n ? 'on' : '') + '"></i>';
+    return h + '<span>Шаг ' + n + ' из ' + total + (label ? ' · ' + label : '') + '</span></div>';
+  }
+
+  function scrHub() {
+    var st = stats(S.seats, S.cats), body = '', bar = '';
+    if (!S.plan) {
+      body = '<div class="empty"><div class="art"><svg width="120" height="84" viewBox="0 0 120 84" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 4" aria-hidden="true"><rect x="10" y="6" width="100" height="14" rx="5"/><circle cx="30" cy="40" r="5"/><circle cx="50" cy="40" r="5"/><circle cx="70" cy="40" r="5"/><circle cx="90" cy="40" r="5"/><circle cx="30" cy="62" r="5"/><circle cx="50" cy="62" r="5"/><circle cx="70" cy="62" r="5"/><circle cx="90" cy="62" r="5"/></svg></div>' +
+        '<h2 tabindex="-1" data-focus-title>К этому сеансу не привязана схема площадки</h2>' +
+        '<p class="lead">Пока схемы нет, покупатели выбирают категорию и число билетов. Места они не выбирают. Привяжите схему, и здесь появятся места.</p>' +
+        '<div class="stack"><button class="btn primary block" data-act="toast" data-msg="Откроется список схем площадки. В этом макете экран не показан.">Выбрать схему площадки</button>' +
+        '<button class="btn block" data-act="toast" data-msg="Откроется настройка продажи без выбора мест. В этом макете экран не показан.">Продавать без выбора мест</button></div></div>';
+      return { title: 'Места на схеме', sub: subtitle(), back: true, body: body, bar: '' };
+    }
+    var map = mapSVG(S.seats, { label: S.cats.length ? 'Схема партера по категориям. Сцена внизу.' : 'Схема партера. Категории ещё не созданы. Сцена внизу.' });
+    if (!S.cats.length) {
+      body = '<h2 tabindex="-1" data-focus-title>Схема привязана, категорий пока нет</h2>' +
+        '<div class="card mapcard">' + map + legend(['closed']) + '</div>' +
+        '<div class="live warn">' + ic('info', 18) + '<span>Все 360 мест без категории и цены. Покупатели их пока не видят. Категории создаст автораскладка.</span></div>';
+      bar = '<button class="btn primary block" data-act="startWhole">' + ic('spark', 18) + 'Разложить места автоматически</button>' +
+        '<p class="hint">Вы увидите результат на схеме. Пока вы не нажмёте «Применить», ничего не изменится.</p>' +
+        '<a class="btn ghost" style="flex-basis:100%" href="' + HOME_URL + '" target="_blank" rel="noopener">Добавить категории вручную на компьютере</a>';
+      return { title: 'Места на схеме', sub: subtitle(), back: true, body: body, bar: bar };
+    }
+    var list = S.cats.map(function (c) {
+      var k = st[c.id];
+      return '<button class="row-btn" data-act="catShortcut" data-id="' + c.id + '" aria-label="Заполнить категорию ' + nameOf(c.id) + ' автоматически">' + cdot(c.id) +
+        '<span class="row-main"><span class="row-title">' + nameOf(c.id) + ' · ' + fmt(c.price) + '</span><span class="row-sub">Мест ' + k.total + ' · свободно ' + k.free + (k.sold ? ' · продано ' + k.sold : '') + '</span></span><span class="chev">' + ic('chev', 18) + '</span></button>';
+    }).join('');
+    body = (S.notice ? '<div class="notice ' + S.noticeKind + '" role="status">' + S.notice + '</div>' : '') +
+      '<h2 tabindex="-1" data-focus-title>Места по категориям</h2>' +
+      '<div class="card mapcard">' + map + legend(['sold', 'held', 'closed']) + '</div>' +
+      '<p class="label">Категории</p><div class="list">' + list + '</div>' +
+      '<p class="fine">Коснитесь категории, чтобы сразу выбрать для неё места.</p>';
+    var sales = hasSales(S.seats);
+    bar = '<button class="btn primary block" data-act="startAuto">' + ic('spark', 18) + (sales ? 'Изменить раскладку' : 'Разложить места автоматически') + '</button>' +
+      (sales ? '<p class="hint">Проданные места и бронь останутся как есть.</p>' : '') +
+      '<button class="btn sec" data-act="startPrice">Изменить цену категории</button>' +
+      '<button class="btn ghost small" style="flex-grow:1" data-act="startBrush">' + ic('brush', 16) + 'Раскрасить вручную</button>';
+    return { title: 'Места на схеме', sub: subtitle(), back: true, body: body, bar: bar };
+  }
+
+  function scrPick() {
+    var st = stats(S.seats, S.cats), f = S.flow;
+    var cards = S.cats.map(function (c) {
+      var k = st[c.id], on = f.cat === c.id;
+      return '<button class="row-btn" role="radio" aria-checked="' + on + '" data-act="pickCat" data-id="' + c.id + '" data-fk="pick-' + c.id + '"><span class="radio" aria-hidden="true"></span>' + cdot(c.id) +
+        '<span class="row-main"><span class="row-title">' + nameOf(c.id) + ' · ' + fmt(c.price) + '</span><span class="row-sub">' + (k.total ? 'Сейчас ' + places(k.total) + '. Свободно ' + k.free + (k.held ? ', в брони ' + k.held : '') + (k.sold ? ', продано ' + k.sold : '') + '.' : 'Новая категория. Мест пока нет.') + '</span>' +
+        (k.sold ? '<span class="row-sub lock">' + ic('lock', 13) + 'Проданные места останутся как есть</span>' : '') + '</span></button>';
+    }).join('');
+    return { title: 'Автораскладка', sub: subtitle(), back: true, steps: stepsHTML(1, 3, 'категория'),
+      body: '<h2 tabindex="-1" data-focus-title>' + (f.mode === 'price' ? 'Цену какой категории изменить?' : 'Какую категорию заполнить?') + '</h2><p class="lead">' + (f.mode === 'price' ? 'Новая цена коснётся только непроданных мест. Проданные места и бронь останутся по прежней цене.' : 'Эта категория получит новые места. У остальных категорий места останутся, кроме тех, что вы отдадите.') + '</p><div class="list" role="radiogroup" aria-label="Категория">' + cards + '</div>' +
+        ((f.mode !== 'price' && !S.draftCat && S.cats.length < 6) ? '<button class="row-btn" style="border-style:dashed" data-act="newCat"><span class="cdot" style="border:2px dashed var(--line-strong)" aria-hidden="true"></span><span class="row-main"><span class="row-title">Новая категория</span><span class="row-sub">Добавить категорию к залу, где уже идут продажи. Цену можно изменить потом.</span></span></button>' : ''),
+      bar: '<button class="btn sec" data-act="back">Назад</button><button class="btn primary" data-act="toRule"' + (f.cat ? '' : ' disabled') + '>Дальше</button>' + (f.cat ? '' : '<p class="hint">Выберите категорию, чтобы продолжить.</p>') };
+  }
+
+  function stepper(label, value, key, dir) {
+    return '<div><p class="label">' + label + '</p><div class="stepper"><button data-act="' + dir + '" data-key="' + key + '" data-d="-1" data-fk="' + key + '-m" aria-label="' + label + ': меньше">−</button><span class="v">' + value + '</span><button data-act="' + dir + '" data-key="' + key + '" data-d="1" data-fk="' + key + '-p" aria-label="' + label + ': больше">+</button></div></div>';
+  }
+  function paramsHTML(f) {
+    if (f.rule === 'rows') {
+      var a = Math.min(f.rows[0], f.rows[1]), b = Math.max(f.rows[0], f.rows[1]);
+      return '<div class="two">' + stepper('С ряда', f.rows[0], 'rowA', 'rowStep') + stepper('По ряд', f.rows[1], 'rowB', 'rowStep') + '</div><p class="fine">Ряд 1 ближе всего к сцене. Выбрано рядов: ' + (b - a + 1) + '.</p>';
+    }
+    if (f.rule === 'blocks') {
+      var h = '<div class="sector"><span></span>' + SIDE_NAMES.map(function (n) { return '<span class="hd">' + n + '</span>'; }).join('');
+      for (var d = 2; d >= 0; d--) {
+        h += '<span class="rh">ряды ' + DEPTHS[d][0] + '–' + DEPTHS[d][1] + '</span>';
+        for (var c = 0; c < 3; c++) {
+          var key = 'd' + d + 's' + c, cnt = (DEPTHS[d][1] - DEPTHS[d][0] + 1) * (SIDES[c][1] - SIDES[c][0] + 1);
+          h += '<button class="cell" aria-pressed="' + !!f.blocks[key] + '" aria-label="' + SIDE_NAMES[c] + ', ряды ' + DEPTHS[d][0] + '–' + DEPTHS[d][1] + ', ' + places(cnt) + '" data-act="toggleBlock" data-key="' + key + '" data-fk="blk-' + key + '">' + (f.blocks[key] ? ic('check', 14, 2.5) : '') + '<small>' + cnt + '</small></button>';
+        }
+      }
+      return h + '<span></span><span class="stagebar">СЦЕНА</span></div><p class="fine">Коснитесь секторов, которые нужны категории.</p>';
+    }
+    if (f.rule === 'band') {
+      var others = S.cats.filter(function (c) { return c.id !== f.cat && stats(S.seats, S.cats)[c.id].total > 0; });
+      return '<p class="label">Взять места, которые сейчас стоят</p><div class="chips">' + others.map(function (c) {
+        return '<button class="chip" aria-pressed="' + !!f.band[c.id] + '" data-act="toggleBand" data-id="' + c.id + '" data-fk="band-' + c.id + '">' + cdot(c.id) + nameOf(c.id) + ' · ' + fmt(c.price) + '</button>';
+      }).join('') + '</div><p class="fine">Все свободные места выбранных цен перейдут в «' + nameOf(f.cat) + '» по цене ' + fmt(priceOf(S.cats, f.cat)) + '.</p>';
+    }
+    if (f.rule === 'best') {
+      return '<div>' + '<p class="label">Сколько мест взять</p><div class="stepper"><button data-act="bestStep" data-d="-10" data-fk="best-m" aria-label="Мест: меньше на 10" ' + (f.n <= 10 ? 'disabled' : '') + '>−</button><span class="v">' + f.n + '<small>мест от сцены и центра</small></span><button data-act="bestStep" data-d="10" data-fk="best-p" aria-label="Мест: больше на 10" ' + (f.n >= 200 ? 'disabled' : '') + '>+</button></div></div>' +
+        '<div class="chips">' + [20, 40, 60, 100].map(function (n) { return '<button class="chip" aria-pressed="' + (f.n === n) + '" data-act="bestSet" data-n="' + n + '" data-fk="best-' + n + '">' + n + '</button>'; }).join('') + '</div>' +
+        '<button class="switch" aria-pressed="' + !!f.keep + '" data-act="toggleKeep" data-fk="keep"><span class="track"></span><span>Не резать ряды</span></button>';
+    }
+    return '';
+  }
+  function scrPrice() {
+    var f = S.flow, plan = pricePlan(), n = Object.keys(plan.changes).length, k = stats(S.seats, S.cats)[f.cat];
+    var rf = revFacts(seatsAfter(plan), catsAfter(plan)), rf0 = revFacts(S.seats, S.cats), same = plan.priceTo === plan.priceFrom;
+    var unsold = n || (k.total - k.sold - k.held);
+    var frozen = '';
+    if (k.sold || k.held) frozen = '<div class="live warn">' + ic('lock', 18) + '<span>Не меняем: ' + (k.sold ? plural(k.sold, 'проданное место', 'проданных места', 'проданных мест') : '') + (k.sold && k.held ? ' и ' : '') + (k.held ? k.held + NB + 'в брони' : '') + '. Они остаются по цене продажи, а бронь по цене брони.</span></div>';
+    return { title: 'Цена категории', sub: nameOf(f.cat) + ' · ' + fmt(plan.priceFrom), back: true, steps: stepsHTML(2, 3, 'цена'),
+      body: '<h2 tabindex="-1" data-focus-title>Новая цена для «' + nameOf(f.cat) + '»</h2>' +
+        stepperRow('Цена категории', fmt(plan.priceTo), 'priceStep', 'p', [plan.priceTo <= 50, false]) + '<p class="fine" style="margin-top:-6px">Шаг 50' + NB + 'Kč.</p>' +
+        '<div class="live ' + (same ? 'warn' : '') + '" role="status">' + ic(same ? 'warn' : 'info', 18) + '<span>' + (same ? 'Цена не изменилась. Выберите другую.' : 'Категория «' + nameOf(f.cat) + '»: ' + fmt(plan.priceFrom) + ' → ' + fmt(plan.priceTo) + ' для ' + plural(n, 'непроданного места', 'непроданных мест', 'непроданных мест') + '.') + '</span></div>' + frozen +
+        '<div class="card flat">' + revRows(rf, rf0).replace('margin:12px 0 0', 'margin:0') + '</div>',
+      bar: '<button class="btn sec" data-act="back">Назад</button><button class="btn primary" data-act="toPricePreview"' + (n ? '' : ' disabled') + '>Показать на схеме</button>' };
+  }
+  function scrRule() {
+    var f = S.flow, plan = rulePlan(), lv = f.rule ? liveText(plan, f) : null, cat = f.cat;
+    var rules = RULES.map(function (r) {
+      var on = f.rule === r.id;
+      return '<div class="rule' + (on ? ' on' : '') + '"><button role="radio" aria-checked="' + on + '" data-act="pickRule" data-id="' + r.id + '" data-fk="rule-' + r.id + '"><span class="icon">' + ic(r.icon, 20) + '</span><span class="row-main"><span class="row-title">' + r.title + '</span><span class="row-sub">' + r.sub + '</span></span><span class="radio" aria-hidden="true"></span></button>' +
+        (on ? '<div class="params">' + paramsHTML(f) + '</div>' : '') + '</div>';
+    }).join('');
+    var n = Object.keys(plan.changes).length;
+    return { title: 'Автораскладка', sub: nameOf(cat) + ' · ' + fmt(priceOf(S.cats, cat)), back: true, steps: stepsHTML(2, 3, 'правило'),
+      body: '<h2 tabindex="-1" data-focus-title>Как выбрать места для «' + nameOf(cat) + '»?</h2><div class="list" role="radiogroup" aria-label="Правило">' + rules + '</div>' +
+        (lv ? '<div class="live ' + lv.kind + '" role="status">' + ic(lv.kind === 'warn' ? 'warn' : 'info', 18) + '<span>' + lv.text + '</span></div>' : ''),
+      bar: '<button class="btn sec" data-act="back">Назад</button><button class="btn primary" data-act="toPreview"' + (n ? '' : ' disabled') + '>Показать на схеме</button>' + (f.rule ? '' : '<p class="hint">Выберите правило, чтобы продолжить.</p>') };
+  }
+
+  function diffTable(plan) {
+    var cats = catsAfter(plan), aSeats = seatsAfter(plan), before = stats(S.seats, S.cats), after = stats(aSeats, cats), ids = [];
+    var rf = revFacts(aSeats, cats), rf0 = revFacts(S.seats, S.cats);
+    S.cats.forEach(function (c) { if (ids.indexOf(c.id) < 0) ids.push(c.id); });
+    cats.forEach(function (c) { if (ids.indexOf(c.id) < 0) ids.push(c.id); });
+    ids.sort();
+    var rows = ids.map(function (id) {
+      var b = before[id] ? before[id].total : 0, a = after[id] ? after[id].total : 0, d = a - b, p0 = priceOf(S.cats, id), p1 = priceOf(cats, id);
+      if (d === 0 && p0 === p1 && id !== plan.target) return '';
+      var k = after[id] || { sold: 0, held: 0, free: 0 }, pr = rf.per[id] || { sold: 0, held: 0, free: 0 };
+      var priceTxt = (p0 && p0 !== p1) ? fmt(p0) + ' → ' + fmt(p1) : fmt(p1);
+      return '<div class="tr">' + cdot(id) + '<span class="n">' + nameOf(id) + '<small>' + priceTxt + '</small></span><span class="a">' + (plan.newCats ? '' : b + ' → ') + a + '</span><span class="d">' + (d ? sgn(d) : '0') + '</span>' +
+        '<span class="sub">Продано ' + k.sold + ' · в брони ' + k.held + ' · свободно ' + k.free + '<br>Выручка: ' + fmt(pr.sold + pr.held) + ' по факту + ' + fmt(pr.free) + ' остаток</span></div>';
+    }).join('');
+    return '<div class="tbl" role="table" aria-label="Что изменится по категориям">' + rows + '</div>' + revRows(rf, plan.newCats ? null : rf0);
+  }
+  function skippedBox(plan) {
+    var sk = skippedLine(plan);
+    if (!sk) return '';
+    var det = '';
+    if (plan.skipSold.length) det += '<p><b>Проданные.</b> ' + groupByRow(plan.skipSold) + '.</p>';
+    if (plan.skipHeld.length) det += '<p><b>В брони.</b> ' + groupByRow(plan.skipHeld) + '.</p>';
+    return '<div class="live warn" style="flex-direction:column;gap:0"><div style="display:flex;gap:10px">' + ic('lock', 18) + '<span><b>Не изменим: ' + sk + '.</b> Проданные места уже у покупателей. В брони место держит покупатель, который сейчас платит.</span></div><details style="width:100%"><summary>Какие именно места</summary>' + det + '</details></div>';
+  }
+  function scrPreview() {
+    var plan = currentPlan(), n = Object.keys(plan.changes).length, f = S.flow, head;
+    var skipMap = {}; plan.skipSold.concat(plan.skipHeld).forEach(function (id) { skipMap[id] = 1; });
+    if (f.mode === 'price') head = '«' + nameOf(plan.target) + '»: ' + fmt(plan.priceFrom) + ' → ' + fmt(plan.priceTo) + ' для ' + plural(n, 'непроданного места', 'непроданных мест', 'непроданных мест');
+    else if (f.mode === 'brush') head = n + NB + (n % 10 === 1 && n % 100 !== 11 ? 'место сменит' : 'мест сменят') + ' категорию';
+    else head = places(n) + (n % 10 === 1 && n % 100 !== 11 ? ' станет' : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? ' станут' : ' станут')) + ' «' + nameOf(plan.target) + '» · ' + fmt(priceOf(S.cats, plan.target));
+    var back = f.mode === 'brush' ? 'startBrushBack' : 'back';
+    return { title: 'Предпросмотр', sub: 'Пока ничего не применено', back: true, steps: f.mode === 'brush' ? '' : stepsHTML(3, 3, 'проверка'),
+      body: '<h2 tabindex="-1" data-focus-title>' + head + '</h2>' +
+        '<div class="card mapcard">' + mapSVG(seatsAfter(plan).map(function (s, i) { return Object.assign({}, S.seats[i], { cat: S.seats[i].cat }); }), { changes: plan.changes, skipped: skipMap, label: 'Предпросмотр схемы. Места, которые изменятся, обведены. Сцена внизу.' }) + legend(['chg', 'skip', 'sold', 'held']) + (hasSales(S.seats) ? '<p class="fine" style="padding:6px 4px 0">Замок на месте: проданное место остаётся в своей категории по цене продажи.</p>' : '') + '</div>' +
+        (f.mode === 'rule' ? '<button class="btn ghost small" style="align-self:flex-start" data-act="editByHand">Поправить вручную</button>' : '') +
+        skippedBox(plan) + '<div class="card flat"><p class="label" style="margin-bottom:4px">Что изменится</p>' + diffTable(plan) + '</div>',
+      bar: '<button class="btn sec" data-act="' + back + '">Назад</button><button class="btn primary" data-act="openApply"' + (n ? '' : ' disabled') + '>Применить ' + n + '</button>' };
+  }
+
+  function brushMapHTML() {
+    var b = S.brush, z = b.zoom, P = 14.5, R = 5.2, X0 = 22, GAP = 12, W = 348, Y0 = 7, H = Y0 + 18 * P + 28, pid = 'bp' + (++seq), r;
+    var o = ['<div class="binner" style="width:' + (z === 1 ? '100%' : (W * z) + 'px') + '">'];
+    o.push('<svg class="map" style="width:100%" viewBox="0 0 ' + W + ' ' + H + '" role="group" aria-label="Схема партера. Сцена внизу. Места выбираются касанием.">');
+    o.push('<defs><pattern id="' + pid + '" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="3" class="hb"/><rect width="1.2" height="3" class="hl"/></pattern></defs>');
+    S.seats.forEach(function (s) {
+      var idx = s.num - 1, cx = idx < 10 ? X0 + P * (idx + 0.5) : X0 + P * 10 + GAP + P * (idx - 10 + 0.5), cy = Y0 + (18 - s.row) * P + P / 2;
+      var pc = b.pend[s.id], cat = pc || s.cat, cls, extra = '';
+      if (s.status === 'sold') cls = cat ? 'seat soldc k' + cat.slice(1) : 'seat sold';
+      else if (s.status === 'held') cls = 'seat held k' + (cat ? cat.slice(1) : 0);
+      else { cls = 'seat k' + (cat ? cat.slice(1) : 0); if (s.closed && !pc) extra = ' style="fill:url(#' + pid + ')"'; }
+      o.push('<circle class="' + cls + '" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + R + '"' + extra + '/>');
+      if (pc) o.push('<circle class="ring" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + (R + 2) + '"/>');
+      if (s.status === 'sold' && cat) o.push('<path class="lk" d="M' + (cx - 1.5).toFixed(1) + ' ' + (cy + 0.4).toFixed(1) + 'v-1.3a1.5 1.5 0 0 1 3 0v1.3"/><rect class="lkb" x="' + (cx - 2).toFixed(1) + '" y="' + (cy + 0.2).toFixed(1) + '" width="4" height="3" rx="0.6"/>');
+      if (b.anchor && b.anchor.kind === 'seat' && b.anchor.id === s.id) o.push('<circle class="anc" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + (R + 2.6) + '"/>');
+      o.push('<circle class="hit" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="7.25" data-act="tapSeat" data-lp="1" data-id="' + s.id + '"/>');
+    });
+    var sy = Y0 + 18 * P + 6;
+    o.push('<rect class="stage-r" x="20" y="' + sy + '" width="' + (W - 40) + '" height="18" rx="6"/><text class="stage-t" x="' + (W / 2) + '" y="' + (sy + 12.5) + '" text-anchor="middle">СЦЕНА</text></svg>');
+    if (z === 3) {
+      var firstX = X0 + P * 0.5, lastX = X0 + P * 10 + GAP + P * 9.5;
+      for (r = 1; r <= 18; r++) {
+        var cyp = (Y0 + (18 - r) * P + P / 2) * z;
+        var defs = S.sections ? [{ sec: 'Л', x: (firstX - R) * z - 24 }, { sec: 'П', x: (lastX + R) * z + 24 }] : [{ sec: '', x: (firstX - R) * z - 24 }, { sec: '', x: (lastX + R) * z + 24 }];
+        defs.forEach(function (h) {
+          var row = r, on = rowSeats(row, h.sec).some(function (s) { return b.pend[s.id]; });
+          var anc = b.anchor && b.anchor.kind === 'row' && b.anchor.row === row && b.anchor.sec === h.sec;
+          o.push('<button class="rhc' + (anc ? ' anc' : '') + '" style="left:' + (h.x - 22).toFixed(1) + 'px;top:' + (cyp - 22).toFixed(1) + 'px" aria-pressed="' + !!on + '" aria-label="Ряд ' + rowLbl(row, h.sec) + ': выбрать все свободные места" data-act="rowHandle" data-row="' + row + '" data-sec="' + h.sec + '"><span>' + rowLbl(row, h.sec) + '</span></button>');
+        });
+      }
+    }
+    o.push('</div>');
+    return '<div class="bmap" tabindex="0" role="region" aria-label="Схема, прокручивается пальцем">' + o.join('') + '</div>';
+  }
+  function scrBrush() {
+    var b = S.brush, ids = Object.keys(b.pend), tgt = b.cat;
+    var chips = S.cats.map(function (c) {
+      var k = stats(S.seats, S.cats)[c.id];
+      return '<button aria-pressed="' + (b.cat === c.id) + '" data-act="brushCat" data-id="' + c.id + '" data-fk="bc-' + c.id + '">' + cdot(c.id) + '<span><span class="row-title">' + nameOf(c.id) + '</span><br><span class="row-sub">' + fmt(c.price) + '</span></span></button>';
+    }).join('');
+    var tools = [['seat', 'Места'], ['area', 'Область'], ['rows', 'Ряды']];
+    var hint = b.tool === 'seat' ? 'Касание выбирает одно место.' : b.tool === 'area' ? 'Коснитесь двух углов. Выберется прямоугольник мест.' : (b.range ? 'Диапазон: коснитесь первого ряда, потом последнего.' : 'Касание любого места выбирает весь ряд.');
+    hint += b.zoom === 3 ? ' Удерживайте место, чтобы выбрать только его, ряд или сектор.' : ' Номера рядов появятся при увеличении.';
+    var msg = b.msg || ('Выбрано мест: ' + ids.length + '. Проданные и бронь мы пропускаем.');
+    return { title: 'Вручную', sub: 'Кисть: ' + nameOf(tgt) + ' · ' + fmt(priceOf(S.cats, tgt)), back: true,
+      body: '<h2 tabindex="-1" data-focus-title>Раскрасить вручную</h2>' +
+        '<div class="brushcats" role="group" aria-label="Кисть">' + chips + '</div>' +
+        '<div class="seg" role="group" aria-label="Что выбирает касание">' + tools.map(function (t) { return '<button aria-pressed="' + (b.tool === t[0]) + '" data-act="brushTool" data-t="' + t[0] + '" data-fk="bt-' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
+        '<div class="toolrow"><button class="chip" aria-pressed="' + b.range + '"' + (b.tool === 'rows' ? '' : ' disabled') + ' data-act="brushRange" data-fk="brange">Диапазон</button>' +
+        '<div class="seg" role="group" aria-label="Масштаб">' + [[1, 'Весь зал'], [3, 'Крупно']].map(function (z) { return '<button aria-pressed="' + (b.zoom === z[0]) + '" data-act="brushZoom" data-z="' + z[0] + '" data-fk="bz-' + z[0] + '">' + z[1] + '</button>'; }).join('') + '</div></div>' +
+        '<p class="fine">' + hint + '</p>' + brushMapHTML() +
+        '<div class="live" role="status">' + ic('info', 18) + '<span>' + msg + '</span></div>' +
+        '<button class="btn ghost small" style="align-self:flex-start" data-act="openRowList">Ряды списком</button>' +
+        '<details><summary>Как раскрасить зал полосами от сцены</summary><p>1. Выберите кисть «VIP». 2. Включите «Ряды» и «Диапазон». 3. Коснитесь ряда 1, потом ряда 3. 4. Выберите кисть «Первая» и коснитесь рядов 4 и 7. Так зал делится на полосы от сцены к последним рядам.</p></details>',
+      bar: '<button class="btn sec" data-act="brushReset"' + (ids.length ? '' : ' disabled') + '>Сбросить</button><button class="btn primary" data-act="brushPreview"' + (ids.length ? '' : ' disabled') + '>Показать на схеме' + (ids.length ? ' · ' + ids.length : '') + '</button>' };
+  }
+  function skipTxt(sold, held) {
+    var a = [];
+    if (sold) a.push(sold === 1 ? '1 проданное пропущено' : sold + ' проданных пропущены');
+    if (held) a.push(held === 1 ? '1 в брони пропущено' : held + ' в брони пропущены');
+    return a.length ? ', ' + a.join(', ') : '';
+  }
+  function brushSelect(list, label, mode) {
+    var b = S.brush, sold = 0, held = 0, already = 0, ids = [];
+    list.forEach(function (s) { if (s.status === 'sold') sold++; else if (s.status === 'held') held++; else if (s.cat === b.cat) already++; else ids.push(s.id); });
+    var any = list.some(function (s) { return b.pend[s.id]; });
+    if (mode === 'toggle' && any) { list.forEach(function (s) { delete b.pend[s.id]; }); b.msg = label + ': выбор снят.'; return; }
+    ids.forEach(function (id) { b.pend[id] = b.cat; });
+    b.msg = label + ': ' + ids.length + ' выбрано' + skipTxt(sold, held) + (already ? ', ' + already + ' уже в «' + nameOf(b.cat) + '»' : '') + '.';
+  }
+  function rowTap(row, sec) {
+    var b = S.brush;
+    if (b.range) {
+      if (!b.anchor || b.anchor.kind !== 'row') { b.anchor = { kind: 'row', row: row, sec: sec }; b.msg = 'Начало диапазона: ряд ' + rowLbl(row, sec) + '. Коснитесь последнего ряда.'; return; }
+      if (b.anchor.sec !== sec) { b.msg = 'Второй ряд из другого сектора. Коснитесь ряда в том же секторе.'; return; }
+      var r1 = Math.min(b.anchor.row, row), r2 = Math.max(b.anchor.row, row);
+      b.anchor = null;
+      brushSelect(S.seats.filter(function (s) { return s.row >= r1 && s.row <= r2 && secOf(s) === sec; }), 'Ряды ' + rowLbl(r1, sec) + '–' + r2, 'add');
+      return;
+    }
+    brushSelect(rowSeats(row, sec), 'Ряд ' + rowLbl(row, sec), 'toggle');
+  }
+  function brushSheetHTML() {
+    var sh = S.sheet, b = S.brush, inner;
+    if (sh.kind === 'seatmenu') {
+      var s = seatById(sh.id), sec = secOf(s), free = s.status === 'free';
+      inner = '<h2 id="sheet-title">Ряд ' + rowLbl(s.row, sec) + ', место ' + s.num + '</h2>' +
+        '<p>' + (s.status === 'sold' ? 'Продано. Категорию и цену менять нельзя.' : s.status === 'held' ? 'В брони. Пока бронь живая, место не меняется.' : 'Сейчас «' + nameOf(s.cat) + '». Кисть: «' + nameOf(b.cat) + '».') + '</p>' +
+        '<button class="btn ' + (free ? 'primary' : '') + ' block" data-act="seatOnly" data-id="' + s.id + '"' + (free ? ' data-fk="sheet-main"' : ' disabled') + '>Только это место</button>' +
+        '<button class="btn block" data-act="seatRow" data-id="' + s.id + '"' + (free ? '' : ' data-fk="sheet-main"') + '>Весь ряд ' + rowLbl(s.row, sec) + '</button>' +
+        '<button class="btn block" data-act="seatSec" data-id="' + s.id + '">Весь сектор ' + secName(sec) + '</button>' +
+        '<button class="btn ghost" data-act="openRowList">Выбрать ряды из списка</button>';
+    } else {
+      var secs = S.sections ? ['Л', 'П'] : [''], rows = [], picked = 0, r;
+      for (r = 1; r <= 18; r++) secs.forEach(function (sc) {
+        var ls = rowSeats(r, sc), sold = ls.filter(function (x) { return x.status === 'sold'; }).length, on = ls.some(function (x) { return b.pend[x.id]; });
+        if (on) picked++;
+        rows.push('<button class="row-btn" style="min-height:48px;padding:4px 12px" role="checkbox" aria-checked="' + on + '" data-act="rlToggle" data-row="' + r + '" data-sec="' + sc + '"><span class="check" aria-hidden="true">' + (on ? ic('check', 14, 3) : '') + '</span><span class="row-main"><span class="row-title">Ряд ' + rowLbl(r, sc) + ' · ' + places(ls.length) + (sold ? ' · ' + sold + ' продано' : '') + '</span></span></button>');
+      });
+      inner = '<h2 id="sheet-title">Ряды списком</h2><p class="fine">Для залов с большим числом рядов. Кисть: «' + nameOf(b.cat) + '».</p>' +
+        '<div class="two">' + stepper('С ряда', b.rl.a, 'rlA', 'rlStep') + stepper('По ряд', b.rl.b, 'rlB', 'rlStep') + '</div>' +
+        '<button class="btn block" data-act="rlSelect">Выделить ряды ' + b.rl.a + '–' + b.rl.b + '</button>' +
+        '<button class="btn primary block" data-act="closeSheet" data-fk="sheet-main">Готово' + (picked ? ' · выбрано рядов: ' + picked : '') + '</button>' +
+        '<div class="list">' + rows.join('') + '</div>';
+    }
+    return '<div class="scrim" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="grab"></div>' + inner + '</div></div>';
+  }
+
+  function stepperRow(label, value, act, key, dis) {
+    return '<div><p class="label">' + label + '</p><div class="stepper"><button data-act="' + act + '" data-key="' + key + '" data-d="-1" data-fk="' + key + '-m" aria-label="' + label + ': меньше"' + (dis && dis[0] ? ' disabled' : '') + '>−</button><span class="v">' + value + '</span><button data-act="' + act + '" data-key="' + key + '" data-d="1" data-fk="' + key + '-p" aria-label="' + label + ': больше"' + (dis && dis[1] ? ' disabled' : '') + '>+</button></div></div>';
+  }
+  function scrWhole() {
+    var w = S.whole, plan = wholeLayout(), hints = { pyramid: 'Мало дорогих мест, много доступных. Обычный выбор для концерта.', equal: 'В каждой категории одинаково мест.', middle: 'Крайние категории узкие, основной объём в средних ценах.' };
+    var cats = plan.newCats, st = stats(seatsAfter(plan), cats);
+    var rows = cats.map(function (c) { return '<div class="tr">' + cdot(c.id) + '<span class="n">' + nameOf(c.id) + '</span><span class="a">' + places(st[c.id].total) + '</span><span class="d" style="min-width:76px">' + fmt(c.price) + '</span></div>'; }).join('');
+    return { title: 'Новая раскладка', sub: subtitle(), back: true, steps: stepsHTML(1, 2, 'параметры'),
+      body: '<h2 tabindex="-1" data-focus-title>Сколько категорий и какие цены?</h2><p class="lead">Места разложатся от сцены и центра. Ряды не режутся на части.</p>' +
+        stepperRow('Число категорий', w.n, 'wholeStep', 'wn', [w.n <= 2, w.n >= 6]) +
+        '<div class="two">' + stepperRow('Самая дорогая', fmt(w.maxP), 'wholeStep', 'wmax', [w.maxP - 100 <= w.minP, false]).replace('class="v"', 'class="v" style="font-size:14px"') + stepperRow('Самая дешёвая', fmt(w.minP), 'wholeStep', 'wmin', [w.minP <= 100, w.minP + 100 >= w.maxP]).replace('class="v"', 'class="v" style="font-size:14px"') + '</div>' +
+        '<div><p class="label" style="margin-bottom:6px">Сколько мест в каждой</p><div class="seg" role="group" aria-label="Шаблон долей">' + [['pyramid', 'Пирамида'], ['equal', 'Поровну'], ['middle', 'Широкая середина']].map(function (t) { return '<button aria-pressed="' + (w.t === t[0]) + '" data-act="wholeT" data-t="' + t[0] + '" data-fk="wt-' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div><p class="fine" style="margin-top:6px">' + hints[w.t] + '</p></div>' +
+        '<div class="card mapcard">' + mapSVG(S.seats.map(function (s) { return Object.assign({}, s, { cat: plan.changes[s.id] }); }), { label: 'Предпросмотр новой раскладки. Сцена внизу.' }) + '</div>' +
+        '<div class="card flat"><div class="tbl">' + rows + '</div>' + revRows(revFacts(seatsAfter(plan), cats), null) + '</div>',
+      bar: '<button class="btn sec" data-act="back">Назад</button><button class="btn primary" data-act="openApply">Применить раскладку</button><p class="hint">Пока вы не нажмёте «Применить», покупатели ничего не увидят.</p>' };
+  }
+
+  function scrSuccess() {
+    var L = S.last, plan = L && L.plan, n = L ? L.count : 0, text;
+    if (plan && plan.newCats) text = 'Создали ' + plural(plan.newCats.length, 'категорию', 'категории', 'категорий') + ' и разложили ' + places(n) + '.';
+    else if (plan && plan.priceTo != null) text = 'Цена категории «' + nameOf(plan.target) + '»: ' + fmt(plan.priceFrom) + ' → ' + fmt(plan.priceTo) + '. Изменили цену у ' + plural(n, 'непроданного места', 'непроданных мест', 'непроданных мест') + '.';
+    else if (plan && plan.target) text = places(n) + ' теперь в категории «' + nameOf(plan.target) + '» · ' + fmt(priceOf(S.cats, plan.target)) + '.';
+    else text = 'Изменили категорию у ' + places(n) + '.';
+    var sold = S.seats.filter(function (s) { return s.status === 'sold'; }).length, held = S.seats.filter(function (s) { return s.status === 'held'; }).length;
+    var kept = '';
+    if (sold) kept += '<p><b>' + (sold === 1 ? '1 проданное место' : sold + NB + 'проданных мест') + '.</b> Категория и цена продажи не изменились.</p>';
+    if (held) kept += '<p><b>' + held + NB + 'в брони.</b> Категория и цена брони не изменились.</p>';
+    if (!kept) kept = '<p>В зале пока нет проданных мест и брони.</p>';
+    var rf = revFacts(S.seats, S.cats);
+    return { title: 'Готово', sub: subtitle(), back: false, noTop: true,
+      body: '<div class="empty success"><div class="big">' + ic('check', 34, 2.4) + '</div><h2 tabindex="-1" data-focus-title>Готово</h2><p style="font-size:15px">' + text + '</p>' +
+        '<p class="fine">Покупатели в виджете видят новую цену сразу. Сайты на шлюзе покажут её после синхронизации каталога.</p></div>' +
+        '<div class="card flat kept"><p class="label" style="margin-bottom:6px">Осталось как есть</p>' + kept + '</div>' +
+        '<div class="card flat"><p class="label" style="margin-bottom:6px">Выручка</p><p style="margin:0;font-size:13px">' + revSentence(rf) + '</p></div>' +
+        '<div class="card mapcard">' + mapSVG(S.seats, { label: 'Схема партера после применения. Сцена внизу.' }) + legend(['sold', 'held', 'closed']) + '</div>',
+      bar: '<button class="btn sec" data-act="undo">' + ic('undo', 18) + 'Вернуть</button><button class="btn primary" data-act="done">К схеме</button><p class="hint">«Вернуть» отменит это изменение целиком.</p>' };
+  }
+
+    var SCREENS = { hub: scrHub, pick: scrPick, price: scrPrice, rule: scrRule, preview: scrPreview, brush: scrBrush, whole: scrWhole, success: scrSuccess };
+
+  function sheetHTML() {
+    var sh = S.sheet;
+    if (!sh) return '';
+    if (sh.kind === 'seatmenu' || sh.kind === 'rowlist') return brushSheetHTML();
+    var plan = currentPlan(), n = Object.keys(plan.changes).length, inner;
+    if (sh.kind === 'confirm') {
+      var what = plan.priceTo != null ? 'Категория «' + nameOf(plan.target) + '»: ' + fmt(plan.priceFrom) + ' → ' + fmt(plan.priceTo) + ' для ' + plural(n, 'непроданного места', 'непроданных мест', 'непроданных мест') + '.' : plan.newCats ? 'Мы создадим ' + plural(plan.newCats.length, 'категорию', 'категории', 'категорий') + ' и разложим ' + places(n) + '.'
+        : plan.target ? places(n) + ' получат категорию «' + nameOf(plan.target) + '» и цену ' + fmt(priceOf(S.cats, plan.target)) + '.' : 'У ' + places(n) + ' изменится категория и цена.';
+      inner = '<h2 id="sheet-title">Применить раскладку?</h2><p>' + what + ' Покупатели увидят это сразу.</p><div class="card flat"><p class="label" style="margin-bottom:4px">Выручка</p><p style="margin:0;font-size:13px">' + revSentence(revFacts(seatsAfter(plan), catsAfter(plan))) + '</p></div>' + (hasSales(S.seats) ? '<p class="fine">Проданные места и бронь не меняются.</p>' : '') + '<p class="fine">Сайты на шлюзе покажут новую цену после синхронизации каталога. Потом можно нажать «Вернуть».</p>' +
+        '<button class="btn primary block" data-act="confirmApply" data-fk="sheet-main">Применить</button><button class="btn block" data-act="closeSheet">Вернуться к предпросмотру</button>';
+    } else {
+      var held = sh.ids, rest = n;
+      var hm = {}; held.forEach(function (id) { hm[id] = 1; });
+      inner = '<h2 id="sheet-title">Пока вы смотрели, ' + plural(held.length, 'место ушло', 'места ушли', 'мест ушло') + ' в бронь</h2>' +
+        '<div class="card mapcard">' + mapSVG(S.seats, { hold: hm, label: 'Схема. Крестиками отмечены места, которые ушли в бронь.' }) + '</div>' +
+        '<p>' + groupByRow(held) + '. Эти места мы не тронем, иначе покупатель заплатит одну цену, а получит место другой категории.</p><p class="fine">Остальные ' + places(rest) + ' можно применить сейчас.</p>' +
+        '<button class="btn primary block" data-act="conflictApply" data-fk="sheet-main"' + (rest ? '' : ' disabled') + '>Применить к остальным ' + rest + '</button><button class="btn block" data-act="closeSheet">Обновить предпросмотр</button><button class="btn ghost" data-act="cancelFlow">Отменить</button>';
+    }
+    return '<div class="scrim" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="grab"></div>' + inner + '</div></div>';
+  }
+
+  /* ---------- render ---------- */
+  var app = document.getElementById('app');
+  var noticeTimer = null, focusTitle = true;
+  function render() {
+    var ae = document.activeElement, fk = ae && ae.getAttribute ? ae.getAttribute('data-fk') : null;
+    var s = SCREENS[S.screen]();
+    var top = '';
+    if (!s.noTop) top = '<header class="top"><div class="top-row"><button class="iconbtn" data-act="back" aria-label="Назад">' + ic('back', 22) + '</button><div class="top-text"><div class="top-title">' + s.title + '</div><div class="top-sub">' + s.sub + '</div></div></div>' + (s.steps || '') + '</header>';
+    else top = '<header class="top"><div class="top-row"><span style="width:12px"></span><div class="top-text"><div class="top-title">' + s.title + '</div><div class="top-sub">' + s.sub + '</div></div></div></header>';
+    var noticeHTML = (S.notice && S.screen !== 'hub' && S.screen !== 'brush') ? '<div class="notice ' + S.noticeKind + '" role="status">' + S.notice + '</div>' : '';
+    var bm = app.querySelector('.bmap'), bs = (bm && !S.resetBmap) ? [bm.scrollLeft, bm.scrollTop] : null;
+    var scr0 = app.querySelector('.screen'), ss = scr0 ? scr0.scrollTop : 0, shb = app.querySelector('.sheet'), shs = shb ? shb.scrollTop : 0, keep = !focusTitle;
+    app.innerHTML = top + '<div class="screen">' + noticeHTML + s.body + '</div>' + (s.bar ? '<div class="bar">' + s.bar + '</div>' : '') + sheetHTML();
+    if (S.sheet) { var m = app.querySelector('[data-fk="sheet-main"]'); if (m) m.focus(); }
+    else if (focusTitle) { var t = app.querySelector('[data-focus-title]'); if (t) t.focus({ preventScroll: true }); window.scrollTo(0, 0); var sc = app.querySelector('.screen'); if (sc) sc.scrollTop = 0; }
+    else if (fk) { var el = app.querySelector('[data-fk="' + fk + '"]'); if (el && !el.disabled) el.focus({ preventScroll: true }); }
+    var nb = app.querySelector('.bmap');
+    if (nb && bs) { nb.scrollLeft = bs[0]; nb.scrollTop = bs[1]; }
+    else if (nb && S.resetBmap) { nb.scrollLeft = 0; nb.scrollTop = S.brush.zoom === 3 ? nb.scrollHeight : 0; }
+    S.resetBmap = false;
+    if (keep) { var scr1 = app.querySelector('.screen'), shn = app.querySelector('.sheet'); if (scr1) scr1.scrollTop = ss; if (shn) shn.scrollTop = shs; }
+    focusTitle = false;
+    var chips = document.querySelectorAll('#states button');
+    chips.forEach(function (c) { c.setAttribute('aria-pressed', String(c.getAttribute('data-sc') === S.scenario)); });
+  }
+  function go(screen) {
+    if (screen === 'hub' && S.draftCat) { var dc = S.draftCat; S.cats = S.cats.filter(function (c) { return c.id !== dc; }); S.draftCat = null; }
+    if (screen === 'brush') S.resetBmap = true;
+    S.screen = screen; S.notice = ''; focusTitle = true; render(); }
+  function say(msg, kind) {
+    S.notice = msg; S.noticeKind = kind || ''; render();
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(function () { S.notice = ''; render(); }, 4500);
+  }
+
+  var A = {
+    back: function () {
+      var m = { pick: 'hub', price: 'pick', rule: 'pick', whole: 'hub', brush: 'hub' }[S.screen];
+      if (S.screen === 'preview') m = S.flow.mode === 'whole' ? 'whole' : (S.flow.mode === 'brush' ? 'brush' : (S.flow.mode === 'price' ? 'price' : 'rule'));
+      if (S.screen === 'hub') return say('Здесь вы вернётесь на карточку сеанса. В макете этот экран не показан.');
+      go(m);
+    },
+    toast: function (d) { say(d.msg); },
+    startAuto: function () { S.flow = freshFlow(); go('pick'); },
+    startWhole: function () { S.flow = freshFlow(); S.flow.mode = 'whole'; go('whole'); },
+    startBrush: function () { S.flow.mode = 'brush'; S.brush = newBrush(S.cats[0].id); go('brush'); },
+    startPrice: function () { S.flow = freshFlow(); S.flow.mode = 'price'; go('pick'); },
+    toPricePreview: function () { go('preview'); },
+    priceStep: function (d) { var f = S.flow; f.priceTo = Math.max(50, Math.min(50000, (f.priceTo == null ? priceOf(S.cats, f.cat) : f.priceTo) + Number(d.d) * 50)); render(); },
+    newCat: function () {
+      var used = S.cats.map(function (c) { return c.id; }), id = PALETTE.map(function (x) { return x.id; }).filter(function (i) { return used.indexOf(i) < 0; })[0];
+      if (!id) return;
+      S.cats = S.cats.concat([{ id: id, price: 900 }]); S.draftCat = id; S.flow.cat = id; S.flow.rows = [1, 2]; S.flow.priceTo = 900; render();
+    },
+    editByHand: function () {
+      var plan = currentPlan(); S.brush = newBrush(plan.target); S.brush.pend = Object.assign({}, plan.changes);
+      S.brush.msg = 'Раскладка перенесена на ручной выбор: ' + places(Object.keys(plan.changes).length) + '. Можно поправить.'; S.flow.mode = 'brush'; go('brush');
+    },
+    brushTool: function (d) { S.brush.tool = d.t; S.brush.anchor = null; if (d.t !== 'rows') S.brush.range = false; render(); },
+    brushRange: function () { S.brush.range = !S.brush.range; S.brush.anchor = null; S.brush.msg = S.brush.range ? 'Диапазон включён. Коснитесь первого ряда.' : ''; render(); },
+    brushZoom: function (d) { S.brush.zoom = Number(d.z); S.resetBmap = true; render(); },
+    tapSeat: function (d) {
+      var b = S.brush, s = seatById(d.id);
+      if (b.tool === 'rows') { rowTap(s.row, secOf(s)); render(); return; }
+      if (b.tool === 'area') {
+        if (!b.anchor || b.anchor.kind !== 'seat') { b.anchor = { kind: 'seat', id: s.id }; b.msg = 'Угол области: ряд ' + s.row + ', место ' + s.num + '. Коснитесь противоположного угла.'; render(); return; }
+        var a = seatById(b.anchor.id), r1 = Math.min(a.row, s.row), r2 = Math.max(a.row, s.row), n1 = Math.min(a.num, s.num), n2 = Math.max(a.num, s.num);
+        b.anchor = null;
+        brushSelect(S.seats.filter(function (x) { return x.row >= r1 && x.row <= r2 && x.num >= n1 && x.num <= n2; }), 'Область, ряды ' + r1 + '–' + r2 + ', места ' + n1 + '–' + n2, 'add'); render(); return;
+      }
+      if (s.status === 'sold') b.msg = 'Место ' + s.row + '/' + s.num + ' продано. Категорию менять нельзя.';
+      else if (s.status === 'held') b.msg = 'Место ' + s.row + '/' + s.num + ' в брони. Пока бронь живая, место не меняется.';
+      else brushSelect([s], 'Место ' + s.row + '/' + s.num, 'toggle');
+      render();
+    },
+    rowHandle: function (d) { rowTap(Number(d.row), d.sec); render(); },
+    seatOnly: function (d) { var s = seatById(d.id); S.sheet = null; brushSelect([s], 'Место ' + s.row + '/' + s.num, 'toggle'); render(); },
+    seatRow: function (d) { var s = seatById(d.id), sec = secOf(s); S.sheet = null; brushSelect(rowSeats(s.row, sec), 'Ряд ' + rowLbl(s.row, sec), 'toggle'); render(); },
+    seatSec: function (d) { var s = seatById(d.id), sec = secOf(s); S.sheet = null; brushSelect(S.seats.filter(function (x) { return secOf(x) === sec; }), secName(sec), 'add'); render(); },
+    openRowList: function () { S.sheet = { kind: 'rowlist' }; render(); },
+    rlStep: function (d) {
+      var rl = S.brush.rl, k = d.key === 'rlA' ? 'a' : 'b'; rl[k] = Math.max(1, Math.min(18, rl[k] + Number(d.d)));
+      if (rl.a > rl.b) { if (k === 'a') rl.b = rl.a; else rl.a = rl.b; }
+      render();
+    },
+    rlSelect: function () { var rl = S.brush.rl; brushSelect(S.seats.filter(function (x) { return x.row >= rl.a && x.row <= rl.b; }), 'Ряды ' + rl.a + '–' + rl.b, 'add'); render(); },
+    rlToggle: function (d) { var r = Number(d.row); brushSelect(rowSeats(r, d.sec), 'Ряд ' + rowLbl(r, d.sec), 'toggle'); render(); },
+    startBrushBack: function () { go('brush'); },
+    catShortcut: function (d) { S.flow = freshFlow(); S.flow.cat = d.id; S.flow.rows = defaultsFor(d.id); go('rule'); },
+    pickCat: function (d) { S.flow.cat = d.id; S.flow.rows = defaultsFor(d.id); if (S.flow.mode === 'price') S.flow.priceTo = priceOf(S.cats, d.id); render(); },
+    toRule: function () { if (S.flow.cat) go(S.flow.mode === 'price' ? 'price' : 'rule'); },
+    pickRule: function (d) { S.flow.rule = d.id; render(); },
+    rowStep: function (d) {
+      var f = S.flow, i = d.key === 'rowA' ? 0 : 1, v = f.rows[i] + Number(d.d);
+      f.rows[i] = Math.max(1, Math.min(18, v)); render();
+    },
+    toggleBlock: function (d) { S.flow.blocks[d.key] = !S.flow.blocks[d.key]; render(); },
+    toggleBand: function (d) { S.flow.band[d.id] = !S.flow.band[d.id]; render(); },
+    bestStep: function (d) { S.flow.n = Math.max(10, Math.min(200, S.flow.n + Number(d.d))); render(); },
+    bestSet: function (d) { S.flow.n = Number(d.n); render(); },
+    toggleKeep: function () { S.flow.keep = !S.flow.keep; render(); },
+    toPreview: function () { S.flow.mode = 'rule'; go('preview'); },
+    openApply: function () { S.sheet = { kind: 'confirm' }; render(); },
+    closeSheet: function () { S.sheet = null; render(); },
+    scrim: function (d, e) { if (e.target.classList.contains('scrim')) A.closeSheet(); },
+    cancelFlow: function () { S.sheet = null; S.race = false; go('hub'); },
+    confirmApply: function () {
+      var plan = currentPlan();
+      if (S.race) {
+        S.race = false;
+        var ids = Object.keys(plan.changes), pick = ['12-9', '13-10'].filter(function (id) { return plan.changes[id]; });
+        if (pick.length < 2) pick = ids.slice(0, 2);
+        S.seats = S.seats.map(function (s) { return pick.indexOf(s.id) >= 0 ? Object.assign({}, s, { status: 'held' }) : s; });
+        S.sheet = { kind: 'conflict', ids: pick }; render(); return;
+      }
+      applyPlan(plan); S.sheet = null; S.brush.pend = {}; go('success');
+    },
+    conflictApply: function () { applyPlan(currentPlan()); S.sheet = null; go('success'); },
+    undo: function () { undo(); S.flow = freshFlow(); S.screen = 'hub'; focusTitle = true; say('Вернули прежнюю раскладку. Покупатели снова видят старые цены.', 'ok'); },
+    done: function () { S.flow = freshFlow(); go('hub'); },
+    brushCat: function (d) { S.brush.cat = d.id; render(); },
+    brushReset: function () { S.brush.pend = {}; S.brush.anchor = null; S.brush.msg = 'Выбор сброшен.'; render(); },
+    brushPreview: function () { S.flow.mode = 'brush'; go('preview'); },
+    wholeStep: function (d) {
+      var w = S.whole, k = d.key, v = Number(d.d);
+      if (k === 'wn') w.n = Math.max(2, Math.min(6, w.n + v));
+      if (k === 'wmax' && w.maxP + v * 100 > w.minP) w.maxP += v * 100;
+      if (k === 'wmin' && w.minP + v * 100 < w.maxP && w.minP + v * 100 >= 100) w.minP += v * 100;
+      render();
+    },
+    wholeT: function (d) { S.whole.t = d.t; render(); }
+  };
+  var lpTimer = null, lpFired = false;
+  app.addEventListener('pointerdown', function (e) {
+    lpFired = false; clearTimeout(lpTimer);
+    var el = e.target.closest && e.target.closest('[data-lp]');
+    if (!el) return;
+    var id = el.getAttribute('data-id');
+    lpTimer = setTimeout(function () { lpFired = true; S.sheet = { kind: 'seatmenu', id: id }; render(); }, 480);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (n) { app.addEventListener(n, function () { clearTimeout(lpTimer); }); });
+  app.addEventListener('contextmenu', function (e) {
+    var el = e.target.closest && e.target.closest('[data-lp]');
+    if (el) { e.preventDefault(); S.sheet = { kind: 'seatmenu', id: el.getAttribute('data-id') }; render(); }
+  });
+  app.addEventListener('click', function (e) {
+    if (lpFired) { lpFired = false; e.preventDefault(); return; }
+    var el = e.target.closest('[data-act]');
+    if (!el || !app.contains(el)) return;
+    var fn = A[el.getAttribute('data-act')];
+    if (fn) fn(el.dataset, e);
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && S.sheet) A.closeSheet(); });
+
+  var SC = [['normal', 'Идут продажи'], ['fresh', 'Продаж нет'], ['price', 'Цена категории'], ['brush', 'Вручную: ряды'], ['sections', 'Вручную: два сектора'], ['noplan', 'Нет схемы'], ['nocats', 'Нет категорий'], ['sold', 'Проданные и бронь'], ['race', 'Бронь при применении'], ['success', 'Успех']];
+  document.getElementById('states').innerHTML = SC.map(function (x) { return '<button data-sc="' + x[0] + '" aria-pressed="false">' + x[1] + '</button>'; }).join('');
+  document.getElementById('states').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    load(b.getAttribute('data-sc')); focusTitle = true; render();
+  });
+  load('normal'); focusTitle = false; render();
+})();
+</script>
