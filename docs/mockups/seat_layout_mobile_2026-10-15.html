@@ -1,4 +1,4 @@
-<title>Автораскладка мест, телефон</title>
+<title>Автораскладка мест</title>
 <style>
 /* Layout: one phone-width column. On wide screens a state panel sits left of a 390 px phone frame. */
 :root {
@@ -96,6 +96,7 @@ a { color: var(--link); }
 .btn.sec { flex-grow: 1; }
 .btn.block { width: 100%; flex-grow: 1; }
 .btn[disabled] { background: var(--surface-2); color: var(--faint); border-color: var(--surface-2); cursor: not-allowed; }
+.btn.ghost.small { font-size: 13px; font-weight: 500; color: var(--muted); }
 .btn.ghost { border-color: transparent; background: transparent; min-height: 44px; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
@@ -148,8 +149,10 @@ a { color: var(--link); }
 .stepper { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line-strong); border-radius: 12px; padding: 6px; background: var(--surface); }
 .stepper .v { text-align: center; flex-grow: 1; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .stepper .v small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); }
-.stepper button { width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); font-size: 22px; line-height: 1; cursor: pointer; }
+.stepper button { flex-shrink: 0; width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); font-size: 22px; line-height: 1; cursor: pointer; }
 .stepper button[disabled] { color: var(--faint); background: var(--surface-2); cursor: not-allowed; }
+.two .stepper { padding: 4px; gap: 2px; }
+.two .stepper .v { min-width: 0; white-space: nowrap; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .two > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .two .label { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; }
@@ -495,7 +498,7 @@ details p { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
   function groupByRow(ids) {
     var g = {};
     ids.forEach(function (id) { var p = id.split('-'); (g[p[0]] = g[p[0]] || []).push(Number(p[1])); });
-    return Object.keys(g).map(Number).sort(function (a, b) { return a - b; }).map(function (r) { return 'ряд ' + r + ', места ' + g[r].sort(function (a, b) { return a - b; }).join(', '); }).join('. ');
+    return Object.keys(g).map(Number).sort(function (a, b) { return a - b; }).map(function (r) { return 'Ряд ' + r + ', места ' + g[r].sort(function (a, b) { return a - b; }).join(', '); }).join('. ');
   }
   function skippedLine(plan) {
     var a = [];
@@ -560,7 +563,7 @@ details p { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
       '<p class="label">Категории</p><div class="list">' + list + '</div>' +
       '<p class="fine">Коснитесь категории, чтобы сразу выбрать для неё места.</p>';
     bar = '<button class="btn primary block" data-act="startAuto">' + ic('spark', 18) + 'Разложить места автоматически</button>' +
-      '<button class="btn block" data-act="startBrush">' + ic('brush', 18) + 'Раскрасить вручную</button>';
+      '<button class="btn ghost small" style="flex-basis:100%" data-act="startBrush">' + ic('brush', 16) + 'Раскрасить вручную</button>';
     return { title: 'Места на схеме', sub: subtitle(), back: true, body: body, bar: bar };
   }
 
