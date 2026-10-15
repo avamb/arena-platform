@@ -17,6 +17,8 @@ package htickets
 // behind complimentary.read and is never logged.
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -24,6 +26,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
@@ -136,6 +139,15 @@ func (h *Handler) HandleListComplimentaryIssuances(w http.ResponseWriter, r *htt
 		}
 	}
 
+	lettersBy := map[uuid.UUID][]emailstatus.LetterView{}
+	if len(rows) > 0 {
+		ids := make([]uuid.UUID, 0, len(rows))
+		for _, row := range rows {
+			ids = append(ids, row.ID)
+		}
+		lettersBy = h.invitationLetters(ctx, ids)
+	}
+
 	issuances := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		item := complimentaryIssuanceFromRow(row.ComplimentaryIssuanceRow)
@@ -151,6 +163,7 @@ func (h *Handler) HandleListComplimentaryIssuances(w http.ResponseWriter, r *htt
 			tickets = []map[string]any{}
 		}
 		item["tickets"] = tickets
+		item["letters"] = lettersOrEmpty(lettersBy[row.ID])
 		issuances = append(issuances, item)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
@@ -158,4 +171,38 @@ func (h *Handler) HandleListComplimentaryIssuances(w http.ResponseWriter, r *htt
 		"total":     total,
 		"has_more":  int64(offset)+int64(len(rows)) < total,
 	})
+}
+
+// invitationLetters reads the delivery status of the letters the invitations'
+// tickets were sent in (emailstatus.InvitationLetters). A failed lookup
+// degrades to no letters with a log line: the list or the issue answer still
+// renders, exactly as the order card does.
+func (h *Handler) invitationLetters(ctx context.Context, issuanceIDs []uuid.UUID) map[uuid.UUID][]emailstatus.LetterView {
+	empty := map[uuid.UUID][]emailstatus.LetterView{}
+	if h.complimentaryQueries == nil {
+		return empty
+	}
+	db := h.complimentaryQueries.DB()
+	if db == nil {
+		return empty
+	}
+	out, err := emailstatus.InvitationLetters(ctx, db, issuanceIDs)
+	if err != nil {
+		h.logger.Warn("complimentary: letter status lookup failed", slog.Any("error", err))
+		return empty
+	}
+	return out
+}
+
+// lettersOrEmpty keeps `letters` a JSON array, never null.
+func lettersOrEmpty(l []emailstatus.LetterView) []emailstatus.LetterView {
+	if l == nil {
+		return []emailstatus.LetterView{}
+	}
+	return l
+}
+
+// issuanceLetters is the `letters` of one issuance, for the issue and read answers.
+func (h *Handler) issuanceLetters(ctx context.Context, id uuid.UUID) []emailstatus.LetterView {
+	return lettersOrEmpty(h.invitationLetters(ctx, []uuid.UUID{id})[id])
 }

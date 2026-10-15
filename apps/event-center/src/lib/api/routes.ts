@@ -76,6 +76,11 @@ export const API = {
   sellerProfileUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/seller-profile" },
   sellerDisplayUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/channels/{channel_id}/seller-display" },
   paymentConfigs: { method: "GET", path: "/v1/organizations/{org_id}/payment-configs" },
+  // 4-4: invitations (free tickets for named guests).
+  complimentaryList: { method: "GET", path: "/v1/organizations/{org_id}/complimentary" },
+  complimentaryIssue: { method: "POST", path: "/v1/organizations/{org_id}/complimentary" },
+  // A flat route: the row's own organization is checked on the server.
+  complimentaryRevoke: { method: "POST", path: "/v1/complimentary/{id}/revoke" },
   // 4-5: the team. The invitation has two channels (web, telegram); removing a
   // member names the ONE role to revoke in the body (AGENTS.md).
   botTeam: { method: "GET", path: "/v1/organizations/{org_id}/bot-team" },

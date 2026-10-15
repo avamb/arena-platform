@@ -106,6 +106,10 @@ export type ApiErrorStem =
   | "sellerHideOperatorOnly"
   | "kybOperatorOnly"
   | "legalNameRequired"
+  | "invitationTooMany"
+  | "invitationRecipient"
+  | "invitationAlreadyRevoked"
+  | "invitationScanned"
   // 4-5
   | "resendTooSoon"
   | "invitationChannel"
@@ -121,6 +125,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "changeMessageTooLong", "refundScanned", "refundInProgress", "refundNotRefundable", "refundNotSupported",
   "refundNotRetryable", "refundKeyReused", "tierNotOnSale", "tierSoldOut", "tierSeated", "tierBelowUsed",
   "tierSaleWindow", "promoNotApplicable", "promoMinimum", "promoExhausted", "promoPerCustomer",
+  "promoRateLimited", "promoDuplicate", "eventHasPaidOrders", "invitationTooMany", "invitationRecipient",
+  "invitationAlreadyRevoked", "invitationScanned",
   "promoRateLimited", "promoDuplicate", "eventHasPaidOrders",
   // 4-7
   "taxIdInvalid", "legalCountryInvalid", "legalFormInvalid", "emailInvalid", "phoneInvalid", "sellerIncomplete",
@@ -175,6 +181,13 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "org.kyb_status_superadmin_only": "kybOperatorOnly",
   "org.legal_name_required": "legalNameRequired",
   "seller.channel_not_found": "notFound",
+  "complimentary.qty_too_large": "invitationTooMany",
+  "complimentary.too_many_recipients": "invitationTooMany",
+  "complimentary.invalid_recipient": "invitationRecipient",
+  "complimentary.invalid_recipient_name": "invitationRecipient",
+  "complimentary.already_revoked": "invitationAlreadyRevoked",
+  "complimentary.scanned_ticket_requires_manual_review": "invitationScanned",
+  "complimentary.capacity_overflow": "tierSoldOut",
   // 4-5: the team and its invitations (bot.* routes, DELETE members)
   "bot.invitation_resend_too_soon": "resendTooSoon",
   "bot.invitation_channel_unsupported": "invitationChannel",

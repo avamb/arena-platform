@@ -17,6 +17,7 @@ import { SessionScreen } from "@/screens/SessionScreen";
 import { OrdersScreen } from "@/screens/OrdersScreen";
 import { OrderScreen } from "@/screens/OrderScreen";
 import { NotificationsScreen } from "@/screens/NotificationsScreen";
+import { InvitationsScreen } from "@/screens/InvitationsScreen";
 import { PromotersScreen } from "@/screens/PromotersScreen";
 import { PromoterScreen } from "@/screens/PromoterScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
@@ -123,6 +124,13 @@ const notificationsRoute = createRoute({
   component: NotificationsScreen,
 });
 
+// 4-4: invitations.
+const invitationsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/invitations",
+  component: InvitationsScreen,
+});
+
 // 4-6
 const promotersRoute = createRoute({
   getParentRoute: () => orgRoute,
@@ -189,6 +197,7 @@ export const routeTree = rootRoute.addChildren([
     ordersRoute,
     orderRoute,
     notificationsRoute,
+    invitationsRoute,
     promotersRoute,
     promoterRoute,
     promoRoute,

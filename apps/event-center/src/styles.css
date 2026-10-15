@@ -149,7 +149,8 @@ h2 {
 }
 
 input,
-select {
+select,
+textarea {
   min-height: 44px;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--border);
@@ -605,6 +606,12 @@ label {
     width: 100%;
     justify-content: space-between;
   }
+}
+
+/* 4-4: the guest list of the invitations form. */
+textarea {
+  width: 100%;
+  resize: vertical;
 }
 
 /* 4-3: promo codes (forms, the session picker). */
