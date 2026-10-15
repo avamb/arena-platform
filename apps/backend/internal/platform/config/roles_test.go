@@ -434,3 +434,57 @@ func TestLoadFor_MissingAppEnvIsALoudWarning(t *testing.T) {
 		})
 	}
 }
+
+// The poster-reading key lives on arena-api since 2026-10-14 (the bot calls
+// POST .../media/{id}/poster-facts): the bot holding it is a foreign secret
+// and the api holding it is not.
+func TestLoadFor_PosterLLMKeyBelongsToTheAPI(t *testing.T) {
+	clearConfigEnv(t)
+	setEnv(t, productionCommon)
+	setEnv(t, roleMinimum[RoleBot])
+	t.Setenv("POSTER_LLM_API_KEY", "sk-ant-should-not-be-printed")
+	cfg, err := LoadFor(RoleBot)
+	if err != nil {
+		t.Fatalf("a poster key must not stop the bot: %v", err)
+	}
+	joined := strings.Join(cfg.Warnings(), "\n")
+	if !strings.Contains(joined, "POSTER_LLM_API_KEY") {
+		t.Errorf("the bot must be warned that POSTER_LLM_API_KEY is not its own, got: %s", joined)
+	}
+	if strings.Contains(joined, "sk-ant-should-not-be-printed") {
+		t.Errorf("warnings must not print a secret value, got: %s", joined)
+	}
+
+	clearConfigEnv(t)
+	setEnv(t, productionCommon)
+	setEnv(t, roleMinimum[RoleAPI])
+	t.Setenv("POSTER_LLM_API_KEY", "sk-ant-should-not-be-printed")
+	cfg, err = LoadFor(RoleAPI)
+	if err != nil {
+		t.Fatalf("api with a poster key: %v", err)
+	}
+	if strings.Contains(strings.Join(cfg.Warnings(), "\n"), "POSTER_LLM_API_KEY") {
+		t.Errorf("the api owns POSTER_LLM_API_KEY, got: %v", cfg.Warnings())
+	}
+}
+
+func TestLoadFor_PosterReadsPerOrgPerDay(t *testing.T) {
+	clearConfigEnv(t)
+	setEnv(t, productionCommon)
+	setEnv(t, roleMinimum[RoleAPI])
+	cfg, err := LoadFor(RoleAPI)
+	if err != nil {
+		t.Fatalf("api: %v", err)
+	}
+	if cfg.PosterReadsPerOrgPerDay != 50 {
+		t.Errorf("default cap = %d, want 50", cfg.PosterReadsPerOrgPerDay)
+	}
+	t.Setenv("POSTER_READS_PER_ORG_PER_DAY", "0")
+	if cfg, err = LoadFor(RoleAPI); err != nil || cfg.PosterReadsPerOrgPerDay != 0 {
+		t.Errorf("0 must switch the cap off: cap=%v err=%v", cfg, err)
+	}
+	t.Setenv("POSTER_READS_PER_ORG_PER_DAY", "-1")
+	if _, err = LoadFor(RoleAPI); err == nil {
+		t.Error("a negative cap must be refused")
+	}
+}

@@ -378,7 +378,9 @@ func NewWizard(texts *Texts, refs RefIO) *Wizard {
 	return &Wizard{texts: texts, refs: refs, now: func() time.Time { return time.Now().UTC() }}
 }
 
-// WithPosterHints tells the wizard a poster reader is available.
+// WithPosterHints tells the wizard that poster reading is offered. The bot
+// always says true: the model key lives on arena-api and the bot cannot tell
+// whether it is set; a poster read that the API cannot do is simply skipped.
 func (w *Wizard) WithPosterHints(on bool) *Wizard {
 	w.posterHints = on
 	return w

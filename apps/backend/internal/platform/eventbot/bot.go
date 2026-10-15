@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	tgbot "github.com/go-telegram/bot"
@@ -17,7 +18,6 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/posterread"
 )
 
 // pendingInviteTTL is how long the bot waits for the e-mail after a person
@@ -48,9 +48,6 @@ type Options struct {
 	TicketsBaseURL string
 	// Refs overrides the wizard's reference source (tests); nil uses Arena.
 	Refs RefIO
-	// PosterReader reads a sent poster into wizard hints (posterread); nil
-	// means the wizard asks everything and offers nothing.
-	PosterReader posterread.Reader
 	// SelfOnboarding (BOT_SELF_ONBOARDING_ENABLED) offers a stranger the
 	// organizer application instead of "you need an invitation".
 	SelfOnboarding bool
@@ -98,7 +95,9 @@ type Bot struct {
 	// fileClient downloads Telegram files (posters); nil uses a default.
 	fileClient     *http.Client
 	ticketsBaseURL string
-	poster         posterread.Reader
+	// posterOffUntil (Unix seconds) holds poster reading back after arena-api
+	// answered that it has no model key.
+	posterOffUntil atomic.Int64
 
 	selfOnboarding bool
 	noticeEvery    time.Duration
@@ -246,7 +245,6 @@ func New(opts Options) (*Bot, error) {
 
 		fileClient:     opts.HTTPClient,
 		ticketsBaseURL: opts.TicketsBaseURL,
-		poster:         opts.PosterReader,
 
 		selfOnboarding: opts.SelfOnboarding,
 		noticeEvery:    opts.NoticeEvery,
@@ -266,7 +264,7 @@ func New(opts Options) (*Bot, error) {
 	if opts.Refs != nil {
 		refs = opts.Refs
 	}
-	b.wizard = NewWizard(b.texts, refs).WithPosterHints(b.poster != nil)
+	b.wizard = NewWizard(b.texts, refs).WithPosterHints(true)
 	tgOpts := []tgbot.Option{
 		tgbot.WithDefaultHandler(b.handleUpdate),
 		tgbot.WithSkipGetMe(),
