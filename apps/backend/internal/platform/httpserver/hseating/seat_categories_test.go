@@ -42,7 +42,7 @@ func newS1aFixture() s1aFixture {
 				Rows: []seating.Row{{
 					Key: "1", Name: "1",
 					Seats: []seating.Seat{
-						seat("a1", 1), seat("a2", 1), seat("a3", 1),
+						seat("a1", 1), seat("a2", 1), seat("a3", 1), seat("a4", 1),
 						seat("b1", 2), seat("b2", 2),
 					},
 				}},
@@ -59,11 +59,11 @@ func (f s1aFixture) tiers() []gen.TicketTierRow {
 }
 
 // seats builds the session_seats rows; tierOf overrides the default tier of
-// a seat key (a1..a3 -> VIP, b1..b2 -> Standard).
+// a seat key (a1..a4 -> VIP, b1..b2 -> Standard).
 func (f s1aFixture) seats(tierOf map[string]*gen.TicketTierRow) []gen.SessionSeatRow {
-	def := map[string]gen.TicketTierRow{"a1": f.vip, "a2": f.vip, "a3": f.vip, "b1": f.std, "b2": f.std}
+	def := map[string]gen.TicketTierRow{"a1": f.vip, "a2": f.vip, "a3": f.vip, "a4": f.vip, "b1": f.std, "b2": f.std}
 	var out []gen.SessionSeatRow
-	for i, n := range []string{"a1", "a2", "a3", "b1", "b2"} {
+	for i, n := range []string{"a1", "a2", "a3", "a4", "b1", "b2"} {
 		tier := def[n]
 		tid := tier.ID
 		tp := &tid
@@ -173,7 +173,7 @@ func TestS1a_PatchedSeatShowsOnePriceInAllThreeRenders(t *testing.T) {
 	res := resolveSeatCategories(f.geom, seats, tiers, seatKeyIndex(f.geom))
 
 	want := map[string]int64{ // seat number -> its own tier's price (minor units)
-		"a1": f.std.PriceAmount, "a2": f.balcony.PriceAmount, "a3": f.vip.PriceAmount,
+		"a1": f.std.PriceAmount, "a2": f.balcony.PriceAmount, "a3": f.vip.PriceAmount, "a4": f.vip.PriceAmount,
 		"b1": f.std.PriceAmount, "b2": f.std.PriceAmount,
 	}
 
@@ -211,8 +211,8 @@ func TestS1a_PatchedSeatShowsOnePriceInAllThreeRenders(t *testing.T) {
 			t.Errorf("layout.svg: seat %s (sbt:cat %d) price = %d, want %d\n%s", m[1], i, bssPrice[i], want[m[1]], bss)
 		}
 	}
-	if len(reBSSSeat.FindAllStringSubmatch(bss, -1)) != 5 {
-		t.Fatalf("layout.svg did not render five seats\n%s", bss)
+	if len(reBSSSeat.FindAllStringSubmatch(bss, -1)) != 6 {
+		t.Fatalf("layout.svg did not render six seats\n%s", bss)
 	}
 
 	// 3. Bil24 sbt/1.0 image. Category prices there are major units.
@@ -233,8 +233,8 @@ func TestS1a_PatchedSeatShowsOnePriceInAllThreeRenders(t *testing.T) {
 			t.Errorf("image: seat %s (sbt:cat %d) price = %s, want %s\n%s", m[3], i, imgPrice[i], wantMajor, img)
 		}
 	}
-	if len(seatNum) != 5 {
-		t.Fatalf("image rendered %d seats, want 5\n%s", len(seatNum), img)
+	if len(seatNum) != 6 {
+		t.Fatalf("image rendered %d seats, want 6\n%s", len(seatNum), img)
 	}
 	// The wire id of the synthetic category is the one the gateway minted for it.
 	if imgID[3] != "1000000003" {

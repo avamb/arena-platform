@@ -11910,8 +11910,10 @@ type ScannerValidateResponseStatus string
 // `price_hint`, `currency_hint` are copied verbatim from the stored
 // geometry (import-time authoring hints). The `tier_*` / `price_*`
 // fields are populated when the operator has already mapped the
-// category to a live `ticket_tiers` row through SEAT-B2 binding —
-// first-seat-wins so the resolution stays stable across renames.
+// category to a live `ticket_tiers` row through SEAT-B2 binding. The
+// tier shown is the one carried by most of the category's seats (ties:
+// the first seat in `seat_key` order), so repainting a few seats with
+// `PATCH .../seats/category` never relabels the rest of the category.
 type SeatingCategoryPrice struct {
 	// Color Authoring-time swatch color (`#RRGGBB`) used to bind seats to this category during SVG import.
 	Color *string `json:"color,omitempty"`
@@ -12092,11 +12094,28 @@ type SeatingSchemaResponse struct {
 	// EventId UUIDv7 of the parent event.
 	EventId openapi_types.UUID `json:"event_id"`
 
+	// ExtraCategories Synthetic categories (S1a) for tiers that carry repainted seats but
+	// are the home tier of no plan category. Indexes follow the plan's
+	// last category index; entries have the same shape as
+	// `category_prices`. Empty when every repainted seat moved to a plan
+	// category.
+	ExtraCategories *[]SeatingCategoryPrice `json:"extra_categories,omitempty"`
+
 	// Geometry Canonical geometry JSON per seating_backlog.md §5.3. Opaque schema — clients render it directly.
 	Geometry map[string]interface{} `json:"geometry"`
 
 	// GeometryChecksum sha256 hex digest of the canonicalised geometry JSON. Doubles as the strong ETag for this endpoint.
 	GeometryChecksum string `json:"geometry_checksum"`
+
+	// SeatCategoryIndex Per-seat category truth (S1a). Maps `seat_key` to the category
+	// `index` (an entry of `category_prices` or `extra_categories`) that
+	// carries the seat's own `session_seats.tier_id`, ONLY for seats
+	// whose category differs from their `category_index` in the geometry
+	// after `PATCH .../seats/category` repainted them. Empty on a session
+	// where no seat was repainted. Clients apply it over the geometry
+	// before drawing so a seat shows the price of its own tier, the
+	// same number `GET_SEAT_LIST` and the Bil24 image carry.
+	SeatCategoryIndex *map[string]int `json:"seat_category_index,omitempty"`
 
 	// SeatStatusVersion Session-scoped monotonic version cursor for seat status. Also returned by seat-status endpoints so the client can resume with `since_version`.
 	SeatStatusVersion int64 `json:"seat_status_version"`
