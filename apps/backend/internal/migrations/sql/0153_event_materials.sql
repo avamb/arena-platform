@@ -226,9 +226,11 @@ DROP TABLE IF EXISTS event_partner_links;
 DROP TABLE IF EXISTS event_videos;
 DROP TABLE IF EXISTS event_gallery_items;
 
--- Reverting drops the media uploaded for the gallery and the photo report,
--- otherwise the narrowed CHECK would fail to validate. The rows are
--- soft-deletable metadata; the media-gc sweep reclaims the bytes.
+-- Reverting drops the media rows uploaded for the gallery and the photo
+-- report, otherwise the narrowed CHECK would fail to validate. This is a
+-- hard DELETE: the media-gc sweep only reclaims rows that carry deleted_at,
+-- so the stored bytes of these objects stay orphaned in the media backend
+-- (acceptable for a Down that production never runs).
 DELETE FROM media_objects WHERE owner_type IN ('event_gallery', 'event_report');
 
 ALTER TABLE media_objects
