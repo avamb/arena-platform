@@ -511,10 +511,15 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 			return t(key, nil)
 		}
 		rows := [][]Button{}
-		if len(changes) > 0 {
+		// A save that stopped half way may leave a date to send with no
+		// change listed: "Publish changes" is offered while the save has
+		// anything left to post.
+		if len(changes) > 0 || d.unsent() {
 			// Each change on a line of its own, with what it was and what it
 			// becomes, and a button that takes just that one back.
-			text += "\n\n" + t("bot.wz.edit_card_changes", map[string]any{"List": strings.Join(w.changeLines(loc, ws.OrgName, d), "\n")})
+			if len(changes) > 0 {
+				text += "\n\n" + t("bot.wz.edit_card_changes", map[string]any{"List": strings.Join(w.changeLines(loc, ws.OrgName, d), "\n")})
+			}
 			if d.partlySaved() {
 				text += "\n\n" + t("bot.wz.edit_card_partly_saved", nil)
 			}

@@ -3540,7 +3540,7 @@ other = "Nada cambia hasta que respondas la última pregunta."
 other = "«Para todas las sesiones» da a todas la forma de venta de la primera: «{{.Value}}»."
 
 ["bot.wz.s_tickets_trimmed"]
-other = "Los cambios de precio y finales de etapa posteriores al {{.Date}} no encajan en esta fecha. Los quité o los moví al {{.Date}} ({{.Count}})."
+other = "Los cambios de precio y las etapas de venta posteriores al {{.Date}} no encajan en esta fecha. Los quité o los moví al {{.Date}} ({{.Count}})."
 
 ["bot.wz.s_removed"]
 other = "Quité la fecha {{.When}} del borrador."
@@ -3595,6 +3595,9 @@ other = "Sesión {{.When}}: las categorías {{.Old}} quedarán cerradas. Las ent
 
 ["bot.wz.preview_warn_renamed_many"]
 other = "Sesión {{.When}}: las categorías {{.Old}} quedarán cerradas. En su lugar habrá otras nuevas: {{.New}}. Un nombre nuevo es una categoría nueva. Las entradas vendidas siguen siendo válidas."
+["bot.wz.preview_warn_places"]
+other = "La categoría cerrada conserva sus plazas. Por eso la sesión tendrá más plazas en total."
+
 
 ["bot.wz.preview_footer"]
 other = "Pulsa «Publicar» para enviarlo. Las entradas vendidas no cambian: un precio nuevo se aplica a las próximas compras."

@@ -74,7 +74,15 @@ func (d *Draft) changes() []editChange {
 		}
 		l, ok := d.Loaded.Dates[s.SessionID]
 		if !ok {
-			continue // added and already saved by a save that stopped half way
+			// A date this draft added, saved by a save that stopped half way
+			// and changed since (a draft stored before Save recorded its own
+			// dates in Loaded): it is sent again, so it is a change too. It
+			// has nothing loaded to go back to, and undo is not offered after
+			// a part save anyway.
+			if s.Dirty && !d.savedDone(i) {
+				out = append(out, editChange{Key: "tickets:" + strconv.Itoa(i+1), Field: "tickets", Idx: i})
+			}
+			continue
 		}
 		if s.Dirty && !ticketsEqual(*d.ticketsOf(i), l.Tickets) {
 			out = append(out, editChange{Key: "tickets:" + strconv.Itoa(i+1), Field: "tickets", Idx: i})
@@ -126,6 +134,106 @@ func (d *Draft) refreshChanged() {
 		}
 	}
 	d.Changed = fields
+	d.keepEventFieldsRiding()
+}
+
+// rideFields are the event's own parts every posted date carries in its
+// bundle (the currency is stored per date and has its own place in sendPlan).
+var rideFields = []string{"name", "description", "poster", "age", "promoter"}
+
+// eventFieldsChanged reports whether one of the event's own parts differs
+// from what the site has.
+func (d *Draft) eventFieldsChanged() bool {
+	if d.Mode != ModeEdit || d.Loaded == nil {
+		return false
+	}
+	for _, f := range rideFields {
+		if d.fieldChanged(f) {
+			return true
+		}
+	}
+	return false
+}
+
+// keepEventFieldsRiding makes sure a change of the event's own parts still
+// has a date to ride on. After a save that stopped half way every date the
+// plan names may be on the site already (a date put back to what was loaded
+// is no longer sent); the save would then post nothing and say "saved"
+// while the new age or name never left. The first date the plan names is
+// sent again in that case, and the preview lists it as sent.
+func (d *Draft) keepEventFieldsRiding() {
+	if !d.partlySaved() || !d.eventFieldsChanged() {
+		return
+	}
+	first := -1
+	for i, p := range d.sendPlan() {
+		if !p {
+			continue
+		}
+		if !d.savedDone(i) {
+			return
+		}
+		if first < 0 {
+			first = i
+		}
+	}
+	if first >= 0 && first < len(d.Saved.Sessions) {
+		d.Saved.Sessions[first].Done = false
+	}
+}
+
+// savedDone reports whether date i is on the site from this draft's save.
+func (d *Draft) savedDone(i int) bool {
+	return i >= 0 && i < len(d.Saved.Sessions) && d.Saved.Sessions[i].Done
+}
+
+// unsent reports whether the save still has a date to post that is not on
+// the site yet. It can be true with no change listed (a date whose save
+// failed half way), and "Publish changes" is offered then too.
+func (d *Draft) unsent() bool {
+	if d.Mode != ModeEdit {
+		return false
+	}
+	for i, p := range d.plannedDates() {
+		if p && !d.savedDone(i) {
+			return true
+		}
+	}
+	return false
+}
+
+// recordSaved folds what a posted date carried into Loaded: after a save
+// that stopped half way, Loaded is what the site has, so the card lists only
+// what is still to send, and a part put back by hand (the old name typed in
+// again) is a change that is sent, not a silent no-op. The currency is left
+// alone until every date that sells something has it.
+func (d *Draft) recordSaved(i int, posterSent bool) {
+	if d.Mode != ModeEdit || d.Loaded == nil || i < 0 || i >= len(d.Sessions) {
+		return
+	}
+	l := d.Loaded
+	l.Event.Name, l.Event.Description, l.Event.Age = d.Event.Name, d.Event.Description, d.Event.Age
+	l.Event.PromoterID, l.Event.PromoterName = d.Event.PromoterID, d.Event.PromoterName
+	if posterSent {
+		l.Event.PosterMediaID, l.Event.PosterW, l.Event.PosterH = d.Event.PosterMediaID, d.Event.PosterW, d.Event.PosterH
+	}
+	if l.Dates == nil {
+		l.Dates = map[string]DraftLoadedDate{}
+	}
+	s := d.Sessions[i]
+	if s.SessionID != "" {
+		l.Dates[s.SessionID] = DraftLoadedDate{Tickets: cloneTickets(*d.ticketsOf(i)), Capacity: s.Capacity}
+	}
+	everywhere := true
+	for j := range d.Sessions {
+		if hasCategories(*d.ticketsOf(j)) && !d.savedDone(j) {
+			everywhere = false
+			break
+		}
+	}
+	if everywhere {
+		l.Currency = d.Currency
+	}
 }
 
 // ticketsEqual compares two ticket parts exactly, tier ids included.
@@ -146,12 +254,17 @@ func ticketsEqual(a, b DraftTickets) bool {
 	return true
 }
 
-// partlySaved reports whether a save stopped half way: some dates are on
-// the site already. Undo is not offered then — taking a change back in the
-// draft would not take it back on the site.
+// partlySaved reports whether a save stopped half way: something of the
+// draft is on the site already. Undo is not offered then — taking a change
+// back in the draft would not take it back on the site. It looks at what was
+// written (a date's session id, the event's ids), never at Done alone: a
+// date changed again after the save is no longer Done, yet it is on the site.
 func (d *Draft) partlySaved() bool {
+	if d.Saved.ActionID != 0 || d.Saved.EventID != "" {
+		return true
+	}
 	for _, s := range d.Saved.Sessions {
-		if s.Done {
+		if s.Done || s.SessionID != "" {
 			return true
 		}
 	}
@@ -222,7 +335,10 @@ func (d *Draft) undo(key string) bool {
 		d.removeDate(found.Idx)
 	case "tickets":
 		s := &d.Sessions[found.Idx]
-		ld := l.Dates[s.SessionID]
+		ld, ok := l.Dates[s.SessionID]
+		if !ok {
+			return false // nothing loaded to go back to
+		}
 		t := cloneTickets(ld.Tickets)
 		s.Tickets, s.Capacity, s.Dirty = &t, ld.Capacity, false
 		if found.Idx == 0 {

@@ -3685,7 +3685,7 @@ other = "Nothing changes until you answer the last question."
 other = "“For all dates” gives every date the way the first date sells: “{{.Value}}”."
 
 ["bot.wz.s_tickets_trimmed"]
-other = "Price changes and stage ends after {{.Date}} do not fit this date. I removed them or moved them to {{.Date}} ({{.Count}})."
+other = "Price changes and sale stages after {{.Date}} do not fit this date. I removed them or moved them to {{.Date}} ({{.Count}})."
 
 ["bot.wz.s_removed"]
 other = "I removed the date {{.When}} from the draft."
@@ -3740,6 +3740,9 @@ other = "{{.When}}: Arena closes the categories {{.Old}}. Tickets sold in them s
 
 ["bot.wz.preview_warn_renamed_many"]
 other = "{{.When}}: Arena closes the categories {{.Old}}. New ones open in their place: {{.New}}. A new name makes a new category. Tickets sold stay valid."
+["bot.wz.preview_warn_places"]
+other = "The closed category keeps its places. So the date will have more places in total."
+
 
 ["bot.wz.preview_footer"]
 other = "Press “Publish” to send it. Sold tickets do not change: a new price applies to the next purchases."

@@ -276,7 +276,7 @@ var wizardKeys = []string{
 	"bot.wz.s_confirm_own_btn", "bot.wz.s_confirm_cap_btn", "bot.wz.s_confirm_drop_btn", "bot.wz.s_confirm_next_btn",
 	"bot.wz.preview_title", "bot.wz.preview_new_date", "bot.wz.preview_date_tickets", "bot.wz.preview_date_resent",
 	"bot.wz.preview_unchanged", "bot.wz.preview_already", "bot.wz.preview_no_categories", "bot.wz.preview_warn_closed",
-	"bot.wz.preview_warn_renamed", "bot.wz.preview_warn_closed_many", "bot.wz.preview_warn_renamed_many", "bot.wz.preview_footer", "bot.wz.preview_publish_btn", "bot.wz.preview_back_btn",
+	"bot.wz.preview_warn_renamed", "bot.wz.preview_warn_closed_many", "bot.wz.preview_warn_renamed_many", "bot.wz.preview_warn_places", "bot.wz.preview_footer", "bot.wz.preview_publish_btn", "bot.wz.preview_back_btn",
 	"bot.wz.warn_tier_not_in_payload",
 }
 

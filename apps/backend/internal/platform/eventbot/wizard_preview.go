@@ -134,7 +134,13 @@ func (w *Wizard) closedCategories(loc string, d *Draft, i int) []string {
 	if len(closed) > 1 || len(created) > 1 {
 		key += "_many"
 	}
-	return []string{w.texts.T(loc, key, data)}
+	text := w.texts.T(loc, key, data)
+	if len(created) > 0 && now.Mode == ModeParallel {
+		// A closed category keeps its places (it is closed, never deleted),
+		// and a date sold "at once" gets the new categories' places on top.
+		text += " " + w.texts.T(loc, "bot.wz.preview_warn_places", nil)
+	}
+	return []string{text}
 }
 
 // quoted puts a name in the quotation marks of the language.

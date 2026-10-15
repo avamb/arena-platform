@@ -1482,7 +1482,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		case "publish":
 			// "Publish changes" first shows what will go to the site; only
 			// the preview's own button saves (wizard_bot.go).
-			if len(d.changes()) > 0 {
+			if len(d.changes()) > 0 || d.unsent() {
 				d.History = nil
 				d.Step = stPreview
 			}

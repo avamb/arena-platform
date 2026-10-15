@@ -199,10 +199,13 @@ type SaveOutcome struct {
 // edited event (ModeEdit) is addressed by its arena ids instead, and only
 // the dates sendPlan names are posted — each with its own categories.
 func (w *Wizard) Save(ctx context.Context, io SaveIO, ws WizSession, d *Draft, draftID string) SaveOutcome {
-	plan := d.sendPlan()
 	if len(d.Saved.Sessions) < len(d.Sessions) {
 		d.Saved.Sessions = append(d.Saved.Sessions, make([]SavedSession, len(d.Sessions)-len(d.Saved.Sessions))...)
 	}
+	// A change of the event's own parts after a save that stopped half way
+	// still needs a date to ride on (keepEventFieldsRiding).
+	d.keepEventFieldsRiding()
+	plan := d.sendPlan()
 	posterURL := ""
 	if d.Event.PosterMediaID != "" {
 		u, err := io.MediaSignedURL(ctx, ws.JWT, d.Event.PosterMediaID)
@@ -219,6 +222,9 @@ func (w *Wizard) Save(ctx context.Context, io SaveIO, ws WizSession, d *Draft, d
 		res, err := io.ImportEventBundle(ctx, ws.JWT, ws.OrgID, req)
 		if err != nil {
 			d.Saved.LastReason = w.saveReason(ws.Locale, err)
+			// What did go out is now what the site has: the card lists only
+			// what is still to send.
+			d.refreshChanged()
 			return SaveOutcome{FailedIdx: i, Reason: d.Saved.LastReason}
 		}
 		d.Saved.Sessions[i] = SavedSession{ExternalRef: req.ExternalRef, SessionID: res.SessionID, Done: true}
@@ -230,6 +236,7 @@ func (w *Wizard) Save(ctx context.Context, io SaveIO, ws WizSession, d *Draft, d
 			// A date added to an existing event now has an id of its own; a
 			// later retry re-sends it by that id, never under a second key.
 			d.Sessions[i].SessionID = res.SessionID
+			d.recordSaved(i, posterURL != "")
 		}
 		for _, wn := range res.Warnings {
 			if text := w.warningText(ws.Locale, wn.Code); text != "" && !contains(d.Saved.Warnings, text) {
