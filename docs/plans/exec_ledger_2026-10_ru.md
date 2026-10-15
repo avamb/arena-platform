@@ -311,7 +311,7 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 
 **Стоит:** М1 #139 (сканы МАКС, миграция 0164) — opus-ревью «вливать с правками», правка внесена, master слит (`895380d`), CI зелёный; **не вливается до ответа на В-12** (0164 при пустых 0154–0163 — goose откажет им). S2a — макет на ST-7 (В-3 и 5 вопросов макета).
 
-**Финальные ворота на master `6105a82` (локально, 15.10):** `go build ./...` 0; `go test ./...` 0 (113 пакетов ok, 0 FAIL); event-center: type-check/vitest 418/build — 0; admin-web: type-check/vitest 1492 — 0; widget: vitest 676 — 0; tickets-page: vitest 132 — 0. CI master на `99d438b` (после партии 2) зелёный; на `6105a82` — см. хронику. Не гонялось локально: `-tags integration` всем репозиторием (покрыто CI Integration), Playwright (покрыто CI).
+**Финальные ворота на master `6105a82` (локально, 15.10):** `go build ./...` 0; `go test ./...` 0 (113 пакетов ok, 0 FAIL); event-center: type-check/vitest 418/build — 0; admin-web: type-check/vitest 1492 — 0; widget: vitest 676 — 0; tickets-page: vitest 132 — 0. CI master зелёный на `99d438b` (после партии 2) и на `6105a82` (после 1-2c, run 38745235894, включая сборку образа). Не гонялось локально: `-tags integration` всем репозиторием (покрыто CI Integration), Playwright (покрыто CI).
 
 **Порядок выката:** U-3 — после деплоя поставить в очередь `tickets.backfill_ean13` (старые приглашения без кода); 1-2c — клиент веба зовёт `copy-from` после импорта копии (пока клиента нет — маршрут простаивает); М1 — только после В-12; остальное без порядка. Таблица `deploy/DOKPLOY.md` §2.6 новых переменных не получила.
 
@@ -377,3 +377,4 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 - 15.10 — CI #148 зелёный → **влит #148 (master `99d438b`)**: #141, #142, #143, #146, #147 отмечены влитыми, ветки удалены. Запущен 1-2c (sonnet). Открытых PR волны B: #139 (М1, ждёт В-12), #131 закрыт ранее; S2a ждёт ST-7.
 - 15.10 — CI на master после #148 зелёный (`99d438b`). В #139 снова слит master (`2efdecf`). 1-2c сдан (#149) → sonnet-ревью, ждёт CI. Память: `wave-b-run-2026-10-15.md`.
 - 15.10 — ревью #149 «вливать», CI зелёный → **влит #149 (1-2c, master `6105a82`)**. Все задачи волны B в master, кроме М1 (#139, master слит `895380d`, ждёт В-12) и S2a (ST-7). Ворота на master запущены: полный `go test ./...`, фронтовые прогоны, CI master.
+- 15.10 — **Ворота волны B пройдены** на master `6105a82`: `go test ./...` 0 (113 ok), фронты зелёные (event-center 418, admin-web 1492, widget 676, tickets-page 132), CI master success. Итог — раздел 9. Журнал (PR #130) вливается после его CI.
