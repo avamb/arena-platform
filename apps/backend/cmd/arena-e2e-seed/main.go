@@ -207,5 +207,6 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 			return fmt.Errorf("materialize places: %w", err)
 		}
 	}
-	return nil
+	// 4-1: paid orders for the resend twin test.
+	return applyResendOrders(ctx, tx)
 }

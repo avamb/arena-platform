@@ -175,11 +175,32 @@ test.describe("R1 read-only event center", () => {
 
     await page.goto(`/o/${ORG_A}/orders/${ORDER}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Order №1000000512");
-    await expect(page.getByTestId("delivery-state")).toContainText("All ticket letters are sent.");
+    await expect(page.getByTestId("delivery-state")).toContainText("Ticket e-mail: sent");
     await expect(page.getByTestId("ticket-delivery")).toContainText("Sent");
     await expect(page.getByTestId("buyer")).toContainText("anna@example.test");
     await expect(page.getByTestId("buyer").locator("a[href^=mailto]")).toHaveAttribute("href", "mailto:anna%40example.test");
     await noA11yViolations(page);
+    await noHorizontalScroll(page);
+  });
+
+  test("4-1: resend the tickets of an order, to its address and to another one", async ({ page }) => {
+    const state = await mockApi(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/orders/${ORDER}`);
+    await page.getByTestId("resend-open").click();
+    await expect(page.getByTestId("resend-dialog")).toBeVisible();
+    await noA11yViolations(page);
+    await page.getByTestId("resend-same").click();
+    expect(state.requests.some((r) => r.includes("resend-tickets"))).toBe(false);
+    await page.getByTestId("resend-send").click();
+    await expect(page.getByTestId("resend-done")).toContainText("on their way");
+    await page.getByTestId("resend-close").click();
+    await page.getByTestId("resend-open").click();
+    await page.getByTestId("resend-other").click();
+    await page.getByTestId("resend-email").fill("site@example.test");
+    await page.getByTestId("resend-continue").click();
+    await page.getByTestId("resend-send").click();
+    await expect(page.getByTestId("resend-refused-site")).toContainText("sold through the seller's own site");
     await noHorizontalScroll(page);
   });
 

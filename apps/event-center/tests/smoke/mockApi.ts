@@ -237,7 +237,7 @@ export async function mockApi(
         membership_roles: [manager ? "organizer" : "agent"],
         roles: [manager ? "organizer" : "agent"],
         permissions: manager
-          ? ["event.read", "order.read", "session.read", "tier.read"]
+          ? ["event.read", "order.read", "session.read", "tier.read", "ticket.update"]
           : ["event.read", "ticket.read"],
         platform_superadmin: opts.superadmin === true,
       });
@@ -370,6 +370,20 @@ export async function mockApi(
         { ...orderSummary, event_name: "Serebryanoe kopyttse", session_start_at: "2026-11-20T19:00:00Z", session_timezone: "Europe/Prague" },
       ];
       return json(route, 200, { orders: rows, limit: 20, offset: 0, total_count: rows.length, has_more: false });
+    }
+    // 4-1: resend the tickets. "site@example.test" stands for an order a seller's own site wrote to.
+    if (m === "POST" && rest === `/orders/${ORDER}/resend-tickets`) {
+      const body = (req.postDataJSON() ?? {}) as { email?: string };
+      if (body.email === "site@example.test") {
+        return json(route, 409, { error: { code: "order.seller_site_order", message: "site order" } });
+      }
+      return json(route, 202, {
+        order_id: ORDER,
+        queued_tickets: 1,
+        different_address: body.email !== undefined,
+        recipient_masked: "a***@e******.test",
+        expires_at: body.email !== undefined ? "2026-10-16T09:00:00Z" : null,
+      });
     }
     if (rest === `/orders/${ORDER}`) {
       return json(route, 200, {
