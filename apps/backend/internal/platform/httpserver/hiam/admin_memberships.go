@@ -502,7 +502,47 @@ func (h *Handler) HandleAdminChangeMemberRole(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	updated, err := h.membershipQueries.ChangeMembershipRole(ctx, membershipID, orgID, req.Role)
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	q := gen.New(tx)
+
+	updateFailed := func(err error) {
+		h.logger.Error("admin_membership: change role failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"admin_membership.update_failed", "failed to change member role", r,
+		))
+	}
+	// Changing an owner to another role takes an owner away: serialise it with
+	// every other owner removal and count the rest under the lock (U-4). The
+	// lock is the first statement, so the role read below is the current one.
+	if err := q.LockOrgOwners(ctx, orgID); err != nil {
+		updateFailed(err)
+		return
+	}
+	current, curErr := q.GetMembershipByID(ctx, membershipID, orgID)
+	if curErr != nil && !errors.Is(curErr, pgx.ErrNoRows) {
+		updateFailed(curErr)
+		return
+	}
+	if curErr == nil && current.Status == "active" && current.Role == ownerRole && req.Role != ownerRole {
+		last, err := lastOwnerAfterRemoval(ctx, q, orgID, current.UserID)
+		if err != nil {
+			updateFailed(err)
+			return
+		}
+		if last {
+			writeLastOwnerRefused(w, r)
+			return
+		}
+	}
+
+	updated, err := q.ChangeMembershipRole(ctx, membershipID, orgID, req.Role)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
@@ -519,10 +559,11 @@ func (h *Handler) HandleAdminChangeMemberRole(w http.ResponseWriter, r *http.Req
 			))
 			return
 		}
-		h.logger.Error("admin_membership: change role failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"admin_membership.update_failed", "failed to change member role", r,
-		))
+		updateFailed(err)
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		updateFailed(err)
 		return
 	}
 
@@ -577,7 +618,29 @@ func (h *Handler) HandleAdminDeactivateMember(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	deactivated, err := h.membershipQueries.DeactivateMembership(ctx, membershipID, orgID)
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	q := gen.New(tx)
+
+	deleteFailed := func(err error) {
+		h.logger.Error("admin_membership: deactivate failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"admin_membership.delete_failed", "failed to deactivate member", r,
+		))
+	}
+	// First statement: the owner lock (U-4). Taking it for every row is cheap
+	// and spares a read of the role before the lock.
+	if err := q.LockOrgOwners(ctx, orgID); err != nil {
+		deleteFailed(err)
+		return
+	}
+	deactivated, err := q.DeactivateMembership(ctx, membershipID, orgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
@@ -586,10 +649,22 @@ func (h *Handler) HandleAdminDeactivateMember(w http.ResponseWriter, r *http.Req
 			))
 			return
 		}
-		h.logger.Error("admin_membership: deactivate failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"admin_membership.delete_failed", "failed to deactivate member", r,
-		))
+		deleteFailed(err)
+		return
+	}
+	if deactivated.Role == ownerRole {
+		last, err := lastOwnerAfterRemoval(ctx, q, orgID, deactivated.UserID)
+		if err != nil {
+			deleteFailed(err)
+			return
+		}
+		if last {
+			writeLastOwnerRefused(w, r) // the deferred rollback restores the row
+			return
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		deleteFailed(err)
 		return
 	}
 

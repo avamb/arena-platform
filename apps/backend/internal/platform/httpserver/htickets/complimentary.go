@@ -181,6 +181,7 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"issuance":          complimentaryIssuanceFromRow(existing),
 			"tickets":           complimentaryTicketsFromRows(existingTickets),
+			"letters":           h.issuanceLetters(ctx, existing.ID),
 			"idempotent_replay": true,
 		})
 		return
@@ -425,6 +426,7 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"issuance":          complimentaryIssuanceFromRow(issuance),
 		"tickets":           complimentaryTicketsFromRows(tickets),
+		"letters":           h.issuanceLetters(ctx, issuance.ID),
 		"idempotent_replay": false,
 	})
 }
@@ -495,6 +497,7 @@ func (h *Handler) HandleGetComplimentaryIssuance(w http.ResponseWriter, r *http.
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"issuance": complimentaryIssuanceFromRow(issuance),
 		"tickets":  complimentaryTicketsFromRows(tickets),
+		"letters":  h.issuanceLetters(ctx, id),
 	})
 }
 

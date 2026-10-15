@@ -92,8 +92,11 @@ func run(args []string) error {
 	out := fs.String("out", "", "write the JSON description to this file instead of stdout")
 	cancelOp := fs.String("cancel-order-op", "", "4-2 twin helper: reset, inspect or pay (see cancel_order_fixture.go)")
 	cancelOrder := fs.String("order-id", "", "the order --cancel-order-op inspect or pay works on")
+	invitationsOp := fs.String("invitations-op", "", "4-4 twin helper: reset, inspect, deliver or fail (see invitations_fixture.go)")
+	invitationEmail := fs.String("invitation-email", "", "the guest --invitations-op deliver or fail works on")
 	teamOp := fs.String("team-op", "", "4-5 twin helper: reset, age, expire or inspect (see team_fixture.go)")
 	teamEmail := fs.String("team-email", "", "the address --team-op age, expire or inspect works on")
+	orgDataOp := fs.String("org-data-op", "", "4-7 twin helper: reset, inspect or hide (see org_data_fixture.go)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -102,6 +105,12 @@ func run(args []string) error {
 	}
 	if *cancelOp != "" {
 		return runCancelOrderOp(*cancelOp, *cancelOrder)
+	}
+	if *orgDataOp != "" {
+		return runOrgDataOp(*orgDataOp)
+	}
+	if *invitationsOp != "" {
+		return runInvitationsOp(*invitationsOp, *invitationEmail)
 	}
 	cfg, err := config.LoadFor(config.RoleMigrate)
 	if err != nil {
@@ -217,6 +226,9 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 			return fmt.Errorf("materialize places: %w", err)
 		}
 	}
+	if err := applyOrgDataFixture(ctx, tx); err != nil {
+		return err
+	}
 	if err := applyCancelOrderFixture(ctx, tx); err != nil {
 		return err
 	}
@@ -231,7 +243,10 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applyPromoFixture(ctx, tx); err != nil {
 		return err
 	}
-	return applyForeignPromoter(ctx, tx)
+	if err := applyForeignPromoter(ctx, tx); err != nil {
+		return err
+	}
+	return applyInvitationsFixture(ctx, tx)
 }
 
 // Task 4-6 (the web promoters screens): ANOTHER organization with one

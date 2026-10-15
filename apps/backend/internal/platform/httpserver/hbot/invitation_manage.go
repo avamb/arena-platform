@@ -228,11 +228,16 @@ func (h *Handler) removeUnusedMembership(ctx context.Context, q *gen.Queries, in
 	}
 	role := MembershipRoleFor(inv.Role)
 	if role == "org_admin" {
-		owners, err := q.CountActiveOrgAdmins(ctx, inv.OrgID)
+		// The same guard as the members routes (hiam, U-4): the owner lock
+		// first, then the other active owners are counted under it.
+		if err := q.LockOrgOwners(ctx, inv.OrgID); err != nil {
+			return false, "", err
+		}
+		others, err := q.CountOtherActiveOrgAdmins(ctx, inv.OrgID, inv.UserID)
 		if err != nil {
 			return false, "", err
 		}
-		if owners <= 1 {
+		if others == 0 {
 			return false, KeptLastOwner, nil
 		}
 	}

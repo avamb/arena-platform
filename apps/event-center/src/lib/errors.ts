@@ -95,13 +95,29 @@ export type ApiErrorStem =
   | "promoRateLimited"
   | "promoDuplicate"
   | "eventHasPaidOrders"
+  // 4-7
+  | "taxIdInvalid"
+  | "legalCountryInvalid"
+  | "legalFormInvalid"
+  | "emailInvalid"
+  | "phoneInvalid"
+  | "sellerIncomplete"
+  | "apiKeyForbidden"
+  | "sellerHideOperatorOnly"
+  | "kybOperatorOnly"
+  | "legalNameRequired"
+  | "invitationTooMany"
+  | "invitationRecipient"
+  | "invitationAlreadyRevoked"
+  | "invitationScanned"
   // 4-5
   | "resendTooSoon"
   | "invitationChannel"
   | "webInvitationOff"
   | "invitationClosed"
   | "memberGone"
-  | "roleNotAllowed";
+  | "roleNotAllowed"
+  | "lastOwner";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -110,9 +126,14 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "changeMessageTooLong", "refundScanned", "refundInProgress", "refundNotRefundable", "refundNotSupported",
   "refundNotRetryable", "refundKeyReused", "tierNotOnSale", "tierSoldOut", "tierSeated", "tierBelowUsed",
   "tierSaleWindow", "promoNotApplicable", "promoMinimum", "promoExhausted", "promoPerCustomer",
+  "promoRateLimited", "promoDuplicate", "eventHasPaidOrders", "invitationTooMany", "invitationRecipient",
+  "invitationAlreadyRevoked", "invitationScanned",
   "promoRateLimited", "promoDuplicate", "eventHasPaidOrders",
+  // 4-7
+  "taxIdInvalid", "legalCountryInvalid", "legalFormInvalid", "emailInvalid", "phoneInvalid", "sellerIncomplete",
+  "apiKeyForbidden", "sellerHideOperatorOnly", "kybOperatorOnly", "legalNameRequired",
   // 4-5
-  "resendTooSoon", "invitationChannel", "webInvitationOff", "invitationClosed", "memberGone", "roleNotAllowed",
+  "resendTooSoon", "invitationChannel", "webInvitationOff", "invitationClosed", "memberGone", "roleNotAllowed", "lastOwner",
 ];
 
 /**
@@ -146,6 +167,29 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "promo.rate_limited": "promoRateLimited",
   "promo.duplicate": "promoDuplicate",
   "event.has_paid_orders": "eventHasPaidOrders",
+  // 4-7
+  "org.invalid_tax_id": "taxIdInvalid",
+  "org.invalid_tax_id_scheme": "taxIdInvalid",
+  "org.invalid_legal_address_country": "legalCountryInvalid",
+  "org.invalid_legal_form": "legalFormInvalid",
+  "org.invalid_contact_email": "emailInvalid",
+  "seller.invalid_email": "emailInvalid",
+  "seller.invalid_phone": "phoneInvalid",
+  "seller.incomplete": "sellerIncomplete",
+  "seller.api_key_forbidden": "apiKeyForbidden",
+  "org.identity_fields_api_key_forbidden": "apiKeyForbidden",
+  "seller.hide_superadmin_only": "sellerHideOperatorOnly",
+  "org.kyb_status_superadmin_only": "kybOperatorOnly",
+  "org.legal_name_required": "legalNameRequired",
+  "seller.channel_not_found": "notFound",
+  "complimentary.qty_too_large": "invitationTooMany",
+  "complimentary.too_many_recipients": "invitationTooMany",
+  "complimentary.invalid_recipient": "invitationRecipient",
+  "complimentary.invalid_recipient_name": "invitationRecipient",
+  "complimentary.already_revoked": "invitationAlreadyRevoked",
+  "complimentary.scanned_ticket_requires_manual_review": "invitationScanned",
+  "complimentary.capacity_overflow": "tierSoldOut",
+  "membership.last_owner": "lastOwner",
   // 4-5: the team and its invitations (bot.* routes, DELETE members)
   "bot.invitation_resend_too_soon": "resendTooSoon",
   "bot.invitation_channel_unsupported": "invitationChannel",

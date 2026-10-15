@@ -32,6 +32,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
@@ -302,7 +303,31 @@ func (h *Handler) HandleRevokeMembership(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	deleted, err := h.membershipQueries.RevokeMembership(ctx, userID, orgID, req.Role)
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	q := gen.New(tx)
+
+	revokeFailed := func(err error) {
+		h.logger.Error("membership: revoke failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"membership.revoke_failed", "failed to revoke membership", r,
+		))
+	}
+	// The owner lock is the first statement: the last-owner count below must
+	// see every other owner removal already finished (U-4).
+	if req.Role == ownerRole {
+		if err := q.LockOrgOwners(ctx, orgID); err != nil {
+			revokeFailed(err)
+			return
+		}
+	}
+	deleted, err := q.RevokeMembership(ctx, userID, orgID, req.Role)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
@@ -312,10 +337,22 @@ func (h *Handler) HandleRevokeMembership(w http.ResponseWriter, r *http.Request)
 			))
 			return
 		}
-		h.logger.Error("membership: revoke failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"membership.revoke_failed", "failed to revoke membership", r,
-		))
+		revokeFailed(err)
+		return
+	}
+	if deleted.Role == ownerRole {
+		last, err := lastOwnerAfterRemoval(ctx, q, orgID, deleted.UserID)
+		if err != nil {
+			revokeFailed(err)
+			return
+		}
+		if last {
+			writeLastOwnerRefused(w, r) // the deferred rollback puts the row back
+			return
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		revokeFailed(err)
 		return
 	}
 

@@ -165,3 +165,27 @@ FROM (
       AND  ur.org_id IS NULL
 ) effective_roles
 ORDER BY role;
+
+-- name: LockOrgOwners :exec
+-- Serialises every change that can take an owner (membership role org_admin)
+-- away from an organization: take it as the FIRST statement of the
+-- transaction, then count the other owners under it (CountOtherActiveOrgAdmins).
+-- An advisory lock keyed on the organization, not a row lock on organizations,
+-- because FOR UPDATE on the row would also block the FOR KEY SHARE every child
+-- insert takes.
+SELECT pg_advisory_xact_lock(hashtextextended('org_owners:' || $1::text, 0));
+
+-- name: CountOtherActiveOrgAdmins :one
+-- How many active owners the organization has besides $2: active org_admin
+-- memberships whose user is neither deactivated nor anonymized (GDPR erasure
+-- sets anonymized_at only). A person who cannot sign in is no
+-- owner. The caller holds LockOrgOwners.
+SELECT count(*)
+FROM   memberships m
+JOIN   users u ON u.id = m.user_id
+WHERE  m.org_id = $1
+  AND  m.role = 'org_admin'
+  AND  m.status = 'active'
+  AND  u.deactivated_at IS NULL
+  AND  u.anonymized_at IS NULL
+  AND  m.user_id <> $2;

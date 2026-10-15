@@ -17,9 +17,11 @@ import { SessionScreen } from "@/screens/SessionScreen";
 import { OrdersScreen } from "@/screens/OrdersScreen";
 import { OrderScreen } from "@/screens/OrderScreen";
 import { NotificationsScreen } from "@/screens/NotificationsScreen";
+import { InvitationsScreen } from "@/screens/InvitationsScreen";
 import { PromotersScreen } from "@/screens/PromotersScreen";
 import { PromoterScreen } from "@/screens/PromoterScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
+import { OrgDataScreen } from "@/screens/OrgDataScreen";
 import { parseEventsSearch, parseLoginSearch, parseOrdersSearch, parsePromotersSearch } from "@/lib/search";
 import { PromoListScreen } from "@/screens/PromoListScreen";
 import { PromoCreateScreen } from "@/screens/PromoCreateScreen";
@@ -122,6 +124,13 @@ const notificationsRoute = createRoute({
   component: NotificationsScreen,
 });
 
+// 4-4: invitations.
+const invitationsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/invitations",
+  component: InvitationsScreen,
+});
+
 // 4-6
 const promotersRoute = createRoute({
   getParentRoute: () => orgRoute,
@@ -164,6 +173,14 @@ const teamRoute = createRoute({
   component: TeamScreen,
 });
 
+// 4-7: the owner's "Organization data". Reachable by the address for everyone,
+// the screen itself explains it is the owner's.
+const orgDataRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/org-data",
+  component: OrgDataScreen,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -180,12 +197,14 @@ export const routeTree = rootRoute.addChildren([
     ordersRoute,
     orderRoute,
     notificationsRoute,
+    invitationsRoute,
     promotersRoute,
     promoterRoute,
     promoRoute,
     promoNewRoute,
     promoCodeRoute,
     teamRoute,
+    orgDataRoute,
   ]),
 ]);
 

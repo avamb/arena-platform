@@ -95,6 +95,15 @@ function OrgShell() {
                 {t("nav.orders")}
               </Link>
             )}
+            {access.can("complimentary.read") && (
+              <Link
+                to="/o/$orgId/invitations"
+                params={{ orgId }}
+                activeProps={{ "aria-current": "page", className: "active" }}
+              >
+                {t("nav.invitations")}
+              </Link>
+            )}
             {access.can("promoter.read") && (
               <Link to="/o/$orgId/promoters" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
                 {t("nav.promoters")}
@@ -115,6 +124,11 @@ function OrgShell() {
             {access.can("membership.read") && (
               <Link to="/o/$orgId/team" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
                 {t("nav.team")}
+              </Link>
+            )}
+            {access.can("org.update") && (
+              <Link to="/o/$orgId/org-data" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
+                {t("nav.orgData")}
               </Link>
             )}
             {orgCount > 1 && <Link to="/orgs">{t("nav.switchOrg")}</Link>}
