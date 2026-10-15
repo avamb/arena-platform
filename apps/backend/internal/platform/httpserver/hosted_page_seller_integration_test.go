@@ -136,21 +136,23 @@ func TestHostedPageSeller_BlockIsPerChannelAndNeverLeaksContact(t *testing.T) {
 	b := newSellerFixture(t, pool, "Bravo Foreign Ltd", "GB", nil)
 	pagePath := "/v1/public/pages/" + a.orgSlug + "/" + a.eventSlug
 
-	// 1. Default: flag absent, the response carries neither block.
+	// 1. Default: the profile has no public e-mail yet, so it is incomplete
+	// and the response carries neither block.
 	code, body, raw := getJSON(t, srv, pagePath)
 	if code != http.StatusOK {
 		t.Fatalf("page status = %d: %s", code, raw)
 	}
 	if _, ok := body["seller"]; ok {
-		t.Fatalf("seller present with show_seller unset: %s", raw)
+		t.Fatalf("seller present with an incomplete profile: %s", raw)
 	}
 	if _, ok := body["promoter"]; ok {
-		t.Fatalf("promoter present with show_seller unset: %s", raw)
+		t.Fatalf("promoter present with an incomplete profile: %s", raw)
 	}
 
-	// 2. Flag on, no public_contact: the legal identity of A, and no contact
-	// at all (the organization's own e-mail is private).
-	a.setHostedPage(t, pool, `{"hosted_page":{"enabled":true,"show_seller":true}}`)
+	// 2. P1a: a complete profile is shown with no flag at all. The legal
+	// identity of A, and no contact in the block (the organization's own
+	// e-mail is private, the channel's public e-mail is never printed).
+	a.setHostedPage(t, pool, `{"hosted_page":{"enabled":true,"public_contact":{"email":"box@alpha.example"}}}`)
 	code, body, raw = getJSON(t, srv, pagePath)
 	if code != http.StatusOK {
 		t.Fatalf("page status = %d: %s", code, raw)
@@ -177,7 +179,7 @@ func TestHostedPageSeller_BlockIsPerChannelAndNeverLeaksContact(t *testing.T) {
 	// 3. public_contact set on the channel: the e-mail is never published
 	// (buyers write through the contact form, which it enables), the phone
 	// is the one published contact.
-	a.setHostedPage(t, pool, `{"hosted_page":{"enabled":true,"show_seller":true,"public_contact":{"email":"box@alpha.example"}}}`)
+	a.setHostedPage(t, pool, `{"hosted_page":{"enabled":true,"public_contact":{"email":"box@alpha.example"}}}`)
 	_, body, raw = getJSON(t, srv, pagePath)
 	seller, _ = body["seller"].(map[string]any)
 	if _, ok := seller["public_contact"]; ok || strings.Contains(raw, "box@alpha.example") {
@@ -186,7 +188,7 @@ func TestHostedPageSeller_BlockIsPerChannelAndNeverLeaksContact(t *testing.T) {
 	if form, _ := body["contact_form"].(map[string]any); form == nil || form["available"] != true {
 		t.Fatalf("a public e-mail must enable the contact form: %s", raw)
 	}
-	a.setHostedPage(t, pool, `{"hosted_page":{"enabled":true,"show_seller":true,"public_contact":{"email":"box@alpha.example","phone":"+34 600 000 000"}}}`)
+	a.setHostedPage(t, pool, `{"hosted_page":{"enabled":true,"public_contact":{"email":"box@alpha.example","phone":"+34 600 000 000"}}}`)
 	_, body, raw = getJSON(t, srv, pagePath)
 	seller, _ = body["seller"].(map[string]any)
 	contact, _ := seller["public_contact"].(map[string]any)
@@ -202,7 +204,7 @@ func TestHostedPageSeller_BlockIsPerChannelAndNeverLeaksContact(t *testing.T) {
 
 	// 4. Organization B's flag and data never reach A's page, nor the other
 	// way round.
-	b.setHostedPage(t, pool, `{"hosted_page":{"enabled":true,"show_seller":true}}`)
+	b.setHostedPage(t, pool, `{"hosted_page":{"enabled":true,"public_contact":{"email":"box@bravo.example"}}}`)
 	_, body, raw = getJSON(t, srv, pagePath)
 	if seller, _ = body["seller"].(map[string]any); seller["legal_name"] != "Alpha Legal S.L." || strings.Contains(raw, "Bravo") {
 		t.Fatalf("foreign organization visible on A's page: %s", raw)
@@ -253,11 +255,20 @@ func TestHostedPageSeller_BlockIsPerChannelAndNeverLeaksContact(t *testing.T) {
 		t.Fatalf("org landing must not carry a promoter: %s", raw)
 	}
 
-	// 7. Turning the flag off again removes the blocks.
-	a.setHostedPage(t, pool, `{"hosted_page":{"enabled":true,"show_seller":false}}`)
+	// 7. The legacy show_seller flag decides nothing: false still shows a
+	// complete profile. Only the operator's seller_hidden removes the blocks.
+	a.setHostedPage(t, pool, `{"hosted_page":{"enabled":true,"show_seller":false,"public_contact":{"email":"box@alpha.example"}}}`)
+	_, body, raw = getJSON(t, srv, pagePath)
+	if _, ok := body["seller"]; !ok {
+		t.Fatalf("seller missing with the legacy flag false: %s", raw)
+	}
+	a.setHostedPage(t, pool, `{"hosted_page":{"enabled":true,"seller_hidden":true,"public_contact":{"email":"box@alpha.example"}}}`)
 	_, body, raw = getJSON(t, srv, pagePath)
 	if _, ok := body["seller"]; ok {
-		t.Fatalf("seller present after switching off: %s", raw)
+		t.Fatalf("seller present while hidden by the operator: %s", raw)
+	}
+	if _, ok := body["promoter"]; ok {
+		t.Fatalf("promoter present while hidden by the operator: %s", raw)
 	}
 }
 

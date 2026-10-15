@@ -29,12 +29,42 @@ func fullSellerRow() gen.HostedPageSellerRow {
 	}
 }
 
-func TestBuildSeller_FlagOffPublishesNothing(t *testing.T) {
+// P1a: the legacy show_seller flag no longer decides; a complete profile is
+// shown by default.
+func TestBuildSeller_CompleteProfileIsShownWhateverTheLegacyFlag(t *testing.T) {
 	t.Parallel()
 	row := fullSellerRow()
 	row.ShowSeller = false
+	if got := buildSeller(row); got == nil {
+		t.Fatal("a complete profile with the legacy show_seller off must be shown")
+	}
+}
+
+func TestBuildSeller_SuperadminHiddenPublishesNothing(t *testing.T) {
+	t.Parallel()
+	row := fullSellerRow()
+	row.SellerHidden = true
 	if got := buildSeller(row); got != nil {
-		t.Fatalf("buildSeller with show_seller off = %+v, want nil", got)
+		t.Fatalf("buildSeller with seller_hidden = %+v, want nil", got)
+	}
+}
+
+func TestBuildSeller_IncompleteProfilePublishesNothing(t *testing.T) {
+	t.Parallel()
+	for name, mut := range map[string]func(*gen.HostedPageSellerRow){
+		"legal name":  func(r *gen.HostedPageSellerRow) { r.LegalName = sp("  ") },
+		"tax id":      func(r *gen.HostedPageSellerRow) { r.TaxID = nil },
+		"street":      func(r *gen.HostedPageSellerRow) { r.AddressLine1 = sp("") },
+		"city":        func(r *gen.HostedPageSellerRow) { r.AddressCity = nil },
+		"postal code": func(r *gen.HostedPageSellerRow) { r.AddressPostalCode = nil },
+		"public mail": func(r *gen.HostedPageSellerRow) { r.PublicContact = []byte(`{"phone":"+34 600 000 000"}`) },
+		"no contact":  func(r *gen.HostedPageSellerRow) { r.PublicContact = nil },
+	} {
+		row := fullSellerRow()
+		mut(&row)
+		if got := buildSeller(row); got != nil {
+			t.Errorf("incomplete (%s): buildSeller = %+v, want nil", name, got)
+		}
 	}
 }
 
@@ -64,31 +94,30 @@ func TestBuildSeller_FlagOnPublishesLegalIdentity(t *testing.T) {
 	}
 }
 
-func TestBuildSeller_MissingFieldsAreOmitted(t *testing.T) {
+func TestBuildSeller_OptionalFieldsAreOmitted(t *testing.T) {
 	t.Parallel()
 	got := buildSeller(gen.HostedPageSellerRow{
-		OrgName:       "Plain Org",
-		LegalName:     sp("   "),
-		TaxID:         sp(""),
-		OrgCountry:    "cz",
-		ShowSeller:    true,
-		PublicContact: nil,
+		OrgName:           "Plain Org",
+		LegalName:         sp("Plain Org s.r.o."),
+		TaxID:             sp("CZ12345678"),
+		AddressLine1:      sp("Ulice 1"),
+		AddressCity:       sp("Praha"),
+		AddressPostalCode: sp("11000"),
+		OrgCountry:        "cz",
+		PublicContact:     []byte(`{"email":"tickets@example.com"}`),
 	})
 	if got == nil {
 		t.Fatal("nil seller")
 	}
-	if got.LegalName != "Plain Org" {
-		t.Fatalf("legal_name = %q, want fallback to the organization name", got.LegalName)
-	}
 	if got.Country != "CZ" {
 		t.Fatalf("country = %q, want fallback to org country CZ", got.Country)
 	}
-	if got.Address != nil || got.PublicContact != nil {
-		t.Fatalf("address/contact must be omitted: %+v", got)
+	if got.PublicContact != nil {
+		t.Fatalf("contact must be omitted: %+v", got)
 	}
 	b, _ := json.Marshal(got)
-	if s := string(b); strings.Contains(s, "tax_id") || strings.Contains(s, "registration_number") || strings.Contains(s, "legal_form") ||
-		strings.Contains(s, "address") || strings.Contains(s, "public_contact") {
+	if s := string(b); strings.Contains(s, "registration_number") || strings.Contains(s, "legal_form") ||
+		strings.Contains(s, "line2") || strings.Contains(s, "public_contact") {
 		t.Fatalf("empty values leaked into the JSON: %s", s)
 	}
 }

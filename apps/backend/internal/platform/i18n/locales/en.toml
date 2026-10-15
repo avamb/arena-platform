@@ -3299,10 +3299,16 @@ other = "<b>Sales pages</b>"
 other = "Your organization has no sales page yet. It appears after you publish your first event."
 
 ["bot.og.state_shown"]
-other = "✅ seller data shown"
+other = "✅ seller data is shown on the page"
 
-["bot.og.state_hidden"]
-other = "⬜ seller data hidden"
+["bot.og.state_incomplete"]
+other = "⬜ seller data is not shown yet: some data is missing"
+
+["bot.og.state_operator_hidden"]
+other = "⬜ seller data is hidden by the platform operator"
+
+["bot.og.status_complete"]
+other = "✅ Seller data is complete. It is shown on your sales pages."
 
 ["bot.og.none"]
 other = "not set"
@@ -3311,7 +3317,7 @@ other = "not set"
 other = "Now: {{.Value}}"
 
 ["bot.og.missing_title"]
-other = "To show the seller data on the page, fill in:"
+other = "Seller data is not complete, so it is not shown on the page yet. Please fill in:"
 
 ["bot.og.m_legal_name"]
 other = "legal name"
@@ -3436,12 +3442,6 @@ other = "✏ E-mail"
 ["bot.og.btn_phone"]
 other = "✏ Phone"
 
-["bot.og.btn_show"]
-other = "✅ Show seller data on the page"
-
-["bot.og.btn_hide"]
-other = "⬜ Hide seller data from the page"
-
 ["bot.og.q_email"]
 other = "✏ <b>Public e-mail</b> of this sales page, for example tickets@your-site.com."
 
@@ -3462,12 +3462,6 @@ other = "✅ Saved."
 
 ["bot.og.cleared"]
 other = "✅ Cleared."
-
-["bot.og.shown_done"]
-other = "✅ Done. Buyers now see the seller data on this sales page."
-
-["bot.og.hidden_done"]
-other = "✅ Done. The seller data is no longer shown on this sales page."
 
 ["bot.og.channel_gone"]
 other = "This sales page is no longer in the list. Here is the current data."
@@ -3539,7 +3533,7 @@ other = "✅ Buyer messages now also go to your sales chat."
 other = "✅ Buyer messages now go only to the e-mail of the sales page."
 
 ["bot.og.block_hidden"]
-other = "⚠️ A required field is now empty, so the seller data is hidden on sales pages: {{.N}}. Fill in the field, then turn the seller data on again on the page card."
+other = "⚠️ A required field is now empty, so the seller data is not shown on sales pages: {{.N}}. It appears again as soon as you fill in the field."
 
 ["contact.email.subject"]
 other = "Message from a buyer: {{.Name}}"

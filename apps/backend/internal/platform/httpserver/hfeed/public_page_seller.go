@@ -1,8 +1,11 @@
 // public_page_seller.go builds the SELLER and PROMOTER blocks of the hosted
-// sales page. A buyer is entitled to know who sells the ticket, so a channel
-// can switch the blocks on with settings.hosted_page.show_seller. Off is the
-// default: deploying this changes nothing a visitor sees until an operator
-// turns it on, channel by channel.
+// sales page. A buyer is entitled to know who sells the ticket, so the block
+// is shown by default as soon as the seller's profile is complete
+// (sellerinfo.Missing is empty: legal name, tax number, street, city, postal
+// code and the channel's public e-mail). Only a platform superadmin can keep
+// it off, with settings.hosted_page.seller_hidden (P1a, owner decision
+// 2026-10-14). The older settings.hosted_page.show_seller is still stored but
+// no longer decides anything on this page.
 //
 // Every value comes from the page's OWN organization. A contact is published
 // only from settings.hosted_page.public_contact of the channel; the
@@ -24,6 +27,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/withdrawal"
 )
 
@@ -68,10 +72,27 @@ func deref(s *string) string {
 	return strings.TrimSpace(*s)
 }
 
+// sellerComplete reports whether the row carries everything the block needs
+// (sellerinfo.Missing is empty). The channel's public e-mail is part of it,
+// though the page never prints it.
+func sellerComplete(row gen.HostedPageSellerRow) bool {
+	p := sellerinfo.Profile{
+		LegalName:   deref(row.LegalName),
+		TaxID:       deref(row.TaxID),
+		AddressLine: deref(row.AddressLine1),
+		City:        deref(row.AddressCity),
+		PostalCode:  deref(row.AddressPostalCode),
+	}
+	if c := parsePublicContact(row.PublicContact); c != nil {
+		p.PublicEmail = c.Email
+	}
+	return len(sellerinfo.Missing(p)) == 0
+}
+
 // buildSeller turns the stored row into the public block. It returns nil when
-// the channel has not switched the block on.
+// the profile is incomplete or a platform superadmin hid the block.
 func buildSeller(row gen.HostedPageSellerRow) *hostedPageSellerResponse {
-	if !row.ShowSeller {
+	if row.SellerHidden || !sellerComplete(row) {
 		return nil
 	}
 	s := &hostedPageSellerResponse{
