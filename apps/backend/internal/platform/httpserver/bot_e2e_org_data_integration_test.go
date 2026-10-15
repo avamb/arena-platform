@@ -135,17 +135,18 @@ func TestBotE2E_OrganizationData(t *testing.T) {
 		t.Errorf("after the restart registration_number = %s", got)
 	}
 
-	// ── the sales page: too early, then a personal mailbox, then on and off ───
+	// ── the sales page (P1a): not shown while data is missing, shown by itself
+	// once it is complete, and the old on/off buttons only redraw the card ────
 	text = owner.press("og:cv:"+hosted.String(), "Страница продаж")
-	if !strings.Contains(text, "Страница не показывает e-mail") {
-		t.Errorf("the page card must say where buyers see it:\n%s", text)
+	if !strings.Contains(text, "Страница не показывает e-mail") || !strings.Contains(text, "пока не показаны") {
+		t.Errorf("the page card must say where buyers see it and that the block is not shown yet:\n%s", text)
 	}
-	text = owner.press("og:on:"+hosted.String(), "Чтобы показать данные продавца")
+	text = owner.press("og:on:"+hosted.String(), "заполнены не полностью")
 	if !strings.Contains(text, "публичный e-mail этой страницы продаж") || strings.Contains(text, "юридическое название") {
 		t.Errorf("only the e-mail is missing now:\n%s", text)
 	}
 	if got := setting("hosted_page,show_seller"); got == "true" {
-		t.Fatal("a refused switch must not write")
+		t.Fatalf("a retired button must not write: show_seller = %s", got)
 	}
 	owner.press("og:ce:"+hosted.String(), "Публичный e-mail")
 	owner.say("not-an-email", "не похоже на адрес e-mail")
@@ -156,9 +157,12 @@ func TestBotE2E_OrganizationData(t *testing.T) {
 	owner.press("og:cp:"+hosted.String(), "Публичный телефон")
 	owner.say("позвоните", "не похоже на номер телефона")
 	owner.say("+34 600 111 222", "Сохранено")
-	owner.press("og:on:"+hosted.String(), "Теперь покупатели видят")
-	if got := setting("hosted_page,show_seller"); got != "true" {
-		t.Errorf("show_seller = %s", got)
+	text = owner.press("og:cv:"+hosted.String(), "показаны на странице")
+	if strings.Contains(text, "пока не показаны") {
+		t.Errorf("a complete profile must be shown with no switch:\n%s", text)
+	}
+	if got := setting("hosted_page,show_seller"); got == "true" {
+		t.Errorf("the bot wrote the legacy flag: show_seller = %s", got)
 	}
 	if got := setting("other_key"); got != "stays" {
 		t.Errorf("an unrelated setting changed: %s", got)
@@ -166,18 +170,35 @@ func TestBotE2E_OrganizationData(t *testing.T) {
 
 	// ── another organization's owner cannot touch this channel ────────────────
 	outsider.press("og:off:"+hosted.String(), "больше нет в списке")
-	if got := setting("hosted_page,show_seller"); got != "true" {
+	if got := setting("hosted_page,show_seller"); got == "true" {
 		t.Errorf("a foreign press changed the channel: %s", got)
 	}
 
-	// ── clearing a required field hides the block and the bot says so ─────────
-	owner.press("og:tx", "скрыты на страницах продаж")
-	if got := setting("hosted_page,show_seller"); got != "false" {
-		t.Errorf("show_seller after clearing the tax number = %s", got)
+	// ── clearing a required field takes the block off the page, and the card
+	// says what is missing ────────────────────────────────────────────────────
+	text = owner.press("og:tx", "заполнены не полностью")
+	if !strings.Contains(text, "налоговый номер") || !strings.Contains(text, "пока не показаны") {
+		t.Errorf("after clearing the tax number the card must say what is missing:\n%s", text)
 	}
-	owner.press("og:off:"+hosted.String(), "больше не показаны")
-	if got := setting("hosted_page,show_seller"); got != "false" {
-		t.Errorf("show_seller after off = %s", got)
+	text = owner.press("og:off:"+hosted.String(), "заполнены не полностью")
+	if !strings.Contains(text, "налоговый номер") {
+		t.Errorf("a retired button redraws the card with what is missing:\n%s", text)
+	}
+	if got := setting("hosted_page,show_seller"); got == "true" {
+		t.Errorf("show_seller after a retired button = %s", got)
+	}
+
+	// ── the operator hides it: the owner sees who did ─────────────────────────
+	owner.press("og:t", "Выберите его вид")
+	owner.press("og:ts:eu_vat", "НДС-номер ЕС")
+	owner.say("es b-1234 5678", "Сохранено")
+	if _, err := pool.Exec(ctx, `UPDATE sales_channels
+		SET settings = jsonb_set(settings, '{hosted_page,seller_hidden}', 'true'::jsonb) WHERE id = $1`, hosted); err != nil {
+		t.Fatal(err)
+	}
+	text = owner.press("og:cv:"+hosted.String(), "скрыл оператор платформы")
+	if !strings.Contains(text, "оператор платформы") {
+		t.Errorf("the page card must say the operator hid the block:\n%s", text)
 	}
 
 	// ── buyer messages of the contact form: the sales-chat switch ─────────────

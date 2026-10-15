@@ -6,6 +6,11 @@
 //	GET   /v1/organizations/{org_id}/seller-profile
 //	PATCH /v1/organizations/{org_id}/channels/{channel_id}/seller-display
 //
+// P1a: the seller block is shown on the sales page by default once the
+// profile is complete (sellerinfo.Missing is empty); only a platform
+// superadmin can hide it, with seller_hidden. show_seller is a legacy flag
+// that is still stored and accepted but decides nothing.
+//
 // Both need org.update in the path organization (the owner; the manager
 // does not hold it). The legal fields themselves are written through PATCH
 // /v1/organizations/{id}, which owns their formats; this package reads them
@@ -64,9 +69,18 @@ type Contact struct {
 
 // Channel is one hosted-page channel in the profile.
 type Channel struct {
-	ID                 string   `json:"id"`
-	Name               string   `json:"name"`
-	ShowSeller         bool     `json:"show_seller"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// ShowSeller is the legacy flag (settings.hosted_page.show_seller); it no
+	// longer decides what the page shows, SellerShown does.
+	ShowSeller bool `json:"show_seller"`
+	// SellerHidden: a platform superadmin hid the block of this channel.
+	SellerHidden bool `json:"seller_hidden"`
+	// Complete: nothing required is missing for this channel.
+	Complete bool `json:"complete"`
+	// SellerShown: the channel's sales page shows the seller block now
+	// (Complete and not SellerHidden).
+	SellerShown        bool     `json:"seller_shown"`
 	PublicContact      *Contact `json:"public_contact"`
 	EmailLooksPersonal bool     `json:"email_looks_personal"`
 	// Missing lists what must be filled before ShowSeller may be turned on
@@ -76,21 +90,25 @@ type Channel struct {
 
 // Profile is the answer of GET .../seller-profile.
 type Profile struct {
-	OrgID                  string    `json:"org_id"`
-	OrgName                string    `json:"org_name"`
-	Country                string    `json:"country"`
-	LegalName              *string   `json:"legal_name"`
-	LegalForm              *string   `json:"legal_form"`
-	RegistrationNumber     *string   `json:"registration_number"`
-	TaxIDScheme            *string   `json:"tax_id_scheme"`
-	TaxID                  *string   `json:"tax_id"`
-	LegalAddressLine1      *string   `json:"legal_address_line1"`
-	LegalAddressLine2      *string   `json:"legal_address_line2"`
-	LegalAddressPostalCode *string   `json:"legal_address_postal_code"`
-	LegalAddressCity       *string   `json:"legal_address_city"`
-	LegalAddressCountry    *string   `json:"legal_address_country"`
-	Missing                []string  `json:"missing"`
-	Channels               []Channel `json:"channels"`
+	OrgID                  string   `json:"org_id"`
+	OrgName                string   `json:"org_name"`
+	Country                string   `json:"country"`
+	LegalName              *string  `json:"legal_name"`
+	LegalForm              *string  `json:"legal_form"`
+	RegistrationNumber     *string  `json:"registration_number"`
+	TaxIDScheme            *string  `json:"tax_id_scheme"`
+	TaxID                  *string  `json:"tax_id"`
+	LegalAddressLine1      *string  `json:"legal_address_line1"`
+	LegalAddressLine2      *string  `json:"legal_address_line2"`
+	LegalAddressPostalCode *string  `json:"legal_address_postal_code"`
+	LegalAddressCity       *string  `json:"legal_address_city"`
+	LegalAddressCountry    *string  `json:"legal_address_country"`
+	Missing                []string `json:"missing"`
+	// Complete: no required organization field is missing (Missing is empty).
+	Complete bool `json:"complete"`
+	// SellerShown: at least one channel's page shows the seller block now.
+	SellerShown bool      `json:"seller_shown"`
+	Channels    []Channel `json:"channels"`
 	// ContactFormToTelegram: buyers' messages from the sales page's contact
 	// form also go to the organization's sales Telegram chat (migration 0148).
 	ContactFormToTelegram bool `json:"contact_form_to_telegram"`
@@ -211,12 +229,17 @@ func (h *Handler) loadProfile(ctx context.Context, orgID uuid.UUID) (Profile, ge
 		Channels:              []Channel{},
 		ContactFormToTelegram: toTelegram,
 	}
+	p.Complete = len(p.Missing) == 0
 	for _, row := range rows {
 		c := parseContact(row.PublicContact)
 		ch := Channel{
 			ID: row.ID.String(), Name: row.Name, ShowSeller: row.ShowSeller, PublicContact: c,
-			Missing: channelMissing(o, c),
+			SellerHidden: row.SellerHidden,
+			Missing:      channelMissing(o, c),
 		}
+		ch.Complete = len(ch.Missing) == 0
+		ch.SellerShown = ch.Complete && !ch.SellerHidden
+		p.SellerShown = p.SellerShown || ch.SellerShown
 		if c != nil && c.Email != "" {
 			ch.EmailLooksPersonal = sellerinfo.LooksPersonalEmail(c.Email)
 		}
@@ -277,6 +300,7 @@ type contactPatch struct {
 
 type displayPatch struct {
 	ShowSeller    optional[bool]         `json:"show_seller"`
+	SellerHidden  optional[bool]         `json:"seller_hidden"`
 	PublicContact optional[contactPatch] `json:"public_contact"`
 }
 
@@ -285,7 +309,8 @@ type displayPatch struct {
 //
 // Body members are tri-state: an absent member keeps the stored value,
 // public_contact null removes the whole contact, an inner email/phone null or
-// "" clears that one. show_seller true is refused with 422 seller.incomplete
+// "" clears that one. seller_hidden is changed by a platform superadmin only
+// (403 seller.hide_superadmin_only). show_seller true is refused with 422 seller.incomplete
 // (details.missing) while a required field is empty, and so is clearing the
 // e-mail of a channel that keeps the block on.
 func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
@@ -317,6 +342,10 @@ func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("seller.invalid_body", "show_seller must be true or false", r, map[string]any{"field": "show_seller"}))
 		return
 	}
+	if req.SellerHidden.Present && req.SellerHidden.Null {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("seller.invalid_body", "seller_hidden must be true or false", r, map[string]any{"field": "seller_hidden"}))
+		return
+	}
 
 	profile, org, err := h.loadProfile(ctx, orgID)
 	if err != nil {
@@ -339,6 +368,18 @@ func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
 		// Another organization's channel, an unknown one, or one without a
 		// hosted page: the route's own 404, never a hint which.
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("seller.channel_not_found", "this organization has no sales page channel with that id", r))
+		return
+	}
+
+	// Hiding the block (or showing it again) is the operator's decision. A
+	// request that repeats the stored value changes nothing and is allowed.
+	hiddenChanged := req.SellerHidden.Present && req.SellerHidden.Value != cur.SellerHidden
+	if hiddenChanged && !auth.HasSuperadminOrgAccess(ctx) {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+			"seller.hide_superadmin_only",
+			"only the platform operator can hide or show the seller block; it is shown on the sales page as soon as the organization data is complete",
+			r,
+		))
 		return
 	}
 
@@ -415,6 +456,14 @@ func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("seller.channel_not_found", "this organization has no sales page channel with that id", r))
 		return
 	}
+	hidden := cur.SellerHidden
+	if hiddenChanged {
+		hidden = req.SellerHidden.Value
+		if _, err := h.queries.WithTx(tx).SetChannelSellerHidden(ctx, channelID, orgID, hidden); err != nil {
+			h.writeFailed(w, r, orgID, err)
+			return
+		}
+	}
 	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(ctx)
 		// No address in the audit row: only what changed.
@@ -431,6 +480,7 @@ func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
 			Metadata: map[string]any{
 				"org_id":          orgID.String(),
 				"show_seller":     show,
+				"seller_hidden":   hidden,
 				"contact_changed": contactChanged,
 				"has_email":       next.Email != "",
 				"has_phone":       next.Phone != "",
