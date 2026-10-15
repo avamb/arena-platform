@@ -95,6 +95,13 @@ export type ApiErrorStem =
   | "promoRateLimited"
   | "promoDuplicate"
   | "eventHasPaidOrders"
+  // 4-5
+  | "resendTooSoon"
+  | "invitationChannel"
+  | "webInvitationOff"
+  | "invitationClosed"
+  | "memberGone"
+  | "roleNotAllowed"
   | "lastOwner";
 
 /** Every stem, for the catalog test. */
@@ -104,7 +111,9 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "changeMessageTooLong", "refundScanned", "refundInProgress", "refundNotRefundable", "refundNotSupported",
   "refundNotRetryable", "refundKeyReused", "tierNotOnSale", "tierSoldOut", "tierSeated", "tierBelowUsed",
   "tierSaleWindow", "promoNotApplicable", "promoMinimum", "promoExhausted", "promoPerCustomer",
-  "promoRateLimited", "promoDuplicate", "eventHasPaidOrders", "lastOwner",
+  "promoRateLimited", "promoDuplicate", "eventHasPaidOrders",
+  // 4-5
+  "resendTooSoon", "invitationChannel", "webInvitationOff", "invitationClosed", "memberGone", "roleNotAllowed", "lastOwner",
 ];
 
 /**
@@ -139,6 +148,20 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "promo.duplicate": "promoDuplicate",
   "event.has_paid_orders": "eventHasPaidOrders",
   "membership.last_owner": "lastOwner",
+  // 4-5: the team and its invitations (bot.* routes, DELETE members)
+  "bot.invitation_resend_too_soon": "resendTooSoon",
+  "bot.invitation_channel_unsupported": "invitationChannel",
+  "bot.web_invitation_not_configured": "webInvitationOff",
+  "bot.invitation_revoked": "invitationClosed",
+  "bot.invitation_accepted": "invitationClosed",
+  "bot.invitation_not_found": "memberGone",
+  "membership.not_found": "memberGone",
+  "membership.role_not_allowed": "roleNotAllowed",
+  "bot.invalid_channel": "invalid",
+  "bot.invalid_email": "invalid",
+  "bot.invalid_role": "invalid",
+  "membership.empty_body": "invalid",
+  "membership.invalid_role": "invalid",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",
