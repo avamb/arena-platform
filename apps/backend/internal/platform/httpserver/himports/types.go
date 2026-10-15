@@ -58,8 +58,9 @@ const (
 	// address/geo/timezone from the payload are deliberately not applied.
 	WarnVenueMatchedByName = "import.venue_matched_by_name"
 	// WarnTierNotInPayload — the session carries ticket tiers the bundle did
-	// not mention. They are left untouched (the bundle cannot delete), and
-	// their compat ids are listed in the message so the site can reconcile.
+	// not mention. They are closed, never deleted (syncImportedCategoryQuotas;
+	// a bundle cannot delete), and their compat ids are listed in the
+	// message so the site can reconcile.
 	WarnTierNotInPayload = "import.tier_not_in_payload"
 	// WarnChannelPublicationSkipped — publish:true succeeded, but the calling
 	// organization API key is not bound to a sales channel, so the event was
