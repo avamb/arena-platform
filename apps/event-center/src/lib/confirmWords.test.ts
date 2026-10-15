@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { BOT_KEYS, CONFIRM_KINDS, CONFIRM_WORDS, attemptConfirm, confirmWord, isConfirmWord, normalizePhrase } from "@/lib/confirmWords";
+import { BOT_KEYS, CONFIRM_KINDS, CONFIRM_WORDS, attemptConfirm, confirmWord, isConfirmWord, mayShareWord, normalizePhrase } from "@/lib/confirmWords";
 import { LOCALES } from "@/lib/i18n";
 
 const LOCALES_DIR = new URL("../../../backend/internal/platform/i18n/locales/", import.meta.url);
@@ -42,7 +42,9 @@ describe("each action has its own word", () => {
       const seen = new Map<string, string>();
       for (const kind of CONFIRM_KINDS) {
         const n = normalizePhrase(confirmWord(kind, locale));
-        expect(seen.get(n), `${kind} repeats ${seen.get(n)}`).toBeUndefined();
+        const other = seen.get(n);
+        // Deleting an event and deleting a promo code use one word, as in the bot.
+        expect(other === undefined || mayShareWord(kind, other as (typeof CONFIRM_KINDS)[number]), `${kind} repeats ${other}`).toBe(true);
         seen.set(n, kind);
       }
     });
@@ -55,8 +57,9 @@ describe("each action has its own word", () => {
     it(`a word accepts only its own action in ${locale}`, () => {
       for (const a of CONFIRM_KINDS) {
         for (const b of CONFIRM_KINDS) {
-          expect(isConfirmWord(a, locale, confirmWord(b, locale)), `${a} takes the word of ${b}`).toBe(a === b);
-          expect(isConfirmWord(a, locale, CONFIRM_WORDS[b].en), `${a} takes the English word of ${b}`).toBe(a === b);
+          const same = a === b || mayShareWord(a, b);
+          expect(isConfirmWord(a, locale, confirmWord(b, locale)), `${a} takes the word of ${b}`).toBe(same);
+          expect(isConfirmWord(a, locale, CONFIRM_WORDS[b].en), `${a} takes the English word of ${b}`).toBe(same);
         }
       }
     });

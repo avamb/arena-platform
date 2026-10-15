@@ -41,6 +41,7 @@
     {{with .Branding.ContactEmail}}<br>Contacto: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contacto: <a href="{{.}}" style="color:#666">Escribir al organizador</a>{{end}}{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — entrega automática</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Si pulsas «Cancelar suscripción», dejarás de recibir los correos con tus entradas y los correos importantes sobre tu pedido. No enviamos correos publicitarios sin tu consentimiento.</p>
   </td></tr>
 </table>
 </td></tr></table>
@@ -83,4 +84,6 @@ Enviado a: {{.RecipientEmail}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contacto: {{.}}
 {{end}}{{end}}
 Arena Platform — entrega automática
+
+Si pulsas «Cancelar suscripción», dejarás de recibir los correos con tus entradas y los correos importantes sobre tu pedido. No enviamos correos publicitarios sin tu consentimiento.
 {{end}}

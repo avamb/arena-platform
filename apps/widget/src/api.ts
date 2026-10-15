@@ -30,6 +30,7 @@ import type {
   CheckoutStatusResponse,
   CheckoutRecoverResponse,
 } from './lib/checkout.js';
+import { applySeatCategoryOverlay } from './lib/seatCategories.js';
 
 // ─── Structured API error ────────────────────────────────────────────────────
 
@@ -150,7 +151,9 @@ export async function fetchSessionSchema(sessionId: string, apiBase = ''): Promi
     throw new Error(`fetchSessionSchema HTTP ${res.status}: ${res.statusText}`);
   }
 
-  const schema = (await res.json()) as SchemaResponse;
+  // S1a: fold the per-seat category truth into geometry + category_prices once,
+  // so every consumer (and the cached copy) sees one price per seat.
+  const schema = applySeatCategoryOverlay((await res.json()) as SchemaResponse);
   const etag = res.headers.get('ETag') ?? '';
   if (etag) {
     schemaCache.set(sessionId, { etag, schema });
