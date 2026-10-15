@@ -10,6 +10,8 @@ const port = Number(process.env.EVENT_CENTER_PORT ?? 5176);
 export default defineConfig({
   testDir: testDirectory,
   testMatch: "*.spec.ts",
+  // The live twin tests have their own config (playwright.live.config.ts).
+  testIgnore: "live/**",
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"], ["junit", { outputFile: "event-center-smoke.xml" }]],
