@@ -569,6 +569,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/step-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the password again before a money action
+         * @description The signed-in person types their password again and receives a short
+         *     step-up token (5 minutes). The money routes (refund create, retry,
+         *     resolve, approve and reject, review-hold clear, scan-refund
+         *     exception) refuse a request from the web event center without this
+         *     token in `X-Step-Up-Token` (403 `auth.step_up_required`). A request
+         *     is from the web when it sends `X-Client-Channel: event_center_web`
+         *     OR when its access token was minted from a web sign-in (the `chn`
+         *     claim, taken from the stored session, never from a header). Other
+         *     clients are not asked: the owner decided against it for the Telegram
+         *     bot (spec 37 section 4.5).
+         *
+         *     The token is bound to the sign-in of the access token (its `sid`
+         *     claim) and to the organization named in `org_id`: it does not work
+         *     in another session, after a sign-out, or for an action in another
+         *     organization. It has its own audience and is never accepted as an
+         *     access token. Wrong passwords are limited to 5 per person in 15
+         *     minutes. A wrong password is 403, not 401, so a client never takes
+         *     it for an expired access token.
+         */
+        post: operations["postV1AuthStepUp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/web/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in to the web event center with a one-time link from the bot
+         * @description Exchanges the one-time code of the bot's "Open in browser" link for a
+         *     web event center session (spec 37 section 4.3). The code works once,
+         *     for 5 minutes, and only while the Telegram account that asked for it
+         *     is still linked to the same person. The session is always a web
+         *     session (72 hours without activity, at most 30 days). Unknown, used,
+         *     taken back and expired codes all answer the same 400
+         *     `auth.web_link_invalid`. A platform superadmin is refused (403
+         *     `auth.web_link_superadmin`). The bot later tells the person about the
+         *     sign-in and offers "Sign out everywhere".
+         */
+        post: operations["postV1AuthWebLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/web-sessions/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End every web event center session of the caller
+         * @description "Sign out everywhere" of the bot (spec 37 section 4.3). Ends every
+         *     refresh token of the caller that was issued to the web event center
+         *     and takes back every unused link code. Sessions of the admin console
+         *     and of the bot stay. An access token the web already holds works
+         *     until it expires (15 minutes).
+         */
+        post: operations["postV1AuthWebSessionsRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me": {
         parameters: {
             query?: never;
@@ -594,6 +683,43 @@ export interface paths {
          *     required — every authenticated user can read their own context.
          */
         get: operations["getV1Me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the caller's role and permissions inside one organization
+         * @description Returns the caller's role and effective permissions INSIDE the path
+         *     organization (web event center, task A1 of
+         *     08_architecture/37_web_event_center_ru.md). Since the per-organization
+         *     permission check (PERM-ORG) a route grants only what the caller holds
+         *     in the organization it acts in, plus global roles. GET /v1/me still
+         *     answers the union across every organization, so a client must read
+         *     this endpoint before it shows or hides an action of one organization.
+         *
+         *     The permissions are computed by the same checker the route gates use,
+         *     so "allowed" here means the gate lets the request through. A route
+         *     can still refuse for its own reasons (a row of another organization,
+         *     a state that does not allow the action).
+         *
+         *     Who may call it: a user with an active membership in the
+         *     organization, an organization API key of that organization (no role,
+         *     its permissions are its scopes), and a platform superadmin (no
+         *     X-Admin-Reason is needed, the call reads the caller's own access).
+         *     Anyone else gets 403 `org.access_denied`.
+         */
+        get: operations["getV1OrganizationsOrgIdMe"];
         put?: never;
         post?: never;
         delete?: never;
@@ -703,11 +829,68 @@ export interface paths {
         };
         /**
          * List reference cities, optionally filtered by country
-         * @description Returns reference cities ordered by slug. Pass ?country_id=<uuid> to
-         *     restrict results to one country. Names are locale-resolved from i18n_text.
+         * @description Returns reference cities ordered by slug. Pass ?country_id=<uuid> or
+         *     ?country=<iso2> to restrict results to one country. Names are
+         *     locale-resolved from i18n_text.
+         *
+         *     With `q` (a typed beginning of a name, in Latin, Cyrillic or Hebrew
+         *     script, compared without case or accents) the list keeps the cities
+         *     whose name or slug starts with it (at most 20) and the answer gains a
+         *     `suggestions` array with up to 20 places of the `country` from the
+         *     embedded GeoNames data, each with its time zone. A suggestion is only
+         *     a hint: nothing is created by this route. A single-zone country
+         *     suggests only its largest cities.
+         *
          *     No authentication required.
          */
         get: operations["getV1GeoCities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geo/countries/{iso2}/timezones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the time zones of a country
+         * @description Returns the IANA zones of the country, the zone of its biggest city
+         *     first, from the embedded GeoNames data. `single` tells a client whether
+         *     it may fill the zone in without asking: Spain (Europe/Madrid,
+         *     Atlantic/Canary, Africa/Ceuta) and Portugal (Europe/Lisbon,
+         *     Atlantic/Madeira, Atlantic/Azores) have several, the Czech Republic
+         *     one. No authentication required.
+         */
+        get: operations["getV1GeoCountryTimezones"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geo/countries/{iso2}/currency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the currency of a country
+         * @description Returns the ISO 4217 currency stored on the platform's country row
+         *     (the base of the session currency chain). A country the platform has
+         *     no row for is 404. No authentication required.
+         */
+        get: operations["getV1GeoCountryCurrency"];
         put?: never;
         post?: never;
         delete?: never;
@@ -860,6 +1043,18 @@ export interface paths {
          * @description Applies a partial update to an active organization. Empty or omitted fields
          *     leave the existing value unchanged. Requires JWT authentication and "org.update"
          *     permission. Returns 409 if the new name or slug conflicts with another active org.
+         *
+         *     An organization API key may not send the fields of the legal identity
+         *     and the contact (`legal_name`, `legal_form`, `tax_id`, `tax_id_scheme`,
+         *     `registration_number`, `legal_address_*`, `contact_email`,
+         *     `contact_phone`): 403 `org.identity_fields_api_key_forbidden`, with the
+         *     refused fields in `error.details.fields`.
+         *
+         *     The row, its legal form and the seller block are written in one
+         *     transaction: when the update leaves a field the sales page's seller
+         *     block requires empty (legal name, tax number, street, city, postal
+         *     code), the block is turned off on every channel that showed it and the
+         *     answer lists those channels in `seller_display_hidden`.
          */
         patch: operations["patchV1OrganizationsId"];
         trace?: never;
@@ -1065,6 +1260,15 @@ export interface paths {
          *     the caller must be a member of the organization, an organization API
          *     key of it, or the platform superadmin with `X-Admin-Reason`. Only
          *     the superadmin gets the `deep_link` back in the response.
+         *
+         *     With `channel` `web` the same transaction writes the membership, an
+         *     invitation row that is already accepted (there is no Telegram code),
+         *     and the letter: a NEW account gets a `password_reset_tokens` row and
+         *     an `auth.password_reset_email` job (purpose `org_invitation`, the
+         *     link lands on the event center's `/accept-invite`), an EXISTING
+         *     account gets an `auth.org_added_email` job with no token. There is no
+         *     `deep_link`. It answers 503 `bot.web_invitation_not_configured`
+         *     while the event center address is not configured.
          */
         post: operations["createOrganizationBotInvitation"];
         delete?: never;
@@ -1173,6 +1377,56 @@ export interface paths {
          *     `BOT_SERVICE_TOKEN` is unset the route answers 503; it is never open.
          */
         post: operations["acceptBotInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/web-login-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A one-time web event center link for a linked Telegram account
+         * @description Called by the bot PROCESS with `Authorization: Bearer
+         *     <BOT_SERVICE_TOKEN>` when a person presses "Open in browser" (spec 37
+         *     section 4.3, every role, according to its rights). Returns a link
+         *     that works once and for 5 minutes; a new link takes back the
+         *     person's earlier unused ones. The bot sends it to the private chat
+         *     only. Refused for a platform superadmin, who works in the admin
+         *     console. While `EVENT_CENTER_PUBLIC_URL` is unset the route answers
+         *     503 `bot.web_login_not_configured`.
+         */
+        post: operations["createBotWebLoginCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/web-login-notices/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign-ins through a bot link that the bot must report
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN`. Returns up to 50
+         *     sign-ins of the last day through "Open in browser" links that were
+         *     not reported yet and marks them reported, so each one is handed out
+         *     once. The bot tells the person and offers "Sign out everywhere".
+         */
+        post: operations["claimBotWebLoginNotices"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2442,6 +2696,207 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/partner-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the "where else to buy" links of an event
+         * @description Returns the event's links to other sellers in display order (at most 3).
+         *     Requires `event.read` and membership of the organization.
+         */
+        get: operations["listEventPartnerLinks"];
+        put?: never;
+        /**
+         * Add a "where else to buy" link
+         * @description Adds a link to another seller of the same event. The address must be a full
+         *     https address without spaces (400 `event.invalid_partner_url`). The seller shown
+         *     beside the link is `seller_name`, or, when it is omitted or blank, the host of
+         *     the address without a leading `www.` (for example `ticketportal.cz`). An event
+         *     holds at most 3 links (409 `event.partner_links_full`); the new link takes the
+         *     lowest free position.
+         *     Requires `event.update` and membership of the organization.
+         */
+        post: operations["createEventPartnerLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/partner-links/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder the "where else to buy" links
+         * @description Sets the display order. `link_ids` must be distinct UUIDs (400
+         *     `event.invalid_order` otherwise) and must list every link of the event exactly
+         *     once (409 `event.partner_links_order_mismatch`: reload and retry). The whole
+         *     reorder is one statement; the answer is the list in its new order.
+         *     Requires `event.update` and membership of the organization.
+         */
+        put: operations["reorderEventPartnerLinks"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a "where else to buy" link
+         * @description Removes the link; the links behind it move up so positions stay 0 to n-1.
+         *     Requires `event.update` and membership of the organization.
+         */
+        delete: operations["deleteEventPartnerLink"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a "where else to buy" link
+         * @description Changes the address, the seller name or both; an absent member keeps its
+         *     stored value, and so does an empty string `""` for `seller_name` (it never
+         *     clears the name). When only the address changes, a seller name that was derived
+         *     from the old address follows the new one, while a name the client typed is
+         *     kept.
+         *     Requires `event.update` and membership of the organization.
+         */
+        patch: operations["updateEventPartnerLink"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/map-point": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the map point of an event
+         * @description Returns the event's one map point as a bare object. An event without a point
+         *     answers 404 `event.map_point_not_found`.
+         *     Requires `event.read` and membership of the organization.
+         */
+        get: operations["getEventMapPoint"];
+        /**
+         * Set the map point of an event
+         * @description Creates the point or replaces it as a whole (an absent `label` clears the
+         *     label). Latitude must be between -90 and 90 and longitude between -180 and 180
+         *     (400 `event.invalid_map_point`); six decimals are kept.
+         *     Requires `event.update` and membership of the organization.
+         */
+        put: operations["setEventMapPoint"];
+        post?: never;
+        /**
+         * Remove the map point of an event
+         * @description Removes the point.
+         *     Requires `event.update` and membership of the organization.
+         */
+        delete: operations["deleteEventMapPoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/photo-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the photo report of an event
+         * @description Returns every photo of the photo report in display order, always: the
+         *     organizer sees the report before the event. Buyers see it only after the event
+         *     has ended (the public routes read it through a query that hides it until then).
+         *     Requires `event.read` and membership of the organization.
+         */
+        get: operations["listEventReportPhotos"];
+        put?: never;
+        /**
+         * Add a photo to the photo report
+         * @description Adds an uploaded photo. `media_id` must be an active media object of the
+         *     same organization with owner type `event_report` (422 `event.invalid_report_media`
+         *     otherwise, also for another organization's file). A report holds at most 30
+         *     photos (409 `event.report_photos_full`) and the same file only once (409
+         *     `event.report_photos_duplicate`); the new photo takes the lowest free position.
+         *     Requires `event.update` and membership of the organization.
+         */
+        post: operations["addEventReportPhoto"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/photo-report/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder the photo report
+         * @description Sets the display order. `photo_ids` must be distinct UUIDs (400
+         *     `event.invalid_order` otherwise) and must list every photo of the report
+         *     exactly once (409 `event.report_photos_order_mismatch`: reload and retry). The
+         *     whole reorder is one statement; the answer is the list in its new order.
+         *     Requires `event.update` and membership of the organization.
+         */
+        put: operations["reorderEventReportPhotos"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/photo-report/{photo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a photo from the photo report
+         * @description Removes the photo; the photos behind it move up so positions stay 0 to n-1. The uploaded file itself is kept.
+         *     Requires `event.update` and membership of the organization.
+         */
+        delete: operations["deleteEventReportPhoto"];
+        options?: never;
+        head?: never;
+        /**
+         * Change the caption of a report photo
+         * @description Sets the caption; `caption: null` or a blank text removes it.
+         *     Requires `event.update` and membership of the organization.
+         */
+        patch: operations["updateEventReportPhoto"];
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{event_id}/delete-impact": {
         parameters: {
             query?: never;
@@ -2463,6 +2918,229 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/materials/copy-from/{source_event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copy the page materials of another event onto this one
+         * @description Task 1-2c. Copies the gallery photos, video links, partner links and
+         *     the map point of the SOURCE event (`source_event_id`) onto the event in
+         *     the path, which must hold none of them (409 `event.materials_not_empty`;
+         *     that also makes a repeated call harmless: the second one finds the
+         *     first one's rows and refuses). The photo report is not copied: it is
+         *     about a show that already happened. Gallery rows keep the same media
+         *     object as the source (nothing ties a media object to one event, and
+         *     removing a photo from one event never deletes it), a photo whose media
+         *     object was deleted is skipped, and positions are renumbered from 0.
+         *     Both events must be live events of the organization in the path; the
+         *     route is for the client-side "copy an event" flow: read the source with
+         *     GET .../event-bundle, import its bundles as a new event, then call this.
+         *     Runs in one transaction under the target's materials locks and writes
+         *     one audit event (`v1.event.materials.copy`). Requires `event.update` and
+         *     membership of the organization.
+         */
+        post: operations["copyEventMaterials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/event-bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an event back as importable event-bundles
+         * @description The reverse of POST .../imports/event-bundle (task 3-2): the event as
+         *     one `source: arena` bundle per session, oldest first, each addressed
+         *     by arena UUID (`arenaEventId`, `arenaSessionId`, `arenaVenueId`,
+         *     `arenaTierId`) and importable as it is. It is what the web event
+         *     center loads to edit or copy an event. A bundle posted back
+         *     unchanged is accepted by `?dry_run=true` with no error and leaves the
+         *     stored rows as they are; a second read answers the same bundles. See
+         *     `EventBundleReadResponse` for how each field is written and what is
+         *     left out. A draft event is readable; a deleted event, an unknown one
+         *     and an event of another organization are all a 404. Requires the
+         *     `event.read` permission in the organization. Writes nothing.
+         */
+        get: operations["getEventBundle"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/media-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the gallery photos of an event
+         * @description The event's gallery photos in display order (task 1-2a). At most
+         *     `max_items` (6) photos. Requires the `event.read` permission in the organization.
+         *     Each item names a media object (`media_id`); the picture itself is read with
+         *     GET /v1/media/{id}. Writes nothing.
+         */
+        get: operations["listEventGallery"];
+        put?: never;
+        /**
+         * Add a photo to an event's gallery
+         * @description Adds a photo at the end of the gallery. `media_id` must be a live media
+         *     object of THIS organization uploaded with `owner_type=event_gallery` (422
+         *     `event.invalid_media` otherwise; the same answer for an unknown, deleted or
+         *     foreign id). A seventh photo is 409 `event.gallery_full`; the same photo twice is
+         *     409 `event.gallery_duplicate`. The caption is optional (up to 200 characters).
+         *     Requires the `event.update` permission in the organization.
+         */
+        post: operations["addEventGalleryItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/media-items/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder the gallery photos of an event
+         * @description Sets the display order. `item_ids` must name every photo of the event exactly
+         *     once, in the new order; a list that differs from the stored photos is 409
+         *     `event.gallery_order_mismatch` (reload and retry). The whole reorder is one
+         *     statement, so it is all or nothing. Requires the `event.update` permission in the organization.
+         */
+        put: operations["reorderEventGallery"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/media-items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a photo from an event's gallery
+         * @description Removes the photo from the gallery; the remaining photos keep their order and
+         *     close the gap. The media object itself is left to the media cleanup. Requires the
+         *     `event.update` permission in the organization.
+         */
+        delete: operations["deleteEventGalleryItem"];
+        options?: never;
+        head?: never;
+        /**
+         * Set or clear the caption of a gallery photo
+         * @description Only the caption changes. The body must carry `caption`: a string sets it
+         *     (up to 200 characters), `null` or a blank string clears it. Requires the
+         *     `event.update` permission in the organization.
+         */
+        patch: operations["updateEventGalleryItem"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/videos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the video links of an event
+         * @description The event's video links in display order (task 1-2a). At most `max_items` (4).
+         *     Only the link and the id parsed out of it are stored, never the video itself.
+         *     Requires the `event.read` permission in the organization. Writes nothing.
+         */
+        get: operations["listEventVideos"];
+        put?: never;
+        /**
+         * Add a video link to an event
+         * @description Adds a video link at the end of the list. The link is parsed, never fetched:
+         *     YouTube (watch, youtu.be, shorts, embed), Vimeo (vimeo.com/<id>,
+         *     player.vimeo.com/video/<id>) and Rutube (rutube.ru/video/<id>/) get a `provider`
+         *     and a `video_id`; any other https link is kept as a plain link (`provider` `https`,
+         *     `video_id` null). A link that is not https, has blanks or credentials, or is longer
+         *     than 500 characters is 400 `event.invalid_video_url`. A fifth video is 409
+         *     `event.videos_full`. Requires the `event.update` permission in the organization.
+         */
+        post: operations["addEventVideo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/videos/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder the video links of an event
+         * @description Sets the display order. `video_ids` must name every video of the event exactly
+         *     once, in the new order; a list that differs from the stored videos is 409
+         *     `event.videos_order_mismatch`. The whole reorder is one statement. Requires the
+         *     `event.update` permission in the organization.
+         */
+        put: operations["reorderEventVideos"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/videos/{video_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a video link from an event
+         * @description Removes the link; the remaining videos keep their order and close the gap.
+         *     Requires the `event.update` permission in the organization.
+         */
+        delete: operations["deleteEventVideo"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2570,6 +3248,68 @@ export interface paths {
          *     organization. Another organization's promoter id answers 404.
          */
         patch: operations["updatePromoter"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/seller-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the organization's seller data and its sales-page channels
+         * @description The owner's "Organization data" (HP-4a): the legal data the hosted sales
+         *     page prints in its seller block, every hosted-page channel with
+         *     `seller_shown` (whether the page shows the seller block now), whether
+         *     the data is `complete`, its public contact, and what is still missing. Requires `org.update` in the organization (the
+         *     owner; the manager does not hold it).
+         */
+        get: operations["getSellerProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Switch the Telegram leg of the sales page's contact form
+         * @description `contact_form_to_telegram` decides whether buyers' messages from the
+         *     sales page's contact form also go to the organization's own sales
+         *     Telegram chat (the e-mail always goes). Requires `org.update`.
+         *     Audited as `v1.organization.contact_form_update`.
+         */
+        patch: operations["updateSellerProfile"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/channels/{channel_id}/seller-display": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Switch the seller block and set the public contact of a sales-page channel
+         * @description Writes `settings.hosted_page.public_contact`, the legacy
+         *     `show_seller` and the operator's `seller_hidden` of one hosted-page
+         *     channel of the organization; every other setting is kept. The seller
+         *     block is shown by default once the profile is complete; only a platform
+         *     superadmin (with `X-Admin-Reason`) can hide it with `seller_hidden`. Requires `org.update` in the
+         *     organization. A channel of another organization, or one without a hosted
+         *     page, answers 404 `seller.channel_not_found`. Audited as
+         *     `v1.channel.seller_display_update` without the addresses.
+         *
+         *     This is the only route that writes these keys: the generic channel
+         *     create and PATCH keep the stored values whatever `settings` they are
+         *     sent, and an organization API key is refused here.
+         */
+        patch: operations["updateSellerDisplay"];
         trace?: never;
     };
     "/v1/organizations/{org_id}/events/{id}/promoter": {
@@ -3818,6 +4558,21 @@ export interface paths {
          *     the `payment_status` gate on `checkout.session.completed`,
          *     idempotency, and the state machine — is identical to
          *     `POST /v1/payment-intents/webhook`.
+         *
+         *     **Flitt and AllPay** sign their callbacks in the BODY with the
+         *     merchant's own key and are accepted on this route only; the
+         *     un-suffixed route answers `400 webhook.<provider>_requires_config_route`
+         *     for such a body. arena sends this URL with every order, so the
+         *     organizer configures nothing in their dashboard. A Flitt `declined`
+         *     callback and an AllPay webhook with `status` 0 report one failed
+         *     attempt on a page that stays open for another card: they are
+         *     acknowledged and move nothing. A paid AllPay webhook is confirmed
+         *     by reading the order back from AllPay first; when AllPay cannot
+         *     confirm it yet, the route answers `503 webhook.provider_unconfirmed`
+         *     and AllPay delivers it again. For Flitt and AllPay a paid event
+         *     whose amount or currency differs from the payment parks the
+         *     payment in `manual_review` (failure code `paid_amount_mismatch`)
+         *     and issues no tickets.
          */
         post: operations["paymentIntentWebhookForConfig"];
         delete?: never;
@@ -3882,7 +4637,8 @@ export interface paths {
         put?: never;
         /**
          * Create a refund request
-         * @description Creates a new refund row in the `requested` state. The handler
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Creates a new refund row in the `requested` state. The handler
          *     looks up the parent payment intent to copy `org_id`; a missing
          *     payment intent returns 404 `refund.payment_intent_not_found`.
          *     Amount may be less than the payment-intent amount (partial
@@ -3947,7 +4703,8 @@ export interface paths {
         put?: never;
         /**
          * Approve a refund request
-         * @description Approves a refund in the `requested` state. Standard path
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Approves a refund in the `requested` state. Standard path
          *     transitions `requested → approved → provider_pending`
          *     (simulating provider submission). When the refund is partial
          *     AND the payment intent has a checkout session AND at least one
@@ -3979,7 +4736,8 @@ export interface paths {
         put?: never;
         /**
          * Reject a refund request
-         * @description Rejects a refund in the `requested` state, transitioning it to
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Rejects a refund in the `requested` state, transitioning it to
          *     the terminal `rejected` state. Rejecting a refund that is not
          *     in `requested` returns 409 `refund.invalid_state`.
          *
@@ -4483,6 +5241,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/media/{media_id}/poster-facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read a poster with the vision model
+         * @description Reads the event poster stored as a media object of this organization
+         *     and answers what is printed on it: the name, the date and time, the
+         *     venue, the city, the age rating and the ticket prices. The values are
+         *     hints for an event wizard (the Telegram bot, the web event center) to
+         *     offer as buttons; nothing is stored and the answer is never cached.
+         *     Only the poster image travels to the model, never buyer data.
+         *
+         *     The model key lives on arena-api only. Without it the route answers
+         *     503 `media.poster_reader_not_configured` and a wizard asks every
+         *     question by hand. Each read costs money, so an organization gets at
+         *     most `POSTER_READS_PER_ORG_PER_DAY` reads (default 50) in a sliding
+         *     24 hours, then 429 `media.poster_reads_exhausted`; the counter lives
+         *     in the memory of one arena-api process. A refused request never takes
+         *     a slot. The image must be a JPEG or PNG of at most 5 MiB. The call may
+         *     take up to 45 seconds.
+         *
+         *     Requires the `event.update` permission in the path organization (the
+         *     owner and the manager hold it). A media object of another
+         *     organization is a 404.
+         */
+        post: operations["postV1OrganizationsOrgIdMediaMediaIdPosterFacts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/media-files/{id}": {
         parameters: {
             query?: never;
@@ -4640,6 +5436,56 @@ export interface paths {
          *     batch) return a non-200 status with an `ErrorEnvelope` body.
          */
         post: operations["postScannerScanEvents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/macs/scan-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * MACS — record a batch of door scans
+         * @description MACS, the gate system of the WordPress clients, posts its scans back
+         *     to arena (task M1, spec 17 "Scans from MACS"). No JWT: the batch is
+         *     signed with the `signing_secret` of the organization's MACS
+         *     subscriber (`webhook_subscribers` of kind `macs`, the secret arena
+         *     signs its own MACS webhooks with), as
+         *     `X-MACS-Signature: sha256=<hex HMAC-SHA256 of the raw body>`, and
+         *     the subscriber is named in `X-MACS-Subscriber-Id`. An unknown or
+         *     inactive subscriber and a wrong signature answer the same 401.
+         *
+         *     Each scan is recorded in its own transaction as one `scan_events`
+         *     row with `source = macs`, together with the `v1.ticket.scanned`
+         *     outbox event and, for the first admission of a valid ticket, the
+         *     `tickets.used_at` stamp and an audit row. Scans are processed in
+         *     order of `scanned_at`, so a late batch of an offline scanner stamps
+         *     its earliest admission. Only tickets of the subscriber's
+         *     organization are recorded; any other ticket is rejected per scan
+         *     with `scan.ticket_not_found`, like an unknown one.
+         *
+         *     Idempotency: `(subscriber, scan_id)`. Sending a batch again answers
+         *     every scan `duplicate` and writes nothing. A scan with another
+         *     `scan_id` but the same barcode and `scanned_at` as a recorded one is
+         *     a duplicate too.
+         *
+         *     A recorded admission blocks every refund of the ticket, exactly like
+         *     an admission by arena's own scanner (the rule "a ticket scanned at
+         *     the gate is never refunded").
+         *
+         *     Partial success: per-scan problems are reported on the scan's own
+         *     result; the answer is 202 whenever at least one scan could be
+         *     judged. At most 500 scans and 1 MiB per batch, 120 batches a minute
+         *     per subscriber.
+         */
+        post: operations["postMACSScanEvents"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4960,7 +5806,8 @@ export interface paths {
         /**
          * Buyer return from a hosted payment page
          * @description Where a provider-hosted payment page sends the buyer back to. A provider
-         *     may return the buyer with an HTTP POST (Flitt does by default), while
+         *     may return the buyer with an HTTP POST (Flitt does by default; AllPay
+         *     does not document its method, so it is routed here too), while
          *     the buyer's page is an ordinary web page that cannot take one; this
          *     route answers GET and POST alike with a `303 See Other` to that page,
          *     which a browser always follows with GET. The body of a POST is never
@@ -4972,7 +5819,8 @@ export interface paths {
         /**
          * Buyer return from a hosted payment page (POST)
          * @description Where a provider-hosted payment page sends the buyer back to. A provider
-         *     may return the buyer with an HTTP POST (Flitt does by default), while
+         *     may return the buyer with an HTTP POST (Flitt does by default; AllPay
+         *     does not document its method, so it is routed here too), while
          *     the buyer's page is an ordinary web page that cannot take one; this
          *     route answers GET and POST alike with a `303 See Other` to that page,
          *     which a browser always follows with GET. The body of a POST is never
@@ -5006,6 +5854,39 @@ export interface paths {
         get: operations["getPublicCheckoutStatus"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/organizer-contact/{org_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a buyer's message to the organizer of a hosted page
+         * @description The "Write to the organizer" form of the hosted sales page. The page
+         *     never publishes the organizer's e-mail: the message is stored and a
+         *     worker mails it to the channel's public e-mail (else to the
+         *     organization's own contact e-mail, never shown) with Reply-To set to
+         *     the buyer, and posts it to the organization's sales Telegram chat when
+         *     its switch is on. A message from a promoter's page, or about an
+         *     event of a promoter (`event_slug`), goes to the organization's owner
+         *     only, never to the public e-mail. Protected by Cloudflare Turnstile (production
+         *     without a secret answers 503), a per-IP limit (5 an hour) and a
+         *     per-page limit (30 an hour) counted in the database, and a 16 KiB body
+         *     cap. No JWT. An unknown slug, a page whose messages would reach
+         *     nobody and a feed token of another organization answer the same 404.
+         *     The token must carry the Turnstile action "contact". The answer
+         *     never carries the organizer's address.
+         */
+        post: operations["sendOrganizerContact"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5921,6 +6802,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/webhooks/brevo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive Brevo transactional delivery events
+         * @description Brevo's transactional webhook: what happened to the buyer letters
+         *     arena sent (ticket letter, invitation, session change or
+         *     cancellation, refund). Mounted only when BREVO_WEBHOOK_TOKEN is set.
+         *     This route takes the token from "Authorization: Bearer <token>"
+         *     (a webhook created through Brevo's API with an auth object), so
+         *     the token never appears in a URL. BREVO_WEBHOOK_TOKEN_PREVIOUS is
+         *     accepted too during a rotation; tokens are compared in
+         *     constant time. The body is one Brevo event object or an array of
+         *     them, capped at 1 MiB (never by the number of events). Events of
+         *     messages arena did not send (the Brevo account may be shared with
+         *     other sites) and event types arena does not model (unsubscribed,
+         *     spam, list addition) are acknowledged with 200 and ignored. Setup:
+         *     docs/ops/brevo_delivery_status_webhook_ru.md.
+         */
+        post: operations["brevoDeliveryStatusWebhookBearer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/webhooks/brevo/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive Brevo transactional delivery events
+         * @description Brevo's transactional webhook: what happened to the buyer letters
+         *     arena sent (ticket letter, invitation, session change or
+         *     cancellation, refund). Mounted only when BREVO_WEBHOOK_TOKEN is set.
+         *     The token in the path is the credential, for a webhook created in
+         *     Brevo's web form, which takes only a URL; prefer POST
+         *     /v1/webhooks/brevo with a bearer header. BREVO_WEBHOOK_TOKEN_PREVIOUS
+         *     is accepted too during a rotation; tokens are compared in
+         *     constant time. The body is one Brevo event object or an array of
+         *     them, capped at 1 MiB (never by the number of events). Events of
+         *     messages arena did not send (the Brevo account may be shared with
+         *     other sites) and event types arena does not model (unsubscribed,
+         *     spam, list addition) are acknowledged with 200 and ignored. Setup:
+         *     docs/ops/brevo_delivery_status_webhook_ru.md.
+         */
+        post: operations["brevoDeliveryStatusWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/billing/usage": {
         parameters: {
             query?: never;
@@ -6102,6 +7047,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/orders/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search orders with the filters in the request body
+         * @description The same search as `GET /v1/organizations/{org_id}/orders`, with
+         *     every filter in the JSON body instead of the query string (owner
+         *     decision 2026-10-14, spec 37 §13 item 5): a buyer's e-mail or phone
+         *     in a URL is written by every proxy and by Cloudflare, a body is not.
+         *     Each field means exactly what the GET parameter of the same name
+         *     means, with the same validation and the same error codes. A query
+         *     string on this route is refused (400 `orders.query_in_url`), and so
+         *     is a body that is not one JSON object of the known fields (400
+         *     `orders.invalid_body`). Requires the `order.read` permission.
+         */
+        post: operations["postV1OrganizationsOrgIdOrdersSearch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/orders/{id}": {
         parameters: {
             query?: never;
@@ -6147,6 +7120,34 @@ export interface paths {
          *     permission.
          */
         get: operations["getV1OrganizationsOrgIdEventsEventIdSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/sales-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sales figures of a list of events
+         * @description The numbers a list of events shows next to each name, for up to 50
+         *     events in ONE request (WEB-LIST): for every id the same figures as the
+         *     top level of `GET .../events/{event_id}/summary` (places, money per
+         *     currency, orders, tickets, door count, refunds, promo codes,
+         *     invitations, session count) without the per-category table and the
+         *     per-session list. An id of another organization, a deleted event and
+         *     an unknown id are absent from the answer, never an error. The entries
+         *     come in the order the ids were given, a repeated id counts once.
+         *     Read-only and free of buyer data. Requires the `order.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsSalesSummary"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6395,7 +7396,8 @@ export interface paths {
         put?: never;
         /**
          * Cancel a pending order
-         * @description Cancels an order (feature #489, W1-A6d, spec §14.2). Only an order
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Cancels an order (feature #489, W1-A6d, spec §14.2). Only an order
          *     in `pending_payment` status can be cancelled; any other status
          *     answers 409. A successful cancellation also releases the order's
          *     reservation hold. Requires the `order.write` permission.
@@ -6477,7 +7479,8 @@ export interface paths {
         put?: never;
         /**
          * Refund tickets of an order
-         * @description Records one refund operation and, when the caller also holds
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Records one refund operation and, when the caller also holds
          *     `refund.approve`, sends it to the payment provider at once (PAY-06,
          *     spec 36 section 8). The `Idempotency-Key` header is required and
          *     unique per organization: repeating the call with the same key and the
@@ -6553,7 +7556,8 @@ export interface paths {
         put?: never;
         /**
          * Send a failed or never-sent refund again
-         * @description Starts a NEW one-ticket refund operation from a refund the provider
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Starts a NEW one-ticket refund operation from a refund the provider
          *     refused outright (failed, with no provider refund id), or one that was
          *     parked before any provider call, and sends it
          *     at once with a new idempotency key. A refund the provider refused stays
@@ -6603,6 +7607,9 @@ export interface paths {
          *     reason it was parked with, except that one closed as refunded carries
          *     no failure. A parked refund without a provider is closed as
          *     `refunded` or `not_refunded` exactly as stated and settles nothing. Platform superadmin only, with X-Admin-Reason.
+         *     From the web event center the request also needs the password
+         *     again: X-Step-Up-Token from POST /v1/auth/step-up for this
+         *     organization, otherwise 403 auth.step_up_required.
          */
         post: operations["postV1OrganizationsOrgIdRefundsRefundIdResolve"];
         delete?: never;
@@ -6774,6 +7781,12 @@ export interface paths {
          *     (`Authorization: Bearer ak_…`) carrying that scope is the primary
          *     caller — the site-side "Мероприятия (arena)" tab (event-bundle spec
          *     §10) and, in future iterations, chat-bot integrations.
+         *
+         *     With `?dry_run=true` the bundle is only checked: the same validation
+         *     code runs inside a transaction that is rolled back, nothing is
+         *     written and nothing outside is touched, and the answer is an
+         *     `ImportEventBundleDryRunResponse` listing ALL errors at once, each
+         *     with its field as a JSON pointer, instead of the import's first 4xx.
          */
         post: operations["importEventBundle"];
         delete?: never;
@@ -7370,6 +8383,46 @@ export interface components {
                 };
             };
         };
+        /** @description One ticket price printed on a poster. */
+        PosterFactsCategory: {
+            /** @description Category name as printed (for example "Stalls"); empty when the poster gives only a price. */
+            name: string;
+            /**
+             * Format: int64
+             * @description Price in minor currency units (3490 is 34.90).
+             */
+            price_minor: number;
+            /** @description ISO 4217 code, or an empty string when the poster shows no currency symbol. */
+            currency: string;
+        };
+        /**
+         * @description What a poster says, normalized. An empty string, or an empty list,
+         *     means "not on the poster". Every value is a HINT for a wizard to
+         *     offer as a button; nothing is written from it.
+         */
+        PosterFacts: {
+            /** @description Event name as printed. */
+            name: string;
+            /** @description First date, `YYYY-MM-DD`, or empty. */
+            date: string;
+            /** @description Start time, `HH:MM` 24-hour, or empty. */
+            time: string;
+            /** @description Venue name as printed, or empty. */
+            venue_name: string;
+            /** @description City as printed, or empty. */
+            city: string;
+            /** @description Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty. */
+            age: string;
+            /** @description A short description printed on the poster, or empty. */
+            description: string;
+            /** @description The ticket prices printed on the poster; empty when there are none. */
+            categories: components["schemas"]["PosterFactsCategory"][];
+        };
+        /** @description The answer of the poster-reading route. */
+        PosterFactsResponse: {
+            /** @description What the model read from the poster. */
+            facts: components["schemas"]["PosterFacts"];
+        };
         /**
          * @description A registered binary media object (org logo, event poster, artist
          *     photo). The bytes live in the configured storage backend
@@ -7396,10 +8449,13 @@ export interface components {
              * @description Polymorphic owner kind. Future migrations widen the
              *     enumeration as new media-bearing surfaces appear.
              *     `seating_plan_svg` (migration 0078) carries the authoring SVG
-             *     referenced by a seating_plan_versions row.
+             *     referenced by a seating_plan_versions row. `session_poster`
+             *     is a session-level poster. `event_gallery` and `event_report`
+             *     (migration 0153) are photos of an event page gallery and of its
+             *     photo report.
              * @enum {string}
              */
-            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg";
+            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report";
             /**
              * Format: uuid
              * @description UUID of the owning row in the table implied by
@@ -7871,6 +8927,71 @@ export interface components {
              */
             available_scopes: string[];
         };
+        /**
+         * @description The caller's access inside one organization, returned by
+         *     GET /v1/organizations/{org_id}/me. Every list is sorted and never null.
+         */
+        OrgMeResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the organization.
+             */
+            org_id: string;
+            /** @description Display name of the organization. */
+            org_name: string;
+            /**
+             * Format: int64
+             * @description Short organization number shown to people. The UUID stays the API key.
+             */
+            org_display_number: number;
+            /**
+             * @description `user` for a person signed in with a JWT, `api_key` for an
+             *     organization API key.
+             * @example user
+             */
+            caller_type: string;
+            /**
+             * @description The main membership role of the caller in this organization, for
+             *     display: `org_admin` (owner), then `organizer` (manager), then
+             *     `agent`, then the first other role in alphabetical order. Empty
+             *     for an API key and for a platform superadmin who holds no
+             *     membership here. Decide actions by `permissions`, never by this
+             *     field.
+             * @example organizer
+             */
+            role: string;
+            /**
+             * @description Every active membership role the caller holds in this organization.
+             * @example [
+             *       "organizer"
+             *     ]
+             */
+            membership_roles: string[];
+            /**
+             * @description The roles the permission checker counts for this organization:
+             *     the membership roles here, the caller's global roles (for example
+             *     `platform_superadmin`) and any roles of the token. Empty for an
+             *     API key.
+             * @example [
+             *       "organizer"
+             *     ]
+             */
+            roles: string[];
+            /**
+             * @description Every permission the caller holds inside this organization. For
+             *     an API key these are its scopes.
+             * @example [
+             *       "event.read",
+             *       "order.read"
+             *     ]
+             */
+            permissions: string[];
+            /**
+             * @description True when the caller is a platform superadmin. Other
+             *     organization routes then require the X-Admin-Reason header.
+             */
+            platform_superadmin: boolean;
+        };
         MeUser: {
             /** @description Actor ID from the JWT (typically a UUID) */
             id: string;
@@ -8217,6 +9338,72 @@ export interface components {
              * @example 1
              */
             total: number;
+        };
+        /** @description Body of POST /v1/auth/step-up. */
+        AuthStepUpRequest: {
+            /** @description The signed-in person's current password. */
+            password: string;
+            /**
+             * Format: uuid
+             * @description The organization of the money action. The token covers actions in this organization only.
+             */
+            org_id: string;
+        };
+        /** @description Proof of a fresh password confirmation for the money routes. */
+        AuthStepUpResponse: {
+            /** @description Send it as `X-Step-Up-Token` on a money request from the web event center. */
+            step_up_token: string;
+            /**
+             * Format: date-time
+             * @description When the token stops working (5 minutes after it was issued).
+             */
+            expires_at: string;
+        };
+        /** @description Body of POST /v1/auth/web/link. */
+        AuthWebLinkRequest: {
+            /** @description The one-time code from the bot's link, taken from the address after `#code=`. */
+            code: string;
+        };
+        /** @description Answer of POST /v1/auth/web-sessions/revoke. */
+        AuthWebSessionsRevokeResponse: {
+            /** @description How many web event center sessions were ended. */
+            revoked_sessions: number;
+        };
+        /** @description Body of POST /v1/bot/web-login-codes. */
+        BotWebLoginCodeRequest: {
+            /**
+             * Format: int64
+             * @description The Telegram account that pressed "Open in browser".
+             */
+            telegram_user_id: number;
+        };
+        /** @description A one-time link to the web event center for the private chat. */
+        BotWebLoginCodeResponse: {
+            /** @description `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`. The code is after `#`, so it never reaches a server log. */
+            url: string;
+            /**
+             * Format: date-time
+             * @description When the link stops working (5 minutes after it was issued).
+             */
+            expires_at: string;
+        };
+        /** @description A sign-in to the web through a bot link that the bot must report. */
+        BotWebLoginNotice: {
+            /**
+             * Format: int64
+             * @description The Telegram account to tell.
+             */
+            telegram_user_id: number;
+            /**
+             * Format: date-time
+             * @description When the link was used.
+             */
+            signed_in_at: string;
+        };
+        /** @description Answer of POST /v1/bot/web-login-notices/claim. */
+        BotWebLoginNoticesResponse: {
+            /** @description Sign-ins not reported yet; each is handed out once. */
+            notices: components["schemas"]["BotWebLoginNotice"][];
         };
         AuthLogoutRequest: {
             /**
@@ -8876,6 +10063,14 @@ export interface components {
              */
             legal_name?: string | null;
             /**
+             * @description Legal form of the entity as the owner wrote it ("S.L.", "s.r.o.",
+             *     "autónomo"), at most 80 characters (migration 0146). Answered by
+             *     GET /v1/organizations/{id} and PATCH /v1/organizations/{id} only;
+             *     the list and create routes answer null.
+             * @example GmbH
+             */
+            legal_form?: string | null;
+            /**
              * @description Tax registration identifier (VAT, EIN, etc.). Format is
              *     validated application-side based on `tax_id_scheme`.
              * @example DE123456789
@@ -9108,6 +10303,13 @@ export interface components {
              * @example ACME Tickets GmbH
              */
             legal_name?: string;
+            /**
+             * @description New legal form, 1-80 characters on one line (400
+             *     `org.invalid_legal_form` otherwise). Absent keeps the stored
+             *     value, `null` or an empty string clears it.
+             * @example GmbH
+             */
+            legal_form?: string | null;
             /**
              * @description New tax registration identifier (empty string clears).
              * @example DE123456789
@@ -9416,8 +10618,23 @@ export interface components {
             /**
              * @description Language of the invitation e-mail and of the bot's first messages
              *     (`en` default, `ru`, `es`). Unknown values fall back to `en`.
+             *     With `channel` `web` and no locale, the language of an existing
+             *     account's own preference is used.
              */
             locale?: string;
+            /**
+             * @description How the person is invited: `telegram` (the default when absent)
+             *     mails the Telegram deep link of the bot; `web` mails the web
+             *     event center instead, with no deep link and no Telegram code.
+             *     For `web`, a NEW e-mail gets the one-time password-setup link
+             *     (valid 7 days) and an EXISTING account gets a letter that says it
+             *     was added and where to sign in, with no token. In both cases the
+             *     membership exists at once and an existing membership keeps its
+             *     role. Any other value is 400 `bot.invalid_channel`. This is a
+             *     plain string with the two values named here, not an inline
+             *     enum, so no generated constant is renamed.
+             */
+            channel?: string;
         };
         /** @description A bot invitation as the API reports it, never the code. */
         BotInvitation: {
@@ -9449,18 +10666,21 @@ export interface components {
             user_created: boolean;
             /**
              * Format: date-time
-             * @description When the one-time code stops working (7 days).
+             * @description When the one-time code stops working (7 days). For a `web` invitation, when the password-setup link of a new account stops working.
              */
             expires_at: string;
             /** @description Always `email`; the deep link is mailed by arena-worker (bot.invitation_email). */
             delivery: string;
+            /** @description The channel the invitation was sent through, `telegram` or `web`. A `web` invitation is recorded as accepted at once and cannot be resent. */
+            channel: string;
         };
         /** @description Response of POST /v1/organizations/{org_id}/bot-invitations. */
         BotInvitationCreateResponse: {
             /** @description The invitation that was created. */
             invitation: components["schemas"]["BotInvitation"];
             /**
-             * @description `https://t.me/<bot>?start=inv_<code>`, present ONLY when the
+             * @description `https://t.me/<bot>?start=inv_<code>`, present ONLY for a
+             *     `telegram` invitation when the
              *     caller is the platform superadmin (X-Admin-Reason on record) and
              *     the bot username is configured, for the hand-over to
              *     organizations provisioned by hand. An organization owner never
@@ -9548,8 +10768,22 @@ export interface components {
              *     (sent, not opened, not expired) or `expired`. Absent for a member
              *     who has no bot invitation (added another way). Plain string on
              *     purpose: an inline enum would rename generated Go constants.
+             *
+             *     For an invitation sent for the web event center (`invitation_channel`
+             *     `web`) the invitation row is accepted at once, so the state comes
+             *     from the setup link: `waiting` while the account that invitation
+             *     created has an unused, unexpired password-setup token, `accepted`
+             *     once it was used or none is left. For an account that already
+             *     existed it is always `accepted`: the API cannot tell whether it
+             *     ever chose a password.
              */
             invitation_state?: string;
+            /**
+             * @description How the invitation was sent, `telegram` or `web`. Absent with
+             *     `invitation_state`. A `web` invitation cannot be resent
+             *     (`resend_available_at` is never present for it).
+             */
+            invitation_channel?: string;
             /**
              * Format: uuid
              * @description Id of that invitation, what the revoke and resend routes take. Absent with `invitation_state`.
@@ -9557,7 +10791,7 @@ export interface components {
             invitation_id?: string;
             /**
              * Format: date-time
-             * @description When the invitation's code stops working. Absent with `invitation_state`.
+             * @description When the invitation's code stops working (for a `web` invitation that is still `waiting`, when its setup link stops working). Absent with `invitation_state`.
              */
             invitation_expires_at?: string;
             /**
@@ -10453,12 +11687,58 @@ export interface components {
             updated_at: string;
         };
         /**
+         * @description Body of POST /v1/organizations/{org_id}/orders/search. Every field is
+         *     optional and means what the query parameter of the same name means
+         *     on GET /v1/organizations/{org_id}/orders.
+         */
+        OrderSearchRequest: {
+            /** @description One search value (barcode, order number, e-mail, phone or name), classified like the GET `q`. */
+            q?: string;
+            /** @description Status group `recent` (default), `paid` or `unpaid`. */
+            tab?: string;
+            /** @description Order lifecycle status filter. */
+            status?: string;
+            /**
+             * Format: uuid
+             * @description Only orders of this session of the organization.
+             */
+            session_id?: string;
+            /**
+             * Format: uuid
+             * @description Only orders of this event of the organization.
+             */
+            event_id?: string;
+            /**
+             * Format: date-time
+             * @description Only orders created at or after this RFC3339 timestamp.
+             */
+            from?: string;
+            /**
+             * Format: date-time
+             * @description Only orders created at or before this RFC3339 timestamp.
+             */
+            to?: string;
+            /** @description Page size, 1-200 (default 50). */
+            limit?: number;
+            /** @description Pagination offset (default 0). */
+            offset?: number;
+        };
+        /**
          * @description One row of the org-scoped order list (EC-04): the order plus the
          *     event name and the session start (UTC) with the venue's zone, so a
          *     client prints "number · status · total · buyer · date" without a
          *     second call.
          */
         OrderListItem: components["schemas"]["OrderSummary"] & {
+            /**
+             * @description True when the buyer most likely did not get a letter: a
+             *     ticket letter that failed (bounced, blocked, refused by the
+             *     relay) or is stuck (see OrderLetter.stuck), or a change,
+             *     cancellation or refund letter that failed or is stuck and was
+             *     not followed by a newer one of the same kind. Details on the
+             *     order card (letters).
+             */
+            letter_failed: boolean;
             /** @description Name of the event the order's session belongs to. */
             event_name: string;
             /**
@@ -10702,6 +11982,94 @@ export interface components {
             kind: string;
         };
         /**
+         * @description One buyer letter of an order and its delivery status, from Brevo's
+         *     transactional webhook. Ticket letters come first, grouped the way
+         *     they went out (one entry per sent letter, one for the tickets still
+         *     queued, one for those the mail relay refused, one for tickets sent
+         *     before letters were recorded), then the change, cancellation and
+         *     refund letters, oldest first. Times are UTC; a step that has not
+         *     happened is null. About "opened": Brevo learns of an open when the
+         *     letter's images are fetched. Apple Mail Privacy Protection fetches
+         *     them on delivery through Apple's proxy whether anybody reads the
+         *     letter or not; Brevo reports that as a proxy open, which arena
+         *     records as proxy_opened_at (proof of delivery, NOT of reading). An
+         *     opened_at can still be a mail client that loads images by itself.
+         */
+        OrderLetter: {
+            /**
+             * Format: uuid
+             * @description Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
+             */
+            id: string | null;
+            /** @description ticket, change, cancel or refund on an order; invitation for the letter of a complimentary issuance (read through the invitations list, which has no order). */
+            kind: string;
+            /**
+             * @description queued (the delivery job waits), sent (the mail relay accepted
+             *     the letter), delayed (the recipient's server asked Brevo to try
+             *     again later; Brevo keeps retrying), delivered (the recipient's
+             *     server accepted it, or a mail proxy fetched it, or a link was
+             *     clicked), opened, failed (bounced, blocked, invalid address,
+             *     provider error, or the relay refused it). A failure is final
+             *     unless a later delivery is reported.
+             */
+            status: string;
+            /** @description Address the letter was sent to. */
+            recipient: string;
+            /** @description Tickets the letter carries (empty for change, cancellation and refund letters). */
+            ticket_ids: string[];
+            /**
+             * Format: date-time
+             * @description When the delivery job was queued (queued and send_failed entries only).
+             */
+            queued_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the mail relay accepted the letter.
+             */
+            sent_at: string | null;
+            /**
+             * Format: date-time
+             * @description When Brevo reported the letter delivered.
+             */
+            delivered_at: string | null;
+            /**
+             * Format: date-time
+             * @description When a mail proxy (Apple Mail Privacy Protection, image proxies) first fetched the letter. Proof of delivery, not of reading.
+             */
+            proxy_opened_at: string | null;
+            /**
+             * Format: date-time
+             * @description When Brevo first reported an open.
+             */
+            opened_at: string | null;
+            /**
+             * Format: date-time
+             * @description First click on a link of the letter (for example the ticket download). Proves delivery; not counted as reading, mail security scanners follow links too.
+             */
+            clicked_at: string | null;
+            /**
+             * Format: date-time
+             * @description When Brevo first reported the letter deferred (the recipient's server asked it to retry later). Stays set after a later delivery.
+             */
+            deferred_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the failure that decided the status was reported.
+             */
+            failed_at: string | null;
+            /** @description hard_bounce, soft_bounce, invalid_email, blocked, error, or send_failed (the relay refused the letter). */
+            failure_event: string | null;
+            /** @description The provider's reason, with e-mail addresses, IP addresses and host names removed. */
+            failure_reason: string | null;
+            /**
+             * @description True when the letter has been sent or delayed for more than six
+             *     hours with no delivery while the webhook kept reporting on other
+             *     letters: the buyer most likely has no letter. letter_failed is
+             *     also true then.
+             */
+            stuck: boolean;
+        };
+        /**
          * @description Order detail returned by GET
          *     /v1/organizations/{org_id}/orders/{id} (feature #489, W1-A6d, spec
          *     §14.2; EC-05, spec 35 §5.6): the order fields plus its line items,
@@ -10709,6 +12077,15 @@ export interface components {
          *     reason and channel.
          */
         OrderDetail: components["schemas"]["OrderSummary"] & {
+            /** @description Name of the event the order's session belongs to. Present even when the session was cancelled (soft-deleted). */
+            event_name: string;
+            /**
+             * Format: date-time
+             * @description Start of the order's session, RFC 3339 in UTC.
+             */
+            session_start_at: string;
+            /** @description IANA zone of the session's venue (`venues.timezone`) - render session_start_at in it. */
+            venue_timezone: string;
             /** @description Line items of the order. */
             items: components["schemas"]["OrderItemSummary"][];
             /** @description Tickets issued for this order's line items, in line order. */
@@ -10746,6 +12123,17 @@ export interface components {
             unpaid_reason: string;
             /** @description The sales channel of the order and how the buyer reached the checkout. */
             channel: components["schemas"]["OrderChannelSummary"];
+            /** @description The buyer letters of the order with their delivery status (see OrderLetter). */
+            letters: components["schemas"]["OrderLetter"][];
+            /**
+             * @description True when the buyer most likely did not get a letter: a
+             *     ticket letter that failed (bounced, blocked, refused by the
+             *     relay) or is stuck (see OrderLetter.stuck), or a change,
+             *     cancellation or refund letter that failed or is stuck and was
+             *     not followed by a newer one of the same kind. The same rule
+             *     as letter_failed on the orders list.
+             */
+            letter_failed: boolean;
         };
         /** @description Places of a session, or of one category, by status. */
         SessionPlaceCounts: {
@@ -11025,6 +12413,31 @@ export interface components {
              * @description Every valid ticket.
              */
             total: number;
+            /**
+             * @description Admitted scans split by who reported them, sorted by source;
+             *     empty when nobody was scanned. A ticket admitted by both sources
+             *     counts under both, so the per-source tickets need not add up to
+             *     `used`.
+             */
+            by_source: components["schemas"]["SummaryAdmission"][];
+        };
+        /** @description The admitted scans of one source (scan_events.source, migration 0154). */
+        SummaryAdmission: {
+            /**
+             * @description `arena_scanner` (POST /v1/scanner/scan-events) or `macs`
+             *     (POST /v1/macs/scan-events).
+             */
+            source: string;
+            /**
+             * Format: int64
+             * @description Valid tickets with at least one admitted scan of this source.
+             */
+            tickets: number;
+            /**
+             * Format: int64
+             * @description Every admitted scan of this source, repeat scans and scans of tickets cancelled since included.
+             */
+            scans: number;
         };
         /**
          * @description Invitations: paid orders written with source=complimentary (the
@@ -11367,6 +12780,75 @@ export interface components {
             complimentary: components["schemas"]["SummaryComplimentary"];
             /** @description Every non-deleted session of the event in start order, each with its own figures. */
             sessions: components["schemas"]["EventSummarySession"][];
+        };
+        /**
+         * @description The top level of EventSummary for one event, without the per-category
+         *     table (`tiers`) and the per-session list (`sessions`): the numbers a
+         *     list of events shows next to each name. Built by the same assembly as
+         *     EventSummary, so for one event every field here equals the field of
+         *     the same name in `GET .../events/{event_id}/summary`. Read-only, no
+         *     buyer data.
+         */
+        EventSalesSummary: {
+            /** @description The event the figures are about. */
+            event: {
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the event.
+                 */
+                id: string;
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the owning organization.
+                 */
+                org_id: string;
+                /** @description Name of the event as stored. */
+                name: string;
+                /** @description Event status (draft, published, cancelled, archived). */
+                status: string;
+                /**
+                 * Format: date-time
+                 * @description Earliest start over the event's active, non-cancelled sessions, RFC3339 in UTC.
+                 */
+                first_session_at: string | null;
+                /**
+                 * Format: date-time
+                 * @description Latest end over the same sessions, RFC3339 in UTC.
+                 */
+                last_session_at: string | null;
+                /** @description Number of non-deleted sessions of the event, cancelled ones included. */
+                session_count: number;
+            };
+            /** @description Places of every session, split by kind. */
+            places: {
+                /** @description Seats of the seating plans. */
+                seats: components["schemas"]["SessionPlaceCounts"];
+                /** @description General admission places. */
+                ga: components["schemas"]["SessionPlaceCounts"];
+            };
+            /** @description The bottom line of the whole event, one entry per currency. */
+            money: components["schemas"]["SummaryMoneyItem"][];
+            /** @description Order totals of every session grouped by status, source and currency. */
+            orders: components["schemas"]["SummaryOrdersItem"][];
+            /** @description Tickets of every session by status. */
+            tickets: components["schemas"]["SummaryTickets"];
+            /** @description The door count over every session. */
+            entered: components["schemas"]["SummaryEntered"];
+            /** @description Refund totals of every session grouped by settlement, state and currency. */
+            refunds: components["schemas"]["SummaryRefundsItem"][];
+            /** @description Promo codes the paid orders of every session used, merged by code and sorted. */
+            promos: components["schemas"]["SummaryPromoItem"][];
+            /** @description Invitations over every session. */
+            complimentary: components["schemas"]["SummaryComplimentary"];
+        };
+        /** @description The sales figures of the requested events, one entry per event found. */
+        EventSalesSummaryList: {
+            /**
+             * @description One entry per requested event that exists in the organization, in
+             *     the order the ids were given. An id of another organization, a
+             *     deleted event or an unknown id has no entry.
+             */
+            items: components["schemas"]["EventSalesSummary"][];
         };
         /**
          * @description A single active venue (physical event location owned by one organization).
@@ -11745,6 +13227,11 @@ export interface components {
              *     cloudpayments, yookassa, manual. `flitt` needs the secrets
              *     `merchant_id` and `payment_key` (the portal's payment key signs
              *     requests and callbacks; there is no separate webhook secret).
+             *     `allpay` needs `merchant_id` (the integration's API login) and
+             *     `secret_key` (its API key, which also signs webhooks); `vat`
+             *     (0, 1 or 3), `max_installments` (2 to 12) and
+             *     `installments_min_amount` (the smallest order total in shekels
+             *     that offers installments) are optional.
              * @example stripe
              */
             provider: string;
@@ -11878,8 +13365,10 @@ export interface components {
             };
             /**
              * @description Map of secret credential fields to values. Stripe expects
-             *     api_key + webhook_secret; AllPay expects merchant_id +
-             *     secret_key; etc. Values are never returned.
+             *     api_key + webhook_secret; AllPay expects merchant_id (the API
+             *     login) + secret_key (the API key), optionally vat,
+             *     max_installments and installments_min_amount; etc. Values are
+             *     never returned.
              * @example {
              *       "api_key": "sk_live_xxx",
              *       "webhook_secret": "whsec_xxx"
@@ -11991,12 +13480,94 @@ export interface components {
              * @example Tel Aviv
              */
             name: string;
+            /**
+             * @description IANA time zone the city is in, best effort: the zone the city's
+             *     name points at in the embedded GeoNames data, else the country's
+             *     only zone. Absent when it cannot be told (a city of a country
+             *     with several zones that the data does not know). Only the list
+             *     route fills it.
+             * @example Asia/Jerusalem
+             */
+            timezone?: string;
+            /**
+             * @description Where the item comes from. Always `platform` on a city row (list route only).
+             * @example platform
+             */
+            source?: string;
+        };
+        /**
+         * @description A place from the embedded GeoNames data offered by the city search
+         *     (GET /v1/geo/cities with `q`). It is NOT a platform city: it has no id.
+         *     Choosing it means creating the city through
+         *     POST /v1/organizations/{org_id}/cities (a name that matches an
+         *     existing city returns that city).
+         */
+        GeoCitySuggestion: {
+            /**
+             * @description Display name of the place (the spelling of the top-cities list when it is on it, else its main name capitalised).
+             * @example Barcelona
+             */
+            name: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the country that was searched.
+             * @example ES
+             */
+            country_iso2: string;
+            /**
+             * @description IANA time zone the place is in.
+             * @example Europe/Madrid
+             */
+            timezone: string;
+            /**
+             * @description Always `geonames`.
+             * @example geonames
+             */
+            source: string;
         };
         GeoCitiesResponse: {
             /** @description Ordered list of reference cities with localised names */
             cities: components["schemas"]["GeoCityItem"][];
+            /**
+             * @description Present only when the request carried `q`: up to 20 places of the
+             *     `country` named in the request that start with the typed text,
+             *     the biggest cities first, leaving out cities already listed in
+             *     `cities`. Empty when `country` is absent.
+             */
+            suggestions?: components["schemas"]["GeoCitySuggestion"][];
             /** @description Optional pagination metadata for clients that render paginated city lists. */
             meta?: components["schemas"]["PaginationMeta"];
+        };
+        /** @description One IANA time zone of a country. */
+        GeoTimezoneItem: {
+            /**
+             * @description IANA zone name, the value to store as a venue's timezone.
+             * @example Atlantic/Canary
+             */
+            id: string;
+            /**
+             * @description Name for a person to pick by, the largest city in the zone.
+             * @example Las Palmas de Gran Canaria
+             */
+            label: string;
+        };
+        /** @description Response of GET /v1/geo/countries/{iso2}/timezones. */
+        GeoCountryTimezonesResponse: {
+            /** @description The zones of the country, the zone of its biggest city first. */
+            timezones: components["schemas"]["GeoTimezoneItem"][];
+            /**
+             * @description True when the country has exactly one zone, so a client may fill
+             *     it in without asking. False when it has several (Spain and
+             *     Portugal among them) and the person must choose.
+             */
+            single: boolean;
+        };
+        /** @description Response of GET /v1/geo/countries/{iso2}/currency. */
+        GeoCountryCurrencyResponse: {
+            /**
+             * @description ISO 4217 currency of the country, as stored on the platform's country row.
+             * @example EUR
+             */
+            currency: string;
         };
         GeoCountryResponse: {
             /**
@@ -12323,6 +13894,18 @@ export interface components {
              */
             promoter_name?: string | null;
             /**
+             * @description Buyers' page of the event on the hosted sales site:
+             *     `<PUBLIC_TICKETS_BASE_URL>/<page slug>/<event slug>`, where the
+             *     page slug is the promoter's slug when the event has an active
+             *     promoter with a page of its own, else the organization's slug.
+             *     Empty string when the event has no slug yet or the server has no
+             *     tickets base configured. It is the address, not a sign that the
+             *     page is reachable: it is built whatever the publication status,
+             *     so a draft event already carries it.
+             * @example https://tickets.arenasoldout.com/teatrkolibel/silver-hoof
+             */
+            public_url: string;
+            /**
              * @description Where the event stands in its sale, computed on the server from
              *     its active, non-cancelled sessions (EC-02) so every client shows
              *     the same chip. One of `on_sale` (a session that has not ended,
@@ -12515,6 +14098,16 @@ export interface components {
              * @example https://partner.example
              */
             website: string | null;
+            /**
+             * @description The promoter's own buyers' page on the hosted sales site:
+             *     `<PUBLIC_TICKETS_BASE_URL>/<slug>`. Empty string when the
+             *     promoter has no slug or the server has no tickets base
+             *     configured. It is the address, not a sign that the page opens:
+             *     an archived promoter keeps its address here while its page
+             *     answers 404.
+             * @example https://tickets.arenasoldout.com/teatrkolibel
+             */
+            public_url: string;
             /** @description True when the promoter is archived and can no longer be linked to an event. */
             archived: boolean;
             /**
@@ -12829,7 +14422,9 @@ export interface components {
          */
         HostedPageSellerContact: {
             /**
-             * @description Public contact e-mail.
+             * @description Never answered since the contact form (2026-10-13): buyers write
+             *     through `contact_form`, the address only receives the messages.
+             *     Kept in the schema for older clients.
              * @example tickets@example.com
              */
             email?: string;
@@ -12839,11 +14434,67 @@ export interface components {
              */
             phone?: string;
         };
+        /** @description The "Write to the organizer" form of a hosted page. */
+        HostedPageContactForm: {
+            /** @description Always true when the block is present. */
+            available: boolean;
+            /**
+             * @description Cloudflare Turnstile site key for the form; omitted when the deployment runs without a captcha (never in production).
+             * @example 0x4AAAAAAAxxxxxxxxxxxxxx
+             */
+            turnstile_site_key?: string;
+            /**
+             * @description The privacy policy the form's consent links to (ONBOARDING_PRIVACY_URL, else the site's /legal/privacy); omitted when none is configured.
+             * @example https://arenasoldout.com/legal/privacy
+             */
+            privacy_url?: string;
+        };
+        /** @description A buyer's message to the organizer of a hosted page. */
+        OrganizerContactRequest: {
+            /**
+             * @description Sender's name, 1-100 characters.
+             * @example Anna
+             */
+            name: string;
+            /**
+             * @description Sender's e-mail; the organizer's reply goes there (Reply-To).
+             * @example anna@example.com
+             */
+            email: string;
+            /**
+             * @description The message, 10-2000 characters.
+             * @example Is the venue accessible by wheelchair?
+             */
+            message: string;
+            /** @description Must be true; the buyer agrees that the message is passed to the organizer. */
+            consent: boolean;
+            /** @description Cloudflare Turnstile response token. */
+            turnstile_token?: string;
+            /** @description The event page's feed token; empty on the promoter landing page. */
+            feed_token?: string;
+            /** @description The event page's slug; empty on a landing page. A message about an event of a promoter goes to the organization's owner only. */
+            event_slug?: string;
+            /**
+             * @description Page language of the sender.
+             * @example es
+             */
+            locale?: string;
+        };
+        /** @description The message is stored and queued for delivery. */
+        OrganizerContactAccepted: {
+            /**
+             * @description Always "queued".
+             * @example queued
+             */
+            status: string;
+        };
         /**
          * @description Legal identity of the seller of record, i.e. the organization that owns
-         *     the page. Present only when the channel the page is sold through has
-         *     `settings.hosted_page.show_seller = true` (default off). Empty values
-         *     are omitted.
+         *     the page. Present whenever the seller's profile is complete (legal name,
+         *     tax number, street, city, postal code and the channel's public e-mail
+         *     are all filled) unless a platform superadmin hid it for the channel
+         *     (`settings.hosted_page.seller_hidden`). The older `show_seller` flag no
+         *     longer decides. Empty values are omitted.
          */
         HostedPageSeller: {
             /**
@@ -12851,6 +14502,11 @@ export interface components {
              * @example Teatro Ejemplo S.L.
              */
             legal_name: string;
+            /**
+             * @description Legal form as the owner wrote it; omitted when none is stored.
+             * @example S.L.
+             */
+            legal_form?: string;
             /**
              * @description Tax or VAT identifier.
              * @example ESB12345678
@@ -12877,6 +14533,149 @@ export interface components {
             public_contact?: components["schemas"]["HostedPageSellerContact"];
         };
         /**
+         * @description The contact a hosted-page channel publishes
+         *     (`settings.hosted_page.public_contact`). Unset keys are omitted.
+         */
+        SellerProfileContact: {
+            /**
+             * @description Public role e-mail of the channel.
+             * @example tickets@example.com
+             */
+            email?: string;
+            /**
+             * @description Public phone number of the channel.
+             * @example +34 600 000 000
+             */
+            phone?: string;
+        };
+        /** @description One channel of the organization that runs a hosted sales page. */
+        SellerProfileChannel: {
+            /**
+             * Format: uuid
+             * @description Sales channel id.
+             */
+            id: string;
+            /**
+             * @description Sales channel name.
+             * @example Hosted page
+             */
+            name: string;
+            /**
+             * @description Legacy flag (`settings.hosted_page.show_seller`), kept for older
+             *     clients. It no longer decides whether the sales page shows the
+             *     block; read `seller_shown`.
+             */
+            show_seller: boolean;
+            /** @description A platform superadmin hid the seller block of this channel (`settings.hosted_page.seller_hidden`). Only a platform superadmin can set it. */
+            seller_hidden: boolean;
+            /** @description True when no required data is missing for this channel (`missing` is empty). */
+            complete: boolean;
+            /** @description Whether the channel's sales page shows the seller block now, that is the data is complete and the block is not hidden by a platform superadmin. */
+            seller_shown: boolean;
+            /** @description The channel's published contact, null when it has none. */
+            public_contact: components["schemas"]["SellerProfileContact"] | null;
+            /**
+             * @description True when the public e-mail is at a free mailbox provider (gmail.com,
+             *     inbox.ru, outlook.com, ...). A hint for the owner to use a role
+             *     address; it never blocks a save.
+             */
+            email_looks_personal: boolean;
+            /**
+             * @description Required data still empty, in a stable order: legal_name, tax_id,
+             *     address_line1, address_city, address_postal_code, public_email.
+             *     Empty when the block is shown.
+             */
+            missing: string[];
+        };
+        /**
+         * @description The owner's "Organization data": the legal data the sales page prints in
+         *     its seller block, and every hosted-page channel with its block settings.
+         *     Legal fields are changed through PATCH /v1/organizations/{id}.
+         */
+        SellerProfile: {
+            /**
+             * Format: uuid
+             * @description Organization id.
+             */
+            org_id: string;
+            /** @description Display name of the organization. */
+            org_name: string;
+            /**
+             * @description Country of the organization (stands in for the address country on the page).
+             * @example ES
+             */
+            country: string;
+            /** @description Registered legal name. */
+            legal_name?: string | null;
+            /** @description Legal form as the owner wrote it. */
+            legal_form?: string | null;
+            /** @description Company registration number. */
+            registration_number?: string | null;
+            /** @description Scheme of tax_id (eu_vat, gb_vat, il_vat, us_ein or other). */
+            tax_id_scheme?: string | null;
+            /** @description Tax or VAT identifier. */
+            tax_id?: string | null;
+            /** @description Registered address, street line. */
+            legal_address_line1?: string | null;
+            /** @description Registered address, second line. */
+            legal_address_line2?: string | null;
+            /** @description Registered address, postal code. */
+            legal_address_postal_code?: string | null;
+            /** @description Registered address, city. */
+            legal_address_city?: string | null;
+            /** @description Registered address, ISO 3166-1 alpha-2 country. */
+            legal_address_country?: string | null;
+            /** @description Required organization fields still empty (the channel list adds public_email per channel). */
+            missing: string[];
+            /** @description True when no required organization field is missing (`missing` is empty). Each channel also needs its public e-mail, see `channels[].complete`. */
+            complete: boolean;
+            /** @description True when at least one channel's sales page shows the seller block now (`channels[].seller_shown`). */
+            seller_shown: boolean;
+            /** @description The organization's hosted-page channels, oldest first. */
+            channels: components["schemas"]["SellerProfileChannel"][];
+            /** @description Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true). */
+            contact_form_to_telegram?: boolean;
+        };
+        /** @description Envelope of the seller-profile routes. */
+        SellerProfileEnvelope: {
+            /** @description The profile as stored after the call. */
+            seller_profile: components["schemas"]["SellerProfile"];
+        };
+        /** @description The organization-wide switch of the contact form's Telegram leg. */
+        UpdateSellerProfileRequest: {
+            /** @description Post buyers' messages to the organization's sales Telegram chat too. */
+            contact_form_to_telegram: boolean;
+        };
+        /** @description Tri-state contact change; an absent key keeps, null or "" clears. */
+        SellerDisplayContactPatch: {
+            /**
+             * @description Public role e-mail (400 `seller.invalid_email` when malformed).
+             * @example tickets@example.com
+             */
+            email?: string | null;
+            /**
+             * @description Public phone, 6-15 digits (400 `seller.invalid_phone` when malformed).
+             * @example +34 600 000 000
+             */
+            phone?: string | null;
+        };
+        /**
+         * @description Change of one hosted-page channel's seller block. Absent members keep
+         *     the stored value. `show_seller: true` is refused with 422
+         *     `seller.incomplete` (details.missing) while required data is empty, and
+         *     so is clearing the e-mail of a channel that keeps the block on.
+         *     `seller_hidden` may be changed by a platform superadmin only (403
+         *     `seller.hide_superadmin_only` for anyone else).
+         */
+        UpdateSellerDisplayRequest: {
+            /** @description Legacy flag kept for older clients. It no longer decides whether the page shows the block. */
+            show_seller?: boolean;
+            /** @description True keeps the seller block off this channel's sales page even when the data is complete; false shows it again. Only a platform superadmin (with `X-Admin-Reason`) may change it. */
+            seller_hidden?: boolean;
+            /** @description The published contact; null removes it. */
+            public_contact?: components["schemas"]["SellerDisplayContactPatch"] | null;
+        };
+        /**
          * @description The promoter an event is shown under (a partner or brand named as the
          *     organizer of the show). Present only together with `seller`.
          */
@@ -12886,6 +14685,96 @@ export interface components {
              * @example Cultura Viva
              */
             name: string;
+        };
+        /**
+         * @description One picture of an event's gallery or photo report, as buyers see it
+         *     (task 1-2c).
+         */
+        PublicMaterialPhoto: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the media object that holds the picture.
+             */
+            media_id: string;
+            /**
+             * @description Absolute signed address of the picture (the same mechanism as the
+             *     poster and the logo of the page); host-relative only on a
+             *     deployment without media storage.
+             */
+            url: string;
+            /** @description Optional caption, up to 200 characters. */
+            caption: string | null;
+            /** @description Width in pixels when the upload pipeline knew it, else null. */
+            width: number | null;
+            /** @description Height in pixels when the upload pipeline knew it, else null. */
+            height: number | null;
+        };
+        /** @description One video link of an event, as buyers see it (task 1-2c). */
+        PublicMaterialVideo: {
+            /**
+             * @description Where the video lives: `youtube`, `vimeo`, `rutube`, or `https`
+             *     (any other https page, shown as a plain link).
+             * @example youtube
+             */
+            provider: string;
+            /** @description The id parsed out of the link; null for `https`. */
+            video_id: string | null;
+            /**
+             * @description Address for an iframe: `https://www.youtube-nocookie.com/embed/<id>`,
+             *     `https://player.vimeo.com/video/<id>` or
+             *     `https://rutube.ru/play/embed/<id>`. Null for `https`, which has
+             *     no embed.
+             */
+            embed_url: string | null;
+            /** @description The original https link the organizer pasted. */
+            url: string;
+        };
+        /** @description One "where else to buy" link of an event, as buyers see it (task 1-2c). */
+        PublicMaterialPartnerLink: {
+            /** @description The other seller's page for this event; always an https address. */
+            url: string;
+            /** @description Who sells there; shown beside the link so the buyer knows. */
+            seller_name: string;
+        };
+        /** @description The one map point of an event, as buyers see it (task 1-2c). */
+        PublicMaterialMapPoint: {
+            /**
+             * Format: double
+             * @description Latitude in degrees, -90 to 90.
+             */
+            latitude: number;
+            /**
+             * Format: double
+             * @description Longitude in degrees, -180 to 180.
+             */
+            longitude: number;
+            /** @description Optional text shown with the point. */
+            label: string | null;
+        };
+        /**
+         * @description The materials of an event's page (task 1-2c), the same block on the
+         *     hosted page (`GET /v1/public/pages/{org_slug}/{event_slug}`) and on
+         *     the widget feed (`GET /v1/public/feeds/{feed_token}/events/{event_id}`).
+         *     Always present; every list is `[]` when empty, never null. Read in
+         *     one query for a live, published event. The organizer edits these under
+         *     `/v1/organizations/{org_id}/events/{event_id}/…`.
+         */
+        PublicEventMaterials: {
+            /** @description Gallery photos in display order (at most 6). A photo whose media object was deleted is left out. */
+            gallery: components["schemas"]["PublicMaterialPhoto"][];
+            /** @description Video links in display order (at most 4). */
+            videos: components["schemas"]["PublicMaterialVideo"][];
+            /** @description "Where else to buy" links in display order (at most 3), each with its seller. */
+            partner_links: components["schemas"]["PublicMaterialPartnerLink"][];
+            /** @description The event's map point, null when it has none. */
+            map_point: components["schemas"]["PublicMaterialMapPoint"] | null;
+            /**
+             * @description The photo report in display order (at most 30). Empty until the
+             *     event is over: it opens when the end of the event's last live
+             *     (not deleted, not cancelled) session has passed, follows a session
+             *     that moves, and stays empty for an event without a live session.
+             */
+            report_photos: components["schemas"]["PublicMaterialPhoto"][];
         };
         /**
          * @description Response envelope for GET /v1/public/pages/{org_slug}/{event_slug} —
@@ -12911,8 +14800,9 @@ export interface components {
              */
             default_locale: string;
             /**
-             * @description Legal identity of the seller. Omitted unless the channel has
-             *     `settings.hosted_page.show_seller = true`.
+             * @description Legal identity of the seller. Omitted while the seller's profile is
+             *     incomplete or a platform superadmin hid it for the channel
+             *     (`settings.hosted_page.seller_hidden`).
              */
             seller?: components["schemas"]["HostedPageSeller"];
             /**
@@ -12920,6 +14810,20 @@ export interface components {
              *     present and the event has a promoter.
              */
             promoter?: components["schemas"]["HostedPagePromoter"];
+            /**
+             * @description Present when the page offers the "Write to the organizer" form: the
+             *     channel has a public e-mail or the organization has its own
+             *     contact e-mail (a private recipient), and the deployment can check
+             *     the captcha. No address is ever answered. Ticket letters of a page
+             *     without a public e-mail link this form as <page>#contact.
+             */
+            contact_form?: components["schemas"]["HostedPageContactForm"];
+            /**
+             * @description The event's gallery, videos, "where else to buy" links, map point
+             *     and, once the event is over, its photo report (task 1-2c). Always
+             *     present; every list is `[]` when empty.
+             */
+            materials: components["schemas"]["PublicEventMaterials"];
         };
         /**
          * @description Response envelope for GET /v1/public/pages/{org_slug} — the promoter
@@ -12952,8 +14856,9 @@ export interface components {
              */
             events: components["schemas"]["HostedPageEvent"][];
             /**
-             * @description Legal identity of the seller. Omitted unless the channel has
-             *     `settings.hosted_page.show_seller = true`.
+             * @description Legal identity of the seller. Omitted while the seller's profile is
+             *     incomplete or a platform superadmin hid it for the channel
+             *     (`settings.hosted_page.seller_hidden`).
              */
             seller?: components["schemas"]["HostedPageSeller"];
             /**
@@ -12961,6 +14866,14 @@ export interface components {
              *     present and the slug names a promoter rather than the organization.
              */
             promoter?: components["schemas"]["HostedPagePromoter"];
+            /**
+             * @description Present when the page offers the "Write to the organizer" form: the
+             *     channel has a public e-mail or the organization has its own
+             *     contact e-mail (a private recipient), and the deployment can check
+             *     the captcha. No address is ever answered. Ticket letters of a page
+             *     without a public e-mail link this form as <page>#contact.
+             */
+            contact_form?: components["schemas"]["HostedPageContactForm"];
         };
         /**
          * @description Create-time payload for POST /v1/organizations/{org_id}/events.
@@ -13196,6 +15109,113 @@ export interface components {
              * @description ISO-8601 UTC timestamp of the last update.
              */
             updated_at: string;
+        };
+        /** @description One photo of an event's gallery. */
+        EventGalleryItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the gallery entry.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event.
+             */
+            event_id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the media object (owner type `event_gallery`) that holds the picture.
+             */
+            media_id: string;
+            /** @description Display position, 0-based. Positions are always 0..n-1 without gaps. */
+            position: number;
+            /** @description Caption shown under the photo, up to 200 characters; null when there is none. */
+            caption: string | null;
+            /**
+             * Format: date-time
+             * @description ISO-8601 UTC timestamp of creation.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 UTC timestamp of the last change.
+             */
+            updated_at: string;
+        };
+        /** @description The gallery photos of an event in display order. */
+        EventGalleryList: {
+            /** @description The photos, first to last. */
+            items: components["schemas"]["EventGalleryItem"][];
+            /** @description The most photos one event may carry (6). */
+            max_items: number;
+        };
+        /** @description Body of POST .../media-items. */
+        EventGalleryAddRequest: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of a live media object of this organization with owner type `event_gallery`.
+             */
+            media_id: string;
+            /** @description Optional caption, up to 200 characters; blank means none. */
+            caption?: string | null;
+        };
+        /** @description Body of PATCH .../media-items/{item_id}. */
+        EventGalleryCaptionRequest: {
+            /** @description The new caption, up to 200 characters. Null or a blank string clears it. */
+            caption: string | null;
+        };
+        /** @description Body of PUT .../media-items/order. */
+        EventGalleryOrderRequest: {
+            /** @description Every gallery entry id of the event exactly once, in the new display order. */
+            item_ids: string[];
+        };
+        /** @description One video link of an event. Only the link is stored, never the video. */
+        EventVideo: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the video entry.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event.
+             */
+            event_id: string;
+            /** @description One of `youtube`, `vimeo`, `rutube` (recognized, embeddable) or `https` (any other link, shown as a plain link). */
+            provider: string;
+            /** @description The id parsed out of the link; null for provider `https`. */
+            video_id: string | null;
+            /** @description The link as pasted (trimmed), always https, up to 500 characters. */
+            url: string;
+            /** @description Display position, 0-based. Positions are always 0..n-1 without gaps. */
+            position: number;
+            /**
+             * Format: date-time
+             * @description ISO-8601 UTC timestamp of creation.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 UTC timestamp of the last change.
+             */
+            updated_at: string;
+        };
+        /** @description The video links of an event in display order. */
+        EventVideoList: {
+            /** @description The videos, first to last. */
+            items: components["schemas"]["EventVideo"][];
+            /** @description The most videos one event may carry (4). */
+            max_items: number;
+        };
+        /** @description Body of POST .../videos. */
+        EventVideoAddRequest: {
+            /** @description The video link, https only, no blanks, up to 500 characters. */
+            url: string;
+        };
+        /** @description Body of PUT .../videos/order. */
+        EventVideoOrderRequest: {
+            /** @description Every video id of the event exactly once, in the new display order. */
+            video_ids: string[];
         };
         /** @description Single-artist response envelope. */
         EventArtistEnvelope: {
@@ -13730,6 +15750,181 @@ export interface components {
             phone?: string | null;
             /** @description True keeps the phone out of letters to buyers. Absent means false. */
             phone_hidden?: boolean;
+        };
+        /** @description One "where else to buy" link of an event. */
+        EventPartnerLink: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the link.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event the link belongs to.
+             */
+            event_id: string;
+            /**
+             * @description The seller's page for this event; always an https address.
+             * @example https://ticketportal.cz/event/12345
+             */
+            url: string;
+            /**
+             * @description Who sells there; shown beside the link so the buyer knows. The host of the address unless the client named a seller.
+             * @example ticketportal.cz
+             */
+            seller_name: string;
+            /** @description Display order, 0 to 2. */
+            position: number;
+            /**
+             * Format: date-time
+             * @description When the link was added.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the link was last changed.
+             */
+            updated_at: string;
+        };
+        /** @description The partner links of an event in display order. */
+        EventPartnerLinkList: {
+            /** @description The links, first to last. */
+            items: components["schemas"]["EventPartnerLink"][];
+            /** @description The most links one event may carry (3). */
+            max_items: number;
+        };
+        /** @description Body of POST .../events/{event_id}/partner-links. */
+        CreateEventPartnerLinkRequest: {
+            /**
+             * @description A full https address without spaces (400 `event.invalid_partner_url`), up to 500 characters.
+             * @example https://ticketportal.cz/event/12345
+             */
+            url: string;
+            /**
+             * @description Who sells there, 1 to 120 characters. Absent, null or blank means the host of the address without a leading `www.`.
+             * @example Ticketportal
+             */
+            seller_name?: string | null;
+        };
+        /** @description Body of PATCH .../partner-links/{link_id}. At least one member is required; an absent member keeps its stored value. */
+        UpdateEventPartnerLinkRequest: {
+            /** @description A new https address (400 `event.invalid_partner_url`). */
+            url?: string;
+            /** @description A new seller name, 1 to 120 characters. Blank keeps the current name (or, when the address changed and the name was derived from the old one, derives it again). */
+            seller_name?: string;
+        };
+        /** @description Body of PUT .../partner-links/order. */
+        EventPartnerLinkOrderRequest: {
+            /** @description Every partner link id of the event exactly once, in the new display order. */
+            link_ids: string[];
+        };
+        /** @description Body of PUT .../photo-report/order. */
+        EventReportPhotoOrderRequest: {
+            /** @description Every photo id of the report exactly once, in the new display order. */
+            photo_ids: string[];
+        };
+        /** @description The one map point of an event. */
+        EventMapPoint: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event.
+             */
+            event_id: string;
+            /**
+             * Format: double
+             * @description Latitude in degrees, -90 to 90, six decimals kept.
+             * @example 50.075538
+             */
+            latitude: number;
+            /**
+             * Format: double
+             * @description Longitude in degrees, -180 to 180, six decimals kept.
+             * @example 14.4378
+             */
+            longitude: number;
+            /** @description Optional text shown with the point, up to 200 characters. */
+            label: string | null;
+            /**
+             * Format: date-time
+             * @description When the point was first set.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the point was last changed.
+             */
+            updated_at: string;
+        };
+        /** @description Body of PUT .../events/{event_id}/map-point; replaces the point as a whole. */
+        SetEventMapPointRequest: {
+            /**
+             * Format: double
+             * @description Latitude in degrees, -90 to 90 (400 `event.invalid_map_point`).
+             * @example 50.0755
+             */
+            latitude: number;
+            /**
+             * Format: double
+             * @description Longitude in degrees, -180 to 180 (400 `event.invalid_map_point`).
+             * @example 14.4378
+             */
+            longitude: number;
+            /** @description Optional text shown with the point, up to 200 characters; absent, null or blank clears it. */
+            label?: string | null;
+        };
+        /** @description One photo of an event's photo report. */
+        EventReportPhoto: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the report entry.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event.
+             */
+            event_id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the media object holding the picture (`GET /v1/media/{id}` signs a download address).
+             */
+            media_id: string;
+            /** @description Display order, 0 to 29. */
+            position: number;
+            /** @description Optional caption, up to 200 characters. */
+            caption: string | null;
+            /**
+             * Format: date-time
+             * @description When the photo was added.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the photo was last changed.
+             */
+            updated_at: string;
+        };
+        /** @description The photo report of an event in display order. */
+        EventReportPhotoList: {
+            /** @description The photos, first to last. */
+            items: components["schemas"]["EventReportPhoto"][];
+            /** @description The most photos one report may carry (30). */
+            max_items: number;
+        };
+        /** @description Body of POST .../events/{event_id}/photo-report. */
+        AddEventReportPhotoRequest: {
+            /**
+             * Format: uuid
+             * @description An active media object of the same organization with owner type `event_report` (422 `event.invalid_report_media` otherwise).
+             */
+            media_id: string;
+            /** @description Optional caption, up to 200 characters; blank means none. */
+            caption?: string | null;
+        };
+        /** @description Body of PATCH .../photo-report/{photo_id}. */
+        UpdateEventReportPhotoRequest: {
+            /** @description The new caption, up to 200 characters; null or blank removes it. */
+            caption: string | null;
         };
         /** @description The organizer contact of an event after PUT .../events/{event_id}/contact. */
         EventContactResponse: {
@@ -15187,11 +17382,11 @@ export interface components {
          */
         RevokeMembershipRequest: {
             /**
-             * @description The specific role binding to revoke.
+             * @description The specific role binding to revoke. org_admin is the organization owner; the last active owner cannot be revoked (409 `membership.last_owner`).
              * @example organizer
              * @enum {string}
              */
-            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator";
+            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator" | "org_admin";
         };
         /**
          * @description A single inventory_ledger row. Tracks real-time capacity state for a
@@ -16274,7 +18469,12 @@ export interface components {
          * @description Describes a single buyer-form field exposed by the sales channel.
          *     The widget uses the `enabled` flag to decide whether to render the
          *     field and `required` to enforce client-side validation.
-         *     Feature #321 WID-0d.
+         *     Feature #321 WID-0d. Since P1b `name` (one field for first and last
+         *     name) and `phone` are always `enabled: true`; they are `required`
+         *     only when the sales channel's `collect_name` / `collect_phone` flag
+         *     is on, otherwise they are optional (the buyer may leave them empty).
+         *     A third mode, `off` (field not offered at all), will be added later
+         *     and will then show as `enabled: false`.
          */
         BuyerFieldItem: {
             /**
@@ -16282,7 +18482,10 @@ export interface components {
              * @enum {string}
              */
             key: "email" | "name" | "phone";
-            /** @description When true the field must be filled before submission. */
+            /**
+             * @description When true the field must be filled before submission. When false
+             *     and `enabled` is true the field is optional.
+             */
             required: boolean;
             /** @description When false the field should not be shown or submitted. */
             enabled: boolean;
@@ -16290,7 +18493,8 @@ export interface components {
         /**
          * @description Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
          *     `email` supersedes the top-level `holder_email` when both are present.
-         *     `name` and `phone` are validated against the channel's `buyer_fields` flags.
+         *     `name` and `phone` are optional unless the channel's `buyer_fields`
+         *     mark them `required`.
          */
         PublicBuyerInfo: {
             /**
@@ -16298,9 +18502,9 @@ export interface components {
              * @description Buyer's email address (ticket holder).
              */
             email: string;
-            /** @description Buyer's full name; required when the channel has collect_name enabled. */
+            /** @description Buyer's first and last name in one field; required only when the channel's `buyer_fields` entry `name` has `required` true, otherwise optional and may be empty or null. */
             name?: string | null;
-            /** @description Buyer's phone number; required when the channel has collect_phone enabled. */
+            /** @description Buyer's phone number; required only when the channel's `buyer_fields` entry `phone` has `required` true, otherwise optional and may be empty or null. */
             phone?: string | null;
         };
         PublicFeedCheckoutStartRequest: {
@@ -16323,8 +18527,9 @@ export interface components {
             ga_items?: components["schemas"]["PublicGAItem"][];
             /**
              * @description Structured buyer contact info (WID-0d). When present `buyer.email`
-             *     supersedes `holder_email`; name and phone are validated against the
-             *     channel's `buyer_fields` flags.
+             *     supersedes `holder_email`; an empty name or phone is refused only
+             *     (422 `checkout.buyer_name_required` / `checkout.buyer_phone_required`)
+             *     when the channel's `buyer_fields` mark that field `required`.
              */
             buyer?: components["schemas"]["PublicBuyerInfo"];
             /**
@@ -16940,7 +19145,7 @@ export interface components {
          *
          *     1. The normalised flat shape documented by this schema's
          *        top-level properties (`provider_payment_id`, `event_type`,
-         *        ...) — used by the mock provider and by AllPay callbacks.
+         *        ...) — used by the mock provider.
          *     2. A genuine Stripe event envelope —
          *        `{"id":"evt_...","type":"payment_intent.succeeded",
          *        "data":{"object":{"id":"pi_...","status":"succeeded",
@@ -17798,6 +20003,106 @@ export interface components {
             results: components["schemas"]["ScannerScanResult"][];
         };
         /**
+         * @description One scan as MACS reports it. The ticket is named by
+         *     `system_ticket_id`, by `barcode`, or by both (they must then name
+         *     the same ticket). Unknown keys are ignored.
+         */
+        MACSScanInput: {
+            /**
+             * @description MACS's own id of the scan, unique per subscriber. Stored as
+             *     `scan_events.external_scan_id`; a scan id already delivered
+             *     is answered `duplicate` and writes nothing.
+             */
+            scan_id: string;
+            /**
+             * Format: int64
+             * @description The `id` of the MACS export (`tickets.system_ticket_id`).
+             */
+            system_ticket_id?: number;
+            /**
+             * @description The 13-digit EAN-13 the scanner read (the `barcode` of the MACS
+             *     export): a stored barcode of the ticket, or the legacy
+             *     platform code of a ticket without one.
+             */
+            barcode?: string;
+            /**
+             * @description The verdict at the door: `admitted`, `rejected` or `duplicate`.
+             *     `rejected` and `duplicate` are stored as a denied scan; the
+             *     MACS word is kept in the `v1.ticket.scanned` payload.
+             */
+            result: string;
+            /**
+             * Format: date-time
+             * @description When the scan happened, RFC 3339 with a zone. May lie in the
+             *     past (an offline scanner sends its backlog later); more than
+             *     5 minutes in the future is rejected.
+             */
+            scanned_at: string;
+            /** @description Stable id of the scanner device (stored as device_id). */
+            scanner_id?: string;
+            /** @description Human name of the scanner (stored as scanner_label). */
+            scanner_name?: string;
+            /** @description Entrance the scan was made at. */
+            gate?: string;
+        };
+        /** @description Body of `POST /v1/macs/scan-events`. */
+        MACSScanBatchRequest: {
+            /** @description One to 500 scans, in any order. */
+            scans: components["schemas"]["MACSScanInput"][];
+        };
+        /** @description The outcome of one scan, in request order. */
+        MACSScanResult: {
+            /** @description Echo of the request `scan_id`. */
+            scan_id: string;
+            /**
+             * @description `accepted` (recorded now), `duplicate` (recorded before, nothing
+             *     written) or `rejected` (not recorded, see `error_code`).
+             */
+            status: string;
+            /**
+             * Format: uuid
+             * @description The scan_events row; set for accepted and, when known, duplicate scans.
+             */
+            scan_event_id?: string;
+            /**
+             * Format: uuid
+             * @description The arena ticket the scan was recorded for; null when rejected.
+             */
+            ticket_id: string | null;
+            /**
+             * @description True when this scan stamped `tickets.used_at`: an admitted scan
+             *     of a valid ticket that was not used before.
+             */
+            first_admission: boolean;
+            /**
+             * @description Why a scan was rejected: `scan.invalid_scan_id`,
+             *     `scan.invalid_scanned_at`, `scan.scanned_at_in_future`,
+             *     `scan.invalid_result`, `scan.ticket_required`,
+             *     `scan.invalid_system_ticket_id`, `scan.invalid_barcode`,
+             *     `scan.field_too_long`, `scan.invalid_field` (a value that can
+             *     never be stored, such as a NUL character; not retryable),
+             *     `scan.ticket_not_found` (unknown, or a
+             *     ticket of another organization), `scan.ticket_mismatch`, or
+             *     `scan.temporarily_unavailable` (retryable).
+             */
+            error_code?: string;
+            /** @description Human-readable reason of the rejection. */
+            error?: string;
+            /** @description True when the same scan may be sent again later (a database failure). */
+            retryable?: boolean;
+        };
+        /** @description The 202 answer of `POST /v1/macs/scan-events`. */
+        MACSScanBatchResponse: {
+            /** @description Scans recorded by this request. */
+            accepted: number;
+            /** @description Scans recorded before; nothing was written for them. */
+            duplicates: number;
+            /** @description Scans not recorded. */
+            rejected: number;
+            /** @description One entry per request scan, in request order. */
+            results: components["schemas"]["MACSScanResult"][];
+        };
+        /**
          * @description Single event-publication row connecting an event to an agent
          *     feed token. Materialises the legacy Bil24 Subscriptions panel
          *     — "publish event E to feed F" means external consumers of
@@ -18061,8 +20366,10 @@ export interface components {
          *     `price_hint`, `currency_hint` are copied verbatim from the stored
          *     geometry (import-time authoring hints). The `tier_*` / `price_*`
          *     fields are populated when the operator has already mapped the
-         *     category to a live `ticket_tiers` row through SEAT-B2 binding —
-         *     first-seat-wins so the resolution stays stable across renames.
+         *     category to a live `ticket_tiers` row through SEAT-B2 binding. The
+         *     tier shown is the one carried by most of the category's seats (ties:
+         *     the first seat in `seat_key` order), so repainting a few seats with
+         *     `PATCH .../seats/category` never relabels the rest of the category.
          */
         SeatingCategoryPrice: {
             /** @description 1-based category index from the imported geometry. */
@@ -18150,6 +20457,27 @@ export interface components {
             };
             /** @description Per-category tier / price resolution overlay, in geometry order. */
             category_prices: components["schemas"]["SeatingCategoryPrice"][];
+            /**
+             * @description Per-seat category truth (S1a). Maps `seat_key` to the category
+             *     `index` (an entry of `category_prices` or `extra_categories`) that
+             *     carries the seat's own `session_seats.tier_id`, ONLY for seats
+             *     whose category differs from their `category_index` in the geometry
+             *     after `PATCH .../seats/category` repainted them. Empty on a session
+             *     where no seat was repainted. Clients apply it over the geometry
+             *     before drawing so a seat shows the price of its own tier, the
+             *     same number `GET_SEAT_LIST` and the Bil24 image carry.
+             */
+            seat_category_index?: {
+                [key: string]: number;
+            };
+            /**
+             * @description Synthetic categories (S1a) for tiers that carry repainted seats but
+             *     are the home tier of no plan category. Indexes follow the plan's
+             *     last category index; entries have the same shape as
+             *     `category_prices`. Empty when every repainted seat moved to a plan
+             *     category.
+             */
+            extra_categories?: components["schemas"]["SeatingCategoryPrice"][];
         };
         /**
          * @description Response body for `GET /v1/event-sessions/{id}/seat-status`. When
@@ -18687,8 +21015,8 @@ export interface components {
         };
         /**
          * @description One complimentary issuance in the paged list: the issuance row with
-         *     the event, date and category it is for, its tickets and a derived
-         *     state.
+         *     the event, date and category it is for, its tickets, the letters the
+         *     guests were sent and a derived state.
          */
         ComplimentaryListItem: {
             /**
@@ -18756,6 +21084,15 @@ export interface components {
             /** @description The tickets of the issuance, oldest first. */
             tickets: components["schemas"]["ComplimentaryTicketItem"][];
             /**
+             * @description The invitation letters of the issuance with their delivery status
+             *     (same shape as the letters of an order card). An invitation has
+             *     no order: the letters are found through the tickets' delivery
+             *     jobs. One entry per sent letter, one for tickets still queued,
+             *     one for those the mail relay refused, one for tickets sent before
+             *     letters were recorded. Empty while nothing was queued yet.
+             */
+            letters: components["schemas"]["OrderLetter"][];
+            /**
              * Format: date-time
              * @description When the issuance was created.
              */
@@ -18822,6 +21159,8 @@ export interface components {
             issuance: Record<string, never>;
             /** @description The tickets of the issuance with their numbers and holders. */
             tickets: Record<string, never>[];
+            /** @description The invitation letters of the issuance with their delivery status, as in the invitations list. Right after the issue the letters are queued (or empty while no delivery job exists). */
+            letters: components["schemas"]["OrderLetter"][];
             /** @description True when the batch_id already existed and nothing new was created. */
             idempotent_replay: boolean;
         };
@@ -19419,6 +21758,274 @@ export interface components {
             code: string;
             /** @description Human-readable explanation of the warning. */
             message: string;
+        };
+        /**
+         * @description One error an event-bundle dry run found (`?dry_run=true`): exactly the
+         *     error the import would answer, plus the bundle field it is about.
+         */
+        ImportDryRunError: {
+            /**
+             * @description The machine code the import's error envelope would carry.
+             * @example import.invalid_price
+             */
+            code: string;
+            /** @description Human-readable explanation, the same text the import would answer. */
+            message: string;
+            /**
+             * @description RFC 6901 JSON pointer of the bundle field the error is about
+             *     (`/categoryList/1/price`, `/channelIds/0`), or an empty string
+             *     when the error concerns the bundle as a whole (for example
+             *     `organization.contact_missing`).
+             * @example /categoryList/1/price
+             */
+            field: string;
+            /**
+             * @description The HTTP status the import would answer with (404, 409 or 422).
+             * @example 422
+             */
+            status: number;
+        };
+        /** @description One value the import would fill in because the bundle leaves it out. */
+        ImportDryRunDefault: {
+            /**
+             * @description Stable key of the default: `start_time` (00:00), `session_end_time`
+             *     (start plus 3 hours), `sales_end_time` (the session start, new
+             *     sessions only), `venue_timezone` (the stored venue zone),
+             *     `category_name`, `event_slug` (the public address of a new event)
+             *     or `session_status` (draft, or scheduled with publish).
+             * @example session_end_time
+             */
+            name: string;
+            /**
+             * @description JSON pointer of the bundle field the value stands in for, or an
+             *     empty string when the value has no field in the bundle
+             *     (`event_slug`).
+             * @example /actionEvent/endTime
+             */
+            field: string;
+            /**
+             * @description The value, as text; instants are RFC 3339 in the venue's zone.
+             * @example 2026-04-26T20:00:00+02:00
+             */
+            value: string;
+        };
+        /**
+         * @description Answer of POST .../imports/event-bundle?dry_run=true (task 3-1). The
+         *     bundle was checked with the import's own code and NOTHING was
+         *     written: no catalog row, poster download, media object, audit event,
+         *     publication, feed token, session-change journal, letter job or
+         *     webhook. Errors that depend on earlier writes (a chain cycle through
+         *     stored links, a refused session move) are only looked for when every
+         *     other check passed, so they appear one at a time.
+         */
+        ImportEventBundleDryRunResponse: {
+            /** @description Always true; tells this answer apart from an import's. */
+            dry_run: boolean;
+            /** @description True when `errors` is empty, i.e. the same bundle imported now would be accepted. */
+            valid: boolean;
+            /**
+             * @description The resolved source (`bil24` or `arena`); an empty string when the bundle's `source` is refused.
+             * @example arena
+             */
+            source: string;
+            /**
+             * @description The bundle as the import reads it: strings trimmed, `source` and
+             *     `externalRef` resolved, the currency upper-cased. Defaults are not
+             *     filled in here; they are listed in `defaults`.
+             */
+            normalized: components["schemas"]["ImportEventBundleRequest"];
+            /** @description Values the import would fill in where the bundle is silent. Never null. */
+            defaults: components["schemas"]["ImportDryRunDefault"][];
+            /** @description The warnings the import would raise. Never null. */
+            warnings: components["schemas"]["ImportWarning"][];
+            /**
+             * @description Every error found, in the order found; a field is reported once.
+             *     Never null; empty when the bundle is valid.
+             */
+            errors: components["schemas"]["ImportDryRunError"][];
+            /**
+             * Format: uuid
+             * @description The existing event the bundle edits; null when the import would create one (or could not tell).
+             */
+            event_id: string | null;
+            /**
+             * Format: uuid
+             * @description The existing session the bundle edits; null when the import would create one (or could not tell).
+             */
+            session_id: string | null;
+        };
+        /**
+         * @description A live session of the event that has no bundle in
+         *     `EventBundleReadResponse`, with the reason.
+         */
+        EventBundleSkipped: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the session that was left out.
+             */
+            session_id: string;
+            /**
+             * @description Stable reason: `event_bundle.session_cancelled`,
+             *     `event_bundle.session_seated` (a seating plan or assigned seats:
+             *     a bundle carries general admission only),
+             *     `event_bundle.session_pay_what_you_want` (a category a bundle
+             *     cannot say) or `event_bundle.session_venue_missing` (the venue
+             *     was deleted).
+             * @example event_bundle.session_seated
+             */
+            code: string;
+            /** @description Human-readable explanation of the reason. */
+            message: string;
+        };
+        /** @description One gallery photo of the event, in the organizer's view. */
+        EventBundleGalleryItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the media object (owner type `event_gallery`) that holds the picture.
+             */
+            media_id: string;
+            /** @description Optional caption, up to 200 characters. */
+            caption: string | null;
+            /** @description Display order, 0 to 5. */
+            position: number;
+        };
+        /** @description One video link of the event, in the organizer's view. */
+        EventBundleVideo: {
+            /** @description `youtube`, `vimeo`, `rutube` or `https` (a plain link). */
+            provider: string;
+            /** @description The id parsed out of the link; null for `https`. */
+            video_id: string | null;
+            /** @description The https link as stored. */
+            url: string;
+            /** @description Display order, 0 to 3. */
+            position: number;
+        };
+        /** @description One "where else to buy" link of the event, in the organizer's view. */
+        EventBundlePartnerLink: {
+            /** @description The other seller's https page for this event. */
+            url: string;
+            /** @description Who sells there. */
+            seller_name: string;
+            /** @description Display order, 0 to 2. */
+            position: number;
+        };
+        /** @description The one map point of the event, in the organizer's view. */
+        EventBundleMapPoint: {
+            /**
+             * Format: double
+             * @description Latitude in degrees, -90 to 90.
+             */
+            latitude: number;
+            /**
+             * Format: double
+             * @description Longitude in degrees, -180 to 180.
+             */
+            longitude: number;
+            /** @description Optional text shown with the point. */
+            label: string | null;
+        };
+        /**
+         * @description The page materials of the event (task 1-2c), read BESIDE the bundles:
+         *     an import does not read them. A client that copies an event imports
+         *     the bundles as a new event and then calls
+         *     `POST .../events/{new_event_id}/materials/copy-from/{event_id}` to
+         *     move these four lists onto it. The photo report is not listed: it is
+         *     about a show that already happened and is never copied.
+         */
+        EventBundleMaterials: {
+            /** @description Gallery photos in display order. Never null. */
+            gallery: components["schemas"]["EventBundleGalleryItem"][];
+            /** @description Video links in display order. Never null. */
+            videos: components["schemas"]["EventBundleVideo"][];
+            /** @description Partner links in display order. Never null. */
+            partner_links: components["schemas"]["EventBundlePartnerLink"][];
+            /** @description The event's map point, null when it has none. */
+            map_point: components["schemas"]["EventBundleMapPoint"] | null;
+        };
+        /** @description What `POST .../materials/copy-from/{source_event_id}` copied. */
+        CopyEventMaterialsResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event that received the materials.
+             */
+            event_id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event the materials were copied from.
+             */
+            source_event_id: string;
+            /** @description Gallery photos copied (a photo whose media object was deleted is skipped). */
+            gallery: number;
+            /** @description Video links copied. */
+            videos: number;
+            /** @description Partner links copied. */
+            partner_links: number;
+            /** @description True when the source had a map point and it was copied. */
+            map_point: boolean;
+        };
+        /**
+         * @description Answer of GET /v1/organizations/{org_id}/events/{event_id}/event-bundle
+         *     (task 3-2): the event read back as `ImportEventBundleRequest`
+         *     bundles, one per session (the import takes one date per call),
+         *     oldest first. Every bundle is `source: arena` and addresses its rows
+         *     by arena UUID (`action.arenaEventId`, `actionEvent.arenaSessionId`,
+         *     `venue.arenaVenueId`, `categoryList[].arenaTierId`), so it needs no
+         *     `externalRef` and can be posted back to
+         *     POST .../imports/event-bundle as it is — `?dry_run=true` accepts it
+         *     with no error, and importing it leaves the stored rows unchanged.
+         *     Reading again returns the same bundles.
+         *
+         *     How the stored data is written: times are the venue's wall clock
+         *     (`day` DD.MM.YYYY, `time` and `endTime` HH:MM) and RFC 3339 instants
+         *     (`sellEndTime`, `doorsOpenTime`, the categories' windows and price
+         *     schedule); `availability` is the quantity the category owns, and in a
+         *     chain the head carries the whole chain's places and every successor
+         *     0; `nextCategoryIndex` is set on every category (-1 = no link),
+         *     `sellLimit` only on a linked one, `priceSchedule` is always a list;
+         *     `publish` is true while the event is published and `channelIds` are
+         *     the organization's channels it is published into; `promoterId` is ""
+         *     when the organization itself promotes the event. `bigPosterUrl` is
+         *     left empty on purpose (an import without one keeps the stored
+         *     poster): the poster is `poster_media_id`.
+         *
+         *     Left out: deleted and cancelled sessions, sessions a bundle cannot
+         *     carry (listed in `skipped` with the reason), the open/closed flag of
+         *     a category, compat ids and the session's external ref. No buyer data
+         *     and no secret is read.
+         */
+        EventBundleReadResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event.
+             */
+            event_id: string;
+            /**
+             * @description The event's gallery, videos, partner links and map point, beside
+             *     the bundles (an import does not read them). See
+             *     `EventBundleMaterials` and
+             *     `POST .../events/{event_id}/materials/copy-from/{source_event_id}`.
+             */
+            materials: components["schemas"]["EventBundleMaterials"];
+            /**
+             * @description The event's own status (`draft`, `published`, `cancelled` or `archived`). A draft event is readable.
+             * @example published
+             */
+            status: string;
+            /**
+             * Format: uuid
+             * @description Media id of the event's poster, null when it has none. The bundles carry no `bigPosterUrl`.
+             */
+            poster_media_id: string | null;
+            /** @description One importable bundle per session, oldest first. Never null. */
+            bundles: components["schemas"]["ImportEventBundleRequest"][];
+            /** @description The live sessions that have no bundle, with the reason. Never null. */
+            skipped: components["schemas"]["EventBundleSkipped"][];
+            /**
+             * @description What a bundle cannot say exactly (`event_bundle.time_not_representable`,
+             *     `event_bundle.venue_timezone_missing`, `event_bundle.promoter_archived`,
+             *     `event_bundle.chain_link_missing`). Never null.
+             */
+            warnings: components["schemas"]["ImportWarning"][];
         };
         /**
          * @description The compat-identifier set the caller must persist on its side
@@ -22592,6 +25199,173 @@ export interface operations {
             };
         };
     };
+    postV1AuthStepUp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthStepUpRequest"];
+            };
+        };
+        responses: {
+            /** @description The password is right. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStepUpResponse"];
+                };
+            };
+            /** @description The body is not JSON, has no password (`validation.password_required`) or names no organization (`validation.org_id_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT Authorization header, or the access token comes from no sign-in or from one that has ended (`auth.session_ended`, sign in again). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The password is wrong (`auth.step_up_wrong_password`) or the account is deactivated (`auth.user_deactivated`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many wrong passwords (`auth.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AuthWebLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthWebLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Signed in. Same answer as POST /v1/auth/login. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthLoginResponse"];
+                };
+            };
+            /** @description The body is not JSON (`http.invalid_json`) or the link does not work (`auth.web_link_invalid`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The account is deactivated (`auth.user_deactivated`) or is a platform superadmin (`auth.web_link_superadmin`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many attempts from this address (`auth.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AuthWebSessionsRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The web sessions are ended. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthWebSessionsRevokeResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT Authorization header. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getV1Me: {
         parameters: {
             query?: never;
@@ -22620,6 +25394,86 @@ export interface operations {
                 };
             };
             /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization the caller asks about. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's access inside the organization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgMeResponse"];
+                };
+            };
+            /** @description org_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The caller is not a member of this organization, or the API key
+             *     belongs to another organization (`org.access_denied`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization does not exist or was deleted (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The membership or permission lookup failed (`org.membership_check_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The permission checker is not wired (`dependency.org_access_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -22819,6 +25673,18 @@ export interface operations {
             query?: {
                 /** @description Filter cities by country UUID */
                 country_id?: string;
+                /**
+                 * @description Filter cities by ISO 3166-1 alpha-2 country code (any case); ignored
+                 *     when `country_id` is also given. Names the country whose GeoNames
+                 *     data `q` draws suggestions from.
+                 * @example ES
+                 */
+                country?: string;
+                /**
+                 * @description City search text, at most 64 characters. Blank counts as absent.
+                 * @example barc
+                 */
+                q?: string;
                 /** @description Preferred language code (e.g. "en", "ru"). Overrides Accept-Language. */
                 lang?: string;
             };
@@ -22835,6 +25701,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GeoCitiesResponse"];
+                };
+            };
+            /**
+             * @description `country_id` is not a UUID (`geo.invalid_country_id`), `country` is
+             *     not a two-letter code (`geo.invalid_country`) or `q` is longer than
+             *     64 characters (`geo.invalid_query`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1GeoCountryTimezones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description ISO 3166-1 alpha-2 country code, any case.
+                 * @example ES
+                 */
+                iso2: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The country's zones */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoCountryTimezonesResponse"];
+                };
+            };
+            /** @description The code is not two letters (`geo.invalid_iso2`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The data knows no such country (`geo.country_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1GeoCountryCurrency: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description ISO 3166-1 alpha-2 country code, any case.
+                 * @example ES
+                 */
+                iso2: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The country's currency */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoCountryCurrencyResponse"];
+                };
+            };
+            /** @description The code is not two letters (`geo.invalid_iso2`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The platform has no such country (`geo.country_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Geo queries not available */
@@ -23434,6 +26419,8 @@ export interface operations {
                 content: {
                     "application/json": {
                         organization: components["schemas"]["OrganizationItem"];
+                        /** @description Channels whose seller block was turned off because a required legal field is now empty. Omitted when none. */
+                        seller_display_hidden?: string[];
                     };
                 };
             };
@@ -23455,7 +26442,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold the required permission (org.update) */
+            /** @description Actor does not hold the required permission (org.update), or an API key sent a legal identity or contact field (`org.identity_fields_api_key_forbidden`) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -24337,6 +27324,20 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description The role is `org_admin` and the user is the organization's last
+             *     active owner (`membership.last_owner`). Nothing is changed;
+             *     appoint another owner first. The platform superadmin is not
+             *     exempt.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal server error while revoking (`membership.revoke_failed`). */
             500: {
                 headers: {
@@ -24388,7 +27389,7 @@ export interface operations {
                     "application/json": components["schemas"]["BotInvitationCreateResponse"];
                 };
             };
-            /** @description Invalid body, e-mail or role (`bot.invalid_body`, `bot.invalid_email`, `bot.invalid_role`), or org_id is not a UUID */
+            /** @description Invalid body, e-mail, role or channel (`bot.invalid_body`, `bot.invalid_email`, `bot.invalid_role`, `bot.invalid_channel`), or org_id is not a UUID */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -24433,7 +27434,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database not wired */
+            /** @description Database not wired, or `channel` is `web` and the event center address is not configured (`bot.web_invitation_not_configured`) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -24586,7 +27587,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The invitation was already accepted (`bot.invitation_accepted`) or revoked (`bot.invitation_revoked`). */
+            /** @description The invitation was already accepted (`bot.invitation_accepted`) or revoked (`bot.invitation_revoked`), or it was sent for the web event center and cannot be resent (`bot.invitation_channel_unsupported`; the person uses the password reset on the sign-in page). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -24742,6 +27743,113 @@ export interface operations {
                 };
             };
             /** @description Service token not configured (`bot.service_not_configured`) or database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createBotWebLoginCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotWebLoginCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description The link */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotWebLoginCodeResponse"];
+                };
+            };
+            /** @description Invalid body or telegram_user_id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The account is deactivated (`auth.user_deactivated`) or is a platform superadmin (`bot.web_login_superadmin`) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Telegram account is linked to nobody (`bot.not_linked`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token or `EVENT_CENTER_PUBLIC_URL` not configured, or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    claimBotWebLoginNotices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sign-ins to report */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotWebLoginNoticesResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -25801,6 +28909,19 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description The membership is the organization's last active owner
+             *     (`membership.last_owner`). Nothing is changed; appoint another
+             *     owner first.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal server error */
             500: {
                 headers: {
@@ -25889,7 +29010,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description User already holds the requested role in this organization. */
+            /**
+             * @description Either the user already holds the requested role in this
+             *     organization (`admin_membership.duplicate`), or the membership is
+             *     the organization's last active owner and the new role is not
+             *     `org_admin` (`membership.last_owner`).
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -29830,6 +32956,1054 @@ export interface operations {
             };
         };
     };
+    listEventPartnerLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The links, in display order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPartnerLinkList"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createEventPartnerLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEventPartnerLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description The link that was added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPartnerLink"];
+                };
+            };
+            /** @description Invalid body, address or seller name (`event.invalid_body`, `event.invalid_partner_url`, `event.invalid_seller_name`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The event already holds 3 links (`event.partner_links_full`, `error.details.max_items`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reorderEventPartnerLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventPartnerLinkOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description The links in their new order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPartnerLinkList"];
+                };
+            };
+            /** @description Invalid body, or `link_ids` is not a list of distinct UUIDs (`event.invalid_body`, `event.invalid_order`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `link_ids` does not list every stored item exactly once (`event.partner_links_order_mismatch`); reload the list and try again. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteEventPartnerLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+                /** @description UUIDv7 of the partner link */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`) or no such link on it (`event.partner_link_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateEventPartnerLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+                /** @description UUIDv7 of the partner link */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEventPartnerLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description The link after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPartnerLink"];
+                };
+            };
+            /** @description Invalid body, address or seller name (`event.invalid_body`, `event.invalid_partner_url`, `event.invalid_seller_name`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`) or no such link on it (`event.partner_link_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getEventMapPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The map point. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventMapPoint"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setEventMapPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetEventMapPointRequest"];
+            };
+        };
+        responses: {
+            /** @description The map point as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventMapPoint"];
+                };
+            };
+            /** @description Invalid body or coordinates (`event.invalid_body`, `event.invalid_map_point`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteEventMapPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`) or the event has no map point (`event.map_point_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listEventReportPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The photos, in display order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventReportPhotoList"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    addEventReportPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddEventReportPhotoRequest"];
+            };
+        };
+        responses: {
+            /** @description The photo that was added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventReportPhoto"];
+                };
+            };
+            /** @description Invalid body or caption (`event.invalid_body`, `event.invalid_caption`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The report holds 30 photos (`event.report_photos_full`, `error.details.max_items`), or the file is already in it (`event.report_photos_duplicate`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The media object is unknown, another organization's, deleted or not an `event_report` file (`event.invalid_report_media`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reorderEventReportPhotos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventReportPhotoOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description The photos in their new order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventReportPhotoList"];
+                };
+            };
+            /** @description Invalid body, or `photo_ids` is not a list of distinct UUIDs (`event.invalid_body`, `event.invalid_order`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `photo_ids` does not list every stored item exactly once (`event.report_photos_order_mismatch`); reload the list and try again. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteEventReportPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+                /** @description UUIDv7 of the photo-report photo */
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`) or no such photo on it (`event.photo_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateEventReportPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+                /** @description UUIDv7 of the photo-report photo */
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEventReportPhotoRequest"];
+            };
+        };
+        responses: {
+            /** @description The photo after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventReportPhoto"];
+                };
+            };
+            /** @description Invalid body or caption (`event.invalid_body`, `event.invalid_caption`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`) or no such photo on it (`event.photo_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getV1OrganizationsOrgIdEventsEventIdDeleteImpact: {
         parameters: {
             query?: never;
@@ -29899,6 +34073,953 @@ export interface operations {
                 };
             };
             /** @description Database or event queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    copyEventMaterials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event that receives the materials. */
+                event_id: string;
+                /** @description UUIDv7 of the event the materials are copied from. */
+                source_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The materials were copied; the counts say how many rows of each list. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopyEventMaterialsResponse"];
+                };
+            };
+            /** @description The source is the event itself (`event.materials_copy_same_event`), or org_id or event_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The target or the source is not a live event of this organization, or the source id is not a UUID (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The target event already has gallery photos, videos, partner links or a map point (`event.materials_not_empty`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getEventBundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The event's bundles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventBundleReadResponse"];
+                };
+            };
+            /** @description org_id or event_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found (`event.not_found`), already deleted, or owned by a different organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event_bundle.read_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listEventGallery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The gallery. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventGalleryList"];
+                };
+            };
+            /** @description Invalid path id or request body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found (`event.not_found`), deleted, or owned by a different organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    addEventGalleryItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventGalleryAddRequest"];
+            };
+        };
+        responses: {
+            /** @description The photo was added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventGalleryItem"];
+                };
+            };
+            /** @description Invalid path id or request body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found (`event.not_found`), deleted, or owned by a different organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The gallery is full (`event.gallery_full`) or already holds this photo (`event.gallery_duplicate`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `media_id` is not a gallery photo of this organization (`event.invalid_media`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reorderEventGallery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventGalleryOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description The gallery in its new order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventGalleryList"];
+                };
+            };
+            /** @description Invalid path id or request body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found (`event.not_found`), deleted, or owned by a different organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `item_ids` does not match the stored photos (`event.gallery_order_mismatch`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteEventGalleryItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                event_id: string;
+                /** @description UUIDv7 of the gallery photo. */
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The photo was removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid path id or request body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event (`event.not_found`) or photo (`event.gallery_item_not_found`) not found, or owned by a different organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateEventGalleryItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                event_id: string;
+                /** @description UUIDv7 of the gallery photo. */
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventGalleryCaptionRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated photo. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventGalleryItem"];
+                };
+            };
+            /** @description Invalid path id or request body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event (`event.not_found`) or photo (`event.gallery_item_not_found`) not found, or owned by a different organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listEventVideos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The video links. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventVideoList"];
+                };
+            };
+            /** @description Invalid path id or request body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found (`event.not_found`), deleted, or owned by a different organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    addEventVideo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventVideoAddRequest"];
+            };
+        };
+        responses: {
+            /** @description The video link was added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventVideo"];
+                };
+            };
+            /** @description Invalid path id or request body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found (`event.not_found`), deleted, or owned by a different organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The event already holds the maximum number of videos (`event.videos_full`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reorderEventVideos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventVideoOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description The videos in their new order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventVideoList"];
+                };
+            };
+            /** @description Invalid path id or request body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found (`event.not_found`), deleted, or owned by a different organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `video_ids` does not match the stored videos (`event.videos_order_mismatch`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteEventVideo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                event_id: string;
+                /** @description UUIDv7 of the video link. */
+                video_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The video link was removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid path id or request body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event (`event.not_found`) or video (`event.video_not_found`) not found, or owned by a different organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -30407,6 +35528,220 @@ export interface operations {
             };
             /** @description The new name (or restoring) collides with an active promoter (`promoter.duplicate_name`). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSellerProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellerProfileEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such organization (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateSellerProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSellerProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the profile as stored now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellerProfileEnvelope"];
+                };
+            };
+            /** @description Invalid body (`seller.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such organization (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateSellerDisplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the sales channel. */
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSellerDisplayRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the profile as stored now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellerProfileEnvelope"];
+                };
+            };
+            /** @description Invalid body (`seller.invalid_body`), e-mail (`seller.invalid_email`) or phone (`seller.invalid_phone`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`), or is not a platform superadmin but tries to change `seller_hidden` (`seller.hide_superadmin_only`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such sales-page channel in this organization (`seller.channel_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The block cannot be shown yet (`seller.incomplete`, details.missing lists the empty fields). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -35278,7 +40613,9 @@ export interface operations {
             /**
              * @description Duplicate webhook delivery — the
              *     `(provider_payment_id, event_type)` pair was already recorded.
-             *     No body.
+             *     No body. Flitt and AllPay retry until they see 200, so their
+             *     duplicate deliveries are answered 200 with `processed: false`
+             *     and `reason: "duplicate event delivery"` instead.
              */
             204: {
                 headers: {
@@ -35343,7 +40680,10 @@ export interface operations {
             };
             /**
              * @description Database pool or payment intent queries unavailable
-             *     (`dependency.database_unavailable`).
+             *     (`dependency.database_unavailable`), or the signature verified
+             *     but the provider could not confirm the event yet
+             *     (`webhook.provider_unconfirmed`, AllPay); nothing was written
+             *     and the provider should deliver it again.
              */
             503: {
                 headers: {
@@ -37484,7 +42824,7 @@ export interface operations {
                     /** Format: binary */
                     file: string;
                     /** @enum {string} */
-                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg";
+                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report";
                     /** Format: uuid */
                     owner_id?: string;
                     /** Format: uuid */
@@ -37669,6 +43009,103 @@ export interface operations {
                 };
             };
             /** @description Media storage backend is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdMediaMediaIdPosterFacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUID of the poster's media object (`POST /v1/media`, owner type `event_poster`). */
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What the model read from the poster. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosterFactsResponse"];
+                };
+            };
+            /** @description org_id or media_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Media object not found, deleted, or owned by another organization (`media.not_found`), or its bytes are gone (`media.bytes_missing`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The image is not a JPEG or PNG (`media.poster_unsupported_type`) or is larger than 5 MiB (`media.poster_too_large`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization used its poster readings for today (`media.poster_reads_exhausted`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Media lookup or byte read failed (`media.get_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Poster reading is not configured (`media.poster_reader_not_configured`), the model could not be reached (`media.poster_read_failed`), or media storage is not configured. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -38059,6 +43496,94 @@ export interface operations {
             };
         };
     };
+    postMACSScanEvents: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Id of the MACS subscriber (GET /v1/organizations/{org_id}/macs-webhook answers it). */
+                "X-MACS-Subscriber-Id": string;
+                /** @description sha256=<hex HMAC-SHA256 of the raw body under the subscriber's signing_secret>. */
+                "X-MACS-Signature": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MACSScanBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description The batch was judged; see each scan's status. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MACSScanBatchResponse"];
+                };
+            };
+            /**
+             * @description The body is not JSON with a `scans` array (`macs.invalid_body`)
+             *     or the array is empty (`macs.empty_batch`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description A header is missing (`macs.missing_signature`), or the
+             *     subscriber is unknown or inactive, or the signature does not
+             *     match (`macs.invalid_signature`).
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description More than 500 scans (`macs.batch_too_large`) or a body larger
+             *     than 1 MiB (`macs.body_too_large`); page the upload.
+             */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 120 batches a minute from one subscriber (`macs.rate_limited`, with Retry-After). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description No database (`dependency.database_unavailable`), or no scan of the
+             *     batch could be recorded now (`macs.temporarily_unavailable`);
+             *     send the same batch again.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listPublicFeedEvents: {
         parameters: {
             query?: {
@@ -38190,7 +43715,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        event: components["schemas"]["EventItem"];
+                        /**
+                         * @description The event with its sessions and, since task 1-2c, a
+                         *     `materials` block (see `PublicEventMaterials`): gallery,
+                         *     videos, "where else to buy" links, map point and the
+                         *     photo report (empty until the event is over). The block
+                         *     is the same as on the hosted page.
+                         */
+                        event: components["schemas"]["EventItem"] & {
+                            /** @description The event's page materials; every list is `[]` when empty. */
+                            materials: components["schemas"]["PublicEventMaterials"];
+                        };
                     };
                 };
             };
@@ -38715,6 +44250,96 @@ export interface operations {
                 };
             };
             /** @description Database unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    sendOrganizerContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's first path segment (organization or promoter slug). */
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizerContactRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored and queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizerContactAccepted"];
+                };
+            };
+            /** @description Invalid name, e-mail, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The captcha was not passed (`contact.captcha_failed`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The page has no contact form (`contact.not_available`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is larger than 16 KiB (`contact.too_large`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many messages from this IP or to this page (`contact.rate_limited`, Retry-After). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The message could not be stored (`contact.send_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable, or the captcha is not configured or cannot be checked. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -41775,6 +47400,169 @@ export interface operations {
             };
         };
     };
+    brevoDeliveryStatusWebhookBearer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                } | {
+                    [key: string]: unknown;
+                }[];
+            };
+        };
+        responses: {
+            /** @description Events acknowledged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Always true. */
+                        acknowledged: boolean;
+                        /** @description Events in the body. */
+                        received: number;
+                        /** @description Events that belonged to a letter arena sent and were recorded. */
+                        applied: number;
+                    };
+                };
+            };
+            /** @description Malformed body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or unknown bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Body larger than 1 MiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An event could not be stored; Brevo delivers it again. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    brevoDeliveryStatusWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The webhook token (BREVO_WEBHOOK_TOKEN). Never logged. */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                } | {
+                    [key: string]: unknown;
+                }[];
+            };
+        };
+        responses: {
+            /** @description Events acknowledged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Always true. */
+                        acknowledged: boolean;
+                        /** @description Events in the body. */
+                        received: number;
+                        /** @description Events that belonged to a letter arena sent and were recorded. */
+                        applied: number;
+                    };
+                };
+            };
+            /** @description Malformed body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown webhook token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Body larger than 1 MiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An event could not be stored; Brevo delivers it again. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getOrgBillingUsage: {
         parameters: {
             query?: {
@@ -42489,6 +48277,92 @@ export interface operations {
             };
         };
     };
+    postV1OrganizationsOrgIdOrdersSearch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OrderSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Page of orders within the organization, as GET .../orders answers it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description The page, newest first. */
+                        orders: components["schemas"]["OrderListItem"][];
+                        /** @description Page size applied. */
+                        limit: number;
+                        /** @description Offset applied. */
+                        offset: number;
+                        /**
+                         * Format: int64
+                         * @description Orders matching the same filters across every page.
+                         */
+                        total_count: number;
+                        /** @description True when offset plus the page's length is below total_count. */
+                        has_more: boolean;
+                    };
+                };
+            };
+            /** @description A field is invalid (the GET codes), the body is not one JSON object of the known fields (`orders.invalid_body`), or the URL carries a query string (`orders.query_in_url`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`) in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description session_id or event_id names a row of another organization or an unknown one (`orders.session_id_not_found` / `orders.event_id_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getV1OrganizationsOrgIdOrdersId: {
         parameters: {
             query?: never;
@@ -42620,6 +48494,86 @@ export interface operations {
             };
             /** @description Event not found, or not part of this organization. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsSalesSummary: {
+        parameters: {
+            query: {
+                /**
+                 * @description Event ids as ONE string separated by commas (`ids=a,b,c`), at most
+                 *     50. Repeating the parameter (`ids=a&ids=b`) is not supported: only
+                 *     the first value is read.
+                 */
+                ids: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sales figures of the events found. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSalesSummaryList"];
+                };
+            };
+            /**
+             * @description org_id is not a valid UUID, `ids` is missing or empty
+             *     (`events.ids_required`), holds an id that is not a UUID
+             *     (`events.invalid_ids`) or names more than 50 ids
+             *     (`events.too_many_ids`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`) in this organization. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -44007,7 +49961,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Not a platform operator (refund.resolve_superadmin_only). */
+            /** @description Not a platform operator (refund.resolve_superadmin_only), or a request from the web event center without a valid step-up token for this organization (auth.step_up_required). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -44504,7 +50458,15 @@ export interface operations {
     };
     importEventBundle: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description `true` checks the bundle and writes nothing (task 3-1); the answer
+                 *     is then always 200 with `ImportEventBundleDryRunResponse`, the
+                 *     bundle's errors inside it. Absent or `false` imports. Any other
+                 *     value is 400 `import.invalid_dry_run`.
+                 */
+                dry_run?: boolean;
+            };
             header?: never;
             path: {
                 /** @description Organization UUID that scopes this request (tenant isolation). */
@@ -44522,16 +50484,18 @@ export interface operations {
              * @description Import applied. `created` distinguishes a first import from an
              *     idempotent repeat (matched by `externalRef` for source=arena, by
              *     `actionEvent.actionEventId` for source=bil24); both answer 200.
+             *     With `dry_run=true`: the dry-run report
+             *     (`ImportEventBundleDryRunResponse`), valid or not.
              */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ImportBil24SessionResponse"];
+                    "application/json": components["schemas"]["ImportBil24SessionResponse"] | components["schemas"]["ImportEventBundleDryRunResponse"];
                 };
             };
-            /** @description Request body is not valid JSON or exceeds the 8 MB limit. */
+            /** @description Request body is not valid JSON or exceeds the 8 MB limit, or `dry_run` is not a boolean. */
             400: {
                 headers: {
                     [name: string]: unknown;

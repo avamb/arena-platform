@@ -35,8 +35,9 @@ const (
 // styleScopePrefixes lists the message-ID prefixes under check: the bot,
 // the API error texts (error.*), the Bil24 gateway descriptions a selling
 // site may show to buyers (bil24.*), the price-breakdown labels and the
-// welcome text. E-mail templates and openapi.yaml come later.
-var styleScopePrefixes = []string{"bot.", "error.", "bil24.", "pricing.", "server."}
+// welcome text and the letter of the contact form (contact.*). The other
+// e-mail templates and openapi.yaml come later.
+var styleScopePrefixes = []string{"bot.", "error.", "bil24.", "pricing.", "server.", "contact."}
 
 // styleLocales are the catalogs under check.
 var styleLocales = []string{"en", "ru"}

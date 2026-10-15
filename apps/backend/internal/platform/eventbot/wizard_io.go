@@ -25,8 +25,18 @@ type SaveIO interface {
 // (logic doc §4). actionID is the event's compat id from the first date's
 // response (0 for the first date); posterURL is the poster's download URL
 // ("" when there is no poster); externalRef is the date's idempotency key.
+//
+// The categories are the date's own (DraftSession.Tickets) when it has them,
+// else the draft's. An existing date addresses only its own categories by
+// arenaTierId — the import looks a tier id up among the categories of THAT
+// session and refuses any other (422 import.invalid_category); a date the
+// draft adds never carries a tier id at all.
 func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef string) bil24compat.ImportSessionRequest {
 	s := d.Sessions[idx]
+	tk := cloneTickets(*d.ticketsOf(idx))
+	if s.SessionID == "" {
+		tk = withoutTierIDs(tk)
+	}
 	loc, err := time.LoadLocation(s.Timezone)
 	if err != nil || s.Timezone == "" {
 		loc = time.UTC
@@ -80,14 +90,17 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 	minusOne := -1
 	zero := int32(0)
 	empty := []bil24compat.ImportPriceWindow{}
-	switch d.Tickets.Mode {
+	switch tk.Mode {
 	case ModeSingle:
-		c := d.Tickets.Categories[0]
+		if len(tk.Categories) == 0 {
+			break
+		}
+		c := tk.Categories[0]
 		windows := []bil24compat.ImportPriceWindow{}
-		for i, step := range d.Tickets.Schedule {
+		for i, step := range tk.Schedule {
 			w := bil24compat.ImportPriceWindow{ValidFrom: startOfDay(step.From).Format(time.RFC3339), Price: money.Major(step.PriceMinor)}
-			if i+1 < len(d.Tickets.Schedule) {
-				w.ValidTo = startOfDay(d.Tickets.Schedule[i+1].From).Format(time.RFC3339)
+			if i+1 < len(tk.Schedule) {
+				w.ValidTo = startOfDay(tk.Schedule[i+1].From).Format(time.RFC3339)
 			}
 			windows = append(windows, w)
 		}
@@ -100,7 +113,7 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 			PriceSchedule:     &windows,
 		}}
 	case ModeParallel:
-		for _, c := range d.Tickets.Categories {
+		for _, c := range tk.Categories {
 			req.CategoryList = append(req.CategoryList, bil24compat.ImportSessionCategory{
 				ArenaTierID:       c.TierID,
 				CategoryPriceName: c.Name,
@@ -111,8 +124,8 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 			})
 		}
 	case ModeSequence:
-		n := len(d.Tickets.Categories)
-		for i, c := range d.Tickets.Categories {
+		n := len(tk.Categories)
+		for i, c := range tk.Categories {
 			cat := bil24compat.ImportSessionCategory{
 				ArenaTierID:       c.TierID,
 				CategoryPriceName: c.Name,
@@ -151,7 +164,7 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 		// Second pass: a category that follows a date-only step starts at
 		// that step's end.
 		for i := 1; i < len(req.CategoryList); i++ {
-			prev := d.Tickets.Categories[i-1]
+			prev := tk.Categories[i-1]
 			if prev.SellUntil != "" && prev.SellLimit == 0 {
 				req.CategoryList[i].SellStartTime = req.CategoryList[i-1].SellEndTime
 			}
@@ -183,13 +196,16 @@ type SaveOutcome struct {
 // Save posts every date of the draft that is not saved yet, in order, and
 // records progress in d.Saved so a retry sends only what is missing. The
 // first date creates the event; the others join it through its actionId. An
-// edited event (ModeEdit) is addressed by its arena ids instead, and every
-// date — existing or added — is re-sent, because the tickets are the same
-// for all of them.
+// edited event (ModeEdit) is addressed by its arena ids instead, and only
+// the dates sendPlan names are posted — each with its own categories.
 func (w *Wizard) Save(ctx context.Context, io SaveIO, ws WizSession, d *Draft, draftID string) SaveOutcome {
 	if len(d.Saved.Sessions) < len(d.Sessions) {
 		d.Saved.Sessions = append(d.Saved.Sessions, make([]SavedSession, len(d.Sessions)-len(d.Saved.Sessions))...)
 	}
+	// A change of the event's own parts after a save that stopped half way
+	// still needs a date to ride on (keepEventFieldsRiding).
+	d.keepEventFieldsRiding()
+	plan := d.sendPlan()
 	posterURL := ""
 	if d.Event.PosterMediaID != "" {
 		u, err := io.MediaSignedURL(ctx, ws.JWT, d.Event.PosterMediaID)
@@ -198,7 +214,7 @@ func (w *Wizard) Save(ctx context.Context, io SaveIO, ws WizSession, d *Draft, d
 		}
 	}
 	for i := range d.Sessions {
-		if d.Saved.Sessions[i].Done {
+		if d.Saved.Sessions[i].Done || !plan[i] {
 			continue
 		}
 		ref := fmt.Sprintf("tg:%s:%s:%d", ws.OrgID.String(), draftID, i+1)
@@ -206,6 +222,9 @@ func (w *Wizard) Save(ctx context.Context, io SaveIO, ws WizSession, d *Draft, d
 		res, err := io.ImportEventBundle(ctx, ws.JWT, ws.OrgID, req)
 		if err != nil {
 			d.Saved.LastReason = w.saveReason(ws.Locale, err)
+			// What did go out is now what the site has: the card lists only
+			// what is still to send.
+			d.refreshChanged()
 			return SaveOutcome{FailedIdx: i, Reason: d.Saved.LastReason}
 		}
 		d.Saved.Sessions[i] = SavedSession{ExternalRef: req.ExternalRef, SessionID: res.SessionID, Done: true}
@@ -217,6 +236,7 @@ func (w *Wizard) Save(ctx context.Context, io SaveIO, ws WizSession, d *Draft, d
 			// A date added to an existing event now has an id of its own; a
 			// later retry re-sends it by that id, never under a second key.
 			d.Sessions[i].SessionID = res.SessionID
+			d.recordSaved(i, posterURL != "")
 		}
 		for _, wn := range res.Warnings {
 			if text := w.warningText(ws.Locale, wn.Code); text != "" && !contains(d.Saved.Warnings, text) {
@@ -255,6 +275,8 @@ func (w *Wizard) warningText(loc, code string) string {
 		return w.texts.T(loc, "bot.wz.warn_publish_skipped", nil)
 	case "poster_skipped":
 		return w.texts.T(loc, "bot.wz.warn_poster_skipped", nil)
+	case "tier_not_in_payload":
+		return w.texts.T(loc, "bot.wz.warn_tier_not_in_payload", nil)
 	}
 	return ""
 }

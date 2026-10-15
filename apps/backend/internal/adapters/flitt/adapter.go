@@ -431,6 +431,10 @@ func (a *Adapter) CreateCheckoutSession(ctx context.Context, req payments.Create
 	if lang := checkoutLang(req.Locale); lang != "" {
 		params["lang"] = lang
 	}
+	if rd := reservationData(req.CustomerName, req.CustomerPhone); rd != "" {
+		// Buyer name and phone ride inside reservation_data (buyer_fields.go).
+		params["reservation_data"] = rd
+	}
 	if req.ExpiresAtUnix > 0 {
 		secs := req.ExpiresAtUnix - a.now().Unix()
 		if secs < minLifetimeSeconds {

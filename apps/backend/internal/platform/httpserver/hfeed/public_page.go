@@ -96,10 +96,16 @@ type hostedPageResponse struct {
 	Event         hostedPageEventResponse `json:"event"`
 	FeedToken     string                  `json:"feed_token"`
 	DefaultLocale string                  `json:"default_locale"`
-	// Seller / Promoter are present only on a channel that switched
-	// settings.hosted_page.show_seller on.
+	// Seller / Promoter are present when the seller's profile is complete
+	// and no platform superadmin hid the block (settings.hosted_page.seller_hidden).
 	Seller   *hostedPageSellerResponse   `json:"seller,omitempty"`
 	Promoter *hostedPagePromoterResponse `json:"promoter,omitempty"`
+	// ContactForm is present when the page offers "Write to the organizer".
+	ContactForm *hostedPageContactForm `json:"contact_form,omitempty"`
+	// Materials is the event's gallery, videos, partner links, map point and
+	// (once the event is over) photo report (task 1-2c). Always present;
+	// every list is [] when empty.
+	Materials publicMaterials `json:"materials"`
 }
 
 // hostedPromoterPageResponse is the full JSON envelope for GET
@@ -112,6 +118,8 @@ type hostedPromoterPageResponse struct {
 	// promoter's own page.
 	Seller   *hostedPageSellerResponse   `json:"seller,omitempty"`
 	Promoter *hostedPagePromoterResponse `json:"promoter,omitempty"`
+	// ContactForm is present when the page offers "Write to the organizer".
+	ContactForm *hostedPageContactForm `json:"contact_form,omitempty"`
 }
 
 // HandlePublicPage resolves the hosted-page context for an (org_slug,
@@ -153,7 +161,9 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	resolved, err := h.publicFeedQueries.GetHostedPageResolution(ctx, orgSlug, eventSlug)
+	byPromoter := false
 	if errors.Is(err, pgx.ErrNoRows) {
+		byPromoter = true
 		// Not an organization's page: the first segment may be a
 		// promoter's slug (migration 0117) — the same shape comes back,
 		// with the promoter's slug and name in the org slot.
@@ -216,7 +226,11 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 	resp.Event.FirstSessionTimezone = resolved.FirstSessionTimezone
 	resp.Event.SessionCount = resolved.SessionCount
 	resp.Event.FirstSessionDoorsAt = rfc3339UTC(resolved.FirstSessionDoorsAt)
-	resp.Seller, resp.Promoter = h.sellerBlocks(ctx, resolved.OrgID, resolved.FeedToken, &resolved.EventID)
+	// A promoter's page, or an event of a promoter on the organization's
+	// page: the form's messages go to the organization's owner only.
+	toOwner := byPromoter || h.eventToOwner(ctx, resolved.OrgID, eventSlug)
+	resp.Seller, resp.Promoter, resp.ContactForm = h.sellerBlocks(ctx, resolved.OrgID, resolved.FeedToken, &resolved.EventID, toOwner)
+	resp.Materials = h.loadPublicMaterials(ctx, resolved.EventID, time.Now().UTC())
 
 	// Venue name(s) are cheap (one aggregate query keyed by event id) and
 	// presentational — a lookup failure must not turn a resolved page into a
@@ -331,7 +345,7 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 		url := h.mediaFileURL(ctx, *org.OrgLogoMediaID)
 		resp.Org.LogoURL = &url
 	}
-	resp.Seller, _ = h.sellerBlocks(ctx, org.OrgID, "", nil)
+	resp.Seller, _, resp.ContactForm = h.sellerBlocks(ctx, org.OrgID, "", nil, promoterID != nil)
 	if resp.Seller != nil && promoterID != nil {
 		resp.Promoter = &hostedPagePromoterResponse{Name: org.OrgName}
 	}

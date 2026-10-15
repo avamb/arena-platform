@@ -33,7 +33,7 @@
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Zpráva od pořadatele:</strong></p>
     <p style="margin:0;white-space:pre-line">{{.}}</p>
   </div>{{end}}
-  <p style="margin:0 0 12px 0;">Pokud vám změna nevyhovuje, napište pořadateli{{with .Change.ContactName}} ({{.}}){{end}} na adresu <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{with .Change.ContactPhone}}, telefon {{.}}{{end}} a popište, co byste chtěli udělat. Pořadatel čte každou zprávu.</p>
+  {{if or .Change.ContactEmail .Change.ContactFormURL}}<p style="margin:0 0 12px 0;">Pokud vám změna nevyhovuje, napište pořadateli{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}na adresu <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else if .Change.ContactFormURL}}přes <a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">formulář na prodejní stránce</a>{{end}}{{with .Change.ContactPhone}}, telefon {{.}}{{end}} a popište, co byste chtěli udělat. Pořadatel čte každou zprávu.</p>{{end}}
   <p style="font-size:12px;color:#666">Číslo vstupenky: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">Doručeno na: {{.RecipientEmail}}</p>
   </td></tr>
@@ -45,9 +45,11 @@
     {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
-    {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kontakt: <a href="{{.}}" style="color:#666">Napsat pořadateli</a>{{end}}{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — automatické doručení</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Pokud kliknete na „Odhlásit odběr“, přestanou vám chodit e-maily s vašimi vstupenkami i důležité e-maily o vaší objednávce. Reklamní e-maily bez vašeho souhlasu neposíláme.</p>
   </td></tr>
 </table>
 </td></tr></table>
@@ -81,9 +83,9 @@ Nová vstupenka v PDF s aktualizovanými údaji je v příloze. Čárový kód v
 Zpráva od pořadatele:
 {{.}}
 {{end}}
-Pokud vám změna nevyhovuje, napište pořadateli{{with .Change.ContactName}} ({{.}}){{end}} na adresu {{.Change.ContactEmail}}{{with .Change.ContactPhone}}, telefon {{.}}{{end}} a popište, co byste chtěli udělat. Pořadatel čte každou zprávu.
+{{if or .Change.ContactEmail .Change.ContactFormURL}}Pokud vám změna nevyhovuje, napište pořadateli{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}na adresu {{.Change.ContactEmail}}{{else if .Change.ContactFormURL}}přes formulář na prodejní stránce: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, telefon {{.}}{{end}} a popište, co byste chtěli udělat. Pořadatel čte každou zprávu.
 
-Číslo vstupenky: {{.TicketID}}
+{{end}}Číslo vstupenky: {{.TicketID}}
 Doručeno na: {{.RecipientEmail}}
 
 --
@@ -93,7 +95,11 @@ Doručeno na: {{.RecipientEmail}}
 {{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
 {{else}}{{with .Branding.LegalAddressCity}}{{.}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}Kontakt: {{.}}
-{{end}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kontakt: {{.}}
+{{end}}{{end}}
 Arena Platform — automatické doručení
+
+Pokud kliknete na „Odhlásit odběr“, přestanou vám chodit e-maily s vašimi vstupenkami i důležité e-maily o vaší objednávce. Reklamní e-maily bez vašeho souhlasu neposíláme.
 {{end}}

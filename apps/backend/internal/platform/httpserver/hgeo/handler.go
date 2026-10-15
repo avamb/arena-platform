@@ -33,6 +33,10 @@ type Handler struct {
 	queries *gen.Queries
 	pool    TxStarter
 	cfg     *config.Config
+	// currencyLookup replaces the countries-table read of
+	// HandleCountryCurrency; tests set it, production leaves it nil. It
+	// returns pgx.ErrNoRows for a country that has no row.
+	currencyLookup func(ctx context.Context, iso2 string) (string, error)
 }
 
 // New constructs a Handler from the caller's dependencies. Nil queries and a

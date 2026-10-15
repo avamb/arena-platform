@@ -137,6 +137,76 @@ func (q *Queries) ListEventSummarySessions(ctx context.Context, eventID uuid.UUI
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ListEventSummaryHeaders
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listEventSummaryHeaders = `-- name: ListEventSummaryHeaders :many
+SELECT e.id, e.org_id, e.name, e.status, e.first_session_at, e.last_session_at
+FROM   events e
+WHERE  e.id = ANY($1::uuid[])
+  AND  e.org_id = $2
+  AND  e.deleted_at IS NULL`
+
+// ListEventSummaryHeaders returns the given events that exist in the
+// organization. An id of another organization or an unknown one is absent
+// from the result, never an error.
+func (q *Queries) ListEventSummaryHeaders(ctx context.Context, eventIDs []uuid.UUID, orgID uuid.UUID) ([]EventSummaryHeaderRow, error) {
+	rows, err := q.db.Query(ctx, listEventSummaryHeaders, eventIDs, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EventSummaryHeaderRow
+	for rows.Next() {
+		var i EventSummaryHeaderRow
+		if err := rows.Scan(&i.ID, &i.OrgID, &i.Name, &i.Status, &i.FirstSessionAt, &i.LastSessionAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	return items, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListEventSummarySessionIDs
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listEventSummarySessionIDs = `-- name: ListEventSummarySessionIDs :many
+SELECT s.event_id, s.id
+FROM   sessions s
+JOIN   events   e ON e.id = s.event_id
+WHERE  s.event_id = ANY($1::uuid[])
+  AND  e.org_id = $2
+  AND  e.deleted_at IS NULL
+  AND  s.deleted_at IS NULL
+ORDER  BY s.event_id, s.start_at, s.id`
+
+// EventSummarySessionIDRow ties a session to its event.
+type EventSummarySessionIDRow struct {
+	EventID   uuid.UUID `json:"event_id"`
+	SessionID uuid.UUID `json:"session_id"`
+}
+
+// ListEventSummarySessionIDs returns the non-deleted sessions of a batch of
+// events of the organization, cancelled ones included.
+func (q *Queries) ListEventSummarySessionIDs(ctx context.Context, eventIDs []uuid.UUID, orgID uuid.UUID) ([]EventSummarySessionIDRow, error) {
+	rows, err := q.db.Query(ctx, listEventSummarySessionIDs, eventIDs, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EventSummarySessionIDRow
+	for rows.Next() {
+		var i EventSummarySessionIDRow
+		if err := rows.Scan(&i.EventID, &i.SessionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	return items, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListSessionSummaryPlaces
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -466,6 +536,52 @@ func (q *Queries) ListSessionSummaryComplimentary(ctx context.Context, sessionID
 	for rows.Next() {
 		var i SessionSummaryComplimentaryRow
 		if err := rows.Scan(&i.SessionID, &i.Orders, &i.Tickets); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	return items, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListSessionSummaryAdmissions
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listSessionSummaryAdmissions = `-- name: ListSessionSummaryAdmissions :many
+SELECT se.session_id, se.source,
+       count(DISTINCT se.ticket_id) FILTER (WHERE t.status = 'active')::bigint AS tickets,
+       count(*)::bigint AS scans
+FROM   scan_events se
+JOIN   sessions s ON s.id = se.session_id
+JOIN   events   e ON e.id = s.event_id
+LEFT JOIN tickets t ON t.id = se.ticket_id
+WHERE  se.session_id = ANY($1::uuid[])
+  AND  se.result = 'admitted'
+  AND  se.org_id = e.org_id
+GROUP  BY se.session_id, se.source`
+
+// SessionSummaryAdmissionsRow counts the admitted scans of one session from
+// one source (arena_scanner or macs, migration 0154). Tickets is the number
+// of valid tickets with at least one such scan, Scans every admitted row.
+type SessionSummaryAdmissionsRow struct {
+	SessionID uuid.UUID `json:"session_id"`
+	Source    string    `json:"source"`
+	Tickets   int64     `json:"tickets"`
+	Scans     int64     `json:"scans"`
+}
+
+// ListSessionSummaryAdmissions returns the door admissions of the given
+// sessions grouped by source. A session without admitted scans has no row.
+func (q *Queries) ListSessionSummaryAdmissions(ctx context.Context, sessionIDs []uuid.UUID) ([]SessionSummaryAdmissionsRow, error) {
+	rows, err := q.db.Query(ctx, listSessionSummaryAdmissions, sessionIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SessionSummaryAdmissionsRow
+	for rows.Next() {
+		var i SessionSummaryAdmissionsRow
+		if err := rows.Scan(&i.SessionID, &i.Source, &i.Tickets, &i.Scans); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

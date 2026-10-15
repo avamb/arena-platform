@@ -52,6 +52,9 @@ type Handler struct {
 	// botUsername is the bot's Telegram username; a non-empty value lets the
 	// superadmin response carry the ready deep link.
 	botUsername string
+	// eventCenterURL is EVENT_CENTER_PUBLIC_URL, the origin the bot's
+	// "Open in browser" link points at (web_login.go).
+	eventCenterURL string
 	// now is injectable for tests.
 	now func() time.Time
 }

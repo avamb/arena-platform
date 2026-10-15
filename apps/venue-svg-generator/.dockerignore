@@ -1,0 +1,13 @@
+.git
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/results
+ChatExport_*
+benchmark_v1
+orchestration
+sdk_experiments
+pdf_diagnostics
+independent_evaluation
+**/*.xlsx
+**/*.pdf

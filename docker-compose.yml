@@ -12,6 +12,9 @@
 #   - prometheus : Prometheus metrics scraper  (port 9090)
 #   - grafana    : Grafana dashboards          (port 3000)
 #
+# Venue SVG generator (profile: venue-gen, no published port):
+#   - venue_gen  : apps/venue-svg-generator image, internal network only
+#
 # One-shot tools (profile: tools):
 #   - migrate    : arena-migrate database migration runner
 #
@@ -153,6 +156,11 @@ services:
       # the username the invitation deep links point at.
       BOT_SERVICE_TOKEN: "${BOT_SERVICE_TOKEN:-dev-bot-service-token}"
       EVENTS_TELEGRAM_BOT_USERNAME: "${EVENTS_TELEGRAM_BOT_USERNAME:-ArenaEventsCentrBot}"
+      # Optional: an Anthropic key switches on reading a poster into wizard
+      # hints (POST .../media/{id}/poster-facts, internal/platform/posterread).
+      # The key lives on the api only; the bot calls the route. Empty = off.
+      POSTER_LLM_API_KEY: "${POSTER_LLM_API_KEY:-}"
+      POSTER_LLM_MODEL: "${POSTER_LLM_MODEL:-claude-sonnet-5}"
       JWT_ISSUER: "arena-dev"
       JWT_AUDIENCE: "arena-api"
       JWT_DEFAULT_TTL: "1h"
@@ -317,10 +325,6 @@ services:
       BOT_ARENA_API_URL: "http://api:8080"
       BOT_METRICS_ADDR: ":9092"
       HEALTH_ADDR: "http://localhost:9092"
-      # Optional: an Anthropic key switches on reading a sent poster into
-      # wizard hints (internal/platform/posterread); empty = off.
-      POSTER_LLM_API_KEY: "${POSTER_LLM_API_KEY:-}"
-      POSTER_LLM_MODEL: "${POSTER_LLM_MODEL:-claude-sonnet-5}"
 
       DEFAULT_LOCALE: "en"
       ACTIVE_LOCALES: "ru,en"
@@ -389,6 +393,24 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # ------------------------------------------------------------------
+  # venue_gen : venue SVG generator (apps/venue-svg-generator, Python).
+  #   - Opt-in: docker compose --profile venue-gen build venue_gen
+  #     (a plain `docker compose up -d` does not start it).
+  #   - NO host port on purpose: only arena-api talks to it, over the
+  #     compose network (http://venue_gen:<port>, the port arrives with
+  #     the HTTP service in G2a).
+  #   - Until G2a the image carries only the CLI, so the container prints
+  #     its help and exits; hence restart "no".
+  # ------------------------------------------------------------------
+  venue_gen:
+    build:
+      context: apps/venue-svg-generator
+    image: arena_new/arena-venue-gen:dev
+    container_name: arena_venue_gen
+    profiles: ["venue-gen"]
+    restart: "no"
 
   # ------------------------------------------------------------------
   # prometheus : scrapes /metrics from api (and worker when it exposes

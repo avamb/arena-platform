@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -21,6 +22,10 @@ import (
 type memDialogTable struct {
 	mu   sync.Mutex
 	rows map[memDialogKey]gen.BotDialogRow
+	// seq orders the saves exactly: two saves inside one clock tick must
+	// still list the later one first.
+	seq     int64
+	touched map[memDialogKey]int64
 }
 
 type memDialogKey struct {
@@ -38,7 +43,25 @@ func (m *memDialogTable) UpsertBotDialog(_ context.Context, tg int64, orgID *uui
 	}
 	row.OrgID, row.Step, row.State, row.ExpiresAt, row.UpdatedAt = orgID, step, append(json.RawMessage(nil), state...), expiresAt, time.Now()
 	m.rows[k] = row
+	if m.touched == nil {
+		m.touched = map[memDialogKey]int64{}
+	}
+	m.seq++
+	m.touched[k] = m.seq
 	return row, nil
+}
+
+func (m *memDialogTable) UpdateBotDialogQuiet(_ context.Context, tg int64, orgID *uuid.UUID, kind, step string, state json.RawMessage, expiresAt time.Time) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k := memDialogKey{tg, kind}
+	row, ok := m.rows[k]
+	if !ok {
+		return 0, nil
+	}
+	row.OrgID, row.Step, row.State, row.ExpiresAt = orgID, step, append(json.RawMessage(nil), state...), expiresAt
+	m.rows[k] = row // touched (the recency order) is left as it was
+	return 1, nil
 }
 
 func (m *memDialogTable) GetBotDialog(_ context.Context, tg int64, kind string) (gen.BotDialogRow, error) {
@@ -56,6 +79,23 @@ func (m *memDialogTable) DeleteBotDialog(_ context.Context, tg int64, kind strin
 	defer m.mu.Unlock()
 	delete(m.rows, memDialogKey{tg, kind})
 	return nil
+}
+
+func (m *memDialogTable) ListBotDialogKindsByRecency(_ context.Context, tg int64) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var keys []memDialogKey
+	for k := range m.rows {
+		if k.tg == tg {
+			keys = append(keys, k)
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool { return m.touched[keys[i]] > m.touched[keys[j]] })
+	kinds := make([]string, 0, len(keys))
+	for _, k := range keys {
+		kinds = append(kinds, k.kind)
+	}
+	return kinds, nil
 }
 
 // testClock is a settable now() for the store.

@@ -33,7 +33,7 @@
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Mensaje del organizador:</strong></p>
     <p style="margin:0;white-space:pre-line">{{.}}</p>
   </div>{{end}}
-  <p style="margin:0 0 12px 0;">Si el cambio no te conviene, escribe al organizador{{with .Change.ContactName}} ({{.}}){{end}} a <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{with .Change.ContactPhone}}, teléfono {{.}}{{end}} y cuéntale qué te gustaría hacer. El organizador lee todos los mensajes.</p>
+  {{if or .Change.ContactEmail .Change.ContactFormURL}}<p style="margin:0 0 12px 0;">Si el cambio no te conviene, escribe al organizador{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}a <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else if .Change.ContactFormURL}}con el <a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">formulario de la página de venta</a>{{end}}{{with .Change.ContactPhone}}, teléfono {{.}}{{end}} y cuéntale qué te gustaría hacer. El organizador lee todos los mensajes.</p>{{end}}
   <p style="font-size:12px;color:#666">ID de entrada: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">Enviado a: {{.RecipientEmail}}</p>
   </td></tr>
@@ -45,9 +45,11 @@
     {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
-    {{with .Branding.ContactEmail}}<br>Contacto: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Contacto: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contacto: <a href="{{.}}" style="color:#666">Escribir al organizador</a>{{end}}{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — entrega automática</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Si pulsas «Cancelar suscripción», dejarás de recibir los correos con tus entradas y los correos importantes sobre tu pedido. No enviamos correos publicitarios sin tu consentimiento.</p>
   </td></tr>
 </table>
 </td></tr></table>
@@ -81,9 +83,9 @@ Adjuntamos un nuevo PDF de tu entrada con los datos actualizados. El código de 
 Mensaje del organizador:
 {{.}}
 {{end}}
-Si el cambio no te conviene, escribe al organizador{{with .Change.ContactName}} ({{.}}){{end}} a {{.Change.ContactEmail}}{{with .Change.ContactPhone}}, teléfono {{.}}{{end}} y cuéntale qué te gustaría hacer. El organizador lee todos los mensajes.
+{{if or .Change.ContactEmail .Change.ContactFormURL}}Si el cambio no te conviene, escribe al organizador{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}a {{.Change.ContactEmail}}{{else if .Change.ContactFormURL}}con el formulario de la página de venta: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, teléfono {{.}}{{end}} y cuéntale qué te gustaría hacer. El organizador lee todos los mensajes.
 
-ID de entrada: {{.TicketID}}
+{{end}}ID de entrada: {{.TicketID}}
 Enviado a: {{.RecipientEmail}}
 
 --
@@ -93,7 +95,11 @@ Enviado a: {{.RecipientEmail}}
 {{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
 {{else}}{{with .Branding.LegalAddressCity}}{{.}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}Contacto: {{.}}
-{{end}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contacto: {{.}}
+{{end}}{{end}}
 Arena Platform — entrega automática
+
+Si pulsas «Cancelar suscripción», dejarás de recibir los correos con tus entradas y los correos importantes sobre tu pedido. No enviamos correos publicitarios sin tu consentimiento.
 {{end}}

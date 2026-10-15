@@ -163,10 +163,12 @@ func (s *Server) mountRefundRoutes(r chi.Router) {
 	if s.authEnabled() && s.refundQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "refund.create", "refunds")
+			pr.Use(s.requireWebStepUp)
 			pr.Post("/refunds", s.handleCreateRefund)
 		})
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "refund.approve", "refunds")
+			pr.Use(s.requireWebStepUp)
 			pr.Post("/refunds/{id}/approve", s.handleApproveRefund)
 			pr.Post("/refunds/{id}/reject", s.handleRejectRefund)
 		})

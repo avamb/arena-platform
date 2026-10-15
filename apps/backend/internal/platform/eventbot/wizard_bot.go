@@ -21,6 +21,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/publicurl"
 )
 
 // wizard_bot.go — how the wizard lives inside the Telegram bot: drafts are
@@ -204,6 +205,14 @@ func (b *Bot) wizardCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.showHome(ctx, chatID, &msgID, from, "")
 		return
 	}
+	if d.Paused {
+		// A wizard button continues a draft the menu paused.
+		d.Paused = false
+		if _, err := b.storeDraft(ctx, from.ID, ws, d); err != nil {
+			b.wizardFail(ctx, chatID, &msgID, ws.Locale, err)
+			return
+		}
+	}
 	if data == "e:sessions" && d.Mode == ModeEdit && d.Event.EventID != "" {
 		// Moving or cancelling a date is not part of the draft: it leaves
 		// the draft as it is and opens the sessions of the event itself.
@@ -215,7 +224,22 @@ func (b *Bot) wizardCallback(ctx context.Context, chatID int64, msgID int, from 
 	switch data {
 	case "resume":
 		b.wizardRender(ctx, chatID, &msgID, ws, d, "")
-	case "publish", "retry":
+	case "publish":
+		if d.Mode == ModeEdit {
+			// An edited event first shows what goes to the site; the
+			// preview's own "Publish" button (publish:go) saves.
+			b.wizardApply(ctx, chatID, &msgID, from, ws, d, WizInput{Data: data})
+			return
+		}
+		b.wizardSave(ctx, chatID, &msgID, from, ws, d, row.ID.String(), false)
+	case "publish:go":
+		if d.Mode != ModeEdit || d.Step != stPreview {
+			// A button of an older preview: the draft has moved on.
+			b.wizardRender(ctx, chatID, &msgID, ws, d, "")
+			return
+		}
+		b.wizardSave(ctx, chatID, &msgID, from, ws, d, row.ID.String(), false)
+	case "retry":
 		b.wizardSave(ctx, chatID, &msgID, from, ws, d, row.ID.String(), false)
 	case "publish:force":
 		b.wizardSave(ctx, chatID, &msgID, from, ws, d, row.ID.String(), true)
@@ -233,7 +257,8 @@ func (b *Bot) wizardText(ctx context.Context, chatID int64, from *models.User, t
 	}
 	ws := b.wizardSession(id, jwt)
 	d, _, err := b.loadDraft(ctx, from.ID, ws)
-	if err != nil || d == nil || d.Step == stDone || d.Step == stSummary || d.Step == stEditMenu || d.Step == stCancel {
+	if err != nil || d == nil || d.Paused || d.Step == stDone || d.Step == stSummary || d.Step == stEditMenu || d.Step == stCancel ||
+		d.Step == stPreview || d.Step == stSConfirm {
 		return false
 	}
 	b.wizardApply(ctx, chatID, nil, from, ws, d, WizInput{Text: text})
@@ -249,7 +274,7 @@ func (b *Bot) wizardPoster(ctx context.Context, chatID int64, from *models.User,
 	}
 	ws := b.wizardSession(id, jwt)
 	d, _, err := b.loadDraft(ctx, from.ID, ws)
-	if err != nil || d == nil || !waitsForPoster(d) {
+	if err != nil || d == nil || d.Paused || !waitsForPoster(d) {
 		return false
 	}
 	loc := ws.Locale
@@ -313,7 +338,7 @@ func (b *Bot) wizardPoster(ctx context.Context, chatID int64, from *models.User,
 		return true
 	}
 	if d.Mode != ModeEdit { // a replaced poster of an existing event has nothing to prefill
-		b.readPosterHints(ctx, chatID, loc, d, data, contentType)
+		b.readPosterHints(ctx, chatID, loc, jwt, ws.OrgID, up.ID, d)
 	}
 	b.wizardApply(ctx, chatID, nil, from, ws, d, WizInput{Poster: &PosterAccepted{MediaID: up.ID, W: cfg.Width, H: cfg.Height}})
 	return true
@@ -333,22 +358,38 @@ func waitsForPoster(d *Draft) bool {
 	return false
 }
 
-// posterReadTimeout bounds the model call; the person sees "reading…"
-// meanwhile and the wizard goes on without hints when it runs out.
-const posterReadTimeout = 45 * time.Second
+// posterReadingDelay is how long a poster reading runs before the person is
+// told "reading…": an API without a model key answers at once and then nothing
+// is said at all.
+const posterReadingDelay = 1500 * time.Millisecond
 
-// readPosterHints asks the vision model what the poster says and keeps the
-// answer in the draft as hints (wizard_hints.go). Without a reader, or when
-// the reading fails, the wizard simply asks everything as before.
-func (b *Bot) readPosterHints(ctx context.Context, chatID int64, loc string, d *Draft, data []byte, contentType string) {
-	if b.poster == nil {
+// posterOffFor is how long the bot stops asking after the API said it cannot
+// read posters (no model key), so every poster is not one more wasted call.
+const posterOffFor = 10 * time.Minute
+
+// readPosterHints asks arena-api what the uploaded poster says and keeps the
+// answer in the draft as hints (wizard_hints.go). The model key is on the API
+// (POST .../media/{id}/poster-facts); when the API has none, or the reading
+// fails, the wizard simply asks everything as before.
+func (b *Bot) readPosterHints(ctx context.Context, chatID int64, loc, jwt string, orgID uuid.UUID, mediaID string, d *Draft) {
+	if time.Now().Unix() < b.posterOffUntil.Load() {
 		return
 	}
-	b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_reading", nil), nil)
-	readCtx, cancel := context.WithTimeout(ctx, posterReadTimeout)
-	defer cancel()
-	facts, err := b.poster.Read(readCtx, data, contentType)
+	done := make(chan struct{})
+	notice := time.AfterFunc(posterReadingDelay, func() {
+		defer close(done)
+		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_reading", nil), nil)
+	})
+	facts, err := b.arena.PosterFacts(ctx, jwt, orgID, mediaID)
+	if !notice.Stop() {
+		<-done // the notice is already on its way: let it finish first
+	}
 	if err != nil {
+		if posterReaderOff(err) {
+			b.posterOffUntil.Store(time.Now().Add(posterOffFor).Unix())
+			b.logger.Info("eventbot: poster reading is off on arena-api")
+			return
+		}
 		b.logger.Warn("eventbot: poster reading failed", slog.String("error", err.Error()))
 		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_read_none", nil), nil)
 		return
@@ -571,28 +612,28 @@ func (b *Bot) storefrontLink(ctx context.Context, jwt string, orgID uuid.UUID, p
 	if b.ticketsBaseURL == "" {
 		return ""
 	}
-	pageSlug := ""
+	promoterSlug := ""
 	if promoterID != "" {
 		if promoters, err := b.arena.Promoters(ctx, jwt, orgID); err == nil {
 			for _, p := range promoters {
 				if p.ID == promoterID && p.Slug != "" {
-					pageSlug = p.Slug
+					promoterSlug = p.Slug
 				}
 			}
 		}
 	}
-	if pageSlug == "" {
-		orgSlug, err := b.arena.OrganizationSlug(ctx, jwt, orgID)
-		if err != nil || orgSlug == "" {
+	// The organization's slug is only read when the promoter has no page of
+	// its own, as before. The address shape itself lives in publicurl.Page,
+	// shared with the event card's public_url.
+	orgSlug := ""
+	if promoterSlug == "" {
+		slug, err := b.arena.OrganizationSlug(ctx, jwt, orgID)
+		if err != nil || slug == "" {
 			return ""
 		}
-		pageSlug = orgSlug
+		orgSlug = slug
 	}
-	base := strings.TrimRight(b.ticketsBaseURL, "/") + "/" + pageSlug
-	if eventSlug == "" {
-		return base
-	}
-	return base + "/" + eventSlug
+	return publicurl.Page(b.ticketsBaseURL, orgSlug, promoterSlug, eventSlug)
 }
 
 // eventLink is the buyers' page of a PUBLISHED event that already has its

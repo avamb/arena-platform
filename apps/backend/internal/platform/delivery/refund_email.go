@@ -37,6 +37,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
@@ -199,7 +200,16 @@ func (h *refundEmail) handle(ctx context.Context, payload []byte) error {
 		h.release(ctx, ids)
 		return err
 	}
-	if sendErr := h.opts.Sender.Send(ctx, msg); sendErr != nil {
+	letter := emailstatus.NewLetter{OrgID: orgID, OrderID: &orderID, Kind: emailstatus.KindRefund, Recipient: recipient.Email,
+		RefundIDs: ids, TemplateVersion: templateVersion(h.renderer, templates.TemplateKindRefund, recipient.LocaleHint)}
+	var refundTickets []uuid.UUID
+	for _, c := range claimed {
+		if c.TicketID != nil {
+			refundTickets = append(refundTickets, *c.TicketID)
+		}
+	}
+	letter.TicketNumbers = letterTicketNumbers(ctx, h.opts.DB, refundTickets)
+	if sendErr := sendRecorded(ctx, h.opts.Sender, h.opts.DB, h.logger, letter, msg, nil); sendErr != nil {
 		h.release(ctx, ids)
 		h.logger.Warn("delivery: refund e-mail send failed; worker will retry", slog.String("batch_id", batchID.String()))
 		return fmt.Errorf("delivery: send refund e-mail for batch %s: %w", batchID, sendErr)
@@ -313,6 +323,18 @@ func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID
 	}
 	allVoid := voidCount > 0 && voidCount == len(lines)
 	anyCancel = voidCount > 0
+	// The contact the letter prints and its Reply-To are the same one, so it
+	// is settled before the branding is built. Replies go to the event's
+	// promoter when it has an e-mail. Otherwise the payload already carries
+	// the ticket letter's rule (ContactRoute): the
+	// sales page's public e-mail, or - for a hosted page without one - no
+	// Reply-To at all, or - without a hosted page - the organization's address.
+	if orderEvents != uuid.Nil {
+		if contact, cerr := sessionchange.ResolveContact(ctx, h.opts.DB, orderEvents, orgID); cerr == nil && contact.Complete() && contact.Source == "promoter" {
+			first.OrgContactEmail = strings.TrimSpace(contact.Email)
+			first.ContactFormURL = ""
+		}
+	}
 	branding := resolveBranding(ctx, h.opts.Media, first, h.logger).Branding
 
 	data := templates.Data{
@@ -329,12 +351,6 @@ func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID
 	out, err := h.renderer.Render(templates.TemplateKindRefund, recipient.LocaleHint, data)
 	if err != nil {
 		return email.Message{}, fmt.Errorf("delivery: render refund e-mail: %w", err)
-	}
-	// Replies go to the organizer when one is known and complete.
-	if orderEvents != uuid.Nil {
-		if contact, cerr := sessionchange.ResolveContact(ctx, h.opts.DB, orderEvents, orgID); cerr == nil && contact.Complete() {
-			first.OrgContactEmail = strings.TrimSpace(contact.Email)
-		}
 	}
 	return ticketEmailMessage(first, recipient.Email, out.Subject, out.HTMLBody, out.TextBody), nil
 }

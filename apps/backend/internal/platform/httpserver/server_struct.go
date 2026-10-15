@@ -1,11 +1,13 @@
 package httpserver
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
@@ -82,6 +84,7 @@ type Server struct {
 	publicationQueries    *gen.Queries
 	publicFeedQueries     *gen.Queries
 	publicFeedRL          *publicFeedRateLimiter
+	brevoWebhookRL        *publicFeedRateLimiter // per-IP limit of the Brevo delivery-status webhook
 	sessionQueries        *gen.Queries
 	gdprQueries           *gen.Queries
 	tierQueries           *gen.Queries
@@ -127,6 +130,9 @@ type Server struct {
 	// pool access beyond the PoolDB interface (e.g. macs export, AB-50b).
 	// Wired from Options.PgxPool in wire.go.
 	pgxPool *pgxpool.Pool
+	// stepUpSessionCheck replaces the database lookup of requireWebStepUp
+	// ("is this sign-in still live?") in unit tests; nil in production.
+	stepUpSessionCheck func(ctx context.Context, sessionID, userID uuid.UUID) (bool, error)
 
 	// bundle is the platform i18n bundle used by the Bil24 compat gateway
 	// (feature #478, W1-A3b) to localize bil24.* description keys per
@@ -160,7 +166,14 @@ type Server struct {
 	// flittAPIBaseURL overrides pay.flitt.com/api. Tests set it directly after New;
 	// in a deployed process FLITT_API_BASE_URL (cfg.FlittAPIBaseURL) is the seam.
 	flittAPIBaseURL string
+	// allpayAPIBaseURL overrides allpay.to/app the same way; in a deployed
+	// process ALLPAY_API_BASE_URL (cfg.AllPayAPIBaseURL) is the seam.
+	allpayAPIBaseURL string
 	// exportMaxRows lowers the CSV exports' row cap (hexport.DefaultMaxRows)
 	// when positive. Tests set it directly after New to reach the 413 path.
 	exportMaxRows int64
+	// posterReader reads posters for POST .../media/{id}/poster-facts: the
+	// Options.PosterReader stub, else the Anthropic reader built from
+	// POSTER_LLM_API_KEY, else nil (the route answers 503). See poster_facts_shims.go.
+	posterReader PosterReader
 }

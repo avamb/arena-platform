@@ -271,11 +271,20 @@ func (q *Queries) GetTicketPDFFormatByTicketID(ctx context.Context, ticketID uui
 const getOrgBrandingByTicketID = `-- name: GetOrgBrandingByTicketID :one
 SELECT o.name, o.website_url, o.legal_name, o.legal_address_line1, o.legal_address_line2,
        o.legal_address_postal_code, o.legal_address_city, o.legal_address_country,
-       o.contact_email, o.logo_media_id, o.sender_email, o.sender_verification_status
+       CASE WHEN NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') IS NOT NULL
+                 THEN btrim(sc.settings #>> '{hosted_page,public_contact,email}')
+            WHEN CASE WHEN sc.id IS NOT NULL THEN COALESCE(sc.settings #>> '{hosted_page,enabled}', '') = 'true'
+                 ELSE EXISTS (SELECT 1 FROM sales_channels h WHERE h.org_id = o.id AND h.deleted_at IS NULL
+                              AND h.settings #>> '{hosted_page,enabled}' = 'true') END THEN NULL
+            ELSE o.contact_email END AS contact_email,
+       o.logo_media_id, o.sender_email, o.sender_verification_status,
+       o.registration_number, o.tax_id, o.tax_id_scheme
 FROM   tickets t
 JOIN   sessions s ON s.id = t.session_id
 JOIN   events   e ON e.id = s.event_id
 JOIN   organizations o ON o.id = e.org_id
+LEFT JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
+LEFT JOIN sales_channels sc ON sc.id = cs.channel_id AND sc.org_id = o.id
 WHERE  t.id = $1`
 
 // OrgBrandingRow holds branding fields for populating a delivery payload.
@@ -292,11 +301,19 @@ type OrgBrandingRow struct {
 	LogoMediaID              *uuid.UUID `json:"logo_media_id"`
 	SenderEmail              *string    `json:"sender_email"`
 	SenderVerificationStatus string     `json:"sender_verification_status"`
+	RegistrationNumber       *string    `json:"registration_number"`
+	TaxID                    *string    `json:"tax_id"`
+	TaxIDScheme              *string    `json:"tax_id_scheme"`
 }
 
 // GetOrgBrandingByTicketID returns the org branding fields for the
 // organization that owns the given ticket. Used by delivery enqueueing
-// to populate the delivery.Payload org fields (AB-45).
+// to populate the delivery.Payload org fields (AB-45). ContactEmail is the
+// public e-mail of the ticket's sales page when it has one; NULL when the
+// ticket was sold through a hosted page without one (the organization's
+// contact_email is never published there - the letter points to the page's
+// contact form instead, see GetTicketContactRoute); else the organization's
+// contact_email (HP-4b).
 func (q *Queries) GetOrgBrandingByTicketID(ctx context.Context, ticketID uuid.UUID) (OrgBrandingRow, error) {
 	row := q.db.QueryRow(ctx, getOrgBrandingByTicketID, ticketID)
 	var b OrgBrandingRow
@@ -313,8 +330,72 @@ func (q *Queries) GetOrgBrandingByTicketID(ctx context.Context, ticketID uuid.UU
 		&b.LogoMediaID,
 		&b.SenderEmail,
 		&b.SenderVerificationStatus,
+		&b.RegistrationNumber,
+		&b.TaxID,
+		&b.TaxIDScheme,
 	)
 	return b, err
+}
+
+const getTicketContactRoute = `-- name: GetTicketContactRoute :one
+SELECT NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') AS public_email,
+       CASE WHEN sc.id IS NOT NULL THEN COALESCE(sc.settings #>> '{hosted_page,enabled}', '') = 'true'
+            ELSE EXISTS (SELECT 1 FROM sales_channels h WHERE h.org_id = o.id AND h.deleted_at IS NULL
+                         AND h.settings #>> '{hosted_page,enabled}' = 'true') END AS hosted_page,
+       NULLIF(btrim(o.contact_email), '') AS org_email,
+       COALESCE(op.slug, o.slug) AS page_slug,
+       CASE WHEN e.status = 'published' AND e.deleted_at IS NULL
+                    AND EXISTS (SELECT 1 FROM event_publications pub
+                                JOIN agent_feed_tokens pft ON pft.id = pub.feed_token_id
+                                JOIN sales_channels psc ON psc.id = pft.sales_channel_id
+                                WHERE pub.event_id = e.id AND pft.is_active = true
+                                  AND psc.org_id = o.id AND psc.deleted_at IS NULL
+                                  AND psc.settings #>> '{hosted_page,enabled}' = 'true')
+                   THEN e.slug END AS event_slug,
+       ` + ownerReachableSQL + ` AS owner_reachable,
+       ` + EventPromotedSQL + ` AS to_owner
+FROM   tickets t
+JOIN   sessions s ON s.id = t.session_id
+JOIN   events   e ON e.id = s.event_id
+JOIN   organizations o ON o.id = e.org_id
+LEFT JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
+LEFT JOIN sales_channels sc ON sc.id = cs.channel_id AND sc.org_id = o.id
+LEFT JOIN event_promoters ep ON ep.event_id = e.id AND ep.org_id = o.id
+LEFT JOIN org_promoters op ON op.id = ep.promoter_id AND op.org_id = o.id
+                          AND op.archived_at IS NULL AND NULLIF(btrim(op.slug), '') IS NOT NULL
+WHERE  t.id = $1`
+
+// TicketContactRoute is the raw material of a letter's organizer contact.
+type TicketContactRoute struct {
+	PublicEmail *string `json:"public_email"`
+	HostedPage  bool    `json:"hosted_page"`
+	OrgEmail    *string `json:"org_email"`
+	PageSlug    *string `json:"page_slug"`
+	EventSlug   *string `json:"event_slug"`
+	// OwnerReachable: the organization has an owner with an account e-mail,
+	// the contact form's last private recipient. The address is never read.
+	OwnerReachable bool `json:"owner_reachable"`
+	// ToOwner: the event belongs to a promoter (EventPromotedSQL), so the
+	// form's messages go to the organization's owner only and the letter
+	// links the form only when OwnerReachable.
+	ToOwner bool `json:"to_owner"`
+}
+
+// GetTicketContactRoute returns where a letter about the ticket sends the
+// buyer to reach the organizer: the sales page's public e-mail, the hosted
+// page's contact form, or the organization's contact_email (HP-4b review,
+// owner rule 2026-10-13). delivery.ContactRouteFor turns it into the letter's
+// e-mail or form link. EventSlug is set only for a published, not deleted
+// event that is still published on an active feed token of a hosted-page
+// channel (the hosted event page's own resolution; any other event page
+// answers 404, an unpublished one included), so the link then falls back to
+// the organization's or promoter's page.
+func (q *Queries) GetTicketContactRoute(ctx context.Context, ticketID uuid.UUID) (TicketContactRoute, error) {
+	var r TicketContactRoute
+	err := q.db.QueryRow(ctx, getTicketContactRoute, ticketID).Scan(
+		&r.PublicEmail, &r.HostedPage, &r.OrgEmail, &r.PageSlug, &r.EventSlug, &r.OwnerReachable, &r.ToOwner,
+	)
+	return r, err
 }
 
 // GetSenderIdentityByTicketID resolves the owning organization's Brevo sender
@@ -372,4 +453,38 @@ RETURNING id, display_number, name, slug, country, default_locale, reservation_t
 func (q *Queries) SoftDeleteOrganization(ctx context.Context, id uuid.UUID) (OrganizationRow, error) {
 	row := q.db.QueryRow(ctx, softDeleteOrganization, id)
 	return scanOrganizationRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListOrganizationSlugs
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listOrganizationSlugs = `-- name: ListOrganizationSlugs :many
+SELECT id, slug
+FROM   organizations
+WHERE  id = ANY($1::uuid[])
+  AND  deleted_at IS NULL`
+
+// ListOrganizationSlugs returns the public slug of each given active
+// organization, keyed by organization id, in one round trip. An unknown or
+// deleted organization is absent from the map.
+func (q *Queries) ListOrganizationSlugs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	out := make(map[uuid.UUID]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := q.db.Query(ctx, listOrganizationSlugs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var slug string
+		if err := rows.Scan(&id, &slug); err != nil {
+			return nil, err
+		}
+		out[id] = slug
+	}
+	return out, rows.Err()
 }

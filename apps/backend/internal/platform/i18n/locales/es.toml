@@ -261,7 +261,40 @@ other = "Ya no tienes acceso a esta organización. Si es un error, pide una nuev
 other = "No he entendido eso. Usa los botones de abajo."
 
 ["bot.stale_message"]
+other = "Este mensaje está desactualizado. Pulsa ☰ Menú abajo."
+
+["bot.stale_message_stranger"]
 other = "Este mensaje está desactualizado. Continúa más abajo."
+
+["bot.stale_message_stranger_restart"]
+other = "Este mensaje está desactualizado. Envía /start para continuar."
+
+["bot.menu_button"]
+other = "☰ Menú"
+
+["bot.menu_keyboard_note"]
+other = "El botón ☰ Menú bajo el campo de mensaje siempre abre el menú principal."
+
+["bot.cmd_menu"]
+other = "Abrir el menú principal"
+
+["bot.menu_leave_refund"]
+other = "La devolución del pedido n.º {{.Num}} aún no se ha enviado. Si abres el menú ahora, el comprador no recibe el dinero.\n\nPuedes volver a la devolución o abrir el menú."
+
+["bot.menu_back_refund_btn"]
+other = "↩ Volver a la devolución"
+
+["bot.menu_leave_refund_maybe"]
+other = "Es posible que la devolución del pedido n.º {{.Num}} ya haya empezado: el bot no recibió respuesta del servidor. Revisa el pedido antes de enviar la devolución otra vez.\n\nSi vuelves a la devolución y la envías de nuevo, el dinero no se devuelve dos veces. Si abres el menú, la devolución se queda aquí."
+
+["bot.menu_open_order_btn"]
+other = "📄 Abrir el pedido"
+
+["bot.ref.maybe_started"]
+other = "Es posible que esta devolución ya haya empezado: el bot no recibió respuesta del servidor. Revisa primero el pedido. Enviarla de nuevo no devuelve el dinero dos veces."
+
+["bot.menu_leave_btn"]
+other = "☰ Abrir el menú"
 
 ["bot.wz.new_event_btn"]
 other = "+ Evento"
@@ -786,7 +819,37 @@ other = "Pulsa «Guardar cambios»: los cambios llegarán a la página de ventas
 other = "Este evento tiene un plano de asientos o todavía no tiene fechas, así que no se puede editar desde el bot. Usa la página de administración."
 
 ["bot.wz.edit_tickets_differ"]
-other = "La fecha {{.When}} tiene entradas distintas a las de la primera; al guardar, las entradas que ves aquí se escribirán en todas las fechas."
+other = "Las sesiones de este evento tienen categorías distintas. Para cambiarlas, pulsa «Precios y categorías» y elige la sesión."
+
+["bot.wz.summary_tickets_by_date"]
+other = "Las sesiones tienen categorías distintas:"
+
+["bot.wz.ask_t_date"]
+other = "Elige la sesión cuyos precios y categorías quieres cambiar. O pulsa «Para todas las sesiones»."
+
+["bot.wz.t_date_all_btn"]
+other = "Para todas las sesiones"
+
+["bot.wz.t_for_all"]
+other = "Categorías de todas las sesiones"
+
+["bot.wz.t_for_date"]
+other = "Categorías de la sesión {{.When}}"
+
+["bot.wz.ask_s_tickets"]
+other = "Categorías de la sesión {{.N}}.\nEn la sesión {{.Prev}}: {{.List}}\n¿Usas las mismas categorías o defines otras nuevas para esta sesión?"
+
+["bot.wz.s_tickets_same_btn"]
+other = "Las mismas que en {{.Prev}}"
+
+["bot.wz.s_tickets_own_btn"]
+other = "Definir nuevas"
+
+["bot.wz.ack_tickets"]
+other = "Categorías"
+
+["bot.wz.ask_more_sessions_edit"]
+other = "¿Añadir otra sesión a este evento?"
 
 ["bot.wz.edit_changed_meanwhile"]
 other = "«{{.Name}}» se ha modificado en otro sitio (la web o la administración) después de que lo abrieras. ¿Guardar tu versión por encima?"
@@ -813,7 +876,7 @@ other = "Estoy esperando un cartel como archivo o foto. Para escribir el nombre 
 other = "<b>✏️ Editando · {{.Title}}</b>\n"
 
 ["bot.wz.edit_home_btn"]
-other = "⬅ Volver al evento"
+other = "↩ Volver sin guardar"
 
 ["bot.wz.edit_field_name"]
 other = "Nombre"
@@ -872,9 +935,6 @@ other = "Quitar la descripción"
 ["bot.wz.edit_card_title"]
 other = "<b>✏️ Editando el evento</b>\n"
 
-["bot.wz.edit_card_changed"]
-other = "✎ Cambiado: {{.List}}. Nada de esto está aún en la web: pulsa «Publicar cambios» cuando todo esté listo."
-
 ["bot.wz.edit_card_clean"]
 other = "Elige qué cambiar. Cada cambio tiene su propia pantalla corta."
 
@@ -906,7 +966,7 @@ other = "Precios y categorías"
 other = "✅ Publicar cambios"
 
 ["bot.wz.edit_exit_btn"]
-other = "Salir"
+other = "✖ Salir sin publicar"
 
 ["bot.wz.ask_t_cat_last"]
 other = "¿«{{.Name}}» es la última categoría o le seguirá otra? La última se vende hasta que empieza la sesión."
@@ -936,7 +996,7 @@ other = "¿Salir de la edición? Los cambios aún no están publicados. Puedes c
 other = "▶ Continuar"
 
 ["bot.wz.cancel_keep_btn"]
-other = "💾 Guardar y salir"
+other = "💾 Conservar el borrador"
 
 ["bot.wz.cancel_drop_btn"]
 other = "🗑 Eliminar el borrador"
@@ -1143,7 +1203,7 @@ other = "Crea eventos y consulta las ventas de Arena Sold Out sin salir de Teleg
 other = "Eventos y ventas de Arena Sold Out en Telegram"
 
 ["bot.ses.cancel_word"]
-other = "CANCELAR"
+other = "CANCELAR SESIÓN"
 
 ["bot.ses.type_ask"]
 other = "⚠️ <b>Atención: esta acción no se puede deshacer.</b>\nTodavía no se ha cancelado nada.\n\n{{.Subject}}\nCorreos a compradores: {{.Orders}}.{{if .Orders}}\n\n💶 La plataforma NO devuelve el dinero. Los pedidos siguen pagados. Las entradas siguen siendo válidas. Gestiona los reembolsos tú directamente con los compradores.{{end}}\n\nPara cancelar, <b>escribe {{.Word}}</b> y envíalo. Para conservar la sesión, pulsa «Atrás»."
@@ -1155,7 +1215,7 @@ other = "Sesión: <b>{{.Old}}</b>"
 other = "Evento: <b>{{.Name}}</b>: las {{.N}} sesiones"
 
 ["bot.ses.type_wrong"]
-other = "Esa no es la palabra, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
+other = "El texto no coincide, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
 
 ["bot.ses.done_refund_note"]
 other = "💶 No se ha devuelto dinero automáticamente y las entradas siguen siendo válidas. Gestiona los reembolsos tú directamente con los compradores."
@@ -1561,7 +1621,7 @@ other = "Pedidos"
 other = "<b>Pedidos: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · página {{.Page}} de {{.Pages}}.{{.Search}}\n{{.Legend}}\nPulsa un pedido para abrirlo. Para buscar, escribe un código de barras, un número de pedido, un e-mail, un teléfono o un nombre."
 
 ["bot.ord.legend"]
-other = "✅ pagado  ⏳ pendiente de pago  ⌛ caducado  ✖ cancelado  ↩ reembolsado  ⚠️📧 e-mail de entradas no enviado"
+other = "✅ pagado  ⏳ pendiente de pago  ⌛ caducado  ✖ cancelado  ↩ reembolsado  ⚠️📧 un e-mail no llegó al comprador"
 
 ["bot.ord.letter_tickets_none"]
 other = "📧 E-mail de entradas: Arena no lo envió."
@@ -1587,6 +1647,15 @@ other = "⚠️📧 E-mail de entradas: enviado para {{.Done}} de {{.Total}} ent
 ["bot.ord.letter_tickets_failed"]
 other = "⚠️📧 E-mail de entradas: Arena no pudo enviarlo{{if .To}} a {{.To}}{{end}}.{{if .Why}} Motivo: {{.Why}}{{end}}"
 
+["bot.ord.letter_tickets_delayed"]
+other = "📧 E-mail de entradas: la entrega se retrasa{{if .To}} ({{.To}}){{end}}. El servidor de correo del comprador pidió reintentar más tarde. El servicio de correo lo reintentará solo."
+
+["bot.ord.letter_tickets_stuck"]
+other = "⚠️📧 E-mail de entradas: enviado{{if .When}} el {{.When}}{{end}}, pero no entregado{{if .To}} a {{.To}}{{end}} en 6 horas. Lo más probable es que el comprador no lo haya recibido. Envía el e-mail de nuevo o escribe al comprador."
+
+["bot.ord.letter_tickets_bounced"]
+other = "⚠️📧 El e-mail de entradas no llegó{{if .To}} a {{.To}}{{end}}: el servidor de correo del comprador lo rechazó.{{if .Why}} Motivo: {{.Why}}{{end}} Revisa la dirección y envía el e-mail de nuevo."
+
 ["bot.ord.letter_refund_off"]
 other = "📧 E-mail de reembolso: elegiste no enviarlo."
 
@@ -1607,6 +1676,15 @@ other = "📧 E-mail de reembolso: el comprador lo abrió{{if .When}} el {{.When
 
 ["bot.ord.letter_refund_failed"]
 other = "⚠️📧 E-mail de reembolso: Arena no pudo enviarlo{{if .When}} (último intento el {{.When}}){{end}}. El operador lo sabe."
+
+["bot.ord.letter_refund_delayed"]
+other = "📧 E-mail de reembolso: la entrega se retrasa{{if .To}} ({{.To}}){{end}}. El servicio de correo lo reintentará solo."
+
+["bot.ord.letter_refund_stuck"]
+other = "⚠️📧 E-mail de reembolso: enviado{{if .When}} el {{.When}}{{end}}, pero no entregado{{if .To}} a {{.To}}{{end}} en 6 horas. Lo más probable es que el comprador no lo haya recibido. Avisa tú mismo al comprador del reembolso."
+
+["bot.ord.letter_refund_bounced"]
+other = "⚠️📧 El e-mail de reembolso no llegó{{if .To}} a {{.To}}{{end}}: el servidor de correo del comprador lo rechazó.{{if .Why}} Motivo: {{.Why}}{{end}} El reembolso está hecho. Avísale tú mismo al comprador."
 
 ["bot.ord.letter_retry_btn"]
 other = "📧 Enviar de nuevo el e-mail de entradas"
@@ -1752,11 +1830,14 @@ other = "Mensaje del proveedor de pago: {{.Msg}}"
 ["bot.ord.cancel_btn"]
 other = "Cancelar pedido sin pagar"
 
+["bot.ord.cancel_word"]
+other = "CANCELAR PEDIDO"
+
 ["bot.ord.cancel_ask"]
-other = "⚠️ <b>Último paso: todavía no se ha cancelado nada.</b>\n\nPedido №{{.Num}} · {{.Amount}}\nEl pedido se cierra y la reserva de sus plazas termina. Las plazas vuelven a la venta. Esto no se puede deshacer.\n\nPara cancelar, <b>escribe la palabra {{.Word}}</b> y envíala como mensaje. Para conservar el pedido, pulsa «Atrás»."
+other = "⚠️ <b>Último paso: todavía no se ha cancelado nada.</b>\n\nPedido №{{.Num}} · {{.Amount}}\nEl pedido se cierra y la reserva de sus plazas termina. Las plazas vuelven a la venta. Esto no se puede deshacer.\n\nPara cancelar, <b>escribe {{.Word}}</b> y envíalo como mensaje. Para conservar el pedido, pulsa «Atrás»."
 
 ["bot.ord.cancel_wrong"]
-other = "Esa no es la palabra, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
+other = "El texto no coincide, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
 
 ["bot.ord.cancel_done"]
 other = "✔ El pedido está cancelado y sus plazas vuelven a estar libres."
@@ -1851,7 +1932,7 @@ other = "✔ «{{.Name}}» está eliminado."
 other = "⚠️ <b>Último paso: todavía no se ha eliminado nada.</b>\n\n«{{.Name}}»: fechas: {{.N}}, sin pedidos pagados y sin entradas vendidas. El evento y sus fechas se eliminarán. No se puede deshacer.\n\nPara eliminar, <b>escribe la palabra {{.Word}}</b> y envíala como mensaje. Para conservar el evento, pulsa «Atrás»."
 
 ["bot.evs.delete_wrong"]
-other = "Esa no es la palabra, así que no se ha eliminado nada. Para eliminar, escribe exactamente: {{.Word}}"
+other = "El texto no coincide, así que no se ha eliminado nada. Para eliminar, escribe exactamente: {{.Word}}"
 
 ["bot.evs.delete_blocked"]
 other = "🚫 <b>«{{.Name}}» no se puede eliminar.</b>\n\nTiene {{.Orders}} pedido(s) pagado(s) y {{.Tickets}} entrada(s) vendida(s). Los compradores tienen entradas válidas, así que el evento se queda. Puedes archivarlo: la venta se detiene, el evento sale de tus listas y las entradas siguen siendo válidas."
@@ -2073,7 +2154,7 @@ other = "🚫 Anular invitación"
 other = "🚫 <b>¿Anular esta invitación?</b>\n\n{{.Guest}}\n{{.Event}} · {{.When}}\n\nLa entrada y su código de barras dejan de funcionar al instante y la plaza vuelve a la venta. No se puede deshacer y Arena no avisa al invitado: escríbele tú.\n\nPara anular, escribe la palabra <b>{{.Word}}</b> como mensaje."
 
 ["bot.inv.revoke_wrong"]
-other = "Esa no es la palabra, así que no se ha anulado nada. Para anular, escribe {{.Word}} o pulsa «Atrás»."
+other = "El texto no coincide, así que no se ha anulado nada. Para anular, escribe {{.Word}} o pulsa «Atrás»."
 
 ["bot.inv.revoke_word"]
 other = "ANULAR"
@@ -2274,7 +2355,7 @@ other = "El archivo de uso es demasiado grande para enviarlo por el chat."
 other = "🗑 <b>¿Eliminar el código {{.Code}}?</b>\n\nVeces usado: {{.Count}}. Al eliminarlo, el código sale de la lista, su uso ya no se puede abrir ni exportar aquí y su nombre sigue ocupado, así que ningún código nuevo podrá llamarse igual. Si solo quieres detenerlo, mejor ponlo en pausa. Los pedidos ya pagados no cambian.\n\nPara eliminarlo, escribe exactamente: {{.Word}}"
 
 ["bot.promo.delete_wrong"]
-other = "Esa no es la palabra, así que no se eliminó nada. Para eliminar, escribe exactamente: {{.Word}}"
+other = "El texto no coincide, así que no se ha eliminado nada. Para eliminar, escribe exactamente: {{.Word}}"
 
 ["bot.promo.delete_word"]
 other = "ELIMINAR"
@@ -2831,7 +2912,7 @@ other = "☐ No enviar un correo al comprador"
 other = "DEVOLVER"
 
 ["bot.ref.word_wrong"]
-other = "Esa no es la palabra de confirmación. No se devolvió nada. Escribe {{.Word}} para confirmar o vuelve atrás."
+other = "El texto no coincide, así que no se ha devuelto nada. Para confirmar, escribe {{.Word}} o vuelve atrás."
 
 ["bot.ref.done_head"]
 other = "<b>Devolución solicitada · pedido n.º {{.Num}}</b>"
@@ -2955,6 +3036,15 @@ other = "No se envía ningún correo al comprador."
 ["bot.ref.cancelled"]
 other = "Cancelado. No se devolvió nada."
 
+["bot.ref.cancel_maybe_started"]
+other = "Es posible que la devolución del pedido n.º {{.Num}} ya haya empezado: el bot no recibió respuesta del servidor. Por eso el bot no la canceló.\n\nRevisa el pedido. Si el dinero no se devolvió, pulsa otra vez «💸 Devolver dinero» en el pedido. El bot envía la misma operación y el dinero no se devuelve dos veces."
+
+["bot.ref.other_maybe_started"]
+other = "Es posible que la devolución del pedido n.º {{.Num}} ya haya empezado: el bot no recibió respuesta del servidor.\n\nPrimero abre esa devolución y envíala otra vez. El bot repite la misma operación y el dinero no se devuelve dos veces. Después puedes devolver el dinero de otro pedido."
+
+["bot.ref.other_open_btn"]
+other = "💸 Devolución del pedido n.º {{.Num}}"
+
 ["bot.ref.sending"]
 other = "Enviando la devolución… El proveedor de pago puede tardar unos minutos; mientras tanto el bot sigue funcionando y escribirá aquí cuando llegue la respuesta."
 
@@ -3056,3 +3146,467 @@ other = "Arena no cobró nada por el pedido n.º {{.Num}} (un pedido gratuito o 
 
 ["bot.ref.unknown_provider"]
 other = "Arena no conoce el proveedor de pago del pedido n.º {{.Num}}, así que no puede devolver el dinero. Devuélvelo en el panel del proveedor o escribe a soporte. No se envió nada."
+
+["bot.og.btn"]
+other = "🏢 Datos de la organización"
+
+["bot.og.owner_only"]
+other = "Solo el propietario de la organización puede cambiar sus datos. Pídeselo al propietario o vuelve al menú."
+
+["bot.og.card"]
+other = "🏢 <b>Datos de la organización</b> · {{.Org}}"
+
+["bot.og.card_where"]
+other = "Los compradores ven estos datos en la página de venta cuando muestras los datos del vendedor, y también en los correos con entradas y en las entradas PDF."
+
+["bot.og.line_legal_name"]
+other = "Razón social: {{.Value}}"
+
+["bot.og.line_legal_form"]
+other = "Forma jurídica: {{.Value}}"
+
+["bot.og.line_reg"]
+other = "Número de registro: {{.Value}}"
+
+["bot.og.line_tax"]
+other = "Número fiscal: {{.Value}}"
+
+["bot.og.line_address"]
+other = "Dirección legal: {{.Value}}"
+
+["bot.og.pages_title"]
+other = "<b>Páginas de venta</b>"
+
+["bot.og.pages_none"]
+other = "Tu organización aún no tiene página de venta. Aparece cuando publicas el primer evento."
+
+["bot.og.state_shown"]
+other = "✅ los datos del vendedor se muestran en la página"
+
+["bot.og.state_incomplete"]
+other = "⬜ los datos del vendedor aún no se muestran: faltan datos"
+
+["bot.og.state_operator_hidden"]
+other = "⬜ el operador de la plataforma ocultó los datos del vendedor"
+
+["bot.og.status_complete"]
+other = "✅ Los datos del vendedor están completos. Se muestran en tus páginas de venta."
+
+["bot.og.none"]
+other = "sin indicar"
+
+["bot.og.now"]
+other = "Ahora: {{.Value}}"
+
+["bot.og.missing_title"]
+other = "Los datos del vendedor no están completos, así que aún no se muestran en la página. Por favor, completa:"
+
+["bot.og.m_legal_name"]
+other = "razón social"
+
+["bot.og.m_tax_id"]
+other = "número fiscal"
+
+["bot.og.m_address_line1"]
+other = "calle y número de la dirección legal"
+
+["bot.og.m_address_city"]
+other = "ciudad de la dirección legal"
+
+["bot.og.m_address_postal_code"]
+other = "código postal de la dirección legal"
+
+["bot.og.m_public_email"]
+other = "correo público de esta página de venta"
+
+["bot.og.btn_legal_name"]
+other = "✏ Razón social"
+
+["bot.og.btn_legal_form"]
+other = "✏ Forma jurídica"
+
+["bot.og.btn_reg"]
+other = "✏ N.º de registro"
+
+["bot.og.btn_tax"]
+other = "✏ Número fiscal"
+
+["bot.og.btn_address"]
+other = "✏ Calle"
+
+["bot.og.btn_city"]
+other = "✏ Ciudad"
+
+["bot.og.btn_postcode"]
+other = "✏ Código postal"
+
+["bot.og.btn_country"]
+other = "✏ País"
+
+["bot.og.btn_page"]
+other = "🌐 Página de venta: {{.Name}}"
+
+["bot.og.q_legal_name"]
+other = "✏ <b>Razón social</b> como en los documentos de registro. Por ejemplo, «Teatro Ejemplo S.L.» o tu nombre completo."
+
+["bot.og.q_legal_form"]
+other = "✏ <b>Forma jurídica</b>. Por ejemplo, S.L., s.r.o., GmbH o «autónomo». Hasta 80 caracteres."
+
+["bot.og.q_reg"]
+other = "✏ <b>Número de registro</b> en el registro mercantil, si lo tienes. Hasta 60 caracteres."
+
+["bot.og.q_address"]
+other = "✏ <b>Calle y número</b> de la dirección legal. La ciudad y el código postal tienen sus propios botones."
+
+["bot.og.q_city"]
+other = "✏ <b>Ciudad</b> de la dirección legal."
+
+["bot.og.q_postcode"]
+other = "✏ <b>Código postal</b> de la dirección legal."
+
+["bot.og.q_country"]
+other = "✏ <b>País</b> de la dirección legal: dos letras, por ejemplo ES, CZ o IL. O pulsa el botón de abajo."
+
+["bot.og.q_scheme"]
+other = "🧾 <b>Número fiscal.</b> Elige su tipo."
+
+["bot.og.scheme_eu_vat"]
+other = "NIF-IVA de la UE"
+
+["bot.og.scheme_gb_vat"]
+other = "IVA del Reino Unido"
+
+["bot.og.scheme_il_vat"]
+other = "Israel: número de empresa o de identidad"
+
+["bot.og.scheme_us_ein"]
+other = "EE. UU.: EIN"
+
+["bot.og.scheme_other"]
+other = "Otro número (NIF, IČO y otros)"
+
+["bot.og.q_tax_eu_vat"]
+other = "✏ Envía el <b>NIF-IVA</b> con el código del país. Por ejemplo, ESB12345678 o CZ12345678."
+
+["bot.og.q_tax_gb_vat"]
+other = "✏ Envía el <b>número de IVA del Reino Unido</b>. Por ejemplo, GB123456789."
+
+["bot.og.q_tax_il_vat"]
+other = "✏ Envía el <b>número israelí</b>: 9 cifras. Por ejemplo, 512345678."
+
+["bot.og.q_tax_us_ein"]
+other = "✏ Envía el <b>EIN</b>. Por ejemplo, 12-3456789."
+
+["bot.og.q_tax_other"]
+other = "✏ Envía el <b>número fiscal</b> como aparece en tus documentos. Por ejemplo, un NIF español o un IČO checo."
+
+["bot.og.other_scheme_btn"]
+other = "🔁 Otro tipo de número"
+
+["bot.og.page_card"]
+other = "🌐 <b>Página de venta: {{.Name}}</b>"
+
+["bot.og.page_where"]
+other = "Los compradores ven el teléfono en esta página de venta cuando los datos del vendedor están visibles. La página no muestra el correo: los compradores te escriben con el formulario de la página y los mensajes llegan a esta dirección. Los correos con entradas y las entradas en PDF de esta página muestran esta dirección, y las respuestas de los compradores a esos correos llegan a ella. Usa una dirección para entradas, no tu buzón personal."
+
+["bot.og.line_email"]
+other = "✉ Correo para mensajes de compradores: {{.Value}}"
+
+["bot.og.line_phone"]
+other = "📞 Teléfono público: {{.Value}}"
+
+["bot.og.line_state"]
+other = "Datos del vendedor en la página: {{.Value}}"
+
+["bot.og.btn_email"]
+other = "✏ Correo"
+
+["bot.og.btn_phone"]
+other = "✏ Teléfono"
+
+["bot.og.q_email"]
+other = "✏ <b>Correo público</b> de esta página de venta. Por ejemplo, tickets@tu-web.com."
+
+["bot.og.q_phone"]
+other = "✏ <b>Teléfono público</b> con el prefijo del país. Por ejemplo, +34 600 000 000. Puedes dejarlo vacío."
+
+["bot.og.personal_email"]
+other = "💡 Parece un buzón personal. Te sugerimos una dirección aparte para entradas, por ejemplo tickets@tu-web.com. Si lo prefieres, puedes dejar esta."
+
+["bot.og.clear_btn"]
+other = "🗑 Borrar"
+
+["bot.og.cancel_btn"]
+other = "« Cancelar"
+
+["bot.og.saved"]
+other = "✅ Guardado."
+
+["bot.og.cleared"]
+other = "✅ Borrado."
+
+["bot.og.channel_gone"]
+other = "Esta página de venta ya no está en la lista. Aquí tienes los datos actuales."
+
+["bot.og.err_legal_name"]
+other = "Escribe la razón social, hasta 200 caracteres."
+
+["bot.og.err_legal_form"]
+other = "Escribe la forma jurídica, hasta 80 caracteres."
+
+["bot.og.err_reg"]
+other = "Escribe el número de registro, hasta 60 caracteres."
+
+["bot.og.err_address"]
+other = "Escribe la calle y el número, hasta 200 caracteres."
+
+["bot.og.err_city"]
+other = "Escribe la ciudad, hasta 100 caracteres."
+
+["bot.og.err_postcode"]
+other = "Escribe el código postal, hasta 20 caracteres."
+
+["bot.og.err_country"]
+other = "Escribe dos letras latinas del país, por ejemplo ES."
+
+["bot.og.err_tax_eu_vat"]
+other = "No parece un NIF-IVA de la UE. Empieza con el código del país, por ejemplo ESB12345678. Si tienes un NIF o IČO sin código, pulsa «Otro tipo de número»."
+
+["bot.og.err_tax_gb_vat"]
+other = "No parece un número de IVA del Reino Unido. Ejemplo: GB123456789."
+
+["bot.og.err_tax_il_vat"]
+other = "El número israelí tiene 9 cifras. Ejemplo: 512345678."
+
+["bot.og.err_tax_us_ein"]
+other = "El EIN tiene esta forma: 12-3456789."
+
+["bot.og.err_tax_other"]
+other = "Escribe el número en una línea, de 2 a 64 caracteres."
+
+["bot.og.err_tax_api"]
+other = "Arena no aceptó el número fiscal. Revisa el número y su tipo. Si estás cambiando otro campo, corrige primero el número fiscal."
+
+["bot.og.err_email"]
+other = "No parece una dirección de correo. Revísala, por ejemplo tickets@tu-web.com."
+
+["bot.og.err_phone"]
+other = "No parece un número de teléfono. Usa cifras con el prefijo del país, por ejemplo +34 600 000 000."
+
+["bot.og.line_form_tg"]
+other = "💬 Mensajes de compradores en el chat de ventas: {{.Value}}"
+
+["bot.og.form_tg_on"]
+other = "activados"
+
+["bot.og.form_tg_off"]
+other = "desactivados"
+
+["bot.og.btn_form_tg_on"]
+other = "💬 Enviar mensajes de compradores al chat de ventas"
+
+["bot.og.btn_form_tg_off"]
+other = "💬 No enviar mensajes de compradores al chat de ventas"
+
+["bot.og.form_tg_saved_on"]
+other = "✅ Los mensajes de compradores ahora también llegan a tu chat de ventas."
+
+["bot.og.form_tg_saved_off"]
+other = "✅ Los mensajes de compradores ahora solo llegan al correo de la página de venta."
+
+["bot.og.block_hidden"]
+other = "⚠️ Un campo obligatorio está vacío, así que los datos del vendedor no se muestran en las páginas de venta: {{.N}}. Volverán a aparecer en cuanto rellenes el campo."
+
+["contact.email.subject"]
+other = "Mensaje de un comprador: {{.Name}}"
+
+["contact.email.intro"]
+other = "Un comprador te escribió con el formulario de contacto de tu página de venta de Arena."
+
+["contact.email.from"]
+other = "De"
+
+["contact.email.page"]
+other = "Página de venta"
+
+["contact.email.reply"]
+other = "Para contestar al comprador, responde a este correo. Arena no ve tu respuesta."
+
+["contact.email.footer"]
+other = "Arena Sold Out envió este mensaje porque el formulario de contacto de tu página de venta está activo."
+
+["bot.web.btn"]
+other = "🌐 Abrir en el navegador"
+
+["bot.web.link"]
+other = "Aquí tienes tu enlace al centro de eventos web. Funciona una vez y durante 5 minutos. No lo reenvíes: con este enlace se entra en tu nombre."
+
+["bot.web.open_btn"]
+other = "Abrir el centro de eventos"
+
+["bot.web.private_only"]
+other = "El bot envía el enlace de acceso solo en un chat privado. Escribe al bot directamente y pulsa «🌐 Abrir en el navegador»."
+
+["bot.web.not_configured"]
+other = "El centro de eventos web aún no está conectado. Puedes hacerlo todo aquí, en el bot."
+
+["bot.web.superadmin"]
+other = "Eres superadmin de la plataforma. Trabaja en la consola de administración: el centro de eventos web no da enlace a un superadmin."
+
+["bot.web.failed"]
+other = "No pudimos crear el enlace. Inténtalo de nuevo dentro de un minuto. Si sigue sin funcionar, escribe a soporte."
+
+["bot.web.signed_in"]
+other = "Has entrado en el centro de eventos web con un enlace de este chat ({{.Time}} UTC). Si no has sido tú, pulsa «Cerrar sesión en todas partes». Si el botón ya no está, abre «☰ Menú» y luego «🌐 Abrir en el navegador»."
+
+["bot.web.signout_btn"]
+other = "🚪 Cerrar sesión en todas partes"
+
+["bot.web.signed_out"]
+other = "Listo. Todas las sesiones del centro de eventos web están cerradas. Una página ya abierta puede funcionar hasta 15 minutos más. Para entrar de nuevo, pulsa «🌐 Abrir en el navegador»."
+
+["bot.web.signout_failed"]
+other = "No pudimos cerrar las sesiones. Inténtalo de nuevo dentro de un minuto."
+
+# U-5b: undo, preview and the new date's summary on the edit card
+
+["bot.wz.edit_undone"]
+other = "↩ Deshecho: {{.What}}. El resto del borrador no cambia."
+
+["bot.wz.edit_undo_btn"]
+other = "↩ Deshacer: {{.What}}"
+
+["bot.wz.edit_undo_date"]
+other = "nueva fecha {{.When}}"
+
+["bot.wz.edit_undo_tickets"]
+other = "categorías de {{.When}}"
+
+["bot.wz.edit_card_changes"]
+other = "<b>✎ Cambiado:</b>\n{{.List}}"
+
+["bot.wz.edit_card_hint"]
+other = "Los cambios no están en la web hasta que pulses «Publicar cambios». Para deshacer un cambio, pulsa su botón «↩ Deshacer». Para deshacerlo todo, pulsa «Salir sin publicar»."
+
+["bot.wz.edit_card_partly_saved"]
+other = "Parte de los cambios ya está en la web: el guardado se detuvo a medias. Pulsa «Publicar cambios» para enviar el resto."
+
+["bot.wz.edit_to_card_btn"]
+other = "⬅ A la ficha del evento"
+
+["bot.wz.edit_chg_none"]
+other = "ninguno"
+
+["bot.wz.edit_chg_field"]
+other = "{{.What}}: {{.Old}} → {{.New}}"
+
+["bot.wz.edit_chg_name"]
+other = "Nombre: «{{.Old}}» → «{{.New}}»"
+
+["bot.wz.edit_chg_description"]
+other = "Descripción: texto nuevo"
+
+["bot.wz.edit_chg_description_removed"]
+other = "Descripción: eliminada"
+
+["bot.wz.edit_chg_poster"]
+other = "Cartel: uno nuevo"
+
+["bot.wz.edit_chg_date"]
+other = "Nueva fecha {{.When}} · {{.Venue}}, {{.Capacity}} plazas. {{.List}}"
+
+["bot.wz.edit_chg_tickets"]
+other = "Categorías de la sesión {{.When}}: {{.List}}"
+
+["bot.wz.cancel_draft_empty"]
+other = "El borrador no tiene cambios."
+
+["bot.wz.cancel_draft_has"]
+other = "<b>El borrador contiene:</b>\n{{.List}}"
+
+["bot.wz.summary_no_categories"]
+other = "sin categorías"
+
+["bot.wz.t_for_one"]
+other = "Categorías"
+
+["bot.wz.t_progress"]
+other = "<b>{{.What}} · paso {{.N}} de {{.Total}}</b>"
+
+["bot.wz.t_nothing_yet"]
+other = "Nada cambia hasta que respondas la última pregunta."
+
+["bot.wz.t_date_all_note"]
+other = "«Para todas las sesiones» da a todas la forma de venta de la primera: «{{.Value}}»."
+
+["bot.wz.s_tickets_trimmed"]
+other = "Los cambios de precio y las etapas de venta posteriores al {{.Date}} no encajan en esta fecha. Los quité o los moví al {{.Date}} ({{.Count}})."
+
+["bot.wz.s_removed"]
+other = "Quité la fecha {{.When}} del borrador."
+
+["bot.wz.s_confirm"]
+other = "<b>Fecha {{.N}}</b>: {{.When}}, {{.Venue}}, {{.City}}, {{.Capacity}} plazas.\nCategorías: {{.List}}\n\n¿Todo correcto? Pulsa «Siguiente». Llega a la web solo después de «Publicar cambios»."
+
+["bot.wz.s_confirm_same"]
+other = "como en la sesión {{.Prev}}:"
+
+["bot.wz.s_confirm_own_btn"]
+other = "✏️ Definir sus propias categorías"
+
+["bot.wz.s_confirm_cap_btn"]
+other = "🔢 Cambiar las plazas"
+
+["bot.wz.s_confirm_drop_btn"]
+other = "🗑 Quitar esta fecha"
+
+["bot.wz.s_confirm_next_btn"]
+other = "Siguiente →"
+
+["bot.wz.preview_title"]
+other = "<b>Lo que va a la web</b>\n"
+
+["bot.wz.preview_new_date"]
+other = "Nueva fecha {{.When}} · {{.Venue}}, {{.Capacity}} plazas. {{.List}}"
+
+["bot.wz.preview_date_tickets"]
+other = "Sesión {{.When}}, categorías nuevas: {{.List}}"
+
+["bot.wz.preview_date_resent"]
+other = "La sesión {{.When}} se envía de nuevo, sus categorías no cambian."
+
+["bot.wz.preview_unchanged"]
+other = "Sin cambios: {{.List}}."
+
+["bot.wz.preview_already"]
+other = "Ya en la web: {{.List}}."
+
+["bot.wz.preview_no_categories"]
+other = "La sesión {{.When}} no tiene categorías. No recibe la moneda nueva. Dale categorías con «Precios y categorías»."
+
+["bot.wz.preview_warn_closed"]
+other = "Sesión {{.When}}: la categoría {{.Old}} quedará cerrada. Las entradas vendidas siguen siendo válidas."
+
+["bot.wz.preview_warn_renamed"]
+other = "Sesión {{.When}}: la categoría {{.Old}} quedará cerrada y en su lugar se creará {{.New}}. Un nombre nuevo es una categoría nueva. Las entradas vendidas siguen siendo válidas."
+
+["bot.wz.preview_warn_closed_many"]
+other = "Sesión {{.When}}: las categorías {{.Old}} quedarán cerradas. Las entradas vendidas siguen siendo válidas."
+
+["bot.wz.preview_warn_renamed_many"]
+other = "Sesión {{.When}}: las categorías {{.Old}} quedarán cerradas. En su lugar habrá otras nuevas: {{.New}}. Un nombre nuevo es una categoría nueva. Las entradas vendidas siguen siendo válidas."
+["bot.wz.preview_warn_places"]
+other = "La categoría cerrada conserva sus plazas. Por eso la sesión tendrá más plazas en total."
+
+
+["bot.wz.preview_footer"]
+other = "Pulsa «Publicar» para enviarlo. Las entradas vendidas no cambian: un precio nuevo se aplica a las próximas compras."
+
+["bot.wz.preview_publish_btn"]
+other = "✅ Publicar"
+
+["bot.wz.preview_back_btn"]
+other = "← Volver a la ficha"
+
+["bot.wz.warn_tier_not_in_payload"]
+other = "Las categorías que no están en la lista nueva quedaron cerradas. Las entradas vendidas siguen siendo válidas."

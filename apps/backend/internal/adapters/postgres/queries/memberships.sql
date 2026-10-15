@@ -81,6 +81,18 @@ FROM (
 ) effective_roles
 ORDER BY role;
 
+-- name: HasPlatformRole :one
+-- True when the user holds ANY platform-level role: a user_roles row with no
+-- organization (platform_superadmin, platform_operator, admin, ...). Such a
+-- person works in admin-web: the web event center never signs them in without
+-- a password (WL-1, spec 37 section 1 item 4).
+SELECT EXISTS (
+    SELECT 1
+    FROM   user_roles ur
+    WHERE  ur.user_id = $1
+      AND  ur.org_id IS NULL
+);
+
 -- name: ListMembershipsByUser :many
 -- Returns all active memberships for a user across every organization they
 -- belong to. Used by the GET /v1/me current-user context endpoint (feature #211)
@@ -153,3 +165,27 @@ FROM (
       AND  ur.org_id IS NULL
 ) effective_roles
 ORDER BY role;
+
+-- name: LockOrgOwners :exec
+-- Serialises every change that can take an owner (membership role org_admin)
+-- away from an organization: take it as the FIRST statement of the
+-- transaction, then count the other owners under it (CountOtherActiveOrgAdmins).
+-- An advisory lock keyed on the organization, not a row lock on organizations,
+-- because FOR UPDATE on the row would also block the FOR KEY SHARE every child
+-- insert takes.
+SELECT pg_advisory_xact_lock(hashtextextended('org_owners:' || $1::text, 0));
+
+-- name: CountOtherActiveOrgAdmins :one
+-- How many active owners the organization has besides $2: active org_admin
+-- memberships whose user is neither deactivated nor anonymized (GDPR erasure
+-- sets anonymized_at only). A person who cannot sign in is no
+-- owner. The caller holds LockOrgOwners.
+SELECT count(*)
+FROM   memberships m
+JOIN   users u ON u.id = m.user_id
+WHERE  m.org_id = $1
+  AND  m.role = 'org_admin'
+  AND  m.status = 'active'
+  AND  u.deactivated_at IS NULL
+  AND  u.anonymized_at IS NULL
+  AND  m.user_id <> $2;

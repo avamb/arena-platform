@@ -98,10 +98,23 @@ type summaryTickets struct {
 }
 
 // summaryEntered is the door count: Used valid tickets were scanned, Total
-// is every valid ticket ("entered N of M").
+// is every valid ticket ("entered N of M"). BySource splits the admitted
+// scans by who reported them (scan_events.source, migration 0154): arena's
+// own scanner or MACS. A ticket admitted by both counts under both, so the
+// per-source Tickets do not have to add up to Used.
 type summaryEntered struct {
-	Used  int64 `json:"used"`
-	Total int64 `json:"total"`
+	Used     int64              `json:"used"`
+	Total    int64              `json:"total"`
+	BySource []summaryAdmission `json:"by_source"`
+}
+
+// summaryAdmission is the admitted scans of one source: Tickets valid
+// tickets with at least one admitted scan of it, Scans every admitted row
+// (repeat scans and scans of tickets cancelled since included).
+type summaryAdmission struct {
+	Source  string `json:"source"`
+	Tickets int64  `json:"tickets"`
+	Scans   int64  `json:"scans"`
 }
 
 type summaryRefunds struct {
@@ -161,6 +174,7 @@ type summaryRows struct {
 	refunds       []gen.SessionSummaryRefundsRow
 	promos        []gen.SessionSummaryPromoRow
 	complimentary []gen.SessionSummaryComplimentaryRow
+	admissions    []gen.SessionSummaryAdmissionsRow
 }
 
 // loadSummaryRows runs every summary query for the given sessions. On a
@@ -172,6 +186,18 @@ func (h *Handler) loadSummaryRows(ctx context.Context, sessionIDs []uuid.UUID) (
 // queriesSummaryRows is loadSummaryRows on an explicit query set, so the CSV
 // export (hexport) reads the very same aggregates through LoadSessionSummary.
 func queriesSummaryRows(ctx context.Context, q *gen.Queries, sessionIDs []uuid.UUID) (summaryRows, string, error) {
+	return queriesSummaryRowsOpt(ctx, q, sessionIDs, true)
+}
+
+// loadSummaryRowsNoTiers is loadSummaryRows without the per-category query,
+// for a caller that never reads the category table (the batch sales summary):
+// ListSessionSummaryTiers joins every order item of every session, and the
+// places totals do not depend on it (foldTiers counts every place row).
+func (h *Handler) loadSummaryRowsNoTiers(ctx context.Context, sessionIDs []uuid.UUID) (summaryRows, string, error) {
+	return queriesSummaryRowsOpt(ctx, h.queries, sessionIDs, false)
+}
+
+func queriesSummaryRowsOpt(ctx context.Context, q *gen.Queries, sessionIDs []uuid.UUID, withTiers bool) (summaryRows, string, error) {
 	var (
 		r   summaryRows
 		err error
@@ -179,8 +205,10 @@ func queriesSummaryRows(ctx context.Context, q *gen.Queries, sessionIDs []uuid.U
 	if r.places, err = q.ListSessionSummaryPlaces(ctx, sessionIDs); err != nil {
 		return r, "places", err
 	}
-	if r.tiers, err = q.ListSessionSummaryTiers(ctx, sessionIDs); err != nil {
-		return r, "tiers", err
+	if withTiers {
+		if r.tiers, err = q.ListSessionSummaryTiers(ctx, sessionIDs); err != nil {
+			return r, "tiers", err
+		}
 	}
 	if r.orders, err = q.ListSessionSummaryOrders(ctx, sessionIDs); err != nil {
 		return r, "orders", err
@@ -196,6 +224,9 @@ func queriesSummaryRows(ctx context.Context, q *gen.Queries, sessionIDs []uuid.U
 	}
 	if r.complimentary, err = q.ListSessionSummaryComplimentary(ctx, sessionIDs); err != nil {
 		return r, "complimentary", err
+	}
+	if r.admissions, err = q.ListSessionSummaryAdmissions(ctx, sessionIDs); err != nil {
+		return r, "admissions", err
 	}
 	return r, "", nil
 }
@@ -238,6 +269,11 @@ func (r summaryRows) forSession(id uuid.UUID) summaryRows {
 			out.complimentary = append(out.complimentary, x)
 		}
 	}
+	for _, x := range r.admissions {
+		if x.SessionID == id {
+			out.admissions = append(out.admissions, x)
+		}
+	}
 	return out
 }
 
@@ -263,11 +299,32 @@ func buildSummaryCore(r summaryRows) summaryCore {
 		out.Tickets.Used += t.Used
 		out.Tickets.Complimentary += t.Complimentary
 	}
-	out.Entered = summaryEntered{Used: out.Tickets.Used, Total: out.Tickets.Active}
+	out.Entered = summaryEntered{Used: out.Tickets.Used, Total: out.Tickets.Active, BySource: foldAdmissions(r.admissions)}
 	for _, c := range r.complimentary {
 		out.Complimentary.Orders += c.Orders
 		out.Complimentary.Tickets += c.Tickets
 	}
+	return out
+}
+
+// foldAdmissions merges the admitted scans of each source across sessions,
+// sorted by source; never nil, so the JSON carries [] for a quiet door.
+func foldAdmissions(rows []gen.SessionSummaryAdmissionsRow) []summaryAdmission {
+	bySource := map[string]*summaryAdmission{}
+	for _, a := range rows {
+		g := bySource[a.Source]
+		if g == nil {
+			g = &summaryAdmission{Source: a.Source}
+			bySource[a.Source] = g
+		}
+		g.Tickets += a.Tickets
+		g.Scans += a.Scans
+	}
+	out := make([]summaryAdmission, 0, len(bySource))
+	for _, g := range bySource {
+		out = append(out, *g)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Source < out[j].Source })
 	return out
 }
 
@@ -441,4 +498,64 @@ func foldPromos(promos []gen.SessionSummaryPromoRow) []summaryPromo {
 		return a.Currency < b.Currency
 	})
 	return out
+}
+
+// groupBySession splits the rows of many sessions once, so a batch of events
+// reads each session's rows without scanning everything again (forSession is
+// for one session at a time).
+func (r summaryRows) groupBySession() map[uuid.UUID]summaryRows {
+	out := map[uuid.UUID]summaryRows{}
+	for _, x := range r.places {
+		g := out[x.SessionID]
+		g.places = append(g.places, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.tiers {
+		g := out[x.SessionID]
+		g.tiers = append(g.tiers, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.orders {
+		g := out[x.SessionID]
+		g.orders = append(g.orders, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.tickets {
+		g := out[x.SessionID]
+		g.tickets = append(g.tickets, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.refunds {
+		g := out[x.SessionID]
+		g.refunds = append(g.refunds, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.promos {
+		g := out[x.SessionID]
+		g.promos = append(g.promos, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.complimentary {
+		g := out[x.SessionID]
+		g.complimentary = append(g.complimentary, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.admissions {
+		g := out[x.SessionID]
+		g.admissions = append(g.admissions, x)
+		out[x.SessionID] = g
+	}
+	return out
+}
+
+// append adds the rows of another set.
+func (r *summaryRows) append(o summaryRows) {
+	r.places = append(r.places, o.places...)
+	r.tiers = append(r.tiers, o.tiers...)
+	r.orders = append(r.orders, o.orders...)
+	r.tickets = append(r.tickets, o.tickets...)
+	r.refunds = append(r.refunds, o.refunds...)
+	r.promos = append(r.promos, o.promos...)
+	r.complimentary = append(r.complimentary, o.complimentary...)
+	r.admissions = append(r.admissions, o.admissions...)
 }

@@ -51,6 +51,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/bil24wire"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/contactform"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/convertjob"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customerimport"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
@@ -88,7 +89,7 @@ func main() {
 
 func run() error {
 	// 1. Configuration --------------------------------------------------------
-	cfg, err := config.Load()
+	cfg, err := config.LoadFor(config.RoleWorker)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -105,6 +106,9 @@ func run() error {
 	slog.SetDefault(logger)
 
 	logger.Info("arena-worker starting")
+	for _, w := range cfg.Warnings() {
+		logger.Warn("config warning", "detail", w)
+	}
 
 	// 3. Signal-bound root context --------------------------------------------
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -252,8 +256,10 @@ func run() error {
 	registerMediaGCHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerOpsWatchdogHandler(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerEventWatchHandler(registry, pool.Pool, cfg, salesNotifier, logger)
+	registerContactFormHandler(registry, pool.Pool, cfg, salesNotifier, opsNotifier, logger)
 	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
+	registerJobRetentionHandler(registry, pool.Pool, logger)
 
 	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
 	// Enqueue an idempotency.cleanup job immediately if none is already
@@ -296,6 +302,7 @@ func run() error {
 		logger.Info("reservation expire sweep job scheduled at startup")
 	}
 	scheduleRefundSweep(rootCtx, pool.Pool, logger)
+	scheduleJobRetention(rootCtx, pool.Pool, logger)
 	if err := tierchain.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the next category opens a little later than announced.
 		logger.Warn("could not schedule initial tier chain sweep job", "error", err.Error())
@@ -303,6 +310,10 @@ func run() error {
 	if err := onboarding.ScheduleInitialSweep(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: reminders and expiry of onboarding drafts run a little later.
 		logger.Warn("could not schedule initial onboarding sweep job", "error", err.Error())
+	}
+	if err := contactform.ScheduleInitialPurge(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: old contact-form messages are deleted a little later.
+		logger.Warn("could not schedule initial contact form purge job", "error", err.Error())
 	}
 	if err := eventwatch.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the operator hears about an event a little later.
@@ -524,6 +535,13 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	deliveryOpts := buildDeliveryHandlerOptions(
 		cfg, queries, buildDeliveryMediaResolver(mediaRepo, cfg, logger), logger,
 	)
+	if !deliveryOpts.ContactFormEnabled {
+		// arena-api and this worker must share the Turnstile keys: without
+		// them here, letters of hosted pages without a public e-mail carry
+		// no organizer contact at all.
+		logger.Warn("contact form keys are not set: letters will not link the hosted page's contact form",
+			"env", "CONTACT_FORM_TURNSTILE_SECRET/CONTACT_FORM_TURNSTILE_SITE_KEY")
+	}
 	reg.Register(delivery.JobType, delivery.NewHandler(deliveryOpts))
 	// session.change_email is the letter Arena writes to a buyer whose session
 	// moved or was cancelled (sessionchange.Apply queues it in the move's own
@@ -563,12 +581,20 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		BotUsername:  cfg.EventsTelegramBotUsername,
 
 		OnboardingSiteURL: cfg.OnboardingSiteURL,
+		// Organizers' password links land on the web event center
+		// (EVENT_CENTER_PUBLIC_URL); platform users keep APP_PUBLIC_URL.
+		EventCenterURL: cfg.EventCenterPublicURL,
+		Recipients:     authemail.PGRecipients{DB: pool},
 	})
 	reg.Register(authemail.JobTypeEmailVerification, authEmailHandler.HandleEmailVerification)
 	reg.Register(authemail.JobTypePasswordResetEmail, authEmailHandler.HandlePasswordResetEmail)
 	// bot.invitation_email carries the Telegram deep link of an event-center
 	// bot invitation (spec 28 §3.3); the link needs EVENTS_TELEGRAM_BOT_USERNAME.
 	reg.Register(authemail.JobTypeBotInvitationEmail, authEmailHandler.HandleBotInvitationEmail)
+	// auth.org_added_email tells an EXISTING account it was added to an
+	// organization through the web channel of a bot invitation; it needs
+	// EVENT_CENTER_PUBLIC_URL.
+	reg.Register(authemail.JobTypeOrgAddedEmail, authEmailHandler.HandleOrgAddedEmail)
 	// onboarding.email carries the organizer-application letters (confirm and
 	// continue link, reminders, decision); its links need ONBOARDING_SITE_URL.
 	reg.Register(authemail.JobTypeOnboardingEmail, authEmailHandler.HandleOnboardingEmail)
@@ -690,6 +716,28 @@ func registerEventWatchHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *co
 		"interval", eventwatch.DefaultInterval.String(), "stable_for", eventwatch.DefaultStableFor.String())
 }
 
+// registerContactFormHandler registers contact.organizer_message and
+// contact.purge. contact.organizer_message is a buyer's
+// message from the hosted page's "Write to the organizer" form, mailed to the
+// channel's public e-mail (Reply-To = the buyer) and, when the organization
+// keeps the switch on, posted to its own sales chat.
+func registerContactFormHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier *salesnotify.Dispatcher, ops opsalert.Notifier, logger *slog.Logger) {
+	var announcer contactform.Announcer
+	if notifier != nil {
+		announcer = notifier
+	}
+	reg.Register(contactform.JobType, contactform.New(contactform.Options{
+		Pool:      pool,
+		Sender:    buildEmailSender(cfg, logger),
+		Announcer: announcer,
+		Ops:       ops,
+		Logger:    logger,
+	}).Handle)
+	// contact.purge deletes messages older than 90 days every hour, so a page
+	// that stops receiving messages does not keep old ones forever.
+	reg.Register(contactform.PurgeJobType, contactform.NewPurgeHandler(pool, logger))
+}
+
 // buildSalesNotifier builds the outbox leg that posts sales and refunds to
 // organizers' Telegram groups. Without SALES_TELEGRAM_BOT_TOKEN it is a no-op.
 func buildSalesNotifier(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) *salesnotify.Dispatcher {
@@ -778,6 +826,8 @@ func buildDeliveryHandlerOptions(cfg *config.Config, queries *gen.Queries, media
 		Sender:             buildEmailSender(cfg, logger),
 		FromAddress:        coalesce(getEmailFrom(cfg), "tickets@arena.example.com"),
 		Media:              media,
+		TicketsBaseURL:     cfg.PublicTicketsBaseURL,
+		ContactFormEnabled: cfg.ContactFormReady(),
 		Logger:             logger,
 	}
 }

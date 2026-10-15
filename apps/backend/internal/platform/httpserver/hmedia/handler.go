@@ -4,6 +4,7 @@ import (
 	"log/slog"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/posterread"
 )
 
 // Handler holds the narrow set of dependencies needed by the /v1/media
@@ -16,12 +17,23 @@ type Handler struct {
 	publicBase func() string
 	// rowOrgAccess keeps a caller inside its organizations (org_access.go).
 	rowOrgAccess RowOrgAccess
+	// poster reads a poster with the vision model (poster_facts.go); nil
+	// answers 503 media.poster_reader_not_configured. posterLimiter is the
+	// per-organization daily cap, nil = no cap. posterStore is the media
+	// lookup of that route (the same Repo, narrowed for tests).
+	poster        posterread.Reader
+	posterLimiter PosterQuota
+	posterStore   posterMediaStore
 }
 
 // New constructs a Handler. media may be nil; each method guards against it
 // and returns 503 so the server starts cleanly without a storage backend.
 func New(media *mediastore.Repo, logger *slog.Logger) *Handler {
-	return &Handler{media: media, logger: logger}
+	h := &Handler{media: media, logger: logger}
+	if media != nil { // never wrap a nil *Repo in a non-nil interface
+		h.posterStore = media
+	}
+	return h
 }
 
 // WithPublicBaseURL makes GET /v1/media/{id} answer an absolute signed_url:

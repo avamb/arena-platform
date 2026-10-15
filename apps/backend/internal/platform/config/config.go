@@ -1,5 +1,7 @@
 // Package config loads, validates, and exposes runtime configuration for all
-// arena_new binaries (arena-api, arena-worker, arena-migrate).
+// arena_new binaries (arena-api, arena-worker, arena-bot, arena-migrate). Each
+// binary loads it with LoadFor and its own Role, and production validation
+// then checks only the settings that binary reads (roles.go).
 //
 // Configuration is read from environment variables. Missing or malformed
 // required values cause a fail-fast error so the process never starts in an
@@ -94,6 +96,13 @@ type Config struct {
 	AppName    string `env:"APP_NAME"     required:"false" default:"arena-api"`
 	AppVersion string `env:"APP_VERSION"  required:"false" default:"0.0.0-dev"`
 	AppCommit  string `env:"APP_COMMIT"   required:"false" default:"local"`
+	// Role is the binary that loaded the configuration (see roles.go). It is
+	// set by LoadFor from code, never from the environment; empty means
+	// RoleAll and validates the rules of every binary.
+	Role Role `required:"false"`
+	// appEnvUnset records that APP_ENV was absent, so the binary can warn
+	// loudly that it runs as development (see Warnings).
+	appEnvUnset bool `required:"false"`
 	// AppPublicURL is the canonical public base URL of the application
 	// (e.g. https://app.example.com). Used to construct absolute links in
 	// emails and webhooks so they are never derived from r.Host or forwarded
@@ -108,6 +117,18 @@ type Config struct {
 	// single-host deployments keep working unchanged (feature #535, spec
 	// 22_site_facing_gaps_w1s1_ru.md §2.1). Read through APIPublicBaseURL().
 	APIPublicURL string `env:"API_PUBLIC_URL" required:"false" default:""`
+	// WebSessionIdleHours is how long a web event center session lives
+	// WITHOUT activity (owner decision 2026-10-14: 72 hours, like the Stripe
+	// dashboard). Every refresh pushes the end forward, never past 30 days
+	// from the sign-in. 0 gives the web the fixed 30-day token.
+	WebSessionIdleHours int `env:"WEB_SESSION_IDLE_HOURS" required:"false" default:"72"`
+	// EventCenterPublicURL is the origin of the organizers' web event center
+	// (apps/event-center, e.g. https://events.arenasoldout.com). Password
+	// reset and password setup links of an organizer (a member of an
+	// organization without any platform role) land there instead of on
+	// APP_PUBLIC_URL, the superadmin console. Empty keeps every link on
+	// APP_PUBLIC_URL.
+	EventCenterPublicURL string `env:"EVENT_CENTER_PUBLIC_URL" required:"false" default:""`
 
 	// -------------------------------------------------------------------------
 	// HTTP
@@ -210,6 +231,13 @@ type Config struct {
 	// request, and a redirected endpoint could replay a signed order.
 	FlittAPIBaseURL string `env:"FLITT_API_BASE_URL" required:"false" default:""`
 
+	// AllPayAPIBaseURL is the same seam for AllPay (default
+	// https://allpay.to/app). TEST AND DEVELOPMENT ONLY: Validate() refuses a
+	// non-empty value under APP_ENV=production, for the reason Flitt's is
+	// refused — the organizer's API key signs every request, and a
+	// redirected endpoint could replay a signed order.
+	AllPayAPIBaseURL string `env:"ALLPAY_API_BASE_URL" required:"false" default:""`
+
 	// -------------------------------------------------------------------------
 	// Database (PostgreSQL 17)
 	// -------------------------------------------------------------------------
@@ -305,8 +333,16 @@ type Config struct {
 	SMTPUseTLS   bool      `env:"SMTP_USE_TLS"  required:"false" default:"true"`
 	// BrevoAPIKey is used only to query domain verification state; it is never
 	// an organizer credential and must be stored as a platform secret.
-	BrevoAPIKey                    string        `env:"BREVO_API_KEY" required:"false" default:""`
-	BrevoAPIBaseURL                string        `env:"BREVO_API_BASE_URL" required:"false" default:"https://api.brevo.com"`
+	BrevoAPIKey     string `env:"BREVO_API_KEY" required:"false" default:""`
+	BrevoAPIBaseURL string `env:"BREVO_API_BASE_URL" required:"false" default:"https://api.brevo.com"`
+	// BrevoWebhookToken authenticates Brevo's transactional webhook
+	// (POST /v1/webhooks/brevo/{token}, the delivery status of buyer
+	// letters). Empty = the route is not mounted at all. In production it
+	// must be a random value of at least 32 characters.
+	BrevoWebhookToken string `env:"BREVO_WEBHOOK_TOKEN" required:"false" default:""`
+	// BrevoWebhookTokenPrevious is accepted alongside BrevoWebhookToken
+	// while a token is being rotated; leave it empty otherwise.
+	BrevoWebhookTokenPrevious      string        `env:"BREVO_WEBHOOK_TOKEN_PREVIOUS" required:"false" default:""`
 	SenderVerificationPollInterval time.Duration `env:"SENDER_VERIFICATION_POLL_INTERVAL" required:"false" default:"15m"`
 
 	// -------------------------------------------------------------------------
@@ -350,10 +386,12 @@ type Config struct {
 	// processing the request body. Required in production to prevent unsigned
 	// forgery.
 	StripeWebhookSecret string `env:"STRIPE_WEBHOOK_SECRET" required:"false" default:""`
-	// AllPayWebhookSecret is the AllPay shared webhook signing secret.
-	// When set, POST /v1/payment-intents/webhook and POST /v1/refunds/webhook
-	// verify the "X-AllPay-Signature" HMAC-SHA256 before processing the request
-	// body.
+	// AllPayWebhookSecret is DEPRECATED and verifies nothing. It was the
+	// secret of an "X-AllPay-Signature" header that AllPay never sends. A real
+	// AllPay webhook is signed in its body with the organizer's own API key
+	// and is only accepted on POST /v1/payment-intents/webhook/{config_id}
+	// (spec 08_architecture/39). The variable is still read so an old
+	// deployment that sets it keeps starting.
 	AllPayWebhookSecret string `env:"ALLPAY_WEBHOOK_SECRET" required:"false" default:""`
 
 	// -------------------------------------------------------------------------
@@ -437,21 +475,37 @@ type Config struct {
 	// verifies the first step and the "send me the link" request. Empty is
 	// accepted outside production only; in production the routes answer 503.
 	OnboardingTurnstileSecret string `env:"ONBOARDING_TURNSTILE_SECRET" required:"false" default:""`
+	// ContactFormTurnstileSecret / ContactFormTurnstileSiteKey protect the
+	// "Write to the organizer" form of the hosted sales page. The secret falls
+	// back to ONBOARDING_TURNSTILE_SECRET when empty (one Turnstile widget may
+	// list both hostnames); the site key is public and handed to the page in
+	// the hosted-page response. In production a page offers the form only when
+	// both are set, and the send route answers 503 without a secret.
+	ContactFormTurnstileSecret  string `env:"CONTACT_FORM_TURNSTILE_SECRET" required:"false" default:""`
+	ContactFormTurnstileSiteKey string `env:"CONTACT_FORM_TURNSTILE_SITE_KEY" required:"false" default:""`
 	// BotArenaAPIURL is where the bot process reaches arena-api
 	// (http://api:8080 inside compose).
 	BotArenaAPIURL string `env:"BOT_ARENA_API_URL" required:"false" default:"http://localhost:8080"`
 	// BotMetricsAddr is the bot's sidecar /healthz + /metrics listener.
 	BotMetricsAddr string `env:"BOT_METRICS_ADDR" required:"false" default:":9092"`
-	// PosterLLMAPIKey is the Anthropic API key the bot reads posters with
-	// (internal/platform/posterread): the wizard then offers the name, the
-	// date, the venue and the prices printed on a sent poster as one-tap
-	// answers. Empty switches the reading off; the wizard asks as before.
-	// Only the poster image ever travels to the model.
+	// PosterLLMAPIKey is the Anthropic API key arena-api reads posters with
+	// (internal/platform/posterread, POST .../media/{id}/poster-facts): the
+	// event wizards (Telegram bot, web) then offer the name, the date, the
+	// venue and the prices printed on a poster as one-tap answers. Only
+	// arena-api holds it since 2026-10-14 (the bot calls the API). Empty
+	// switches the reading off: the route answers 503
+	// media.poster_reader_not_configured and the wizards ask as before. Only
+	// the poster image ever travels to the model.
 	PosterLLMAPIKey string `env:"POSTER_LLM_API_KEY" required:"false" default:""`
 	// PosterLLMModel is the vision model used for that reading.
 	PosterLLMModel string `env:"POSTER_LLM_MODEL" required:"false" default:"claude-sonnet-5"`
 	// PosterLLMBaseURL is the Messages API origin (a stub in tests).
 	PosterLLMBaseURL string `env:"POSTER_LLM_BASE_URL" required:"false" default:"https://api.anthropic.com"`
+	// PosterReadsPerOrgPerDay caps the model calls of ONE organization in a
+	// sliding 24 hours (each call costs money). 0 switches the cap off. The
+	// counter lives in the memory of one arena-api process, so with several
+	// replicas the ceiling is this value times the replica count.
+	PosterReadsPerOrgPerDay int `env:"POSTER_READS_PER_ORG_PER_DAY" required:"false" default:"50"`
 	// OpsWatchdogHeartbeatHourUTC is the UTC hour (0-23) at which the
 	// ops.watchdog job sends its once-daily "still alive" digest.
 	OpsWatchdogHeartbeatHourUTC int `env:"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC" required:"false" default:"7"`
@@ -494,11 +548,13 @@ func (c *Config) EffectiveHealthAddr(role string) string {
 }
 
 // MediaSigningKey returns the HMAC key to use for signing media download URLs.
-// In production, MediaSigningSecret must be set explicitly. In development, the
-// JWT signing secret is used as a fallback so developers do not need a second
-// secret for local testing.
+// In staging and production it is MEDIA_SIGNING_SECRET only (validation
+// demands it for any MEDIA_BACKEND): the api verifies what the worker signs,
+// and the worker no longer receives JWT_SIGNING_SECRET, so a JWT fallback
+// would make the two keys differ. Only in development is the JWT signing
+// secret used as a fallback, so developers do not need a second secret.
 func (c *Config) MediaSigningKey() []byte {
-	if c.MediaSigningSecret != "" {
+	if c.MediaSigningSecret != "" || c.AppEnv == EnvStaging || c.AppEnv == EnvProduction {
 		return []byte(c.MediaSigningSecret)
 	}
 	return []byte(c.JWTSecretStub)
@@ -530,6 +586,7 @@ func (c *Config) LogAttrs() []slog.Attr {
 		slog.String("app_commit", c.AppCommit),
 		slog.String("app_public_url", c.AppPublicURL),
 		slog.String("api_public_url", c.APIPublicURL),
+		slog.String("event_center_public_url", c.EventCenterPublicURL),
 		slog.String("http_listen_addr", c.HTTPListenAddr),
 		slog.String("worker_metrics_addr", c.WorkerMetricsAddr),
 		slog.String("database_url", redactDSN(c.DatabaseURL)),
@@ -579,16 +636,29 @@ func (c *Config) APIPublicBaseURL() string {
 }
 
 // Load reads configuration from environment variables, parses typed values,
-// runs Validate, and returns either a populated *Config or an aggregated
-// validation error.
-func Load() (*Config, error) {
+// runs Validate against the rules of EVERY binary (RoleAll), and returns
+// either a populated *Config or an aggregated validation error. Deployed
+// binaries call LoadFor with their own role instead.
+func Load() (*Config, error) { return LoadFor(RoleAll) }
+
+// LoadFor is Load for one binary: production validation checks only what
+// that role reads (see roles.go), so each container can be given only its own
+// secrets.
+func LoadFor(role Role) (*Config, error) {
+	if !role.valid() {
+		return nil, fmt.Errorf("config: unknown role %q", role)
+	}
 	cfg := &Config{
+		Role:         role,
 		AppEnv:       AppEnv(getenv("APP_ENV", "development")),
-		AppName:      getenv("APP_NAME", "arena-api"),
+		appEnvUnset:  strings.TrimSpace(os.Getenv("APP_ENV")) == "",
+		AppName:      getenv("APP_NAME", role.Binary()),
 		AppVersion:   getenv("APP_VERSION", "0.0.0-dev"),
 		AppCommit:    getenv("APP_COMMIT", "local"),
 		AppPublicURL: getenv("APP_PUBLIC_URL", ""),
 		APIPublicURL: getenv("API_PUBLIC_URL", ""),
+
+		EventCenterPublicURL: strings.TrimRight(strings.TrimSpace(getenv("EVENT_CENTER_PUBLIC_URL", "")), "/"),
 
 		HTTPListenAddr:     getenv("HTTP_LISTEN_ADDR", ":8080"),
 		WorkerMetricsAddr:  getenv("WORKER_METRICS_ADDR", ":9091"),
@@ -621,7 +691,10 @@ func Load() (*Config, error) {
 		SMTPPassword:    getenv("SMTP_PASSWORD", ""),
 		SMTPFrom:        getenv("SMTP_FROM", ""),
 		BrevoAPIKey:     getenv("BREVO_API_KEY", ""),
-		BrevoAPIBaseURL: getenv("BREVO_API_BASE_URL", "https://api.brevo.com"),
+		BrevoAPIBaseURL: getenv("BREVO_API_BASE_URL", DefaultBrevoAPIBaseURL),
+
+		BrevoWebhookToken:         strings.TrimSpace(getenv("BREVO_WEBHOOK_TOKEN", "")),
+		BrevoWebhookTokenPrevious: strings.TrimSpace(getenv("BREVO_WEBHOOK_TOKEN_PREVIOUS", "")),
 
 		StripeWebhookSecret: getenv("STRIPE_WEBHOOK_SECRET", ""),
 		AllPayWebhookSecret: getenv("ALLPAY_WEBHOOK_SECRET", ""),
@@ -641,18 +714,20 @@ func Load() (*Config, error) {
 
 		SalesTelegramBotToken: getenv("SALES_TELEGRAM_BOT_TOKEN", ""),
 
-		EventsTelegramBotToken:    getenv("EVENTS_TELEGRAM_BOT_TOKEN", ""),
-		EventsTelegramBotUsername: getenv("EVENTS_TELEGRAM_BOT_USERNAME", ""),
-		BotServiceToken:           getenv("BOT_SERVICE_TOKEN", ""),
-		BotArenaAPIURL:            getenv("BOT_ARENA_API_URL", "http://localhost:8080"),
-		OnboardingSiteURL:         strings.TrimRight(getenv("ONBOARDING_SITE_URL", "https://arenasoldout.com"), "/"),
-		OnboardingTermsURL:        strings.TrimSpace(getenv("ONBOARDING_TERMS_URL", "")),
-		OnboardingPrivacyURL:      strings.TrimSpace(getenv("ONBOARDING_PRIVACY_URL", "")),
-		OnboardingTurnstileSecret: getenv("ONBOARDING_TURNSTILE_SECRET", ""),
-		BotMetricsAddr:            getenv("BOT_METRICS_ADDR", ":9092"),
-		PosterLLMAPIKey:           getenv("POSTER_LLM_API_KEY", ""),
-		PosterLLMModel:            getenv("POSTER_LLM_MODEL", "claude-sonnet-5"),
-		PosterLLMBaseURL:          getenv("POSTER_LLM_BASE_URL", "https://api.anthropic.com"),
+		EventsTelegramBotToken:      getenv("EVENTS_TELEGRAM_BOT_TOKEN", ""),
+		EventsTelegramBotUsername:   getenv("EVENTS_TELEGRAM_BOT_USERNAME", ""),
+		BotServiceToken:             getenv("BOT_SERVICE_TOKEN", ""),
+		BotArenaAPIURL:              getenv("BOT_ARENA_API_URL", "http://localhost:8080"),
+		OnboardingSiteURL:           strings.TrimRight(getenv("ONBOARDING_SITE_URL", "https://arenasoldout.com"), "/"),
+		OnboardingTermsURL:          strings.TrimSpace(getenv("ONBOARDING_TERMS_URL", "")),
+		OnboardingPrivacyURL:        strings.TrimSpace(getenv("ONBOARDING_PRIVACY_URL", "")),
+		OnboardingTurnstileSecret:   getenv("ONBOARDING_TURNSTILE_SECRET", ""),
+		ContactFormTurnstileSecret:  getenv("CONTACT_FORM_TURNSTILE_SECRET", ""),
+		ContactFormTurnstileSiteKey: strings.TrimSpace(getenv("CONTACT_FORM_TURNSTILE_SITE_KEY", "")),
+		BotMetricsAddr:              getenv("BOT_METRICS_ADDR", ":9092"),
+		PosterLLMAPIKey:             getenv("POSTER_LLM_API_KEY", ""),
+		PosterLLMModel:              getenv("POSTER_LLM_MODEL", "claude-sonnet-5"),
+		PosterLLMBaseURL:            getenv("POSTER_LLM_BASE_URL", DefaultPosterLLMBaseURL),
 
 		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
 	}
@@ -697,6 +772,16 @@ func Load() (*Config, error) {
 	}
 	cfg.TrustedProxyCount = iTPC
 
+	// WEB_SESSION_IDLE_HOURS — idle window of a web event center session.
+	iIdle, err := getenvInt("WEB_SESSION_IDLE_HOURS", 72)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	if iIdle < 0 || iIdle > 720 {
+		parseErrs = append(parseErrs, fmt.Errorf("WEB_SESSION_IDLE_HOURS must be 0..720 (got %d)", iIdle))
+	}
+	cfg.WebSessionIdleHours = iIdle
+
 	// PUBLIC_FEED_TOKEN_RATE_LIMIT / PUBLIC_CHECKOUT_TOKEN_RATE_LIMIT /
 	// PUBLIC_API_IP_RATE_LIMIT — public widget API limits. See the field
 	// docs above: the feed-token limit is site-wide, not per-visitor.
@@ -732,6 +817,16 @@ func Load() (*Config, error) {
 	}
 	cfg.PublicPromoFailIPLimit = iPromoFailIP
 
+	// POSTER_READS_PER_ORG_PER_DAY: model calls per organization per day.
+	posterReads, err := getenvInt("POSTER_READS_PER_ORG_PER_DAY", 50)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	if posterReads < 0 {
+		parseErrs = append(parseErrs, fmt.Errorf("POSTER_READS_PER_ORG_PER_DAY must not be negative (0 switches the cap off), got %d", posterReads))
+	}
+	cfg.PosterReadsPerOrgPerDay = posterReads
+
 	// PUBLIC_TICKETS_BASE_URL / WIDGET_PAYMENT_WINDOW_SECONDS /
 	// WIDGET_PAYMENT_GRACE_SECONDS — widget hosted-payment redirect flow.
 	cfg.PublicTicketsBaseURL = strings.TrimRight(strings.TrimSpace(getenv("PUBLIC_TICKETS_BASE_URL", "")), "/")
@@ -752,6 +847,8 @@ func Load() (*Config, error) {
 	cfg.StripeAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("STRIPE_API_BASE_URL", "")), "/")
 	// FLITT_API_BASE_URL — test/dev only, rejected in production by Validate.
 	cfg.FlittAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("FLITT_API_BASE_URL", "")), "/")
+	// ALLPAY_API_BASE_URL — test/dev only, rejected in production by Validate.
+	cfg.AllPayAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("ALLPAY_API_BASE_URL", "")), "/")
 
 	d, err := getenvDuration("REQUEST_TIMEOUT_SECONDS", 30*time.Second, true)
 	if err != nil {
@@ -977,6 +1074,24 @@ func Load() (*Config, error) {
 // no weak secrets, no wildcard CORS, no query logging, safe DB TLS mode,
 // signed media, SMTP email delivery, explicit non-noop outbox mode, and JSON
 // log format.
+// isHTTPSOrigin reports whether raw parses as a bare https origin: scheme
+// https, a non-empty host, no user info, no query or fragment and no path
+// beyond a single "/". A prefix check alone accepted "https://" and
+// "https:///path", which build links without a host.
+func isHTTPSOrigin(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	if !strings.EqualFold(u.Scheme, "https") || u.Hostname() == "" || u.Opaque != "" {
+		return false
+	}
+	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return false
+	}
+	return u.Path == "" || u.Path == "/"
+}
+
 func (c *Config) Validate() error {
 	var errs []error
 
@@ -987,6 +1102,9 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf(
 			"APP_ENV %q is invalid (allowed: development|staging|production)", c.AppEnv,
 		))
+	}
+	if !c.Role.valid() {
+		errs = append(errs, fmt.Errorf("config role %q is unknown", c.Role))
 	}
 
 	// --- HTTP -----------------------------------------------------------------
@@ -1069,7 +1187,7 @@ func (c *Config) Validate() error {
 
 	// --- Auth stub ------------------------------------------------------------
 	if c.EnableStubAuth {
-		if strings.TrimSpace(c.JWTSecretStub) == "" {
+		if c.uses(capEdge) && strings.TrimSpace(c.JWTSecretStub) == "" {
 			errs = append(errs, errors.New(
 				"JWT_SIGNING_SECRET is required when ENABLE_DEV_AUTH=true",
 			))
@@ -1081,7 +1199,45 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// --- Outbox dispatcher ----------------------------------------------------
+	// --- Outbox dispatcher (worker) ------------------------------------------
+	if c.uses(capOutbox) {
+		errs = append(errs, c.validateOutbox()...)
+	}
+
+	// --- Email delivery (worker) ----------------------------------------------
+	if c.uses(capMail) {
+		errs = append(errs, c.validateEmail()...)
+	}
+
+	// --- Media storage backend (api, worker) ----------------------------------
+	if c.uses(capMedia) {
+		errs = append(errs, c.validateMedia()...)
+		errs = append(errs, c.validateMediaSigning()...)
+	}
+
+	// --- Ops watchdog -----------------------------------------------------
+	if c.OpsWatchdogHeartbeatHourUTC < 0 || c.OpsWatchdogHeartbeatHourUTC > 23 {
+		errs = append(errs, fmt.Errorf(
+			"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC must be 0-23 (got %d)", c.OpsWatchdogHeartbeatHourUTC,
+		))
+	}
+
+	// =========================================================================
+	// PRODUCTION-ONLY safety checks (PR-00)
+	// =========================================================================
+	if c.AppEnv == EnvProduction {
+		errs = append(errs, c.validateProduction()...)
+	}
+
+	if len(errs) == 0 {
+		return nil
+	}
+	return errors.Join(errs...)
+}
+
+// validateOutbox checks OUTBOX_MODE and the settings its webhook mode needs.
+func (c *Config) validateOutbox() []error {
+	var errs []error
 	switch c.OutboxMode {
 	case OutboxModeNoop, OutboxModeWebhook, OutboxModeDisabled, "":
 		// basic values accepted; further production checks below
@@ -1111,7 +1267,12 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// --- Email delivery -------------------------------------------------------
+	return errs
+}
+
+// validateEmail checks EMAIL_MODE and the SMTP settings its smtp mode needs.
+func (c *Config) validateEmail() []error {
+	var errs []error
 	switch c.EmailMode {
 	case EmailModeLog, EmailModeSMTP, "":
 		// basic values accepted; further production checks below
@@ -1134,7 +1295,31 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// --- Media storage backend ------------------------------------------------
+	return errs
+}
+
+// validateMediaSigning demands MEDIA_SIGNING_SECRET for any MEDIA_BACKEND
+// outside development. The worker signs the links the api verifies and holds
+// no JWT secret, so the development fallback to it would make the two keys
+// differ: links in letters would fail and logos and posters would vanish.
+func (c *Config) validateMediaSigning() []error {
+	if c.AppEnv != EnvStaging && c.AppEnv != EnvProduction {
+		return nil
+	}
+	backend := strings.TrimSpace(c.MediaBackend)
+	if backend == "" || strings.TrimSpace(c.MediaSigningSecret) != "" {
+		return nil
+	}
+	return []error{fmt.Errorf(
+		"MEDIA_SIGNING_SECRET is required when MEDIA_BACKEND=%s in %s"+
+			" (the same value on api and worker; the JWT fallback is for development only)",
+		backend, c.AppEnv,
+	)}
+}
+
+// validateMedia checks MEDIA_BACKEND and the settings the chosen backend needs.
+func (c *Config) validateMedia() []error {
+	var errs []error
 	switch strings.ToLower(strings.TrimSpace(c.MediaBackend)) {
 	case "":
 		// inactive — fine
@@ -1172,25 +1357,7 @@ func (c *Config) Validate() error {
 			c.MediaBackend,
 		))
 	}
-
-	// --- Ops watchdog -----------------------------------------------------
-	if c.OpsWatchdogHeartbeatHourUTC < 0 || c.OpsWatchdogHeartbeatHourUTC > 23 {
-		errs = append(errs, fmt.Errorf(
-			"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC must be 0-23 (got %d)", c.OpsWatchdogHeartbeatHourUTC,
-		))
-	}
-
-	// =========================================================================
-	// PRODUCTION-ONLY safety checks (PR-00)
-	// =========================================================================
-	if c.AppEnv == EnvProduction {
-		errs = append(errs, c.validateProduction()...)
-	}
-
-	if len(errs) == 0 {
-		return nil
-	}
-	return errors.Join(errs...)
+	return errs
 }
 
 // validateProduction returns validation errors specific to APP_ENV=production.
@@ -1207,33 +1374,25 @@ func (c *Config) Validate() error {
 //   - log-only email (EMAIL_MODE=log or not configured)
 //   - implicit/noop outbox mode (OUTBOX_MODE empty or noop)
 //   - text log format
+//
+// Each rule applies to the roles that read its settings (roles.go): the
+// rules on the database, the log format and the debug / test-seam flags apply
+// to every role, the rest only where c.uses says so.
 func (c *Config) validateProduction() []error {
 	var errs []error
 
-	// 1. JWT secret must be present and strong.
-	secret := strings.TrimSpace(c.JWTSecretStub)
-	if secret == "" {
-		errs = append(errs, errors.New(
-			"JWT_SIGNING_SECRET is required in production (APP_ENV=production)",
-		))
-	} else if len(secret) < minJWTSecretLen {
-		errs = append(errs, fmt.Errorf(
-			"JWT_SIGNING_SECRET is too short for production: must be at least %d bytes, got %d",
-			minJWTSecretLen, len(secret),
-		))
-	} else if isKnownDevSecret(secret) {
-		errs = append(errs, errors.New(
-			"JWT_SIGNING_SECRET is a known development placeholder and must not be used in production",
-		))
+	// 1. JWT secret must be present and strong (api, bot).
+	if c.uses(capJWT) {
+		errs = append(errs, c.validateProductionJWT()...)
 	}
 
 	// 2. Dev auth must be disabled (also enforced by EnableStubAuth block, but
 	// repeat here so the error appears in production context too).
 	// (Already covered by validateProduction guard, but explicit is better.)
 
-	// 3. Wildcard CORS is forbidden.
+	// 3. Wildcard CORS is forbidden (api).
 	for _, origin := range c.CORSAllowedOrigins {
-		if strings.TrimSpace(origin) == "*" {
+		if c.uses(capEdge) && strings.TrimSpace(origin) == "*" {
 			errs = append(errs, errors.New(
 				"CORS_ALLOWED_ORIGINS must not contain wildcard '*' in production",
 			))
@@ -1261,14 +1420,11 @@ func (c *Config) validateProduction() []error {
 		))
 	}
 
-	// 6. Local media backend requires an explicit signing secret in production.
-	// (Using the JWT secret as a fallback is only acceptable in development.)
-	if strings.EqualFold(strings.TrimSpace(c.MediaBackend), "local") {
-		if strings.TrimSpace(c.MediaSigningSecret) == "" {
-			errs = append(errs, errors.New(
-				"MEDIA_SIGNING_SECRET is required when MEDIA_BACKEND=local in production",
-			))
-		} else if len(strings.TrimSpace(c.MediaSigningSecret)) < minJWTSecretLen {
+	// 6. Any media backend requires an explicit, strong signing secret in
+	// production (api, worker); its presence is already checked for staging
+	// and production by validateMediaSigning.
+	if c.uses(capMedia) && strings.TrimSpace(c.MediaBackend) != "" {
+		if len(strings.TrimSpace(c.MediaSigningSecret)) > 0 && len(strings.TrimSpace(c.MediaSigningSecret)) < minJWTSecretLen {
 			errs = append(errs, fmt.Errorf(
 				"MEDIA_SIGNING_SECRET must be at least %d bytes in production, got %d",
 				minJWTSecretLen, len(strings.TrimSpace(c.MediaSigningSecret)),
@@ -1276,15 +1432,16 @@ func (c *Config) validateProduction() []error {
 		}
 	}
 
-	// 7. Log-only email is forbidden. Must be smtp.
-	if c.EmailMode == EmailModeLog || c.EmailMode == "" {
+	// 7. Log-only email is forbidden. Must be smtp (worker).
+	if c.uses(capMail) && (c.EmailMode == EmailModeLog || c.EmailMode == "") {
 		errs = append(errs, errors.New(
 			"EMAIL_MODE must be 'smtp' in production; log-only delivery is forbidden",
 		))
 	}
 
-	// 8. Implicit or noop outbox mode is forbidden. Must be webhook or disabled.
-	if c.OutboxMode == OutboxModeNoop || c.OutboxMode == "" {
+	// 8. Implicit or noop outbox mode is forbidden. Must be webhook or disabled
+	// (worker).
+	if c.uses(capOutbox) && (c.OutboxMode == OutboxModeNoop || c.OutboxMode == "") {
 		errs = append(errs, errors.New(
 			"OUTBOX_MODE must be 'webhook' or 'disabled' in production; noop/implicit mode is forbidden",
 		))
@@ -1298,13 +1455,15 @@ func (c *Config) validateProduction() []error {
 	}
 
 	// 10. APP_PUBLIC_URL must be a non-empty absolute https URL in production
-	// when EMAIL_MODE=smtp. Without it, email links are derived from request
-	// headers which can be spoofed; an empty value yields host-less links.
-	if c.EmailMode == EmailModeSMTP {
+	// for arena-api, and wherever EMAIL_MODE=smtp (the worker, which must run
+	// smtp anyway). The worker builds every link of a letter on it; the api
+	// builds operator links and falls back to it for API_PUBLIC_URL. Without
+	// it links would come from spoofable request headers or have no host.
+	if c.uses(capPublicURL) && (c.Role == RoleAPI || c.EmailMode == EmailModeSMTP) {
 		pub := strings.TrimSpace(c.AppPublicURL)
 		if pub == "" {
 			errs = append(errs, errors.New(
-				"APP_PUBLIC_URL is required in production when EMAIL_MODE=smtp"+
+				"APP_PUBLIC_URL is required in production"+
 					" (must be a non-empty absolute https URL, e.g. https://app.example.com)",
 			))
 		} else if !strings.HasPrefix(strings.ToLower(pub), "https://") {
@@ -1316,18 +1475,38 @@ func (c *Config) validateProduction() []error {
 		}
 	}
 
+	// 10c. API_PUBLIC_URL, when set, is the origin of signed media and ticket
+	// links (api, worker): https only.
+	if api := strings.TrimSpace(c.APIPublicURL); c.uses(capPublicURL) && api != "" &&
+		!strings.HasPrefix(strings.ToLower(api), "https://") {
+		errs = append(errs, fmt.Errorf(
+			"API_PUBLIC_URL must start with https:// in production (got %q)", api,
+		))
+	}
+
+	// 10a. EVENT_CENTER_PUBLIC_URL, when set, receives organizers' password
+	// links, so it obeys the same rule as APP_PUBLIC_URL: https only.
+	if ec := strings.TrimSpace(c.EventCenterPublicURL); ec != "" && !isHTTPSOrigin(ec) {
+		errs = append(errs, fmt.Errorf(
+			"EVENT_CENTER_PUBLIC_URL must be an https:// address with a host and no path, query or fragment in production (got %q)", ec,
+		))
+	}
+
 	// 11. Debug routes expose internal panic/slow endpoints and must never be
 	// enabled in production where an operator Dokploy variable could mount them.
 
-	// 10b. Payment webhook signing secrets — at least one must be configured in
-	// production. Without a secret the webhook endpoints accept unsigned JSON,
-	// which allows anyone who guesses a provider_payment_id to forge
-	// payment.succeeded events (mint tickets) or forge refunds (cancel tickets).
-	if strings.TrimSpace(c.StripeWebhookSecret) == "" &&
-		strings.TrimSpace(c.AllPayWebhookSecret) == "" {
+	// 10b. The legacy webhook routes' signing secret must be configured in
+	// production. Without it those endpoints accept unsigned JSON, which
+	// allows anyone who guesses a provider_payment_id to forge
+	// payment.succeeded events (mint tickets) or forge refunds (cancel
+	// tickets). ALLPAY_WEBHOOK_SECRET no longer counts: it never verified a
+	// real AllPay delivery, and with AllPay on the per-config route only it
+	// protects nothing.
+	if c.uses(capEdge) && strings.TrimSpace(c.StripeWebhookSecret) == "" {
 		errs = append(errs, errors.New(
-			"at least one of STRIPE_WEBHOOK_SECRET or ALLPAY_WEBHOOK_SECRET must be set in production;"+
-				" unsigned payment webhooks allow arbitrary ticket minting",
+			"STRIPE_WEBHOOK_SECRET must be set in production;"+
+				" unsigned payment webhooks allow arbitrary ticket minting"+
+				" (ALLPAY_WEBHOOK_SECRET is deprecated and does not count)",
 		))
 	}
 
@@ -1352,7 +1531,7 @@ func (c *Config) validateProduction() []error {
 	// in production (feature #390, PR2-32). BIL24_COMPAT_ENABLED=true with
 	// BIL24_REQUIRE_TOKEN=false exposes state-mutating commands (RESERVATION,
 	// UN_RESERVE, SCAN_TICKET) to unauthenticated callers.
-	if c.Bil24CompatEnabled && !c.Bil24RequireToken {
+	if c.uses(capEdge) && c.Bil24CompatEnabled && !c.Bil24RequireToken {
 		errs = append(errs, errors.New(
 			"BIL24_REQUIRE_TOKEN must be true when BIL24_COMPAT_ENABLED=true in production;"+
 				" mounting the Bil24 gateway without fid/token enforcement is forbidden",
@@ -1369,7 +1548,7 @@ func (c *Config) validateProduction() []error {
 	// Feature #535 (spec 22 §2.1): the value actually used is API_PUBLIC_URL,
 	// with APP_PUBLIC_URL as the single-host fallback — so the rule validates
 	// the EFFECTIVE base returned by APIPublicBaseURL().
-	if c.Bil24CompatEnabled {
+	if c.uses(capEdge) && c.Bil24CompatEnabled {
 		pub := c.APIPublicBaseURL()
 		if pub == "" {
 			errs = append(errs, errors.New(
@@ -1409,8 +1588,87 @@ func (c *Config) validateProduction() []error {
 		))
 	}
 
+	// 17. ALLPAY_API_BASE_URL: same reasoning as STRIPE_API_BASE_URL above.
+	if strings.TrimSpace(c.AllPayAPIBaseURL) != "" {
+		errs = append(errs, errors.New(
+			"ALLPAY_API_BASE_URL must not be set in production;"+
+				" it redirects hosted checkout calls away from allpay.to"+
+				" and is for tests and local development only",
+		))
+	}
+
+	// 17b. BREVO_API_BASE_URL and POSTER_LLM_BASE_URL: a changed host would
+	// receive the platform's Brevo key or the LLM key with every request. Only
+	// the built-in default is accepted in production, on every role.
+	for _, seam := range []struct{ name, value, def string }{
+		{"BREVO_API_BASE_URL", c.BrevoAPIBaseURL, DefaultBrevoAPIBaseURL},
+		{"POSTER_LLM_BASE_URL", c.PosterLLMBaseURL, DefaultPosterLLMBaseURL},
+	} {
+		if v := strings.TrimRight(strings.TrimSpace(seam.value), "/"); v != "" && v != seam.def {
+			errs = append(errs, fmt.Errorf(
+				"%s must not be changed in production (got %q, only %s is allowed);"+
+					" it would send the API key to another host",
+				seam.name, v, seam.def,
+			))
+		}
+	}
+
+	// 18. BREVO_WEBHOOK_TOKEN is the only thing that authenticates the
+	// delivery-status webhook: a short or well-known value would let anyone
+	// mark buyers' letters delivered or bounced.
+	for _, tok := range []struct{ name, value string }{
+		{"BREVO_WEBHOOK_TOKEN", c.BrevoWebhookToken},
+		{"BREVO_WEBHOOK_TOKEN_PREVIOUS", c.BrevoWebhookTokenPrevious},
+	} {
+		if c.uses(capEdge) && tok.value != "" && (len(tok.value) < MinBrevoWebhookTokenLen || isKnownDevSecret(tok.value)) {
+			errs = append(errs, fmt.Errorf(
+				"%s must be a random value of at least %d characters in production",
+				tok.name, MinBrevoWebhookTokenLen))
+		}
+	}
+
+	// 19. The event-center bot cannot run without its Telegram token (bot).
+	if c.uses(capEventsBot) && strings.TrimSpace(c.EventsTelegramBotToken) == "" {
+		errs = append(errs, errors.New(
+			"EVENTS_TELEGRAM_BOT_TOKEN is required in production for arena-bot",
+		))
+	}
+
 	return errs
 }
+
+// validateProductionJWT checks that JWT_SIGNING_SECRET is present, long enough
+// and not a well-known development placeholder.
+func (c *Config) validateProductionJWT() []error {
+	secret := strings.TrimSpace(c.JWTSecretStub)
+	switch {
+	case secret == "":
+		return []error{errors.New(
+			"JWT_SIGNING_SECRET is required in production (APP_ENV=production)",
+		)}
+	case len(secret) < minJWTSecretLen:
+		return []error{fmt.Errorf(
+			"JWT_SIGNING_SECRET is too short for production: must be at least %d bytes, got %d",
+			minJWTSecretLen, len(secret),
+		)}
+	case isKnownDevSecret(secret):
+		return []error{errors.New(
+			"JWT_SIGNING_SECRET is a known development placeholder and must not be used in production",
+		)}
+	}
+	return nil
+}
+
+// DefaultBrevoAPIBaseURL and DefaultPosterLLMBaseURL are the only
+// BREVO_API_BASE_URL and POSTER_LLM_BASE_URL production accepts.
+const (
+	DefaultBrevoAPIBaseURL  = "https://api.brevo.com"
+	DefaultPosterLLMBaseURL = "https://api.anthropic.com"
+)
+
+// MinBrevoWebhookTokenLen is the shortest BREVO_WEBHOOK_TOKEN production
+// accepts.
+const MinBrevoWebhookTokenLen = 32
 
 // Warnings returns non-fatal configuration warnings. Unlike Validate errors,
 // warnings do not prevent the process from starting but indicate suboptimal or
@@ -1443,6 +1701,21 @@ func (c *Config) Warnings() []string {
 			))
 		}
 	}
+
+	if c.AppEnv == EnvProduction && c.uses(capEdge) && c.BrevoWebhookToken == "" {
+		w = append(w, "BREVO_WEBHOOK_TOKEN is empty: the Brevo delivery-status webhook is not mounted,"+
+			" so organizers see buyer letters only as sent (docs/ops/brevo_delivery_status_webhook_ru.md)")
+	}
+
+	if c.appEnvUnset && c.Role != "" && c.Role != RoleAll {
+		w = append(w, fmt.Sprintf(
+			"APP_ENV is not set: %s runs as development, so production checks are OFF"+
+				" and ENABLE_DEV_AUTH defaults to true; set APP_ENV on every container",
+			c.Role.Binary(),
+		))
+	}
+
+	w = append(w, c.unusedSecretWarnings()...)
 
 	return w
 }
@@ -1685,4 +1958,30 @@ func redactURL(u string) string {
 		return ""
 	}
 	return redactDSN(u)
+}
+
+// ContactFormSecret is the Turnstile secret of the hosted page's contact
+// form: its own, else the onboarding one.
+func (c *Config) ContactFormSecret() string {
+	if c == nil {
+		return ""
+	}
+	if s := strings.TrimSpace(c.ContactFormTurnstileSecret); s != "" {
+		return s
+	}
+	return strings.TrimSpace(c.OnboardingTurnstileSecret)
+}
+
+// ContactFormReady reports whether the hosted page may offer its "Write to
+// the organizer" form: outside production always (the captcha is optional
+// there), in production only with both a Turnstile secret and a site key.
+// arena-api decides the page's form with it and arena-worker decides with it
+// whether a letter may link the form, so BOTH services need the two keys: a
+// worker without them only drops the link, the reverse prints a link to a
+// page with no form.
+func (c *Config) ContactFormReady() bool {
+	if c == nil || !c.IsProduction() {
+		return true
+	}
+	return c.ContactFormSecret() != "" && strings.TrimSpace(c.ContactFormTurnstileSiteKey) != ""
 }

@@ -16,8 +16,11 @@
 // must not be announced twice.
 //
 // It is strictly read-only on the business tables; it writes only its own
-// two (event_watch_snapshots, event_watch_state). The first run records the
-// events that already exist without announcing them.
+// three (event_watch_snapshots, event_watch_state, event_watch_site_sync).
+// The first run records the events that already exist without announcing
+// them. Each announcement ends with the state of every storefront, and a
+// selling site that fetches the catalog after the change gets a short
+// follow-up (sitesync.go, migration 0152).
 package eventwatch
 
 import (

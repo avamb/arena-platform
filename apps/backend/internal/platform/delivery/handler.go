@@ -53,6 +53,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -222,6 +223,16 @@ type Payload struct {
 	OrgLegalAddressCity    string `json:"org_legal_address_city,omitempty"`
 	OrgLegalAddressCountry string `json:"org_legal_address_country,omitempty"`
 	OrgContactEmail        string `json:"org_contact_email,omitempty"`
+	// ContactFormURL is the hosted page's "Write to the organizer" link,
+	// printed instead of an address when the ticket was sold through a hosted
+	// page without a public e-mail (ContactRoute). Set when the letter is
+	// rendered; an enqueuer never needs to.
+	ContactFormURL string `json:"contact_form_url,omitempty"`
+	// OrgRegistrationNumber, OrgTaxID and OrgTaxIDScheme identify the seller
+	// in the letter footer and on the PDF (HP-4b); empty prints nothing.
+	OrgRegistrationNumber string `json:"org_registration_number,omitempty"`
+	OrgTaxID              string `json:"org_tax_id,omitempty"`
+	OrgTaxIDScheme        string `json:"org_tax_id_scheme,omitempty"`
 	// SenderEmail is used only while SenderVerificationStatus is "verified".
 	// It is populated from the organization record by the enqueueing path.
 	SenderEmail              string `json:"sender_email,omitempty"`
@@ -255,6 +266,15 @@ type HandlerOptions struct {
 	// for both PDF embedding and the email <img src> (feature #290, T-3).
 	// When nil, every email/PDF falls back to the platform logo.
 	Media MediaResolver
+	// TicketsBaseURL is PUBLIC_TICKETS_BASE_URL, the origin of the hosted
+	// pages. A letter about a ticket sold through a hosted page without a
+	// public e-mail links that page's contact form (ContactRoute); empty
+	// prints no link.
+	TicketsBaseURL string
+	// ContactFormEnabled is config.ContactFormReady: the hosted page shows its
+	// contact form. When false a letter never links the form (the page would
+	// open without it); a public e-mail is still printed.
+	ContactFormEnabled bool
 	// Logger receives structured log entries. Defaults to slog.Default() when nil.
 	Logger *slog.Logger
 }
@@ -332,6 +352,9 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			)
 			return nil // permanent failure — bad UUID
 		}
+		// The organizer contact follows the owner rule at render time
+		// (ContactRoute): before the letter's other tickets copy the payload.
+		applyContactRoute(ctx, queriesOrNil(opts.TicketQueries), formLink{opts.TicketsBaseURL, opts.ContactFormEnabled}, ticketID, &p, logger)
 
 		// ── 2. Guard: honest sender required (PR-03) ──────────────────────────
 		// If Sender is nil or is a dev-only sender (e.g. LogSender), we cannot
@@ -605,7 +628,33 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		// ── 11. Send via real SMTP ────────────────────────────────────────────
 		// opts.Sender is guaranteed non-nil and non-dev-only at this point
 		// (the guard at step 2 would have returned early otherwise).
-		if sendErr := opts.Sender.Send(ctx, msg); sendErr != nil {
+		// The letter is recorded around the send (letter_status.go) so its
+		// delivery status can follow from the provider's webhook.
+		var letterDB emailstatus.DB
+		letter := emailstatus.NewLetter{Kind: emailstatus.KindTicket, Recipient: recipientEmail,
+			TemplateVersion: templateVersion(renderer, kind, p.Locale)}
+		if kind == templates.TemplateKindInvitation {
+			letter.Kind = emailstatus.KindInvitation
+		}
+		for _, m := range members {
+			letter.TicketNumbers = append(letter.TicketNumbers, m.number)
+		}
+		var letterJobs []uuid.UUID
+		if opts.DeliveryJobQueries != nil {
+			letterDB = opts.DeliveryJobQueries.DB()
+			orgID, orderID, lErr := ticketLetterContext(ctx, letterDB, ticketID)
+			if lErr != nil {
+				logger.Warn("delivery: letter context lookup failed; sending without a delivery status",
+					slog.String("ticket_id", ticketID.String()), slog.String("error", lErr.Error()))
+			}
+			letter.OrgID, letter.OrderID = orgID, orderID
+			for _, m := range members {
+				if m.jobID != uuid.Nil {
+					letterJobs = append(letterJobs, m.jobID)
+				}
+			}
+		}
+		if sendErr := sendRecorded(ctx, opts.Sender, letterDB, logger, letter, msg, letterJobs); sendErr != nil {
 			// The send failed, so nothing was delivered: hand every claimed
 			// delivery_jobs row back to 'pending' so the worker's retry can
 			// claim them again.
@@ -677,10 +726,14 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 // ticketEmailMessage constructs the ticket-delivery message after the handler
 // has resolved its recipient and rendered its localized content. Replies go to
 // the organiser contact when one was supplied in the durable job payload;
-// delivery still originates from the platform's configured SMTP sender.
+// delivery still originates from the platform's configured SMTP sender. A
+// letter that points to the hosted page's contact form (ContactRoute) has no
+// Reply-To and goes from the platform address, never the organization's own
+// sender: the owner rule is that no organizer address is published there.
 func ticketEmailMessage(p Payload, recipientEmail, subject, htmlBody, textBody string) email.Message {
 	from := ""
-	if p.SenderVerificationStatus == "verified" {
+	viaForm := strings.TrimSpace(p.OrgContactEmail) == "" && strings.TrimSpace(p.ContactFormURL) != ""
+	if p.SenderVerificationStatus == "verified" && !viaForm {
 		from = strings.TrimSpace(p.SenderEmail)
 	}
 	return email.Message{
@@ -814,6 +867,7 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, brandin
 		SeatNumber:             p.SeatNumber,
 		PriceMinor:             p.PriceMinor,
 		Currency:               p.Currency,
+		Invitation:             p.Template == TemplateInvitation,
 		EAN13:                  p.EAN13,
 		OrgLogo:                logoBytes,
 		PosterImage:            posterBytes,
@@ -827,6 +881,10 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, brandin
 		LegalAddressCity:       branding.LegalAddressCity,
 		LegalAddressCountry:    branding.LegalAddressCountry,
 		ContactEmail:           branding.ContactEmail,
+		ContactFormURL:         branding.ContactFormURL,
+		RegistrationNumber:     branding.RegistrationNumber,
+		TaxID:                  branding.TaxID,
+		TaxIDScheme:            branding.TaxIDScheme,
 	}
 	bytesOut, err := pdf.Render(ctx, t)
 	if err == nil {
@@ -881,6 +939,10 @@ func resolveBranding(ctx context.Context, m MediaResolver, p Payload, logger *sl
 		LegalAddressCity:       p.OrgLegalAddressCity,
 		LegalAddressCountry:    p.OrgLegalAddressCountry,
 		ContactEmail:           strings.TrimSpace(p.OrgContactEmail),
+		ContactFormURL:         strings.TrimSpace(p.ContactFormURL),
+		RegistrationNumber:     strings.TrimSpace(p.OrgRegistrationNumber),
+		TaxID:                  strings.TrimSpace(p.OrgTaxID),
+		TaxIDScheme:            strings.TrimSpace(p.OrgTaxIDScheme),
 	}
 	b.LogoAlt = b.OrgName
 

@@ -39,7 +39,37 @@ const (
 	subsystemWorker  = "worker"
 	subsystemOutbox  = "outbox"
 	subsystemPayment = "payment"
+	subsystemEmail   = "email"
 )
+
+// E-mail webhook label values (Brevo delivery status). A closed set for the
+// same reason as the payment webhook's: the body is caller-supplied.
+const (
+	// LabelReason is why a webhook delivery was refused before any event
+	// was read: bad_token, malformed, too_large, rate_limited.
+	LabelReason = "reason"
+
+	// EmailWebhookEventOther is the catch-all event bucket.
+	EmailWebhookEventOther = "other"
+)
+
+// knownEmailWebhookEvents bounds the event_type label of the e-mail webhook:
+// arena's normalized event names (emailstatus.Normalize). Anything else is
+// "other".
+var knownEmailWebhookEvents = map[string]bool{
+	"sent": true, "delivered": true, "proxy_open": true, "opened": true,
+	"soft_bounce": true, "hard_bounce": true, "invalid_email": true, "blocked": true, "error": true,
+	"click": true, "deferred": true, "unsubscribed": true, "spam": true, "list_addition": true,
+}
+
+// EmailWebhookEventLabel maps a normalized e-mail event onto the bounded
+// event_type label value.
+func EmailWebhookEventLabel(event string) string {
+	if knownEmailWebhookEvents[event] {
+		return event
+	}
+	return EmailWebhookEventOther
+}
 
 // Payment-webhook label values. They are deliberately a CLOSED set: a
 // Prometheus label fed from anything an outside caller controls is an
@@ -229,6 +259,21 @@ type Metrics struct {
 	// Metric name: arena_payment_refund_provider_calls_total.
 	RefundProviderCallsTotal *prometheus.CounterVec
 
+	// EmailWebhookEventsTotal counts Brevo delivery-status events by
+	// bounded event type and outcome (applied, duplicate, not_ours,
+	// ignored, unknown_event, error). not_ours is normal: the Brevo account
+	// may be shared with other sites.
+	//
+	// Metric name: arena_email_webhook_events_total.
+	EmailWebhookEventsTotal *prometheus.CounterVec
+
+	// EmailWebhookRejectedTotal counts webhook deliveries refused before
+	// any event was read, by reason (bad_token, malformed, too_large,
+	// rate_limited). A steady bad_token rate is someone probing the URL.
+	//
+	// Metric name: arena_email_webhook_rejected_total.
+	EmailWebhookRejectedTotal *prometheus.CounterVec
+
 	// IdempotencyCleanupDeletedTotal counts idempotency_keys rows deleted by
 	// the scheduled maintenance job (job_type='idempotency.cleanup'). Each
 	// cleanup run adds the number of rows purged. A rising value confirms the
@@ -391,6 +436,26 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 			[]string{LabelEventType, LabelOutcome},
 		),
 
+		EmailWebhookEventsTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: MetricsNamespace,
+				Subsystem: subsystemEmail,
+				Name:      "webhook_events_total",
+				Help:      "Total Brevo delivery-status webhook events, by bounded event type and outcome.",
+			},
+			[]string{LabelEventType, LabelOutcome},
+		),
+
+		EmailWebhookRejectedTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: MetricsNamespace,
+				Subsystem: subsystemEmail,
+				Name:      "webhook_rejected_total",
+				Help:      "Total Brevo delivery-status webhook deliveries refused before any event was read, by reason.",
+			},
+			[]string{LabelReason},
+		),
+
 		RefundProviderCallsTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: MetricsNamespace,
@@ -419,6 +484,8 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 		m.PaymentWebhookSignatureFailuresTotal,
 		m.PaymentWebhookEventsTotal,
 		m.RefundProviderCallsTotal,
+		m.EmailWebhookEventsTotal,
+		m.EmailWebhookRejectedTotal,
 	} {
 		if err := reg.Register(c); err != nil {
 			// If a peer test already registered the same metric on the

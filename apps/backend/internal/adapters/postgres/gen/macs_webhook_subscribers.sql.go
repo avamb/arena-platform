@@ -64,6 +64,26 @@ func (q *Queries) GetMACSSubscriberByOrg(ctx context.Context, orgID uuid.UUID) (
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetMACSSubscriberByID
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getMACSSubscriberByIDSQL = `-- name: GetMACSSubscriberByID :one
+SELECT id, site_url, callback_url, signing_secret, event_types, active, created_at, updated_at, kind, org_id
+FROM   webhook_subscribers
+WHERE  id   = $1
+  AND  kind = 'macs'`
+
+// GetMACSSubscriberByID returns the MACS subscriber with this id, active or
+// not; the caller decides what an inactive one may do. M1: MACS names its
+// subscriber in X-MACS-Subscriber-Id when it posts scans back to arena, and
+// the row's signing_secret verifies the batch. Returns pgx.ErrNoRows when no
+// MACS subscriber has the id.
+func (q *Queries) GetMACSSubscriberByID(ctx context.Context, id uuid.UUID) (WebhookSubscriberRow, error) {
+	row := q.db.QueryRow(ctx, getMACSSubscriberByIDSQL, id)
+	return scanWebhookSubscriberRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListActiveMACSSubscribers
 // ─────────────────────────────────────────────────────────────────────────────
 

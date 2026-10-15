@@ -19,7 +19,7 @@
   </table>
   <p style="margin:16px 0 12px 0;">Деньги вернутся на тот способ оплаты, которым вы платили. Банку обычно нужно 5–10 рабочих дней, чтобы показать зачисление.</p>
   {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">Возвращённые билеты больше не действуют для входа.</p>{{else if .Refund.SomeTicketsCancelled}}<p style="margin:0 0 12px 0;">Для входа больше нельзя использовать только билеты с пометкой «больше не действует»; остальные билеты из списка выше действуют.</p>{{end}}
-  <p style="margin:0 0 12px 0;">Есть вопросы? Ответьте на это письмо.</p>
+  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">Есть вопросы? Ответьте на это письмо.</p>{{end}}
   <p style="font-size:12px;color:#666">Письмо отправлено на: {{.RecipientEmail}}</p>
   </td></tr>
   <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
@@ -30,9 +30,11 @@
     {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
-    {{with .Branding.ContactEmail}}<br>Контакт: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Контакт: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Контакт: <a href="{{.}}" style="color:#666">Написать организатору</a>{{end}}{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — автоматическое сообщение</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Если вы нажмёте «Отписаться», письма с билетами и важные письма о вашем заказе к вам больше не придут. Рекламных рассылок без вашего согласия мы не отправляем.</p>
   </td></tr>
 </table>
 </td></tr></table>
@@ -55,8 +57,8 @@
 {{if .Refund.TicketsCancelled}}Возвращённые билеты больше не действуют для входа.
 {{else if .Refund.SomeTicketsCancelled}}Для входа больше нельзя использовать только билеты с пометкой «больше не действует»; остальные билеты из списка выше действуют.
 {{end}}
-Есть вопросы? Ответьте на это письмо.
-
+{{if .Branding.ContactEmail}}Есть вопросы? Ответьте на это письмо.
+{{end}}
 Письмо отправлено на: {{.RecipientEmail}}
 
 --
@@ -66,7 +68,11 @@
 {{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
 {{else}}{{with .Branding.LegalAddressCity}}{{.}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}Контакт: {{.}}
-{{end}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Контакт: {{.}}
+{{end}}{{end}}
 Arena Platform — автоматическое сообщение
+
+Если вы нажмёте «Отписаться», письма с билетами и важные письма о вашем заказе к вам больше не придут. Рекламных рассылок без вашего согласия мы не отправляем.
 {{end}}

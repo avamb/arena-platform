@@ -317,14 +317,17 @@ type publicFeedMediaItem struct {
 }
 
 // BuildBuyerFields constructs the buyer_fields list from channel flags.
-// The email field is always required and enabled; name and phone follow
-// the channel's collect_name / collect_phone flags.
+// The email field is always required and enabled. Name and phone are always
+// offered (enabled) and are optional unless the channel's collect_name /
+// collect_phone flag is on, which makes the field required (P1b, owner
+// decision 2026-10-14: a buyer may leave them empty). The third state "off"
+// (field not shown at all) arrives with migration 0160, not here.
 // Exported so tests can invoke it directly without a live DB.
 func BuildBuyerFields(collectName, collectPhone bool) []BuyerFieldItem {
 	return []BuyerFieldItem{
 		{Key: "email", Required: true, Enabled: true},
-		{Key: "name", Required: collectName, Enabled: collectName},
-		{Key: "phone", Required: collectPhone, Enabled: collectPhone},
+		{Key: "name", Required: collectName, Enabled: true},
+		{Key: "phone", Required: collectPhone, Enabled: true},
 	}
 }
 
@@ -715,11 +718,14 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	type eventDetailResponse struct {
 		publicFeedEventResponse
 		Sessions []publicFeedSessionResponse `json:"sessions"`
+		// Materials: the same block as the hosted page's (task 1-2c).
+		Materials publicMaterials `json:"materials"`
 	}
 
 	detail := eventDetailResponse{
 		publicFeedEventResponse: eventResp,
 		Sessions:                []publicFeedSessionResponse{},
+		Materials:               h.loadPublicMaterials(ctx, eventID, time.Now().UTC()),
 	}
 
 	// Fetch buyer-field flags from the channel linked to this feed token

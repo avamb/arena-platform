@@ -63,6 +63,20 @@ func (q *Queries) InsertBotInvitation(ctx context.Context, orgID, userID uuid.UU
 	return scanBotInvitationRow(q.db.QueryRow(ctx, insertBotInvitation, orgID, userID, email, role, codeHash, invitedBy, expiresAt, membershipCreated))
 }
 
+const insertWebBotInvitation = `-- name: InsertWebBotInvitation :one
+INSERT INTO bot_invitations (org_id, user_id, email, role, code_hash, invited_by, expires_at, membership_created, accepted_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+RETURNING ` + botInvitationColumns
+
+// InsertWebBotInvitation records an invitation sent for the web event center.
+// The membership exists at once and there is no Telegram code to redeem, so
+// the row is born accepted (accepted_at set, accepted_telegram_user_id NULL:
+// that pair tells it from a Telegram invitation). codeHash is random and
+// never disclosed.
+func (q *Queries) InsertWebBotInvitation(ctx context.Context, orgID, userID uuid.UUID, email, role, codeHash string, invitedBy *uuid.UUID, expiresAt time.Time, membershipCreated bool) (BotInvitationRow, error) {
+	return scanBotInvitationRow(q.db.QueryRow(ctx, insertWebBotInvitation, orgID, userID, email, role, codeHash, invitedBy, expiresAt, membershipCreated))
+}
+
 const getBotInvitationByCodeHash = `-- name: GetBotInvitationByCodeHash :one
 SELECT ` + botInvitationColumns + `
 FROM   bot_invitations
@@ -185,16 +199,6 @@ func (q *Queries) BotUserWorksInOrg(ctx context.Context, userID, orgID uuid.UUID
 	var b bool
 	err := q.db.QueryRow(ctx, botUserWorksInOrg, userID, orgID).Scan(&b)
 	return b, err
-}
-
-const countActiveOrgAdmins = `-- name: CountActiveOrgAdmins :one
-SELECT count(*) FROM memberships WHERE org_id = $1 AND role = 'org_admin' AND status = 'active'`
-
-// CountActiveOrgAdmins counts the organization's active owners.
-func (q *Queries) CountActiveOrgAdmins(ctx context.Context, orgID uuid.UUID) (int64, error) {
-	var n int64
-	err := q.db.QueryRow(ctx, countActiveOrgAdmins, orgID).Scan(&n)
-	return n, err
 }
 
 const resendBotInvitation = `-- name: ResendBotInvitation :one
@@ -526,6 +530,46 @@ func (q *Queries) UpsertBotDialog(ctx context.Context, telegramUserID int64, org
 	return scanBotDialogRow(q.db.QueryRow(ctx, upsertBotDialog, telegramUserID, orgID, kind, step, state, expiresAt))
 }
 
+const updateBotDialogQuiet = `-- name: UpdateBotDialogQuiet :execrows
+UPDATE bot_dialogs
+SET    org_id     = $2,
+       step       = $4,
+       state      = $5,
+       expires_at = $6
+WHERE  telegram_user_id = $1
+  AND  kind = $3`
+
+// UpdateBotDialogQuiet rewrites an existing dialog without touching
+// updated_at, so work done in the background does not make it the newest
+// dialog. It reports how many rows it changed (0: the dialog is gone).
+func (q *Queries) UpdateBotDialogQuiet(ctx context.Context, telegramUserID int64, orgID *uuid.UUID, kind, step string, state json.RawMessage, expiresAt time.Time) (int64, error) {
+	if len(state) == 0 {
+		state = json.RawMessage(`{}`)
+	}
+	tag, err := q.db.Exec(ctx, updateBotDialogQuiet, telegramUserID, orgID, kind, step, state, expiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+const pauseBotDrafts = `-- name: PauseBotDrafts :execrows
+UPDATE bot_drafts
+SET    state = jsonb_set(state, '{paused}', 'true'::jsonb)
+WHERE  telegram_user_id = $1
+  AND  step <> 'done'
+  AND  coalesce((state->>'paused')::boolean, false) = false`
+
+// PauseBotDrafts pauses every unfinished event draft of a person without
+// touching updated_at.
+func (q *Queries) PauseBotDrafts(ctx context.Context, telegramUserID int64) (int64, error) {
+	tag, err := q.db.Exec(ctx, pauseBotDrafts, telegramUserID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 const getBotDialog = `-- name: GetBotDialog :one
 SELECT ` + botDialogColumns + `
 FROM   bot_dialogs
@@ -537,6 +581,31 @@ WHERE  telegram_user_id = $1
 // pgx.ErrNoRows.
 func (q *Queries) GetBotDialog(ctx context.Context, telegramUserID int64, kind string) (BotDialogRow, error) {
 	return scanBotDialogRow(q.db.QueryRow(ctx, getBotDialog, telegramUserID, kind))
+}
+
+const listBotDialogKindsByRecency = `-- name: ListBotDialogKindsByRecency :many
+SELECT kind
+FROM   bot_dialogs
+WHERE  telegram_user_id = $1
+ORDER  BY updated_at DESC, created_at DESC, kind`
+
+// ListBotDialogKindsByRecency lists the kinds of a person's dialogs, expired
+// or not, the one touched last first.
+func (q *Queries) ListBotDialogKindsByRecency(ctx context.Context, telegramUserID int64) ([]string, error) {
+	rows, err := q.db.Query(ctx, listBotDialogKindsByRecency, telegramUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var kinds []string
+	for rows.Next() {
+		var kind string
+		if err := rows.Scan(&kind); err != nil {
+			return nil, err
+		}
+		kinds = append(kinds, kind)
+	}
+	return kinds, rows.Err()
 }
 
 const listLiveBotDialogsByStep = `-- name: ListLiveBotDialogsByStep :many
@@ -628,6 +697,11 @@ type BotTeamMemberRow struct {
 	InvitationAcceptedAt *time.Time `json:"invitation_accepted_at"`
 	InvitationExpiresAt  *time.Time `json:"invitation_expires_at"`
 	InvitationLastSentAt *time.Time `json:"invitation_last_sent_at"`
+	// InvitationWeb: the invitation was sent for the web event center (accepted
+	// at once, no Telegram account). WebSetupExpiresAt is the end of the
+	// still-unused setup link of an account that invitation created, else nil.
+	InvitationWeb     bool       `json:"invitation_web"`
+	WebSetupExpiresAt *time.Time `json:"web_setup_expires_at"`
 }
 
 const listBotTeam = `-- name: ListBotTeam :many
@@ -644,11 +718,18 @@ SELECT u.id      AS user_id,
        inv.id           AS invitation_id,
        inv.accepted_at  AS invitation_accepted_at,
        inv.expires_at   AS invitation_expires_at,
-       inv.last_sent_at AS invitation_last_sent_at
+       inv.last_sent_at AS invitation_last_sent_at,
+       (inv.accepted_at IS NOT NULL AND inv.accepted_telegram_user_id IS NULL) AS invitation_web,
+       -- A web invitation of an account that invitation CREATED (same
+       -- transaction, so the same now()) is still waiting while its setup link
+       -- is unused and alive.
+       (SELECT max(t.expires_at) FROM password_reset_tokens t
+        WHERE t.user_id = u.id AND t.used_at IS NULL AND t.expires_at > now()
+          AND u.created_at = inv.created_at) AS web_setup_expires_at
 FROM   memberships m
 JOIN   users u ON u.id = m.user_id
 LEFT JOIN LATERAL (
-           SELECT i.id, i.accepted_at, i.expires_at, i.last_sent_at
+           SELECT i.id, i.accepted_at, i.accepted_telegram_user_id, i.created_at, i.expires_at, i.last_sent_at
            FROM   bot_invitations i
            WHERE  i.user_id = u.id AND i.org_id = m.org_id AND i.revoked_at IS NULL
            ORDER  BY (i.accepted_at IS NOT NULL) DESC, i.created_at DESC
@@ -670,7 +751,8 @@ func (q *Queries) ListBotTeam(ctx context.Context, orgID uuid.UUID) ([]BotTeamMe
 	for rows.Next() {
 		var r BotTeamMemberRow
 		if err := rows.Scan(&r.UserID, &r.Email, &r.MembershipRole, &r.JoinedAt, &r.TelegramLinked, &r.InvitationPending,
-			&r.InvitationID, &r.InvitationAcceptedAt, &r.InvitationExpiresAt, &r.InvitationLastSentAt); err != nil {
+			&r.InvitationID, &r.InvitationAcceptedAt, &r.InvitationExpiresAt, &r.InvitationLastSentAt,
+			&r.InvitationWeb, &r.WebSetupExpiresAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

@@ -30,6 +30,10 @@ apps/admin-web/node_modules
 apps/admin-web/dist
 apps/admin-web/tsconfig.app.tsbuildinfo
 apps/admin-web/tsconfig.node.tsbuildinfo
+apps/event-center/node_modules
+apps/event-center/dist
+apps/event-center/tsconfig.app.tsbuildinfo
+apps/event-center/tsconfig.node.tsbuildinfo
 
 # ----- Widget: not required in any production image ----------
 # The Go and admin images do not use the widget source.
@@ -39,6 +43,11 @@ apps/widget/test-results
 apps/widget/playwright-report
 apps/widget/.playwright
 apps/widget/demo
+
+# ----- Venue SVG generator: own image, own build context -----
+# apps/venue-svg-generator is built from its own folder; the Go and
+# admin images never need the Python tree.
+apps/venue-svg-generator
 
 # ----- Test / CI / Playwright artifacts ----------------------
 .playwright

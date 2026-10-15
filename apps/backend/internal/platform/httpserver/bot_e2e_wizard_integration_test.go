@@ -38,8 +38,8 @@ func e2eWizardMessage(text string) string {
 }
 
 func e2eWizardCallback(data string) string {
-	return fmt.Sprintf(`"callback_query":{"id":"cb-%d","from":{"id":%d,"is_bot":false,"first_name":"Wiz","language_code":"ru"},"chat_instance":"x","data":%q,"message":{"message_id":5,"date":1700000000,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
-		time.Now().UnixNano()%100000, e2eWizardTelegramUser, data, e2eWizardTelegramUser)
+	return fmt.Sprintf(`"callback_query":{"id":"cb-%d","from":{"id":%d,"is_bot":false,"first_name":"Wiz","language_code":"ru"},"chat_instance":"x","data":%q,"message":{"message_id":5,"date":%d,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
+		time.Now().UnixNano()%100000, e2eWizardTelegramUser, data, e2ePressDate(), e2eWizardTelegramUser)
 }
 
 // e2eWizardDocument is a poster sent as a file (the recommended way, no
@@ -167,6 +167,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 		t.Fatalf("i18n.NewBundle: %v", err)
 	}
 	tg := newStubTelegram(t)
+	tg.restartGap()
 	bot, err := eventbot.New(eventbot.Options{
 		Token:             "123:test-token",
 		Queries:           q,
@@ -191,6 +192,9 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	}
 	press := func(data, expect string) string {
 		t.Helper()
+		// A button the bot is about to draw (the event card after a save)
+		// must be on screen before it is pressed.
+		tg.waitButton(e2eWizardTelegramUser, data, 2*time.Second)
 		m := tg.mark()
 		tg.push(e2eWizardCallback(data))
 		return tg.waitSince(t, m, expect)
@@ -374,7 +378,15 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE events SET updated_at = now() + interval '1 minute' WHERE id = $1`, eventID); err != nil {
 		t.Fatal(err)
 	}
-	press("wz:publish", "меняли в другом месте")
+	// "Publish changes" first shows what goes to the site; only the
+	// preview's own button saves.
+	preview := press("wz:publish", "Что уйдёт на сайт")
+	for _, want := range []string{"«" + eventName + "» → «" + renamed + "»", "Возраст: 16+ → 18+", "новые категории"} {
+		if !strings.Contains(preview, want) {
+			t.Errorf("publish preview lacks %q:\n%s", want, preview)
+		}
+	}
+	press("wz:publish:go", "меняли в другом месте")
 	// An edited, published event shows the buyers' link right in the message.
 	editSaved := press("wz:publish:force", "Сохранено")
 	if !strings.Contains(editSaved, "https://tickets.test/") || !strings.Contains(editSaved, "🔗") {

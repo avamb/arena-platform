@@ -25,6 +25,7 @@ func (s *Server) paymentsHandler() *hpayments.Handler {
 		// rather than reaching out to the real Stripe.
 		WithStripeBaseURL(s.stripeBaseURL()).
 		WithFlittBaseURL(s.flittBaseURL()).
+		WithAllPayBaseURL(s.allpayBaseURL()).
 		WithCallbackBase(s.cfg.APIPublicBaseURL())
 }
 

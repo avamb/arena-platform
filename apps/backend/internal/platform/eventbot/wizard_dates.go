@@ -237,21 +237,33 @@ func (w *Wizard) dateBounds(d *Draft) (min, max string) {
 	min = w.today(d).Format(isoLayout)
 	switch d.Step {
 	case stTChangeDate:
-		if n := len(d.Tickets.Schedule); n > 0 {
-			if prev, err := time.Parse(isoLayout, d.Tickets.Schedule[n-1].From); err == nil {
+		if sched := d.tk().Schedule; len(sched) > 0 {
+			if prev, err := time.Parse(isoLayout, sched[len(sched)-1].From); err == nil {
 				if next := prev.AddDate(0, 0, 1).Format(isoLayout); next > min {
 					min = next
 				}
 			}
 		}
-		max = lastSessionDate(d)
+		max = ticketsLastDate(d)
 	case stTCatUntil:
-		if prev := lastUntil(d.Tickets.Categories); prev > min {
+		if prev := lastUntil(d.tk().Categories); prev > min {
 			min = prev
 		}
-		max = lastSessionDate(d)
+		max = ticketsLastDate(d)
 	}
 	return min, max
+}
+
+// ticketsLastDate is the last day a price may change or a category stop
+// selling: the day of the date whose categories are being entered (an edited
+// event changes them date by date), else the latest date of the event.
+func ticketsLastDate(d *Draft) string {
+	if d.Scratch.Work != nil && !d.Scratch.WorkAll {
+		if i := d.Scratch.WorkFor - 1; i >= 0 && i < len(d.Sessions) && d.Sessions[i].Date != "" {
+			return d.Sessions[i].Date
+		}
+	}
+	return lastSessionDate(d)
 }
 
 func inBounds(iso, min, max string) bool {

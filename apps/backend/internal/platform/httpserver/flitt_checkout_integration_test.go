@@ -563,3 +563,45 @@ func TestFlitt_FrenchBuyerGetsFrenchPageAndFrenchEmailLocale(t *testing.T) {
 		t.Errorf("buyer_locale = %v; want fr so the ticket e-mail renders in French", stored)
 	}
 }
+
+// TestFlitt_PaidCallbackWithoutCurrencyIsParked (PAY-14b review L-C): the
+// core judges every config-route module's paid event, Flitt included. A
+// genuinely signed "approved" callback that names no currency cannot show
+// that the buyer paid what arena asked for: the payment goes to
+// manual_review and no checkout is completed.
+func TestFlitt_PaidCallbackWithoutCurrencyIsParked(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f := newFlittFixture(t, ctx, pool, "fz", "EUR")
+	defer f.cleanup()
+
+	stub := newStubFlittServer(t, f.paymentKey)
+	srv := buildHostedCheckoutServer(t, pool, "")
+	srv.flittAPIBaseURL = stub.baseURL()
+	srv.cfg.AppPublicURL = "https://api.arena-integration.test"
+	q := gen.New(pool)
+
+	code, body := f.startCheckout(t, srv, hostedTicketsBaseURL+"/x")
+	if code != http.StatusCreated {
+		t.Fatalf("checkout/start = %d; body: %s", code, body)
+	}
+	var start hostedStartResponse
+	_ = json.Unmarshal(body, &start)
+	csID := uuid.MustParse(start.CheckoutSession.ID)
+	cs, _ := q.GetCheckoutSessionByID(ctx, csID)
+
+	paid := f.callback(t, csID.String(), "approved", *cs.Total, "", f.paymentKey, f.merchantID)
+	if code, body = postFlittCallback(t, srv, f.configWebhookPath(), paid); code != http.StatusOK {
+		t.Fatalf("callback = %d; body: %s", code, body)
+	}
+	after, err := q.GetPaymentIntentByProviderID(ctx, csID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.State != "manual_review" || after.FailureCode == nil || *after.FailureCode != "paid_amount_mismatch" {
+		t.Fatalf("intent = %s %v; want manual_review paid_amount_mismatch", after.State, after.FailureCode)
+	}
+	if csAfter, _ := q.GetCheckoutSessionByID(ctx, csID); csAfter.State == "completed" {
+		t.Errorf("checkout session completed by a paid event without a currency")
+	}
+}

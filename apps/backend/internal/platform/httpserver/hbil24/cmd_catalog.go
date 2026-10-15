@@ -15,6 +15,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -42,6 +43,7 @@ import (
 //	  "firstEventDate": "<RFC3339>"
 //	}
 func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Request, req bil24Request) {
+	startedAt := time.Now()
 	if h.eventQueries == nil {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInternalError, "catalog service unavailable",
@@ -188,6 +190,13 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		actionList = append(actionList, h.buildActionEntry(ctx, e, organizerID, organizerName, byEvent[e.ID]))
 	}
 
+	if authed {
+		// Migration 0152: the event watcher confirms to the operator that
+		// this site has picked up an announced change. Best effort, and only
+		// once the whole answer was built without an error; recorded before
+		// the answer is written so a site's next command never races it.
+		h.recordCatalogFetch(ctx, channel.ID, startedAt)
+	}
 	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
 		"countryList": countryList,
 		"cityList":    cityList,

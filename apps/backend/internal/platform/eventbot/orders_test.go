@@ -421,8 +421,8 @@ func TestOrdersScreens_RenderOnEveryLanguage(t *testing.T) {
 		screens["letter_retry_btn"] = b.texts.T(loc, "bot.ord.letter_retry_btn", nil)
 		screens["group"] = b.orderCardText(loc, orderDetail(t, "paid", "", 1, ""), testMeta, false, false)
 		screens["notickets"] = b.orderCardText(loc, orderDetail(t, "paid", "", 0, ""), testMeta, true, false)
-		screens["cancel_ask"] = b.texts.T(loc, "bot.ord.cancel_ask", map[string]any{"Num": 1, "Amount": "1 EUR", "Word": b.sesCancelWord(loc)})
-		screens["cancel_wrong"] = b.texts.T(loc, "bot.ord.cancel_wrong", map[string]any{"Word": b.sesCancelWord(loc)})
+		screens["cancel_ask"] = b.texts.T(loc, "bot.ord.cancel_ask", map[string]any{"Num": 1, "Amount": "1 EUR", "Word": b.ordCancelWord(loc)})
+		screens["cancel_wrong"] = b.texts.T(loc, "bot.ord.cancel_wrong", map[string]any{"Word": b.ordCancelWord(loc)})
 		for _, tab := range []string{ordTabRecent, ordTabPaid, ordTabUnpaid} {
 			screens["empty/"+tab] = b.emptyOrdersText(loc, ordersDialog{Tab: tab})
 			screens["tab/"+tab] = b.texts.T(loc, "bot.ord.tab_"+tab, nil)

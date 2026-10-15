@@ -30,9 +30,11 @@
     {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
-    {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kontakt: <a href="{{.}}" style="color:#666">Dem Veranstalter schreiben</a>{{end}}{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — automatischer Einladungs-Versand</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails mit Ihren Tickets und keine wichtigen E-Mails zu Ihrer Bestellung mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.</p>
   </td></tr>
 </table>
 </td></tr></table>
@@ -63,7 +65,11 @@ Zugestellt an: {{.RecipientEmail}}
 {{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
 {{else}}{{with .Branding.LegalAddressCity}}{{.}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}Kontakt: {{.}}
-{{end}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kontakt: {{.}}
+{{end}}{{end}}
 Arena Platform — automatischer Einladungs-Versand
+
+Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails mit Ihren Tickets und keine wichtigen E-Mails zu Ihrer Bestellung mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.
 {{end}}

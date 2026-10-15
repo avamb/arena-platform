@@ -34,12 +34,13 @@ func TestModules_OrderAndRequiredSecretsMatchThePrePAY01Tables(t *testing.T) {
 			t.Errorf("%s required secrets = %v; want %v", name, got, want)
 		}
 	}
-	// hfeed.credentialFields / hostedProviders before PAY-01.
+	// hfeed.credentialFields / hostedProviders before PAY-01, plus AllPay
+	// since PAY-14.
 	hosted := reg.NamesWhere(func(d payments.Descriptor) bool { return d.Capabilities.HostedCheckout })
-	if !reflect.DeepEqual(hosted, []string{"stripe", "flitt"}) {
-		t.Errorf("hosted-checkout providers = %v; want [stripe flitt]", hosted)
+	if !reflect.DeepEqual(hosted, []string{"stripe", "flitt", "allpay"}) {
+		t.Errorf("hosted-checkout providers = %v; want [stripe flitt allpay]", hosted)
 	}
-	creds := map[string][]string{"stripe": {"api_key"}, "flitt": {"merchant_id", "payment_key"}}
+	creds := map[string][]string{"stripe": {"api_key"}, "flitt": {"merchant_id", "payment_key"}, "allpay": {"merchant_id", "secret_key"}}
 	for name, want := range creds {
 		e, _ := reg.Get(name)
 		if got := e.Descriptor.CredentialKeys(); !reflect.DeepEqual(got, want) {

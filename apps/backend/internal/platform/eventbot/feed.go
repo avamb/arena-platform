@@ -17,10 +17,13 @@ package eventbot
 // buttons ("live"). A press on any other message — a stale screen whose
 // keyboard could not be removed, or the second tap of a double tap that
 // arrived after the first one already moved on — does nothing and answers
-// "this message is out of date" (handleCallback). The memory is in-process:
-// after a restart a chat is unknown until the bot writes to it again, and
-// presses there are accepted as before (each dialog still checks its own
-// step, and the refund's last button carries its operation's key).
+// "this message is out of date" (handleCallback). The memory is in-process,
+// so a restart also ends every screen sent before it (owner decision
+// 2026-10-14): a press on a message whose Telegram date is earlier than the
+// start of this process is refused in every chat, and the person goes on from
+// "☰ Menu". A dialog kept in bot_dialogs is not lost by that: the menu (or a
+// typed answer) brings a new screen, and a refund that may have started keeps
+// its key (leaveIdleRefund).
 //
 // Background work (a refund answer, a reminder of the draft sweep) has no
 // action: it always posts a new message and leaves the other live messages
@@ -60,6 +63,11 @@ type feedMemory struct {
 	chats map[int64]*chatFeed
 	now   func() time.Time
 	swept time.Time
+	// boot is when this process started, in Unix seconds (Telegram dates a
+	// message to the second). A message dated at or before it may come from
+	// a previous process and is never live here unless this process made it
+	// live.
+	boot int64
 }
 
 type chatFeed struct {
@@ -68,7 +76,17 @@ type chatFeed struct {
 }
 
 func newFeedMemory() *feedMemory {
-	return &feedMemory{chats: map[int64]*chatFeed{}, now: time.Now}
+	return &feedMemory{chats: map[int64]*chatFeed{}, now: time.Now, boot: time.Now().Unix()}
+}
+
+// beforeBoot reports a message that may have been sent by the previous
+// process: its Telegram date (Unix seconds) is not later than the second this
+// process started in. A message the old process sent in the very second the
+// new one started counts as old; one this process sent in that second is live
+// anyway (admit checks the live set first). A date of 0 is an inaccessible
+// message and counts as old too.
+func (f *feedMemory) beforeBoot(sent int64) bool {
+	return f != nil && sent <= f.boot
 }
 
 // tracked reports whether a chat's messages are remembered at all: private
@@ -148,12 +166,18 @@ func (f *feedMemory) others(chatID int64, except map[int]bool) []int {
 	return out
 }
 
-// admit decides a press on msgID: false for a message the bot knows is no
-// longer live. A chat the bot does not know yet (a restart) is accepted and
-// the pressed message becomes its first live one.
-func (f *feedMemory) admit(chatID int64, msgID int) bool {
-	if !f.tracked(chatID) {
+// admit decides a press on msgID, a message Telegram dated sent (Unix
+// seconds): false for a message the bot knows is no longer live, and for any
+// message sent before this process started, whatever the chat. A message
+// this process made live is accepted even when the clocks disagree about its
+// date. A chat the bot does not know yet is accepted only for a message sent
+// after the start (one this process forgot), which becomes its live one.
+func (f *feedMemory) admit(chatID int64, msgID int, sent int64) bool {
+	if f == nil {
 		return true
+	}
+	if !f.tracked(chatID) {
+		return !f.beforeBoot(sent)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -161,6 +185,9 @@ func (f *feedMemory) admit(chatID int64, msgID int) bool {
 		_, live := c.live[msgID]
 		c.seen = f.now()
 		return live
+	}
+	if f.beforeBoot(sent) {
+		return false
 	}
 	f.chat(chatID).live[msgID] = f.now()
 	return true
@@ -464,20 +491,28 @@ func (b *Bot) stripKeyboard(ctx context.Context, chatID int64, msgID int) {
 // loses the keyboard it should not have any more.
 func (b *Bot) refuseStalePress(ctx context.Context, cq *models.CallbackQuery) {
 	loc := NormalizeLocale(cq.From.LanguageCode)
+	// A linked person has the "☰ Menu" button (menu_keyboard.go); a
+	// stranger has not, and is told to continue below.
+	m := cq.Message.Message
+	key := "bot.stale_message_stranger"
+	if b.feed.beforeBoot(int64(m.Date)) {
+		// Sent before a restart: nothing below belongs to this process yet.
+		key = "bot.stale_message_stranger_restart"
+	}
 	if b.queries != nil {
 		if link, err := b.queries.GetBotTelegramLink(ctx, cq.From.ID); err == nil && link.RevokedAt == nil {
 			loc = NormalizeLocale(link.Locale)
+			key = "bot.stale_message"
 		}
 	}
 	_, _ = b.tg.AnswerCallbackQuery(ctx, &tgbot.AnswerCallbackQueryParams{
 		CallbackQueryID: cq.ID,
-		Text:            b.texts.T(loc, "bot.stale_message", nil),
+		Text:            b.texts.T(loc, key, nil),
 		ShowAlert:       true,
 	})
-	m := cq.Message.Message
 	b.stripKeyboard(ctx, m.Chat.ID, m.ID)
 }
 
 func init() {
-	MessageKeys = append(MessageKeys, "bot.stale_message")
+	MessageKeys = append(MessageKeys, "bot.stale_message", "bot.stale_message_stranger_restart")
 }

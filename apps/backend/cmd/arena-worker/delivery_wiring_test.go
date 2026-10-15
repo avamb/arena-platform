@@ -90,3 +90,34 @@ func TestDeliveryRegistration_GoesThroughTheOptionsBuilder(t *testing.T) {
 			"which is what guarantees the handler gets a MediaResolver")
 	}
 }
+
+// A letter about a ticket sold through a hosted page without a public e-mail
+// links that page's contact form; without the tickets origin it can link
+// nothing, so the worker must pass it on.
+func TestBuildDeliveryHandlerOptions_CarriesTheTicketsOrigin(t *testing.T) {
+	cfg := &config.Config{PublicTicketsBaseURL: "https://tickets.example"}
+	if got := buildDeliveryHandlerOptions(cfg, nil, nil, testLogger()).TicketsBaseURL; got != "https://tickets.example" {
+		t.Errorf("TicketsBaseURL = %q", got)
+	}
+}
+
+// A letter links the contact form only when the page shows it: the worker
+// decides with the same config.ContactFormReady as arena-api, so in production
+// without the Turnstile keys no letter points to a page without a form.
+func TestBuildDeliveryHandlerOptions_ContactFormFollowsTheCaptchaKeys(t *testing.T) {
+	prod := &config.Config{AppEnv: config.EnvProduction}
+	if buildDeliveryHandlerOptions(prod, nil, nil, testLogger()).ContactFormEnabled {
+		t.Error("production without Turnstile keys must not link the contact form")
+	}
+	prod.ContactFormTurnstileSecret = "secret"
+	if buildDeliveryHandlerOptions(prod, nil, nil, testLogger()).ContactFormEnabled {
+		t.Error("a secret without a site key is not a working form")
+	}
+	prod.ContactFormTurnstileSiteKey = "site-key"
+	if !buildDeliveryHandlerOptions(prod, nil, nil, testLogger()).ContactFormEnabled {
+		t.Error("production with both keys links the contact form")
+	}
+	if !buildDeliveryHandlerOptions(&config.Config{AppEnv: config.EnvStaging}, nil, nil, testLogger()).ContactFormEnabled {
+		t.Error("outside production the form needs no captcha keys")
+	}
+}

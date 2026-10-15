@@ -12,9 +12,9 @@
 //	Refunder               — drives a refund through the provider
 //	RefundLookup           — reads a refund's status back
 //
-// Why optional interfaces rather than one wide one: AllPay has no hosted
-// page, Flitt cannot refund yet, a declared-but-unbuilt provider has nothing
-// at all. A module advertises what it can do in Capabilities AND implements
+// Why optional interfaces rather than one wide one: Flitt and AllPay cannot
+// refund through arena yet, a declared-but-unbuilt provider has nothing at
+// all. A module advertises what it can do in Capabilities AND implements
 // the matching interface; the core checks both, so a capability flag can
 // never promise what the type cannot deliver.
 //
@@ -32,6 +32,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -360,6 +361,22 @@ type RefundRequest struct {
 	Reason string
 	// IdempotencyKey makes a retry safe. Arena uses the refund row id.
 	IdempotencyKey string
+	// OtherRefundedMinor is what arena knows the provider has already
+	// returned on this payment through OTHER refunds (accepted or succeeded),
+	// and OtherUncertainMinor what other refunds may have returned (an
+	// earlier call ended without an answer). Both in arena minor units, both
+	// read under the payment's lock while no other call of this payment is in
+	// flight. A provider without an idempotency key (AllPay) compares them
+	// with the provider's own refunded total before it sends anything, so a
+	// repeated call can never return the money twice. Others ignore them.
+	OtherRefundedMinor  int64
+	OtherUncertainMinor int64
+	// Attempt is the number of this call of the refund (1 = the first) and
+	// FirstAttemptAt when the first call was made. A provider without an
+	// idempotency key uses them to let an earlier call settle before it
+	// sends the refund again. Zero values mean "unknown".
+	Attempt        int
+	FirstAttemptAt time.Time
 	// Metadata travels to the provider.
 	Metadata RefundMetadata
 }

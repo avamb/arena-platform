@@ -34,13 +34,13 @@ func TestWizard_EveryStepRendersInBothLocales(t *testing.T) {
 		stSCountry, stSCity, stCityName, stSVenue, stVName, stVAddress, stVCapacity, stVTz, stSCapacity, stSMore, stTMode,
 		stTName, stTPrice, stTChanges, stTChangeDate, stTChangePrice, stTChangeMore, stTKind, stTCatName, stTCatPrice,
 		stTCatPlaces, stTCatLast, stTCatUntil, stTCatMore, stXDescription, stXCurrency, stXChannels, stXPublish, stSummary,
-		stEditMenu, stCancel}
+		stEditMenu, stCancel, stTDate, stSTickets, stSConfirm, stPreview}
 	for _, loc := range SupportedLocales {
 		r.ws.Locale = loc
 		for _, st := range steps {
 			r.d.Step = st
 			r.d.Cur = 0
-			if st == stSSame {
+			if st == stSSame || st == stSTickets {
 				r.d.Cur = 1
 			}
 			screen, err := r.w.Render(context.Background(), r.ws, r.d)

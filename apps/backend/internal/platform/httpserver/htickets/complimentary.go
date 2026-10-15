@@ -181,6 +181,7 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"issuance":          complimentaryIssuanceFromRow(existing),
 			"tickets":           complimentaryTicketsFromRows(existingTickets),
+			"letters":           h.issuanceLetters(ctx, existing.ID),
 			"idempotent_replay": true,
 		})
 		return
@@ -369,6 +370,26 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 		tickets = append(tickets, t)
 	}
 
+	// Step 7b: an invitation is a ticket like any other and is scanned at the
+	// gate, so every new ticket gets its platform EAN-13 (barcodes row +
+	// ean13 credential) in THIS transaction, through the same helper as a
+	// purchase (U-3). The idempotent replay returned above and never gets
+	// here, so a repeat of a batch id mints nothing a second time.
+	ticketIDs := make([]uuid.UUID, len(tickets))
+	for i, t := range tickets {
+		ticketIDs[i] = t.ID
+	}
+	if err := mintTicketEAN13s(ctx, complQ, ticketIDs); err != nil {
+		h.logger.Error("complimentary: mint ean13 failed",
+			slog.String("issuance_id", issuance.ID.String()),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"complimentary.barcode_failed", "failed to create the ticket barcode", r,
+		))
+		return
+	}
+
 	// Step 8: Transition issuance status to 'issued'.
 	issuance, err = complQ.UpdateComplimentaryIssuanceStatus(ctx, issuance.ID, "issued")
 	if err != nil {
@@ -405,6 +426,7 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"issuance":          complimentaryIssuanceFromRow(issuance),
 		"tickets":           complimentaryTicketsFromRows(tickets),
+		"letters":           h.issuanceLetters(ctx, issuance.ID),
 		"idempotent_replay": false,
 	})
 }
@@ -475,6 +497,7 @@ func (h *Handler) HandleGetComplimentaryIssuance(w http.ResponseWriter, r *http.
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"issuance": complimentaryIssuanceFromRow(issuance),
 		"tickets":  complimentaryTicketsFromRows(tickets),
+		"letters":  h.issuanceLetters(ctx, id),
 	})
 }
 
@@ -724,7 +747,10 @@ func (h *Handler) HandleRevokeComplimentaryIssuance(w http.ResponseWriter, r *ht
 	if h.credentialQueries != nil {
 		credQ := h.credentialQueries.WithTx(tx)
 		for _, t := range revokedTickets {
-			for _, credType := range []string{"qr", "pdf"} {
+			// The real credential types, as RevokeTicketArtifactsTx names
+			// them: "qr" is not a type, so the ean13 credential an
+			// invitation now carries (U-3) would otherwise stay active.
+			for _, credType := range []string{"static_qr", "pdf", "ean13"} {
 				if _, cErr := credQ.RevokeCredential(ctx, t.ID, credType); cErr != nil {
 					// pgx.ErrNoRows is expected when no credential of that type exists.
 					if !errors.Is(cErr, pgx.ErrNoRows) {

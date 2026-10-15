@@ -230,11 +230,29 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers":                    "tiers",
 	"PUT /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule": "tiers",
 
+	// hcatalog event gallery and videos (task 1-2a, event_materials.go):
+	// materialsPrep runs requireEventInOrg first and every query is scoped by
+	// (id, event_id). event_materials_integration_test.go drives a foreign event.
+	"DELETE /v1/organizations/{org_id}/events/{event_id}/media-items/{item_id}": "event materials",
+	"DELETE /v1/organizations/{org_id}/events/{event_id}/videos/{video_id}":     "event materials",
+	"GET /v1/organizations/{org_id}/events/{event_id}/media-items":              "event materials",
+	"GET /v1/organizations/{org_id}/events/{event_id}/videos":                   "event materials",
+	"PATCH /v1/organizations/{org_id}/events/{event_id}/media-items/{item_id}":  "event materials",
+	"POST /v1/organizations/{org_id}/events/{event_id}/media-items":             "event materials",
+	"POST /v1/organizations/{org_id}/events/{event_id}/videos":                  "event materials",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/media-items/order":        "event materials",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/videos/order":             "event materials",
+
 	// hcatalog events, artists, contact, promoter link, status, delete impact:
 	// requireEventInOrg or a query scoped by (id, org_id).
-	"DELETE /v1/organizations/{org_id}/events/{id}":                              "events",
-	"DELETE /v1/organizations/{org_id}/events/{id}/artists/{aid}":                "events",
-	"GET /v1/organizations/{org_id}/events/{event_id}/delete-impact":             "events",
+	"DELETE /v1/organizations/{org_id}/events/{id}":                  "events",
+	"DELETE /v1/organizations/{org_id}/events/{id}/artists/{aid}":    "events",
+	"GET /v1/organizations/{org_id}/events/{event_id}/delete-impact": "events",
+	// himports.HandleEventBundleRead (task 3-2): GetEventRaw, then the event's
+	// organization must equal the path organization (404 event.not_found).
+	// TestEventBundleRead_OrganizationBoundary drives a foreign, unknown and
+	// deleted event and a foreign organization.
+	"GET /v1/organizations/{org_id}/events/{event_id}/event-bundle":              "himports",
 	"GET /v1/organizations/{org_id}/events/{id}/artists":                         "events",
 	"PATCH /v1/organizations/{org_id}/events/{id}":                               "events",
 	"PATCH /v1/organizations/{org_id}/events/{id}/artists/{aid}":                 "events",
@@ -246,6 +264,32 @@ var orgIsolationAuditedSafe = map[string]string{
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/change-impact":         "events (requireEventInOrg on the session's event)",
 	"GET /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/macs-export": "macs_export.go checks the session against event AND organization",
 
+	// hmaterials.ExtrasHandler (task 1-2b): every handler starts with scope(),
+	// which loads the event and answers 404 event.not_found unless its
+	// organization is the path organization; the child rows (link, photo) are
+	// then read and written by (id, event_id), and a photo's media_id must be an
+	// event_report object of the path organization. Covered by
+	// TestEventMaterialsExtras_StayInsideTheOrganization (all routes, as an org-B owner).
+	"GET /v1/organizations/{org_id}/events/{event_id}/partner-links":              "hmaterials",
+	"POST /v1/organizations/{org_id}/events/{event_id}/partner-links":             "hmaterials",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/partner-links/order":        "hmaterials",
+	"PATCH /v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}":  "hmaterials",
+	"DELETE /v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}": "hmaterials",
+	"GET /v1/organizations/{org_id}/events/{event_id}/map-point":                  "hmaterials",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/map-point":                  "hmaterials",
+	"DELETE /v1/organizations/{org_id}/events/{event_id}/map-point":               "hmaterials",
+	"GET /v1/organizations/{org_id}/events/{event_id}/photo-report":               "hmaterials",
+	"POST /v1/organizations/{org_id}/events/{event_id}/photo-report":              "hmaterials",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/photo-report/order":         "hmaterials",
+	"PATCH /v1/organizations/{org_id}/events/{event_id}/photo-report/{photo_id}":  "hmaterials",
+	"DELETE /v1/organizations/{org_id}/events/{event_id}/photo-report/{photo_id}": "hmaterials",
+	// Task 1-2c: HandleCopyMaterials starts with scope() (the target event of
+	// the path organization) and then requires the SOURCE event to be a live
+	// event of the same organization (404 event.not_found otherwise); the
+	// copy statements filter the source rows by org_id too.
+	// TestEventMaterialsCopy_StaysInsideTheOrganization drives both sides.
+	"POST /v1/organizations/{org_id}/events/{event_id}/materials/copy-from/{source_event_id}": "hmaterials",
+
 	// hcatalog channels CRUD, gateway credential, WordPress webhook: queries scoped by (id, org_id).
 	"DELETE /v1/organizations/{org_id}/channels/{id}":                    "channels",
 	"DELETE /v1/organizations/{org_id}/channels/{id}/gateway-credential": "channels",
@@ -256,6 +300,9 @@ var orgIsolationAuditedSafe = map[string]string{
 	"PATCH /v1/organizations/{org_id}/channels/{id}":                     "channels",
 	"PUT /v1/organizations/{org_id}/channels/{id}/gateway-credential":    "channels",
 	"PUT /v1/organizations/{org_id}/channels/{id}/wp-webhook":            "channels",
+	// hseller: the channel is looked up among the PATH organization's hosted-page
+	// channels only (covered by TestSellerProfile_StaysInsideTheOrganization).
+	"PATCH /v1/organizations/{org_id}/channels/{channel_id}/seller-display": "hseller",
 
 	// hcatalog venues: update/delete scoped by (id, org_id).
 	"DELETE /v1/organizations/{org_id}/venues/{id}": "venues",
@@ -279,6 +326,7 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/tickets/{ticket_id}/scan-refund-exception": "platform superadmin only; the ticket must belong to the path org, checked inside refunds.Engine.GrantScanException (covered by TestScanException_SuperadminOnlyInsideTheOrganization)",
 	"POST /v1/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear":     "platform superadmin only; the ticket's organization (GetTicketOrgID) must be the path org (covered by TestReviewHoldClear_SuperadminOnlyInsideTheOrganization)",
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/sample-ticket":        "hsample",
+	"POST /v1/organizations/{org_id}/media/{media_id}/poster-facts":             "hmedia.PosterFacts (rowOrgAccess, then the object must carry the path org; covered by TestPosterFacts_RouteReadsOwnPosterAndKeepsOrganizationsApart)",
 
 	// hcheckout promo codes, hpayments payment configs, hbankaccounts, hapikeys,
 	// hbot invitations: queries scoped by (id, org_id).

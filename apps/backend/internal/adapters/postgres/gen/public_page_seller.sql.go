@@ -29,7 +29,9 @@ type HostedPageSellerRow struct {
 	AddressCity        *string
 	AddressCountry     *string
 	OrgCountry         string
+	LegalForm          *string // migration 0146
 	ShowSeller         bool
+	SellerHidden       bool // settings.hosted_page.seller_hidden, set by a platform superadmin only
 	// PublicContact is settings.hosted_page.public_contact as raw JSON, nil
 	// when the channel has none.
 	PublicContact []byte
@@ -39,8 +41,9 @@ const getHostedPageSeller = `-- name: GetHostedPageSeller :one
 SELECT
     o.name, o.legal_name, o.tax_id, o.tax_id_scheme, o.registration_number,
     o.legal_address_line1, o.legal_address_line2, o.legal_address_postal_code,
-    o.legal_address_city, o.legal_address_country, o.country,
+    o.legal_address_city, o.legal_address_country, o.country, o.legal_form,
     COALESCE(sc.settings #>> '{hosted_page,show_seller}', '') = 'true' AS show_seller,
+    COALESCE(sc.settings #>> '{hosted_page,seller_hidden}', '') = 'true' AS seller_hidden,
     sc.settings #> '{hosted_page,public_contact}' AS public_contact
 FROM organizations o
 JOIN sales_channels sc ON sc.org_id = o.id
@@ -64,8 +67,8 @@ func (q *Queries) GetHostedPageSeller(ctx context.Context, orgID uuid.UUID, feed
 	err := row.Scan(
 		&r.OrgName, &r.LegalName, &r.TaxID, &r.TaxIDScheme, &r.RegistrationNumber,
 		&r.AddressLine1, &r.AddressLine2, &r.AddressPostalCode,
-		&r.AddressCity, &r.AddressCountry, &r.OrgCountry,
-		&r.ShowSeller, &r.PublicContact,
+		&r.AddressCity, &r.AddressCountry, &r.OrgCountry, &r.LegalForm,
+		&r.ShowSeller, &r.SellerHidden, &r.PublicContact,
 	)
 	return r, err
 }

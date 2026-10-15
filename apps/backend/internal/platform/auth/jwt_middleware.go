@@ -38,6 +38,12 @@ type arenaClaims struct {
 
 	// OrgID is an optional organisation UUID string. Maps to AuthContext.OrgID.
 	OrgID string `json:"org_id,omitempty"`
+
+	// SessionID ("sid") and Channel ("chn") are set only on an access token
+	// minted from a sign-in (IssueSessionJWT). Maps to Actor.SessionID and
+	// Actor.Channel through the verifiers in auth.go.
+	SessionID string `json:"sid,omitempty"`
+	Channel   string `json:"chn,omitempty"`
 }
 
 // ValidateJWT returns a net/http middleware that:
@@ -179,6 +185,44 @@ func IssueJWT(
 	issuer, audience string,
 	ttl time.Duration,
 ) (string, time.Time, error) {
+	return issueJWT(secret, actorID, orgID, roles, issuer, audience, ttl, SessionClaims{})
+}
+
+// SessionClaims are the facts of a sign-in an access token carries (spec
+// 08_architecture/37 section 4.5).
+type SessionClaims struct {
+	// SessionID is the "sid" claim: the id of the sign-in, kept by every
+	// refresh token of the chain (refresh_tokens.session_id).
+	SessionID string
+	// Channel is the "chn" claim: the client that started the sign-in, taken
+	// from the stored session. Empty for every client but the web event
+	// center.
+	Channel string
+}
+
+// IssueSessionJWT mints an access token for a sign-in: IssueJWT plus the
+// session claims. The money routes read "chn" to ask the web event center
+// for the password again even when a request leaves its X-Client-Channel
+// header out, and bind the step-up token to "sid".
+func IssueSessionJWT(
+	secret string,
+	actorID uuid.UUID,
+	issuer, audience string,
+	ttl time.Duration,
+	session SessionClaims,
+) (string, time.Time, error) {
+	return issueJWT(secret, actorID, nil, nil, issuer, audience, ttl, session)
+}
+
+func issueJWT(
+	secret string,
+	actorID uuid.UUID,
+	orgID *uuid.UUID,
+	roles []string,
+	issuer, audience string,
+	ttl time.Duration,
+	session SessionClaims,
+) (string, time.Time, error) {
 	if strings.TrimSpace(secret) == "" {
 		return "", time.Time{}, errors.New("auth: IssueJWT requires a non-empty secret")
 	}
@@ -200,8 +244,10 @@ func IssueJWT(
 			NotBefore: jwt.NewNumericDate(now),
 			ID:        uuid.New().String(), // unique jti per issuance
 		},
-		Roles: roles,
-		OrgID: orgIDStr,
+		Roles:     roles,
+		OrgID:     orgIDStr,
+		SessionID: session.SessionID,
+		Channel:   session.Channel,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

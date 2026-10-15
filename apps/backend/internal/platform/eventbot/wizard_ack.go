@@ -15,6 +15,11 @@ import (
 func (w *Wizard) Apply(ctx context.Context, ws WizSession, d *Draft, in WizInput) (string, error) {
 	before := d.Step
 	note, err := w.apply(ctx, ws, d, in)
+	if err == nil {
+		// What the edit card lists is the draft against the loaded event,
+		// worked out after every answer (wizard_undo.go).
+		d.refreshChanged()
+	}
 	if err != nil || note != "" || d.Step == before {
 		return note, err
 	}
@@ -39,10 +44,19 @@ func (w *Wizard) ack(ws WizSession, step string, d *Draft) string {
 	cur := d.currencyOrGuess()
 	s := d.session()
 	lastCat := func() *DraftCategory {
-		if len(d.Tickets.Categories) == 0 {
+		cats := d.tk().Categories
+		if len(cats) == 0 {
 			return nil
 		}
-		return &d.Tickets.Categories[len(d.Tickets.Categories)-1]
+		return &cats[len(cats)-1]
+	}
+	// A date of an edited event got its categories and the person is back on
+	// "one more date?": say what the date now sells.
+	if d.Step == stSMore && d.Mode == ModeEdit && d.Cur >= 0 && d.Cur < len(d.Sessions) {
+		switch step {
+		case stSTickets, stTChanges, stTChangeMore, stTCatLast, stTCatMore:
+			return line("bot.wz.ack_tickets", w.ticketsText(loc, cur, d.ticketsOf(d.Cur)))
+		}
 	}
 	switch step {
 	case stEvName:
@@ -128,8 +142,8 @@ func (w *Wizard) ack(ws WizSession, step string, d *Draft) string {
 			return line("bot.wz.ack_price", FormatMoney(c.PriceMinor, cur, loc))
 		}
 	case stTChangePrice:
-		if n := len(d.Tickets.Schedule); n > 0 {
-			st := d.Tickets.Schedule[n-1]
+		if sched := d.tk().Schedule; len(sched) > 0 {
+			st := sched[len(sched)-1]
 			return line("bot.wz.ack_step", t("bot.wz.summary_schedule_item", map[string]any{"Date": DisplayDate(st.From), "Price": FormatMoney(st.PriceMinor, cur, loc)}))
 		}
 	case stTCatName:

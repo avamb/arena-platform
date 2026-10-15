@@ -380,6 +380,9 @@ func (h *Handler) applyOrgBranding(ctx context.Context, p *delivery.Payload, tic
 	set(&p.OrgLegalAddressCity, b.LegalAddressCity)
 	set(&p.OrgLegalAddressCountry, b.LegalAddressCountry)
 	set(&p.OrgContactEmail, b.ContactEmail)
+	set(&p.OrgRegistrationNumber, b.RegistrationNumber)
+	set(&p.OrgTaxID, b.TaxID)
+	set(&p.OrgTaxIDScheme, b.TaxIDScheme)
 	set(&p.SenderEmail, b.SenderEmail)
 	if b.LogoMediaID != nil {
 		p.OrgLogoMediaID = b.LogoMediaID.String()

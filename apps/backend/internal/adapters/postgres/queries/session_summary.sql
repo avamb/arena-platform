@@ -38,6 +38,30 @@ WHERE  s.event_id = $1
   AND  s.deleted_at IS NULL
 ORDER  BY s.start_at, s.id;
 
+-- name: ListEventSummaryHeaders :many
+-- The batch form of GetEventSummaryHeader: the events of the list that exist
+-- in the organization. An id of another organization or an unknown one is
+-- simply absent from the result.
+SELECT e.id, e.org_id, e.name, e.status, e.first_session_at, e.last_session_at
+FROM   events e
+WHERE  e.id = ANY($1::uuid[])
+  AND  e.org_id = $2
+  AND  e.deleted_at IS NULL;
+
+-- name: ListEventSummarySessionIDs :many
+-- (event, session) pairs for a batch of events, the same sessions
+-- ListEventSummarySessions returns for one: every non-deleted one, cancelled
+-- included. The organization is checked again here so the batch can never
+-- widen past it.
+SELECT s.event_id, s.id
+FROM   sessions s
+JOIN   events   e ON e.id = s.event_id
+WHERE  s.event_id = ANY($1::uuid[])
+  AND  e.org_id = $2
+  AND  e.deleted_at IS NULL
+  AND  s.deleted_at IS NULL
+ORDER  BY s.event_id, s.start_at, s.id;
+
 -- name: ListSessionSummaryPlaces :many
 -- One row per (session, category, kind). sold_upstream is the part of `sold`
 -- that was sold in the system the session was imported from: a 'sold' row
@@ -147,3 +171,22 @@ SELECT sid.id AS session_id,
             AND  t.status = 'active'
             AND  (t.complimentary_issuance_id IS NOT NULL OR o.source = 'complimentary'))::bigint AS tickets
 FROM   unnest($1::uuid[]) AS sid(id);
+
+-- name: ListSessionSummaryAdmissions :many
+-- Admissions at the door by who reported them (scan_events.source, migration
+-- 0154): `tickets` counts the valid tickets with at least one admitted scan
+-- of that source, `scans` every admitted scan row of it (repeat scans and
+-- scans of tickets cancelled since included). Only scans recorded for the
+-- session's own organization count, the rule refunds/scanned.go uses. A
+-- session with no admitted scan has no row.
+SELECT se.session_id, se.source,
+       count(DISTINCT se.ticket_id) FILTER (WHERE t.status = 'active')::bigint AS tickets,
+       count(*)::bigint AS scans
+FROM   scan_events se
+JOIN   sessions s ON s.id = se.session_id
+JOIN   events   e ON e.id = s.event_id
+LEFT JOIN tickets t ON t.id = se.ticket_id
+WHERE  se.session_id = ANY($1::uuid[])
+  AND  se.result = 'admitted'
+  AND  se.org_id = e.org_id
+GROUP  BY se.session_id, se.source;

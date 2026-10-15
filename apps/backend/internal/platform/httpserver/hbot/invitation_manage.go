@@ -228,11 +228,16 @@ func (h *Handler) removeUnusedMembership(ctx context.Context, q *gen.Queries, in
 	}
 	role := MembershipRoleFor(inv.Role)
 	if role == "org_admin" {
-		owners, err := q.CountActiveOrgAdmins(ctx, inv.OrgID)
+		// The same guard as the members routes (hiam, U-4): the owner lock
+		// first, then the other active owners are counted under it.
+		if err := q.LockOrgOwners(ctx, inv.OrgID); err != nil {
+			return false, "", err
+		}
+		others, err := q.CountOtherActiveOrgAdmins(ctx, inv.OrgID, inv.UserID)
 		if err != nil {
 			return false, "", err
 		}
-		if owners <= 1 {
+		if others == 0 {
 			return false, KeptLastOwner, nil
 		}
 	}
@@ -396,6 +401,7 @@ func (h *Handler) HandleResendInvitation(w http.ResponseWriter, r *http.Request)
 			MembershipRole: membershipRole,
 			ExpiresAt:      expiresAt.Format(time.RFC3339),
 			Delivery:       "email",
+			Channel:        ChannelTelegram,
 		},
 		"resend_available_at": updated.LastSentAt.Add(ResendMinInterval).Format(time.RFC3339),
 	}
@@ -412,6 +418,12 @@ func (h *Handler) resendRefusal(w http.ResponseWriter, r *http.Request, inv gen.
 	case inv.RevokedAt != nil:
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			"bot.invitation_revoked", "the invitation was revoked", r,
+		))
+		return true
+	case IsWebInvitation(inv):
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+			"bot.invitation_channel_unsupported",
+			"an invitation sent for the web event center cannot be resent: ask the person to use the password reset on the sign-in page", r,
 		))
 		return true
 	case inv.AcceptedAt != nil:

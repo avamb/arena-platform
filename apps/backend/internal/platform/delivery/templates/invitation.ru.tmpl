@@ -30,9 +30,11 @@
     {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
-    {{with .Branding.ContactEmail}}<br>Контакты: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Контакты: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Контакты: <a href="{{.}}" style="color:#666">Написать организатору</a>{{end}}{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — автоматическая рассылка приглашений</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Если вы нажмёте «Отписаться», письма с билетами и важные письма о вашем заказе к вам больше не придут. Рекламных рассылок без вашего согласия мы не отправляем.</p>
   </td></tr>
 </table>
 </td></tr></table>
@@ -63,7 +65,11 @@ PDF-файл прикреплён к этому письму.
 {{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
 {{else}}{{with .Branding.LegalAddressCity}}{{.}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}Контакты: {{.}}
-{{end}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Контакты: {{.}}
+{{end}}{{end}}
 Arena Platform — автоматическая рассылка приглашений
+
+Если вы нажмёте «Отписаться», письма с билетами и важные письма о вашем заказе к вам больше не придут. Рекламных рассылок без вашего согласия мы не отправляем.
 {{end}}

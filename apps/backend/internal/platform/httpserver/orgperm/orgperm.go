@@ -29,6 +29,26 @@ type Querier interface {
 // globalOnly mirrors the membership branch of GetActiveRolesForUser.
 var globalOnly = map[string]bool{"platform_superadmin": true, "platform_operator": true}
 
+// IsPlatformRole reports whether role is a platform role, which never counts
+// from a membership row (the checker reads it from user_roles only).
+func IsPlatformRole(role string) bool {
+	return globalOnly[role]
+}
+
+// HasMembershipRow reports whether rows hold an active membership of orgID
+// that counts. A row carrying only a platform role grants nothing in the
+// permission checker (GetActiveRolesForUserInOrg leaves it out), so it is not
+// a membership either. Every org-membership guard of httpserver decides with
+// this one function (tests/staticanalysis/org_membership_rule_test.go).
+func HasMembershipRow(rows []gen.MembershipRow, orgID uuid.UUID) bool {
+	for _, m := range rows {
+		if m.OrgID == orgID && m.Status == "active" && !globalOnly[m.Role] {
+			return true
+		}
+	}
+	return false
+}
+
 // Check reports whether userID is an active member of orgID (member) and
 // whether one of those memberships carries permission (allowed). err is an
 // infrastructure failure only.

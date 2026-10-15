@@ -33,7 +33,7 @@
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Сообщение от организатора:</strong></p>
     <p style="margin:0;white-space:pre-line">{{.}}</p>
   </div>{{end}}
-  <p style="margin:0 0 12px 0;">Если вам не подходит изменение, напишите организатору{{with .Change.ContactName}} ({{.}}){{end}} на <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{with .Change.ContactPhone}}, телефон {{.}}{{end}} и расскажите, как вы хотели бы поступить. Организатор читает каждое сообщение.</p>
+  {{if or .Change.ContactEmail .Change.ContactFormURL}}<p style="margin:0 0 12px 0;">Если вам не подходит изменение, напишите организатору{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}на <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else if .Change.ContactFormURL}}через <a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">форму на странице продаж</a>{{end}}{{with .Change.ContactPhone}}, телефон {{.}}{{end}} и расскажите, как вы хотели бы поступить. Организатор читает каждое сообщение.</p>{{end}}
   <p style="font-size:12px;color:#666">Номер билета: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">Отправлено на: {{.RecipientEmail}}</p>
   </td></tr>
@@ -45,9 +45,11 @@
     {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
-    {{with .Branding.ContactEmail}}<br>Контакты: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Контакты: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Контакты: <a href="{{.}}" style="color:#666">Написать организатору</a>{{end}}{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — автоматическая рассылка</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Если вы нажмёте «Отписаться», письма с билетами и важные письма о вашем заказе к вам больше не придут. Рекламных рассылок без вашего согласия мы не отправляем.</p>
   </td></tr>
 </table>
 </td></tr></table>
@@ -81,9 +83,9 @@
 Сообщение от организатора:
 {{.}}
 {{end}}
-Если вам не подходит изменение, напишите организатору{{with .Change.ContactName}} ({{.}}){{end}} на {{.Change.ContactEmail}}{{with .Change.ContactPhone}}, телефон {{.}}{{end}} и расскажите, как вы хотели бы поступить. Организатор читает каждое сообщение.
+{{if or .Change.ContactEmail .Change.ContactFormURL}}Если вам не подходит изменение, напишите организатору{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}на {{.Change.ContactEmail}}{{else if .Change.ContactFormURL}}через форму на странице продаж: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, телефон {{.}}{{end}} и расскажите, как вы хотели бы поступить. Организатор читает каждое сообщение.
 
-Номер билета: {{.TicketID}}
+{{end}}Номер билета: {{.TicketID}}
 Отправлено на: {{.RecipientEmail}}
 
 --
@@ -93,7 +95,11 @@
 {{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
 {{else}}{{with .Branding.LegalAddressCity}}{{.}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}Контакты: {{.}}
-{{end}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Контакты: {{.}}
+{{end}}{{end}}
 Arena Platform — автоматическая рассылка
+
+Если вы нажмёте «Отписаться», письма с билетами и важные письма о вашем заказе к вам больше не придут. Рекламных рассылок без вашего согласия мы не отправляем.
 {{end}}

@@ -403,7 +403,40 @@ other = "You no longer have access to this organization. If this is a mistake, a
 other = "I did not understand that. Use the buttons below."
 
 ["bot.stale_message"]
+other = "This message is out of date. Press ☰ Menu below."
+
+["bot.stale_message_stranger"]
 other = "This message is out of date. Please continue below."
+
+["bot.stale_message_stranger_restart"]
+other = "This message is out of date. Send /start to continue."
+
+["bot.menu_button"]
+other = "☰ Menu"
+
+["bot.menu_keyboard_note"]
+other = "The ☰ Menu button below the message field always opens the main menu."
+
+["bot.cmd_menu"]
+other = "Open the main menu"
+
+["bot.menu_leave_refund"]
+other = "The refund for order #{{.Num}} is not sent yet. If you open the menu now, the buyer does not get the money back.\n\nYou can go back to the refund or open the menu."
+
+["bot.menu_leave_refund_maybe"]
+other = "The refund for order #{{.Num}} may have started already: the bot did not get an answer from the server. Check the order before you send the refund again.\n\nIf you go back to the refund and send it again, the money does not go back twice. The refund stays here when you open the menu."
+
+["bot.menu_open_order_btn"]
+other = "📄 Open the order"
+
+["bot.ref.maybe_started"]
+other = "This refund may have started already: the bot did not get an answer from the server. Check the order first. Sending it again does not return the money twice."
+
+["bot.menu_back_refund_btn"]
+other = "↩ Back to the refund"
+
+["bot.menu_leave_btn"]
+other = "☰ Open the menu"
 
 # --- the "+ Event" wizard (eventbot/wizard.go) ------------------------------
 
@@ -931,7 +964,37 @@ other = "Press «Save changes». The changes reach the sales page within a minut
 other = "This event has a seating plan or no dates yet, so you cannot edit it from the bot. Use the admin page."
 
 ["bot.wz.edit_tickets_differ"]
-other = "The date {{.When}} carries other tickets than the first one. Saving writes the tickets shown here to every date."
+other = "The dates of this event have different categories. To change them, press «Prices and categories» and choose the date."
+
+["bot.wz.summary_tickets_by_date"]
+other = "The dates have different categories:"
+
+["bot.wz.ask_t_date"]
+other = "Choose the date whose prices and categories you want to change. Or press «For all dates»."
+
+["bot.wz.t_date_all_btn"]
+other = "For all dates"
+
+["bot.wz.t_for_all"]
+other = "Categories of all dates"
+
+["bot.wz.t_for_date"]
+other = "Categories of {{.When}}"
+
+["bot.wz.ask_s_tickets"]
+other = "Categories of date {{.N}}.\nOn {{.Prev}}: {{.List}}\nUse the same categories, or set new ones for this date?"
+
+["bot.wz.s_tickets_same_btn"]
+other = "Same as on {{.Prev}}"
+
+["bot.wz.s_tickets_own_btn"]
+other = "Set new categories"
+
+["bot.wz.ack_tickets"]
+other = "Categories"
+
+["bot.wz.ask_more_sessions_edit"]
+other = "Add another date to this event?"
 
 ["bot.wz.edit_changed_meanwhile"]
 other = "Someone changed «{{.Name}}» elsewhere (on the site or in the admin) after you opened it. Save your version over it?"
@@ -958,7 +1021,7 @@ other = "I am waiting for a poster as a file or photo. To type the name instead,
 other = "<b>✏️ Editing · {{.Title}}</b>\n"
 
 ["bot.wz.edit_home_btn"]
-other = "⬅ Back to the event"
+other = "↩ Back, save nothing"
 
 ["bot.wz.edit_field_name"]
 other = "Name"
@@ -1017,9 +1080,6 @@ other = "Remove the description"
 ["bot.wz.edit_card_title"]
 other = "<b>✏️ Editing the event</b>\n"
 
-["bot.wz.edit_card_changed"]
-other = "✎ Changed: {{.List}}. None of it is on the site yet: press “Publish changes” when everything is ready."
-
 ["bot.wz.edit_card_clean"]
 other = "Choose what to change. Each change is a short screen of its own."
 
@@ -1051,7 +1111,7 @@ other = "Prices and categories"
 other = "✅ Publish changes"
 
 ["bot.wz.edit_exit_btn"]
-other = "Exit"
+other = "✖ Exit without publishing"
 
 ["bot.wz.ask_t_cat_last"]
 other = "Is “{{.Name}}” the last category, or will another follow? The last one sells until the session starts."
@@ -1081,7 +1141,7 @@ other = "Leave editing? The changes are not published yet. You can keep them as 
 other = "▶ Continue"
 
 ["bot.wz.cancel_keep_btn"]
-other = "💾 Keep and leave"
+other = "💾 Keep the draft"
 
 ["bot.wz.cancel_drop_btn"]
 other = "🗑 Delete the draft"
@@ -1288,7 +1348,7 @@ other = "Create events and follow Arena Sold Out sales in Telegram. Enter the na
 other = "Arena Sold Out events and sales in Telegram"
 
 ["bot.ses.cancel_word"]
-other = "CANCEL"
+other = "CANCEL SESSION"
 
 ["bot.ses.type_ask"]
 other = "⚠️ <b>Warning: this cannot be undone.</b>\nNothing is canceled yet.\n\n{{.Subject}}\nE-mails to buyers: {{.Orders}}.{{if .Orders}}\n\n💶 The platform does NOT refund the money. The orders stay paid. The tickets stay valid. Settle refunds with the buyers yourself.{{end}}\n\nTo cancel, <b>type {{.Word}}</b> and send it. To keep the session, press «Back»."
@@ -1300,7 +1360,7 @@ other = "Session: <b>{{.Old}}</b>"
 other = "Event: <b>{{.Name}}</b> — all {{.N}} sessions"
 
 ["bot.ses.type_wrong"]
-other = "That is not the word, so nothing was canceled. To cancel, type exactly: {{.Word}}"
+other = "The text does not match, so nothing was canceled. To cancel, type exactly: {{.Word}}"
 
 ["bot.ses.done_refund_note"]
 other = "💶 The platform did not refund any money, and the tickets stay valid. Settle refunds with the buyers yourself."
@@ -1706,7 +1766,7 @@ other = "Orders"
 other = "<b>Orders: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · page {{.Page}} of {{.Pages}}.{{.Search}}\n{{.Legend}}\nTap an order to open it. To search, type a barcode, an order number, an e-mail, a phone or a name."
 
 ["bot.ord.legend"]
-other = "✅ paid  ⏳ waiting for payment  ⌛ expired  ✖ canceled  ↩ refunded  ⚠️📧 ticket e-mail not sent"
+other = "✅ paid  ⏳ waiting for payment  ⌛ expired  ✖ canceled  ↩ refunded  ⚠️📧 an e-mail did not reach the buyer"
 
 ["bot.ord.letter_tickets_none"]
 other = "📧 Ticket e-mail: Arena did not send it."
@@ -1732,6 +1792,15 @@ other = "⚠️📧 Ticket e-mail: sent for {{.Done}} of {{.Total}} tickets. Are
 ["bot.ord.letter_tickets_failed"]
 other = "⚠️📧 Ticket e-mail: Arena could not send it{{if .To}} to {{.To}}{{end}}.{{if .Why}} Reason: {{.Why}}{{end}}"
 
+["bot.ord.letter_tickets_delayed"]
+other = "📧 Ticket e-mail: delivery is delayed{{if .To}} ({{.To}}){{end}}. The buyer's mail server asked to try again later. The mail service will try again by itself."
+
+["bot.ord.letter_tickets_stuck"]
+other = "⚠️📧 Ticket e-mail: sent{{if .When}} {{.When}}{{end}}, but not delivered{{if .To}} to {{.To}}{{end}} in 6 hours. The buyer most likely did not get it. Send the e-mail again or write to the buyer."
+
+["bot.ord.letter_tickets_bounced"]
+other = "⚠️📧 The ticket e-mail did not reach{{if .To}} {{.To}}{{end}}: the buyer's mail server refused it.{{if .Why}} Reason: {{.Why}}{{end}} Check the address and send the e-mail again."
+
 ["bot.ord.letter_refund_off"]
 other = "📧 Refund e-mail: you chose not to send it."
 
@@ -1752,6 +1821,15 @@ other = "📧 Refund e-mail: the buyer opened it{{if .When}} {{.When}}{{end}}{{i
 
 ["bot.ord.letter_refund_failed"]
 other = "⚠️📧 Refund e-mail: Arena could not send it{{if .When}} (last try {{.When}}){{end}}. The operator knows about it."
+
+["bot.ord.letter_refund_delayed"]
+other = "📧 Refund e-mail: delivery is delayed{{if .To}} ({{.To}}){{end}}. The mail service will try again by itself."
+
+["bot.ord.letter_refund_stuck"]
+other = "⚠️📧 Refund e-mail: sent{{if .When}} {{.When}}{{end}}, but not delivered{{if .To}} to {{.To}}{{end}} in 6 hours. The buyer most likely did not get it. Tell the buyer about the refund yourself."
+
+["bot.ord.letter_refund_bounced"]
+other = "⚠️📧 The refund e-mail did not reach{{if .To}} {{.To}}{{end}}: the buyer's mail server refused it.{{if .Why}} Reason: {{.Why}}{{end}} The refund is done. Tell the buyer about it yourself."
 
 ["bot.ord.letter_retry_btn"]
 other = "📧 Send the ticket e-mail again"
@@ -1897,11 +1975,14 @@ other = "Message from the payment provider: {{.Msg}}"
 ["bot.ord.cancel_btn"]
 other = "Cancel unpaid order"
 
+["bot.ord.cancel_word"]
+other = "CANCEL ORDER"
+
 ["bot.ord.cancel_ask"]
-other = "⚠️ <b>Last step: nothing is canceled yet.</b>\n\nOrder №{{.Num}} · {{.Amount}}\nThe order closes and the hold on its seats ends. The seats go back on sale. This cannot be undone.\n\nTo cancel, <b>type the word {{.Word}}</b> and send it as a message. To keep the order, press «Back»."
+other = "⚠️ <b>Last step: nothing is canceled yet.</b>\n\nOrder №{{.Num}} · {{.Amount}}\nThe order closes and the hold on its seats ends. The seats go back on sale. This cannot be undone.\n\nTo cancel, <b>type {{.Word}}</b> and send it as a message. To keep the order, press «Back»."
 
 ["bot.ord.cancel_wrong"]
-other = "That is not the word, so nothing was canceled. To cancel, type exactly: {{.Word}}"
+other = "The text does not match, so nothing was canceled. To cancel, type exactly: {{.Word}}"
 
 ["bot.ord.cancel_done"]
 other = "✔ The order is canceled and its seats are free again."
@@ -1996,7 +2077,7 @@ other = "✔ «{{.Name}}» is deleted."
 other = "⚠️ <b>Last step: nothing is deleted yet.</b>\n\n«{{.Name}}»: dates: {{.N}}, no paid orders, no tickets sold. This deletes the event and its dates. This cannot be undone.\n\nTo delete, <b>type the word {{.Word}}</b> and send it as a message. To keep the event, press «Back»."
 
 ["bot.evs.delete_wrong"]
-other = "That is not the word, so nothing was deleted. To delete, type exactly: {{.Word}}"
+other = "The text does not match, so nothing was deleted. To delete, type exactly: {{.Word}}"
 
 ["bot.evs.delete_blocked"]
 other = "🚫 <b>You cannot delete «{{.Name}}».</b>\n\nIt has {{.Orders}} paid order(s) and {{.Tickets}} ticket(s) sold. The buyers hold valid tickets, so the event stays. You can archive it instead: sales stop and the event leaves your lists, and the tickets stay valid."
@@ -2218,7 +2299,7 @@ other = "🚫 Annul invitation"
 other = "🚫 <b>Annul this invitation?</b>\n\n{{.Guest}}\n{{.Event}} · {{.When}}\n\nThe ticket and its barcode stop working at once and the place goes back on sale. This cannot be undone, and Arena does not tell the guest: write to them yourself.\n\nTo annul, type the word <b>{{.Word}}</b> as a message."
 
 ["bot.inv.revoke_wrong"]
-other = "That is not the word, so nothing was annulled. To annul, type {{.Word}}, or press «Back»."
+other = "The text does not match, so nothing was annulled. To annul, type {{.Word}}, or press «Back»."
 
 ["bot.inv.revoke_word"]
 other = "ANNUL"
@@ -2419,7 +2500,7 @@ other = "The usage file is too large to send in a chat."
 other = "🗑 <b>Delete the code {{.Code}}?</b>\n\nTimes used: {{.Count}}. After you delete the code:\n• It leaves the list.\n• You can no longer open or export its usage here.\n• Its name stays taken. No new code can have the same name.\n\nIf you only want to stop the code, pause it instead. Orders already paid are not changed.\n\nTo delete, type exactly: {{.Word}}"
 
 ["bot.promo.delete_wrong"]
-other = "That is not the word, so nothing was deleted. To delete, type exactly: {{.Word}}"
+other = "The text does not match, so nothing was deleted. To delete, type exactly: {{.Word}}"
 
 ["bot.promo.delete_word"]
 other = "DELETE"
@@ -2976,7 +3057,7 @@ other = "☐ Do not send a letter to the buyer"
 other = "REFUND"
 
 ["bot.ref.word_wrong"]
-other = "That is not the confirmation word. Nothing was refunded. Type {{.Word}} to confirm or go back."
+other = "The text does not match, so nothing was refunded. To confirm, type {{.Word}}, or go back."
 
 ["bot.ref.done_head"]
 other = "<b>Refund requested · order #{{.Num}}</b>"
@@ -3100,6 +3181,15 @@ other = "No letter is sent to the buyer."
 ["bot.ref.cancelled"]
 other = "Canceled. Nothing was refunded."
 
+["bot.ref.cancel_maybe_started"]
+other = "The refund for order #{{.Num}} may have started already: the bot did not get an answer from the server. So the bot did not cancel it.\n\nCheck the order. If the money did not go back, press «💸 Refund» on the order again. The bot sends the same operation, and the money does not go back twice."
+
+["bot.ref.other_maybe_started"]
+other = "The refund for order #{{.Num}} may have started already: the bot did not get an answer from the server.\n\nFirst open that refund and send it again. The bot repeats the same operation, so the money does not go back twice. Then you can refund another order."
+
+["bot.ref.other_open_btn"]
+other = "💸 Refund for order #{{.Num}}"
+
 ["bot.ref.sending"]
 other = "Sending the refund… The payment provider may take a few minutes; the bot keeps working meanwhile and will write here when the answer is in."
 
@@ -3201,3 +3291,467 @@ other = "Arena took no payment for order #{{.Num}} (a free order or an invitatio
 
 ["bot.ref.unknown_provider"]
 other = "Arena does not know the payment provider of order #{{.Num}}, so it cannot refund it. Refund it in the provider's dashboard or write to support. Nothing was sent."
+
+["bot.og.btn"]
+other = "🏢 Organization data"
+
+["bot.og.owner_only"]
+other = "Only the owner of the organization can change its data. Ask the owner, or go back to the menu."
+
+["bot.og.card"]
+other = "🏢 <b>Organization data</b> · {{.Org}}"
+
+["bot.og.card_where"]
+other = "Buyers see these details on the sales page when you show the seller data, and in ticket letters and PDF tickets."
+
+["bot.og.line_legal_name"]
+other = "Legal name: {{.Value}}"
+
+["bot.og.line_legal_form"]
+other = "Legal form: {{.Value}}"
+
+["bot.og.line_reg"]
+other = "Registration number: {{.Value}}"
+
+["bot.og.line_tax"]
+other = "Tax number: {{.Value}}"
+
+["bot.og.line_address"]
+other = "Legal address: {{.Value}}"
+
+["bot.og.pages_title"]
+other = "<b>Sales pages</b>"
+
+["bot.og.pages_none"]
+other = "Your organization has no sales page yet. It appears after you publish your first event."
+
+["bot.og.state_shown"]
+other = "✅ seller data is shown on the page"
+
+["bot.og.state_incomplete"]
+other = "⬜ seller data is not shown yet: some data is missing"
+
+["bot.og.state_operator_hidden"]
+other = "⬜ seller data is hidden by the platform operator"
+
+["bot.og.status_complete"]
+other = "✅ Seller data is complete. It is shown on your sales pages."
+
+["bot.og.none"]
+other = "not set"
+
+["bot.og.now"]
+other = "Now: {{.Value}}"
+
+["bot.og.missing_title"]
+other = "Seller data is not complete, so it is not shown on the page yet. Please fill in:"
+
+["bot.og.m_legal_name"]
+other = "legal name"
+
+["bot.og.m_tax_id"]
+other = "tax number"
+
+["bot.og.m_address_line1"]
+other = "street and number of the legal address"
+
+["bot.og.m_address_city"]
+other = "city of the legal address"
+
+["bot.og.m_address_postal_code"]
+other = "postal code of the legal address"
+
+["bot.og.m_public_email"]
+other = "public e-mail of this sales page"
+
+["bot.og.btn_legal_name"]
+other = "✏ Legal name"
+
+["bot.og.btn_legal_form"]
+other = "✏ Legal form"
+
+["bot.og.btn_reg"]
+other = "✏ Registration no."
+
+["bot.og.btn_tax"]
+other = "✏ Tax number"
+
+["bot.og.btn_address"]
+other = "✏ Street"
+
+["bot.og.btn_city"]
+other = "✏ City"
+
+["bot.og.btn_postcode"]
+other = "✏ Postal code"
+
+["bot.og.btn_country"]
+other = "✏ Country"
+
+["bot.og.btn_page"]
+other = "🌐 Sales page: {{.Name}}"
+
+["bot.og.q_legal_name"]
+other = "✏ <b>Legal name</b> as in the registration documents, for example «Teatro Ejemplo S.L.» or your full name."
+
+["bot.og.q_legal_form"]
+other = "✏ <b>Legal form</b>, for example S.L., s.r.o., GmbH or «self-employed». Up to 80 characters."
+
+["bot.og.q_reg"]
+other = "✏ <b>Registration number</b> in the company register, if you have one. Up to 60 characters."
+
+["bot.og.q_address"]
+other = "✏ <b>Street and number</b> of the legal address. Send the city and the postal code with their own buttons."
+
+["bot.og.q_city"]
+other = "✏ <b>City</b> of the legal address."
+
+["bot.og.q_postcode"]
+other = "✏ <b>Postal code</b> of the legal address."
+
+["bot.og.q_country"]
+other = "✏ <b>Country</b> of the legal address: two letters, for example ES, CZ or IL. Or press the button below."
+
+["bot.og.q_scheme"]
+other = "🧾 <b>Tax number.</b> Choose its type."
+
+["bot.og.scheme_eu_vat"]
+other = "EU VAT number"
+
+["bot.og.scheme_gb_vat"]
+other = "UK VAT number"
+
+["bot.og.scheme_il_vat"]
+other = "Israel: business or ID number"
+
+["bot.og.scheme_us_ein"]
+other = "US EIN"
+
+["bot.og.scheme_other"]
+other = "Another number (NIF, IČO and others)"
+
+["bot.og.q_tax_eu_vat"]
+other = "✏ Send the <b>EU VAT number</b> with its country code, for example ESB12345678 or CZ12345678."
+
+["bot.og.q_tax_gb_vat"]
+other = "✏ Send the <b>UK VAT number</b>, for example GB123456789."
+
+["bot.og.q_tax_il_vat"]
+other = "✏ Send the <b>Israeli number</b>: 9 digits, for example 512345678."
+
+["bot.og.q_tax_us_ein"]
+other = "✏ Send the <b>EIN</b>, for example 12-3456789."
+
+["bot.og.q_tax_other"]
+other = "✏ Send the <b>tax number</b> as it is written in your documents, for example a Spanish NIF or a Czech IČO."
+
+["bot.og.other_scheme_btn"]
+other = "🔁 Another type of number"
+
+["bot.og.page_card"]
+other = "🌐 <b>Sales page: {{.Name}}</b>"
+
+["bot.og.page_where"]
+other = "Buyers see the phone on this sales page when the seller data is shown. The page does not show the e-mail: buyers write to you through the form on the page, and the messages arrive at this address. Ticket e-mails and PDF tickets of this page print this address, and buyers' replies to those e-mails go to it. Use an address for tickets, not your personal mailbox."
+
+["bot.og.line_email"]
+other = "✉ E-mail for buyer messages: {{.Value}}"
+
+["bot.og.line_phone"]
+other = "📞 Public phone: {{.Value}}"
+
+["bot.og.line_state"]
+other = "Seller data on the page: {{.Value}}"
+
+["bot.og.btn_email"]
+other = "✏ E-mail"
+
+["bot.og.btn_phone"]
+other = "✏ Phone"
+
+["bot.og.q_email"]
+other = "✏ <b>Public e-mail</b> of this sales page, for example tickets@your-site.com."
+
+["bot.og.q_phone"]
+other = "✏ <b>Public phone</b> with the country code, for example +34 600 000 000. You can leave it empty."
+
+["bot.og.personal_email"]
+other = "💡 This looks like a personal mailbox. We suggest a separate address for tickets, for example tickets@your-site.com. You can keep this one if you prefer."
+
+["bot.og.clear_btn"]
+other = "🗑 Clear"
+
+["bot.og.cancel_btn"]
+other = "« Cancel"
+
+["bot.og.saved"]
+other = "✅ Saved."
+
+["bot.og.cleared"]
+other = "✅ Cleared."
+
+["bot.og.channel_gone"]
+other = "This sales page is no longer in the list. Here is the current data."
+
+["bot.og.err_legal_name"]
+other = "Type the legal name, up to 200 characters."
+
+["bot.og.err_legal_form"]
+other = "Type the legal form, up to 80 characters."
+
+["bot.og.err_reg"]
+other = "Type the registration number, up to 60 characters."
+
+["bot.og.err_address"]
+other = "Type the street and number, up to 200 characters."
+
+["bot.og.err_city"]
+other = "Type the city, up to 100 characters."
+
+["bot.og.err_postcode"]
+other = "Type the postal code, up to 20 characters."
+
+["bot.og.err_country"]
+other = "Type two Latin letters of the country, for example ES."
+
+["bot.og.err_tax_eu_vat"]
+other = "This does not look like an EU VAT number. Start with the country code, for example ESB12345678. If you have a NIF or IČO without a code, press «Another type of number»."
+
+["bot.og.err_tax_gb_vat"]
+other = "This does not look like a UK VAT number. Example: GB123456789."
+
+["bot.og.err_tax_il_vat"]
+other = "The Israeli number has 9 digits. Example: 512345678."
+
+["bot.og.err_tax_us_ein"]
+other = "The EIN looks like 12-3456789."
+
+["bot.og.err_tax_other"]
+other = "Type the number in one line, from 2 to 64 characters."
+
+["bot.og.err_tax_api"]
+other = "Arena did not accept the tax number. Check the number and its type. If you are changing another field, fix the tax number first."
+
+["bot.og.err_email"]
+other = "This does not look like an e-mail address. Check it, for example tickets@your-site.com."
+
+["bot.og.err_phone"]
+other = "This does not look like a phone number. Use digits with the country code, for example +34 600 000 000."
+
+["bot.og.line_form_tg"]
+other = "💬 Buyer messages in the sales chat: {{.Value}}"
+
+["bot.og.form_tg_on"]
+other = "on"
+
+["bot.og.form_tg_off"]
+other = "off"
+
+["bot.og.btn_form_tg_on"]
+other = "💬 Send buyer messages to the sales chat"
+
+["bot.og.btn_form_tg_off"]
+other = "💬 Stop buyer messages in the sales chat"
+
+["bot.og.form_tg_saved_on"]
+other = "✅ Buyer messages now also go to your sales chat."
+
+["bot.og.form_tg_saved_off"]
+other = "✅ Buyer messages now go only to the e-mail of the sales page."
+
+["bot.og.block_hidden"]
+other = "⚠️ A required field is now empty, so the seller data is not shown on sales pages: {{.N}}. It appears again as soon as you fill in the field."
+
+["contact.email.subject"]
+other = "Message from a buyer: {{.Name}}"
+
+["contact.email.intro"]
+other = "A buyer wrote to you through the contact form of your Arena sales page."
+
+["contact.email.from"]
+other = "From"
+
+["contact.email.page"]
+other = "Sales page"
+
+["contact.email.reply"]
+other = "To answer the buyer, reply to this e-mail. Arena does not see your answer."
+
+["contact.email.footer"]
+other = "Arena Sold Out sent this message because the contact form of your sales page is on."
+
+["bot.web.btn"]
+other = "🌐 Open in browser"
+
+["bot.web.link"]
+other = "Here is your link to the web event center. It works once and for 5 minutes. Do not forward it: anyone with this link signs in as you."
+
+["bot.web.open_btn"]
+other = "Open the event center"
+
+["bot.web.private_only"]
+other = "The bot sends a sign-in link only in a private chat. Write to the bot directly and press «🌐 Open in browser»."
+
+["bot.web.not_configured"]
+other = "The web event center is not connected yet. You can do everything here in the bot."
+
+["bot.web.superadmin"]
+other = "You are a platform superadmin. Please work in the admin console: the web event center gives no link to a superadmin."
+
+["bot.web.failed"]
+other = "We could not make a link. Please try again in a minute. If it still does not work, write to support."
+
+["bot.web.signed_in"]
+other = "You signed in to the web event center with a link from this chat ({{.Time}} UTC). If it was not you, press «Sign out everywhere». If the button is gone, open «☰ Menu», then «🌐 Open in browser»."
+
+["bot.web.signout_btn"]
+other = "🚪 Sign out everywhere"
+
+["bot.web.signed_out"]
+other = "Done. We closed every sign-in to the web event center. A page that is already open can work for up to 15 more minutes. To sign in again, press «🌐 Open in browser»."
+
+["bot.web.signout_failed"]
+other = "We could not close the sign-ins. Please try again in a minute."
+
+# U-5b: undo, preview and the new date's summary on the edit card
+
+["bot.wz.edit_undone"]
+other = "↩ Undone: {{.What}}. The rest of the draft stays as it was."
+
+["bot.wz.edit_undo_btn"]
+other = "↩ Undo: {{.What}}"
+
+["bot.wz.edit_undo_date"]
+other = "new date {{.When}}"
+
+["bot.wz.edit_undo_tickets"]
+other = "categories of {{.When}}"
+
+["bot.wz.edit_card_changes"]
+other = "<b>✎ Changed:</b>\n{{.List}}"
+
+["bot.wz.edit_card_hint"]
+other = "The changes are not on the site until you press “Publish changes”. To undo one change, press its “↩ Undo” button. To undo everything, press “Exit without publishing”."
+
+["bot.wz.edit_card_partly_saved"]
+other = "Part of the changes is on the site already: the save stopped half way. Press “Publish changes” to send the rest."
+
+["bot.wz.edit_to_card_btn"]
+other = "⬅ To the event card"
+
+["bot.wz.edit_chg_none"]
+other = "none"
+
+["bot.wz.edit_chg_field"]
+other = "{{.What}}: {{.Old}} → {{.New}}"
+
+["bot.wz.edit_chg_name"]
+other = "Name: “{{.Old}}” → “{{.New}}”"
+
+["bot.wz.edit_chg_description"]
+other = "Description: new text"
+
+["bot.wz.edit_chg_description_removed"]
+other = "Description: removed"
+
+["bot.wz.edit_chg_poster"]
+other = "Poster: a new one"
+
+["bot.wz.edit_chg_date"]
+other = "New date {{.When}} · {{.Venue}}, {{.Capacity}} places. {{.List}}"
+
+["bot.wz.edit_chg_tickets"]
+other = "Categories of {{.When}}: {{.List}}"
+
+["bot.wz.cancel_draft_empty"]
+other = "The draft has no changes."
+
+["bot.wz.cancel_draft_has"]
+other = "<b>The draft holds:</b>\n{{.List}}"
+
+["bot.wz.summary_no_categories"]
+other = "no categories"
+
+["bot.wz.t_for_one"]
+other = "Categories"
+
+["bot.wz.t_progress"]
+other = "<b>{{.What}} · step {{.N}} of {{.Total}}</b>"
+
+["bot.wz.t_nothing_yet"]
+other = "Nothing changes until you answer the last question."
+
+["bot.wz.t_date_all_note"]
+other = "“For all dates” gives every date the way the first date sells: “{{.Value}}”."
+
+["bot.wz.s_tickets_trimmed"]
+other = "Price changes and sale stages after {{.Date}} do not fit this date. I removed them or moved them to {{.Date}} ({{.Count}})."
+
+["bot.wz.s_removed"]
+other = "I removed the date {{.When}} from the draft."
+
+["bot.wz.s_confirm"]
+other = "<b>Date {{.N}}</b>: {{.When}}, {{.Venue}}, {{.City}}, {{.Capacity}} places.\nCategories: {{.List}}\n\nAll correct? Press “Next”. It reaches the site only after “Publish changes”."
+
+["bot.wz.s_confirm_same"]
+other = "as on {{.Prev}}:"
+
+["bot.wz.s_confirm_own_btn"]
+other = "✏️ Set its own categories"
+
+["bot.wz.s_confirm_cap_btn"]
+other = "🔢 Change the places"
+
+["bot.wz.s_confirm_drop_btn"]
+other = "🗑 Remove this date"
+
+["bot.wz.s_confirm_next_btn"]
+other = "Next →"
+
+["bot.wz.preview_title"]
+other = "<b>What goes to the site</b>\n"
+
+["bot.wz.preview_new_date"]
+other = "New date {{.When}} · {{.Venue}}, {{.Capacity}} places. {{.List}}"
+
+["bot.wz.preview_date_tickets"]
+other = "{{.When}}, new categories: {{.List}}"
+
+["bot.wz.preview_date_resent"]
+other = "The date {{.When}} goes again, its categories stay the same."
+
+["bot.wz.preview_unchanged"]
+other = "No change: {{.List}}."
+
+["bot.wz.preview_already"]
+other = "On the site already: {{.List}}."
+
+["bot.wz.preview_no_categories"]
+other = "The date {{.When}} has no categories. It does not get the new currency. Give it categories with “Prices and categories”."
+
+["bot.wz.preview_warn_closed"]
+other = "{{.When}}: Arena closes the category {{.Old}}. Tickets sold in it stay valid."
+
+["bot.wz.preview_warn_renamed"]
+other = "{{.When}}: Arena closes the category {{.Old}} and opens {{.New}} in its place. A new name makes a new category. Tickets sold stay valid."
+
+["bot.wz.preview_warn_closed_many"]
+other = "{{.When}}: Arena closes the categories {{.Old}}. Tickets sold in them stay valid."
+
+["bot.wz.preview_warn_renamed_many"]
+other = "{{.When}}: Arena closes the categories {{.Old}}. New ones open in their place: {{.New}}. A new name makes a new category. Tickets sold stay valid."
+["bot.wz.preview_warn_places"]
+other = "The closed category keeps its places. So the date will have more places in total."
+
+
+["bot.wz.preview_footer"]
+other = "Press “Publish” to send it. Sold tickets do not change: a new price applies to the next purchases."
+
+["bot.wz.preview_publish_btn"]
+other = "✅ Publish"
+
+["bot.wz.preview_back_btn"]
+other = "← Back to the card"
+
+["bot.wz.warn_tier_not_in_payload"]
+other = "Arena closed the categories that are not in the new list. Tickets sold in them stay valid."

@@ -33,6 +33,7 @@
 package hauth
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -40,6 +41,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -171,14 +173,16 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	h.rateLimiter.Reset(rlKey) // clear on successful login
 
 	actorID := userRow.ID
-	accessToken, exp, err := auth.IssueJWT(
+	// The sign-in's facts come first: the access token carries its id and,
+	// for the web event center, its channel (spec 08_architecture/37 4.5).
+	session, refreshExp := h.newSession(ctx, time.Now().UTC())
+	accessToken, exp, err := auth.IssueSessionJWT(
 		h.jwtSecret,
 		actorID,
-		nil,
-		nil,
 		h.jwtIssuer,
 		h.jwtAudience,
 		accessTokenTTL,
+		sessionClaims(session),
 	)
 	if err != nil {
 		logger.Error("auth.login: issue JWT failed", "error", err)
@@ -195,8 +199,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// PR2-03: store SHA-256(rawToken) in DB; return raw token to client only.
 	refreshTokenHash := users.TokenHash(refreshToken)
-	refreshExp := time.Now().UTC().Add(refreshTokenTTL)
-	if err := q.InsertRefreshToken(ctx, refreshTokenHash, actorID, refreshExp); err != nil {
+	if err := q.InsertRefreshTokenSession(ctx, refreshTokenHash, actorID, refreshExp, session); err != nil {
 		logger.Error("auth.login: insert refresh token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_insert_failed", "failed to save refresh token", r))
 		return
@@ -209,41 +212,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Feature #118: session tracking + concurrent-session enforcement (post-commit, best-effort).
-	if h.sessionStore != nil {
-		userIDStr := actorID.String()
-		now := time.Now().UTC()
-
-		if h.maxConcurrentSessions > 0 {
-			tokensToEvict, evictErr := h.sessionStore.PruneAndEvict(ctx, userIDStr, h.maxConcurrentSessions-1, now)
-			if evictErr != nil {
-				logger.Warn("auth.login: session prune failed (continuing)", "error", evictErr)
-			} else if len(tokensToEvict) > 0 {
-				evictTx, txErr := h.db.BeginTx(ctx, pgx.TxOptions{})
-				if txErr != nil {
-					logger.Warn("auth.login: cannot begin evict tx", "error", txErr)
-				} else {
-					eq := gen.New(evictTx)
-					for _, tok := range tokensToEvict {
-						if rErr := eq.RevokeRefreshToken(ctx, tok); rErr != nil {
-							logger.Warn("auth.login: DB revoke evicted session failed",
-								"error", rErr,
-								"token_prefix", tok[:min(len(tok), 8)],
-							)
-						}
-						_ = h.sessionStore.RevokeSession(ctx, userIDStr, tok, now.Add(refreshTokenTTL))
-					}
-					if cErr := evictTx.Commit(ctx); cErr != nil {
-						logger.Warn("auth.login: commit evict tx failed", "error", cErr)
-						_ = evictTx.Rollback(ctx)
-					}
-				}
-			}
-		}
-
-		if trackErr := h.sessionStore.TrackSession(ctx, userIDStr, refreshToken, refreshExp); trackErr != nil {
-			logger.Warn("auth.login: session track failed (continuing)", "error", trackErr)
-		}
-	}
+	h.trackNewSession(ctx, actorID, refreshToken, refreshExp)
 
 	slog.Info("auth.login: successful login",
 		"user_id", actorID.String(),
@@ -384,14 +353,29 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	actorID := userRow.ID
-	accessToken, exp, err := auth.IssueJWT(
+	// The new token keeps the session facts of the old one (migration 0150):
+	// a web session slides its idle window, never past 30 days from sign-in.
+	// The access token takes its "chn" from the STORED session, never from
+	// this request's header, so leaving X-Client-Channel out of a refresh
+	// does not turn a web session into one the money routes do not ask.
+	session, err := q.GetRefreshTokenSession(ctx, tokenHash)
+	if err != nil {
+		logger.Error("auth.refresh: read session facts failed", "error", err)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
+		return
+	}
+	if session.SessionID == nil {
+		// A token issued before the sign-in got an id: the chain gets one now.
+		id := uuid.New()
+		session.SessionID = &id
+	}
+	accessToken, exp, err := auth.IssueSessionJWT(
 		h.jwtSecret,
 		actorID,
-		nil,
-		nil,
 		h.jwtIssuer,
 		h.jwtAudience,
 		accessTokenTTL,
+		sessionClaims(session),
 	)
 	if err != nil {
 		logger.Error("auth.refresh: issue JWT failed", "error", err)
@@ -407,14 +391,14 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	newTokenHash := users.TokenHash(newRawToken)
-	newRefreshExp := time.Now().UTC().Add(refreshTokenTTL)
+	newRefreshExp := sessionEnd(session, time.Now().UTC())
 
 	if err := q.RevokeRefreshToken(ctx, tokenHash); err != nil {
 		logger.Error("auth.refresh: revoke old token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.revoke_failed", "failed to revoke old refresh token", r))
 		return
 	}
-	if err := q.InsertRefreshToken(ctx, newTokenHash, actorID, newRefreshExp); err != nil {
+	if err := q.InsertRefreshTokenSession(ctx, newTokenHash, actorID, newRefreshExp, session); err != nil {
 		logger.Error("auth.refresh: insert new refresh token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_insert_failed", "failed to save new refresh token", r))
 		return
@@ -452,4 +436,46 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		"expires_at":    exp.UTC().Format(time.RFC3339),
 		"user_id":       actorID.String(),
 	})
+}
+
+// trackNewSession records a new sign-in in the session store and evicts the
+// oldest sessions above MaxConcurrentSessions (feature #118). It runs after
+// the sign-in committed and never fails it.
+func (h *Handler) trackNewSession(ctx context.Context, actorID uuid.UUID, refreshToken string, refreshExp time.Time) {
+	logger := logging.FromContext(ctx)
+	if h.sessionStore != nil {
+		userIDStr := actorID.String()
+		now := time.Now().UTC()
+
+		if h.maxConcurrentSessions > 0 {
+			tokensToEvict, evictErr := h.sessionStore.PruneAndEvict(ctx, userIDStr, h.maxConcurrentSessions-1, now)
+			if evictErr != nil {
+				logger.Warn("auth.login: session prune failed (continuing)", "error", evictErr)
+			} else if len(tokensToEvict) > 0 {
+				evictTx, txErr := h.db.BeginTx(ctx, pgx.TxOptions{})
+				if txErr != nil {
+					logger.Warn("auth.login: cannot begin evict tx", "error", txErr)
+				} else {
+					eq := gen.New(evictTx)
+					for _, tok := range tokensToEvict {
+						if rErr := eq.RevokeRefreshToken(ctx, tok); rErr != nil {
+							logger.Warn("auth.login: DB revoke evicted session failed",
+								"error", rErr,
+								"token_prefix", tok[:min(len(tok), 8)],
+							)
+						}
+						_ = h.sessionStore.RevokeSession(ctx, userIDStr, tok, now.Add(refreshTokenTTL))
+					}
+					if cErr := evictTx.Commit(ctx); cErr != nil {
+						logger.Warn("auth.login: commit evict tx failed", "error", cErr)
+						_ = evictTx.Rollback(ctx)
+					}
+				}
+			}
+		}
+
+		if trackErr := h.sessionStore.TrackSession(ctx, userIDStr, refreshToken, refreshExp); trackErr != nil {
+			logger.Warn("auth.login: session track failed (continuing)", "error", trackErr)
+		}
+	}
 }

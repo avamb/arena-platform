@@ -19,13 +19,15 @@ var ordKeys = []string{
 	"bot.ord.letter_tickets_none", "bot.ord.letter_tickets_queued", "bot.ord.letter_tickets_partial_queued",
 	"bot.ord.letter_tickets_sent", "bot.ord.letter_tickets_delivered", "bot.ord.letter_tickets_opened",
 	"bot.ord.letter_tickets_partial", "bot.ord.letter_tickets_failed",
+	"bot.ord.letter_tickets_delayed", "bot.ord.letter_tickets_stuck", "bot.ord.letter_tickets_bounced",
+	"bot.ord.letter_refund_delayed", "bot.ord.letter_refund_stuck", "bot.ord.letter_refund_bounced",
 	"bot.ord.letter_refund_off", "bot.ord.letter_refund_queued", "bot.ord.letter_refund_partial_queued",
 	"bot.ord.letter_refund_sent", "bot.ord.letter_refund_delivered", "bot.ord.letter_refund_opened",
 	"bot.ord.letter_refund_failed", "bot.ord.letter_retry_btn",
 	"bot.ord.reason_payment_failed", "bot.ord.reason_payment_abandoned", "bot.ord.reason_hold_expired",
 	"bot.ord.reason_cancelled", "bot.ord.reason_awaiting_payment", "bot.ord.reason_manual_review",
 	"bot.ord.reason_unknown", "bot.ord.reason_provider",
-	"bot.ord.cancel_btn", "bot.ord.cancel_ask", "bot.ord.cancel_wrong", "bot.ord.cancel_done",
+	"bot.ord.cancel_btn", "bot.ord.cancel_word", "bot.ord.cancel_ask", "bot.ord.cancel_wrong", "bot.ord.cancel_done",
 	"bot.ord.cancel_not_possible",
 }
 

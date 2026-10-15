@@ -72,7 +72,7 @@ func run(args []string) error {
 		return err
 	}
 
-	cfg, err := config.Load()
+	cfg, err := config.LoadFor(config.RoleMigrate)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}

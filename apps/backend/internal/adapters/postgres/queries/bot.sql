@@ -8,6 +8,17 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
           accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at;
 
+-- name: InsertWebBotInvitation :one
+-- The record of an invitation sent for the web event center (channel=web): the
+-- membership exists at once and there is no Telegram code to redeem, so the
+-- row is born accepted (accepted_at set, accepted_telegram_user_id NULL - that
+-- pair is what tells it from a Telegram invitation) with a random,
+-- never-disclosed code hash.
+INSERT INTO bot_invitations (org_id, user_id, email, role, code_hash, invited_by, expires_at, membership_created, accepted_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+RETURNING id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
+          accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at;
+
 -- name: GetBotInvitationByCodeHash :one
 SELECT id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
        accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at
@@ -85,9 +96,6 @@ SELECT EXISTS (
            JOIN   bot_telegram_links l ON l.telegram_user_id = g.telegram_user_id
            WHERE  l.user_id = $1 AND g.org_id = $2
        );
-
--- name: CountActiveOrgAdmins :one
-SELECT count(*) FROM memberships WHERE org_id = $1 AND role = 'org_admin' AND status = 'active';
 
 -- name: ResendBotInvitation :one
 -- A fresh code and expiry for a not-yet-accepted, not-revoked invitation, only
@@ -210,12 +218,46 @@ SET    org_id     = EXCLUDED.org_id,
        updated_at = now()
 RETURNING id, telegram_user_id, org_id, kind, step, state, expires_at, created_at, updated_at;
 
+-- name: UpdateBotDialogQuiet :execrows
+-- Rewrites an existing dialog WITHOUT touching updated_at: work that runs
+-- outside the person's own action (a refund answer arriving in the
+-- background) must not make its dialog the newest one, or it would take a
+-- text typed for the dialog the person opened meanwhile. A missing row stays
+-- missing.
+UPDATE bot_dialogs
+SET    org_id     = $2,
+       step       = $4,
+       state      = $5,
+       expires_at = $6
+WHERE  telegram_user_id = $1
+  AND  kind = $3;
+
+-- name: PauseBotDrafts :execrows
+-- Pauses every unfinished event draft of a person (any organization): a
+-- command or the menu was chosen, so the draft takes no typed text until a
+-- wizard button continues it. updated_at is left alone, so the idle-draft
+-- reminder keeps counting from the last real answer.
+UPDATE bot_drafts
+SET    state = jsonb_set(state, '{paused}', 'true'::jsonb)
+WHERE  telegram_user_id = $1
+  AND  step <> 'done'
+  AND  coalesce((state->>'paused')::boolean, false) = false;
+
 -- name: GetBotDialog :one
 -- The dialog whatever its expiry: the caller reports an expired one once.
 SELECT id, telegram_user_id, org_id, kind, step, state, expires_at, created_at, updated_at
 FROM   bot_dialogs
 WHERE  telegram_user_id = $1
   AND  kind = $2;
+
+-- name: ListBotDialogKindsByRecency :many
+-- The kinds of a person's dialogs, expired or not, the one touched last
+-- first: a typed text goes to the newest dialog that takes it
+-- (eventbot routeDialogText).
+SELECT kind
+FROM   bot_dialogs
+WHERE  telegram_user_id = $1
+ORDER  BY updated_at DESC, created_at DESC, kind;
 
 -- name: DeleteBotDialog :exec
 DELETE FROM bot_dialogs
@@ -252,11 +294,18 @@ SELECT u.id      AS user_id,
        inv.id           AS invitation_id,
        inv.accepted_at  AS invitation_accepted_at,
        inv.expires_at   AS invitation_expires_at,
-       inv.last_sent_at AS invitation_last_sent_at
+       inv.last_sent_at AS invitation_last_sent_at,
+       (inv.accepted_at IS NOT NULL AND inv.accepted_telegram_user_id IS NULL) AS invitation_web,
+       -- A web invitation of an account that invitation CREATED (same
+       -- transaction, so the same now()) is still waiting while its setup link
+       -- is unused and alive.
+       (SELECT max(t.expires_at) FROM password_reset_tokens t
+        WHERE t.user_id = u.id AND t.used_at IS NULL AND t.expires_at > now()
+          AND u.created_at = inv.created_at) AS web_setup_expires_at
 FROM   memberships m
 JOIN   users u ON u.id = m.user_id
 LEFT JOIN LATERAL (
-           SELECT i.id, i.accepted_at, i.expires_at, i.last_sent_at
+           SELECT i.id, i.accepted_at, i.accepted_telegram_user_id, i.created_at, i.expires_at, i.last_sent_at
            FROM   bot_invitations i
            WHERE  i.user_id = u.id AND i.org_id = m.org_id AND i.revoked_at IS NULL
            ORDER  BY (i.accepted_at IS NOT NULL) DESC, i.created_at DESC

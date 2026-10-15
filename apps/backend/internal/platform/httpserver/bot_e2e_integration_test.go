@@ -14,6 +14,7 @@ package httpserver
 //	  go test -tags integration ./apps/backend/internal/platform/httpserver/ -run BotE2E
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -41,6 +42,9 @@ type stubTelegram struct {
 	updates chan json.RawMessage
 	mu      sync.Mutex
 	sent    []string
+	// sentIDs is the message id behind each entry of sent (0 for a
+	// document).
+	sentIDs []int
 	nextID  int64
 	msgSeq  int
 	// calls counts every Bot API method the bot called, for the methods whose
@@ -58,6 +62,10 @@ type stubTelegram struct {
 	msgs map[int]*stubMessage
 	// retired counts the old messages that lost their keyboard.
 	retired int
+	// dates is when each message was sent, in Unix seconds, as Telegram
+	// dates it; a press carries its message's date, and the bot refuses a
+	// message sent before it started (feed.go).
+	dates map[int]int64
 	// lastCall is when the bot last called a method other than getUpdates.
 	lastCall time.Time
 	// answers are the texts of the bot's answerCallbackQuery calls ("" when
@@ -71,6 +79,10 @@ type stubMessage struct {
 	text   string
 	markup json.RawMessage // the reply_markup as sent; nil when it has none
 	data   []string        // callback data of its buttons
+	urls   []string        // addresses of its URL buttons
+	// replyKB is a reply keyboard (the one under the message field) the
+	// message carried, as sent; nil for an inline keyboard or none.
+	replyKB json.RawMessage
 }
 
 // document returns the bytes of a document the bot sent, by file name.
@@ -144,8 +156,10 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		case method == "sendMessage":
 			s.msgSeq++
 			seq = s.msgSeq
+			s.stamp(seq)
 			s.remember(seq, p)
 			s.sent = append(s.sent, p.Text)
+			s.sentIDs = append(s.sentIDs, seq)
 		case p.retires():
 			// An old message losing its keyboard (feed.go): no new text.
 			if m := s.msgs[seq]; m != nil {
@@ -161,9 +175,11 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		default:
 			s.remember(seq, p)
 			s.sent = append(s.sent, p.Text)
+			s.sentIDs = append(s.sentIDs, seq)
 		}
+		date := s.dates[seq]
 		s.mu.Unlock()
-		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":1700000000,"chat":{"id":%d,"type":"private"},"text":%q}}`, seq, p.chat(), p.Text)
+		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":%d,"chat":{"id":%d,"type":"private"},"text":%q}}`, seq, date, p.chat(), p.Text)
 	case "answerCallbackQuery":
 		var p struct {
 			Text string `json:"text"`
@@ -216,10 +232,13 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		s.mu.Lock()
 		s.sent = append(s.sent, "[document "+name+"] "+caption)
+		s.sentIDs = append(s.sentIDs, 0)
 		s.msgSeq++
 		seq := s.msgSeq
+		s.stamp(seq)
+		date := s.dates[seq]
 		s.mu.Unlock()
-		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":1700000000,"chat":{"id":777,"type":"private"},"caption":%q}}`, seq, caption)
+		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":%d,"chat":{"id":777,"type":"private"},"caption":%q}}`, seq, date, caption)
 	default:
 		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
 	}
@@ -265,15 +284,67 @@ func stubParams(body []byte, field func(string) string) stubSent {
 	return p
 }
 
+// restartGap is called before a bot starts on this stub: it waits until the
+// clock has left the second of the last message the stub dated, so a bot
+// started again (a restart) tells the messages of the previous one by their
+// date, as Telegram's whole-second dates allow (feed.go). A fresh stub does
+// not wait.
+func (s *stubTelegram) restartGap() {
+	s.mu.Lock()
+	last := int64(0)
+	for _, d := range s.dates {
+		if d > last {
+			last = d
+		}
+	}
+	s.mu.Unlock()
+	for last != 0 && time.Now().Unix() <= last {
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// pressStale presses a button of a screen the bot sent before it restarted
+// and asserts the answer: the note pointing at the menu, and no message
+// sent (feed.go).
+func (s *stubTelegram) pressStale(t *testing.T, user int64, data string) {
+	t.Helper()
+	sends := s.callCount("sendMessage")
+	answers := s.callCount("answerCallbackQuery")
+	s.push(e2eCallbackAs(user, data))
+	s.waitCall(t, "answerCallbackQuery", answers)
+	time.Sleep(300 * time.Millisecond)
+	s.mu.Lock()
+	note := s.answers[len(s.answers)-1]
+	s.mu.Unlock()
+	if note != "Это сообщение устарело. Нажмите ☰ Меню внизу." {
+		t.Errorf("a press on a screen of the old process (%s): %q", data, note)
+	}
+	if got := s.callCount("sendMessage"); got != sends {
+		t.Fatalf("a press on a screen of the old process (%s) sent %d message(s)", data, got-sends)
+	}
+}
+
+// stamp dates a new message now; s.mu must be held.
+func (s *stubTelegram) stamp(id int) {
+	if s.dates == nil {
+		s.dates = map[int]int64{}
+	}
+	s.dates[id] = time.Now().Unix()
+}
+
 // remember records a message's text and keyboard; s.mu must be held.
 func (s *stubTelegram) remember(id int, p stubSent) {
 	if s.msgs == nil {
 		s.msgs = map[int]*stubMessage{}
 	}
 	m := &stubMessage{chat: p.chat(), text: p.Text}
+	if bytes.Contains(p.ReplyMarkup, []byte(`"keyboard"`)) || bytes.Contains(p.ReplyMarkup, []byte(`"remove_keyboard"`)) {
+		m.replyKB = p.ReplyMarkup
+	}
 	var kb struct {
 		InlineKeyboard [][]struct {
 			CallbackData string `json:"callback_data"`
+			URL          string `json:"url"`
 		} `json:"inline_keyboard"`
 	}
 	if len(p.ReplyMarkup) > 0 && json.Unmarshal(p.ReplyMarkup, &kb) == nil {
@@ -281,6 +352,9 @@ func (s *stubTelegram) remember(id int, p stubSent) {
 			for _, b := range row {
 				if b.CallbackData != "" {
 					m.data = append(m.data, b.CallbackData)
+				}
+				if b.URL != "" {
+					m.urls = append(m.urls, b.URL)
 				}
 			}
 		}
@@ -313,6 +387,34 @@ func (s *stubTelegram) liveMessage(chat int64, data string) int {
 		return any
 	}
 	return best
+}
+
+// waitButton waits until a live message of the chat carries a button with
+// this callback data, so a press is not pushed while the bot is still drawing
+// the screen that has it (the press would then land on an older message and
+// the feed would refuse it as stale). It reports false when no such button
+// appeared in time: the test then presses anyway, as for a made-up press.
+func (s *stubTelegram) waitButton(chat int64, data string, within time.Duration) bool {
+	deadline := time.Now().Add(within)
+	for {
+		s.mu.Lock()
+		found := false
+		for _, m := range s.msgs {
+			if m.chat != chat {
+				continue
+			}
+			for _, d := range m.data {
+				if d == data {
+					found = true
+				}
+			}
+		}
+		s.mu.Unlock()
+		if found || time.Now().After(deadline) {
+			return found
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // push queues an update. A callback built by e2eCallback names the
@@ -361,15 +463,16 @@ func (s *stubTelegram) aim(update string) string {
 	s.mu.Lock()
 	id := s.liveMessage(msg.Chat.ID, data)
 	var target *stubMessage
+	var date int64
 	if id != 0 {
-		target = s.msgs[id]
+		target, date = s.msgs[id], s.dates[id]
 	}
 	s.mu.Unlock()
 	if target == nil {
 		return update
 	}
 	m := map[string]any{
-		"message_id": id, "date": 1700000000, "text": target.text,
+		"message_id": id, "date": date, "text": target.text,
 		"chat": map[string]any{"id": msg.Chat.ID, "type": "private"},
 	}
 	if target.markup != nil {
@@ -418,6 +521,16 @@ func hasPrefixData(data []string, prefix string) bool {
 }
 
 // keyboardOf is the callback data of a message's buttons now.
+// urlsOf returns the addresses of a message's URL buttons.
+func (s *stubTelegram) urlsOf(id int) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if m := s.msgs[id]; m != nil {
+		return append([]string(nil), m.urls...)
+	}
+	return nil
+}
+
 func (s *stubTelegram) keyboardOf(id int) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -499,9 +612,15 @@ func e2eMessage(text string) string {
 }
 
 func e2eCallback(data string) string {
-	return fmt.Sprintf(`"callback_query":{"id":"cb-%d",%s,"chat_instance":"x","data":%q,"message":{"message_id":5,"date":1700000000,"chat":{"id":777,"type":"private"},"text":"menu"}}`,
-		time.Now().UnixNano()%100000, e2eTelegramUser, data)
+	return fmt.Sprintf(`"callback_query":{"id":"cb-%d",%s,"chat_instance":"x","data":%q,"message":{"message_id":5,"date":%d,"chat":{"id":777,"type":"private"},"text":"menu"}}`,
+		time.Now().UnixNano()%100000, e2eTelegramUser, data, e2ePressDate())
 }
+
+// e2ePressDate dates a press the test makes up on a placeholder message: a
+// second ahead, so a bot started in this very second still counts the screen
+// as its own (feed.go treats the start second as the previous process's).
+// A press the stub aims at a real message carries that message's own date.
+func e2ePressDate() int64 { return time.Now().Unix() + 1 }
 
 // e2eMessageAs / e2eCallbackAs are the same updates from another Telegram
 // account (its private chat id equals its user id, as in Telegram).
@@ -511,8 +630,8 @@ func e2eMessageAs(userID int64, text string) string {
 }
 
 func e2eCallbackAs(userID int64, data string) string {
-	return fmt.Sprintf(`"callback_query":{"id":"cb-%d","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":%q,"message":{"message_id":5,"date":1700000000,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
-		time.Now().UnixNano()%100000, userID, data, userID)
+	return fmt.Sprintf(`"callback_query":{"id":"cb-%d","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":%q,"message":{"message_id":5,"date":%d,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
+		time.Now().UnixNano()%100000, userID, data, e2ePressDate(), userID)
 }
 
 func TestBotE2E_InvitationToMyEvents(t *testing.T) {
@@ -539,6 +658,7 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 		t.Fatalf("i18n.NewBundle: %v", err)
 	}
 	tg := newStubTelegram(t)
+	tg.restartGap()
 	bot, err := eventbot.New(eventbot.Options{
 		Token:             "123:test-token",
 		Queries:           gen.New(pool),
@@ -693,4 +813,32 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("bot did not stop after cancel")
 	}
+}
+
+// stubReplyKeyboard is a reply keyboard as the bot sent it.
+type stubReplyKeyboard struct {
+	Keyboard [][]struct {
+		Text string `json:"text"`
+	} `json:"keyboard"`
+	IsPersistent   bool `json:"is_persistent"`
+	ResizeKeyboard bool `json:"resize_keyboard"`
+	RemoveKeyboard bool `json:"remove_keyboard"`
+}
+
+// replyKeyboardSince is the reply keyboard of the first message sent after
+// mark that carried one, and that message's text; ok is false when none did.
+func (s *stubTelegram) replyKeyboardSince(mark int) (kb stubReplyKeyboard, text string, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := mark; i < len(s.sentIDs); i++ {
+		m := s.msgs[s.sentIDs[i]]
+		if m == nil || m.replyKB == nil {
+			continue
+		}
+		if json.Unmarshal(m.replyKB, &kb) != nil {
+			return kb, m.text, false
+		}
+		return kb, m.text, true
+	}
+	return kb, "", false
 }

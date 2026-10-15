@@ -19,7 +19,7 @@
   </table>
   <p style="margin:16px 0 12px 0;">Das Geld geht auf die Zahlungsart zurück, mit der Sie bezahlt haben. Ihre Bank braucht dafür meist 5–10 Werktage.</p>
   {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">Die erstatteten Tickets gelten nicht mehr als Eintritt.</p>{{else if .Refund.SomeTicketsCancelled}}<p style="margin:0 0 12px 0;">Nur die mit „nicht mehr gültig“ markierten Tickets gelten nicht mehr als Eintritt; die anderen Tickets in der Liste oben bleiben gültig.</p>{{end}}
-  <p style="margin:0 0 12px 0;">Fragen? Antworten Sie auf diese E-Mail.</p>
+  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">Fragen? Antworten Sie auf diese E-Mail.</p>{{end}}
   <p style="font-size:12px;color:#666">Zugestellt an: {{.RecipientEmail}}</p>
   </td></tr>
   <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
@@ -30,9 +30,11 @@
     {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
-    {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kontakt: <a href="{{.}}" style="color:#666">Dem Veranstalter schreiben</a>{{end}}{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — automatische Nachricht</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails mit Ihren Tickets und keine wichtigen E-Mails zu Ihrer Bestellung mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.</p>
   </td></tr>
 </table>
 </td></tr></table>
@@ -55,8 +57,8 @@ Das Geld geht auf die Zahlungsart zurück, mit der Sie bezahlt haben. Ihre Bank 
 {{if .Refund.TicketsCancelled}}Die erstatteten Tickets gelten nicht mehr als Eintritt.
 {{else if .Refund.SomeTicketsCancelled}}Nur die mit „nicht mehr gültig“ markierten Tickets gelten nicht mehr als Eintritt; die anderen Tickets in der Liste oben bleiben gültig.
 {{end}}
-Fragen? Antworten Sie auf diese E-Mail.
-
+{{if .Branding.ContactEmail}}Fragen? Antworten Sie auf diese E-Mail.
+{{end}}
 Zugestellt an: {{.RecipientEmail}}
 
 --
@@ -66,7 +68,11 @@ Zugestellt an: {{.RecipientEmail}}
 {{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
 {{else}}{{with .Branding.LegalAddressCity}}{{.}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}Kontakt: {{.}}
-{{end}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kontakt: {{.}}
+{{end}}{{end}}
 Arena Platform — automatische Nachricht
+
+Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails mit Ihren Tickets und keine wichtigen E-Mails zu Ihrer Bestellung mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.
 {{end}}

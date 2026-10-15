@@ -384,10 +384,42 @@ func (b *Bot) doQueueRetry(ctx context.Context, chatID int64, msgID int, id *Ide
 		if key == "" {
 			key = "bot.ref.err_timeout"
 		}
-		b.reply(rctx, chatID, edit, b.texts.T(loc, key, map[string]any{"Num": "—", "Provider": Esc(b.texts.T(loc, "bot.rq.provider_word", nil))}), back)
+		var it *openapi.OrderRefundQueueItem
+		if jwt, merr := b.minter.Mint(id.Link.UserID); merr == nil {
+			if got, gerr := b.arena.RefundGet(rctx, jwt, id.Current.OrgID, refundID); gerr == nil {
+				it = &got
+			}
+		}
+		key, vars := b.queueRetryErrorText(loc, key, id, it)
+		b.reply(rctx, chatID, edit, b.texts.T(loc, key, vars), back)
 	default:
 		// No answer at all: the retry may be under way. Never "failed".
 		b.logger.Warn("eventbot: refund retry got no answer", slog.String("error", err.Error()))
 		b.reply(rctx, chatID, edit, b.texts.T(loc, "bot.ref.err_timeout", nil), back)
 	}
+}
+
+// queueRetryErrorText fills a refused retry's text with the order and ticket
+// numbers of the refund (it, read after the refusal). A text that names the
+// order is never shown without its number: when the refund could not be read,
+// the general refusal is shown instead.
+func (b *Bot) queueRetryErrorText(loc, key string, id *Identity, it *openapi.OrderRefundQueueItem) (string, map[string]any) {
+	vars := map[string]any{
+		"Provider": Esc(b.texts.T(loc, "bot.rq.provider_word", nil)),
+		"Ticket":   "",
+		"Next":     b.texts.T(loc, b.scannedNextKey(id), nil),
+	}
+	if it != nil && it.OrderNumber != nil {
+		vars["Num"] = strconv.FormatInt(*it.OrderNumber, 10)
+	}
+	if it != nil && it.TicketNumber != nil {
+		vars["Ticket"] = "№" + strconv.FormatInt(*it.TicketNumber, 10)
+	}
+	if _, ok := vars["Num"]; !ok {
+		const probe = "\x00num\x00"
+		if strings.Contains(b.texts.T(loc, key, map[string]any{"Num": probe}), probe) {
+			return "bot.rq.err_refused", vars
+		}
+	}
+	return key, vars
 }

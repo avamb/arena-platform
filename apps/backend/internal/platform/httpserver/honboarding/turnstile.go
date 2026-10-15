@@ -29,6 +29,13 @@ const turnstileVerifyURL = "https://challenges.cloudflare.com/turnstile/v0/sitev
 type TurnstileVerifier struct {
 	Secret   string
 	Required bool
+	// Action, when set, is the widget action the token must carry. The
+	// contact form renders with action "contact", so a token solved on another
+	// form that shares the secret (the onboarding form) is refused.
+	Action string
+	// Hostnames, when not empty, lists the hosts a token may be solved on;
+	// Cloudflare reports the host in the verification answer.
+	Hostnames []string
 	// URL overrides the endpoint in tests.
 	URL    string
 	Client *http.Client
@@ -71,10 +78,35 @@ func (v *TurnstileVerifier) Verify(ctx context.Context, token, remoteIP string) 
 	}
 	defer resp.Body.Close()
 	var out struct {
-		Success bool `json:"success"`
+		Success  bool   `json:"success"`
+		Action   string `json:"action"`
+		Hostname string `json:"hostname"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&out); err != nil {
 		return false, fmt.Errorf("turnstile: decode: %w", err)
 	}
-	return out.Success, nil
+	if !out.Success {
+		return false, nil
+	}
+	if v.Action != "" && out.Action != v.Action {
+		return false, nil
+	}
+	if len(v.Hostnames) > 0 && !hostAllowed(out.Hostname, v.Hostnames) {
+		return false, nil
+	}
+	return true, nil
+}
+
+// hostAllowed reports whether host is one of allowed, ignoring case.
+func hostAllowed(host string, allowed []string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return false
+	}
+	for _, a := range allowed {
+		if strings.ToLower(strings.TrimSpace(a)) == host {
+			return true
+		}
+	}
+	return false
 }

@@ -197,6 +197,11 @@ func TestBot_DifferentAccountsInterleave(t *testing.T) {
 		wg    sync.WaitGroup
 	)
 	wg.Add(3)
+	record := func(text string) {
+		mu.Lock()
+		order = append(order, text)
+		mu.Unlock()
+	}
 	b.route = func(_ context.Context, u *models.Update) {
 		defer wg.Done()
 		switch u.Message.Text {
@@ -206,12 +211,15 @@ func TestBot_DifferentAccountsInterleave(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Error("account 2 never ran while account 1 was busy")
 			}
+			record("slow")
 		case "fast":
+			// Record before releasing account 1, so "slow" can only be
+			// recorded after "fast" whatever the scheduler does.
+			record("fast")
 			close(secondRan)
+		default:
+			record(u.Message.Text)
 		}
-		mu.Lock()
-		order = append(order, u.Message.Text)
-		mu.Unlock()
 	}
 	runBot(t, b)
 	waitGroupOrFail(t, &wg)

@@ -1,13 +1,19 @@
 // public_page_seller.go builds the SELLER and PROMOTER blocks of the hosted
-// sales page. A buyer is entitled to know who sells the ticket, so a channel
-// can switch the blocks on with settings.hosted_page.show_seller. Off is the
-// default: deploying this changes nothing a visitor sees until an operator
-// turns it on, channel by channel.
+// sales page. A buyer is entitled to know who sells the ticket, so the block
+// is shown by default as soon as the seller's profile is complete
+// (sellerinfo.Missing is empty: legal name, tax number, street, city, postal
+// code and the channel's public e-mail). Only a platform superadmin can keep
+// it off, with settings.hosted_page.seller_hidden (P1a, owner decision
+// 2026-10-14). The older settings.hosted_page.show_seller is still stored but
+// no longer decides anything on this page.
 //
 // Every value comes from the page's OWN organization. A contact is published
 // only from settings.hosted_page.public_contact of the channel; the
 // organization's contact_email / contact_phone are never read, because they
-// may hold a person's private login address.
+// may hold a person's private login address. Since the contact form (HP
+// contact form, 2026-10-13) not even the channel's public e-mail is
+// published: buyers write through the form (contact_form), the address only
+// receives the messages. The public phone is still printed.
 package hfeed
 
 import (
@@ -21,6 +27,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/withdrawal"
 )
 
@@ -44,6 +51,7 @@ type hostedPageSellerContact struct {
 // hostedPageSellerResponse is the legal identity of the seller of record.
 type hostedPageSellerResponse struct {
 	LegalName          string                   `json:"legal_name"`
+	LegalForm          string                   `json:"legal_form,omitempty"`
 	TaxID              string                   `json:"tax_id,omitempty"`
 	TaxScheme          string                   `json:"tax_scheme,omitempty"`
 	RegistrationNumber string                   `json:"registration_number,omitempty"`
@@ -64,14 +72,32 @@ func deref(s *string) string {
 	return strings.TrimSpace(*s)
 }
 
+// sellerComplete reports whether the row carries everything the block needs
+// (sellerinfo.Missing is empty). The channel's public e-mail is part of it,
+// though the page never prints it.
+func sellerComplete(row gen.HostedPageSellerRow) bool {
+	p := sellerinfo.Profile{
+		LegalName:   deref(row.LegalName),
+		TaxID:       deref(row.TaxID),
+		AddressLine: deref(row.AddressLine1),
+		City:        deref(row.AddressCity),
+		PostalCode:  deref(row.AddressPostalCode),
+	}
+	if c := parsePublicContact(row.PublicContact); c != nil {
+		p.PublicEmail = c.Email
+	}
+	return len(sellerinfo.Missing(p)) == 0
+}
+
 // buildSeller turns the stored row into the public block. It returns nil when
-// the channel has not switched the block on.
+// the profile is incomplete or a platform superadmin hid the block.
 func buildSeller(row gen.HostedPageSellerRow) *hostedPageSellerResponse {
-	if !row.ShowSeller {
+	if row.SellerHidden || !sellerComplete(row) {
 		return nil
 	}
 	s := &hostedPageSellerResponse{
 		LegalName:          deref(row.LegalName),
+		LegalForm:          deref(row.LegalForm),
 		TaxID:              deref(row.TaxID),
 		TaxScheme:          deref(row.TaxIDScheme),
 		RegistrationNumber: deref(row.RegistrationNumber),
@@ -94,8 +120,52 @@ func buildSeller(row gen.HostedPageSellerRow) *hostedPageSellerResponse {
 		addr.Country = country
 		s.Address = &addr
 	}
-	s.PublicContact = parsePublicContact(row.PublicContact)
+	s.PublicContact = publishedContact(row.PublicContact)
 	return s
+}
+
+// publishedContact is the part of public_contact the page may print: the
+// phone. The e-mail is never published; it only receives the contact form's
+// messages.
+func publishedContact(raw []byte) *hostedPageSellerContact {
+	c := parsePublicContact(raw)
+	if c == nil || c.Phone == "" {
+		return nil
+	}
+	return &hostedPageSellerContact{Phone: c.Phone}
+}
+
+// hostedPageContactForm tells the page whether to offer the "Write to the
+// organizer" form, with which Turnstile site key and which privacy policy the
+// consent links to. It never carries the address the messages go to.
+type hostedPageContactForm struct {
+	Available        bool   `json:"available"`
+	TurnstileSiteKey string `json:"turnstile_site_key,omitempty"`
+	PrivacyURL       string `json:"privacy_url,omitempty"`
+}
+
+// contactForm decides the form from the channel row: offered when a message
+// has somewhere to go - the channel's public e-mail, else the organization's
+// own address, else its owner's account e-mail, neither of which is ever
+// answered (owner rule 2026-10-13: letters of a
+// hosted page without a public e-mail link this form) - and this deployment
+// can check the captcha. orgReachable is asked only when the channel has no
+// public e-mail; it answers a boolean from its own query, so the page's
+// seller query never touches the organization's address.
+//
+// toOwner (owner decision 2026-10-14): the page is a promoter's, or the
+// event belongs to a promoter (gen.EventPromotedSQL). Its messages go to the
+// organization's owner only, so the public e-mail does not count and
+// orgReachable must answer whether that owner exists.
+func (h *Handler) contactForm(row gen.HostedPageSellerRow, toOwner bool, orgReachable func() bool) *hostedPageContactForm {
+	if !h.contactFormReady {
+		return nil
+	}
+	c := parsePublicContact(row.PublicContact)
+	if (toOwner || c == nil || c.Email == "") && (orgReachable == nil || !orgReachable()) {
+		return nil
+	}
+	return &hostedPageContactForm{Available: true, TurnstileSiteKey: h.contactFormSiteKey, PrivacyURL: h.contactFormPrivacyURL}
 }
 
 // parsePublicContact reads settings.hosted_page.public_contact. Anything that
@@ -127,8 +197,9 @@ func parsePublicContact(raw []byte) *hostedPageSellerContact {
 // when eventID is set, the promoter the event is linked to. Both are nil when
 // the channel keeps the block off. A lookup failure is logged and answers
 // nil: the block is informational and must not turn a resolved page into a
-// 500.
-func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken string, eventID *uuid.UUID) (*hostedPageSellerResponse, *hostedPagePromoterResponse) {
+// 500. toOwner: the form's messages go to the organization's owner only
+// (contactForm).
+func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken string, eventID *uuid.UUID, toOwner bool) (*hostedPageSellerResponse, *hostedPagePromoterResponse, *hostedPageContactForm) {
 	row, err := h.publicFeedQueries.GetHostedPageSeller(ctx, orgID, feedToken)
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
@@ -137,14 +208,29 @@ func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken s
 				slog.String("error", err.Error()),
 			)
 		}
-		return nil, nil
+		return nil, nil, nil
 	}
+	form := h.contactForm(row, toOwner, func() bool {
+		recipient := h.publicFeedQueries.OrgHasPrivateRecipient
+		if toOwner {
+			recipient = h.publicFeedQueries.OrgOwnerReachable
+		}
+		ok, err := recipient(ctx, orgID)
+		if err != nil {
+			h.logger.Warn("public_page: contact form recipient lookup failed",
+				slog.String("org_id", orgID.String()),
+				slog.String("error", err.Error()),
+			)
+			return false
+		}
+		return ok
+	})
 	seller := buildSeller(row)
 	if seller == nil {
-		return nil, nil
+		return nil, nil, form
 	}
 	if eventID == nil {
-		return seller, nil
+		return seller, nil, form
 	}
 	name, err := h.publicFeedQueries.GetHostedPageEventPromoterName(ctx, *eventID, orgID)
 	if err != nil {
@@ -154,12 +240,29 @@ func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken s
 				slog.String("error", err.Error()),
 			)
 		}
-		return seller, nil
+		return seller, nil, form
 	}
 	if name = strings.TrimSpace(name); name == "" {
-		return seller, nil
+		return seller, nil, form
 	}
-	return seller, &hostedPagePromoterResponse{Name: name}
+	return seller, &hostedPagePromoterResponse{Name: name}, form
+}
+
+// eventToOwner reports whether the buyers' messages about the event with
+// this slug go to the organization's owner only: it belongs to a promoter
+// (gen.EventPromotedSQL, the rule the send route applies too). A failed
+// lookup answers true and is logged: the form then needs the owner, which
+// never sends a message to an address the rule would not pick.
+func (h *Handler) eventToOwner(ctx context.Context, orgID uuid.UUID, eventSlug string) bool {
+	ok, err := h.publicFeedQueries.GetContactEventPromoted(ctx, orgID, eventSlug)
+	if err != nil {
+		h.logger.Warn("public_page: event promoter lookup failed",
+			slog.String("org_id", orgID.String()),
+			slog.String("error", err.Error()),
+		)
+		return true
+	}
+	return ok
 }
 
 // showWithdrawalNotice reports whether the widget must tell the buyer that

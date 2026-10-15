@@ -2,7 +2,11 @@
 // (spec §13.2 step 9).
 package himports
 
-import "github.com/google/uuid"
+import (
+	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
+)
 
 // Warning codes emitted by the import. Warnings never fail the import — they
 // tell the operator which parts of the payload could not be applied verbatim
@@ -54,8 +58,9 @@ const (
 	// address/geo/timezone from the payload are deliberately not applied.
 	WarnVenueMatchedByName = "import.venue_matched_by_name"
 	// WarnTierNotInPayload — the session carries ticket tiers the bundle did
-	// not mention. They are left untouched (the bundle cannot delete), and
-	// their compat ids are listed in the message so the site can reconcile.
+	// not mention. They are closed, never deleted (syncImportedCategoryQuotas;
+	// a bundle cannot delete), and their compat ids are listed in the
+	// message so the site can reconcile.
 	WarnTierNotInPayload = "import.tier_not_in_payload"
 	// WarnChannelPublicationSkipped — publish:true succeeded, but the calling
 	// organization API key is not bound to a sales channel, so the event was
@@ -162,6 +167,53 @@ type ImportCompatIDs struct {
 	CategoryQuantities []*int32 `json:"category_quantities"`
 }
 
+// ImportIssue is one error of an event-bundle dry run (task 3-1): the error
+// the import would answer, with the field it is about.
+type ImportIssue struct {
+	// Code is the same machine code the import's error envelope carries.
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	// Field is the RFC 6901 JSON pointer of the bundle field the error is
+	// about ("/categoryList/1/price"), "" when it concerns the whole bundle.
+	Field string `json:"field"`
+	// Status is the HTTP status the import would answer with.
+	Status int `json:"status"`
+}
+
+// ImportDefault is one value the import would fill in because the bundle
+// leaves it out.
+type ImportDefault struct {
+	// Name is a stable key: start_time, session_end_time, sales_end_time,
+	// venue_timezone, category_name, event_slug, session_status.
+	Name string `json:"name"`
+	// Field is the JSON pointer of the bundle field the value stands in for,
+	// "" when the value has no field in the bundle (event_slug).
+	Field string `json:"field"`
+	Value string `json:"value"`
+}
+
+// ImportDryRunResponse is the 200 body of
+// POST .../imports/event-bundle?dry_run=true.
+type ImportDryRunResponse struct {
+	DryRun bool `json:"dry_run"`
+	// Valid is true when errors is empty: the same bundle imported now would
+	// be accepted.
+	Valid bool `json:"valid"`
+	// Source is the resolved source, "" when the bundle's source is refused.
+	Source string `json:"source"`
+	// Normalized is the bundle as the import reads it (trimmed, source and
+	// externalRef resolved, currency upper-cased), in the bundle's own
+	// camelCase shape. Defaults are NOT filled in: they are listed apart.
+	Normalized bil24compat.ImportSessionRequest `json:"normalized"`
+	Defaults   []ImportDefault                  `json:"defaults"`
+	Warnings   []Warning                        `json:"warnings"`
+	Errors     []ImportIssue                    `json:"errors"`
+	// EventID / SessionID name the existing event and session the bundle
+	// edits; null when the import would create them (or could not tell).
+	EventID   *uuid.UUID `json:"event_id"`
+	SessionID *uuid.UUID `json:"session_id"`
+}
+
 // warningSink accumulates warnings in emission order while de-duplicating on
 // code — a repeated code with a different message would only add noise.
 type warningSink struct {
@@ -179,6 +231,22 @@ func (s *warningSink) add(code, message string) {
 	}
 	s.seen[code] = struct{}{}
 	s.items = append(s.items, Warning{Code: code, Message: message})
+}
+
+// drop removes the warning with code, if any. The dry run uses it to
+// withhold a warning built from another organization's row.
+func (s *warningSink) drop(code string) {
+	if _, ok := s.seen[code]; !ok {
+		return
+	}
+	delete(s.seen, code)
+	kept := s.items[:0]
+	for _, w := range s.items {
+		if w.Code != code {
+			kept = append(kept, w)
+		}
+	}
+	s.items = kept
 }
 
 // list returns the accumulated warnings, never nil — the response contract

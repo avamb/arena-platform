@@ -71,8 +71,8 @@ SET    state               = $2,
        succeeded_at        = CASE WHEN $2 = 'succeeded'  THEN now() ELSE succeeded_at  END,
        failed_at           = CASE WHEN $2 = 'failed'     THEN now() ELSE failed_at     END,
        -- Error details — written only when transitioning to failed.
-       failure_code        = CASE WHEN $2 = 'failed' THEN COALESCE($5, failure_code)    ELSE failure_code    END,
-       failure_message     = CASE WHEN $2 = 'failed' THEN COALESCE($6, failure_message) ELSE failure_message END,
+       failure_code        = CASE WHEN $2 IN ('failed', 'manual_review') THEN COALESCE($5, failure_code)    ELSE failure_code    END,
+       failure_message     = CASE WHEN $2 IN ('failed', 'manual_review') THEN COALESCE($6, failure_message) ELSE failure_message END,
        -- provider_payment_id — set on first update if not already populated.
        provider_payment_id = COALESCE(provider_payment_id, $7),
        -- provider_charge_ref — the pi_… behind a hosted checkout session,

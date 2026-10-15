@@ -19,7 +19,7 @@
   </table>
   <p style="margin:16px 0 12px 0;">The money returns to the payment method you used. Your bank usually needs 5–10 business days to show it.</p>
   {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">The refunded tickets are no longer valid for entry.</p>{{else if .Refund.SomeTicketsCancelled}}<p style="margin:0 0 12px 0;">Only the tickets marked “no longer valid” can no longer be used for entry; the other tickets in the list above stay valid.</p>{{end}}
-  <p style="margin:0 0 12px 0;">Questions? Reply to this e-mail.</p>
+  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">Questions? Reply to this e-mail.</p>{{end}}
   <p style="font-size:12px;color:#666">Delivered to: {{.RecipientEmail}}</p>
   </td></tr>
   <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
@@ -30,9 +30,11 @@
     {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
-    {{with .Branding.ContactEmail}}<br>Contact: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Contact: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contact: <a href="{{.}}" style="color:#666">Write to the organizer</a>{{end}}{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — automated message</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.</p>
   </td></tr>
 </table>
 </td></tr></table>
@@ -55,8 +57,8 @@ The money returns to the payment method you used. Your bank usually needs 5–10
 {{if .Refund.TicketsCancelled}}The refunded tickets are no longer valid for entry.
 {{else if .Refund.SomeTicketsCancelled}}Only the tickets marked “no longer valid” can no longer be used for entry; the other tickets in the list above stay valid.
 {{end}}
-Questions? Reply to this e-mail.
-
+{{if .Branding.ContactEmail}}Questions? Reply to this e-mail.
+{{end}}
 Delivered to: {{.RecipientEmail}}
 
 --
@@ -66,7 +68,11 @@ Delivered to: {{.RecipientEmail}}
 {{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
 {{else}}{{with .Branding.LegalAddressCity}}{{.}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}Contact: {{.}}
-{{end}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contact: {{.}}
+{{end}}{{end}}
 Arena Platform — automated message
+
+If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.
 {{end}}

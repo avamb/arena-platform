@@ -112,12 +112,20 @@ const scMoveWeek = `UPDATE sessions SET start_at = start_at + interval '7 days',
 
 func (f *scFixture) runJob(ctx context.Context, t *testing.T, changeID uuid.UUID) (raw string, err error) {
 	t.Helper()
+	return f.runJobWithForm(ctx, t, changeID, false)
+}
+
+// runJobWithForm runs the job with the worker's "page shows the contact form"
+// switch (HandlerOptions.ContactFormEnabled) under the test's control.
+func (f *scFixture) runJobWithForm(ctx context.Context, t *testing.T, changeID uuid.UUID, formEnabled bool) (raw string, err error) {
+	t.Helper()
 	smtp := newSMTPCaptureServer(t)
 	q := gen.New(f.pool)
 	handler := NewChangeEmailHandler(ChangeEmailOptions{
 		HandlerOptions: HandlerOptions{
 			TicketQueries: q, DeliveryJobQueries: q, CredentialQueries: q,
 			Sender: buildSMTPSender(smtp.Addr), Logger: testLogger(),
+			TicketsBaseURL: testTicketsBaseURL, ContactFormEnabled: formEnabled,
 		},
 		DB: f.pool,
 	})
@@ -225,6 +233,22 @@ func TestSessionChange_MoveQueuesOneLetterAndRerendersThePDF(t *testing.T) {
 	if got := f.noticeState(ctx, t, res.ChangeID); got != sessionchange.StateSent {
 		t.Fatalf("notice state after send = %q, want sent", got)
 	}
+	// The notice names the letter that carried it (migration 0149): only
+	// that link may confirm the letter later (emailstatus.SweepStale).
+	var linked *uuid.UUID
+	var linkedKind, linkedReplyTo string
+	if err := f.pool.QueryRow(ctx, `SELECT n.email_letter_id, COALESCE(l.kind, ''), COALESCE(l.reply_to, '')
+		FROM session_change_notices n LEFT JOIN email_letters l ON l.id = n.email_letter_id
+		WHERE n.change_id = $1 AND n.order_id = $2`, res.ChangeID, f.OrderID).Scan(&linked, &linkedKind, &linkedReplyTo); err != nil {
+		t.Fatal(err)
+	}
+	if linked == nil || linkedKind != "change" {
+		t.Fatalf("notice letter = %v (kind %q), want the change letter that was sent", linked, linkedKind)
+	}
+	// The letter keeps the Reply-To the buyer saw: the organizer's contact.
+	if !strings.Contains(linkedReplyTo, f.contact) {
+		t.Fatalf("letter reply_to = %q, want the organizer %q", linkedReplyTo, f.contact)
+	}
 	// A redelivered job must not mail again.
 	again, err := f.runJob(ctx, t, res.ChangeID)
 	if err != nil || again != "" {
@@ -274,6 +298,57 @@ func emailTextBody2(t *testing.T, raw string) string {
 		t.Fatalf("parse: %v", err)
 	}
 	return fmt.Sprintf("%v\n%s", msg.Header, raw)
+}
+
+// A hosted page without a public e-mail: the change letter names the
+// page's contact form only while the form is shown. Without it the letter
+// has no contact sentence at all - never an empty link, never the
+// organization's own address.
+func TestSessionChange_HostedPageLetterFollowsTheFormSwitch(t *testing.T) {
+	ctx := context.Background()
+	f, cleanup := newSCFixture(ctx, t, true)
+	defer cleanup()
+	f.mustExec(ctx, t, `UPDATE sales_channels SET settings = '{"hosted_page": {"enabled": true}}'::jsonb WHERE id = $1`, f.channelID)
+
+	letter := func(formEnabled bool) string {
+		t.Helper()
+		res, err := f.save(ctx, t, scMoveWeek, nil, "")
+		if err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
+		raw, err := f.runJobWithForm(ctx, t, res.ChangeID, formEnabled)
+		if err != nil {
+			t.Fatalf("job: %v", err)
+		}
+		if raw == "" {
+			t.Fatal("no letter was sent")
+		}
+		return raw
+	}
+
+	raw := letter(false)
+	body := emailTextBody(t, raw)
+	if strings.Contains(raw, f.contact) {
+		t.Error("the letter of a hosted page without a public e-mail carries the organization's own address")
+	}
+	if strings.Contains(raw, "#contact") || strings.Contains(raw, `href=""`) {
+		t.Errorf("without the form the letter must not link one:\n%s", body)
+	}
+	if strings.Contains(body, "write to the organizer") {
+		t.Errorf("without a contact the letter must not ask the buyer to write:\n%s", body)
+	}
+	if hasHeader(raw, "Reply-To") {
+		t.Error("a letter with no organizer contact must have no Reply-To")
+	}
+
+	raw = letter(true)
+	body = emailTextBody(t, raw)
+	if want := expectedFormURL(ctx, t, f.pool, f.TicketID); !strings.Contains(body, "form on the sales page: "+want) {
+		t.Errorf("with the form shown the letter must link %q:\n%s", want, body)
+	}
+	if strings.Contains(raw, f.contact) {
+		t.Error("the form letter carries the organization's own address")
+	}
 }
 
 func TestSessionChange_RefusesAMoveWithBuyersAndNoContact(t *testing.T) {

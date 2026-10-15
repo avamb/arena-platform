@@ -59,6 +59,11 @@ func (s *Server) mountEventRoutes(r chi.Router) {
 			// Dry run of the delete: sessions, paid orders, tickets (EC-10).
 			pr.Get("/organizations/{org_id}/events/{event_id}/delete-impact", s.handleEventDeleteImpact)
 		})
+		// The event read back as importable event-bundles (task 3-2).
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "event.read", "events")
+			pr.Get("/organizations/{org_id}/events/{event_id}/event-bundle", s.handleEventBundleRead)
+		})
 		// AB-45: event artists CRUD
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "event.read", "events")
@@ -230,6 +235,9 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		// every currently-visible event of the org, upcoming first.
 		r.Get("/public/pages/{org_slug}", s.handlePublicPromoterPage)
 	}
+	// "Write to the organizer" form of the hosted page (HP contact form).
+	// Always mounted; the handler answers 503 without a database.
+	r.Post("/public/organizer-contact/{org_slug}", s.handleOrganizerContact)
 	// Funnel telemetry sink — WID-0e (feature #322).
 	// Always mounted; handler self-gates with 503 when funnelQueries is nil.
 	r.Post("/public/feeds/{feed_token}/events", s.handlePublicFeedFunnelEvents)

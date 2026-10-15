@@ -202,6 +202,10 @@ func NewRouter(deps Deps) chi.Router {
 	//    error envelope.  In development mode the stack trace is also
 	//    included in the response body for developer convenience; in
 	//    production / staging it is omitted to prevent information leaks.
+	// 0. X-Content-Type-Options: nosniff on every response, set before the
+	//    recoverer so a panic's 500 carries it too. Every API answer has an
+	//    explicit Content-Type, so a browser never needs to sniff one.
+	r.Use(noSniffMiddleware)
 	r.Use(panicRecoverer(deps.Logger, deps.Metrics, deps.AppEnv))
 	// 2. Trusted real IP — must run before any middleware that reads
 	//    r.RemoteAddr. Registered only when TrustedProxyCount > 0 (a reverse
@@ -282,6 +286,16 @@ func (d Deps) withDefaults() Deps {
 	return out
 }
 
+// noSniffMiddleware sets X-Content-Type-Options: nosniff before the handler
+// runs. Set, not Add: a handler that sets the same header itself (media,
+// PDF and SVG answers do) still sends one copy.
+func noSniffMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		next.ServeHTTP(w, r)
+	})
+}
+
 func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 	allowAll := false
 	allowed := make(map[string]struct{}, len(allowedOrigins))
@@ -329,7 +343,9 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 			h := w.Header()
 			h.Set("Access-Control-Allow-Origin", allowedOrigin)
 			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			h.Set("Access-Control-Expose-Headers", "X-Request-Id, X-Trace-Id")
+			// Content-Disposition carries the file name of a CSV or PDF export;
+			// without it a browser client on another origin cannot read the name.
+			h.Set("Access-Control-Expose-Headers", "X-Request-Id, X-Trace-Id, Content-Disposition")
 			h.Set("Access-Control-Max-Age", "600")
 
 			requestHeaders := strings.TrimSpace(r.Header.Get("Access-Control-Request-Headers"))
@@ -515,12 +531,12 @@ func tracerMiddleware(propagator propagation.TextMapPropagator, tracer trace.Tra
 			// 2. Open a server span. Name follows the OTel HTTP convention
 			//    "<METHOD> <route>" — but the route is unknown until chi
 			//    matches, so we fall back to the raw URL path.
-			spanName := r.Method + " " + r.URL.Path
+			spanName := r.Method + " " + redactPath(r.URL.Path)
 			ctx, span := tracer.Start(ctx, spanName,
 				trace.WithSpanKind(trace.SpanKindServer),
 				trace.WithAttributes(
 					attribute.String("http.method", r.Method),
-					attribute.String("http.target", r.URL.Path),
+					attribute.String("http.target", redactPath(r.URL.Path)),
 					attribute.String("http.scheme", schemeOf(r)),
 				),
 			)
@@ -687,7 +703,7 @@ func panicRecoverer(base *slog.Logger, m *observability.Metrics, appEnv string) 
 					"panic", fmt.Sprintf("%v", rvr),
 					"stack", stack,
 					"method", r.Method,
-					"path", r.URL.Path,
+					"path", redactPath(r.URL.Path),
 					"request_id", requestID,
 					"trace_id", traceID,
 				)
@@ -813,7 +829,7 @@ func requestLogMiddleware(base *slog.Logger) func(http.Handler) http.Handler {
 			// they are present in the request.
 			args := []any{
 				"method", r.Method,
-				"path", r.URL.Path,
+				"path", redactPath(r.URL.Path),
 				"remote_addr", r.RemoteAddr,
 			}
 			if auth := r.Header.Get("Authorization"); auth != "" {
@@ -1070,4 +1086,20 @@ func trustedRealIP(trustedProxies int) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// secretPathPrefixes are routes whose next path segment is a secret (the
+// Brevo delivery-status webhook carries its token in the URL, because
+// Brevo's webhook form has no header field). Logs and traces must never
+// carry it.
+var secretPathPrefixes = []string{"/v1/webhooks/brevo/"}
+
+// redactPath replaces the secret segment of such a path with a placeholder.
+func redactPath(p string) string {
+	for _, prefix := range secretPathPrefixes {
+		if strings.HasPrefix(p, prefix) {
+			return prefix + "{token}"
+		}
+	}
+	return p
 }

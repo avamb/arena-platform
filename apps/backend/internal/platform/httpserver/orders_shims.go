@@ -26,6 +26,13 @@ func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 	s.ordersHandler().HandleList(w, r)
 }
 
+func (s *Server) handleSearchOrders(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.ordersHandler().HandleSearch(w, r)
+}
+
 func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 	if !s.enforceOrgMembership(w, r, "org_id") {
 		return
@@ -45,6 +52,13 @@ func (s *Server) handleEventSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.ordersHandler().HandleEventSummary(w, r)
+}
+
+func (s *Server) handleEventSalesSummaries(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.ordersHandler().HandleEventSalesSummaries(w, r)
 }
 
 func (s *Server) handleCancelOrder(w http.ResponseWriter, r *http.Request) {

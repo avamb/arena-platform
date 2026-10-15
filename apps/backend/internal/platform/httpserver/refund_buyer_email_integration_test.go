@@ -23,6 +23,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
@@ -134,6 +135,56 @@ func TestRefundBuyerEmail_OneLetterPerOperation(t *testing.T) {
 	_ = srv.pgxPool.QueryRow(ctx, `SELECT count(*) FROM refunds WHERE batch_id = $1 AND buyer_notified_at IS NULL`, b1).Scan(&unmarked)
 	if unmarked != 0 {
 		t.Fatalf("%d refunds of the operation are not marked as mailed", unmarked)
+	}
+
+	// Each refund names the letter that carried it (migration 0149).
+	var refundIDs []uuid.UUID
+	rows, err := srv.pgxPool.Query(ctx, `SELECT id FROM refunds WHERE batch_id = $1`, b1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		_ = rows.Scan(&id)
+		refundIDs = append(refundIDs, id)
+	}
+	rows.Close()
+	var linkedToLetter int
+	_ = srv.pgxPool.QueryRow(ctx, `SELECT count(*) FROM refunds r JOIN email_letters l ON l.id = r.buyer_notice_letter_id
+		WHERE r.batch_id = $1 AND l.kind = 'refund'`, b1).Scan(&linkedToLetter)
+	if len(refundIDs) != 2 || linkedToLetter != 2 {
+		t.Fatalf("refunds linked to the refund letter = %d of %d, want both", linkedToLetter, len(refundIDs))
+	}
+
+	// The stale-letter sweep confirms a refund letter only through refunds
+	// linked to IT: a letter of the same order without that link is deleted.
+	linkedLetter, err := emailstatus.Begin(ctx, srv.pgxPool, emailstatus.NewLetter{OrgID: org, OrderID: &f1.order,
+		Kind: emailstatus.KindRefund, Recipient: "one@pay07.test", RefundIDs: refundIDs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	strayLetter, err := emailstatus.Begin(ctx, srv.pgxPool, emailstatus.NewLetter{OrgID: org, OrderID: &f1.order,
+		Kind: emailstatus.KindRefund, Recipient: "one@pay07.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE email_letters SET sent_at = now() - interval '2 days' WHERE id = ANY($1)`,
+		[]uuid.UUID{linkedLetter, strayLetter}); err != nil {
+		t.Fatal(err)
+	}
+	if err := emailstatus.SweepStale(ctx, srv.pgxPool); err != nil {
+		t.Fatal(err)
+	}
+	var sweptStatus string
+	var receiptMissing bool
+	if err := srv.pgxPool.QueryRow(ctx, `SELECT status, receipt_missing FROM email_letters WHERE id = $1`, linkedLetter).
+		Scan(&sweptStatus, &receiptMissing); err != nil || sweptStatus != emailstatus.StatusSent || !receiptMissing {
+		t.Fatalf("refund letter its refunds confirm = %q receipt_missing %v (err %v), want sent", sweptStatus, receiptMissing, err)
+	}
+	var stray int
+	_ = srv.pgxPool.QueryRow(ctx, `SELECT count(*) FROM email_letters WHERE id = $1`, strayLetter).Scan(&stray)
+	if stray != 0 {
+		t.Fatal("a refund letter no refund names was confirmed by the order's other refunds")
 	}
 
 	// ── notify_buyer=false: queued maybe, but never mailed
@@ -508,5 +559,156 @@ func TestRefundBuyerEmail_LetterWithoutTicketsNamesTheEvent(t *testing.T) {
 	}
 	if strings.Contains(msgs[0].TextBody, "Arena Event") || !strings.Contains(msgs[0].TextBody, event) {
 		t.Fatalf("letter does not name the event %q:\n%s", event, msgs[0].TextBody)
+	}
+}
+
+// The refund letter prints the same contact its Reply-To names: when the
+// event has a promoter with an e-mail, both are the promoter's.
+func TestRefundBuyerEmail_TextAndReplyToNameTheSameContact(t *testing.T) {
+	stub := newStubStripe(t)
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.StripeAPIBaseURL = stub.baseURL() })
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+	pf := &prom0113Fixture{ts: ts, client: ts.Client(), q: gen.New(srv.pgxPool)}
+	user, err := pf.q.InsertUser(context.Background(), "pay07p-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.userID = user.ID
+	org := pf.org(t, "PAY07P")
+	ctx := context.Background()
+	stub.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"id":"re_`+uuid.NewString()[:8]+`","status":"succeeded"}`)
+	}
+	stub.sessionPI = "pi_pay07p_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	sender := &recordingSender{}
+	handler := delivery.NewRefundEmailHandler(delivery.RefundEmailOptions{
+		HandlerOptions: delivery.HandlerOptions{
+			TicketQueries: pf.q, CredentialQueries: pf.q, DeliveryJobQueries: pf.q, Sender: sender,
+			TicketsBaseURL: "https://tickets.test", ContactFormEnabled: true,
+		},
+		DB: srv.pgxPool,
+	})
+	f := newPay03Order(t, srv.pgxPool, org, "stripe")
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE orders SET buyer_email = 'promoter@pay07.test', buyer_name = 'Ana' WHERE id = $1`, f.order); err != nil {
+		t.Fatal(err)
+	}
+	const promoterEmail = "tickets@promoter-pay07.example"
+	promoter := uuid.New()
+	if _, err := srv.pgxPool.Exec(ctx, `INSERT INTO org_promoters (id, org_id, name, slug, email) VALUES ($1, $2, 'Promo PAY07', $3, $4)`,
+		promoter, org, "promo-"+uuid.NewString()[:8], promoterEmail); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.pgxPool.Exec(ctx, `INSERT INTO event_promoters (event_id, org_id, promoter_id) SELECT o.event_id, o.org_id, $2 FROM orders o WHERE o.id = $1`, f.order, promoter); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		c := context.Background()
+		_, _ = srv.pgxPool.Exec(c, `DELETE FROM event_promoters WHERE promoter_id = $1`, promoter)
+		_, _ = srv.pgxPool.Exec(c, `DELETE FROM org_promoters WHERE id = $1`, promoter)
+	})
+	res, err := srv.refundEngine().CreateBatch(ctx, refunds.BatchInput{
+		OrgID: org, OrderID: f.order, Reason: "pay07p", CancelTickets: false, NotifyBuyer: true,
+		IdempotencyKey: "pay07p-" + uuid.NewString(), Approved: true,
+		Items: []refunds.Item{{TicketID: f.tickets[0]}},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	batch := res.BatchID.String()
+	t.Cleanup(func() {
+		_, _ = srv.pgxPool.Exec(ctx, `DELETE FROM worker_jobs WHERE job_type = $1 AND payload->>'batch_id' = $2`, refunds.JobTypeBuyerEmail, batch)
+	})
+	raw, _ := json.Marshal(refunds.BuyerEmailPayload{BatchID: batch})
+	if err := handler(ctx, raw); err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	msgs := sender.sent()
+	if len(msgs) != 1 {
+		t.Fatalf("messages = %d; want one letter", len(msgs))
+	}
+	if msgs[0].ReplyTo != promoterEmail || !strings.Contains(msgs[0].TextBody, promoterEmail) || strings.Contains(msgs[0].TextBody, "#contact") {
+		t.Fatalf("Reply-To %q, text:\n%s", msgs[0].ReplyTo, msgs[0].TextBody)
+	}
+}
+
+// A hosted page without a public e-mail: the refund letter links the page's
+// contact form only while the form is shown (HandlerOptions.ContactFormEnabled).
+// Without it the letter names no contact at all - never the organization's own
+// address, never a Reply-To.
+func TestRefundBuyerEmail_HostedPageLetterFollowsTheFormSwitch(t *testing.T) {
+	stub := newStubStripe(t)
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.StripeAPIBaseURL = stub.baseURL() })
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+	pf := &prom0113Fixture{ts: ts, client: ts.Client(), q: gen.New(srv.pgxPool)}
+	user, err := pf.q.InsertUser(context.Background(), "pay07f-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.userID = user.ID
+	org := pf.org(t, "PAY07F")
+	ctx := context.Background()
+	stub.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"id":"re_`+uuid.NewString()[:8]+`","status":"succeeded"}`)
+	}
+	stub.sessionPI = "pi_pay07f_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	f := newPay03Order(t, srv.pgxPool, org, "stripe")
+	const orgEmail = "owner.private@pay07f.example"
+	for _, sql := range []string{
+		`UPDATE organizations SET contact_email = '` + orgEmail + `' WHERE id = $1`,
+		`UPDATE sales_channels SET settings = '{"hosted_page": {"enabled": true}}'::jsonb WHERE id = (SELECT channel_id FROM orders WHERE org_id = $1 LIMIT 1)`,
+	} {
+		if _, err := srv.pgxPool.Exec(ctx, sql, org); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE orders SET buyer_email = 'buyer@pay07f.test', buyer_name = 'Ana' WHERE id = $1`, f.order); err != nil {
+		t.Fatal(err)
+	}
+
+	letter := func(ticket uuid.UUID, formEnabled bool) email.Message {
+		t.Helper()
+		sender := &recordingSender{}
+		handler := delivery.NewRefundEmailHandler(delivery.RefundEmailOptions{
+			HandlerOptions: delivery.HandlerOptions{
+				TicketQueries: pf.q, CredentialQueries: pf.q, DeliveryJobQueries: pf.q, Sender: sender,
+				TicketsBaseURL: "https://tickets.test", ContactFormEnabled: formEnabled,
+			},
+			DB: srv.pgxPool,
+		})
+		res, err := srv.refundEngine().CreateBatch(ctx, refunds.BatchInput{
+			OrgID: org, OrderID: f.order, Reason: "pay07f", CancelTickets: false, NotifyBuyer: true,
+			IdempotencyKey: "pay07f-" + uuid.NewString(), Approved: true,
+			Items: []refunds.Item{{TicketID: ticket}},
+		})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		batch := res.BatchID.String()
+		t.Cleanup(func() {
+			_, _ = srv.pgxPool.Exec(context.Background(), `DELETE FROM worker_jobs WHERE job_type = $1 AND payload->>'batch_id' = $2`, refunds.JobTypeBuyerEmail, batch)
+		})
+		raw, _ := json.Marshal(refunds.BuyerEmailPayload{BatchID: batch})
+		if err := handler(ctx, raw); err != nil {
+			t.Fatalf("handler: %v", err)
+		}
+		msgs := sender.sent()
+		if len(msgs) != 1 {
+			t.Fatalf("messages = %d; want one letter", len(msgs))
+		}
+		return msgs[0]
+	}
+
+	m := letter(f.tickets[0], false)
+	if m.ReplyTo != "" || strings.Contains(m.TextBody+m.HTMLBody, orgEmail) ||
+		strings.Contains(m.TextBody+m.HTMLBody, "#contact") || strings.Contains(m.HTMLBody, `href=""`) {
+		t.Fatalf("without the form: Reply-To %q, text:\n%s", m.ReplyTo, m.TextBody)
+	}
+	m = letter(f.tickets[1], true)
+	if m.ReplyTo != "" || strings.Contains(m.TextBody+m.HTMLBody, orgEmail) || !strings.Contains(m.TextBody, "#contact") {
+		t.Fatalf("with the form: Reply-To %q, text:\n%s", m.ReplyTo, m.TextBody)
 	}
 }

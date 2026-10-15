@@ -35,7 +35,7 @@
   </td></tr>{{end}}
   {{if .WithdrawalNotice}}<tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Tickets for an event on a specific date are not covered by the right of withdrawal. Your order became binding when you paid.</td></tr>{{end}}
   <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Open the file on your phone and show the barcode at the entrance — no need to print.</td></tr>
-  <tr><td style="padding:8px 32px 16px 32px;color:#46555f;font-size:14px;line-height:1.6;">If you have any questions, just reply to this email.</td></tr>
+  {{if .Branding.ContactEmail}}<tr><td style="padding:8px 32px 16px 32px;color:#46555f;font-size:14px;line-height:1.6;">If you have any questions, just reply to this email.</td></tr>{{end}}
   <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
     Delivered to: {{.RecipientEmail}}<br><br>
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
@@ -45,9 +45,11 @@
     {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
-    {{with .Branding.ContactEmail}}<br>Contact: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Contact: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contact: <a href="{{.}}" style="color:#666">Write to the organizer</a>{{end}}{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — automated delivery</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.</p>
   </td></tr>
 </table>
 </td></tr></table>
@@ -80,8 +82,8 @@ Payment:
 {{if .WithdrawalNotice}}Tickets for an event on a specific date are not covered by the right of withdrawal. Your order became binding when you paid.
 
 {{end}}Open the file on your phone and show the barcode at the entrance — no need to print.
-If you have any questions, just reply to this email.
-
+{{if .Branding.ContactEmail}}If you have any questions, just reply to this email.
+{{end}}
 Delivered to: {{.RecipientEmail}}
 
 --
@@ -91,7 +93,11 @@ Delivered to: {{.RecipientEmail}}
 {{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
 {{else}}{{with .Branding.LegalAddressCity}}{{.}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}Contact: {{.}}
-{{end}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contact: {{.}}
+{{end}}{{end}}
 Arena Platform — automated delivery
+
+If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.
 {{end}}

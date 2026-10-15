@@ -1,0 +1,95 @@
+# Event center — nginx configuration (port 8080, non-root, SPA fallback,
+# immutable cache for hashed assets, /health for the container check).
+#
+# Every location includes the security headers itself: see
+# security-headers.conf.template for why a server-level add_header is not
+# enough. The container smoke in CI asserts the headers on / and on a deep
+# link, so a location without the include fails the build.
+
+# The access log never carries the query string or the Referer: the
+# password pages are opened as /reset-password?token=...&email=... and
+# /accept-invite?token=...&email=..., and the one-time token and the e-mail
+# must not land in a log file. The map keeps the path the browser asked for
+# and drops everything from "?" on ($uri would log /index.html after the SPA
+# fallback, $request would log the query).
+map $request_uri $arena_log_path {
+    "~^(?<arena_path>[^?]*)" $arena_path;
+    default                  "-";
+}
+
+log_format arena_no_query '$remote_addr - $remote_user [$time_local] '
+                          '"$request_method $arena_log_path $server_protocol" '
+                          '$status $body_bytes_sent "$http_user_agent"';
+
+server {
+    listen 8080;
+    listen [::]:8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+    server_tokens off;
+    access_log /var/log/nginx/access.log arena_no_query;
+
+    gzip on;
+    gzip_types
+        text/plain
+        text/css
+        text/javascript
+        application/javascript
+        application/json
+        application/xml
+        image/svg+xml;
+    gzip_min_length 1024;
+    gzip_vary on;
+
+    include /etc/nginx/snippets/security-headers.conf;
+
+    location = /health {
+        include /etc/nginx/snippets/security-headers.conf;
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # The service worker must reach every tab on the next visit: never cached.
+    location = /sw.js {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    # The installable-app manifest and its icons carry no hash in their
+    # names: a day of cache, so a new icon reaches every device.
+    location = /manifest.webmanifest {
+        include /etc/nginx/snippets/security-headers.conf;
+        types { }
+        default_type application/manifest+json;
+        add_header Cache-Control "public, max-age=86400" always;
+    }
+
+    location ^~ /icons/ {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "public, max-age=86400" always;
+        try_files $uri =404;
+    }
+
+    # Immutable cache for content-hashed assets produced by Vite.
+    location ~* \.(js|css|woff2?|ttf|eot|otf|svg|png|jpg|jpeg|gif|ico|webp)$ {
+        include /etc/nginx/snippets/security-headers.conf;
+        expires 1y;
+        add_header Cache-Control "public, immutable" always;
+        try_files $uri =404;
+    }
+
+    # The SPA entry point is never cached: a deploy must reach every tab.
+    location = /index.html {
+        include /etc/nginx/snippets/security-headers.conf;
+        expires -1;
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+    }
+
+    # Every app URL (/o/{org}/events …) is served the SPA index.
+    location / {
+        include /etc/nginx/snippets/security-headers.conf;
+        try_files $uri /index.html;
+    }
+}

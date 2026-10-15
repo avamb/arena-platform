@@ -465,9 +465,12 @@ const (
 // Defines values for MediaObjectOwnerType.
 const (
 	MediaObjectOwnerTypeArtistPhoto    MediaObjectOwnerType = "artist_photo"
+	MediaObjectOwnerTypeEventGallery   MediaObjectOwnerType = "event_gallery"
 	MediaObjectOwnerTypeEventPoster    MediaObjectOwnerType = "event_poster"
+	MediaObjectOwnerTypeEventReport    MediaObjectOwnerType = "event_report"
 	MediaObjectOwnerTypeOrgLogo        MediaObjectOwnerType = "org_logo"
 	MediaObjectOwnerTypeSeatingPlanSvg MediaObjectOwnerType = "seating_plan_svg"
+	MediaObjectOwnerTypeSessionPoster  MediaObjectOwnerType = "session_poster"
 )
 
 // Defines values for MediaObjectStorageBackend.
@@ -674,6 +677,7 @@ const (
 	Agent                     RevokeMembershipRequestRole = "agent"
 	ExternalTicketingOperator RevokeMembershipRequestRole = "external_ticketing_operator"
 	NetworkOperator           RevokeMembershipRequestRole = "network_operator"
+	OrgAdmin                  RevokeMembershipRequestRole = "org_admin"
 	Organizer                 RevokeMembershipRequestRole = "organizer"
 	PlatformOperator          RevokeMembershipRequestRole = "platform_operator"
 	PlatformSuperadmin        RevokeMembershipRequestRole = "platform_superadmin"
@@ -953,9 +957,12 @@ const (
 // Defines values for PostV1MediaMultipartBodyOwnerType.
 const (
 	PostV1MediaMultipartBodyOwnerTypeArtistPhoto    PostV1MediaMultipartBodyOwnerType = "artist_photo"
+	PostV1MediaMultipartBodyOwnerTypeEventGallery   PostV1MediaMultipartBodyOwnerType = "event_gallery"
 	PostV1MediaMultipartBodyOwnerTypeEventPoster    PostV1MediaMultipartBodyOwnerType = "event_poster"
+	PostV1MediaMultipartBodyOwnerTypeEventReport    PostV1MediaMultipartBodyOwnerType = "event_report"
 	PostV1MediaMultipartBodyOwnerTypeOrgLogo        PostV1MediaMultipartBodyOwnerType = "org_logo"
 	PostV1MediaMultipartBodyOwnerTypeSeatingPlanSvg PostV1MediaMultipartBodyOwnerType = "seating_plan_svg"
+	PostV1MediaMultipartBodyOwnerTypeSessionPoster  PostV1MediaMultipartBodyOwnerType = "session_poster"
 )
 
 // Defines values for GetSessionMACSExportParamsDownload.
@@ -982,6 +989,15 @@ const (
 	ReviewReconciliationReportJSONBodyDecisionApproved ReviewReconciliationReportJSONBodyDecision = "approved"
 	ReviewReconciliationReportJSONBodyDecisionDisputed ReviewReconciliationReportJSONBodyDecision = "disputed"
 )
+
+// AddEventReportPhotoRequest Body of POST .../events/{event_id}/photo-report.
+type AddEventReportPhotoRequest struct {
+	// Caption Optional caption, up to 200 characters; blank means none.
+	Caption *string `json:"caption"`
+
+	// MediaId An active media object of the same organization with owner type `event_report` (422 `event.invalid_report_media` otherwise).
+	MediaId openapi_types.UUID `json:"media_id"`
+}
 
 // AdminAddMemberRequest Request body for POST /v1/admin/organizations/{org_id}/members
 // (feature #234). Exactly one of user_id and email must be supplied.
@@ -1443,6 +1459,24 @@ type AuthRegisterResponse struct {
 	UserId openapi_types.UUID `json:"user_id"`
 }
 
+// AuthStepUpRequest Body of POST /v1/auth/step-up.
+type AuthStepUpRequest struct {
+	// OrgId The organization of the money action. The token covers actions in this organization only.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Password The signed-in person's current password.
+	Password string `json:"password"`
+}
+
+// AuthStepUpResponse Proof of a fresh password confirmation for the money routes.
+type AuthStepUpResponse struct {
+	// ExpiresAt When the token stops working (5 minutes after it was issued).
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// StepUpToken Send it as `X-Step-Up-Token` on a money request from the web event center.
+	StepUpToken string `json:"step_up_token"`
+}
+
 // AuthVerifyResponse defines model for AuthVerifyResponse.
 type AuthVerifyResponse struct {
 	// Email Verified email address
@@ -1456,6 +1490,18 @@ type AuthVerifyResponse struct {
 
 	// UserId UUIDv7 of the verified user
 	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// AuthWebLinkRequest Body of POST /v1/auth/web/link.
+type AuthWebLinkRequest struct {
+	// Code The one-time code from the bot's link, taken from the address after `#code=`.
+	Code string `json:"code"`
+}
+
+// AuthWebSessionsRevokeResponse Answer of POST /v1/auth/web-sessions/revoke.
+type AuthWebSessionsRevokeResponse struct {
+	// RevokedSessions How many web event center sessions were ended.
+	RevokedSessions int `json:"revoked_sessions"`
 }
 
 // BankAccountItem A single active bank-account row owned by one organization.
@@ -3200,13 +3246,16 @@ type BindSessionSeatingResponse struct {
 
 // BotInvitation A bot invitation as the API reports it, never the code.
 type BotInvitation struct {
+	// Channel The channel the invitation was sent through, `telegram` or `web`. A `web` invitation is recorded as accepted at once and cannot be resent.
+	Channel string `json:"channel"`
+
 	// Delivery Always `email`; the deep link is mailed by arena-worker (bot.invitation_email).
 	Delivery string `json:"delivery"`
 
 	// Email The normalized invitee e-mail.
 	Email string `json:"email"`
 
-	// ExpiresAt When the one-time code stops working (7 days).
+	// ExpiresAt When the one-time code stops working (7 days). For a `web` invitation, when the password-setup link of a new account stops working.
 	ExpiresAt time.Time `json:"expires_at"`
 
 	// Id bot_invitations.id.
@@ -3283,6 +3332,18 @@ type BotInvitationAcceptResponseRole string
 // BotInvitationCreateRequest Body of POST /v1/organizations/{org_id}/bot-invitations: invite a
 // person into the Telegram event-center bot (spec 28 §3.3).
 type BotInvitationCreateRequest struct {
+	// Channel How the person is invited: `telegram` (the default when absent)
+	// mails the Telegram deep link of the bot; `web` mails the web
+	// event center instead, with no deep link and no Telegram code.
+	// For `web`, a NEW e-mail gets the one-time password-setup link
+	// (valid 7 days) and an EXISTING account gets a letter that says it
+	// was added and where to sign in, with no token. In both cases the
+	// membership exists at once and an existing membership keeps its
+	// role. Any other value is 400 `bot.invalid_channel`. This is a
+	// plain string with the two values named here, not an inline
+	// enum, so no generated constant is renamed.
+	Channel *string `json:"channel,omitempty"`
+
 	// Email The invitee's e-mail. An unknown address creates the user (with
 	// no usable password; the self-service reset sets one later), a
 	// known one is reused.
@@ -3290,6 +3351,8 @@ type BotInvitationCreateRequest struct {
 
 	// Locale Language of the invitation e-mail and of the bot's first messages
 	// (`en` default, `ru`, `es`). Unknown values fall back to `en`.
+	// With `channel` `web` and no locale, the language of an existing
+	// account's own preference is used.
 	Locale *string `json:"locale,omitempty"`
 
 	// Role The bot role the membership is created with: owner maps to the
@@ -3307,7 +3370,8 @@ type BotInvitationCreateRequestRole string
 
 // BotInvitationCreateResponse Response of POST /v1/organizations/{org_id}/bot-invitations.
 type BotInvitationCreateResponse struct {
-	// DeepLink `https://t.me/<bot>?start=inv_<code>`, present ONLY when the
+	// DeepLink `https://t.me/<bot>?start=inv_<code>`, present ONLY for a
+	// `telegram` invitation when the
 	// caller is the platform superadmin (X-Admin-Reason on record) and
 	// the bot username is configured, for the hand-over to
 	// organizations provisioned by hand. An organization owner never
@@ -3365,7 +3429,12 @@ type BotTeamMember struct {
 	// Email The member's e-mail, the name the bot shows.
 	Email string `json:"email"`
 
-	// InvitationExpiresAt When the invitation's code stops working. Absent with `invitation_state`.
+	// InvitationChannel How the invitation was sent, `telegram` or `web`. Absent with
+	// `invitation_state`. A `web` invitation cannot be resent
+	// (`resend_available_at` is never present for it).
+	InvitationChannel *string `json:"invitation_channel,omitempty"`
+
+	// InvitationExpiresAt When the invitation's code stops working (for a `web` invitation that is still `waiting`, when its setup link stops working). Absent with `invitation_state`.
 	InvitationExpiresAt *time.Time `json:"invitation_expires_at,omitempty"`
 
 	// InvitationId Id of that invitation, what the revoke and resend routes take. Absent with `invitation_state`.
@@ -3378,6 +3447,14 @@ type BotTeamMember struct {
 	// (sent, not opened, not expired) or `expired`. Absent for a member
 	// who has no bot invitation (added another way). Plain string on
 	// purpose: an inline enum would rename generated Go constants.
+	//
+	// For an invitation sent for the web event center (`invitation_channel`
+	// `web`) the invitation row is accepted at once, so the state comes
+	// from the setup link: `waiting` while the account that invitation
+	// created has an unused, unexpired password-setup token, `accepted`
+	// once it was used or none is left. For an account that already
+	// existed it is always `accepted`: the API cannot tell whether it
+	// ever chose a password.
 	InvitationState *string `json:"invitation_state,omitempty"`
 
 	// JoinedAt When the membership was created.
@@ -3403,6 +3480,36 @@ type BotTeamMember struct {
 type BotTeamResponse struct {
 	// Members Owners first, then managers, each ordered by e-mail.
 	Members []BotTeamMember `json:"members"`
+}
+
+// BotWebLoginCodeRequest Body of POST /v1/bot/web-login-codes.
+type BotWebLoginCodeRequest struct {
+	// TelegramUserId The Telegram account that pressed "Open in browser".
+	TelegramUserId int64 `json:"telegram_user_id"`
+}
+
+// BotWebLoginCodeResponse A one-time link to the web event center for the private chat.
+type BotWebLoginCodeResponse struct {
+	// ExpiresAt When the link stops working (5 minutes after it was issued).
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Url `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`. The code is after `#`, so it never reaches a server log.
+	Url string `json:"url"`
+}
+
+// BotWebLoginNotice A sign-in to the web through a bot link that the bot must report.
+type BotWebLoginNotice struct {
+	// SignedInAt When the link was used.
+	SignedInAt time.Time `json:"signed_in_at"`
+
+	// TelegramUserId The Telegram account to tell.
+	TelegramUserId int64 `json:"telegram_user_id"`
+}
+
+// BotWebLoginNoticesResponse Answer of POST /v1/bot/web-login-notices/claim.
+type BotWebLoginNoticesResponse struct {
+	// Notices Sign-ins not reported yet; each is handed out once.
+	Notices []BotWebLoginNotice `json:"notices"`
 }
 
 // BulkSessionPricingRequest AB-48 step 5 - apply one price grid to several sessions of an
@@ -3997,6 +4104,9 @@ type ComplimentaryCreateResponse struct {
 	// Issuance The issuance row (id, org_id, session_id, tier_id, qty, recipients, batch_id, status, issued_by, notes, created_at, updated_at).
 	Issuance map[string]interface{} `json:"issuance"`
 
+	// Letters The invitation letters of the issuance with their delivery status, as in the invitations list. Right after the issue the letters are queued (or empty while no delivery job exists).
+	Letters []OrderLetter `json:"letters"`
+
 	// Tickets The tickets of the issuance with their numbers and holders.
 	Tickets []map[string]interface{} `json:"tickets"`
 }
@@ -4047,8 +4157,8 @@ type ComplimentaryIssuance struct {
 type ComplimentaryIssuanceStatus string
 
 // ComplimentaryListItem One complimentary issuance in the paged list: the issuance row with
-// the event, date and category it is for, its tickets and a derived
-// state.
+// the event, date and category it is for, its tickets, the letters the
+// guests were sent and a derived state.
 type ComplimentaryListItem struct {
 	// BatchId Idempotency key the issuance was created under.
 	BatchId string `json:"batch_id"`
@@ -4067,6 +4177,14 @@ type ComplimentaryListItem struct {
 
 	// IssuedBy Free-text label of who issued it, when given.
 	IssuedBy *string `json:"issued_by"`
+
+	// Letters The invitation letters of the issuance with their delivery status
+	// (same shape as the letters of an order card). An invitation has
+	// no order: the letters are found through the tickets' delivery
+	// jobs. One entry per sent letter, one for tickets still queued,
+	// one for those the mail relay refused, one for tickets sent before
+	// letters were recorded. Empty while nothing was queued yet.
+	Letters []OrderLetter `json:"letters"`
 
 	// Notes Internal note, when given.
 	Notes *string `json:"notes"`
@@ -4188,6 +4306,27 @@ type ConfirmCheckoutRequest struct {
 	// `tier_id` if supplied. Returns `422 checkout.pricing_mismatch`
 	// on disagreement.
 	TierId *openapi_types.UUID `json:"tier_id"`
+}
+
+// CopyEventMaterialsResponse What `POST .../materials/copy-from/{source_event_id}` copied.
+type CopyEventMaterialsResponse struct {
+	// EventId UUIDv7 of the event that received the materials.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Gallery Gallery photos copied (a photo whose media object was deleted is skipped).
+	Gallery int `json:"gallery"`
+
+	// MapPoint True when the source had a map point and it was copied.
+	MapPoint bool `json:"map_point"`
+
+	// PartnerLinks Partner links copied.
+	PartnerLinks int `json:"partner_links"`
+
+	// SourceEventId UUIDv7 of the event the materials were copied from.
+	SourceEventId openapi_types.UUID `json:"source_event_id"`
+
+	// Videos Video links copied.
+	Videos int `json:"videos"`
 }
 
 // CreateApiKeyRequest Request body for POST /v1/organizations/{org_id}/api-keys.
@@ -4391,6 +4530,15 @@ type CreateCustomerImportRequestLegalBasis string
 
 // CreateCustomerImportRequestSourceLabel Source format of the uploaded file, selecting the parser used by dry-run/apply.
 type CreateCustomerImportRequestSourceLabel string
+
+// CreateEventPartnerLinkRequest Body of POST .../events/{event_id}/partner-links.
+type CreateEventPartnerLinkRequest struct {
+	// SellerName Who sells there, 1 to 120 characters. Absent, null or blank means the host of the address without a leading `www.`.
+	SellerName *string `json:"seller_name"`
+
+	// Url A full https address without spaces (400 `event.invalid_partner_url`), up to 500 characters.
+	Url string `json:"url"`
+}
 
 // CreateEventRequest Create-time payload for POST /v1/organizations/{org_id}/events.
 // The owning organization is taken from the path; the body MUST NOT
@@ -4615,8 +4763,10 @@ type CreatePaymentProviderConfigRequest struct {
 	PublicConfig *map[string]interface{} `json:"public_config,omitempty"`
 
 	// Secrets Map of secret credential fields to values. Stripe expects
-	// api_key + webhook_secret; AllPay expects merchant_id +
-	// secret_key; etc. Values are never returned.
+	// api_key + webhook_secret; AllPay expects merchant_id (the API
+	// login) + secret_key (the API key), optionally vat,
+	// max_installments and installments_min_amount; etc. Values are
+	// never returned.
 	Secrets *map[string]string `json:"secrets,omitempty"`
 }
 
@@ -5566,6 +5716,151 @@ type EventArtistListEnvelope struct {
 	Artists []EventArtist `json:"artists"`
 }
 
+// EventBundleGalleryItem One gallery photo of the event, in the organizer's view.
+type EventBundleGalleryItem struct {
+	// Caption Optional caption, up to 200 characters.
+	Caption *string `json:"caption"`
+
+	// MediaId UUIDv7 of the media object (owner type `event_gallery`) that holds the picture.
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Position Display order, 0 to 5.
+	Position int `json:"position"`
+}
+
+// EventBundleMapPoint The one map point of the event, in the organizer's view.
+type EventBundleMapPoint struct {
+	// Label Optional text shown with the point.
+	Label *string `json:"label"`
+
+	// Latitude Latitude in degrees, -90 to 90.
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in degrees, -180 to 180.
+	Longitude float64 `json:"longitude"`
+}
+
+// EventBundleMaterials The page materials of the event (task 1-2c), read BESIDE the bundles:
+// an import does not read them. A client that copies an event imports
+// the bundles as a new event and then calls
+// `POST .../events/{new_event_id}/materials/copy-from/{event_id}` to
+// move these four lists onto it. The photo report is not listed: it is
+// about a show that already happened and is never copied.
+type EventBundleMaterials struct {
+	// Gallery Gallery photos in display order. Never null.
+	Gallery []EventBundleGalleryItem `json:"gallery"`
+
+	// MapPoint The event's map point, null when it has none.
+	MapPoint *EventBundleMapPoint `json:"map_point"`
+
+	// PartnerLinks Partner links in display order. Never null.
+	PartnerLinks []EventBundlePartnerLink `json:"partner_links"`
+
+	// Videos Video links in display order. Never null.
+	Videos []EventBundleVideo `json:"videos"`
+}
+
+// EventBundlePartnerLink One "where else to buy" link of the event, in the organizer's view.
+type EventBundlePartnerLink struct {
+	// Position Display order, 0 to 2.
+	Position int `json:"position"`
+
+	// SellerName Who sells there.
+	SellerName string `json:"seller_name"`
+
+	// Url The other seller's https page for this event.
+	Url string `json:"url"`
+}
+
+// EventBundleReadResponse Answer of GET /v1/organizations/{org_id}/events/{event_id}/event-bundle
+// (task 3-2): the event read back as `ImportEventBundleRequest`
+// bundles, one per session (the import takes one date per call),
+// oldest first. Every bundle is `source: arena` and addresses its rows
+// by arena UUID (`action.arenaEventId`, `actionEvent.arenaSessionId`,
+// `venue.arenaVenueId`, `categoryList[].arenaTierId`), so it needs no
+// `externalRef` and can be posted back to
+// POST .../imports/event-bundle as it is — `?dry_run=true` accepts it
+// with no error, and importing it leaves the stored rows unchanged.
+// Reading again returns the same bundles.
+//
+// How the stored data is written: times are the venue's wall clock
+// (`day` DD.MM.YYYY, `time` and `endTime` HH:MM) and RFC 3339 instants
+// (`sellEndTime`, `doorsOpenTime`, the categories' windows and price
+// schedule); `availability` is the quantity the category owns, and in a
+// chain the head carries the whole chain's places and every successor
+// 0; `nextCategoryIndex` is set on every category (-1 = no link),
+// `sellLimit` only on a linked one, `priceSchedule` is always a list;
+// `publish` is true while the event is published and `channelIds` are
+// the organization's channels it is published into; `promoterId` is ""
+// when the organization itself promotes the event. `bigPosterUrl` is
+// left empty on purpose (an import without one keeps the stored
+// poster): the poster is `poster_media_id`.
+//
+// Left out: deleted and cancelled sessions, sessions a bundle cannot
+// carry (listed in `skipped` with the reason), the open/closed flag of
+// a category, compat ids and the session's external ref. No buyer data
+// and no secret is read.
+type EventBundleReadResponse struct {
+	// Bundles One importable bundle per session, oldest first. Never null.
+	Bundles []ImportEventBundleRequest `json:"bundles"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Materials The event's gallery, videos, partner links and map point, beside
+	// the bundles (an import does not read them). See
+	// `EventBundleMaterials` and
+	// `POST .../events/{event_id}/materials/copy-from/{source_event_id}`.
+	Materials EventBundleMaterials `json:"materials"`
+
+	// PosterMediaId Media id of the event's poster, null when it has none. The bundles carry no `bigPosterUrl`.
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// Skipped The live sessions that have no bundle, with the reason. Never null.
+	Skipped []EventBundleSkipped `json:"skipped"`
+
+	// Status The event's own status (`draft`, `published`, `cancelled` or `archived`). A draft event is readable.
+	Status string `json:"status"`
+
+	// Warnings What a bundle cannot say exactly (`event_bundle.time_not_representable`,
+	// `event_bundle.venue_timezone_missing`, `event_bundle.promoter_archived`,
+	// `event_bundle.chain_link_missing`). Never null.
+	Warnings []ImportWarning `json:"warnings"`
+}
+
+// EventBundleSkipped A live session of the event that has no bundle in
+// `EventBundleReadResponse`, with the reason.
+type EventBundleSkipped struct {
+	// Code Stable reason: `event_bundle.session_cancelled`,
+	// `event_bundle.session_seated` (a seating plan or assigned seats:
+	// a bundle carries general admission only),
+	// `event_bundle.session_pay_what_you_want` (a category a bundle
+	// cannot say) or `event_bundle.session_venue_missing` (the venue
+	// was deleted).
+	Code string `json:"code"`
+
+	// Message Human-readable explanation of the reason.
+	Message string `json:"message"`
+
+	// SessionId UUIDv7 of the session that was left out.
+	SessionId openapi_types.UUID `json:"session_id"`
+}
+
+// EventBundleVideo One video link of the event, in the organizer's view.
+type EventBundleVideo struct {
+	// Position Display order, 0 to 3.
+	Position int `json:"position"`
+
+	// Provider `youtube`, `vimeo`, `rutube` or `https` (a plain link).
+	Provider string `json:"provider"`
+
+	// Url The https link as stored.
+	Url string `json:"url"`
+
+	// VideoId The id parsed out of the link; null for `https`.
+	VideoId *string `json:"video_id"`
+}
+
 // EventContactResponse The organizer contact of an event after PUT .../events/{event_id}/contact.
 type EventContactResponse struct {
 	// Contact Who buyers write to when a session changes: the event's promoter when
@@ -5635,6 +5930,60 @@ type EventEnvelope struct {
 	// The `name` and `description` fields are locale-resolved per the
 	// request's Accept-Language header / ?lang= query parameter.
 	Event EventItem `json:"event"`
+}
+
+// EventGalleryAddRequest Body of POST .../media-items.
+type EventGalleryAddRequest struct {
+	// Caption Optional caption, up to 200 characters; blank means none.
+	Caption *string `json:"caption"`
+
+	// MediaId UUIDv7 of a live media object of this organization with owner type `event_gallery`.
+	MediaId openapi_types.UUID `json:"media_id"`
+}
+
+// EventGalleryCaptionRequest Body of PATCH .../media-items/{item_id}.
+type EventGalleryCaptionRequest struct {
+	// Caption The new caption, up to 200 characters. Null or a blank string clears it.
+	Caption *string `json:"caption"`
+}
+
+// EventGalleryItem One photo of an event's gallery.
+type EventGalleryItem struct {
+	// Caption Caption shown under the photo, up to 200 characters; null when there is none.
+	Caption *string `json:"caption"`
+
+	// CreatedAt ISO-8601 UTC timestamp of creation.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Id UUIDv7 of the gallery entry.
+	Id openapi_types.UUID `json:"id"`
+
+	// MediaId UUIDv7 of the media object (owner type `event_gallery`) that holds the picture.
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Position Display position, 0-based. Positions are always 0..n-1 without gaps.
+	Position int `json:"position"`
+
+	// UpdatedAt ISO-8601 UTC timestamp of the last change.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// EventGalleryList The gallery photos of an event in display order.
+type EventGalleryList struct {
+	// Items The photos, first to last.
+	Items []EventGalleryItem `json:"items"`
+
+	// MaxItems The most photos one event may carry (6).
+	MaxItems int `json:"max_items"`
+}
+
+// EventGalleryOrderRequest Body of PUT .../media-items/order.
+type EventGalleryOrderRequest struct {
+	// ItemIds Every gallery entry id of the event exactly once, in the new display order.
+	ItemIds []openapi_types.UUID `json:"item_ids"`
 }
 
 // EventItem A single event organized by one organization. Since Wave 4
@@ -5723,6 +6072,16 @@ type EventItem struct {
 	// "Organizer". Null when the organization itself is the promoter.
 	PromoterName *string `json:"promoter_name"`
 
+	// PublicUrl Buyers' page of the event on the hosted sales site:
+	// `<PUBLIC_TICKETS_BASE_URL>/<page slug>/<event slug>`, where the
+	// page slug is the promoter's slug when the event has an active
+	// promoter with a page of its own, else the organization's slug.
+	// Empty string when the event has no slug yet or the server has no
+	// tickets base configured. It is the address, not a sign that the
+	// page is reachable: it is built whatever the publication status,
+	// so a draft event already carries it.
+	PublicUrl string `json:"public_url"`
+
 	// SalesState Where the event stands in its sale, computed on the server from
 	// its active, non-cancelled sessions (EC-02) so every client shows
 	// the same chip. One of `on_sale` (a session that has not ended,
@@ -5791,6 +6150,66 @@ type EventListResponse struct {
 	Events []EventItem `json:"events"`
 }
 
+// EventMapPoint The one map point of an event.
+type EventMapPoint struct {
+	// CreatedAt When the point was first set.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Label Optional text shown with the point, up to 200 characters.
+	Label *string `json:"label"`
+
+	// Latitude Latitude in degrees, -90 to 90, six decimals kept.
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in degrees, -180 to 180, six decimals kept.
+	Longitude float64 `json:"longitude"`
+
+	// UpdatedAt When the point was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// EventPartnerLink One "where else to buy" link of an event.
+type EventPartnerLink struct {
+	// CreatedAt When the link was added.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event the link belongs to.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Id UUIDv7 of the link.
+	Id openapi_types.UUID `json:"id"`
+
+	// Position Display order, 0 to 2.
+	Position int `json:"position"`
+
+	// SellerName Who sells there; shown beside the link so the buyer knows. The host of the address unless the client named a seller.
+	SellerName string `json:"seller_name"`
+
+	// UpdatedAt When the link was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Url The seller's page for this event; always an https address.
+	Url string `json:"url"`
+}
+
+// EventPartnerLinkList The partner links of an event in display order.
+type EventPartnerLinkList struct {
+	// Items The links, first to last.
+	Items []EventPartnerLink `json:"items"`
+
+	// MaxItems The most links one event may carry (3).
+	MaxItems int `json:"max_items"`
+}
+
+// EventPartnerLinkOrderRequest Body of PUT .../partner-links/order.
+type EventPartnerLinkOrderRequest struct {
+	// LinkIds Every partner link id of the event exactly once, in the new display order.
+	LinkIds []openapi_types.UUID `json:"link_ids"`
+}
+
 // EventPromoterResponse The promoter of an event after PUT .../events/{id}/promoter.
 type EventPromoterResponse struct {
 	// EventId The event.
@@ -5836,6 +6255,115 @@ type EventPublicationListResponse struct {
 	// Publications Zero or more publication rows for the event. May be
 	// empty when the event has not yet been published.
 	Publications []EventPublication `json:"publications"`
+}
+
+// EventReportPhoto One photo of an event's photo report.
+type EventReportPhoto struct {
+	// Caption Optional caption, up to 200 characters.
+	Caption *string `json:"caption"`
+
+	// CreatedAt When the photo was added.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Id UUIDv7 of the report entry.
+	Id openapi_types.UUID `json:"id"`
+
+	// MediaId UUIDv7 of the media object holding the picture (`GET /v1/media/{id}` signs a download address).
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Position Display order, 0 to 29.
+	Position int `json:"position"`
+
+	// UpdatedAt When the photo was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// EventReportPhotoList The photo report of an event in display order.
+type EventReportPhotoList struct {
+	// Items The photos, first to last.
+	Items []EventReportPhoto `json:"items"`
+
+	// MaxItems The most photos one report may carry (30).
+	MaxItems int `json:"max_items"`
+}
+
+// EventReportPhotoOrderRequest Body of PUT .../photo-report/order.
+type EventReportPhotoOrderRequest struct {
+	// PhotoIds Every photo id of the report exactly once, in the new display order.
+	PhotoIds []openapi_types.UUID `json:"photo_ids"`
+}
+
+// EventSalesSummary The top level of EventSummary for one event, without the per-category
+// table (`tiers`) and the per-session list (`sessions`): the numbers a
+// list of events shows next to each name. Built by the same assembly as
+// EventSummary, so for one event every field here equals the field of
+// the same name in `GET .../events/{event_id}/summary`. Read-only, no
+// buyer data.
+type EventSalesSummary struct {
+	// Complimentary Invitations over every session.
+	Complimentary SummaryComplimentary `json:"complimentary"`
+
+	// Entered The door count over every session.
+	Entered SummaryEntered `json:"entered"`
+
+	// Event The event the figures are about.
+	Event struct {
+		// FirstSessionAt Earliest start over the event's active, non-cancelled sessions, RFC3339 in UTC.
+		FirstSessionAt *time.Time `json:"first_session_at"`
+
+		// Id UUIDv7 of the event.
+		Id openapi_types.UUID `json:"id"`
+
+		// LastSessionAt Latest end over the same sessions, RFC3339 in UTC.
+		LastSessionAt *time.Time `json:"last_session_at"`
+
+		// Name Name of the event as stored.
+		Name string `json:"name"`
+
+		// OrgId UUIDv7 of the owning organization.
+		OrgId openapi_types.UUID `json:"org_id"`
+
+		// SessionCount Number of non-deleted sessions of the event, cancelled ones included.
+		SessionCount int `json:"session_count"`
+
+		// Status Event status (draft, published, cancelled, archived).
+		Status string `json:"status"`
+	} `json:"event"`
+
+	// Money The bottom line of the whole event, one entry per currency.
+	Money []SummaryMoneyItem `json:"money"`
+
+	// Orders Order totals of every session grouped by status, source and currency.
+	Orders []SummaryOrdersItem `json:"orders"`
+
+	// Places Places of every session, split by kind.
+	Places struct {
+		// Ga General admission places.
+		Ga SessionPlaceCounts `json:"ga"`
+
+		// Seats Seats of the seating plans.
+		Seats SessionPlaceCounts `json:"seats"`
+	} `json:"places"`
+
+	// Promos Promo codes the paid orders of every session used, merged by code and sorted.
+	Promos []SummaryPromoItem `json:"promos"`
+
+	// Refunds Refund totals of every session grouped by settlement, state and currency.
+	Refunds []SummaryRefundsItem `json:"refunds"`
+
+	// Tickets Tickets of every session by status.
+	Tickets SummaryTickets `json:"tickets"`
+}
+
+// EventSalesSummaryList The sales figures of the requested events, one entry per event found.
+type EventSalesSummaryList struct {
+	// Items One entry per requested event that exists in the organization, in
+	// the order the ids were given. An id of another organization, a
+	// deleted event or an unknown id has no entry.
+	Items []EventSalesSummary `json:"items"`
 }
 
 // EventSummary The session summary over every session of an event (EC-06): the same
@@ -6011,6 +6539,54 @@ type EventTranslations map[string]struct {
 	Name *string `json:"name,omitempty"`
 }
 
+// EventVideo One video link of an event. Only the link is stored, never the video.
+type EventVideo struct {
+	// CreatedAt ISO-8601 UTC timestamp of creation.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Id UUIDv7 of the video entry.
+	Id openapi_types.UUID `json:"id"`
+
+	// Position Display position, 0-based. Positions are always 0..n-1 without gaps.
+	Position int `json:"position"`
+
+	// Provider One of `youtube`, `vimeo`, `rutube` (recognized, embeddable) or `https` (any other link, shown as a plain link).
+	Provider string `json:"provider"`
+
+	// UpdatedAt ISO-8601 UTC timestamp of the last change.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Url The link as pasted (trimmed), always https, up to 500 characters.
+	Url string `json:"url"`
+
+	// VideoId The id parsed out of the link; null for provider `https`.
+	VideoId *string `json:"video_id"`
+}
+
+// EventVideoAddRequest Body of POST .../videos.
+type EventVideoAddRequest struct {
+	// Url The video link, https only, no blanks, up to 500 characters.
+	Url string `json:"url"`
+}
+
+// EventVideoList The video links of an event in display order.
+type EventVideoList struct {
+	// Items The videos, first to last.
+	Items []EventVideo `json:"items"`
+
+	// MaxItems The most videos one event may carry (4).
+	MaxItems int `json:"max_items"`
+}
+
+// EventVideoOrderRequest Body of PUT .../videos/order.
+type EventVideoOrderRequest struct {
+	// VideoIds Every video id of the event exactly once, in the new display order.
+	VideoIds []openapi_types.UUID `json:"video_ids"`
+}
+
 // ExternalAllocation A quota of seats pre-allocated to an external distribution partner
 // (e.g. a travel agency or B2B reseller). Allocations reduce available
 // inventory for the general public and are tracked separately for
@@ -6083,6 +6659,12 @@ type GeoCitiesResponse struct {
 	// Clients use this object to implement "load more" buttons or
 	// paginator UI components. All fields are always present in list responses.
 	Meta *PaginationMeta `json:"meta,omitempty"`
+
+	// Suggestions Present only when the request carried `q`: up to 20 places of the
+	// `country` named in the request that start with the typed text,
+	// the biggest cities first, leaving out cities already listed in
+	// `cities`. Empty when `country` is absent.
+	Suggestions *[]GeoCitySuggestion `json:"suggestions,omitempty"`
 }
 
 // GeoCityItem defines model for GeoCityItem.
@@ -6101,6 +6683,16 @@ type GeoCityItem struct {
 
 	// Slug URL-safe slug
 	Slug string `json:"slug"`
+
+	// Source Where the item comes from. Always `platform` on a city row (list route only).
+	Source *string `json:"source,omitempty"`
+
+	// Timezone IANA time zone the city is in, best effort: the zone the city's
+	// name points at in the embedded GeoNames data, else the country's
+	// only zone. Absent when it cannot be told (a city of a country
+	// with several zones that the data does not know). Only the list
+	// route fills it.
+	Timezone *string `json:"timezone,omitempty"`
 }
 
 // GeoCityResponse defines model for GeoCityResponse.
@@ -6118,6 +6710,25 @@ type GeoCityResponse struct {
 	Slug string `json:"slug"`
 }
 
+// GeoCitySuggestion A place from the embedded GeoNames data offered by the city search
+// (GET /v1/geo/cities with `q`). It is NOT a platform city: it has no id.
+// Choosing it means creating the city through
+// POST /v1/organizations/{org_id}/cities (a name that matches an
+// existing city returns that city).
+type GeoCitySuggestion struct {
+	// CountryIso2 ISO 3166-1 alpha-2 code of the country that was searched.
+	CountryIso2 string `json:"country_iso2"`
+
+	// Name Display name of the place (the spelling of the top-cities list when it is on it, else its main name capitalised).
+	Name string `json:"name"`
+
+	// Source Always `geonames`.
+	Source string `json:"source"`
+
+	// Timezone IANA time zone the place is in.
+	Timezone string `json:"timezone"`
+}
+
 // GeoCountriesResponse defines model for GeoCountriesResponse.
 type GeoCountriesResponse struct {
 	// Countries Ordered list of reference countries with localised names
@@ -6127,6 +6738,12 @@ type GeoCountriesResponse struct {
 	// Clients use this object to implement "load more" buttons or
 	// paginator UI components. All fields are always present in list responses.
 	Meta *PaginationMeta `json:"meta,omitempty"`
+}
+
+// GeoCountryCurrencyResponse Response of GET /v1/geo/countries/{iso2}/currency.
+type GeoCountryCurrencyResponse struct {
+	// Currency ISO 4217 currency of the country, as stored on the platform's country row.
+	Currency string `json:"currency"`
 }
 
 // GeoCountryItem defines model for GeoCountryItem.
@@ -6176,6 +6793,17 @@ type GeoCountryResponse struct {
 	Slug string `json:"slug"`
 }
 
+// GeoCountryTimezonesResponse Response of GET /v1/geo/countries/{iso2}/timezones.
+type GeoCountryTimezonesResponse struct {
+	// Single True when the country has exactly one zone, so a client may fill
+	// it in without asking. False when it has several (Spain and
+	// Portugal among them) and the person must choose.
+	Single bool `json:"single"`
+
+	// Timezones The zones of the country, the zone of its biggest city first.
+	Timezones []GeoTimezoneItem `json:"timezones"`
+}
+
 // GeoCreateCityRequest defines model for GeoCreateCityRequest.
 type GeoCreateCityRequest struct {
 	// CountryId UUID of the parent country
@@ -6212,6 +6840,15 @@ type GeoCreateCountryRequest struct {
 
 	// Slug URL-safe slug
 	Slug string `json:"slug"`
+}
+
+// GeoTimezoneItem One IANA time zone of a country.
+type GeoTimezoneItem struct {
+	// Id IANA zone name, the value to store as a venue's timezone.
+	Id string `json:"id"`
+
+	// Label Name for a person to pick by, the largest city in the zone.
+	Label string `json:"label"`
 }
 
 // GeoUpdateCityRequest defines model for GeoUpdateCityRequest.
@@ -6269,6 +6906,18 @@ type HealthzResponse struct {
 
 // HealthzResponseStatus Always "ok" when the process is alive
 type HealthzResponseStatus string
+
+// HostedPageContactForm The "Write to the organizer" form of a hosted page.
+type HostedPageContactForm struct {
+	// Available Always true when the block is present.
+	Available bool `json:"available"`
+
+	// PrivacyUrl The privacy policy the form's consent links to (ONBOARDING_PRIVACY_URL, else the site's /legal/privacy); omitted when none is configured.
+	PrivacyUrl *string `json:"privacy_url,omitempty"`
+
+	// TurnstileSiteKey Cloudflare Turnstile site key for the form; omitted when the deployment runs without a captcha (never in production).
+	TurnstileSiteKey *string `json:"turnstile_site_key,omitempty"`
+}
 
 // HostedPageEvent Event slice of the hosted sales page resolve response. Reuses the
 // same locale-resolved name/description projection as `EventItem`
@@ -6372,6 +7021,13 @@ type HostedPagePromoter struct {
 // is published to with `settings.hosted_page.enabled = true`; pass it
 // straight to the `<arena-tickets feed-token=…>` widget.
 type HostedPageResponse struct {
+	// ContactForm Present when the page offers the "Write to the organizer" form: the
+	// channel has a public e-mail or the organization has its own
+	// contact e-mail (a private recipient), and the deployment can check
+	// the captcha. No address is ever answered. Ticket letters of a page
+	// without a public e-mail link this form as <page>#contact.
+	ContactForm *HostedPageContactForm `json:"contact_form,omitempty"`
+
 	// DefaultLocale Organization default locale, used when no `?lang=` is present.
 	DefaultLocale string `json:"default_locale"`
 
@@ -6381,6 +7037,11 @@ type HostedPageResponse struct {
 	// FeedToken Opaque feed token to pass to the `<arena-tickets>` widget.
 	FeedToken string `json:"feed_token"`
 
+	// Materials The event's gallery, videos, "where else to buy" links, map point
+	// and, once the event is over, its photo report (task 1-2c). Always
+	// present; every list is `[]` when empty.
+	Materials PublicEventMaterials `json:"materials"`
+
 	// Org Public-safe organization branding.
 	Org HostedPageOrg `json:"org"`
 
@@ -6388,21 +7049,27 @@ type HostedPageResponse struct {
 	// present and the event has a promoter.
 	Promoter *HostedPagePromoter `json:"promoter,omitempty"`
 
-	// Seller Legal identity of the seller. Omitted unless the channel has
-	// `settings.hosted_page.show_seller = true`.
+	// Seller Legal identity of the seller. Omitted while the seller's profile is
+	// incomplete or a platform superadmin hid it for the channel
+	// (`settings.hosted_page.seller_hidden`).
 	Seller *HostedPageSeller `json:"seller,omitempty"`
 }
 
 // HostedPageSeller Legal identity of the seller of record, i.e. the organization that owns
-// the page. Present only when the channel the page is sold through has
-// `settings.hosted_page.show_seller = true` (default off). Empty values
-// are omitted.
+// the page. Present whenever the seller's profile is complete (legal name,
+// tax number, street, city, postal code and the channel's public e-mail
+// are all filled) unless a platform superadmin hid it for the channel
+// (`settings.hosted_page.seller_hidden`). The older `show_seller` flag no
+// longer decides. Empty values are omitted.
 type HostedPageSeller struct {
 	// Address Registered address; omitted when no address part is stored.
 	Address *HostedPageSellerAddress `json:"address,omitempty"`
 
 	// Country ISO 3166-1 alpha-2 country of the seller (legal address country, else the organization country).
 	Country *string `json:"country,omitempty"`
+
+	// LegalForm Legal form as the owner wrote it; omitted when none is stored.
+	LegalForm *string `json:"legal_form,omitempty"`
 
 	// LegalName Registered legal name; the organization name when none is stored.
 	LegalName string `json:"legal_name"`
@@ -6444,7 +7111,9 @@ type HostedPageSellerAddress struct {
 // published contact; the organization's own contact e-mail and phone
 // are never used. Unset keys are omitted.
 type HostedPageSellerContact struct {
-	// Email Public contact e-mail.
+	// Email Never answered since the contact form (2026-10-13): buyers write
+	// through `contact_form`, the address only receives the messages.
+	// Kept in the schema for older clients.
 	Email *string `json:"email,omitempty"`
 
 	// Phone Public contact phone number.
@@ -6463,6 +7132,13 @@ type HostedPageSellerContact struct {
 // under every date, so a six-date season resolves in ONE request
 // instead of one per date.
 type HostedPromoterPageResponse struct {
+	// ContactForm Present when the page offers the "Write to the organizer" form: the
+	// channel has a public e-mail or the organization has its own
+	// contact e-mail (a private recipient), and the deployment can check
+	// the captcha. No address is ever answered. Ticket letters of a page
+	// without a public e-mail link this form as <page>#contact.
+	ContactForm *HostedPageContactForm `json:"contact_form,omitempty"`
+
 	// DefaultLocale Organization default locale, used when no `?lang=` is present.
 	DefaultLocale string `json:"default_locale"`
 
@@ -6481,8 +7157,9 @@ type HostedPromoterPageResponse struct {
 	// present and the slug names a promoter rather than the organization.
 	Promoter *HostedPagePromoter `json:"promoter,omitempty"`
 
-	// Seller Legal identity of the seller. Omitted unless the channel has
-	// `settings.hosted_page.show_seller = true`.
+	// Seller Legal identity of the seller. Omitted while the seller's profile is
+	// incomplete or a platform superadmin hid it for the channel
+	// (`settings.hosted_page.seller_hidden`).
 	Seller *HostedPageSeller `json:"seller,omitempty"`
 }
 
@@ -6948,6 +7625,82 @@ type ImportCompatIDs struct {
 	VenueId int64 `json:"venue_id"`
 }
 
+// ImportDryRunDefault One value the import would fill in because the bundle leaves it out.
+type ImportDryRunDefault struct {
+	// Field JSON pointer of the bundle field the value stands in for, or an
+	// empty string when the value has no field in the bundle
+	// (`event_slug`).
+	Field string `json:"field"`
+
+	// Name Stable key of the default: `start_time` (00:00), `session_end_time`
+	// (start plus 3 hours), `sales_end_time` (the session start, new
+	// sessions only), `venue_timezone` (the stored venue zone),
+	// `category_name`, `event_slug` (the public address of a new event)
+	// or `session_status` (draft, or scheduled with publish).
+	Name string `json:"name"`
+
+	// Value The value, as text; instants are RFC 3339 in the venue's zone.
+	Value string `json:"value"`
+}
+
+// ImportDryRunError One error an event-bundle dry run found (`?dry_run=true`): exactly the
+// error the import would answer, plus the bundle field it is about.
+type ImportDryRunError struct {
+	// Code The machine code the import's error envelope would carry.
+	Code string `json:"code"`
+
+	// Field RFC 6901 JSON pointer of the bundle field the error is about
+	// (`/categoryList/1/price`, `/channelIds/0`), or an empty string
+	// when the error concerns the bundle as a whole (for example
+	// `organization.contact_missing`).
+	Field string `json:"field"`
+
+	// Message Human-readable explanation, the same text the import would answer.
+	Message string `json:"message"`
+
+	// Status The HTTP status the import would answer with (404, 409 or 422).
+	Status int `json:"status"`
+}
+
+// ImportEventBundleDryRunResponse Answer of POST .../imports/event-bundle?dry_run=true (task 3-1). The
+// bundle was checked with the import's own code and NOTHING was
+// written: no catalog row, poster download, media object, audit event,
+// publication, feed token, session-change journal, letter job or
+// webhook. Errors that depend on earlier writes (a chain cycle through
+// stored links, a refused session move) are only looked for when every
+// other check passed, so they appear one at a time.
+type ImportEventBundleDryRunResponse struct {
+	// Defaults Values the import would fill in where the bundle is silent. Never null.
+	Defaults []ImportDryRunDefault `json:"defaults"`
+
+	// DryRun Always true; tells this answer apart from an import's.
+	DryRun bool `json:"dry_run"`
+
+	// Errors Every error found, in the order found; a field is reported once.
+	// Never null; empty when the bundle is valid.
+	Errors []ImportDryRunError `json:"errors"`
+
+	// EventId The existing event the bundle edits; null when the import would create one (or could not tell).
+	EventId *openapi_types.UUID `json:"event_id"`
+
+	// Normalized The bundle as the import reads it: strings trimmed, `source` and
+	// `externalRef` resolved, the currency upper-cased. Defaults are not
+	// filled in here; they are listed in `defaults`.
+	Normalized ImportEventBundleRequest `json:"normalized"`
+
+	// SessionId The existing session the bundle edits; null when the import would create one (or could not tell).
+	SessionId *openapi_types.UUID `json:"session_id"`
+
+	// Source The resolved source (`bil24` or `arena`); an empty string when the bundle's `source` is refused.
+	Source string `json:"source"`
+
+	// Valid True when `errors` is empty, i.e. the same bundle imported now would be accepted.
+	Valid bool `json:"valid"`
+
+	// Warnings The warnings the import would raise. Never null.
+	Warnings []ImportWarning `json:"warnings"`
+}
+
 // ImportEventBundleRequest defines model for ImportEventBundleRequest.
 type ImportEventBundleRequest struct {
 	// Action The Bil24 action (show/production) that becomes the arena event.
@@ -7211,6 +7964,101 @@ type MACSOrder struct {
 	TicketList *[]MACSTicket `json:"ticketList,omitempty"`
 }
 
+// MACSScanBatchRequest Body of `POST /v1/macs/scan-events`.
+type MACSScanBatchRequest struct {
+	// Scans One to 500 scans, in any order.
+	Scans []MACSScanInput `json:"scans"`
+}
+
+// MACSScanBatchResponse The 202 answer of `POST /v1/macs/scan-events`.
+type MACSScanBatchResponse struct {
+	// Accepted Scans recorded by this request.
+	Accepted int `json:"accepted"`
+
+	// Duplicates Scans recorded before; nothing was written for them.
+	Duplicates int `json:"duplicates"`
+
+	// Rejected Scans not recorded.
+	Rejected int `json:"rejected"`
+
+	// Results One entry per request scan, in request order.
+	Results []MACSScanResult `json:"results"`
+}
+
+// MACSScanInput One scan as MACS reports it. The ticket is named by
+// `system_ticket_id`, by `barcode`, or by both (they must then name
+// the same ticket). Unknown keys are ignored.
+type MACSScanInput struct {
+	// Barcode The 13-digit EAN-13 the scanner read (the `barcode` of the MACS
+	// export): a stored barcode of the ticket, or the legacy
+	// platform code of a ticket without one.
+	Barcode *string `json:"barcode,omitempty"`
+
+	// Gate Entrance the scan was made at.
+	Gate *string `json:"gate,omitempty"`
+
+	// Result The verdict at the door: `admitted`, `rejected` or `duplicate`.
+	// `rejected` and `duplicate` are stored as a denied scan; the
+	// MACS word is kept in the `v1.ticket.scanned` payload.
+	Result string `json:"result"`
+
+	// ScanId MACS's own id of the scan, unique per subscriber. Stored as
+	// `scan_events.external_scan_id`; a scan id already delivered
+	// is answered `duplicate` and writes nothing.
+	ScanId string `json:"scan_id"`
+
+	// ScannedAt When the scan happened, RFC 3339 with a zone. May lie in the
+	// past (an offline scanner sends its backlog later); more than
+	// 5 minutes in the future is rejected.
+	ScannedAt time.Time `json:"scanned_at"`
+
+	// ScannerId Stable id of the scanner device (stored as device_id).
+	ScannerId *string `json:"scanner_id,omitempty"`
+
+	// ScannerName Human name of the scanner (stored as scanner_label).
+	ScannerName *string `json:"scanner_name,omitempty"`
+
+	// SystemTicketId The `id` of the MACS export (`tickets.system_ticket_id`).
+	SystemTicketId *int64 `json:"system_ticket_id,omitempty"`
+}
+
+// MACSScanResult The outcome of one scan, in request order.
+type MACSScanResult struct {
+	// Error Human-readable reason of the rejection.
+	Error *string `json:"error,omitempty"`
+
+	// ErrorCode Why a scan was rejected: `scan.invalid_scan_id`,
+	// `scan.invalid_scanned_at`, `scan.scanned_at_in_future`,
+	// `scan.invalid_result`, `scan.ticket_required`,
+	// `scan.invalid_system_ticket_id`, `scan.invalid_barcode`,
+	// `scan.field_too_long`, `scan.invalid_field` (a value that can
+	// never be stored, such as a NUL character; not retryable),
+	// `scan.ticket_not_found` (unknown, or a
+	// ticket of another organization), `scan.ticket_mismatch`, or
+	// `scan.temporarily_unavailable` (retryable).
+	ErrorCode *string `json:"error_code,omitempty"`
+
+	// FirstAdmission True when this scan stamped `tickets.used_at`: an admitted scan
+	// of a valid ticket that was not used before.
+	FirstAdmission bool `json:"first_admission"`
+
+	// Retryable True when the same scan may be sent again later (a database failure).
+	Retryable *bool `json:"retryable,omitempty"`
+
+	// ScanEventId The scan_events row; set for accepted and, when known, duplicate scans.
+	ScanEventId *openapi_types.UUID `json:"scan_event_id,omitempty"`
+
+	// ScanId Echo of the request `scan_id`.
+	ScanId string `json:"scan_id"`
+
+	// Status `accepted` (recorded now), `duplicate` (recorded before, nothing
+	// written) or `rejected` (not recorded, see `error_code`).
+	Status string `json:"status"`
+
+	// TicketId The arena ticket the scan was recorded for; null when rejected.
+	TicketId *openapi_types.UUID `json:"ticket_id"`
+}
+
 // MACSTicket One issued ticket in MACS import format.
 type MACSTicket struct {
 	// ActionEvent Denormalized event context on every MACS ticket.
@@ -7393,7 +8241,10 @@ type MediaObject struct {
 	// OwnerType Polymorphic owner kind. Future migrations widen the
 	// enumeration as new media-bearing surfaces appear.
 	// `seating_plan_svg` (migration 0078) carries the authoring SVG
-	// referenced by a seating_plan_versions row.
+	// referenced by a seating_plan_versions row. `session_poster`
+	// is a session-level poster. `event_gallery` and `event_report`
+	// (migration 0153) are photos of an event page gallery and of its
+	// photo report.
 	OwnerType MediaObjectOwnerType `json:"owner_type"`
 
 	// SignedUrl Short-lived download URL. Present on `GET /v1/media/{id}`
@@ -7422,7 +8273,10 @@ type MediaObject struct {
 // MediaObjectOwnerType Polymorphic owner kind. Future migrations widen the
 // enumeration as new media-bearing surfaces appear.
 // `seating_plan_svg` (migration 0078) carries the authoring SVG
-// referenced by a seating_plan_versions row.
+// referenced by a seating_plan_versions row. `session_poster`
+// is a session-level poster. `event_gallery` and `event_report`
+// (migration 0153) are photos of an event page gallery and of its
+// photo report.
 type MediaObjectOwnerType string
 
 // MediaObjectStorageBackend Which storage adapter holds the bytes. `s3` covers any
@@ -8459,6 +9313,9 @@ type OrderDetail struct {
 	// EventId Event the order's session belongs to.
 	EventId openapi_types.UUID `json:"event_id"`
 
+	// EventName Name of the event the order's session belongs to. Present even when the session was cancelled (soft-deleted).
+	EventName string `json:"event_name"`
+
 	// Events Audit-trail events recorded against the order.
 	Events []OrderEventSummary `json:"events"`
 
@@ -8473,6 +9330,17 @@ type OrderDetail struct {
 
 	// Items Line items of the order.
 	Items []OrderItemSummary `json:"items"`
+
+	// LetterFailed True when the buyer most likely did not get a letter: a
+	// ticket letter that failed (bounced, blocked, refused by the
+	// relay) or is stuck (see OrderLetter.stuck), or a change,
+	// cancellation or refund letter that failed or is stuck and was
+	// not followed by a newer one of the same kind. The same rule
+	// as letter_failed on the orders list.
+	LetterFailed bool `json:"letter_failed"`
+
+	// Letters The buyer letters of the order with their delivery status (see OrderLetter).
+	Letters []OrderLetter `json:"letters"`
 
 	// OrgId Owning organization.
 	OrgId openapi_types.UUID `json:"org_id"`
@@ -8497,6 +9365,9 @@ type OrderDetail struct {
 
 	// SessionId Session the order was placed for.
 	SessionId openapi_types.UUID `json:"session_id"`
+
+	// SessionStartAt Start of the order's session, RFC 3339 in UTC.
+	SessionStartAt time.Time `json:"session_start_at"`
 
 	// Source Where the order originated (e.g. widget, bil24, admin).
 	Source string `json:"source"`
@@ -8532,6 +9403,9 @@ type OrderDetail struct {
 
 	// UpdatedAt When the order was last updated.
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// VenueTimezone IANA zone of the session's venue (`venues.timezone`) - render session_start_at in it.
+	VenueTimezone string `json:"venue_timezone"`
 }
 
 // OrderEventSummary One audit-trail event recorded against an order.
@@ -8583,6 +9457,77 @@ type OrderItemSummary struct {
 
 	// UnitPrice Unit price, in minor currency units.
 	UnitPrice int `json:"unit_price"`
+}
+
+// OrderLetter One buyer letter of an order and its delivery status, from Brevo's
+// transactional webhook. Ticket letters come first, grouped the way
+// they went out (one entry per sent letter, one for the tickets still
+// queued, one for those the mail relay refused, one for tickets sent
+// before letters were recorded), then the change, cancellation and
+// refund letters, oldest first. Times are UTC; a step that has not
+// happened is null. About "opened": Brevo learns of an open when the
+// letter's images are fetched. Apple Mail Privacy Protection fetches
+// them on delivery through Apple's proxy whether anybody reads the
+// letter or not; Brevo reports that as a proxy open, which arena
+// records as proxy_opened_at (proof of delivery, NOT of reading). An
+// opened_at can still be a mail client that loads images by itself.
+type OrderLetter struct {
+	// ClickedAt First click on a link of the letter (for example the ticket download). Proves delivery; not counted as reading, mail security scanners follow links too.
+	ClickedAt *time.Time `json:"clicked_at"`
+
+	// DeferredAt When Brevo first reported the letter deferred (the recipient's server asked it to retry later). Stays set after a later delivery.
+	DeferredAt *time.Time `json:"deferred_at"`
+
+	// DeliveredAt When Brevo reported the letter delivered.
+	DeliveredAt *time.Time `json:"delivered_at"`
+
+	// FailedAt When the failure that decided the status was reported.
+	FailedAt *time.Time `json:"failed_at"`
+
+	// FailureEvent hard_bounce, soft_bounce, invalid_email, blocked, error, or send_failed (the relay refused the letter).
+	FailureEvent *string `json:"failure_event"`
+
+	// FailureReason The provider's reason, with e-mail addresses, IP addresses and host names removed.
+	FailureReason *string `json:"failure_reason"`
+
+	// Id Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
+	Id *openapi_types.UUID `json:"id"`
+
+	// Kind ticket, change, cancel or refund on an order; invitation for the letter of a complimentary issuance (read through the invitations list, which has no order).
+	Kind string `json:"kind"`
+
+	// OpenedAt When Brevo first reported an open.
+	OpenedAt *time.Time `json:"opened_at"`
+
+	// ProxyOpenedAt When a mail proxy (Apple Mail Privacy Protection, image proxies) first fetched the letter. Proof of delivery, not of reading.
+	ProxyOpenedAt *time.Time `json:"proxy_opened_at"`
+
+	// QueuedAt When the delivery job was queued (queued and send_failed entries only).
+	QueuedAt *time.Time `json:"queued_at"`
+
+	// Recipient Address the letter was sent to.
+	Recipient string `json:"recipient"`
+
+	// SentAt When the mail relay accepted the letter.
+	SentAt *time.Time `json:"sent_at"`
+
+	// Status queued (the delivery job waits), sent (the mail relay accepted
+	// the letter), delayed (the recipient's server asked Brevo to try
+	// again later; Brevo keeps retrying), delivered (the recipient's
+	// server accepted it, or a mail proxy fetched it, or a link was
+	// clicked), opened, failed (bounced, blocked, invalid address,
+	// provider error, or the relay refused it). A failure is final
+	// unless a later delivery is reported.
+	Status string `json:"status"`
+
+	// Stuck True when the letter has been sent or delayed for more than six
+	// hours with no delivery while the webhook kept reporting on other
+	// letters: the buyer most likely has no letter. letter_failed is
+	// also true then.
+	Stuck bool `json:"stuck"`
+
+	// TicketIds Tickets the letter carries (empty for change, cancellation and refund letters).
+	TicketIds []openapi_types.UUID `json:"ticket_ids"`
 }
 
 // OrderListItem defines model for OrderListItem.
@@ -8643,6 +9588,14 @@ type OrderListItem struct {
 
 	// Id UUIDv7 primary key of the order row.
 	Id openapi_types.UUID `json:"id"`
+
+	// LetterFailed True when the buyer most likely did not get a letter: a
+	// ticket letter that failed (bounced, blocked, refused by the
+	// relay) or is stuck (see OrderLetter.stuck), or a change,
+	// cancellation or refund letter that failed or is stuck and was
+	// not followed by a newer one of the same kind. Details on the
+	// order card (letters).
+	LetterFailed bool `json:"letter_failed"`
 
 	// OrgId Owning organization.
 	OrgId openapi_types.UUID `json:"org_id"`
@@ -8994,6 +9947,38 @@ type OrderResendTicketsResponse struct {
 	RecipientMasked string `json:"recipient_masked"`
 }
 
+// OrderSearchRequest Body of POST /v1/organizations/{org_id}/orders/search. Every field is
+// optional and means what the query parameter of the same name means
+// on GET /v1/organizations/{org_id}/orders.
+type OrderSearchRequest struct {
+	// EventId Only orders of this event of the organization.
+	EventId *openapi_types.UUID `json:"event_id,omitempty"`
+
+	// From Only orders created at or after this RFC3339 timestamp.
+	From *time.Time `json:"from,omitempty"`
+
+	// Limit Page size, 1-200 (default 50).
+	Limit *int `json:"limit,omitempty"`
+
+	// Offset Pagination offset (default 0).
+	Offset *int `json:"offset,omitempty"`
+
+	// Q One search value (barcode, order number, e-mail, phone or name), classified like the GET `q`.
+	Q *string `json:"q,omitempty"`
+
+	// SessionId Only orders of this session of the organization.
+	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
+
+	// Status Order lifecycle status filter.
+	Status *string `json:"status,omitempty"`
+
+	// Tab Status group `recent` (default), `paid` or `unpaid`.
+	Tab *string `json:"tab,omitempty"`
+
+	// To Only orders created at or before this RFC3339 timestamp.
+	To *time.Time `json:"to,omitempty"`
+}
+
 // OrderSummary One order, as returned by both the org-scoped orders list and the
 // `order` fields common to the detail endpoint (feature #489, W1-A6d,
 // spec §14.2).
@@ -9149,6 +10134,48 @@ type OrgCityResponse struct {
 	Created bool `json:"created"`
 }
 
+// OrgMeResponse The caller's access inside one organization, returned by
+// GET /v1/organizations/{org_id}/me. Every list is sorted and never null.
+type OrgMeResponse struct {
+	// CallerType `user` for a person signed in with a JWT, `api_key` for an
+	// organization API key.
+	CallerType string `json:"caller_type"`
+
+	// MembershipRoles Every active membership role the caller holds in this organization.
+	MembershipRoles []string `json:"membership_roles"`
+
+	// OrgDisplayNumber Short organization number shown to people. The UUID stays the API key.
+	OrgDisplayNumber int64 `json:"org_display_number"`
+
+	// OrgId UUID of the organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Display name of the organization.
+	OrgName string `json:"org_name"`
+
+	// Permissions Every permission the caller holds inside this organization. For
+	// an API key these are its scopes.
+	Permissions []string `json:"permissions"`
+
+	// PlatformSuperadmin True when the caller is a platform superadmin. Other
+	// organization routes then require the X-Admin-Reason header.
+	PlatformSuperadmin bool `json:"platform_superadmin"`
+
+	// Role The main membership role of the caller in this organization, for
+	// display: `org_admin` (owner), then `organizer` (manager), then
+	// `agent`, then the first other role in alphabetical order. Empty
+	// for an API key and for a platform superadmin who holds no
+	// membership here. Decide actions by `permissions`, never by this
+	// field.
+	Role string `json:"role"`
+
+	// Roles The roles the permission checker counts for this organization:
+	// the membership roles here, the caller's global roles (for example
+	// `platform_superadmin`) and any roles of the token. Empty for an
+	// API key.
+	Roles []string `json:"roles"`
+}
+
 // OrganizationItem A single active organization (primary tenant boundary).
 // Includes legal & contact attributes added in migration
 // 0049_organizations_legal_fields (Wave O / feature #253). All
@@ -9200,6 +10227,12 @@ type OrganizationItem struct {
 
 	// LegalAddressPostalCode Postal / ZIP code of the registered office.
 	LegalAddressPostalCode *string `json:"legal_address_postal_code"`
+
+	// LegalForm Legal form of the entity as the owner wrote it ("S.L.", "s.r.o.",
+	// "autónomo"), at most 80 characters (migration 0146). Answered by
+	// GET /v1/organizations/{id} and PATCH /v1/organizations/{id} only;
+	// the list and create routes answer null.
+	LegalForm *string `json:"legal_form"`
 
 	// LegalName Registered juridical name of the tenant entity (distinct from
 	// the public display name). Used on invoices, contracts, and
@@ -9281,6 +10314,39 @@ type OrganizerContact struct {
 
 	// TargetName Name of that promoter or organization.
 	TargetName string `json:"target_name"`
+}
+
+// OrganizerContactAccepted The message is stored and queued for delivery.
+type OrganizerContactAccepted struct {
+	// Status Always "queued".
+	Status string `json:"status"`
+}
+
+// OrganizerContactRequest A buyer's message to the organizer of a hosted page.
+type OrganizerContactRequest struct {
+	// Consent Must be true; the buyer agrees that the message is passed to the organizer.
+	Consent bool `json:"consent"`
+
+	// Email Sender's e-mail; the organizer's reply goes there (Reply-To).
+	Email string `json:"email"`
+
+	// EventSlug The event page's slug; empty on a landing page. A message about an event of a promoter goes to the organization's owner only.
+	EventSlug *string `json:"event_slug,omitempty"`
+
+	// FeedToken The event page's feed token; empty on the promoter landing page.
+	FeedToken *string `json:"feed_token,omitempty"`
+
+	// Locale Page language of the sender.
+	Locale *string `json:"locale,omitempty"`
+
+	// Message The message, 10-2000 characters.
+	Message string `json:"message"`
+
+	// Name Sender's name, 1-100 characters.
+	Name string `json:"name"`
+
+	// TurnstileToken Cloudflare Turnstile response token.
+	TurnstileToken *string `json:"turnstile_token,omitempty"`
 }
 
 // PaginationMeta Standard pagination metadata returned by list endpoints.
@@ -9637,7 +10703,7 @@ type PaymentIntentWebhookAck struct {
 //
 //  1. The normalised flat shape documented by this schema's
 //     top-level properties (`provider_payment_id`, `event_type`,
-//     ...) — used by the mock provider and by AllPay callbacks.
+//     ...) — used by the mock provider.
 //  2. A genuine Stripe event envelope —
 //     `{"id":"evt_...","type":"payment_intent.succeeded",
 //     "data":{"object":{"id":"pi_...","status":"succeeded",
@@ -9817,6 +10883,11 @@ type PaymentProviderConfigItem struct {
 	// cloudpayments, yookassa, manual. `flitt` needs the secrets
 	// `merchant_id` and `payment_key` (the portal's payment key signs
 	// requests and callbacks; there is no separate webhook secret).
+	// `allpay` needs `merchant_id` (the integration's API login) and
+	// `secret_key` (its API key, which also signs webhooks); `vat`
+	// (0, 1 or 3), `max_installments` (2 to 12) and
+	// `installments_min_amount` (the smallest order total in shekels
+	// that offers installments) are optional.
 	Provider string `json:"provider"`
 
 	// ProviderAccountId Optional public account identifier (e.g. Stripe acct_..., AllPay
@@ -9879,6 +10950,53 @@ type PaymentProviderConfigItemStatus string
 // Set automatically whenever the secrets are saved, and on demand
 // via POST /v1/organizations/{org_id}/payment-configs/{id}/verify.
 type PaymentProviderConfigItemVerificationStatus string
+
+// PosterFacts What a poster says, normalized. An empty string, or an empty list,
+// means "not on the poster". Every value is a HINT for a wizard to
+// offer as a button; nothing is written from it.
+type PosterFacts struct {
+	// Age Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty.
+	Age string `json:"age"`
+
+	// Categories The ticket prices printed on the poster; empty when there are none.
+	Categories []PosterFactsCategory `json:"categories"`
+
+	// City City as printed, or empty.
+	City string `json:"city"`
+
+	// Date First date, `YYYY-MM-DD`, or empty.
+	Date string `json:"date"`
+
+	// Description A short description printed on the poster, or empty.
+	Description string `json:"description"`
+
+	// Name Event name as printed.
+	Name string `json:"name"`
+
+	// Time Start time, `HH:MM` 24-hour, or empty.
+	Time string `json:"time"`
+
+	// VenueName Venue name as printed, or empty.
+	VenueName string `json:"venue_name"`
+}
+
+// PosterFactsCategory One ticket price printed on a poster.
+type PosterFactsCategory struct {
+	// Currency ISO 4217 code, or an empty string when the poster shows no currency symbol.
+	Currency string `json:"currency"`
+
+	// Name Category name as printed (for example "Stalls"); empty when the poster gives only a price.
+	Name string `json:"name"`
+
+	// PriceMinor Price in minor currency units (3490 is 34.90).
+	PriceMinor int64 `json:"price_minor"`
+}
+
+// PosterFactsResponse The answer of the poster-reading route.
+type PosterFactsResponse struct {
+	// Facts What the model read from the poster.
+	Facts PosterFacts `json:"facts"`
+}
 
 // PriceBreakdownEnvelope Top-level response envelope returned by
 // `GET /v1/checkout/{id}/price-breakdown`.
@@ -10256,6 +11374,14 @@ type Promoter struct {
 	// session moves or is cancelled (migration 0121).
 	PhoneHidden bool `json:"phone_hidden"`
 
+	// PublicUrl The promoter's own buyers' page on the hosted sales site:
+	// `<PUBLIC_TICKETS_BASE_URL>/<slug>`. Empty string when the
+	// promoter has no slug or the server has no tickets base
+	// configured. It is the address, not a sign that the page opens:
+	// an archived promoter keeps its address here while its page
+	// answers 404.
+	PublicUrl string `json:"public_url"`
+
 	// Slug Public page address: `https://tickets.arenasoldout.com/{slug}`.
 	// Lower-case a-z, 0-9 and single hyphens, 2–64 characters,
 	// unique across the platform together with organization slugs
@@ -10284,16 +11410,43 @@ type PromoterListEnvelope struct {
 
 // PublicBuyerInfo Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
 // `email` supersedes the top-level `holder_email` when both are present.
-// `name` and `phone` are validated against the channel's `buyer_fields` flags.
+// `name` and `phone` are optional unless the channel's `buyer_fields`
+// mark them `required`.
 type PublicBuyerInfo struct {
 	// Email Buyer's email address (ticket holder).
 	Email openapi_types.Email `json:"email"`
 
-	// Name Buyer's full name; required when the channel has collect_name enabled.
+	// Name Buyer's first and last name in one field; required only when the channel's `buyer_fields` entry `name` has `required` true, otherwise optional and may be empty or null.
 	Name *string `json:"name"`
 
-	// Phone Buyer's phone number; required when the channel has collect_phone enabled.
+	// Phone Buyer's phone number; required only when the channel's `buyer_fields` entry `phone` has `required` true, otherwise optional and may be empty or null.
 	Phone *string `json:"phone"`
+}
+
+// PublicEventMaterials The materials of an event's page (task 1-2c), the same block on the
+// hosted page (`GET /v1/public/pages/{org_slug}/{event_slug}`) and on
+// the widget feed (`GET /v1/public/feeds/{feed_token}/events/{event_id}`).
+// Always present; every list is `[]` when empty, never null. Read in
+// one query for a live, published event. The organizer edits these under
+// `/v1/organizations/{org_id}/events/{event_id}/…`.
+type PublicEventMaterials struct {
+	// Gallery Gallery photos in display order (at most 6). A photo whose media object was deleted is left out.
+	Gallery []PublicMaterialPhoto `json:"gallery"`
+
+	// MapPoint The event's map point, null when it has none.
+	MapPoint *PublicMaterialMapPoint `json:"map_point"`
+
+	// PartnerLinks "Where else to buy" links in display order (at most 3), each with its seller.
+	PartnerLinks []PublicMaterialPartnerLink `json:"partner_links"`
+
+	// ReportPhotos The photo report in display order (at most 30). Empty until the
+	// event is over: it opens when the end of the event's last live
+	// (not deleted, not cancelled) session has passed, follows a session
+	// that moves, and stays empty for an event without a live session.
+	ReportPhotos []PublicMaterialPhoto `json:"report_photos"`
+
+	// Videos Video links in display order (at most 4).
+	Videos []PublicMaterialVideo `json:"videos"`
 }
 
 // PublicFeedCheckoutQuoteRequest The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
@@ -10331,7 +11484,8 @@ type PublicFeedCheckoutQuoteResponse struct {
 type PublicFeedCheckoutStartRequest struct {
 	// Buyer Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
 	// `email` supersedes the top-level `holder_email` when both are present.
-	// `name` and `phone` are validated against the channel's `buyer_fields` flags.
+	// `name` and `phone` are optional unless the channel's `buyer_fields`
+	// mark them `required`.
 	Buyer *PublicBuyerInfo `json:"buyer,omitempty"`
 
 	// GaItems GA items for GA or hybrid sessions.
@@ -10446,6 +11600,67 @@ type PublicGAItem struct {
 
 	// TierId UUID of the ticket tier.
 	TierId openapi_types.UUID `json:"tier_id"`
+}
+
+// PublicMaterialMapPoint The one map point of an event, as buyers see it (task 1-2c).
+type PublicMaterialMapPoint struct {
+	// Label Optional text shown with the point.
+	Label *string `json:"label"`
+
+	// Latitude Latitude in degrees, -90 to 90.
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in degrees, -180 to 180.
+	Longitude float64 `json:"longitude"`
+}
+
+// PublicMaterialPartnerLink One "where else to buy" link of an event, as buyers see it (task 1-2c).
+type PublicMaterialPartnerLink struct {
+	// SellerName Who sells there; shown beside the link so the buyer knows.
+	SellerName string `json:"seller_name"`
+
+	// Url The other seller's page for this event; always an https address.
+	Url string `json:"url"`
+}
+
+// PublicMaterialPhoto One picture of an event's gallery or photo report, as buyers see it
+// (task 1-2c).
+type PublicMaterialPhoto struct {
+	// Caption Optional caption, up to 200 characters.
+	Caption *string `json:"caption"`
+
+	// Height Height in pixels when the upload pipeline knew it, else null.
+	Height *int `json:"height"`
+
+	// MediaId UUIDv7 of the media object that holds the picture.
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Url Absolute signed address of the picture (the same mechanism as the
+	// poster and the logo of the page); host-relative only on a
+	// deployment without media storage.
+	Url string `json:"url"`
+
+	// Width Width in pixels when the upload pipeline knew it, else null.
+	Width *int `json:"width"`
+}
+
+// PublicMaterialVideo One video link of an event, as buyers see it (task 1-2c).
+type PublicMaterialVideo struct {
+	// EmbedUrl Address for an iframe: `https://www.youtube-nocookie.com/embed/<id>`,
+	// `https://player.vimeo.com/video/<id>` or
+	// `https://rutube.ru/play/embed/<id>`. Null for `https`, which has
+	// no embed.
+	EmbedUrl *string `json:"embed_url"`
+
+	// Provider Where the video lives: `youtube`, `vimeo`, `rutube`, or `https`
+	// (any other https page, shown as a plain link).
+	Provider string `json:"provider"`
+
+	// Url The original https link the organizer pasted.
+	Url string `json:"url"`
+
+	// VideoId The id parsed out of the link; null for `https`.
+	VideoId *string `json:"video_id"`
 }
 
 // PublishEventRequest Request body for `POST /v1/events/{event_id}/publications`.
@@ -10951,11 +12166,11 @@ type ResolveOrderRefundRequest struct {
 // must be supplied because a user may hold multiple roles in the
 // same organization.
 type RevokeMembershipRequest struct {
-	// Role The specific role binding to revoke.
+	// Role The specific role binding to revoke. org_admin is the organization owner; the last active owner cannot be revoked (409 `membership.last_owner`).
 	Role RevokeMembershipRequestRole `json:"role"`
 }
 
-// RevokeMembershipRequestRole The specific role binding to revoke.
+// RevokeMembershipRequestRole The specific role binding to revoke. org_admin is the organization owner; the last active owner cannot be revoked (409 `membership.last_owner`).
 type RevokeMembershipRequestRole string
 
 // ScanRequest Request body for `POST /v1/scan`. The scan flow resolves the
@@ -11231,8 +12446,10 @@ type ScannerValidateResponseStatus string
 // `price_hint`, `currency_hint` are copied verbatim from the stored
 // geometry (import-time authoring hints). The `tier_*` / `price_*`
 // fields are populated when the operator has already mapped the
-// category to a live `ticket_tiers` row through SEAT-B2 binding —
-// first-seat-wins so the resolution stays stable across renames.
+// category to a live `ticket_tiers` row through SEAT-B2 binding. The
+// tier shown is the one carried by most of the category's seats (ties:
+// the first seat in `seat_key` order), so repainting a few seats with
+// `PATCH .../seats/category` never relabels the rest of the category.
 type SeatingCategoryPrice struct {
 	// Color Authoring-time swatch color (`#RRGGBB`) used to bind seats to this category during SVG import.
 	Color *string `json:"color,omitempty"`
@@ -11413,11 +12630,28 @@ type SeatingSchemaResponse struct {
 	// EventId UUIDv7 of the parent event.
 	EventId openapi_types.UUID `json:"event_id"`
 
+	// ExtraCategories Synthetic categories (S1a) for tiers that carry repainted seats but
+	// are the home tier of no plan category. Indexes follow the plan's
+	// last category index; entries have the same shape as
+	// `category_prices`. Empty when every repainted seat moved to a plan
+	// category.
+	ExtraCategories *[]SeatingCategoryPrice `json:"extra_categories,omitempty"`
+
 	// Geometry Canonical geometry JSON per seating_backlog.md §5.3. Opaque schema — clients render it directly.
 	Geometry map[string]interface{} `json:"geometry"`
 
 	// GeometryChecksum sha256 hex digest of the canonicalised geometry JSON. Doubles as the strong ETag for this endpoint.
 	GeometryChecksum string `json:"geometry_checksum"`
+
+	// SeatCategoryIndex Per-seat category truth (S1a). Maps `seat_key` to the category
+	// `index` (an entry of `category_prices` or `extra_categories`) that
+	// carries the seat's own `session_seats.tier_id`, ONLY for seats
+	// whose category differs from their `category_index` in the geometry
+	// after `PATCH .../seats/category` repainted them. Empty on a session
+	// where no seat was repainted. Clients apply it over the geometry
+	// before drawing so a seat shows the price of its own tier, the
+	// same number `GET_SEAT_LIST` and the Bil24 image carry.
+	SeatCategoryIndex *map[string]int `json:"seat_category_index,omitempty"`
 
 	// SeatStatusVersion Session-scoped monotonic version cursor for seat status. Also returned by seat-status endpoints so the client can resume with `since_version`.
 	SeatStatusVersion int64 `json:"seat_status_version"`
@@ -11452,6 +12686,126 @@ type SeatingSeatStatusResponse struct {
 
 	// StatusVersion Live session-scoped monotonic cursor. Callers should persist this and pass it back as `since_version` on the next call.
 	StatusVersion int64 `json:"status_version"`
+}
+
+// SellerDisplayContactPatch Tri-state contact change; an absent key keeps, null or "" clears.
+type SellerDisplayContactPatch struct {
+	// Email Public role e-mail (400 `seller.invalid_email` when malformed).
+	Email *string `json:"email"`
+
+	// Phone Public phone, 6-15 digits (400 `seller.invalid_phone` when malformed).
+	Phone *string `json:"phone"`
+}
+
+// SellerProfile The owner's "Organization data": the legal data the sales page prints in
+// its seller block, and every hosted-page channel with its block settings.
+// Legal fields are changed through PATCH /v1/organizations/{id}.
+type SellerProfile struct {
+	// Channels The organization's hosted-page channels, oldest first.
+	Channels []SellerProfileChannel `json:"channels"`
+
+	// Complete True when no required organization field is missing (`missing` is empty). Each channel also needs its public e-mail, see `channels[].complete`.
+	Complete bool `json:"complete"`
+
+	// ContactFormToTelegram Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true).
+	ContactFormToTelegram *bool `json:"contact_form_to_telegram,omitempty"`
+
+	// Country Country of the organization (stands in for the address country on the page).
+	Country string `json:"country"`
+
+	// LegalAddressCity Registered address, city.
+	LegalAddressCity *string `json:"legal_address_city"`
+
+	// LegalAddressCountry Registered address, ISO 3166-1 alpha-2 country.
+	LegalAddressCountry *string `json:"legal_address_country"`
+
+	// LegalAddressLine1 Registered address, street line.
+	LegalAddressLine1 *string `json:"legal_address_line1"`
+
+	// LegalAddressLine2 Registered address, second line.
+	LegalAddressLine2 *string `json:"legal_address_line2"`
+
+	// LegalAddressPostalCode Registered address, postal code.
+	LegalAddressPostalCode *string `json:"legal_address_postal_code"`
+
+	// LegalForm Legal form as the owner wrote it.
+	LegalForm *string `json:"legal_form"`
+
+	// LegalName Registered legal name.
+	LegalName *string `json:"legal_name"`
+
+	// Missing Required organization fields still empty (the channel list adds public_email per channel).
+	Missing []string `json:"missing"`
+
+	// OrgId Organization id.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Display name of the organization.
+	OrgName string `json:"org_name"`
+
+	// RegistrationNumber Company registration number.
+	RegistrationNumber *string `json:"registration_number"`
+
+	// SellerShown True when at least one channel's sales page shows the seller block now (`channels[].seller_shown`).
+	SellerShown bool `json:"seller_shown"`
+
+	// TaxId Tax or VAT identifier.
+	TaxId *string `json:"tax_id"`
+
+	// TaxIdScheme Scheme of tax_id (eu_vat, gb_vat, il_vat, us_ein or other).
+	TaxIdScheme *string `json:"tax_id_scheme"`
+}
+
+// SellerProfileChannel One channel of the organization that runs a hosted sales page.
+type SellerProfileChannel struct {
+	// Complete True when no required data is missing for this channel (`missing` is empty).
+	Complete bool `json:"complete"`
+
+	// EmailLooksPersonal True when the public e-mail is at a free mailbox provider (gmail.com,
+	// inbox.ru, outlook.com, ...). A hint for the owner to use a role
+	// address; it never blocks a save.
+	EmailLooksPersonal bool `json:"email_looks_personal"`
+
+	// Id Sales channel id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Missing Required data still empty, in a stable order: legal_name, tax_id,
+	// address_line1, address_city, address_postal_code, public_email.
+	// Empty when the block is shown.
+	Missing []string `json:"missing"`
+
+	// Name Sales channel name.
+	Name string `json:"name"`
+
+	// PublicContact The channel's published contact, null when it has none.
+	PublicContact *SellerProfileContact `json:"public_contact"`
+
+	// SellerHidden A platform superadmin hid the seller block of this channel (`settings.hosted_page.seller_hidden`). Only a platform superadmin can set it.
+	SellerHidden bool `json:"seller_hidden"`
+
+	// SellerShown Whether the channel's sales page shows the seller block now, that is the data is complete and the block is not hidden by a platform superadmin.
+	SellerShown bool `json:"seller_shown"`
+
+	// ShowSeller Legacy flag (`settings.hosted_page.show_seller`), kept for older
+	// clients. It no longer decides whether the sales page shows the
+	// block; read `seller_shown`.
+	ShowSeller bool `json:"show_seller"`
+}
+
+// SellerProfileContact The contact a hosted-page channel publishes
+// (`settings.hosted_page.public_contact`). Unset keys are omitted.
+type SellerProfileContact struct {
+	// Email Public role e-mail of the channel.
+	Email *string `json:"email,omitempty"`
+
+	// Phone Public phone number of the channel.
+	Phone *string `json:"phone,omitempty"`
+}
+
+// SellerProfileEnvelope Envelope of the seller-profile routes.
+type SellerProfileEnvelope struct {
+	// SellerProfile The profile as stored after the call.
+	SellerProfile SellerProfile `json:"seller_profile"`
 }
 
 // ServerInfoResponse defines model for ServerInfoResponse.
@@ -12056,6 +13410,18 @@ type SetEventContactRequest struct {
 	PhoneHidden *bool `json:"phone_hidden,omitempty"`
 }
 
+// SetEventMapPointRequest Body of PUT .../events/{event_id}/map-point; replaces the point as a whole.
+type SetEventMapPointRequest struct {
+	// Label Optional text shown with the point, up to 200 characters; absent, null or blank clears it.
+	Label *string `json:"label"`
+
+	// Latitude Latitude in degrees, -90 to 90 (400 `event.invalid_map_point`).
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in degrees, -180 to 180 (400 `event.invalid_map_point`).
+	Longitude float64 `json:"longitude"`
+}
+
 // SetEventPromoterRequest Body of PUT /v1/organizations/{org_id}/events/{id}/promoter.
 type SetEventPromoterRequest struct {
 	// PromoterId An active promoter of the organization, or null (or absent) to
@@ -12081,6 +13447,19 @@ type StartCheckoutRequest struct {
 	UserId *openapi_types.UUID `json:"user_id"`
 }
 
+// SummaryAdmission The admitted scans of one source (scan_events.source, migration 0154).
+type SummaryAdmission struct {
+	// Scans Every admitted scan of this source, repeat scans and scans of tickets cancelled since included.
+	Scans int64 `json:"scans"`
+
+	// Source `arena_scanner` (POST /v1/scanner/scan-events) or `macs`
+	// (POST /v1/macs/scan-events).
+	Source string `json:"source"`
+
+	// Tickets Valid tickets with at least one admitted scan of this source.
+	Tickets int64 `json:"tickets"`
+}
+
 // SummaryComplimentary Invitations: paid orders written with source=complimentary (the
 // gateway's CREATE_ORDER_EXT `complimentary` flag) and the valid
 // tickets of either invitation path (such orders, or the admin
@@ -12095,6 +13474,12 @@ type SummaryComplimentary struct {
 
 // SummaryEntered How many valid tickets were scanned at the door ("entered N of M").
 type SummaryEntered struct {
+	// BySource Admitted scans split by who reported them, sorted by source;
+	// empty when nobody was scanned. A ticket admitted by both sources
+	// counts under both, so the per-source tickets need not add up to
+	// `used`.
+	BySource []SummaryAdmission `json:"by_source"`
+
 	// Total Every valid ticket.
 	Total int64 `json:"total"`
 
@@ -12780,6 +14165,21 @@ type UpdateChannelRequestPaymentMode string
 // `channel.invalid_config`.
 type UpdateChannelRequestProvider string
 
+// UpdateEventPartnerLinkRequest Body of PATCH .../partner-links/{link_id}. At least one member is required; an absent member keeps its stored value.
+type UpdateEventPartnerLinkRequest struct {
+	// SellerName A new seller name, 1 to 120 characters. Blank keeps the current name (or, when the address changed and the name was derived from the old one, derives it again).
+	SellerName *string `json:"seller_name,omitempty"`
+
+	// Url A new https address (400 `event.invalid_partner_url`).
+	Url *string `json:"url,omitempty"`
+}
+
+// UpdateEventReportPhotoRequest Body of PATCH .../photo-report/{photo_id}.
+type UpdateEventReportPhotoRequest struct {
+	// Caption The new caption, up to 200 characters; null or blank removes it.
+	Caption *string `json:"caption"`
+}
+
 // UpdateEventRequest Partial update for PATCH /v1/organizations/{org_id}/events/{id}.
 // All fields are optional; omitted (or empty) fields leave the
 // existing value unchanged. Status transitions are NOT applied
@@ -12939,6 +14339,11 @@ type UpdateOrganizationRequest struct {
 
 	// LegalAddressPostalCode New registered-office postal code (empty string clears).
 	LegalAddressPostalCode *string `json:"legal_address_postal_code,omitempty"`
+
+	// LegalForm New legal form, 1-80 characters on one line (400
+	// `org.invalid_legal_form` otherwise). Absent keeps the stored
+	// value, `null` or an empty string clears it.
+	LegalForm *string `json:"legal_form"`
 
 	// LegalName New registered juridical name. Empty string leaves existing
 	// value. Required (non-empty) when this same body sets
@@ -13117,6 +14522,29 @@ type UpdateSeatingPlanRequestStatus string
 
 // UpdateSeatingPlanRequestVisibility New share scope.
 type UpdateSeatingPlanRequestVisibility string
+
+// UpdateSellerDisplayRequest Change of one hosted-page channel's seller block. Absent members keep
+// the stored value. `show_seller: true` is refused with 422
+// `seller.incomplete` (details.missing) while required data is empty, and
+// so is clearing the e-mail of a channel that keeps the block on.
+// `seller_hidden` may be changed by a platform superadmin only (403
+// `seller.hide_superadmin_only` for anyone else).
+type UpdateSellerDisplayRequest struct {
+	// PublicContact The published contact; null removes it.
+	PublicContact *SellerDisplayContactPatch `json:"public_contact"`
+
+	// SellerHidden True keeps the seller block off this channel's sales page even when the data is complete; false shows it again. Only a platform superadmin (with `X-Admin-Reason`) may change it.
+	SellerHidden *bool `json:"seller_hidden,omitempty"`
+
+	// ShowSeller Legacy flag kept for older clients. It no longer decides whether the page shows the block.
+	ShowSeller *bool `json:"show_seller,omitempty"`
+}
+
+// UpdateSellerProfileRequest The organization-wide switch of the contact form's Telegram leg.
+type UpdateSellerProfileRequest struct {
+	// ContactFormToTelegram Post buyers' messages to the organization's sales Telegram chat too.
+	ContactFormToTelegram bool `json:"contact_form_to_telegram"`
+}
 
 // UpdateSessionRequest Partial update for PATCH
 // /v1/organizations/{org_id}/events/{event_id}/sessions/{id}. All
@@ -14143,6 +15571,14 @@ type GetV1GeoCitiesParams struct {
 	// CountryId Filter cities by country UUID
 	CountryId *openapi_types.UUID `form:"country_id,omitempty" json:"country_id,omitempty"`
 
+	// Country Filter cities by ISO 3166-1 alpha-2 country code (any case); ignored
+	// when `country_id` is also given. Names the country whose GeoNames
+	// data `q` draws suggestions from.
+	Country *string `form:"country,omitempty" json:"country,omitempty"`
+
+	// Q City search text, at most 64 characters. Blank counts as absent.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
 	// Lang Preferred language code (e.g. "en", "ru"). Overrides Accept-Language.
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
@@ -14151,6 +15587,15 @@ type GetV1GeoCitiesParams struct {
 type GetV1GeoCountriesParams struct {
 	// Lang Preferred language code (e.g. "en", "ru"). Overrides Accept-Language.
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+}
+
+// PostMACSScanEventsParams defines parameters for PostMACSScanEvents.
+type PostMACSScanEventsParams struct {
+	// XMACSSubscriberId Id of the MACS subscriber (GET /v1/organizations/{org_id}/macs-webhook answers it).
+	XMACSSubscriberId openapi_types.UUID `json:"X-MACS-Subscriber-Id"`
+
+	// XMACSSignature sha256=<hex HMAC-SHA256 of the raw body under the subscriber's signing_secret>.
+	XMACSSignature string `json:"X-MACS-Signature"`
 }
 
 // RecordConsentJSONBody defines parameters for RecordConsent.
@@ -14352,6 +15797,14 @@ type ListOrgEventsParams struct {
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdEventsSalesSummaryParams defines parameters for GetV1OrganizationsOrgIdEventsSalesSummary.
+type GetV1OrganizationsOrgIdEventsSalesSummaryParams struct {
+	// Ids Event ids as ONE string separated by commas (`ids=a,b,c`), at most
+	// 50. Repeating the parameter (`ids=a&ids=b`) is not supported: only
+	// the first value is read.
+	Ids string `form:"ids" json:"ids"`
+}
+
 // GetV1OrganizationsOrgIdEventsEventIdSalesCsvParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdSalesCsv.
 type GetV1OrganizationsOrgIdEventsEventIdSalesCsvParams struct {
 	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
@@ -14436,6 +15889,15 @@ type CreateExternalAllocationJSONBody struct {
 // UpdateExternalAllocationJSONBody defines parameters for UpdateExternalAllocation.
 type UpdateExternalAllocationJSONBody struct {
 	Quantity *int `json:"quantity,omitempty"`
+}
+
+// ImportEventBundleParams defines parameters for ImportEventBundle.
+type ImportEventBundleParams struct {
+	// DryRun `true` checks the bundle and writes nothing (task 3-1); the answer
+	// is then always 200 with `ImportEventBundleDryRunResponse`, the
+	// bundle's errors inside it. Absent or `false` imports. Any other
+	// value is 400 `import.invalid_dry_run`.
+	DryRun *bool `form:"dry_run,omitempty" json:"dry_run,omitempty"`
 }
 
 // GrantOrganizationMembershipParams defines parameters for GrantOrganizationMembership.
@@ -14750,6 +16212,28 @@ type GetTicketCredentialParams struct {
 	Type *string `form:"type,omitempty" json:"type,omitempty"`
 }
 
+// BrevoDeliveryStatusWebhookBearerJSONBody defines parameters for BrevoDeliveryStatusWebhookBearer.
+type BrevoDeliveryStatusWebhookBearerJSONBody struct {
+	union json.RawMessage
+}
+
+// BrevoDeliveryStatusWebhookBearerJSONBody0 defines parameters for BrevoDeliveryStatusWebhookBearer.
+type BrevoDeliveryStatusWebhookBearerJSONBody0 map[string]interface{}
+
+// BrevoDeliveryStatusWebhookBearerJSONBody1 defines parameters for BrevoDeliveryStatusWebhookBearer.
+type BrevoDeliveryStatusWebhookBearerJSONBody1 = []map[string]interface{}
+
+// BrevoDeliveryStatusWebhookJSONBody defines parameters for BrevoDeliveryStatusWebhook.
+type BrevoDeliveryStatusWebhookJSONBody struct {
+	union json.RawMessage
+}
+
+// BrevoDeliveryStatusWebhookJSONBody0 defines parameters for BrevoDeliveryStatusWebhook.
+type BrevoDeliveryStatusWebhookJSONBody0 map[string]interface{}
+
+// BrevoDeliveryStatusWebhookJSONBody1 defines parameters for BrevoDeliveryStatusWebhook.
+type BrevoDeliveryStatusWebhookJSONBody1 = []map[string]interface{}
+
 // UpdateWebhookSubscriberJSONBody defines parameters for UpdateWebhookSubscriber.
 type UpdateWebhookSubscriberJSONBody struct {
 	// Active Pause (`false`) or resume (`true`) delivery to this
@@ -14845,6 +16329,12 @@ type PostV1AuthRefreshJSONRequestBody = AuthRefreshRequest
 // PostV1AuthRegisterJSONRequestBody defines body for PostV1AuthRegister for application/json ContentType.
 type PostV1AuthRegisterJSONRequestBody = AuthRegisterRequest
 
+// PostV1AuthStepUpJSONRequestBody defines body for PostV1AuthStepUp for application/json ContentType.
+type PostV1AuthStepUpJSONRequestBody = AuthStepUpRequest
+
+// PostV1AuthWebLinkJSONRequestBody defines body for PostV1AuthWebLink for application/json ContentType.
+type PostV1AuthWebLinkJSONRequestBody = AuthWebLinkRequest
+
 // UploadBarcodeBatchJSONRequestBody defines body for UploadBarcodeBatch for application/json ContentType.
 type UploadBarcodeBatchJSONRequestBody UploadBarcodeBatchJSONBody
 
@@ -14890,6 +16380,9 @@ type GetBotOnboardingSiteLinkJSONRequestBody = OnboardingBotActionRequest
 // SubmitBotOnboardingApplicationJSONRequestBody defines body for SubmitBotOnboardingApplication for application/json ContentType.
 type SubmitBotOnboardingApplicationJSONRequestBody = OnboardingBotActionRequest
 
+// CreateBotWebLoginCodeJSONRequestBody defines body for CreateBotWebLoginCode for application/json ContentType.
+type CreateBotWebLoginCodeJSONRequestBody = BotWebLoginCodeRequest
+
 // ValidatePromoCodeJSONRequestBody defines body for ValidatePromoCode for application/json ContentType.
 type ValidatePromoCodeJSONRequestBody = ValidatePromoCodeRequest
 
@@ -14919,6 +16412,9 @@ type PatchSessionSeatsCategoryJSONRequestBody = PatchSessionSeatsCategoryRequest
 
 // PublishEventJSONRequestBody defines body for PublishEvent for application/json ContentType.
 type PublishEventJSONRequestBody = PublishEventRequest
+
+// PostMACSScanEventsJSONRequestBody defines body for PostMACSScanEvents for application/json ContentType.
+type PostMACSScanEventsJSONRequestBody = MACSScanBatchRequest
 
 // RecordConsentJSONRequestBody defines body for RecordConsent for application/json ContentType.
 type RecordConsentJSONRequestBody RecordConsentJSONBody
@@ -14971,6 +16467,9 @@ type CreateChannelJSONRequestBody = CreateChannelRequest
 // CreateFeedTokenJSONRequestBody defines body for CreateFeedToken for application/json ContentType.
 type CreateFeedTokenJSONRequestBody CreateFeedTokenJSONBody
 
+// UpdateSellerDisplayJSONRequestBody defines body for UpdateSellerDisplay for application/json ContentType.
+type UpdateSellerDisplayJSONRequestBody = UpdateSellerDisplayRequest
+
 // UpdateChannelJSONRequestBody defines body for UpdateChannel for application/json ContentType.
 type UpdateChannelJSONRequestBody = UpdateChannelRequest
 
@@ -14988,6 +16487,36 @@ type CreateEventJSONRequestBody = CreateEventRequest
 
 // SetEventContactJSONRequestBody defines body for SetEventContact for application/json ContentType.
 type SetEventContactJSONRequestBody = SetEventContactRequest
+
+// SetEventMapPointJSONRequestBody defines body for SetEventMapPoint for application/json ContentType.
+type SetEventMapPointJSONRequestBody = SetEventMapPointRequest
+
+// AddEventGalleryItemJSONRequestBody defines body for AddEventGalleryItem for application/json ContentType.
+type AddEventGalleryItemJSONRequestBody = EventGalleryAddRequest
+
+// ReorderEventGalleryJSONRequestBody defines body for ReorderEventGallery for application/json ContentType.
+type ReorderEventGalleryJSONRequestBody = EventGalleryOrderRequest
+
+// UpdateEventGalleryItemJSONRequestBody defines body for UpdateEventGalleryItem for application/json ContentType.
+type UpdateEventGalleryItemJSONRequestBody = EventGalleryCaptionRequest
+
+// CreateEventPartnerLinkJSONRequestBody defines body for CreateEventPartnerLink for application/json ContentType.
+type CreateEventPartnerLinkJSONRequestBody = CreateEventPartnerLinkRequest
+
+// ReorderEventPartnerLinksJSONRequestBody defines body for ReorderEventPartnerLinks for application/json ContentType.
+type ReorderEventPartnerLinksJSONRequestBody = EventPartnerLinkOrderRequest
+
+// UpdateEventPartnerLinkJSONRequestBody defines body for UpdateEventPartnerLink for application/json ContentType.
+type UpdateEventPartnerLinkJSONRequestBody = UpdateEventPartnerLinkRequest
+
+// AddEventReportPhotoJSONRequestBody defines body for AddEventReportPhoto for application/json ContentType.
+type AddEventReportPhotoJSONRequestBody = AddEventReportPhotoRequest
+
+// ReorderEventReportPhotosJSONRequestBody defines body for ReorderEventReportPhotos for application/json ContentType.
+type ReorderEventReportPhotosJSONRequestBody = EventReportPhotoOrderRequest
+
+// UpdateEventReportPhotoJSONRequestBody defines body for UpdateEventReportPhoto for application/json ContentType.
+type UpdateEventReportPhotoJSONRequestBody = UpdateEventReportPhotoRequest
 
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = CreateSessionRequest
@@ -15028,6 +16557,12 @@ type UpdateTicketTierJSONRequestBody = UpdateTicketTierRequest
 // PutTierPriceScheduleJSONRequestBody defines body for PutTierPriceSchedule for application/json ContentType.
 type PutTierPriceScheduleJSONRequestBody = PutTierPriceScheduleRequest
 
+// AddEventVideoJSONRequestBody defines body for AddEventVideo for application/json ContentType.
+type AddEventVideoJSONRequestBody = EventVideoAddRequest
+
+// ReorderEventVideosJSONRequestBody defines body for ReorderEventVideos for application/json ContentType.
+type ReorderEventVideosJSONRequestBody = EventVideoOrderRequest
+
 // UpdateEventJSONRequestBody defines body for UpdateEvent for application/json ContentType.
 type UpdateEventJSONRequestBody = UpdateEventRequest
 
@@ -15064,6 +16599,9 @@ type GrantOrganizationMembershipJSONRequestBody = GrantMembershipRequest
 // RevokeOrganizationMembershipJSONRequestBody defines body for RevokeOrganizationMembership for application/json ContentType.
 type RevokeOrganizationMembershipJSONRequestBody = RevokeMembershipRequest
 
+// PostV1OrganizationsOrgIdOrdersSearchJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersSearch for application/json ContentType.
+type PostV1OrganizationsOrgIdOrdersSearchJSONRequestBody = OrderSearchRequest
+
 // PostV1OrganizationsOrgIdOrdersIdCancelJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersIdCancel for application/json ContentType.
 type PostV1OrganizationsOrgIdOrdersIdCancelJSONRequestBody PostV1OrganizationsOrgIdOrdersIdCancelJSONBody
 
@@ -15093,6 +16631,9 @@ type UpdatePromoterJSONRequestBody = UpdatePromoterRequest
 
 // PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody defines body for PostV1OrganizationsOrgIdRefundsRefundIdResolve for application/json ContentType.
 type PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody = ResolveOrderRefundRequest
+
+// UpdateSellerProfileJSONRequestBody defines body for UpdateSellerProfile for application/json ContentType.
+type UpdateSellerProfileJSONRequestBody = UpdateSellerProfileRequest
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody
@@ -15126,6 +16667,9 @@ type StartPublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutStartRequest
 
 // PostPublicFeedFunnelEventsJSONRequestBody defines body for PostPublicFeedFunnelEvents for application/json ContentType.
 type PostPublicFeedFunnelEventsJSONRequestBody = WidgetFunnelEventsBatch
+
+// SendOrganizerContactJSONRequestBody defines body for SendOrganizerContact for application/json ContentType.
+type SendOrganizerContactJSONRequestBody = OrganizerContactRequest
 
 // SubmitReconciliationReportJSONRequestBody defines body for SubmitReconciliationReport for application/json ContentType.
 type SubmitReconciliationReportJSONRequestBody SubmitReconciliationReportJSONBody
@@ -15177,6 +16721,12 @@ type CancelTicketJSONRequestBody = CancelTicketRequest
 
 // CreateSeatingPlanJSONRequestBody defines body for CreateSeatingPlan for application/json ContentType.
 type CreateSeatingPlanJSONRequestBody = CreateSeatingPlanRequest
+
+// BrevoDeliveryStatusWebhookBearerJSONRequestBody defines body for BrevoDeliveryStatusWebhookBearer for application/json ContentType.
+type BrevoDeliveryStatusWebhookBearerJSONRequestBody BrevoDeliveryStatusWebhookBearerJSONBody
+
+// BrevoDeliveryStatusWebhookJSONRequestBody defines body for BrevoDeliveryStatusWebhook for application/json ContentType.
+type BrevoDeliveryStatusWebhookJSONRequestBody BrevoDeliveryStatusWebhookJSONBody
 
 // RegisterWebhookSubscriberJSONRequestBody defines body for RegisterWebhookSubscriber for application/json ContentType.
 type RegisterWebhookSubscriberJSONRequestBody = RegisterWebhookSubscriberRequest
