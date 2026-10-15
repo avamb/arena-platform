@@ -230,6 +230,19 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers":                    "tiers",
 	"PUT /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule": "tiers",
 
+	// hcatalog event gallery and videos (task 1-2a, event_materials.go):
+	// materialsPrep runs requireEventInOrg first and every query is scoped by
+	// (id, event_id). event_materials_integration_test.go drives a foreign event.
+	"DELETE /v1/organizations/{org_id}/events/{event_id}/media-items/{item_id}": "event materials",
+	"DELETE /v1/organizations/{org_id}/events/{event_id}/videos/{video_id}":     "event materials",
+	"GET /v1/organizations/{org_id}/events/{event_id}/media-items":              "event materials",
+	"GET /v1/organizations/{org_id}/events/{event_id}/videos":                   "event materials",
+	"PATCH /v1/organizations/{org_id}/events/{event_id}/media-items/{item_id}":  "event materials",
+	"POST /v1/organizations/{org_id}/events/{event_id}/media-items":             "event materials",
+	"POST /v1/organizations/{org_id}/events/{event_id}/videos":                  "event materials",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/media-items/order":        "event materials",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/videos/order":             "event materials",
+
 	// hcatalog events, artists, contact, promoter link, status, delete impact:
 	// requireEventInOrg or a query scoped by (id, org_id).
 	"DELETE /v1/organizations/{org_id}/events/{id}":                  "events",

@@ -7678,6 +7678,156 @@ components:
           format: date-time
           description: ISO-8601 UTC timestamp of the last update.
 
+    # ── Event page materials: gallery and videos (task 1-2a, migration 0153) ──
+    EventGalleryItem:
+      type: object
+      description: One photo of an event's gallery.
+      required: [id, event_id, media_id, position, caption, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the gallery entry.
+        event_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the event.
+        media_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the media object (owner type `event_gallery`) that holds the picture.
+        position:
+          type: integer
+          description: Display position, 0-based. Positions are always 0..n-1 without gaps.
+        caption:
+          type: [string, "null"]
+          description: Caption shown under the photo, up to 200 characters; null when there is none.
+        created_at:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC timestamp of creation.
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC timestamp of the last change.
+
+    EventGalleryList:
+      type: object
+      description: The gallery photos of an event in display order.
+      required: [items, max_items]
+      properties:
+        items:
+          type: array
+          description: The photos, first to last.
+          items:
+            $ref: "#/components/schemas/EventGalleryItem"
+        max_items:
+          type: integer
+          description: The most photos one event may carry (6).
+
+    EventGalleryAddRequest:
+      type: object
+      description: Body of POST .../media-items.
+      required: [media_id]
+      properties:
+        media_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of a live media object of this organization with owner type `event_gallery`.
+        caption:
+          type: [string, "null"]
+          description: Optional caption, up to 200 characters; blank means none.
+
+    EventGalleryCaptionRequest:
+      type: object
+      description: Body of PATCH .../media-items/{item_id}.
+      required: [caption]
+      properties:
+        caption:
+          type: [string, "null"]
+          description: The new caption, up to 200 characters. Null or a blank string clears it.
+
+    EventGalleryOrderRequest:
+      type: object
+      description: Body of PUT .../media-items/order.
+      required: [item_ids]
+      properties:
+        item_ids:
+          type: array
+          description: Every gallery entry id of the event exactly once, in the new display order.
+          items:
+            type: string
+            format: uuid
+
+    EventVideo:
+      type: object
+      description: One video link of an event. Only the link is stored, never the video.
+      required: [id, event_id, provider, video_id, url, position, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the video entry.
+        event_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the event.
+        provider:
+          type: string
+          description: One of `youtube`, `vimeo`, `rutube` (recognized, embeddable) or `https` (any other link, shown as a plain link).
+        video_id:
+          type: [string, "null"]
+          description: The id parsed out of the link; null for provider `https`.
+        url:
+          type: string
+          description: The link as pasted (trimmed), always https, up to 500 characters.
+        position:
+          type: integer
+          description: Display position, 0-based. Positions are always 0..n-1 without gaps.
+        created_at:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC timestamp of creation.
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC timestamp of the last change.
+
+    EventVideoList:
+      type: object
+      description: The video links of an event in display order.
+      required: [items, max_items]
+      properties:
+        items:
+          type: array
+          description: The videos, first to last.
+          items:
+            $ref: "#/components/schemas/EventVideo"
+        max_items:
+          type: integer
+          description: The most videos one event may carry (4).
+
+    EventVideoAddRequest:
+      type: object
+      description: Body of POST .../videos.
+      required: [url]
+      properties:
+        url:
+          type: string
+          description: The video link, https only, no blanks, up to 500 characters.
+
+    EventVideoOrderRequest:
+      type: object
+      description: Body of PUT .../videos/order.
+      required: [video_ids]
+      properties:
+        video_ids:
+          type: array
+          description: Every video id of the event exactly once, in the new display order.
+          items:
+            type: string
+            format: uuid
+
     EventArtistEnvelope:
       type: object
       required: [artist]
@@ -26283,6 +26433,667 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: Internal server error (`event_bundle.read_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ── Event page materials: gallery and videos (task 1-2a) ──
+
+  /v1/organizations/{org_id}/events/{event_id}/media-items:
+    get:
+      operationId: listEventGallery
+      summary: List the gallery photos of an event
+      description: |
+        The event's gallery photos in display order (task 1-2a). At most
+        `max_items` (6) photos. Requires the `event.read` permission in the organization.
+        Each item names a media object (`media_id`); the picture itself is read with
+        GET /v1/media/{id}. Writes nothing.
+      tags: [v1, events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The gallery.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventGalleryList"
+        "400":
+          description: Invalid path id or request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found (`event.not_found`), deleted, or owned by a different organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: addEventGalleryItem
+      summary: Add a photo to an event's gallery
+      description: |
+        Adds a photo at the end of the gallery. `media_id` must be a live media
+        object of THIS organization uploaded with `owner_type=event_gallery` (422
+        `event.invalid_media` otherwise; the same answer for an unknown, deleted or
+        foreign id). A seventh photo is 409 `event.gallery_full`; the same photo twice is
+        409 `event.gallery_duplicate`. The caption is optional (up to 200 characters).
+        Requires the `event.update` permission in the organization.
+      tags: [v1, events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventGalleryAddRequest"
+      responses:
+        "201":
+          description: The photo was added.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventGalleryItem"
+        "400":
+          description: Invalid path id or request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found (`event.not_found`), deleted, or owned by a different organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The gallery is full (`event.gallery_full`) or already holds this photo (`event.gallery_duplicate`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "`media_id` is not a gallery photo of this organization (`event.invalid_media`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/events/{event_id}/media-items/order:
+    put:
+      operationId: reorderEventGallery
+      summary: Reorder the gallery photos of an event
+      description: |
+        Sets the display order. `item_ids` must name every photo of the event exactly
+        once, in the new order; a list that differs from the stored photos is 409
+        `event.gallery_order_mismatch` (reload and retry). The whole reorder is one
+        statement, so it is all or nothing. Requires the `event.update` permission in the organization.
+      tags: [v1, events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventGalleryOrderRequest"
+      responses:
+        "200":
+          description: The gallery in its new order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventGalleryList"
+        "400":
+          description: Invalid path id or request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found (`event.not_found`), deleted, or owned by a different organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "`item_ids` does not match the stored photos (`event.gallery_order_mismatch`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/events/{event_id}/media-items/{item_id}:
+    patch:
+      operationId: updateEventGalleryItem
+      summary: Set or clear the caption of a gallery photo
+      description: |
+        Only the caption changes. The body must carry `caption`: a string sets it
+        (up to 200 characters), `null` or a blank string clears it. Requires the
+        `event.update` permission in the organization.
+      tags: [v1, events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema: { type: string, format: uuid }
+        - name: item_id
+          in: path
+          required: true
+          description: UUIDv7 of the gallery photo.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventGalleryCaptionRequest"
+      responses:
+        "200":
+          description: The updated photo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventGalleryItem"
+        "400":
+          description: Invalid path id or request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event (`event.not_found`) or photo (`event.gallery_item_not_found`) not found, or owned by a different organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteEventGalleryItem
+      summary: Remove a photo from an event's gallery
+      description: |
+        Removes the photo from the gallery; the remaining photos keep their order and
+        close the gap. The media object itself is left to the media cleanup. Requires the
+        `event.update` permission in the organization.
+      tags: [v1, events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema: { type: string, format: uuid }
+        - name: item_id
+          in: path
+          required: true
+          description: UUIDv7 of the gallery photo.
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: The photo was removed.
+        "400":
+          description: Invalid path id or request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event (`event.not_found`) or photo (`event.gallery_item_not_found`) not found, or owned by a different organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/events/{event_id}/videos:
+    get:
+      operationId: listEventVideos
+      summary: List the video links of an event
+      description: |
+        The event's video links in display order (task 1-2a). At most `max_items` (4).
+        Only the link and the id parsed out of it are stored, never the video itself.
+        Requires the `event.read` permission in the organization. Writes nothing.
+      tags: [v1, events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The video links.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventVideoList"
+        "400":
+          description: Invalid path id or request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found (`event.not_found`), deleted, or owned by a different organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: addEventVideo
+      summary: Add a video link to an event
+      description: |
+        Adds a video link at the end of the list. The link is parsed, never fetched:
+        YouTube (watch, youtu.be, shorts, embed), Vimeo (vimeo.com/<id>,
+        player.vimeo.com/video/<id>) and Rutube (rutube.ru/video/<id>/) get a `provider`
+        and a `video_id`; any other https link is kept as a plain link (`provider` `https`,
+        `video_id` null). A link that is not https, has blanks or credentials, or is longer
+        than 500 characters is 400 `event.invalid_video_url`. A fifth video is 409
+        `event.videos_full`. Requires the `event.update` permission in the organization.
+      tags: [v1, events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventVideoAddRequest"
+      responses:
+        "201":
+          description: The video link was added.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventVideo"
+        "400":
+          description: Invalid path id or request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found (`event.not_found`), deleted, or owned by a different organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The event already holds the maximum number of videos (`event.videos_full`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/events/{event_id}/videos/order:
+    put:
+      operationId: reorderEventVideos
+      summary: Reorder the video links of an event
+      description: |
+        Sets the display order. `video_ids` must name every video of the event exactly
+        once, in the new order; a list that differs from the stored videos is 409
+        `event.videos_order_mismatch`. The whole reorder is one statement. Requires the
+        `event.update` permission in the organization.
+      tags: [v1, events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventVideoOrderRequest"
+      responses:
+        "200":
+          description: The videos in their new order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventVideoList"
+        "400":
+          description: Invalid path id or request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found (`event.not_found`), deleted, or owned by a different organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "`video_ids` does not match the stored videos (`event.videos_order_mismatch`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/events/{event_id}/videos/{video_id}:
+    delete:
+      operationId: deleteEventVideo
+      summary: Remove a video link from an event
+      description: |
+        Removes the link; the remaining videos keep their order and close the gap.
+        Requires the `event.update` permission in the organization.
+      tags: [v1, events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema: { type: string, format: uuid }
+        - name: video_id
+          in: path
+          required: true
+          description: UUIDv7 of the video link.
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: The video link was removed.
+        "400":
+          description: Invalid path id or request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event (`event.not_found`) or video (`event.video_not_found`) not found, or owned by a different organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
           content:
             application/json:
               schema:
