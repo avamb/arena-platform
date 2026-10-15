@@ -33,14 +33,22 @@ type Zone struct {
 
 var (
 	loadOnce sync.Once
-	zonesBy  map[string][]Zone            // ISO2 -> zones, the zone of the biggest city first
-	cityZone map[string]map[string]string // ISO2 -> normalised city name -> zone
-	topBy    map[string][]string          // ISO2 -> the largest cities, biggest first
+	zonesBy  map[string][]Zone                // ISO2 -> zones, the zone of the biggest city first
+	cityZone map[string]map[string]*cityEntry // ISO2 -> normalised city name -> the city
+	topBy    map[string][]string              // ISO2 -> the largest cities, biggest first
 )
+
+// cityEntry is one place of the data file: the zone it is in and its main
+// name (the first alias of the line, already normalised), which every alias of
+// the place - in any script - points at.
+type cityEntry struct {
+	primary string
+	zone    string
+}
 
 func load() {
 	zonesBy = map[string][]Zone{}
-	cityZone = map[string]map[string]string{}
+	cityZone = map[string]map[string]*cityEntry{}
 	topBy = map[string][]string{}
 	zr, err := gzip.NewReader(bytes.NewReader(citiesGz))
 	if err != nil {
@@ -65,12 +73,14 @@ func load() {
 		case "C":
 			m := cityZone[cc]
 			if m == nil {
-				m = map[string]string{}
+				m = map[string]*cityEntry{}
 				cityZone[cc] = m
 			}
-			for _, name := range strings.Split(rest, "|") {
+			names := strings.Split(rest, "|")
+			entry := &cityEntry{primary: names[0], zone: zone}
+			for _, name := range names {
 				if _, taken := m[name]; !taken { // the biggest city comes first and wins
-					m[name] = zone
+					m[name] = entry
 				}
 			}
 		}
@@ -108,7 +118,10 @@ func ForCity(iso2, name string) string {
 	if n == "" {
 		return ""
 	}
-	return cityZone[strings.ToUpper(strings.TrimSpace(iso2))][n]
+	if e := cityZone[strings.ToUpper(strings.TrimSpace(iso2))][n]; e != nil {
+		return e.zone
+	}
+	return ""
 }
 
 // ZonesFor lists the zones of a country that is not in the single-zone table,
