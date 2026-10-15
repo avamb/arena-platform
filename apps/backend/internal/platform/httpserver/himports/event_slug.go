@@ -24,6 +24,19 @@ const eventSlugMaxAttempts = 50
 // suffix. An event that already carries a slug keeps it: the slug is the
 // public address, and a rename must not move the page.
 func assignEventSlug(ctx context.Context, q *gen.Queries, orgID, eventID uuid.UUID, name string) error {
+	candidate, err := freeEventSlug(ctx, q, orgID, name)
+	if err != nil {
+		return err
+	}
+	if _, err := q.SetEventSlugIfEmpty(ctx, eventID, orgID, candidate); err != nil {
+		return fmt.Errorf("set event slug %q: %w", candidate, err)
+	}
+	return nil
+}
+
+// freeEventSlug finds, reading only, the slug a new event called name would
+// get. The dry run reports it as a default without assigning it.
+func freeEventSlug(ctx context.Context, q *gen.Queries, orgID uuid.UUID, name string) (string, error) {
 	base := geoslug.Slugify(name)
 	if base == "" {
 		base = "event"
@@ -35,15 +48,11 @@ func assignEventSlug(ctx context.Context, q *gen.Queries, orgID, eventID uuid.UU
 		}
 		taken, err := q.EventSlugTaken(ctx, orgID, candidate)
 		if err != nil {
-			return fmt.Errorf("check event slug %q: %w", candidate, err)
+			return "", fmt.Errorf("check event slug %q: %w", candidate, err)
 		}
-		if taken {
-			continue
+		if !taken {
+			return candidate, nil
 		}
-		if _, err := q.SetEventSlugIfEmpty(ctx, eventID, orgID, candidate); err != nil {
-			return fmt.Errorf("set event slug %q: %w", candidate, err)
-		}
-		return nil
 	}
-	return fmt.Errorf("no free slug for event %q after %d attempts", name, eventSlugMaxAttempts)
+	return "", fmt.Errorf("no free slug for event %q after %d attempts", name, eventSlugMaxAttempts)
 }

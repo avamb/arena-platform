@@ -7306,6 +7306,12 @@ export interface paths {
          *     (`Authorization: Bearer ak_…`) carrying that scope is the primary
          *     caller — the site-side "Мероприятия (arena)" tab (event-bundle spec
          *     §10) and, in future iterations, chat-bot integrations.
+         *
+         *     With `?dry_run=true` the bundle is only checked: the same validation
+         *     code runs inside a transaction that is rolled back, nothing is
+         *     written and nothing outside is touched, and the answer is an
+         *     `ImportEventBundleDryRunResponse` listing ALL errors at once, each
+         *     with its field as a JSON pointer, instead of the import's first 4xx.
          */
         post: operations["importEventBundle"];
         delete?: never;
@@ -20727,6 +20733,101 @@ export interface components {
             code: string;
             /** @description Human-readable explanation of the warning. */
             message: string;
+        };
+        /**
+         * @description One error an event-bundle dry run found (`?dry_run=true`): exactly the
+         *     error the import would answer, plus the bundle field it is about.
+         */
+        ImportDryRunError: {
+            /**
+             * @description The machine code the import's error envelope would carry.
+             * @example import.invalid_price
+             */
+            code: string;
+            /** @description Human-readable explanation, the same text the import would answer. */
+            message: string;
+            /**
+             * @description RFC 6901 JSON pointer of the bundle field the error is about
+             *     (`/categoryList/1/price`, `/channelIds/0`), or an empty string
+             *     when the error concerns the bundle as a whole (for example
+             *     `organization.contact_missing`).
+             * @example /categoryList/1/price
+             */
+            field: string;
+            /**
+             * @description The HTTP status the import would answer with (404, 409 or 422).
+             * @example 422
+             */
+            status: number;
+        };
+        /** @description One value the import would fill in because the bundle leaves it out. */
+        ImportDryRunDefault: {
+            /**
+             * @description Stable key of the default: `start_time` (00:00), `session_end_time`
+             *     (start plus 3 hours), `sales_end_time` (the session start, new
+             *     sessions only), `venue_timezone` (the stored venue zone),
+             *     `category_name`, `event_slug` (the public address of a new event)
+             *     or `session_status` (draft, or scheduled with publish).
+             * @example session_end_time
+             */
+            name: string;
+            /**
+             * @description JSON pointer of the bundle field the value stands in for, or an
+             *     empty string when the value has no field in the bundle
+             *     (`event_slug`).
+             * @example /actionEvent/endTime
+             */
+            field: string;
+            /**
+             * @description The value, as text; instants are RFC 3339 in the venue's zone.
+             * @example 2026-04-26T20:00:00+02:00
+             */
+            value: string;
+        };
+        /**
+         * @description Answer of POST .../imports/event-bundle?dry_run=true (task 3-1). The
+         *     bundle was checked with the import's own code and NOTHING was
+         *     written: no catalog row, poster download, media object, audit event,
+         *     publication, feed token, session-change journal, letter job or
+         *     webhook. Errors that depend on earlier writes (a chain cycle through
+         *     stored links, a refused session move) are only looked for when every
+         *     other check passed, so they appear one at a time.
+         */
+        ImportEventBundleDryRunResponse: {
+            /** @description Always true; tells this answer apart from an import's. */
+            dry_run: boolean;
+            /** @description True when `errors` is empty, i.e. the same bundle imported now would be accepted. */
+            valid: boolean;
+            /**
+             * @description The resolved source (`bil24` or `arena`); an empty string when the bundle's `source` is refused.
+             * @example arena
+             */
+            source: string;
+            /**
+             * @description The bundle as the import reads it: strings trimmed, `source` and
+             *     `externalRef` resolved, the currency upper-cased. Defaults are not
+             *     filled in here; they are listed in `defaults`.
+             */
+            normalized: components["schemas"]["ImportEventBundleRequest"];
+            /** @description Values the import would fill in where the bundle is silent. Never null. */
+            defaults: components["schemas"]["ImportDryRunDefault"][];
+            /** @description The warnings the import would raise. Never null. */
+            warnings: components["schemas"]["ImportWarning"][];
+            /**
+             * @description Every error found, in the order found; a field is reported once.
+             *     Never null; empty when the bundle is valid.
+             */
+            errors: components["schemas"]["ImportDryRunError"][];
+            /**
+             * Format: uuid
+             * @description The existing event the bundle edits; null when the import would create one (or could not tell).
+             */
+            event_id: string | null;
+            /**
+             * Format: uuid
+             * @description The existing session the bundle edits; null when the import would create one (or could not tell).
+             */
+            session_id: string | null;
         };
         /**
          * @description The compat-identifier set the caller must persist on its side
@@ -47034,7 +47135,15 @@ export interface operations {
     };
     importEventBundle: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description `true` checks the bundle and writes nothing (task 3-1); the answer
+                 *     is then always 200 with `ImportEventBundleDryRunResponse`, the
+                 *     bundle's errors inside it. Absent or `false` imports. Any other
+                 *     value is 400 `import.invalid_dry_run`.
+                 */
+                dry_run?: boolean;
+            };
             header?: never;
             path: {
                 /** @description Organization UUID that scopes this request (tenant isolation). */
@@ -47052,16 +47161,18 @@ export interface operations {
              * @description Import applied. `created` distinguishes a first import from an
              *     idempotent repeat (matched by `externalRef` for source=arena, by
              *     `actionEvent.actionEventId` for source=bil24); both answer 200.
+             *     With `dry_run=true`: the dry-run report
+             *     (`ImportEventBundleDryRunResponse`), valid or not.
              */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ImportBil24SessionResponse"];
+                    "application/json": components["schemas"]["ImportBil24SessionResponse"] | components["schemas"]["ImportEventBundleDryRunResponse"];
                 };
             };
-            /** @description Request body is not valid JSON or exceeds the 8 MB limit. */
+            /** @description Request body is not valid JSON or exceeds the 8 MB limit, or `dry_run` is not a boolean. */
             400: {
                 headers: {
                     [name: string]: unknown;

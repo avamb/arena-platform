@@ -7217,6 +7217,82 @@ type ImportCompatIDs struct {
 	VenueId int64 `json:"venue_id"`
 }
 
+// ImportDryRunDefault One value the import would fill in because the bundle leaves it out.
+type ImportDryRunDefault struct {
+	// Field JSON pointer of the bundle field the value stands in for, or an
+	// empty string when the value has no field in the bundle
+	// (`event_slug`).
+	Field string `json:"field"`
+
+	// Name Stable key of the default: `start_time` (00:00), `session_end_time`
+	// (start plus 3 hours), `sales_end_time` (the session start, new
+	// sessions only), `venue_timezone` (the stored venue zone),
+	// `category_name`, `event_slug` (the public address of a new event)
+	// or `session_status` (draft, or scheduled with publish).
+	Name string `json:"name"`
+
+	// Value The value, as text; instants are RFC 3339 in the venue's zone.
+	Value string `json:"value"`
+}
+
+// ImportDryRunError One error an event-bundle dry run found (`?dry_run=true`): exactly the
+// error the import would answer, plus the bundle field it is about.
+type ImportDryRunError struct {
+	// Code The machine code the import's error envelope would carry.
+	Code string `json:"code"`
+
+	// Field RFC 6901 JSON pointer of the bundle field the error is about
+	// (`/categoryList/1/price`, `/channelIds/0`), or an empty string
+	// when the error concerns the bundle as a whole (for example
+	// `organization.contact_missing`).
+	Field string `json:"field"`
+
+	// Message Human-readable explanation, the same text the import would answer.
+	Message string `json:"message"`
+
+	// Status The HTTP status the import would answer with (404, 409 or 422).
+	Status int `json:"status"`
+}
+
+// ImportEventBundleDryRunResponse Answer of POST .../imports/event-bundle?dry_run=true (task 3-1). The
+// bundle was checked with the import's own code and NOTHING was
+// written: no catalog row, poster download, media object, audit event,
+// publication, feed token, session-change journal, letter job or
+// webhook. Errors that depend on earlier writes (a chain cycle through
+// stored links, a refused session move) are only looked for when every
+// other check passed, so they appear one at a time.
+type ImportEventBundleDryRunResponse struct {
+	// Defaults Values the import would fill in where the bundle is silent. Never null.
+	Defaults []ImportDryRunDefault `json:"defaults"`
+
+	// DryRun Always true; tells this answer apart from an import's.
+	DryRun bool `json:"dry_run"`
+
+	// Errors Every error found, in the order found; a field is reported once.
+	// Never null; empty when the bundle is valid.
+	Errors []ImportDryRunError `json:"errors"`
+
+	// EventId The existing event the bundle edits; null when the import would create one (or could not tell).
+	EventId *openapi_types.UUID `json:"event_id"`
+
+	// Normalized The bundle as the import reads it: strings trimmed, `source` and
+	// `externalRef` resolved, the currency upper-cased. Defaults are not
+	// filled in here; they are listed in `defaults`.
+	Normalized ImportEventBundleRequest `json:"normalized"`
+
+	// SessionId The existing session the bundle edits; null when the import would create one (or could not tell).
+	SessionId *openapi_types.UUID `json:"session_id"`
+
+	// Source The resolved source (`bil24` or `arena`); an empty string when the bundle's `source` is refused.
+	Source string `json:"source"`
+
+	// Valid True when `errors` is empty, i.e. the same bundle imported now would be accepted.
+	Valid bool `json:"valid"`
+
+	// Warnings The warnings the import would raise. Never null.
+	Warnings []ImportWarning `json:"warnings"`
+}
+
 // ImportEventBundleRequest defines model for ImportEventBundleRequest.
 type ImportEventBundleRequest struct {
 	// Action The Bil24 action (show/production) that becomes the arena event.
@@ -15135,6 +15211,15 @@ type CreateExternalAllocationJSONBody struct {
 // UpdateExternalAllocationJSONBody defines parameters for UpdateExternalAllocation.
 type UpdateExternalAllocationJSONBody struct {
 	Quantity *int `json:"quantity,omitempty"`
+}
+
+// ImportEventBundleParams defines parameters for ImportEventBundle.
+type ImportEventBundleParams struct {
+	// DryRun `true` checks the bundle and writes nothing (task 3-1); the answer
+	// is then always 200 with `ImportEventBundleDryRunResponse`, the
+	// bundle's errors inside it. Absent or `false` imports. Any other
+	// value is 400 `import.invalid_dry_run`.
+	DryRun *bool `form:"dry_run,omitempty" json:"dry_run,omitempty"`
 }
 
 // GrantOrganizationMembershipParams defines parameters for GrantOrganizationMembership.
