@@ -302,3 +302,81 @@ Arena не хранит IP-адрес и браузер (user agent) того, �
 - Названия событий в форме Brevo могут отличаться от списка в шаге 1.4a.
   Arena понимает все известные написания (request, unique_opened,
   loaded_by_proxy и другие).
+
+## 10. Отписка в транзакционных письмах
+
+Найдено 2026-10-15: владелец увидел «Unsubscribe» в письмах с билетами.
+
+**Откуда он берётся.** Не из Arena. В шаблонах (`delivery/templates`, 49 файлов,
+7 языков) и в сборке письма (`adapters/email/sender.go`) нет ни ссылки, ни
+заголовка `List-Unsubscribe`. Его добавляет сам релей Brevo. Справка Brevo
+говорит, что релей автоматически включает заголовок list-unsubscribe в
+рассылки и в транзакционные письма
+(https://help.brevo.com/hc/en-us/articles/19100260472850, страница отдала
+403, текст взят из выдачи поиска). Представитель Brevo ответил в сообществе
+10.06.2024: «Brevo automatically adds a list-unsubscribe header», его можно
+заменить заголовком list-help, но только на тарифе Enterprise
+(https://community.brevo.com/t/header-of-transactional-emails-with-no-unsubscribe-links-are-wrongly-still-unsubscribable/1251).
+Почтовые клиенты (Gmail, Apple Mail) показывают этот заголовок как кнопку
+«Отписаться» рядом с отправителем. Нажатие заносит адрес в список
+заблокированных транзакционных контактов Brevo, и дальше Brevo не доставляет
+этому адресу ничего: ни билеты, ни письма о возврате.
+
+**Что делает Arena.** Заголовок `List-Unsubscribe` не пишется, слов «отписаться»
+в письмах нет. Это закреплено тестами
+`TestBuildMIMEMessage_NoListUnsubscribeHeader` и
+`TestTransactionalTemplates_*NoUnsubscribe`. Свой `List-Unsubscribe` Arena
+добавлять не будет: документации о том, что Brevo уважает такой заголовок от
+отправителя по SMTP, нет, а подмена ссылкой Arena не защищает от блокировки.
+
+**Что не проверено.** Мы не видели сырое письмо с живого релея и не знаем
+точно, какой элемент видел владелец: заголовок (кнопка в Gmail) или нижняя
+строка, которую вставляет Brevo. Шаг 1 это выясняет.
+
+### Что сделать владельцу
+
+Все времена в тексте письма в Brevo и в журналах — по Мадриду.
+
+1. Откройте любое письмо с билетами в Gmail, нажмите три точки, затем
+   «Показать оригинал» (Show original). Найдите строки `List-Unsubscribe:` и
+   `List-Unsubscribe-Post:`. Если они есть, источник — релей Brevo. Пришлите
+   сырое письмо без вложений, это закроет пробел «не проверено».
+2. Напишите в поддержку Brevo (раздел Help, «Contact support»). Текст на
+   английском:
+
+   > Our SMTP relay account sends only transactional mail: tickets, order
+   > confirmations, refunds, triggered by the recipient's own purchase. It
+   > contains no promotional content. Please replace the List-Unsubscribe
+   > header with a List-Help header on our account, as described for
+   > Enterprise plans, or tell us which plan we need. A recipient who presses
+   > Unsubscribe is now blocked for all later transactional mail.
+
+   Ответ на тарифе ниже Enterprise, скорее всего, будет «только Enterprise».
+   Тогда решение — отдельный транзакционный провайдер или отдельный
+   аккаунт Brevo под билеты. Это решение владельца.
+3. Не включайте в Brevo автоматизацию «Email - Unsubscribed from emails →
+   Blocklist contact → all emails»: она расширяет блокировку на все каналы.
+4. Проверьте, кто уже отписался. В Brevo: Settings → Transactional → Blocked
+   or Unsubscribed contacts. Либо запросом (ключ API хранится в переменной
+   окружения, в команду его вписывать не нужно):
+
+   ```powershell
+   $env:BREVO_API_KEY = Read-Host "Brevo API key"
+   ```
+
+   ```powershell
+   Invoke-RestMethod -Uri "https://api.brevo.com/v3/smtp/blockedContacts?limit=100" -Headers @{ "api-key" = $env:BREVO_API_KEY }
+   ```
+
+5. Разблокировать можно только того, кто отписался по ошибке (нажал кнопку в
+   Gmail, а не потребовал прекратить письма). Brevo предупреждает, что
+   разблокировка человека, который просил прекратить рассылку, незаконна.
+   Запрос (почту подставьте в адрес):
+
+   ```powershell
+   Invoke-RestMethod -Method Delete -Uri "https://api.brevo.com/v3/smtp/blockedContacts/buyer%40example.com" -Headers @{ "api-key" = $env:BREVO_API_KEY }
+   ```
+
+   Ответ 204 значит «разблокирован», 404 — «в списке нет».
+6. После ответа поддержки напишите об этом в чат: Arena ничего менять не
+   нужно, но этот раздел надо обновить.
