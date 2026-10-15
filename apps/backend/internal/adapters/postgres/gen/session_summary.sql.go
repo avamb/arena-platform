@@ -137,6 +137,76 @@ func (q *Queries) ListEventSummarySessions(ctx context.Context, eventID uuid.UUI
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ListEventSummaryHeaders
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listEventSummaryHeaders = `-- name: ListEventSummaryHeaders :many
+SELECT e.id, e.org_id, e.name, e.status, e.first_session_at, e.last_session_at
+FROM   events e
+WHERE  e.id = ANY($1::uuid[])
+  AND  e.org_id = $2
+  AND  e.deleted_at IS NULL`
+
+// ListEventSummaryHeaders returns the given events that exist in the
+// organization. An id of another organization or an unknown one is absent
+// from the result, never an error.
+func (q *Queries) ListEventSummaryHeaders(ctx context.Context, eventIDs []uuid.UUID, orgID uuid.UUID) ([]EventSummaryHeaderRow, error) {
+	rows, err := q.db.Query(ctx, listEventSummaryHeaders, eventIDs, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EventSummaryHeaderRow
+	for rows.Next() {
+		var i EventSummaryHeaderRow
+		if err := rows.Scan(&i.ID, &i.OrgID, &i.Name, &i.Status, &i.FirstSessionAt, &i.LastSessionAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	return items, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListEventSummarySessionIDs
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listEventSummarySessionIDs = `-- name: ListEventSummarySessionIDs :many
+SELECT s.event_id, s.id
+FROM   sessions s
+JOIN   events   e ON e.id = s.event_id
+WHERE  s.event_id = ANY($1::uuid[])
+  AND  e.org_id = $2
+  AND  e.deleted_at IS NULL
+  AND  s.deleted_at IS NULL
+ORDER  BY s.event_id, s.start_at, s.id`
+
+// EventSummarySessionIDRow ties a session to its event.
+type EventSummarySessionIDRow struct {
+	EventID   uuid.UUID `json:"event_id"`
+	SessionID uuid.UUID `json:"session_id"`
+}
+
+// ListEventSummarySessionIDs returns the non-deleted sessions of a batch of
+// events of the organization, cancelled ones included.
+func (q *Queries) ListEventSummarySessionIDs(ctx context.Context, eventIDs []uuid.UUID, orgID uuid.UUID) ([]EventSummarySessionIDRow, error) {
+	rows, err := q.db.Query(ctx, listEventSummarySessionIDs, eventIDs, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EventSummarySessionIDRow
+	for rows.Next() {
+		var i EventSummarySessionIDRow
+		if err := rows.Scan(&i.EventID, &i.SessionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	return items, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListSessionSummaryPlaces
 // ─────────────────────────────────────────────────────────────────────────────
 
