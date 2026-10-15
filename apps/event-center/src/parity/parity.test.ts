@@ -108,7 +108,7 @@ describe("parity matrix", () => {
     const row = PARITY.find((r) => r.area === "Данные организации");
     expect(row).toBeDefined();
     expect(row?.web).toBe("R3");
-    expect(row?.ready).toBeUndefined(); // planned: stage 4, task 4-7
+    expect(row?.ready?.twin).toBe("live/org-data.spec.ts"); // done: stage 4, task 4-7
     expect(row?.routes).toEqual(
       expect.arrayContaining([
         "GET /v1/organizations/{org_id}/seller-profile",

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // FailureSendFailed is the failure_event of a ticket letter the relay never
@@ -112,6 +113,90 @@ func (v LetterView) NeedsAttention() bool {
 	return v.Status == StatusFailed || v.Stuck
 }
 
+// ticketLetterGroups collects the ticket letters of ONE order or ONE
+// invitation batch: one entry per sent letter, one for the tickets still
+// queued, one for those the relay refused, one for tickets sent before
+// letters were recorded. kind is the kind of the entries that have no
+// email_letters row (ticket for an order, invitation for an issuance).
+type ticketLetterGroups struct {
+	kind   string
+	out    []LetterView
+	groups map[string]int
+}
+
+func newTicketLetterGroups(kind string) *ticketLetterGroups {
+	return &ticketLetterGroups{kind: kind, out: []LetterView{}, groups: map[string]int{}}
+}
+
+func (g *ticketLetterGroups) add(key string, v LetterView, ticketID uuid.UUID) *LetterView {
+	i, ok := g.groups[key]
+	if !ok {
+		g.out = append(g.out, v)
+		i = len(g.out) - 1
+		g.groups[key] = i
+	}
+	g.out[i].TicketIDs = append(g.out[i].TicketIDs, ticketID.String())
+	return &g.out[i]
+}
+
+// ticketLetterRow is one row of orderTicketLettersSQL.
+type ticketLetterRow struct {
+	ticketID       uuid.UUID
+	jobStatus, rcp string
+	queuedAt       time.Time
+	jobSentAt      *time.Time
+	lastError      *string
+	lid            *uuid.UUID
+	lKind, lRcp    *string
+	lStatus        *string
+	lSent          *time.Time
+	lr             letterRow
+}
+
+// scanTicketLetterRow scans the columns orderTicketLettersSQL selects, after
+// any leading columns the caller names in lead.
+func scanTicketLetterRow(rows pgx.Rows, lead ...any) (ticketLetterRow, error) {
+	var r ticketLetterRow
+	dest := append(lead, &r.ticketID, &r.jobStatus, &r.rcp, &r.queuedAt, &r.jobSentAt, &r.lastError,
+		&r.lid, &r.lKind, &r.lRcp, &r.lStatus, &r.lSent, &r.lr.DeliveredAt, &r.lr.ProxyOpenedAt, &r.lr.OpenedAt,
+		&r.lr.FailedAt, &r.lr.FailureEvent, &r.lr.FailureReason, &r.lr.ClickedAt, &r.lr.DeferredAt, &r.lr.Stuck)
+	return r, rows.Scan(dest...)
+}
+
+func (g *ticketLetterGroups) addRow(r ticketLetterRow) {
+	ticketID, jobStatus, rcp, queuedAt, jobSentAt, lastError := r.ticketID, r.jobStatus, r.rcp, r.queuedAt, r.jobSentAt, r.lastError
+	lid, lKind, lRcp, lStatus, lSent, lr := r.lid, r.lKind, r.lRcp, r.lStatus, r.lSent, r.lr
+	switch jobStatus {
+	case "pending", "processing":
+		v := g.add("queued|"+rcp, LetterView{Kind: g.kind, Status: StatusQueued, Recipient: rcp, TicketIDs: []string{}}, ticketID)
+		// RFC 3339 UTC strings of one layout compare in time order.
+		if q := ts(&queuedAt); v.QueuedAt == nil || (q != nil && *q < *v.QueuedAt) {
+			v.QueuedAt = q
+		}
+	case "failed":
+		ev := FailureSendFailed
+		v := LetterView{Kind: g.kind, Status: StatusFailed, Recipient: rcp, TicketIDs: []string{},
+			QueuedAt: ts(&queuedAt), FailureEvent: &ev}
+		if lastError != nil && *lastError != "" {
+			r := ScrubReason(*lastError)
+			v.FailureReason = &r
+		}
+		g.add("failed|"+rcp, v, ticketID)
+	case "sent":
+		if lid == nil {
+			g.add("legacy|"+rcp, LetterView{Kind: g.kind, Status: StatusSent, Recipient: rcp,
+				TicketIDs: []string{}, SentAt: ts(jobSentAt)}, ticketID)
+			return
+		}
+		lr.ID, lr.Kind, lr.Recipient, lr.Status = *lid, deref(lKind), deref(lRcp), deref(lStatus)
+		if lSent != nil {
+			lr.SentAt = *lSent
+		}
+		g.add("letter|"+lid.String(), lr.view(), ticketID)
+	}
+	// skipped / disabled jobs never became a letter: nothing to show.
+}
+
 // OrderLetters assembles the order's letters: its ticket letters (grouped
 // the way they went out: one entry per sent letter, one for the tickets still
 // queued, one for those the relay refused, one for tickets sent before
@@ -119,77 +204,27 @@ func (v LetterView) NeedsAttention() bool {
 //
 // A ticket letter replaced by a resend stays in email_letters as evidence
 // but is not listed: the card shows the letter each ticket was last sent in.
-// Invitation letters have no order and are never listed here.
+// Invitation letters have no order and are never listed here; see
+// InvitationLetters.
 func OrderLetters(ctx context.Context, db DB, orderID uuid.UUID) ([]LetterView, error) {
-	out := []LetterView{}
 	rows, err := db.Query(ctx, orderTicketLettersSQL, orderID)
 	if err != nil {
 		return nil, err
 	}
-	groups := map[string]int{}
-	add := func(key string, v LetterView, ticketID uuid.UUID) *LetterView {
-		i, ok := groups[key]
-		if !ok {
-			out = append(out, v)
-			i = len(out) - 1
-			groups[key] = i
-		}
-		out[i].TicketIDs = append(out[i].TicketIDs, ticketID.String())
-		return &out[i]
-	}
+	g := newTicketLetterGroups(KindTicket)
 	for rows.Next() {
-		var (
-			ticketID       uuid.UUID
-			jobStatus, rcp string
-			queuedAt       time.Time
-			jobSentAt      *time.Time
-			lastError      *string
-			lid            *uuid.UUID
-			lKind, lRcp    *string
-			lStatus        *string
-			lSent          *time.Time
-			lr             letterRow
-		)
-		if err := rows.Scan(&ticketID, &jobStatus, &rcp, &queuedAt, &jobSentAt, &lastError,
-			&lid, &lKind, &lRcp, &lStatus, &lSent, &lr.DeliveredAt, &lr.ProxyOpenedAt, &lr.OpenedAt,
-			&lr.FailedAt, &lr.FailureEvent, &lr.FailureReason, &lr.ClickedAt, &lr.DeferredAt, &lr.Stuck); err != nil {
+		r, err := scanTicketLetterRow(rows)
+		if err != nil {
 			rows.Close()
 			return nil, err
 		}
-		switch jobStatus {
-		case "pending", "processing":
-			g := add("queued|"+rcp, LetterView{Kind: KindTicket, Status: StatusQueued, Recipient: rcp, TicketIDs: []string{}}, ticketID)
-			// RFC 3339 UTC strings of one layout compare in time order.
-			if q := ts(&queuedAt); g.QueuedAt == nil || (q != nil && *q < *g.QueuedAt) {
-				g.QueuedAt = q
-			}
-		case "failed":
-			ev := FailureSendFailed
-			v := LetterView{Kind: KindTicket, Status: StatusFailed, Recipient: rcp, TicketIDs: []string{},
-				QueuedAt: ts(&queuedAt), FailureEvent: &ev}
-			if lastError != nil && *lastError != "" {
-				r := ScrubReason(*lastError)
-				v.FailureReason = &r
-			}
-			add("failed|"+rcp, v, ticketID)
-		case "sent":
-			if lid == nil {
-				add("legacy|"+rcp, LetterView{Kind: KindTicket, Status: StatusSent, Recipient: rcp,
-					TicketIDs: []string{}, SentAt: ts(jobSentAt)}, ticketID)
-				continue
-			}
-			lr.ID, lr.Kind, lr.Recipient, lr.Status = *lid, deref(lKind), deref(lRcp), deref(lStatus)
-			if lSent != nil {
-				lr.SentAt = *lSent
-			}
-			add("letter|"+lid.String(), lr.view(), ticketID)
-		}
-		// skipped / disabled jobs never became a letter: nothing to show.
+		g.addRow(r)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	out := g.out
 
 	rows, err = db.Query(ctx, orderOtherLettersSQL, orderID)
 	if err != nil {
@@ -269,4 +304,57 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// invitationLettersSQL lists the tickets of the given complimentary
+// issuances with their delivery job and the letter that job was last sent
+// in. Same columns as orderTicketLettersSQL, after the issuance id.
+const invitationLettersSQL = `
+SELECT t.complimentary_issuance_id, t.id, dj.status, COALESCE(dj.recipient_email, t.holder_email, ''), dj.queued_at, dj.sent_at, dj.last_error,
+       l.id, l.kind, l.recipient, l.status, l.sent_at, l.delivered_at, l.proxy_opened_at, l.opened_at,
+       l.failed_at, l.failure_event, l.failure_reason, l.clicked_at, l.deferred_at, ` + stuckExpr + `
+FROM   tickets t
+JOIN   delivery_jobs dj ON dj.ticket_id = t.id
+LEFT JOIN email_letters l ON l.id = dj.email_letter_id
+WHERE  t.complimentary_issuance_id = ANY($1::uuid[])
+ORDER  BY t.complimentary_issuance_id, t.system_ticket_id`
+
+// InvitationLetters reads, for each of the given complimentary issuances,
+// the delivery status of the letters its tickets were sent in. An invitation
+// has no order: the letter is found through the ticket's delivery job
+// (delivery_jobs.ticket_id -> email_letter_id), the same link the order card
+// follows. Entries are grouped like OrderLetters' ticket letters; the kind of
+// a letter that has not been accepted yet is "invitation". An issuance with
+// no delivery job (or only skipped ones) maps to an empty list.
+func InvitationLetters(ctx context.Context, db DB, issuanceIDs []uuid.UUID) (map[uuid.UUID][]LetterView, error) {
+	out := map[uuid.UUID][]LetterView{}
+	if len(issuanceIDs) == 0 {
+		return out, nil
+	}
+	rows, err := db.Query(ctx, invitationLettersSQL, issuanceIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	groups := map[uuid.UUID]*ticketLetterGroups{}
+	for rows.Next() {
+		var issuanceID uuid.UUID
+		r, err := scanTicketLetterRow(rows, &issuanceID)
+		if err != nil {
+			return nil, err
+		}
+		g, ok := groups[issuanceID]
+		if !ok {
+			g = newTicketLetterGroups(KindInvitation)
+			groups[issuanceID] = g
+		}
+		g.addRow(r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for id, g := range groups {
+		out[id] = g.out
+	}
+	return out, nil
 }

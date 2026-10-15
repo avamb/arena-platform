@@ -97,9 +97,6 @@ SELECT EXISTS (
            WHERE  l.user_id = $1 AND g.org_id = $2
        );
 
--- name: CountActiveOrgAdmins :one
-SELECT count(*) FROM memberships WHERE org_id = $1 AND role = 'org_admin' AND status = 'active';
-
 -- name: ResendBotInvitation :one
 -- A fresh code and expiry for a not-yet-accepted, not-revoked invitation, only
 -- when the last letter went out at least $5 seconds ago (one statement, so two

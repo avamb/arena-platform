@@ -127,6 +127,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Заметка «оплата не подключена»",
     bot: "payments.go",
     web: "R3",
+    // 4-7
+    ready: { twin: "live/org-data.spec.ts" },
     routes: [`GET ${O}/payment-configs`],
   },
   // ── Мероприятия ─────────────────────────────────────────────────────
@@ -406,6 +408,7 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Выдача пригласительных",
     bot: "invite.go, `iv:i`",
     web: "R3",
+    ready: { twin: "live/invitations.spec.ts" },
     routes: [`POST ${O}/complimentary`],
   },
   {
@@ -413,7 +416,9 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Список и аннулирование",
     bot: "invite_list.go, `iv:l`, `iv:rv` (слово)",
     web: "R3",
+    ready: { twin: "live/invitations.spec.ts" },
     routes: [`GET ${O}/complimentary`, "POST /v1/complimentary/{id}/revoke"],
+    note: "Статус письма гостя (`letters[]`) идёт через билет пригласительного, у пригласительного нет заказа.",
   },
   // ── Команда ─────────────────────────────────────────────────────────
   {
@@ -448,9 +453,13 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Данные организации, блок продавца и контакт на странице продаж",
     bot: "org_data.go, `og:` (владелец и оператор платформы)",
     web: "R3",
+    // 4-7
+    ready: { twin: "live/org-data.spec.ts" },
     routes: [
       `GET ${O}/seller-profile`,
+      `PATCH ${O}/seller-profile`,
       `PATCH ${O}/channels/{channel_id}/seller-display`,
+      "GET /v1/organizations/{id}",
       "PATCH /v1/organizations/{id}",
       `GET ${O}/me`,
     ],

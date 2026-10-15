@@ -677,6 +677,7 @@ const (
 	Agent                     RevokeMembershipRequestRole = "agent"
 	ExternalTicketingOperator RevokeMembershipRequestRole = "external_ticketing_operator"
 	NetworkOperator           RevokeMembershipRequestRole = "network_operator"
+	OrgAdmin                  RevokeMembershipRequestRole = "org_admin"
 	Organizer                 RevokeMembershipRequestRole = "organizer"
 	PlatformOperator          RevokeMembershipRequestRole = "platform_operator"
 	PlatformSuperadmin        RevokeMembershipRequestRole = "platform_superadmin"
@@ -988,6 +989,15 @@ const (
 	ReviewReconciliationReportJSONBodyDecisionApproved ReviewReconciliationReportJSONBodyDecision = "approved"
 	ReviewReconciliationReportJSONBodyDecisionDisputed ReviewReconciliationReportJSONBodyDecision = "disputed"
 )
+
+// AddEventReportPhotoRequest Body of POST .../events/{event_id}/photo-report.
+type AddEventReportPhotoRequest struct {
+	// Caption Optional caption, up to 200 characters; blank means none.
+	Caption *string `json:"caption"`
+
+	// MediaId An active media object of the same organization with owner type `event_report` (422 `event.invalid_report_media` otherwise).
+	MediaId openapi_types.UUID `json:"media_id"`
+}
 
 // AdminAddMemberRequest Request body for POST /v1/admin/organizations/{org_id}/members
 // (feature #234). Exactly one of user_id and email must be supplied.
@@ -4094,6 +4104,9 @@ type ComplimentaryCreateResponse struct {
 	// Issuance The issuance row (id, org_id, session_id, tier_id, qty, recipients, batch_id, status, issued_by, notes, created_at, updated_at).
 	Issuance map[string]interface{} `json:"issuance"`
 
+	// Letters The invitation letters of the issuance with their delivery status, as in the invitations list. Right after the issue the letters are queued (or empty while no delivery job exists).
+	Letters []OrderLetter `json:"letters"`
+
 	// Tickets The tickets of the issuance with their numbers and holders.
 	Tickets []map[string]interface{} `json:"tickets"`
 }
@@ -4144,8 +4157,8 @@ type ComplimentaryIssuance struct {
 type ComplimentaryIssuanceStatus string
 
 // ComplimentaryListItem One complimentary issuance in the paged list: the issuance row with
-// the event, date and category it is for, its tickets and a derived
-// state.
+// the event, date and category it is for, its tickets, the letters the
+// guests were sent and a derived state.
 type ComplimentaryListItem struct {
 	// BatchId Idempotency key the issuance was created under.
 	BatchId string `json:"batch_id"`
@@ -4164,6 +4177,14 @@ type ComplimentaryListItem struct {
 
 	// IssuedBy Free-text label of who issued it, when given.
 	IssuedBy *string `json:"issued_by"`
+
+	// Letters The invitation letters of the issuance with their delivery status
+	// (same shape as the letters of an order card). An invitation has
+	// no order: the letters are found through the tickets' delivery
+	// jobs. One entry per sent letter, one for tickets still queued,
+	// one for those the mail relay refused, one for tickets sent before
+	// letters were recorded. Empty while nothing was queued yet.
+	Letters []OrderLetter `json:"letters"`
 
 	// Notes Internal note, when given.
 	Notes *string `json:"notes"`
@@ -4488,6 +4509,15 @@ type CreateCustomerImportRequestLegalBasis string
 
 // CreateCustomerImportRequestSourceLabel Source format of the uploaded file, selecting the parser used by dry-run/apply.
 type CreateCustomerImportRequestSourceLabel string
+
+// CreateEventPartnerLinkRequest Body of POST .../events/{event_id}/partner-links.
+type CreateEventPartnerLinkRequest struct {
+	// SellerName Who sells there, 1 to 120 characters. Absent, null or blank means the host of the address without a leading `www.`.
+	SellerName *string `json:"seller_name"`
+
+	// Url A full https address without spaces (400 `event.invalid_partner_url`), up to 500 characters.
+	Url string `json:"url"`
+}
 
 // CreateEventRequest Create-time payload for POST /v1/organizations/{org_id}/events.
 // The owning organization is taken from the path; the body MUST NOT
@@ -5804,6 +5834,60 @@ type EventEnvelope struct {
 	Event EventItem `json:"event"`
 }
 
+// EventGalleryAddRequest Body of POST .../media-items.
+type EventGalleryAddRequest struct {
+	// Caption Optional caption, up to 200 characters; blank means none.
+	Caption *string `json:"caption"`
+
+	// MediaId UUIDv7 of a live media object of this organization with owner type `event_gallery`.
+	MediaId openapi_types.UUID `json:"media_id"`
+}
+
+// EventGalleryCaptionRequest Body of PATCH .../media-items/{item_id}.
+type EventGalleryCaptionRequest struct {
+	// Caption The new caption, up to 200 characters. Null or a blank string clears it.
+	Caption *string `json:"caption"`
+}
+
+// EventGalleryItem One photo of an event's gallery.
+type EventGalleryItem struct {
+	// Caption Caption shown under the photo, up to 200 characters; null when there is none.
+	Caption *string `json:"caption"`
+
+	// CreatedAt ISO-8601 UTC timestamp of creation.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Id UUIDv7 of the gallery entry.
+	Id openapi_types.UUID `json:"id"`
+
+	// MediaId UUIDv7 of the media object (owner type `event_gallery`) that holds the picture.
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Position Display position, 0-based. Positions are always 0..n-1 without gaps.
+	Position int `json:"position"`
+
+	// UpdatedAt ISO-8601 UTC timestamp of the last change.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// EventGalleryList The gallery photos of an event in display order.
+type EventGalleryList struct {
+	// Items The photos, first to last.
+	Items []EventGalleryItem `json:"items"`
+
+	// MaxItems The most photos one event may carry (6).
+	MaxItems int `json:"max_items"`
+}
+
+// EventGalleryOrderRequest Body of PUT .../media-items/order.
+type EventGalleryOrderRequest struct {
+	// ItemIds Every gallery entry id of the event exactly once, in the new display order.
+	ItemIds []openapi_types.UUID `json:"item_ids"`
+}
+
 // EventItem A single event organized by one organization. Since Wave 4
 // (AB-36/AB-37) the event carries no venue and no own dates — both
 // belong to its sessions. `first_session_at` / `last_session_at`
@@ -5968,6 +6052,66 @@ type EventListResponse struct {
 	Events []EventItem `json:"events"`
 }
 
+// EventMapPoint The one map point of an event.
+type EventMapPoint struct {
+	// CreatedAt When the point was first set.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Label Optional text shown with the point, up to 200 characters.
+	Label *string `json:"label"`
+
+	// Latitude Latitude in degrees, -90 to 90, six decimals kept.
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in degrees, -180 to 180, six decimals kept.
+	Longitude float64 `json:"longitude"`
+
+	// UpdatedAt When the point was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// EventPartnerLink One "where else to buy" link of an event.
+type EventPartnerLink struct {
+	// CreatedAt When the link was added.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event the link belongs to.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Id UUIDv7 of the link.
+	Id openapi_types.UUID `json:"id"`
+
+	// Position Display order, 0 to 2.
+	Position int `json:"position"`
+
+	// SellerName Who sells there; shown beside the link so the buyer knows. The host of the address unless the client named a seller.
+	SellerName string `json:"seller_name"`
+
+	// UpdatedAt When the link was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Url The seller's page for this event; always an https address.
+	Url string `json:"url"`
+}
+
+// EventPartnerLinkList The partner links of an event in display order.
+type EventPartnerLinkList struct {
+	// Items The links, first to last.
+	Items []EventPartnerLink `json:"items"`
+
+	// MaxItems The most links one event may carry (3).
+	MaxItems int `json:"max_items"`
+}
+
+// EventPartnerLinkOrderRequest Body of PUT .../partner-links/order.
+type EventPartnerLinkOrderRequest struct {
+	// LinkIds Every partner link id of the event exactly once, in the new display order.
+	LinkIds []openapi_types.UUID `json:"link_ids"`
+}
+
 // EventPromoterResponse The promoter of an event after PUT .../events/{id}/promoter.
 type EventPromoterResponse struct {
 	// EventId The event.
@@ -6013,6 +6157,45 @@ type EventPublicationListResponse struct {
 	// Publications Zero or more publication rows for the event. May be
 	// empty when the event has not yet been published.
 	Publications []EventPublication `json:"publications"`
+}
+
+// EventReportPhoto One photo of an event's photo report.
+type EventReportPhoto struct {
+	// Caption Optional caption, up to 200 characters.
+	Caption *string `json:"caption"`
+
+	// CreatedAt When the photo was added.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Id UUIDv7 of the report entry.
+	Id openapi_types.UUID `json:"id"`
+
+	// MediaId UUIDv7 of the media object holding the picture (`GET /v1/media/{id}` signs a download address).
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Position Display order, 0 to 29.
+	Position int `json:"position"`
+
+	// UpdatedAt When the photo was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// EventReportPhotoList The photo report of an event in display order.
+type EventReportPhotoList struct {
+	// Items The photos, first to last.
+	Items []EventReportPhoto `json:"items"`
+
+	// MaxItems The most photos one report may carry (30).
+	MaxItems int `json:"max_items"`
+}
+
+// EventReportPhotoOrderRequest Body of PUT .../photo-report/order.
+type EventReportPhotoOrderRequest struct {
+	// PhotoIds Every photo id of the report exactly once, in the new display order.
+	PhotoIds []openapi_types.UUID `json:"photo_ids"`
 }
 
 // EventSalesSummary The top level of EventSummary for one event, without the per-category
@@ -6256,6 +6439,54 @@ type EventTranslations map[string]struct {
 
 	// Name Translated event name for this locale.
 	Name *string `json:"name,omitempty"`
+}
+
+// EventVideo One video link of an event. Only the link is stored, never the video.
+type EventVideo struct {
+	// CreatedAt ISO-8601 UTC timestamp of creation.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Id UUIDv7 of the video entry.
+	Id openapi_types.UUID `json:"id"`
+
+	// Position Display position, 0-based. Positions are always 0..n-1 without gaps.
+	Position int `json:"position"`
+
+	// Provider One of `youtube`, `vimeo`, `rutube` (recognized, embeddable) or `https` (any other link, shown as a plain link).
+	Provider string `json:"provider"`
+
+	// UpdatedAt ISO-8601 UTC timestamp of the last change.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Url The link as pasted (trimmed), always https, up to 500 characters.
+	Url string `json:"url"`
+
+	// VideoId The id parsed out of the link; null for provider `https`.
+	VideoId *string `json:"video_id"`
+}
+
+// EventVideoAddRequest Body of POST .../videos.
+type EventVideoAddRequest struct {
+	// Url The video link, https only, no blanks, up to 500 characters.
+	Url string `json:"url"`
+}
+
+// EventVideoList The video links of an event in display order.
+type EventVideoList struct {
+	// Items The videos, first to last.
+	Items []EventVideo `json:"items"`
+
+	// MaxItems The most videos one event may carry (4).
+	MaxItems int `json:"max_items"`
+}
+
+// EventVideoOrderRequest Body of PUT .../videos/order.
+type EventVideoOrderRequest struct {
+	// VideoIds Every video id of the event exactly once, in the new display order.
+	VideoIds []openapi_types.UUID `json:"video_ids"`
 }
 
 // ExternalAllocation A quota of seats pre-allocated to an external distribution partner
@@ -9064,7 +9295,7 @@ type OrderLetter struct {
 	// Id Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
 	Id *openapi_types.UUID `json:"id"`
 
-	// Kind ticket, change, cancel or refund. Invitation letters have no order and are not listed on an order.
+	// Kind ticket, change, cancel or refund on an order; invitation for the letter of a complimentary issuance (read through the invitations list, which has no order).
 	Kind string `json:"kind"`
 
 	// OpenedAt When Brevo first reported an open.
@@ -11650,11 +11881,11 @@ type ResolveOrderRefundRequest struct {
 // must be supplied because a user may hold multiple roles in the
 // same organization.
 type RevokeMembershipRequest struct {
-	// Role The specific role binding to revoke.
+	// Role The specific role binding to revoke. org_admin is the organization owner; the last active owner cannot be revoked (409 `membership.last_owner`).
 	Role RevokeMembershipRequestRole `json:"role"`
 }
 
-// RevokeMembershipRequestRole The specific role binding to revoke.
+// RevokeMembershipRequestRole The specific role binding to revoke. org_admin is the organization owner; the last active owner cannot be revoked (409 `membership.last_owner`).
 type RevokeMembershipRequestRole string
 
 // ScanRequest Request body for `POST /v1/scan`. The scan flow resolves the
@@ -12894,6 +13125,18 @@ type SetEventContactRequest struct {
 	PhoneHidden *bool `json:"phone_hidden,omitempty"`
 }
 
+// SetEventMapPointRequest Body of PUT .../events/{event_id}/map-point; replaces the point as a whole.
+type SetEventMapPointRequest struct {
+	// Label Optional text shown with the point, up to 200 characters; absent, null or blank clears it.
+	Label *string `json:"label"`
+
+	// Latitude Latitude in degrees, -90 to 90 (400 `event.invalid_map_point`).
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in degrees, -180 to 180 (400 `event.invalid_map_point`).
+	Longitude float64 `json:"longitude"`
+}
+
 // SetEventPromoterRequest Body of PUT /v1/organizations/{org_id}/events/{id}/promoter.
 type SetEventPromoterRequest struct {
 	// PromoterId An active promoter of the organization, or null (or absent) to
@@ -13617,6 +13860,21 @@ type UpdateChannelRequestPaymentMode string
 // registered payment module, otherwise 400
 // `channel.invalid_config`.
 type UpdateChannelRequestProvider string
+
+// UpdateEventPartnerLinkRequest Body of PATCH .../partner-links/{link_id}. At least one member is required; an absent member keeps its stored value.
+type UpdateEventPartnerLinkRequest struct {
+	// SellerName A new seller name, 1 to 120 characters. Blank keeps the current name (or, when the address changed and the name was derived from the old one, derives it again).
+	SellerName *string `json:"seller_name,omitempty"`
+
+	// Url A new https address (400 `event.invalid_partner_url`).
+	Url *string `json:"url,omitempty"`
+}
+
+// UpdateEventReportPhotoRequest Body of PATCH .../photo-report/{photo_id}.
+type UpdateEventReportPhotoRequest struct {
+	// Caption The new caption, up to 200 characters; null or blank removes it.
+	Caption *string `json:"caption"`
+}
 
 // UpdateEventRequest Partial update for PATCH /v1/organizations/{org_id}/events/{id}.
 // All fields are optional; omitted (or empty) fields leave the
@@ -15914,6 +16172,36 @@ type CreateEventJSONRequestBody = CreateEventRequest
 // SetEventContactJSONRequestBody defines body for SetEventContact for application/json ContentType.
 type SetEventContactJSONRequestBody = SetEventContactRequest
 
+// SetEventMapPointJSONRequestBody defines body for SetEventMapPoint for application/json ContentType.
+type SetEventMapPointJSONRequestBody = SetEventMapPointRequest
+
+// AddEventGalleryItemJSONRequestBody defines body for AddEventGalleryItem for application/json ContentType.
+type AddEventGalleryItemJSONRequestBody = EventGalleryAddRequest
+
+// ReorderEventGalleryJSONRequestBody defines body for ReorderEventGallery for application/json ContentType.
+type ReorderEventGalleryJSONRequestBody = EventGalleryOrderRequest
+
+// UpdateEventGalleryItemJSONRequestBody defines body for UpdateEventGalleryItem for application/json ContentType.
+type UpdateEventGalleryItemJSONRequestBody = EventGalleryCaptionRequest
+
+// CreateEventPartnerLinkJSONRequestBody defines body for CreateEventPartnerLink for application/json ContentType.
+type CreateEventPartnerLinkJSONRequestBody = CreateEventPartnerLinkRequest
+
+// ReorderEventPartnerLinksJSONRequestBody defines body for ReorderEventPartnerLinks for application/json ContentType.
+type ReorderEventPartnerLinksJSONRequestBody = EventPartnerLinkOrderRequest
+
+// UpdateEventPartnerLinkJSONRequestBody defines body for UpdateEventPartnerLink for application/json ContentType.
+type UpdateEventPartnerLinkJSONRequestBody = UpdateEventPartnerLinkRequest
+
+// AddEventReportPhotoJSONRequestBody defines body for AddEventReportPhoto for application/json ContentType.
+type AddEventReportPhotoJSONRequestBody = AddEventReportPhotoRequest
+
+// ReorderEventReportPhotosJSONRequestBody defines body for ReorderEventReportPhotos for application/json ContentType.
+type ReorderEventReportPhotosJSONRequestBody = EventReportPhotoOrderRequest
+
+// UpdateEventReportPhotoJSONRequestBody defines body for UpdateEventReportPhoto for application/json ContentType.
+type UpdateEventReportPhotoJSONRequestBody = UpdateEventReportPhotoRequest
+
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = CreateSessionRequest
 
@@ -15952,6 +16240,12 @@ type UpdateTicketTierJSONRequestBody = UpdateTicketTierRequest
 
 // PutTierPriceScheduleJSONRequestBody defines body for PutTierPriceSchedule for application/json ContentType.
 type PutTierPriceScheduleJSONRequestBody = PutTierPriceScheduleRequest
+
+// AddEventVideoJSONRequestBody defines body for AddEventVideo for application/json ContentType.
+type AddEventVideoJSONRequestBody = EventVideoAddRequest
+
+// ReorderEventVideosJSONRequestBody defines body for ReorderEventVideos for application/json ContentType.
+type ReorderEventVideosJSONRequestBody = EventVideoOrderRequest
 
 // UpdateEventJSONRequestBody defines body for UpdateEvent for application/json ContentType.
 type UpdateEventJSONRequestBody = UpdateEventRequest
