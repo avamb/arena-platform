@@ -369,3 +369,44 @@ func TestCreateCheckoutSession_LiveConfigSendsTestModeZero(t *testing.T) {
 		t.Errorf("test_mode = %q; a live config must send 0", got)
 	}
 }
+
+// A buyer detail the request does not carry must not appear in the body at
+// all (not as ""/null): AllPay's signature skips empty values, but an empty
+// client_phone would still reach the page as a blank pre-fill, and a present
+// one must be signed. The stub refuses a request whose sign does not verify,
+// so every case below also proves the sign covers exactly what was sent.
+func TestCreateCheckoutSession_BuyerDetailsPresenceFollowsTheRequest(t *testing.T) {
+	cases := []struct {
+		name                string
+		buyerName, phone    string
+		wantName, wantPhone bool
+	}{
+		{"both", "Ana García", "+34 600 111 222", true, true},
+		{"name only", "Ana García", "", true, false},
+		{"phone only", "", "+34 600 111 222", false, true},
+		{"neither", "", "", false, false},
+		{"blank", "  ", "\t", false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := newStubAllPay(t, "pp100", "KEY")
+			a := newTestAdapter(stub, Config{})
+			if _, err := a.CreateCheckoutSession(t.Context(), payments.CreateHostedCheckoutRequest{
+				Amount: 5000, Currency: "ILS", ClientReferenceID: "o-presence",
+				CustomerName: tc.buyerName, CustomerPhone: tc.phone,
+			}); err != nil {
+				t.Fatalf("CreateCheckoutSession: %v", err)
+			}
+			b := stub.last(t).Body
+			if _, ok := b["client_name"]; ok != tc.wantName {
+				t.Errorf("client_name present = %v; want %v", ok, tc.wantName)
+			}
+			if _, ok := b["client_phone"]; ok != tc.wantPhone {
+				t.Errorf("client_phone present = %v; want %v", ok, tc.wantPhone)
+			}
+			if _, ok := b["client_tehudat"]; ok && !tc.wantPhone {
+				t.Error("client_tehudat must not be sent without a phone")
+			}
+		})
+	}
+}
