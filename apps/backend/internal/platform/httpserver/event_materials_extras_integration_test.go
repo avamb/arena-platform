@@ -78,7 +78,7 @@ func matJSON(t *testing.T, body string) map[string]any {
 
 func matLinks(t *testing.T, body string) []map[string]any {
 	t.Helper()
-	raw, _ := matJSON(t, body)["partner_links"].([]any)
+	raw, _ := matJSON(t, body)["items"].([]any)
 	out := make([]map[string]any, 0, len(raw))
 	for _, v := range raw {
 		out = append(out, v.(map[string]any))
@@ -88,7 +88,7 @@ func matLinks(t *testing.T, body string) []map[string]any {
 
 func matPhotos(t *testing.T, body string) []map[string]any {
 	t.Helper()
-	raw, _ := matJSON(t, body)["photos"].([]any)
+	raw, _ := matJSON(t, body)["items"].([]any)
 	out := make([]map[string]any, 0, len(raw))
 	for _, v := range raw {
 		out = append(out, v.(map[string]any))
@@ -106,7 +106,7 @@ func TestEventMaterialsExtras_PartnerLinks(t *testing.T) {
 	if st != http.StatusCreated {
 		t.Fatalf("create: %d %s", st, out)
 	}
-	first := matJSON(t, out)["partner_link"].(map[string]any)
+	first := matJSON(t, out)
 	if first["seller_name"] != "ticketportal.cz" || first["position"].(float64) != 0 {
 		t.Errorf("first link = %v", first)
 	}
@@ -135,7 +135,7 @@ func TestEventMaterialsExtras_PartnerLinks(t *testing.T) {
 	if st != http.StatusCreated {
 		t.Fatalf("third: %d %s", st, out)
 	}
-	third := matJSON(t, out)["partner_link"].(map[string]any)
+	third := matJSON(t, out)
 
 	// The fourth link is refused.
 	if st, out := post(`{"url":"https://fourth.example.com/e/4"}`); st != http.StatusConflict || sec1Code(out) != "event.partner_links_full" {
@@ -153,11 +153,11 @@ func TestEventMaterialsExtras_PartnerLinks(t *testing.T) {
 	one := base + "/" + links[0]["id"].(string)
 	two := base + "/" + links[1]["id"].(string)
 	st, out = m.do(t, http.MethodPatch, one, m.ownerTok, "", `{"url":"https://www.ticketmaster.cz/e/9"}`)
-	if st != http.StatusOK || matJSON(t, out)["partner_link"].(map[string]any)["seller_name"] != "ticketmaster.cz" {
+	if st != http.StatusOK || matJSON(t, out)["seller_name"] != "ticketmaster.cz" {
 		t.Errorf("patch url, derived seller: %d %s", st, out)
 	}
 	st, out = m.do(t, http.MethodPatch, two, m.ownerTok, "", `{"url":"https://goout.net/e/22"}`)
-	if st != http.StatusOK || matJSON(t, out)["partner_link"].(map[string]any)["seller_name"] != "GoOut CZ" {
+	if st != http.StatusOK || matJSON(t, out)["seller_name"] != "GoOut CZ" {
 		t.Errorf("patch url, typed seller: %d %s", st, out)
 	}
 	if st, out := m.do(t, http.MethodPatch, two, m.ownerTok, "", `{"url":"http://goout.net/e/22"}`); st != http.StatusBadRequest || sec1Code(out) != "event.invalid_partner_url" {
@@ -169,20 +169,39 @@ func TestEventMaterialsExtras_PartnerLinks(t *testing.T) {
 
 	// Reorder: reverse. A list that is not exactly the event's links is refused.
 	ids := []string{links[2]["id"].(string), links[1]["id"].(string), links[0]["id"].(string)}
-	body, _ := json.Marshal(map[string]any{"ids": ids})
+	body, _ := json.Marshal(map[string]any{"link_ids": ids})
 	st, out = m.do(t, http.MethodPut, base+"/order", m.ownerTok, "", string(body))
 	got := matLinks(t, out)
+	if mx, _ := matJSON(t, out)["max_items"].(float64); mx != 3 {
+		t.Errorf("reorder max_items = %v, want 3", mx)
+	}
 	if st != http.StatusOK || len(got) != 3 || got[0]["id"] != ids[0] || got[2]["id"] != ids[2] || got[0]["position"].(float64) != 0 {
 		t.Fatalf("reorder: %d %s", st, out)
 	}
+	// A list that is not a list of distinct UUIDs is 400, one that is not
+	// exactly the stored links is 409 (the shape of the gallery routes).
 	for _, bad := range []string{
-		fmt.Sprintf(`{"ids":["%s","%s"]}`, ids[0], ids[1]),
-		fmt.Sprintf(`{"ids":["%s","%s","%s"]}`, ids[0], ids[0], ids[1]),
-		fmt.Sprintf(`{"ids":["%s","%s","%s"]}`, ids[0], ids[1], uuid.New()),
-		`{"ids":[]}`,
+		fmt.Sprintf(`{"link_ids":["%s","%s","%s"]}`, ids[0], ids[0], ids[1]),
+		fmt.Sprintf(`{"link_ids":["%s","not-a-uuid","%s"]}`, ids[0], ids[1]),
+		`{"link_ids":null}`,
 	} {
 		if st, out := m.do(t, http.MethodPut, base+"/order", m.ownerTok, "", bad); st != http.StatusBadRequest || sec1Code(out) != "event.invalid_order" {
-			t.Errorf("bad order %s: %d %s", bad, st, out)
+			t.Errorf("bad order %s: %d %s, want 400 event.invalid_order", bad, st, out)
+		}
+	}
+	if st, out := m.do(t, http.MethodPut, base+"/order", m.ownerTok, "", `{}`); st != http.StatusBadRequest || sec1Code(out) != "event.invalid_order" {
+		t.Errorf("missing link_ids: %d %s, want 400 event.invalid_order", st, out)
+	}
+	if st, out := m.do(t, http.MethodPut, base+"/order", m.ownerTok, "", fmt.Sprintf(`{"ids":["%s"]}`, ids[0])); st != http.StatusBadRequest || sec1Code(out) != "event.invalid_body" {
+		t.Errorf("old ids member: %d %s, want 400 event.invalid_body", st, out)
+	}
+	for _, mismatch := range []string{
+		fmt.Sprintf(`{"link_ids":["%s","%s"]}`, ids[0], ids[1]),
+		fmt.Sprintf(`{"link_ids":["%s","%s","%s"]}`, ids[0], ids[1], uuid.New()),
+		`{"link_ids":[]}`,
+	} {
+		if st, out := m.do(t, http.MethodPut, base+"/order", m.ownerTok, "", mismatch); st != http.StatusConflict || sec1Code(out) != "event.partner_links_order_mismatch" {
+			t.Errorf("mismatching order %s: %d %s, want 409 event.partner_links_order_mismatch", mismatch, st, out)
 		}
 	}
 
@@ -199,7 +218,7 @@ func TestEventMaterialsExtras_PartnerLinks(t *testing.T) {
 		t.Errorf("after delete: %s", out)
 	}
 	st, out = post(`{"url":"https://again.example.com/e/5"}`)
-	if st != http.StatusCreated || matJSON(t, out)["partner_link"].(map[string]any)["position"].(float64) != 2 {
+	if st != http.StatusCreated || matJSON(t, out)["position"].(float64) != 2 {
 		t.Errorf("add after delete: %d %s", st, out)
 	}
 	_ = third
@@ -253,8 +272,8 @@ func TestEventMaterialsExtras_MapPoint(t *testing.T) {
 	base := m.base(m.orgA, m.event) + "/map-point"
 
 	st, out := m.do(t, http.MethodGet, base, m.ownerTok, "", "")
-	if st != http.StatusOK || matJSON(t, out)["map_point"] != nil {
-		t.Errorf("empty get: %d %s, want 200 with map_point null", st, out)
+	if st != http.StatusNotFound || sec1Code(out) != "event.map_point_not_found" {
+		t.Errorf("empty get: %d %s, want 404 event.map_point_not_found", st, out)
 	}
 	if st, _ := m.do(t, http.MethodDelete, base, m.ownerTok, "", ""); st != http.StatusNotFound {
 		t.Errorf("delete of nothing: %d, want 404", st)
@@ -272,13 +291,13 @@ func TestEventMaterialsExtras_MapPoint(t *testing.T) {
 	}
 	// Valid: six decimals are kept, the label is trimmed.
 	st, out = m.do(t, http.MethodPut, base, m.ownerTok, "", `{"latitude":50.07554321,"longitude":14.4378,"label":"  Main entrance "}`)
-	pt, _ := matJSON(t, out)["map_point"].(map[string]any)
-	if st != http.StatusOK || pt == nil || pt["latitude"].(float64) != 50.075543 || pt["longitude"].(float64) != 14.4378 || pt["label"] != "Main entrance" {
+	pt := matJSON(t, out)
+	if st != http.StatusOK || pt["event_id"] != m.event.String() || pt["latitude"].(float64) != 50.075543 || pt["longitude"].(float64) != 14.4378 || pt["label"] != "Main entrance" {
 		t.Fatalf("put: %d %s", st, out)
 	}
 	// Replaced as a whole: an absent label clears it.
 	st, out = m.do(t, http.MethodPut, base, m.ownerTok, "", `{"latitude":-33.8688,"longitude":151.2093}`)
-	pt, _ = matJSON(t, out)["map_point"].(map[string]any)
+	pt = matJSON(t, out)
 	if st != http.StatusOK || pt["label"] != nil || pt["latitude"].(float64) != -33.8688 {
 		t.Fatalf("replace: %d %s", st, out)
 	}
@@ -290,9 +309,9 @@ func TestEventMaterialsExtras_MapPoint(t *testing.T) {
 	if st, _ := m.do(t, http.MethodDelete, base, m.ownerTok, "", ""); st != http.StatusNoContent {
 		t.Errorf("delete: %d", st)
 	}
-	_, out = m.do(t, http.MethodGet, base, m.ownerTok, "", "")
-	if matJSON(t, out)["map_point"] != nil {
-		t.Errorf("after delete: %s", out)
+	st, out = m.do(t, http.MethodGet, base, m.ownerTok, "", "")
+	if st != http.StatusNotFound || sec1Code(out) != "event.map_point_not_found" {
+		t.Errorf("after delete: %d %s, want 404 event.map_point_not_found", st, out)
 	}
 }
 
@@ -324,12 +343,12 @@ func TestEventMaterialsExtras_PhotoReport(t *testing.T) {
 
 	good := m.media(t, m.orgA, "event_report")
 	st, out := add(good, "  Opening night ")
-	photo, _ := matJSON(t, out)["photo"].(map[string]any)
+	photo := matJSON(t, out)
 	if st != http.StatusCreated || photo["caption"] != "Opening night" || photo["position"].(float64) != 0 || photo["media_id"] != good.String() {
 		t.Fatalf("add: %d %s", st, out)
 	}
-	if st, out := add(good, ""); st != http.StatusConflict || sec1Code(out) != "event.photo_report_duplicate" {
-		t.Errorf("same file twice: %d %s, want 409 event.photo_report_duplicate", st, out)
+	if st, out := add(good, ""); st != http.StatusConflict || sec1Code(out) != "event.report_photos_duplicate" {
+		t.Errorf("same file twice: %d %s, want 409 event.report_photos_duplicate", st, out)
 	}
 	if st, out := add(m.media(t, m.orgA, "event_report"), strings.Repeat("c", 201)); st != http.StatusBadRequest || sec1Code(out) != "event.invalid_caption" {
 		t.Errorf("long caption: %d %s", st, out)
@@ -338,11 +357,11 @@ func TestEventMaterialsExtras_PhotoReport(t *testing.T) {
 	// Caption: set, cleared with null, absent member refused.
 	one := base + "/" + photo["id"].(string)
 	st, out = m.do(t, http.MethodPatch, one, m.ownerTok, "", `{"caption":"Encore"}`)
-	if st != http.StatusOK || matJSON(t, out)["photo"].(map[string]any)["caption"] != "Encore" {
+	if st != http.StatusOK || matJSON(t, out)["caption"] != "Encore" {
 		t.Errorf("patch caption: %d %s", st, out)
 	}
 	st, out = m.do(t, http.MethodPatch, one, m.ownerTok, "", `{"caption":null}`)
-	if st != http.StatusOK || matJSON(t, out)["photo"].(map[string]any)["caption"] != nil {
+	if st != http.StatusOK || matJSON(t, out)["caption"] != nil {
 		t.Errorf("clear caption: %d %s", st, out)
 	}
 	if st, _ := m.do(t, http.MethodPatch, one, m.ownerTok, "", `{}`); st != http.StatusBadRequest {
@@ -358,8 +377,8 @@ func TestEventMaterialsExtras_PhotoReport(t *testing.T) {
 			t.Fatalf("photo %d: %d %s", i+1, st, out)
 		}
 	}
-	if st, out := add(m.media(t, m.orgA, "event_report"), ""); st != http.StatusConflict || sec1Code(out) != "event.photo_report_full" {
-		t.Errorf("31st photo: %d %s, want 409 event.photo_report_full", st, out)
+	if st, out := add(m.media(t, m.orgA, "event_report"), ""); st != http.StatusConflict || sec1Code(out) != "event.report_photos_full" {
+		t.Errorf("31st photo: %d %s, want 409 event.report_photos_full", st, out)
 	}
 	st, out = m.do(t, http.MethodGet, base, m.ownerTok, "", "")
 	photos := matPhotos(t, out)
@@ -372,14 +391,20 @@ func TestEventMaterialsExtras_PhotoReport(t *testing.T) {
 	for _, p := range photos[:29] {
 		ids = append(ids, p["id"].(string))
 	}
-	body, _ := json.Marshal(map[string]any{"ids": ids})
+	body, _ := json.Marshal(map[string]any{"photo_ids": ids})
 	st, out = m.do(t, http.MethodPut, base+"/order", m.ownerTok, "", string(body))
 	got := matPhotos(t, out)
 	if st != http.StatusOK || len(got) != 30 || got[0]["id"] != ids[0] || got[29]["id"] != ids[29] {
 		t.Fatalf("reorder: %d %s", st, out)
 	}
-	if st, out := m.do(t, http.MethodPut, base+"/order", m.ownerTok, "", `{"ids":["`+ids[0]+`"]}`); st != http.StatusBadRequest || sec1Code(out) != "event.invalid_order" {
-		t.Errorf("partial order: %d %s", st, out)
+	if st, out := m.do(t, http.MethodPut, base+"/order", m.ownerTok, "", `{"photo_ids":["`+ids[0]+`"]}`); st != http.StatusConflict || sec1Code(out) != "event.report_photos_order_mismatch" {
+		t.Errorf("partial order: %d %s, want 409 event.report_photos_order_mismatch", st, out)
+	}
+	if st, out := m.do(t, http.MethodPut, base+"/order", m.ownerTok, "", `{"photo_ids":["`+ids[0]+`","`+ids[0]+`"]}`); st != http.StatusBadRequest || sec1Code(out) != "event.invalid_order" {
+		t.Errorf("repeated id: %d %s, want 400 event.invalid_order", st, out)
+	}
+	if st, out := m.do(t, http.MethodPut, base+"/order", m.ownerTok, "", `{"photo_ids":["nope"]}`); st != http.StatusBadRequest || sec1Code(out) != "event.invalid_order" {
+		t.Errorf("not a UUID: %d %s, want 400 event.invalid_order", st, out)
 	}
 
 	// Delete closes the gap and makes room again.
@@ -496,7 +521,7 @@ func TestEventMaterialsExtras_StayInsideTheOrganization(t *testing.T) {
 		return []route{
 			{http.MethodGet, b + "/partner-links", ""},
 			{http.MethodPost, b + "/partner-links", `{"url":"https://hijack.example.com/a"}`},
-			{http.MethodPut, b + "/partner-links/order", fmt.Sprintf(`{"ids":["%s"]}`, linkID)},
+			{http.MethodPut, b + "/partner-links/order", fmt.Sprintf(`{"link_ids":["%s"]}`, linkID)},
 			{http.MethodPatch, b + "/partner-links/" + linkID.String(), `{"seller_name":"Hijack"}`},
 			{http.MethodDelete, b + "/partner-links/" + linkID.String(), ""},
 			{http.MethodGet, b + "/map-point", ""},
@@ -504,7 +529,7 @@ func TestEventMaterialsExtras_StayInsideTheOrganization(t *testing.T) {
 			{http.MethodDelete, b + "/map-point", ""},
 			{http.MethodGet, b + "/photo-report", ""},
 			{http.MethodPost, b + "/photo-report", fmt.Sprintf(`{"media_id":%q}`, media)},
-			{http.MethodPut, b + "/photo-report/order", fmt.Sprintf(`{"ids":["%s"]}`, photoID)},
+			{http.MethodPut, b + "/photo-report/order", fmt.Sprintf(`{"photo_ids":["%s"]}`, photoID)},
 			{http.MethodPatch, b + "/photo-report/" + photoID.String(), `{"caption":"Hijack"}`},
 			{http.MethodDelete, b + "/photo-report/" + photoID.String(), ""},
 		}

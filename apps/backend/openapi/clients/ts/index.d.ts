@@ -2737,8 +2737,10 @@ export interface paths {
         get?: never;
         /**
          * Reorder the "where else to buy" links
-         * @description Sets the display order. `ids` must list every link of the event exactly once
-         *     (400 `event.invalid_order` otherwise); the answer is the list in its new order.
+         * @description Sets the display order. `link_ids` must be distinct UUIDs (400
+         *     `event.invalid_order` otherwise) and must list every link of the event exactly
+         *     once (409 `event.partner_links_order_mismatch`: reload and retry). The whole
+         *     reorder is one statement; the answer is the list in its new order.
          *     Requires `event.update` and membership of the organization.
          */
         put: operations["reorderEventPartnerLinks"];
@@ -2770,7 +2772,8 @@ export interface paths {
         /**
          * Change a "where else to buy" link
          * @description Changes the address, the seller name or both; an absent member keeps its
-         *     stored value. When only the address changes, a seller name that was derived
+         *     stored value, and so does an empty string `""` for `seller_name` (it never
+         *     clears the name). When only the address changes, a seller name that was derived
          *     from the old address follows the new one, while a name the client typed is
          *     kept.
          *     Requires `event.update` and membership of the organization.
@@ -2787,7 +2790,8 @@ export interface paths {
         };
         /**
          * Read the map point of an event
-         * @description Returns the event's one map point, or `map_point: null` when it has none.
+         * @description Returns the event's one map point as a bare object. An event without a point
+         *     answers 404 `event.map_point_not_found`.
          *     Requires `event.read` and membership of the organization.
          */
         get: operations["getEventMapPoint"];
@@ -2832,8 +2836,8 @@ export interface paths {
          * @description Adds an uploaded photo. `media_id` must be an active media object of the
          *     same organization with owner type `event_report` (422 `event.invalid_report_media`
          *     otherwise, also for another organization's file). A report holds at most 30
-         *     photos (409 `event.photo_report_full`) and the same file only once (409
-         *     `event.photo_report_duplicate`); the new photo takes the lowest free position.
+         *     photos (409 `event.report_photos_full`) and the same file only once (409
+         *     `event.report_photos_duplicate`); the new photo takes the lowest free position.
          *     Requires `event.update` and membership of the organization.
          */
         post: operations["addEventReportPhoto"];
@@ -2853,9 +2857,10 @@ export interface paths {
         get?: never;
         /**
          * Reorder the photo report
-         * @description Sets the display order. `ids` must list every photo of the report exactly
-         *     once (400 `event.invalid_order` otherwise); the answer is the list in its new
-         *     order.
+         * @description Sets the display order. `photo_ids` must be distinct UUIDs (400
+         *     `event.invalid_order` otherwise) and must list every photo of the report
+         *     exactly once (409 `event.report_photos_order_mismatch`: reload and retry). The
+         *     whole reorder is one statement; the answer is the list in its new order.
          *     Requires `event.update` and membership of the organization.
          */
         put: operations["reorderEventReportPhotos"];
@@ -15310,15 +15315,12 @@ export interface components {
              */
             updated_at: string;
         };
-        /** @description One partner link. */
-        EventPartnerLinkResponse: {
-            /** @description The link. */
-            partner_link: components["schemas"]["EventPartnerLink"];
-        };
-        /** @description The partner links of an event in display order (at most 3). */
+        /** @description The partner links of an event in display order. */
         EventPartnerLinkList: {
-            /** @description The links, in display order. */
-            partner_links: components["schemas"]["EventPartnerLink"][];
+            /** @description The links, first to last. */
+            items: components["schemas"]["EventPartnerLink"][];
+            /** @description The most links one event may carry (3). */
+            max_items: number;
         };
         /** @description Body of POST .../events/{event_id}/partner-links. */
         CreateEventPartnerLinkRequest: {
@@ -15340,10 +15342,15 @@ export interface components {
             /** @description A new seller name, 1 to 120 characters. Blank keeps the current name (or, when the address changed and the name was derived from the old one, derives it again). */
             seller_name?: string;
         };
-        /** @description Body of the PUT .../order routes of the partner links and the photo report. */
-        EventMaterialOrderRequest: {
-            /** @description Every item id of the event exactly once, in the wanted display order (400 `event.invalid_order` otherwise). */
-            ids: string[];
+        /** @description Body of PUT .../partner-links/order. */
+        EventPartnerLinkOrderRequest: {
+            /** @description Every partner link id of the event exactly once, in the new display order. */
+            link_ids: string[];
+        };
+        /** @description Body of PUT .../photo-report/order. */
+        EventReportPhotoOrderRequest: {
+            /** @description Every photo id of the report exactly once, in the new display order. */
+            photo_ids: string[];
         };
         /** @description The one map point of an event. */
         EventMapPoint: {
@@ -15353,11 +15360,13 @@ export interface components {
              */
             event_id: string;
             /**
+             * Format: double
              * @description Latitude in degrees, -90 to 90, six decimals kept.
              * @example 50.075538
              */
             latitude: number;
             /**
+             * Format: double
              * @description Longitude in degrees, -180 to 180, six decimals kept.
              * @example 14.4378
              */
@@ -15375,19 +15384,16 @@ export interface components {
              */
             updated_at: string;
         };
-        /** @description The map point of an event. */
-        EventMapPointResponse: {
-            /** @description The point, or null when the event has none. */
-            map_point: components["schemas"]["EventMapPoint"] | null;
-        };
         /** @description Body of PUT .../events/{event_id}/map-point; replaces the point as a whole. */
         SetEventMapPointRequest: {
             /**
+             * Format: double
              * @description Latitude in degrees, -90 to 90 (400 `event.invalid_map_point`).
              * @example 50.0755
              */
             latitude: number;
             /**
+             * Format: double
              * @description Longitude in degrees, -180 to 180 (400 `event.invalid_map_point`).
              * @example 14.4378
              */
@@ -15427,15 +15433,12 @@ export interface components {
              */
             updated_at: string;
         };
-        /** @description One photo of the photo report. */
-        EventReportPhotoResponse: {
-            /** @description The photo. */
-            photo: components["schemas"]["EventReportPhoto"];
-        };
-        /** @description The photo report of an event in display order (at most 30). */
+        /** @description The photo report of an event in display order. */
         EventReportPhotoList: {
-            /** @description The photos, in display order. */
-            photos: components["schemas"]["EventReportPhoto"][];
+            /** @description The photos, first to last. */
+            items: components["schemas"]["EventReportPhoto"][];
+            /** @description The most photos one report may carry (30). */
+            max_items: number;
         };
         /** @description Body of POST .../events/{event_id}/photo-report. */
         AddEventReportPhotoRequest: {
@@ -32340,7 +32343,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EventPartnerLinkResponse"];
+                    "application/json": components["schemas"]["EventPartnerLink"];
                 };
             };
             /** @description Invalid body, address or seller name (`event.invalid_body`, `event.invalid_partner_url`, `event.invalid_seller_name`). */
@@ -32379,7 +32382,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The event already holds 3 links (`event.partner_links_full`), or the list changed at the same moment (`event.concurrent_update`). */
+            /** @description The event already holds 3 links (`event.partner_links_full`, `error.details.max_items`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -32422,7 +32425,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["EventMaterialOrderRequest"];
+                "application/json": components["schemas"]["EventPartnerLinkOrderRequest"];
             };
         };
         responses: {
@@ -32435,7 +32438,7 @@ export interface operations {
                     "application/json": components["schemas"]["EventPartnerLinkList"];
                 };
             };
-            /** @description Invalid body or `ids` is not exactly the event's links (`event.invalid_body`, `event.invalid_order`). */
+            /** @description Invalid body, or `link_ids` is not a list of distinct UUIDs (`event.invalid_body`, `event.invalid_order`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -32464,6 +32467,15 @@ export interface operations {
             };
             /** @description No such event in this organization (`event.not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `link_ids` does not list every stored item exactly once (`event.partner_links_order_mismatch`); reload the list and try again. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -32587,7 +32599,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EventPartnerLinkResponse"];
+                    "application/json": components["schemas"]["EventPartnerLink"];
                 };
             };
             /** @description Invalid body, address or seller name (`event.invalid_body`, `event.invalid_partner_url`, `event.invalid_seller_name`). */
@@ -32660,13 +32672,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The map point, or null. */
+            /** @description The map point. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EventMapPointResponse"];
+                    "application/json": components["schemas"]["EventMapPoint"];
                 };
             };
             /** @description Missing or invalid credentials. */
@@ -32740,7 +32752,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EventMapPointResponse"];
+                    "application/json": components["schemas"]["EventMapPoint"];
                 };
             };
             /** @description Invalid body or coordinates (`event.invalid_body`, `event.invalid_map_point`). */
@@ -32961,7 +32973,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EventReportPhotoResponse"];
+                    "application/json": components["schemas"]["EventReportPhoto"];
                 };
             };
             /** @description Invalid body or caption (`event.invalid_body`, `event.invalid_caption`). */
@@ -33000,7 +33012,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The report holds 30 photos (`event.photo_report_full`), the file is already in it (`event.photo_report_duplicate`), or the list changed at the same moment (`event.concurrent_update`). */
+            /** @description The report holds 30 photos (`event.report_photos_full`, `error.details.max_items`), or the file is already in it (`event.report_photos_duplicate`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -33052,7 +33064,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["EventMaterialOrderRequest"];
+                "application/json": components["schemas"]["EventReportPhotoOrderRequest"];
             };
         };
         responses: {
@@ -33065,7 +33077,7 @@ export interface operations {
                     "application/json": components["schemas"]["EventReportPhotoList"];
                 };
             };
-            /** @description Invalid body or `ids` is not exactly the report's photos (`event.invalid_body`, `event.invalid_order`). */
+            /** @description Invalid body, or `photo_ids` is not a list of distinct UUIDs (`event.invalid_body`, `event.invalid_order`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -33094,6 +33106,15 @@ export interface operations {
             };
             /** @description No such event in this organization (`event.not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `photo_ids` does not list every stored item exactly once (`event.report_photos_order_mismatch`); reload the list and try again. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -33217,7 +33238,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EventReportPhotoResponse"];
+                    "application/json": components["schemas"]["EventReportPhoto"];
                 };
             };
             /** @description Invalid body or caption (`event.invalid_body`, `event.invalid_caption`). */

@@ -21,6 +21,18 @@ func (q *Queries) GetEventOrgForMaterials(ctx context.Context, eventID uuid.UUID
 	return orgID, err
 }
 
+const lockEventExtras = `-- name: LockEventExtras :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0))`
+
+// LockEventExtras serializes the writers of one list of one event (kind is
+// "partner_links" or "report_photos") until the transaction ends. It uses the
+// same key scheme as LockEventMaterials of task 1-2a and must be the first
+// statement of such a transaction.
+func (q *Queries) LockEventExtras(ctx context.Context, eventID uuid.UUID, kind string) error {
+	_, err := q.db.Exec(ctx, lockEventExtras, eventID.String(), kind)
+	return err
+}
+
 // ── 1-2b partner links ───────────────────────────────────────────────────
 
 // EventPartnerLinkRow is one "where else to buy" link of an event.

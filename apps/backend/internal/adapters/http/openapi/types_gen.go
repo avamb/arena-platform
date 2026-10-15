@@ -5998,25 +5998,13 @@ type EventMapPoint struct {
 	Label *string `json:"label"`
 
 	// Latitude Latitude in degrees, -90 to 90, six decimals kept.
-	Latitude float32 `json:"latitude"`
+	Latitude float64 `json:"latitude"`
 
 	// Longitude Longitude in degrees, -180 to 180, six decimals kept.
-	Longitude float32 `json:"longitude"`
+	Longitude float64 `json:"longitude"`
 
 	// UpdatedAt When the point was last changed.
 	UpdatedAt time.Time `json:"updated_at"`
-}
-
-// EventMapPointResponse The map point of an event.
-type EventMapPointResponse struct {
-	// MapPoint The point, or null when the event has none.
-	MapPoint *EventMapPoint `json:"map_point"`
-}
-
-// EventMaterialOrderRequest Body of the PUT .../order routes of the partner links and the photo report.
-type EventMaterialOrderRequest struct {
-	// Ids Every item id of the event exactly once, in the wanted display order (400 `event.invalid_order` otherwise).
-	Ids []openapi_types.UUID `json:"ids"`
 }
 
 // EventPartnerLink One "where else to buy" link of an event.
@@ -6043,16 +6031,19 @@ type EventPartnerLink struct {
 	Url string `json:"url"`
 }
 
-// EventPartnerLinkList The partner links of an event in display order (at most 3).
+// EventPartnerLinkList The partner links of an event in display order.
 type EventPartnerLinkList struct {
-	// PartnerLinks The links, in display order.
-	PartnerLinks []EventPartnerLink `json:"partner_links"`
+	// Items The links, first to last.
+	Items []EventPartnerLink `json:"items"`
+
+	// MaxItems The most links one event may carry (3).
+	MaxItems int `json:"max_items"`
 }
 
-// EventPartnerLinkResponse One partner link.
-type EventPartnerLinkResponse struct {
-	// PartnerLink The link.
-	PartnerLink EventPartnerLink `json:"partner_link"`
+// EventPartnerLinkOrderRequest Body of PUT .../partner-links/order.
+type EventPartnerLinkOrderRequest struct {
+	// LinkIds Every partner link id of the event exactly once, in the new display order.
+	LinkIds []openapi_types.UUID `json:"link_ids"`
 }
 
 // EventPromoterResponse The promoter of an event after PUT .../events/{id}/promoter.
@@ -6126,16 +6117,19 @@ type EventReportPhoto struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// EventReportPhotoList The photo report of an event in display order (at most 30).
+// EventReportPhotoList The photo report of an event in display order.
 type EventReportPhotoList struct {
-	// Photos The photos, in display order.
-	Photos []EventReportPhoto `json:"photos"`
+	// Items The photos, first to last.
+	Items []EventReportPhoto `json:"items"`
+
+	// MaxItems The most photos one report may carry (30).
+	MaxItems int `json:"max_items"`
 }
 
-// EventReportPhotoResponse One photo of the photo report.
-type EventReportPhotoResponse struct {
-	// Photo The photo.
-	Photo EventReportPhoto `json:"photo"`
+// EventReportPhotoOrderRequest Body of PUT .../photo-report/order.
+type EventReportPhotoOrderRequest struct {
+	// PhotoIds Every photo id of the report exactly once, in the new display order.
+	PhotoIds []openapi_types.UUID `json:"photo_ids"`
 }
 
 // EventSalesSummary The top level of EventSummary for one event, without the per-category
@@ -13023,10 +13017,10 @@ type SetEventMapPointRequest struct {
 	Label *string `json:"label"`
 
 	// Latitude Latitude in degrees, -90 to 90 (400 `event.invalid_map_point`).
-	Latitude float32 `json:"latitude"`
+	Latitude float64 `json:"latitude"`
 
 	// Longitude Longitude in degrees, -180 to 180 (400 `event.invalid_map_point`).
-	Longitude float32 `json:"longitude"`
+	Longitude float64 `json:"longitude"`
 }
 
 // SetEventPromoterRequest Body of PUT /v1/organizations/{org_id}/events/{id}/promoter.
@@ -16071,7 +16065,7 @@ type SetEventMapPointJSONRequestBody = SetEventMapPointRequest
 type CreateEventPartnerLinkJSONRequestBody = CreateEventPartnerLinkRequest
 
 // ReorderEventPartnerLinksJSONRequestBody defines body for ReorderEventPartnerLinks for application/json ContentType.
-type ReorderEventPartnerLinksJSONRequestBody = EventMaterialOrderRequest
+type ReorderEventPartnerLinksJSONRequestBody = EventPartnerLinkOrderRequest
 
 // UpdateEventPartnerLinkJSONRequestBody defines body for UpdateEventPartnerLink for application/json ContentType.
 type UpdateEventPartnerLinkJSONRequestBody = UpdateEventPartnerLinkRequest
@@ -16080,7 +16074,7 @@ type UpdateEventPartnerLinkJSONRequestBody = UpdateEventPartnerLinkRequest
 type AddEventReportPhotoJSONRequestBody = AddEventReportPhotoRequest
 
 // ReorderEventReportPhotosJSONRequestBody defines body for ReorderEventReportPhotos for application/json ContentType.
-type ReorderEventReportPhotosJSONRequestBody = EventMaterialOrderRequest
+type ReorderEventReportPhotosJSONRequestBody = EventReportPhotoOrderRequest
 
 // UpdateEventReportPhotoJSONRequestBody defines body for UpdateEventReportPhoto for application/json ContentType.
 type UpdateEventReportPhotoJSONRequestBody = UpdateEventReportPhotoRequest

@@ -18,9 +18,15 @@
 // own 404 event.not_found.
 //
 // Limits live in the schema (migration 0153: position CHECK + UNIQUE
-// (event_id, position)) and in platform/eventmaterials. An insert takes the
-// lowest free position in one statement; a lost race is retried, then
-// answered as 409.
+// (event_id, position)) and in platform/eventmaterials. The shape of the
+// answers and the error codes follow the gallery and video routes of task
+// 1-2a: a list answers {items, max_items}, one item answers the bare object,
+// a reorder body names the ids as link_ids / photo_ids, a full list is 409
+// event.<list>_full and a reorder that does not list every stored id is 409
+// event.<list>_order_mismatch. Every write runs under one advisory lock per
+// event and list (the key scheme of LockEventMaterials of task 1-2a), so a
+// free-position pick, a delete with its compaction and a reorder never
+// interleave. An insert takes the lowest free position in one statement.
 package hmaterials
 
 import (
@@ -49,15 +55,18 @@ import (
 // maxBodyBytes bounds every JSON body of these routes.
 const maxBodyBytes = 64 << 10
 
-// insertAttempts is how many times an insert is tried when another request
-// takes the chosen position first.
-const insertAttempts = 3
+// Lock kinds of LockEventExtras, one per list of one event. They differ from
+// the "gallery" and "videos" kinds of task 1-2a: different lists do not
+// interfere, and the key scheme is the same.
+const (
+	partnerLinksLockKind = "partner_links"
+	reportPhotosLockKind = "report_photos"
+	mapPointLockKind     = "map_point"
+)
 
 // Constraint names of migration 0153 that the handlers tell apart.
 const (
-	partnerPositionConstraint = "event_partner_links_position_uq"
-	reportPositionConstraint  = "event_report_photos_position_uq"
-	reportMediaConstraint     = "event_report_photos_media_uq"
+	reportMediaConstraint = "event_report_photos_media_uq"
 )
 
 // ExtrasHandler serves the partner links, the map point and the photo report.
@@ -150,14 +159,19 @@ func readBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 	return true
 }
 
-// inTx runs fn in one transaction and commits when it returns nil.
-func (h *ExtrasHandler) inTx(ctx context.Context, fn func(q *gen.Queries, tx pgx.Tx) error) error {
+// inTx runs fn in one transaction whose first statement is the event's lock
+// for the list named by kind, and commits when fn returns nil.
+func (h *ExtrasHandler) inTx(ctx context.Context, eventID uuid.UUID, kind string, fn func(q *gen.Queries, tx pgx.Tx) error) error {
 	tx, err := h.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := fn(h.queries.WithTx(tx), tx); err != nil {
+	q := h.queries.WithTx(tx)
+	if err := q.LockEventExtras(ctx, eventID, kind); err != nil {
+		return err
+	}
+	if err := fn(q, tx); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -219,15 +233,46 @@ func idsMatch(current []uuid.UUID, ids []uuid.UUID) bool {
 	return len(want) == 0
 }
 
-// orderRequest is the body of the two PUT .../order routes.
-type orderRequest struct {
-	IDs []uuid.UUID `json:"ids"`
+// parseOrderIDs validates the id list of a reorder body: UUIDs, no repeats.
+// A missing (null) list is invalid; an empty one is valid.
+func parseOrderIDs(raw []string) ([]uuid.UUID, bool) {
+	if raw == nil {
+		return nil, false
+	}
+	seen := make(map[uuid.UUID]struct{}, len(raw))
+	ids := make([]uuid.UUID, 0, len(raw))
+	for _, s := range raw {
+		id, err := uuid.Parse(strings.TrimSpace(s))
+		if err != nil {
+			return nil, false
+		}
+		if _, dup := seen[id]; dup {
+			return nil, false
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids, true
 }
 
-func invalidOrder(w http.ResponseWriter, r *http.Request) {
+// partnerOrderRequest is the body of PUT .../partner-links/order.
+type partnerOrderRequest struct {
+	LinkIDs []string `json:"link_ids"`
+}
+
+// reportOrderRequest is the body of PUT .../photo-report/order.
+type reportOrderRequest struct {
+	PhotoIDs []string `json:"photo_ids"`
+}
+
+func invalidOrder(w http.ResponseWriter, r *http.Request, field string) {
 	httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-		"event.invalid_order",
-		"ids must list every item of this event exactly once; please reload the list and try again",
-		r, map[string]any{"field": "ids"},
+		"event.invalid_order", field+" must be a list of distinct UUIDs", r, map[string]any{"field": field},
+	))
+}
+
+func orderMismatch(w http.ResponseWriter, r *http.Request, code, field, what string) {
+	httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+		code, field+" must list every "+what+" of the event once, reload the list and try again", r,
 	))
 }

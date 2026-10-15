@@ -45,11 +45,9 @@ func photoNotFound(w http.ResponseWriter, r *http.Request) {
 	))
 }
 
-func reportFull(w http.ResponseWriter, r *http.Request) {
+func reportFull(w http.ResponseWriter, r *http.Request, msg string) {
 	httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
-		"event.photo_report_full",
-		"a photo report holds up to 30 photos; please remove one before adding another",
-		r, map[string]any{"limit": eventmaterials.MaxReportPhotos},
+		"event.report_photos_full", msg, r, map[string]any{"max_items": eventmaterials.MaxReportPhotos},
 	))
 }
 
@@ -73,7 +71,7 @@ func (h *ExtrasHandler) HandleListReportPhotos(w http.ResponseWriter, r *http.Re
 		h.failed(w, r, "list report photos", err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"photos": reportPhotosJSON(rows)})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": reportPhotosJSON(rows), "max_items": eventmaterials.MaxReportPhotos})
 }
 
 type createReportPhotoRequest struct {
@@ -121,49 +119,36 @@ func (h *ExtrasHandler) HandleCreateReportPhoto(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	for attempt := 0; attempt < insertAttempts; attempt++ {
-		var row gen.EventReportPhotoRow
-		err := h.inTx(ctx, func(q *gen.Queries, tx pgx.Tx) error {
-			var err error
-			row, err = q.InsertEventReportPhoto(ctx, orgID, eventID, req.MediaID, caption, eventmaterials.MaxReportPhotos)
-			if err != nil {
-				return err
-			}
-			return h.writeAudit(ctx, tx, r, "v1.event.report_photo.add", eventID, map[string]any{
-				"photo_id": row.ID.String(), "media_id": req.MediaID.String(), "position": row.Position,
-			})
+	var row gen.EventReportPhotoRow
+	err = h.inTx(ctx, eventID, reportPhotosLockKind, func(q *gen.Queries, tx pgx.Tx) error {
+		var err error
+		row, err = q.InsertEventReportPhoto(ctx, orgID, eventID, req.MediaID, caption, eventmaterials.MaxReportPhotos)
+		if err != nil {
+			return err
+		}
+		return h.writeAudit(ctx, tx, r, "v1.event.report_photo.add", eventID, map[string]any{
+			"photo_id": row.ID.String(), "media_id": req.MediaID.String(), "position": row.Position,
 		})
-		if err == nil {
-			httputil.WriteJSON(w, http.StatusCreated, map[string]any{"photo": reportPhotoJSON(row)})
-			return
-		}
-		if errors.Is(err, pgx.ErrNoRows) {
-			reportFull(w, r)
-			return
-		}
+	})
+	switch {
+	case err == nil:
+		httputil.WriteJSON(w, http.StatusCreated, reportPhotoJSON(row))
+	case errors.Is(err, pgx.ErrNoRows):
+		reportFull(w, r, "a photo report holds up to 30 photos; please remove one before adding another")
+	default:
 		if c, isUnique := uniqueViolation(err); isUnique {
-			switch c {
-			case reportMediaConstraint:
+			if c == reportMediaConstraint {
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
-					"event.photo_report_duplicate", "this photo is already in the report", r,
+					"event.report_photos_duplicate", "this photo is already in the report", r,
 				))
 				return
-			case reportPositionConstraint:
-				continue // another request took the position: pick again
 			}
+			// Lost a race for a position despite the lock (another writer path).
+			reportFull(w, r, "the report changed, reload it and try again")
+			return
 		}
 		h.failed(w, r, "add report photo", err)
-		return
 	}
-	// Every attempt lost its position to a faster request. If those requests
-	// filled the list, say so; otherwise ask the client to try again.
-	if rows, err := h.queries.ListEventReportPhotos(ctx, eventID); err == nil && len(rows) >= eventmaterials.MaxReportPhotos {
-		reportFull(w, r)
-		return
-	}
-	httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
-		"event.concurrent_update", "the list was changed at the same moment; please try again", r,
-	))
 }
 
 type patchReportPhotoRequest struct {
@@ -205,7 +190,7 @@ func (h *ExtrasHandler) HandlePatchReportPhoto(w http.ResponseWriter, r *http.Re
 	}
 	ctx := r.Context()
 	var row gen.EventReportPhotoRow
-	err := h.inTx(ctx, func(q *gen.Queries, tx pgx.Tx) error {
+	err := h.inTx(ctx, eventID, reportPhotosLockKind, func(q *gen.Queries, tx pgx.Tx) error {
 		var err error
 		if row, err = q.UpdateEventReportPhotoCaption(ctx, photoID, eventID, caption); err != nil {
 			return err
@@ -220,7 +205,7 @@ func (h *ExtrasHandler) HandlePatchReportPhoto(w http.ResponseWriter, r *http.Re
 		h.failed(w, r, "update report photo", err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"photo": reportPhotoJSON(row)})
+	httputil.WriteJSON(w, http.StatusOK, reportPhotoJSON(row))
 }
 
 // HandleDeleteReportPhoto serves DELETE .../photo-report/{photo_id}; the
@@ -236,7 +221,7 @@ func (h *ExtrasHandler) HandleDeleteReportPhoto(w http.ResponseWriter, r *http.R
 		return
 	}
 	ctx := r.Context()
-	err := h.inTx(ctx, func(q *gen.Queries, tx pgx.Tx) error {
+	err := h.inTx(ctx, eventID, reportPhotosLockKind, func(q *gen.Queries, tx pgx.Tx) error {
 		removed, err := q.DeleteEventReportPhoto(ctx, photoID, eventID)
 		if err != nil {
 			return err
@@ -260,20 +245,25 @@ func (h *ExtrasHandler) HandleDeleteReportPhoto(w http.ResponseWriter, r *http.R
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// HandleReorderReportPhotos serves PUT .../photo-report/order. ids must be
-// exactly the report's current photo ids in the wanted order.
+// HandleReorderReportPhotos serves PUT .../photo-report/order. photo_ids must
+// name every photo of the report exactly once; the list is the new order.
 func (h *ExtrasHandler) HandleReorderReportPhotos(w http.ResponseWriter, r *http.Request) {
 	_, eventID, ok := h.scope(w, r)
 	if !ok {
 		return
 	}
-	var req orderRequest
+	var req reportOrderRequest
 	if !readBody(w, r, &req) {
+		return
+	}
+	ids, ok := parseOrderIDs(req.PhotoIDs)
+	if !ok {
+		invalidOrder(w, r, "photo_ids")
 		return
 	}
 	ctx := r.Context()
 	var rows []gen.EventReportPhotoRow
-	err := h.inTx(ctx, func(q *gen.Queries, tx pgx.Tx) error {
+	err := h.inTx(ctx, eventID, reportPhotosLockKind, func(q *gen.Queries, tx pgx.Tx) error {
 		cur, err := q.ListEventReportPhotos(ctx, eventID)
 		if err != nil {
 			return err
@@ -282,26 +272,30 @@ func (h *ExtrasHandler) HandleReorderReportPhotos(w http.ResponseWriter, r *http
 		for _, c := range cur {
 			have = append(have, c.ID)
 		}
-		if !idsMatch(have, req.IDs) {
-			return errInvalidOrder
+		if !idsMatch(have, ids) {
+			return errOrderMismatch
 		}
-		if len(req.IDs) > 0 {
-			if _, err := q.ReorderEventReportPhotos(ctx, eventID, req.IDs); err != nil {
+		if len(ids) > 0 {
+			n, err := q.ReorderEventReportPhotos(ctx, eventID, ids)
+			if err != nil {
 				return err
+			}
+			if n != int64(len(ids)) {
+				return errOrderMismatch
 			}
 		}
 		if rows, err = q.ListEventReportPhotos(ctx, eventID); err != nil {
 			return err
 		}
-		return h.writeAudit(ctx, tx, r, "v1.event.report_photo.reorder", eventID, map[string]any{"count": len(req.IDs)})
+		return h.writeAudit(ctx, tx, r, "v1.event.report_photo.reorder", eventID, map[string]any{"count": len(ids)})
 	})
-	if errors.Is(err, errInvalidOrder) {
-		invalidOrder(w, r)
+	if errors.Is(err, errOrderMismatch) {
+		orderMismatch(w, r, "event.report_photos_order_mismatch", "photo_ids", "photo")
 		return
 	}
 	if err != nil {
 		h.failed(w, r, "reorder report photos", err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"photos": reportPhotosJSON(rows)})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": reportPhotosJSON(rows), "max_items": eventmaterials.MaxReportPhotos})
 }

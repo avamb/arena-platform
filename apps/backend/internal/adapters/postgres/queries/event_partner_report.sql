@@ -6,13 +6,21 @@
 --
 -- Positions: (event_id, position) is UNIQUE DEFERRABLE, which cannot be an
 -- ON CONFLICT target, so an insert picks the lowest free position itself and
--- a lost race surfaces as 23505 (the handler retries, then answers 409).
+-- a lost race would surface as 23505; the handlers avoid it by taking
+-- LockEventExtras first, and answer 409 if it happens anyway.
 -- A reorder is ONE UPDATE ... FROM unnest(...): a deferrable constraint is
 -- checked at the end of the statement, so positions may be swapped freely.
 
 -- name: GetEventOrgForMaterials :one
 -- The organization of an active (not deleted) event; ErrNoRows otherwise.
 SELECT org_id FROM events WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: LockEventExtras :exec
+-- The same advisory lock as LockEventMaterials of task 1-2a (key =
+-- event id + ':' + kind), with the kinds "partner_links" and "report_photos".
+-- Every write of one list runs under it as its first statement, so a free
+-- position pick, a delete with its compaction and a reorder never interleave.
+SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0));
 
 -- ── 1-2b partner links ───────────────────────────────────────────────────
 

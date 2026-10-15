@@ -27,8 +27,8 @@ func mapPointJSON(r gen.EventMapPointRow) MapPoint {
 	}
 }
 
-// HandleGetMapPoint serves GET .../map-point. An event without a point
-// answers 200 with map_point null.
+// HandleGetMapPoint serves GET .../map-point and answers the bare point. An
+// event without a point answers 404 event.map_point_not_found, like DELETE.
 func (h *ExtrasHandler) HandleGetMapPoint(w http.ResponseWriter, r *http.Request) {
 	_, eventID, ok := h.scope(w, r)
 	if !ok {
@@ -36,14 +36,20 @@ func (h *ExtrasHandler) HandleGetMapPoint(w http.ResponseWriter, r *http.Request
 	}
 	row, err := h.queries.GetEventMapPoint(r.Context(), eventID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"map_point": nil})
+		mapPointNotFound(w, r)
 		return
 	}
 	if err != nil {
 		h.failed(w, r, "read map point", err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"map_point": mapPointJSON(row)})
+	httputil.WriteJSON(w, http.StatusOK, mapPointJSON(row))
+}
+
+func mapPointNotFound(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+		"event.map_point_not_found", "this event has no map point", r,
+	))
 }
 
 type putMapPointRequest struct {
@@ -83,7 +89,7 @@ func (h *ExtrasHandler) HandlePutMapPoint(w http.ResponseWriter, r *http.Request
 	}
 	ctx := r.Context()
 	var row gen.EventMapPointRow
-	err := h.inTx(ctx, func(q *gen.Queries, tx pgx.Tx) error {
+	err := h.inTx(ctx, eventID, mapPointLockKind, func(q *gen.Queries, tx pgx.Tx) error {
 		var err error
 		row, err = q.UpsertEventMapPoint(ctx, eventID, orgID, coordString(*req.Latitude), coordString(*req.Longitude), label)
 		if err != nil {
@@ -95,7 +101,7 @@ func (h *ExtrasHandler) HandlePutMapPoint(w http.ResponseWriter, r *http.Request
 		h.failed(w, r, "save map point", err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"map_point": mapPointJSON(row)})
+	httputil.WriteJSON(w, http.StatusOK, mapPointJSON(row))
 }
 
 // HandleDeleteMapPoint serves DELETE .../map-point.
@@ -105,7 +111,7 @@ func (h *ExtrasHandler) HandleDeleteMapPoint(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	ctx := r.Context()
-	err := h.inTx(ctx, func(q *gen.Queries, tx pgx.Tx) error {
+	err := h.inTx(ctx, eventID, mapPointLockKind, func(q *gen.Queries, tx pgx.Tx) error {
 		removed, err := q.DeleteEventMapPoint(ctx, eventID)
 		if err != nil {
 			return err
@@ -116,9 +122,7 @@ func (h *ExtrasHandler) HandleDeleteMapPoint(w http.ResponseWriter, r *http.Requ
 		return h.writeAudit(ctx, tx, r, "v1.event.map_point.delete", eventID, nil)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-			"event.map_point_not_found", "this event has no map point", r,
-		))
+		mapPointNotFound(w, r)
 		return
 	}
 	if err != nil {

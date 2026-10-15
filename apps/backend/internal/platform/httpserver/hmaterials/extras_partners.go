@@ -72,7 +72,7 @@ func (h *ExtrasHandler) HandleListPartnerLinks(w http.ResponseWriter, r *http.Re
 		h.failed(w, r, "list partner links", err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"partner_links": partnerLinksJSON(rows)})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": partnerLinksJSON(rows), "max_items": eventmaterials.MaxPartnerLinks})
 }
 
 type createPartnerRequest struct {
@@ -109,48 +109,35 @@ func (h *ExtrasHandler) HandleCreatePartnerLink(w http.ResponseWriter, r *http.R
 	}
 
 	ctx := r.Context()
-	for attempt := 0; attempt < insertAttempts; attempt++ {
-		var row gen.EventPartnerLinkRow
-		err := h.inTx(ctx, func(q *gen.Queries, tx pgx.Tx) error {
-			var err error
-			row, err = q.InsertEventPartnerLink(ctx, orgID, eventID, link, name, eventmaterials.MaxPartnerLinks)
-			if err != nil {
-				return err
-			}
-			return h.writeAudit(ctx, tx, r, "v1.event.partner_link.create", eventID, map[string]any{
-				"link_id": row.ID.String(), "position": row.Position,
-			})
-		})
-		switch {
-		case err == nil:
-			httputil.WriteJSON(w, http.StatusCreated, map[string]any{"partner_link": partnerLinkJSON(row)})
-			return
-		case errors.Is(err, pgx.ErrNoRows):
-			h.partnerLinksFull(w, r)
-			return
+	var row gen.EventPartnerLinkRow
+	err := h.inTx(ctx, eventID, partnerLinksLockKind, func(q *gen.Queries, tx pgx.Tx) error {
+		var err error
+		row, err = q.InsertEventPartnerLink(ctx, orgID, eventID, link, name, eventmaterials.MaxPartnerLinks)
+		if err != nil {
+			return err
 		}
-		if c, isUnique := uniqueViolation(err); isUnique && c == partnerPositionConstraint {
-			continue // another request took the position: pick again
+		return h.writeAudit(ctx, tx, r, "v1.event.partner_link.create", eventID, map[string]any{
+			"link_id": row.ID.String(), "position": row.Position,
+		})
+	})
+	switch {
+	case err == nil:
+		httputil.WriteJSON(w, http.StatusCreated, partnerLinkJSON(row))
+	case errors.Is(err, pgx.ErrNoRows):
+		partnerLinksFull(w, r, "an event can show up to 3 links to other sellers; please remove one before adding another")
+	default:
+		if _, isUnique := uniqueViolation(err); isUnique {
+			// Lost a race for a position despite the lock (another writer path).
+			partnerLinksFull(w, r, "the links changed, reload them and try again")
+			return
 		}
 		h.failed(w, r, "create partner link", err)
-		return
 	}
-	// Every attempt lost its position to a faster request. If those requests
-	// filled the list, say so; otherwise ask the client to try again.
-	if rows, err := h.queries.ListEventPartnerLinks(ctx, eventID); err == nil && len(rows) >= eventmaterials.MaxPartnerLinks {
-		h.partnerLinksFull(w, r)
-		return
-	}
-	httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
-		"event.concurrent_update", "the list was changed at the same moment; please try again", r,
-	))
 }
 
-func (h *ExtrasHandler) partnerLinksFull(w http.ResponseWriter, r *http.Request) {
+func partnerLinksFull(w http.ResponseWriter, r *http.Request, msg string) {
 	httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
-		"event.partner_links_full",
-		"an event can show up to 3 links to other sellers; please remove one before adding another",
-		r, map[string]any{"limit": eventmaterials.MaxPartnerLinks},
+		"event.partner_links_full", msg, r, map[string]any{"max_items": eventmaterials.MaxPartnerLinks},
 	))
 }
 
@@ -213,7 +200,7 @@ func (h *ExtrasHandler) HandlePatchPartnerLink(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var row gen.EventPartnerLinkRow
-	err = h.inTx(ctx, func(q *gen.Queries, tx pgx.Tx) error {
+	err = h.inTx(ctx, eventID, partnerLinksLockKind, func(q *gen.Queries, tx pgx.Tx) error {
 		var err error
 		if row, err = q.UpdateEventPartnerLink(ctx, linkID, eventID, link, name); err != nil {
 			return err
@@ -228,7 +215,7 @@ func (h *ExtrasHandler) HandlePatchPartnerLink(w http.ResponseWriter, r *http.Re
 		h.failed(w, r, "update partner link", err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"partner_link": partnerLinkJSON(row)})
+	httputil.WriteJSON(w, http.StatusOK, partnerLinkJSON(row))
 }
 
 // HandleDeletePartnerLink serves DELETE .../partner-links/{link_id}; the
@@ -243,7 +230,7 @@ func (h *ExtrasHandler) HandleDeletePartnerLink(w http.ResponseWriter, r *http.R
 		return
 	}
 	ctx := r.Context()
-	err := h.inTx(ctx, func(q *gen.Queries, tx pgx.Tx) error {
+	err := h.inTx(ctx, eventID, partnerLinksLockKind, func(q *gen.Queries, tx pgx.Tx) error {
 		removed, err := q.DeleteEventPartnerLink(ctx, linkID, eventID)
 		if err != nil {
 			return err
@@ -267,20 +254,25 @@ func (h *ExtrasHandler) HandleDeletePartnerLink(w http.ResponseWriter, r *http.R
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// HandleReorderPartnerLinks serves PUT .../partner-links/order. ids must be
-// exactly the event's current link ids in the wanted order.
+// HandleReorderPartnerLinks serves PUT .../partner-links/order. link_ids must
+// name every link of the event exactly once; the list is the new order.
 func (h *ExtrasHandler) HandleReorderPartnerLinks(w http.ResponseWriter, r *http.Request) {
 	_, eventID, ok := h.scope(w, r)
 	if !ok {
 		return
 	}
-	var req orderRequest
+	var req partnerOrderRequest
 	if !readBody(w, r, &req) {
+		return
+	}
+	ids, ok := parseOrderIDs(req.LinkIDs)
+	if !ok {
+		invalidOrder(w, r, "link_ids")
 		return
 	}
 	ctx := r.Context()
 	var rows []gen.EventPartnerLinkRow
-	err := h.inTx(ctx, func(q *gen.Queries, tx pgx.Tx) error {
+	err := h.inTx(ctx, eventID, partnerLinksLockKind, func(q *gen.Queries, tx pgx.Tx) error {
 		cur, err := q.ListEventPartnerLinks(ctx, eventID)
 		if err != nil {
 			return err
@@ -289,28 +281,32 @@ func (h *ExtrasHandler) HandleReorderPartnerLinks(w http.ResponseWriter, r *http
 		for _, c := range cur {
 			have = append(have, c.ID)
 		}
-		if !idsMatch(have, req.IDs) {
-			return errInvalidOrder
+		if !idsMatch(have, ids) {
+			return errOrderMismatch
 		}
-		if len(req.IDs) > 0 {
-			if _, err := q.ReorderEventPartnerLinks(ctx, eventID, req.IDs); err != nil {
+		if len(ids) > 0 {
+			n, err := q.ReorderEventPartnerLinks(ctx, eventID, ids)
+			if err != nil {
 				return err
+			}
+			if n != int64(len(ids)) {
+				return errOrderMismatch
 			}
 		}
 		if rows, err = q.ListEventPartnerLinks(ctx, eventID); err != nil {
 			return err
 		}
-		return h.writeAudit(ctx, tx, r, "v1.event.partner_link.reorder", eventID, map[string]any{"count": len(req.IDs)})
+		return h.writeAudit(ctx, tx, r, "v1.event.partner_link.reorder", eventID, map[string]any{"count": len(ids)})
 	})
-	if errors.Is(err, errInvalidOrder) {
-		invalidOrder(w, r)
+	if errors.Is(err, errOrderMismatch) {
+		orderMismatch(w, r, "event.partner_links_order_mismatch", "link_ids", "link")
 		return
 	}
 	if err != nil {
 		h.failed(w, r, "reorder partner links", err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"partner_links": partnerLinksJSON(rows)})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": partnerLinksJSON(rows), "max_items": eventmaterials.MaxPartnerLinks})
 }
 
-var errInvalidOrder = errors.New("hmaterials: ids are not the event's items")
+var errOrderMismatch = errors.New("hmaterials: the ids are not exactly the stored items of the event")
