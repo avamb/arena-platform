@@ -128,16 +128,15 @@ WHERE  subscriber_id    = $1
 
 -- name: ResolveMACSScanTicketBySystemID :one
 -- The ticket MACS names by its integer id (macs export `id` =
--- tickets.system_ticket_id), locked for the admission stamp. has_ean13 tells
--- the legacy barcode fallback whether the ticket carries a stored EAN-13.
+-- tickets.system_ticket_id), locked for the admission stamp. Also the target
+-- of a legacy ean13.PlatformCode barcode decoded back to its ticket id.
 SELECT t.id, t.session_id, s.event_id, e.org_id, t.status, t.used_at,
-       t.system_ticket_id,
-       EXISTS (SELECT 1 FROM ticket_credentials tc
-               WHERE tc.ticket_id = t.id AND tc.type = 'ean13') AS has_ean13
+       t.system_ticket_id
 FROM   tickets  t
 JOIN   sessions s ON s.id = t.session_id
 JOIN   events   e ON e.id = s.event_id
 WHERE  t.system_ticket_id = $1
+  AND  e.org_id = $2
 FOR UPDATE OF t;
 
 -- name: ResolveMACSScanTicketByBarcode :one
@@ -146,15 +145,14 @@ FOR UPDATE OF t;
 -- EAN-13 credential is written there first with the same value, and an
 -- imported legacy barcode lives only there.
 SELECT t.id, t.session_id, s.event_id, e.org_id, t.status, t.used_at,
-       t.system_ticket_id,
-       EXISTS (SELECT 1 FROM ticket_credentials tc
-               WHERE tc.ticket_id = t.id AND tc.type = 'ean13') AS has_ean13
+       t.system_ticket_id
 FROM   barcodes b
 JOIN   tickets  t ON t.id = b.ticket_id
 JOIN   sessions s ON s.id = t.session_id
 JOIN   events   e ON e.id = s.event_id
 WHERE  b.external_ref = $1
   AND  b.ticket_id IS NOT NULL
+  AND  e.org_id = $2
 ORDER  BY b.created_at, b.id
 LIMIT  1
 FOR UPDATE OF t;

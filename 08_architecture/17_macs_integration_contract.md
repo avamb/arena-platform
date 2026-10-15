@@ -331,6 +331,112 @@ revoked tickets are rejected with `scanner.ticket_not_admissible`.
 
 ---
 
+## Scans from MACS (M1, the reverse direction)
+
+MACS posts the scans it made at the door back to arena. This is the
+production record of who entered; the internal endpoints above stay
+testing-only.
+
+**Endpoint:** `POST /v1/macs/scan-events` (no `{org_id}` in the path: the
+subscriber is the organization).
+
+**Authentication:** no JWT. The batch is signed with the `signing_secret` of the
+organization's MACS subscriber (`webhook_subscribers` of kind `macs`, the same
+secret arena signs its own MACS webhooks with, see "HMAC signing" above):
+
+```
+X-MACS-Subscriber-Id: <subscriber id, as GET /v1/organizations/{org_id}/macs-webhook answers it>
+X-MACS-Signature:     sha256=<hex HMAC-SHA256 of the raw body>
+```
+
+An unknown or inactive subscriber, a subscriber without a secret and a wrong
+signature all answer the same `401 macs.invalid_signature`. Rotating the
+secret (re-registering the subscriber) gives a new subscriber id too: MACS
+must use both new values.
+
+**Body** (snake_case, unknown keys ignored, at most 500 scans and 1 MiB):
+
+```json
+{
+  "scans": [
+    {
+      "scan_id":          "macs-778812",          // required, <= 128, unique per subscriber
+      "system_ticket_id": 1000000123,             // the export's `id`
+      "barcode":          "2100000001231",        // the export's `barcode` (EAN-13)
+      "result":           "admitted",             // admitted | rejected | duplicate
+      "scanned_at":       "2026-10-15T19:42:05+02:00", // RFC 3339 with a zone
+      "scanner_id":       "dev-7",                // optional, <= 200
+      "scanner_name":     "Scanner 2",            // optional, <= 200
+      "gate":             "Main"                  // optional, <= 200
+    }
+  ]
+}
+```
+
+At least one of `system_ticket_id` and `barcode` is required; when both are
+sent they must name the same ticket (else `scan.ticket_mismatch`). A barcode
+is matched against the ticket's stored barcodes (any authority, the
+`legacy_bil24` import included) and then against the legacy
+`ean13.PlatformCode` formula, which the export prints for a ticket without a
+stored EAN-13. `rejected` and `duplicate` are stored as a denied scan; the MACS
+word stays in the outbox payload (`macs_result`).
+
+**Answer:** `202` with one result per scan, in request order:
+
+```json
+{
+  "accepted": 1, "duplicates": 0, "rejected": 1,
+  "results": [
+    {"scan_id": "macs-778812", "status": "accepted", "scan_event_id": "<uuid>",
+     "ticket_id": "<uuid>", "first_admission": true},
+    {"scan_id": "macs-778813", "status": "rejected", "ticket_id": null,
+     "first_admission": false, "error_code": "scan.ticket_not_found",
+     "error": "no ticket of this organization has that id or barcode"}
+  ]
+}
+```
+
+`status` is `accepted` (recorded now), `duplicate` (recorded before, nothing
+written) or `rejected`. A rejected scan with `retryable: true`
+(`scan.temporarily_unavailable`) may be sent again; when no scan of the batch
+could be recorded the whole answer is `503 macs.temporarily_unavailable`.
+Other request-level answers: `400 macs.invalid_body` / `macs.empty_batch`,
+`401 macs.missing_signature`, `413 macs.batch_too_large` / `macs.body_too_large`,
+`429 macs.rate_limited` (120 batches a minute per subscriber, `Retry-After`).
+
+**Rules:**
+
+- **Idempotency:** `(subscriber, scan_id)`. Sending a batch again (after a
+  timeout, or an offline scanner's backlog days later) answers every scan
+  `duplicate` and writes nothing. A scan with another `scan_id` but the same
+  barcode and `scanned_at` as a recorded one is a duplicate too.
+- **Organization:** only tickets of the subscriber's organization are
+  recorded; any other ticket is rejected per scan with
+  `scan.ticket_not_found`, exactly like an unknown one, and is never read
+  or locked.
+- **Order:** scans are processed in order of `scanned_at`, not of arrival, so
+  a late batch stamps the earliest admission it carries. `tickets.used_at` is
+  the first admission and is only ever set when it is empty
+  (`MarkTicketUsedAtIfUnset`), so an admission that arrives after a later one
+  was already recorded does not move it back.
+- **Cancelled tickets:** an admission of a ticket that is no longer valid
+  (an offline scanner did not know yet) is recorded as the fact it is, but
+  does not stamp `used_at`.
+- **Storage:** one `scan_events` row per scan with `source = macs`,
+  `subscriber_id`, `external_scan_id` (= `scan_id`), `scanner_label`
+  (= `scanner_name`), `device_id` (= `scanner_id`), `gate` (migration 0164).
+  Each scan is its own transaction, with the `v1.ticket.scanned` outbox event
+  (spec 15) and, for a first admission, the audit row `v1.ticket.admitted`
+  (`actor_type = macs_subscriber`, `actor_id` = the subscriber id).
+- **Refunds:** an admitted MACS scan blocks every refund of the ticket, like
+  an admission by arena's own scanner: "a ticket scanned at the gate is never
+  refunded" (`refunds/scanned.go` counts every admitted `scan_events` row of
+  the ticket's own organization, whatever its source).
+- **Session summary:** `entered.by_source` of the session and event summaries
+  counts the admitted scans per source (`arena_scanner`, `macs`).
+
+---
+
 ## Testing
 
 ### Unit tests

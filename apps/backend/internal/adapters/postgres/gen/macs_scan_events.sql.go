@@ -100,44 +100,43 @@ type MACSScanTicketRow struct {
 	Status         string     `json:"status"`
 	UsedAt         *time.Time `json:"used_at"`
 	SystemTicketID int64      `json:"system_ticket_id"`
-	HasEAN13       bool       `json:"has_ean13"`
 }
 
 func scanMACSScanTicketRow(row pgx.Row) (MACSScanTicketRow, error) {
 	var r MACSScanTicketRow
 	err := row.Scan(&r.TicketID, &r.SessionID, &r.EventID, &r.OrgID,
-		&r.Status, &r.UsedAt, &r.SystemTicketID, &r.HasEAN13)
+		&r.Status, &r.UsedAt, &r.SystemTicketID)
 	return r, err
 }
 
 const resolveMACSScanTicketBySystemID = `-- name: ResolveMACSScanTicketBySystemID :one
 SELECT t.id, t.session_id, s.event_id, e.org_id, t.status, t.used_at,
-       t.system_ticket_id,
-       EXISTS (SELECT 1 FROM ticket_credentials tc
-               WHERE tc.ticket_id = t.id AND tc.type = 'ean13') AS has_ean13
+       t.system_ticket_id
 FROM   tickets  t
 JOIN   sessions s ON s.id = t.session_id
 JOIN   events   e ON e.id = s.event_id
 WHERE  t.system_ticket_id = $1
+  AND  e.org_id = $2
 FOR UPDATE OF t`
 
 // ResolveMACSScanTicketBySystemID resolves MACS's integer ticket id
-// (tickets.system_ticket_id). Returns pgx.ErrNoRows when unknown.
-func (q *Queries) ResolveMACSScanTicketBySystemID(ctx context.Context, systemTicketID int64) (MACSScanTicketRow, error) {
-	return scanMACSScanTicketRow(q.db.QueryRow(ctx, resolveMACSScanTicketBySystemID, systemTicketID))
+// (tickets.system_ticket_id) inside orgID, the subscriber's organization.
+// Returns pgx.ErrNoRows when unknown or another organization's: a foreign
+// ticket is never locked.
+func (q *Queries) ResolveMACSScanTicketBySystemID(ctx context.Context, systemTicketID int64, orgID uuid.UUID) (MACSScanTicketRow, error) {
+	return scanMACSScanTicketRow(q.db.QueryRow(ctx, resolveMACSScanTicketBySystemID, systemTicketID, orgID))
 }
 
 const resolveMACSScanTicketByBarcode = `-- name: ResolveMACSScanTicketByBarcode :one
 SELECT t.id, t.session_id, s.event_id, e.org_id, t.status, t.used_at,
-       t.system_ticket_id,
-       EXISTS (SELECT 1 FROM ticket_credentials tc
-               WHERE tc.ticket_id = t.id AND tc.type = 'ean13') AS has_ean13
+       t.system_ticket_id
 FROM   barcodes b
 JOIN   tickets  t ON t.id = b.ticket_id
 JOIN   sessions s ON s.id = t.session_id
 JOIN   events   e ON e.id = s.event_id
 WHERE  b.external_ref = $1
   AND  b.ticket_id IS NOT NULL
+  AND  e.org_id = $2
 ORDER  BY b.created_at, b.id
 LIMIT  1
 FOR UPDATE OF t`
@@ -145,7 +144,8 @@ FOR UPDATE OF t`
 // ResolveMACSScanTicketByBarcode resolves a 13-digit barcode through
 // barcodes.external_ref (any authority: the minted EAN-13 credential is
 // written there with the same value, an imported legacy barcode lives only
-// there). Returns pgx.ErrNoRows when no ticket carries the code.
-func (q *Queries) ResolveMACSScanTicketByBarcode(ctx context.Context, barcode string) (MACSScanTicketRow, error) {
-	return scanMACSScanTicketRow(q.db.QueryRow(ctx, resolveMACSScanTicketByBarcode, barcode))
+// there) inside orgID. Returns pgx.ErrNoRows when no ticket of orgID
+// carries the code.
+func (q *Queries) ResolveMACSScanTicketByBarcode(ctx context.Context, barcode string, orgID uuid.UUID) (MACSScanTicketRow, error) {
+	return scanMACSScanTicketRow(q.db.QueryRow(ctx, resolveMACSScanTicketByBarcode, barcode, orgID))
 }

@@ -480,8 +480,8 @@ type Querier interface {
 	// M1 — scans MACS posts back (macs_scan_events.sql.go, migration 0164).
 	InsertMACSScanEvent(ctx context.Context, p InsertMACSScanEventParams) (ScanEventRow, bool, error)
 	GetScanEventBySubscriberScan(ctx context.Context, subscriberID uuid.UUID, externalScanID string) (ScanEventRow, error)
-	ResolveMACSScanTicketBySystemID(ctx context.Context, systemTicketID int64) (MACSScanTicketRow, error)
-	ResolveMACSScanTicketByBarcode(ctx context.Context, barcode string) (MACSScanTicketRow, error)
+	ResolveMACSScanTicketBySystemID(ctx context.Context, systemTicketID int64, orgID uuid.UUID) (MACSScanTicketRow, error)
+	ResolveMACSScanTicketByBarcode(ctx context.Context, barcode string, orgID uuid.UUID) (MACSScanTicketRow, error)
 	ListSessionSummaryAdmissions(ctx context.Context, sessionIDs []uuid.UUID) ([]SessionSummaryAdmissionsRow, error)
 
 	// External reconciliation — partner report submission, auto-match, exception queue (feature #147)
