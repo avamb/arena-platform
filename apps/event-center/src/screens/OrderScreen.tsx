@@ -1,6 +1,6 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { fetchOrder, listOrders } from "@/lib/api/endpoints";
+import { fetchOrder } from "@/lib/api/endpoints";
 import type { OrderDetail } from "@/lib/api/types";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
@@ -49,22 +49,12 @@ export function OrderScreen() {
   const { orgId } = useOrg();
   const { orderId } = useParams({ from: "/o/$orgId/orders/$orderId" });
   const order = useQuery({ queryKey: ["order", orgId, orderId], queryFn: () => fetchOrder(orgId, orderId) });
-  // The card has no event name and no session time: borrow them from the
-  // list row of the same order, like the bot (spec section 13, WEB-ORDER-EVENT).
-  const row = useQuery({
-    queryKey: ["orderRow", orgId, orderId],
-    enabled: order.data !== undefined,
-    queryFn: async () => {
-      const o = order.data as OrderDetail;
-      const res = await listOrders(orgId, { q: `#${o.system_id}`, sessionId: o.session_id, limit: 5 });
-      return res.orders.find((x) => x.id === o.id) ?? null;
-    },
-  });
 
   if (order.isLoading) return <Loading />;
   if (order.data === undefined) return <ErrorBox error={order.error} onRetry={() => void order.refetch()} />;
   const o = order.data;
-  const tz = row.data?.session_timezone ?? null;
+  // The card carries the event name, the session start and the venue zone itself (0-2).
+  const tz = o.venue_timezone;
   const money = (v: number) => formatMoney(v, o.currency, locale);
   const unpaid = (UNPAID_REASONS as readonly string[]).includes(o.unpaid_reason)
     ? t(`unpaid.${o.unpaid_reason}` as MessageKey)
@@ -82,12 +72,12 @@ export function OrderScreen() {
         <OrderStatusBadge status={o.status} />
         <strong>{money(o.total)}</strong>
       </p>
-      {row.data !== undefined && row.data !== null && (
+      {o.event_name !== "" && (
         <p>
           <Link to="/o/$orgId/events/$eventId" params={{ orgId, eventId: o.event_id }}>
-            {row.data.event_name}
+            {o.event_name}
           </Link>{" "}
-          · {formatDateTime(row.data.session_start_at, tz, locale)}
+          · {formatDateTime(o.session_start_at, tz, locale)}
         </p>
       )}
 
