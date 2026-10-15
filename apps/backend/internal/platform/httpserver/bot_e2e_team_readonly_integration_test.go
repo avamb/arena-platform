@@ -153,12 +153,26 @@ func TestBotE2E_TeamScreen_OwnerManagesManagerReadsAgentRefused(t *testing.T) {
 		tg.push(e2eCallbackAs(managerTG, data))
 		tg.waitSince(t, mk, "Команду меняет только владелец")
 	}
-	// A typed address after a forged "invite" is nobody's answer.
+	// A typed address after a forged "invite" is nobody's answer: the bot only
+	// says it did not understand, and never asks for a role for that address
+	// (the role question would repeat the address).
 	mk = tg.mark()
 	tg.push(e2eMessageAs(managerTG, "forged@arena-integration.test"))
-	time.Sleep(500 * time.Millisecond)
+	tg.waitSince(t, mk, "Я не понял")
+	tg.mu.Lock()
+	said := append([]string(nil), tg.sent[mk:]...)
+	tg.mu.Unlock()
+	for _, msg := range said {
+		if strings.Contains(msg, "forged@arena-integration.test") {
+			t.Errorf("the typed address after a forged invite was taken up by the bot:\n%s", msg)
+		}
+	}
 	if n := teamDialogs(); n != 0 {
 		t.Errorf("a manager's forged press opened %d team dialog(s)", n)
+	}
+	var role string
+	if err := pool.QueryRow(ctx, `SELECT role FROM memberships WHERE user_id = $1 AND org_id = $2`, managerUser, f.orgID).Scan(&role); err != nil || role != "organizer" {
+		t.Errorf("the manager's membership role = %q (err %v), want organizer", role, err)
 	}
 	if revoked() || members() != startMembers || jobs() != startJobs {
 		t.Fatalf("a manager's press changed something: revoked=%v members=%d/%d jobs=%d/%d", revoked(), members(), startMembers, jobs(), startJobs)
