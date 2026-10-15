@@ -11,6 +11,7 @@ import type {
   MeResponse,
   OrderDetail,
   OrderListResponse,
+  OrderResendTicketsResponse,
   OrderSummary,
   OrgMeResponse,
   PromoterEnvelope,
@@ -161,6 +162,19 @@ export type PromoterPatch = Partial<{
 
 export function updatePromoter(orgId: string, promoterId: string, body: PromoterPatch): Promise<PromoterEnvelope> {
   return call<PromoterEnvelope>({ route: API.promoterUpdate, params: { org_id: orgId, id: promoterId }, body });
+}
+
+/**
+ * Sends the tickets of a paid order again (4-1). Without `email` the letter goes to
+ * the order's own address. With it, the address is used once and kept 24 hours on
+ * the delivery task: it never replaces the order's buyer e-mail.
+ */
+export function resendOrderTickets(orgId: string, orderId: string, email?: string): Promise<OrderResendTicketsResponse> {
+  return call<OrderResendTicketsResponse>({
+    route: API.resendTickets,
+    params: { org_id: orgId, order_id: orderId },
+    body: email !== undefined && email !== "" ? { email } : undefined,
+  });
 }
 
 /**
