@@ -145,6 +145,49 @@ func isOwner(id *Identity) bool {
 	return id != nil && id.Current != nil && id.Current.Role == membershipRoleOwner
 }
 
+// isTeamReader reports whether the person sees the Team screen READ-ONLY: the
+// manager (membership role organizer), owner decision V-11 of 2026-10-16. The
+// server already lets the manager read the list (membership.read, migration
+// 0011) and refuses every change (membership.grant/revoke are the owner's), so
+// the bot only has to stop offering the buttons and refuse the presses.
+func isTeamReader(id *Identity) bool {
+	return id != nil && id.Current != nil && id.Current.Role == membershipRoleManager
+}
+
+// teamControl is one action button of the Team screen: the text key, the
+// callback data and how long the member's address may be in the button text.
+type teamControl struct {
+	TextKey  string
+	Data     string
+	EmailLen int
+}
+
+// teamMemberControls lists the buttons the Team screen shows under one member.
+// A read-only viewer (the manager) gets none, nor does anybody for themself.
+// This is the ONE place that decides, so the screen and its test agree.
+func teamMemberControls(m TeamMember, self, readOnly bool) []teamControl {
+	if readOnly || self {
+		return nil
+	}
+	var out []teamControl
+	if m.revokable() {
+		out = append(out,
+			teamControl{"bot.team.resend_btn", "team:rs:" + m.UserID.String(), 36},
+			teamControl{"bot.team.revoke_btn", "team:ri:" + m.UserID.String(), 36})
+	}
+	return append(out, teamControl{"bot.team_remove_btn", "team:rm:" + m.UserID.String(), 40})
+}
+
+// teamFooterControls lists the buttons at the bottom of the Team screen: only
+// the owner may invite, everybody goes back to the menu.
+func teamFooterControls(readOnly bool) []teamControl {
+	var out []teamControl
+	if !readOnly {
+		out = append(out, teamControl{TextKey: "bot.team_invite_btn", Data: "team:invite"})
+	}
+	return append(out, teamControl{TextKey: "bot.btn_home", Data: "home"})
+}
+
 // ownerIsAlone reports whether the current organization's team is just
 // this one person (or empty — a superadmin working in an organization they
 // are not a member of). A failed lookup answers false, so the menu falls
@@ -178,7 +221,8 @@ func (b *Bot) showTeam(ctx context.Context, chatID int64, editMsgID *int, from *
 		return
 	}
 	loc := id.Locale()
-	if !isOwner(id) {
+	readOnly := isTeamReader(id)
+	if !isOwner(id) && !readOnly {
 		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.team_owner_only", nil), b.backKeyboard(loc, "home"))
 		return
 	}
@@ -219,30 +263,22 @@ func (b *Bot) showTeam(ctx context.Context, chatID int64, editMsgID *int, from *
 		}
 		sb.WriteString("\n")
 		sb.WriteString(b.texts.T(loc, "bot.team_member_line", map[string]any{"Email": Esc(m.Email), "Role": b.texts.T(loc, roleKey, nil), "Marks": marks}))
-		if !self && m.revokable() {
-			rows = append(rows,
-				[]models.InlineKeyboardButton{{
-					Text:         b.texts.T(loc, "bot.team.resend_btn", map[string]any{"Email": truncate(m.Email, 36)}),
-					CallbackData: "team:rs:" + m.UserID.String(),
-				}},
-				[]models.InlineKeyboardButton{{
-					Text:         b.texts.T(loc, "bot.team.revoke_btn", map[string]any{"Email": truncate(m.Email, 36)}),
-					CallbackData: "team:ri:" + m.UserID.String(),
-				}})
-		}
-		if !self {
+		for _, c := range teamMemberControls(m, self, readOnly) {
 			rows = append(rows, []models.InlineKeyboardButton{{
-				Text:         b.texts.T(loc, "bot.team_remove_btn", map[string]any{"Email": truncate(m.Email, 40)}),
-				CallbackData: "team:rm:" + m.UserID.String(),
+				Text:         b.texts.T(loc, c.TextKey, map[string]any{"Email": truncate(m.Email, c.EmailLen)}),
+				CallbackData: c.Data,
 			}})
 		}
 	}
 	sb.WriteString("\n\n")
-	sb.WriteString(b.texts.T(loc, "bot.team_hint", nil))
-	rows = append(rows,
-		[]models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.team_invite_btn", nil), CallbackData: "team:invite"}},
-		[]models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}},
-	)
+	if readOnly {
+		sb.WriteString(b.texts.T(loc, "bot.team.readonly_hint", nil))
+	} else {
+		sb.WriteString(b.texts.T(loc, "bot.team_hint", nil))
+	}
+	for _, c := range teamFooterControls(readOnly) {
+		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, c.TextKey, nil), CallbackData: c.Data}})
+	}
 	b.reply(ctx, chatID, editMsgID, sb.String(), &models.InlineKeyboardMarkup{InlineKeyboard: rows})
 }
 
@@ -259,6 +295,16 @@ func (b *Bot) teamCallback(ctx context.Context, chatID int64, msgID int, from *m
 	}
 	loc := id.Locale()
 	if !isOwner(id) {
+		if isTeamReader(id) {
+			// The manager only reads: the list itself is fine, every action
+			// (an old button, a forged payload) is refused and changes nothing.
+			if data == "" {
+				b.showTeam(ctx, chatID, &msgID, from, "")
+				return
+			}
+			b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.team.readonly", nil), b.backKeyboard(loc, "team"))
+			return
+		}
 		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.team_owner_only", nil), b.backKeyboard(loc, "home"))
 		return
 	}

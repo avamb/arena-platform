@@ -471,6 +471,10 @@ type Config struct {
 	// /legal/privacy; set them while the new site is still on a sub-domain.
 	OnboardingTermsURL   string `env:"ONBOARDING_TERMS_URL" required:"false" default:""`
 	OnboardingPrivacyURL string `env:"ONBOARDING_PRIVACY_URL" required:"false" default:""`
+	// PlatformTermsURL is the platform's terms page a buyer accepts at
+	// checkout when the sales channel asks for consent (P2). Empty means
+	// <OnboardingSiteURL>/legal/terms.
+	PlatformTermsURL string `env:"PLATFORM_TERMS_URL" required:"false" default:""`
 	// OnboardingTurnstileSecret is the Cloudflare Turnstile secret key that
 	// verifies the first step and the "send me the link" request. Empty is
 	// accepted outside production only; in production the routes answer 503.
@@ -721,6 +725,7 @@ func LoadFor(role Role) (*Config, error) {
 		OnboardingSiteURL:           strings.TrimRight(getenv("ONBOARDING_SITE_URL", "https://arenasoldout.com"), "/"),
 		OnboardingTermsURL:          strings.TrimSpace(getenv("ONBOARDING_TERMS_URL", "")),
 		OnboardingPrivacyURL:        strings.TrimSpace(getenv("ONBOARDING_PRIVACY_URL", "")),
+		PlatformTermsURL:            strings.TrimSpace(getenv("PLATFORM_TERMS_URL", "")),
 		OnboardingTurnstileSecret:   getenv("ONBOARDING_TURNSTILE_SECRET", ""),
 		ContactFormTurnstileSecret:  getenv("CONTACT_FORM_TURNSTILE_SECRET", ""),
 		ContactFormTurnstileSiteKey: strings.TrimSpace(getenv("CONTACT_FORM_TURNSTILE_SITE_KEY", "")),

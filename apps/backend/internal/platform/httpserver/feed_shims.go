@@ -52,7 +52,8 @@ func (s *Server) feedHandler() *hfeed.Handler {
 			widgetPaymentGrace(s.cfg),
 			s.eventQueries,
 		).
-		WithContactForm(s.contactFormReady(), s.contactFormSiteKey(), s.contactFormPrivacyURL())
+		WithContactForm(s.contactFormReady(), s.contactFormSiteKey(), s.contactFormPrivacyURL()).
+		WithCheckoutConsent(s.platformTermsURL(), s.contactFormPrivacyURL())
 }
 
 // ─── type aliases ─────────────────────────────────────────────────────────────

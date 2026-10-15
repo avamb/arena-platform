@@ -1,7 +1,9 @@
 // Package hseller serves the owner's "Organization data" (HP-4a): the legal
 // data the hosted sales page prints in its seller block, and the per-channel
 // settings of that block (settings.hosted_page.show_seller and
-// settings.hosted_page.public_contact).
+// settings.hosted_page.public_contact), plus the buyer consent at checkout
+// (settings.hosted_page.consent_required, P2), which may be switched on only
+// while the seller profile is complete.
 //
 //	GET   /v1/organizations/{org_id}/seller-profile
 //	PATCH /v1/organizations/{org_id}/channels/{channel_id}/seller-display
@@ -80,7 +82,14 @@ type Channel struct {
 	Complete bool `json:"complete"`
 	// SellerShown: the channel's sales page shows the seller block now
 	// (Complete and not SellerHidden).
-	SellerShown        bool     `json:"seller_shown"`
+	SellerShown bool `json:"seller_shown"`
+	// ConsentRequired is the stored switch: the buyer must tick "I accept the
+	// sale terms" before paying (P2).
+	ConsentRequired bool `json:"consent_required"`
+	// ConsentActive: checkout asks for the consent now (ConsentRequired and
+	// Complete - an incomplete profile turns the question off, exactly as the
+	// checkout decides it).
+	ConsentActive      bool     `json:"consent_active"`
 	PublicContact      *Contact `json:"public_contact"`
 	EmailLooksPersonal bool     `json:"email_looks_personal"`
 	// Missing lists what must be filled before ShowSeller may be turned on
@@ -239,6 +248,8 @@ func (h *Handler) loadProfile(ctx context.Context, orgID uuid.UUID) (Profile, ge
 		}
 		ch.Complete = len(ch.Missing) == 0
 		ch.SellerShown = ch.Complete && !ch.SellerHidden
+		ch.ConsentRequired = row.ConsentRequired
+		ch.ConsentActive = ch.ConsentRequired && ch.Complete
 		p.SellerShown = p.SellerShown || ch.SellerShown
 		if c != nil && c.Email != "" {
 			ch.EmailLooksPersonal = sellerinfo.LooksPersonalEmail(c.Email)
@@ -299,9 +310,10 @@ type contactPatch struct {
 }
 
 type displayPatch struct {
-	ShowSeller    optional[bool]         `json:"show_seller"`
-	SellerHidden  optional[bool]         `json:"seller_hidden"`
-	PublicContact optional[contactPatch] `json:"public_contact"`
+	ShowSeller      optional[bool]         `json:"show_seller"`
+	SellerHidden    optional[bool]         `json:"seller_hidden"`
+	PublicContact   optional[contactPatch] `json:"public_contact"`
+	ConsentRequired optional[bool]         `json:"consent_required"`
 }
 
 // HandlePatchDisplay serves PATCH
@@ -312,7 +324,9 @@ type displayPatch struct {
 // "" clears that one. seller_hidden is changed by a platform superadmin only
 // (403 seller.hide_superadmin_only). show_seller true is refused with 422 seller.incomplete
 // (details.missing) while a required field is empty, and so is clearing the
-// e-mail of a channel that keeps the block on.
+// e-mail of a channel that keeps the block on. consent_required true (P2) is
+// refused the same way, and so is clearing the e-mail of a channel that keeps
+// the consent on.
 func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
 	if !personOnly(w, r) || !h.ready(w, r) || h.pool == nil {
 		return
@@ -340,6 +354,10 @@ func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ShowSeller.Present && req.ShowSeller.Null {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("seller.invalid_body", "show_seller must be true or false", r, map[string]any{"field": "show_seller"}))
+		return
+	}
+	if req.ConsentRequired.Present && req.ConsentRequired.Null {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("seller.invalid_body", "consent_required must be true or false", r, map[string]any{"field": "consent_required"}))
 		return
 	}
 	if req.SellerHidden.Present && req.SellerHidden.Null {
@@ -428,6 +446,21 @@ func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
 	// of the phone alone on an older, incomplete channel is not blocked.
 	askedOn := req.ShowSeller.Present && req.ShowSeller.Value
 	losingEmail := show && contactChanged && next.Email == "" && cur.PublicContact != nil && cur.PublicContact.Email != ""
+	// The buyer consent (P2) names the seller's legal name and needs the same
+	// complete profile: asking for it, or taking the e-mail away from a
+	// channel that keeps it on, is refused while data is missing.
+	consent := cur.ConsentRequired
+	if req.ConsentRequired.Present {
+		consent = req.ConsentRequired.Value
+	}
+	if consentRefused(consent, req.ConsentRequired.Present && req.ConsentRequired.Value, contactChanged, cur.PublicContact, next, missing) {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			"seller.incomplete",
+			"the buyer consent cannot be switched on yet: please fill in the fields listed in details.missing first",
+			r, map[string]any{"missing": missing},
+		))
+		return
+	}
 	if show && len(missing) > 0 && (askedOn || losingEmail) {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 			"seller.incomplete",
@@ -456,6 +489,12 @@ func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("seller.channel_not_found", "this organization has no sales page channel with that id", r))
 		return
 	}
+	if consent != cur.ConsentRequired {
+		if _, err := h.queries.WithTx(tx).SetChannelConsentRequired(ctx, channelID, orgID, consent); err != nil {
+			h.writeFailed(w, r, orgID, err)
+			return
+		}
+	}
 	hidden := cur.SellerHidden
 	if hiddenChanged {
 		hidden = req.SellerHidden.Value
@@ -478,12 +517,13 @@ func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
 			TraceID:      logging.TraceID(ctx),
 			IP:           httputil.ExtractClientIP(r),
 			Metadata: map[string]any{
-				"org_id":          orgID.String(),
-				"show_seller":     show,
-				"seller_hidden":   hidden,
-				"contact_changed": contactChanged,
-				"has_email":       next.Email != "",
-				"has_phone":       next.Phone != "",
+				"org_id":           orgID.String(),
+				"show_seller":      show,
+				"seller_hidden":    hidden,
+				"consent_required": consent,
+				"contact_changed":  contactChanged,
+				"has_email":        next.Email != "",
+				"has_phone":        next.Phone != "",
 			},
 		}); err != nil {
 			h.writeFailed(w, r, orgID, err)
@@ -500,6 +540,19 @@ func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"seller_profile": after})
+}
+
+// consentRefused is the P2 rule of the seller-display route: with the consent
+// switch ending at consent, a request is refused while a required field is
+// missing when it asks for the consent (askedOn) or when it takes the public
+// e-mail away from a channel that keeps the consent on. A request that only
+// switches the consent off, or touches nothing the consent needs, passes.
+func consentRefused(consent, askedOn, contactChanged bool, cur *Contact, next Contact, missing []string) bool {
+	if !consent || len(missing) == 0 {
+		return false
+	}
+	losingEmail := contactChanged && next.Email == "" && cur != nil && cur.Email != ""
+	return askedOn || losingEmail
 }
 
 func (h *Handler) writeFailed(w http.ResponseWriter, r *http.Request, orgID uuid.UUID, err error) {

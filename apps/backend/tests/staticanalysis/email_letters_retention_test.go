@@ -122,3 +122,73 @@ func TestEmailLetters_NoCodeDeletesEvidenceEarly(t *testing.T) {
 		t.Error("expected the 'sending' clean-up statements of internal/platform/emailstatus; did the scan stop finding code?")
 	}
 }
+
+// consentDelete matches a DELETE or TRUNCATE aimed at checkout_consents (P2,
+// migration 0155): the buyer's consent at checkout is dispute evidence with
+// the same rule as the letters - at least 24 and at most 36 months from the
+// event date - and there is no purge yet. Only a migration's Down section and
+// test fixtures (_test.go, not scanned) may remove rows. A future purge must
+// count from the event date (emailstatus.RetentionAnchorSQL is the model) and
+// be allowed here on purpose.
+var consentDelete = regexp.MustCompile(`(?is)(DELETE\s+FROM|TRUNCATE(\s+TABLE)?)\s+(ONLY\s+)?checkout_consents\b[^;` + "`" + `]*`)
+
+func TestCheckoutConsents_NoCodeDeletesEvidence(t *testing.T) {
+	root := repoRoot(t)
+	for _, probe := range []string{"DELETE FROM checkout_consents WHERE org_id = $1", "TRUNCATE TABLE checkout_consents"} {
+		if !consentDelete.MatchString(probe) {
+			t.Fatalf("the pattern misses %q", probe)
+		}
+	}
+	dirs := []string{
+		filepath.Join(root, "apps", "backend", "cmd"),
+		filepath.Join(root, "apps", "backend", "internal"),
+		filepath.Join(root, "ops"),
+	}
+	var violations []string
+	sawTable := false
+	for _, dir := range dirs {
+		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				if d.Name() == ".gomodcache" || d.Name() == "node_modules" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			ext := filepath.Ext(path)
+			if (ext != ".go" && ext != ".sql" && ext != ".sh") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			src, rerr := os.ReadFile(path) // #nosec G304 — repo-local test scan
+			if rerr != nil {
+				t.Fatalf("read %s: %v", path, rerr)
+			}
+			text := string(src)
+			if ext == ".sql" {
+				if i := strings.Index(text, "-- +goose Down"); i >= 0 {
+					text = text[:i]
+				}
+			}
+			if strings.Contains(text, "CREATE TABLE checkout_consents") {
+				sawTable = true
+			}
+			for _, m := range consentDelete.FindAllString(text, -1) {
+				rel, _ := filepath.Rel(root, path)
+				violations = append(violations, rel+": "+strings.Join(strings.Fields(m), " "))
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", dir, err)
+		}
+	}
+	if !sawTable {
+		t.Error("did not find the migration that creates checkout_consents; did the scan stop finding code?")
+	}
+	if len(violations) > 0 {
+		t.Errorf("checkout_consents are dispute evidence kept at least 24 months from the event date; no code may delete them:\n  %s",
+			strings.Join(violations, "\n  "))
+	}
+}

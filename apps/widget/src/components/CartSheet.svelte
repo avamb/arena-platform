@@ -8,6 +8,7 @@
   import type { CartState } from '../lib/cart.js';
   import BuyerForm from './BuyerForm.svelte';
   import type { BuyerFieldConfig, BuyerFormValues } from '../lib/checkout.js';
+  import type { SessionConsent } from '../lib/consent.js';
 
   interface Props {
     cart: CartState;
@@ -24,6 +25,11 @@
      * withdrawal" notice above the pay button.
      */
     showWithdrawalNotice?: boolean;
+    /**
+     * The session's `consent` block (P2): the buyer form shows the "I accept
+     * the sale terms" checkbox when it is required.
+     */
+    consent?: SessionConsent | null;
     submitting?: boolean;
     submitError?: string | null;
     /**
@@ -73,7 +79,7 @@
     onCheckout: (values: BuyerFormValues) => void;
   }
   const {
-    cart, buyerFields, locale = 'en', serviceFeePercent = null, showWithdrawalNotice = false, submitting = false, submitError = null,
+    cart, buyerFields, locale = 'en', serviceFeePercent = null, showWithdrawalNotice = false, consent = null, submitting = false, submitError = null,
     promoCode = null, promoQuote = null, cartKey = '', promoAvailable = false, promoExpanded = false, promoBusy = false, promoError = null, promoNote = null,
     onApplyPromo, onRemovePromo, onContinue,
     conflictKeys, onContinueWithoutConflicts,
@@ -278,6 +284,7 @@
         {submitting}
         submitText={payLabel}
         withdrawalNotice={shouldShowWithdrawalNotice(showWithdrawalNotice, payTotal)}
+        {consent}
         onSubmit={onCheckout}
       />
     </div>

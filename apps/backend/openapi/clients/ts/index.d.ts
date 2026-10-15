@@ -3297,8 +3297,9 @@ export interface paths {
         /**
          * Switch the seller block and set the public contact of a sales-page channel
          * @description Writes `settings.hosted_page.public_contact`, the legacy
-         *     `show_seller` and the operator's `seller_hidden` of one hosted-page
-         *     channel of the organization; every other setting is kept. The seller
+         *     `show_seller`, the operator's `seller_hidden` and the buyer consent
+         *     switch `consent_required` (P2) of one hosted-page channel of the
+         *     organization; every other setting is kept. The seller
          *     block is shown by default once the profile is complete; only a platform
          *     superadmin (with `X-Admin-Reason`) can hide it with `seller_hidden`. Requires `org.update` in the
          *     organization. A channel of another organization, or one without a hosted
@@ -5579,6 +5580,10 @@ export interface paths {
          *         covered by the right of withdrawal. False for every other
          *         country (Israel included, which has its own cancellation
          *         regime) and when the country is unknown.
+         *       * `consent` — `PublicCheckoutConsentBlock` (P2): whether the
+         *         buyer must tick "I accept the sale terms (seller: <legal name>)
+         *         and the privacy policy" before paying, the seller's legal name
+         *         for that text and the two pages it links to.
          *       * `poster_media_id` — resolved cover: session's own value when
          *         set, otherwise the event fallback. Same on `poster_url`.
          *       * `media_gallery: SessionMediaItem[]` — ordered per-session
@@ -7435,6 +7440,68 @@ export interface paths {
          *     `ticket.update` permission.
          */
         post: operations["postV1OrganizationsOrgIdOrdersOrderIdResendTickets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/orders/{order_id}/consents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The consents the buyer gave at checkout
+         * @description Lists the consents the buyer of this order gave at checkout (P2,
+         *     `checkout_consents`): what was accepted (`terms_version`), in which
+         *     language, when, whether the no-right-of-withdrawal notice was shown,
+         *     and the buyer's IP address and browser string at purchase. This is
+         *     dispute (chargeback) evidence and the only route that answers the
+         *     address and the browser string; it is kept at least 24 and at most 36
+         *     months from the event date. Requires the `order.read` permission. An
+         *     order of another organization answers the route's own 404
+         *     `orders.not_found`. An order bought without a consent lists none.
+         *     Only people read it: a member of the organization or the platform
+         *     superadmin; an organization API key is refused (403
+         *     `orders.consents_api_key_forbidden`).
+         */
+        get: operations["getV1OrganizationsOrgIdOrdersOrderIdConsents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/orders/{order_id}/letter-interactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The opens and clicks of an order's letters
+         * @description Lists, for each letter that left arena for this order (ticket, change,
+         *     cancellation and refund letters), every open, proxy open and click
+         *     Brevo reported with its time and the reader's user agent (U-7,
+         *     `email_letter_interactions`). This is dispute (chargeback) evidence
+         *     and the only route that answers the user agent; it is kept with the
+         *     letter, at least 24 and at most 36 months from the event date.
+         *     Brevo's webhook carries no reader IP address, so none is answered.
+         *     Requires the `order.read` permission. An order of another
+         *     organization answers the route's own 404 `orders.not_found`. Only
+         *     people read it: a member of the organization or the platform
+         *     superadmin, who sends an `X-Admin-Reason` header; an organization
+         *     API key is refused (403 `orders.letter_interactions_api_key_forbidden`).
+         */
+        get: operations["getV1OrganizationsOrgIdOrdersOrderIdLetterInteractions"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -14572,6 +14639,18 @@ export interface components {
             complete: boolean;
             /** @description Whether the channel's sales page shows the seller block now, that is the data is complete and the block is not hidden by a platform superadmin. */
             seller_shown: boolean;
+            /**
+             * @description The stored switch `settings.hosted_page.consent_required` (P2): the
+             *     buyer must tick "I accept the sale terms of the organizer and the
+             *     platform policy" before paying. Off by default.
+             */
+            consent_required: boolean;
+            /**
+             * @description Whether checkout asks for the consent now: `consent_required` and
+             *     the data is complete. A profile emptied after the switch was set
+             *     turns the question off until it is complete again.
+             */
+            consent_active: boolean;
             /** @description The channel's published contact, null when it has none. */
             public_contact: components["schemas"]["SellerProfileContact"] | null;
             /**
@@ -14665,13 +14744,24 @@ export interface components {
          *     `seller.incomplete` (details.missing) while required data is empty, and
          *     so is clearing the e-mail of a channel that keeps the block on.
          *     `seller_hidden` may be changed by a platform superadmin only (403
-         *     `seller.hide_superadmin_only` for anyone else).
+         *     `seller.hide_superadmin_only` for anyone else). `consent_required:
+         *     true` is refused the same way as `show_seller: true` while required
+         *     data is empty, and so is clearing the e-mail of a channel that keeps
+         *     the consent on.
          */
         UpdateSellerDisplayRequest: {
             /** @description Legacy flag kept for older clients. It no longer decides whether the page shows the block. */
             show_seller?: boolean;
             /** @description True keeps the seller block off this channel's sales page even when the data is complete; false shows it again. Only a platform superadmin (with `X-Admin-Reason`) may change it. */
             seller_hidden?: boolean;
+            /**
+             * @description True makes checkout ask the buyer to accept the organizer's sale
+             *     terms and the platform policy before paying (P2); a cart without
+             *     the tick is refused with 422 `checkout.consent_required`. May be
+             *     switched on only while the seller data is complete (422
+             *     `seller.incomplete` with details.missing). False switches it off.
+             */
+            consent_required?: boolean;
             /** @description The published contact; null removes it. */
             public_contact?: components["schemas"]["SellerDisplayContactPatch"] | null;
         };
@@ -18575,6 +18665,166 @@ export interface components {
              *     another.
              */
             locale?: string;
+            /**
+             * @description The buyer's tick on "I accept the sale terms (seller: <legal
+             *     name>) and the privacy policy" (P2). Required (with
+             *     `accepted: true`) when the feed session's `consent.required` is
+             *     true. Only then is it recorded with the checkout session, together
+             *     with the buyer's IP address and browser string at purchase, the
+             *     site the buyer bought on and what the checkbox showed (dispute
+             *     evidence, never answered on a public route). Sent to a channel
+             *     that does not ask for it, it is ignored and nothing is stored.
+             */
+            consent?: components["schemas"]["PublicCheckoutConsent"];
+        };
+        /** @description The buyer's answer to the checkout consent checkbox (P2). */
+        PublicCheckoutConsent: {
+            /** @description True when the buyer ticked the checkbox. */
+            accepted: boolean;
+            /**
+             * @description The language the checkbox text was shown in (the widget's active
+             *     locale). Folded like `locale` (`cs`, `de`, `en`, `es`, `fr`, `he`,
+             *     `ru`); anything else falls back to the checkout's `locale`.
+             */
+            locale?: string;
+        };
+        /**
+         * @description The `consent` member of every session of the public feed event (P2):
+         *     whether the widget must show the checkbox "I accept the sale terms
+         *     (seller: <seller_legal_name>) and the privacy policy" with links to
+         *     `terms_url` and `privacy_url`, and keep the pay button disabled until
+         *     it is ticked. Required only while the sales channel's
+         *     `consent_required` switch is on AND the seller data is complete; a
+         *     seller block hidden by the operator does not switch it off.
+         */
+        PublicCheckoutConsentBlock: {
+            /** @description True when checkout/start refuses a cart without the consent. */
+            required: boolean;
+            /**
+             * @description Legal name of the seller the checkbox names; present only when `required` is true.
+             * @example Teatro Demo S.L.
+             */
+            seller_legal_name?: string;
+            /** @description The platform terms page (`PLATFORM_TERMS_URL`, else the site's /legal/terms); omitted when none is configured. */
+            terms_url?: string;
+            /** @description The privacy policy (`ONBOARDING_PRIVACY_URL`, else the site's /legal/privacy); omitted when none is configured. */
+            privacy_url?: string;
+        };
+        /** @description One consent the buyer gave at checkout (P2). Dispute evidence; personal data. */
+        OrderConsentItem: {
+            /**
+             * Format: uuid
+             * @description Consent record id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The checkout session the consent was given in.
+             */
+            checkout_session_id: string;
+            /**
+             * @description What was accepted. Only `sale_terms` so far (the organizer's sale terms and the platform policy).
+             * @example sale_terms
+             */
+            kind: string;
+            /**
+             * @description The version accepted, `platform-terms:<version>;seller:<organization id>` until the organizer's rendered terms exist.
+             * @example platform-terms:2026-10-15;seller:0190a2b4-6f00-7000-8000-000000000001
+             */
+            terms_version: string;
+            /**
+             * @description Language the checkbox was shown in, null when not stated.
+             * @example es
+             */
+            locale: string | null;
+            /**
+             * Format: date-time
+             * @description When the buyer accepted (RFC 3339, UTC).
+             */
+            accepted_at: string;
+            /**
+             * @description The buyer's real IP address at purchase; null when it could not be read.
+             * @example 203.0.113.7
+             */
+            client_ip: string | null;
+            /** @description The buyer's browser string at purchase (at most 512 characters); null when none was sent. */
+            user_agent: string | null;
+            /** @description Whether this purchase showed the no-right-of-withdrawal notice (seller country at that moment). */
+            withdrawal_notice_shown: boolean;
+            /**
+             * @description The site the buyer bought on, scheme and host only (from the request's Origin header, else its Referer); null when neither was sent.
+             * @example https://tickets.example.com
+             */
+            origin_host: string | null;
+            /**
+             * @description The seller name the checkbox showed.
+             * @example Teatro Demo S.L.
+             */
+            seller_legal_name: string | null;
+            /** @description The sale terms link the checkbox showed. */
+            terms_url: string | null;
+            /** @description The privacy policy link the checkbox showed. */
+            privacy_url: string | null;
+        };
+        /** @description The consents of one order (P2). */
+        OrderConsentsResponse: {
+            /**
+             * Format: uuid
+             * @description The order.
+             */
+            order_id: string;
+            /** @description The consents, oldest first; empty when the order was bought without one. */
+            consents: components["schemas"]["OrderConsentItem"][];
+        };
+        /** @description One open, proxy open or click Brevo reported on a letter (U-7). Dispute evidence; personal data. */
+        LetterInteractionItem: {
+            /**
+             * @description What happened, `opened`, `proxy_open` or `click`. A proxy open (a mail client that pre-loads images) proves delivery, not reading.
+             * @example opened
+             */
+            event: string;
+            /**
+             * Format: date-time
+             * @description When the provider says it happened (RFC 3339, UTC).
+             */
+            occurred_at: string;
+            /**
+             * @description The clicked link, scheme, host and path only (long token-like segments replaced by `{token}`); null for an open.
+             * @example https://tickets.example.com/t/{token}
+             */
+            link: string | null;
+            /** @description The reader's mail client or browser string as Brevo reported it (at most 512 characters); null when the event carried none. On a `proxy_open` it may be the proxy's string (for example Apple Mail Privacy Protection), not the reader's. Brevo sends no reader IP address. */
+            user_agent: string | null;
+        };
+        /** @description One letter of an order with every interaction reported on it (U-7). */
+        LetterInteractionsItem: {
+            /**
+             * Format: uuid
+             * @description The letter, the same id as `letters[].id` of the order card.
+             */
+            letter_id: string;
+            /**
+             * @description The letter kind, `ticket`, `change`, `cancel` or `refund`.
+             * @example ticket
+             */
+            kind: string;
+            /**
+             * Format: date-time
+             * @description When the letter was handed to the mail relay (RFC 3339, UTC).
+             */
+            sent_at: string;
+            /** @description Every open, proxy open and click of the letter, oldest first; empty when none was reported. */
+            interactions: components["schemas"]["LetterInteractionItem"][];
+        };
+        /** @description The opens and clicks of one order's letters (U-7). */
+        OrderLetterInteractionsResponse: {
+            /**
+             * Format: uuid
+             * @description The order.
+             */
+            order_id: string;
+            /** @description The order's letters that left arena, oldest first; empty when none did. */
+            letters: components["schemas"]["LetterInteractionsItem"][];
         };
         PublicFeedCheckoutStartResponse: {
             /** @description The created checkout session with pricing snapshot and state. */
@@ -35740,7 +35990,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The block cannot be shown yet (`seller.incomplete`, details.missing lists the empty fields). */
+            /** @description The block or the buyer consent cannot be switched on yet (`seller.incomplete`, details.missing lists the empty fields). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -43942,6 +44192,10 @@ export interface operations {
              *     For a cart with a total above zero both payment codes are decided
              *     BEFORE the reservation becomes durable, so a refused checkout
              *     leaves no hold, no held seats and no reserved capacity behind.
+             *
+             *     `checkout.consent_required` when the session's `consent.required`
+             *     is true and the body carries no `consent` with `accepted: true`;
+             *     refused before any hold is taken.
              */
             422: {
                 headers: {
@@ -43966,6 +44220,8 @@ export interface operations {
             };
             /**
              * @description Database unavailable (dependency.database_unavailable), or
+             *     `checkout.unavailable` when the channel's checkout settings (buyer
+             *     fields, consent) could not be read, or
              *     `checkout.payment_start_failed` — the payment provider refused to
              *     create the hosted checkout page. Nothing was charged and no
              *     redirect URL exists; the hold expires on its own.
@@ -49488,6 +49744,164 @@ export interface operations {
                 };
             };
             /** @description Delivery store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdOrdersOrderIdConsents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The order's consents, oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderConsentsResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`), is not a member of the organization, or is an organization API key (`orders.consents_api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization (`orders.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`orders.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Orders are not available (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdOrdersOrderIdLetterInteractions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The order's letters with their interactions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderLetterInteractionsResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`), is not a member of the organization, or is an organization API key (`orders.letter_interactions_api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization (`orders.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`orders.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Orders are not available (database not wired). */
             503: {
                 headers: {
                     [name: string]: unknown;

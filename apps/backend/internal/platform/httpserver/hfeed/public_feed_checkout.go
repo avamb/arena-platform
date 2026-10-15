@@ -118,6 +118,12 @@ type PublicFeedCheckoutStartRequest struct {
 	// dropped rather than rejected, because a buyer must never lose a sale
 	// over the language tag their browser reported.
 	Locale string `json:"locale,omitempty"`
+	// Consent is the buyer's tick on "I accept the sale terms" (P2). A channel
+	// that asks for it refuses a cart without accepted:true with 422
+	// checkout.consent_required before any hold. A ticked consent is recorded
+	// in checkout_consents only when the channel asks for it; one sent to a
+	// channel that does not is ignored (nothing of the buyer is stored).
+	Consent *PublicCheckoutConsent `json:"consent,omitempty"`
 }
 
 // normalizeBuyerLocale validates a caller-supplied locale against the
@@ -363,21 +369,28 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 
 	// ── 6b. Validate buyer fields against channel flags (WID-0d) ────────────────
 	// Fetch the buyer-field flags for this feed token and enforce them.
-	// A flag-lookup failure is treated as "flags all off" (non-blocking)
-	// so that a missing row (token had no linked channel, unlikely but
-	// defensive) degrades to name and phone optional rather than
-	// hard-failing all checkouts.
-	var collectName, collectPhone bool
+	// A missing row (token had no linked channel, unlikely but defensive)
+	// degrades to name and phone optional and no consent. A failed read is
+	// refused (503 checkout.unavailable): it decides whether the buyer must
+	// accept the sale terms (P2), so it fails closed rather than sell without
+	// a consent the channel asks for.
+	var collectName, collectPhone, consentRequired bool
+	var consentSeller string
 	if h.publicFeedQueries != nil {
 		flags, flagsErr := h.publicFeedQueries.GetFeedTokenBuyerFlags(ctx, feedToken)
 		if flagsErr == nil {
 			collectName = flags.CollectName
 			collectPhone = flags.CollectPhone
+			consentRequired, consentSeller = consentFromFlags(flags)
 		} else if !errors.Is(flagsErr, pgx.ErrNoRows) {
 			h.logger.Error("public_feed_checkout: get buyer flags failed",
 				slog.String("feed_token", feedToken),
 				slog.String("error", flagsErr.Error()),
 			)
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+				"checkout.unavailable", "We could not check this checkout. Try again in a minute.", r,
+			))
+			return
 		}
 	}
 
@@ -414,6 +427,30 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			))
 			return
 		}
+	}
+
+	// ── 6c. Buyer consent (P2) ───────────────────────────────────────────────
+	// A channel that asks for the consent refuses a cart without the tick
+	// here, before any hold is taken. A ticked consent of such a channel is
+	// recorded later, in the checkout-confirmation transaction; everything it
+	// needs (address, browser, site, what the checkbox showed, the withdrawal
+	// notice the feed showed) is gathered now, on the pool, before any
+	// transaction opens. A tick sent to a channel that does not ask for it is
+	// ignored: nothing of the buyer is stored without a reason.
+	if consentRefused(consentRequired, req.Consent) {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			"checkout.consent_required",
+			"Please accept the sale terms of the organizer and the platform policy, then try again.",
+			r,
+			map[string]any{"field": "consent.accepted"},
+		))
+		return
+	}
+	var consent *pendingConsent
+	if consentRecorded(consentRequired, req.Consent) {
+		consent = newPendingConsent(r, checkCtx.OrgID, req.Consent.Locale, buyerLocale,
+			h.showWithdrawalNotice(ctx, checkCtx.OrgID), time.Now(),
+			h.consentBlock(consentRequired, consentSeller))
 	}
 
 	// ── 7. Price the GA lines ─────────────────────────────────────────────────
@@ -799,7 +836,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			seatTierPrices[tid] = l.UnitPrice
 		}
 		h.confirmPublicCheckout(ctx, w, r, checkCtx, res.ID, checkoutToken, bd, promoCodeID, expiresAt,
-			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale)
+			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale, consent)
 		return
 	}
 
@@ -953,7 +990,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// Pure GA: reservation_ga_items.unit_price is authoritative for every unit,
 	// so no tier price map is needed.
 	h.confirmPublicCheckout(ctx, w, r, checkCtx, reservation.ID, checkoutToken, bd, promoCodeID, expiresAt,
-		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, nil, req.ReturnURL, buyerLocale)
+		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, nil, req.ReturnURL, buyerLocale, consent)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1181,6 +1218,7 @@ func (h *Handler) confirmPublicCheckout(
 	tierUnitPrices map[uuid.UUID]int64,
 	returnURL string,
 	buyerLocale string,
+	consent *pendingConsent,
 ) {
 	// ── 0. A paid cart needs a place to send the buyer BACK to, and a
 	// payment window, before anything is written. Resolving the return URL
@@ -1261,6 +1299,27 @@ func (h *Handler) confirmPublicCheckout(
 			"checkout.start_failed", "We could not start the checkout. Try again in a minute.", r,
 		))
 		return
+	}
+
+	// The buyer's consent (P2) is evidence for the sale it belongs to. It is
+	// written here, in the checkout-confirmation transaction, because it needs
+	// the checkout session id; the hold transaction has already committed. A
+	// failed insert fails the request like any other confirmation failure:
+	// this transaction rolls back and the hold stays until its TTL sweep.
+	// Neither this code nor anything else of P2 logs the address or browser
+	// (the router's request log still records remote_addr and user_agent of
+	// every request; this row is the only stored copy with a retention rule).
+	if consent != nil {
+		if _, err := txq.InsertCheckoutConsent(ctx, consent.params(checkCtx.OrgID, cs.ID)); err != nil {
+			h.logger.Error("public_feed_checkout: insert checkout consent failed",
+				slog.String("checkout_session_id", cs.ID.String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"checkout.start_failed", "We could not start the checkout. Try again in a minute.", r,
+			))
+			return
+		}
 	}
 
 	cs, err = txq.ConfirmCheckoutSession(

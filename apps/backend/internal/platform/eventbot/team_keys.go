@@ -10,6 +10,7 @@ var teamKeys = []string{
 	"bot.team.invitation_gone", "bot.team.revoke_failed", "bot.team.resend_failed",
 	"bot.team.kept_accepted", "bot.team.kept_member_before", "bot.team.kept_other_invitation",
 	"bot.team.kept_in_use", "bot.team.kept_role_changed", "bot.team.kept_last_owner",
+	"bot.team.readonly", "bot.team.readonly_hint",
 }
 
 func init() {

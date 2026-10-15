@@ -773,6 +773,8 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 		} else {
 			rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_team", nil), CallbackData: "team"}})
 		}
+	} else if isTeamReader(id) { // the manager reads the team, never changes it (V-11)
+		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_team", nil), CallbackData: "team"}})
 	}
 	if len(id.Memberships) > 1 {
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_org", nil), CallbackData: "org"}})

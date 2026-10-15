@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 
@@ -21,6 +22,9 @@ const TrackingPrefix = "arena-letter:"
 
 // TrackingID is the X-Mailin-custom value of a letter.
 func TrackingID(letterID uuid.UUID) string { return TrackingPrefix + letterID.String() }
+
+// MaxUserAgentRunes bounds the stored user agent (CHECK of migration 0156).
+const MaxUserAgentRunes = 512
 
 // maxReasonRunes bounds the provider's free-form failure reason.
 const maxReasonRunes = 300
@@ -48,6 +52,12 @@ type ProviderEvent struct {
 	// query or fragment, long token-like path segments replaced by
 	// "{token}" (CleanLink).
 	Link string
+	// UserAgent is the reader's mail client or browser string of an open,
+	// proxy open or click (Brevo's "user_agent"): control characters
+	// removed, at most MaxUserAgentRunes. Brevo sends no reader IP address,
+	// so there is no such field. Personal data: stored on the interaction
+	// row only, never logged and never in Payload.
+	UserAgent string
 	// Payload is the minimal raw record kept with the event: the provider's
 	// own event name and timestamp. Never the recipient address.
 	Payload map[string]any
@@ -120,6 +130,9 @@ func brevoEvent(o map[string]any, now time.Time) ProviderEvent {
 	if name == EventClick {
 		ev.Link = CleanLink(str(o["link"]))
 	}
+	if name == EventOpened || name == EventProxyOpen || name == EventClick {
+		ev.UserAgent = CleanUserAgent(str(o["user_agent"]))
+	}
 	if class == ClassFailure {
 		ev.Reason = ScrubReason(str(o["reason"]))
 	}
@@ -177,6 +190,21 @@ func CleanLink(raw string) string {
 		}
 	}
 	return truncate(u.Scheme+"://"+strings.ToLower(u.Host)+strings.Join(segs, "/"), 300)
+}
+
+// CleanUserAgent prepares a reader's user-agent string for storage: invalid
+// UTF-8 and control characters (a NUL would make the INSERT fail and Brevo
+// retry the batch for ever) are removed, whitespace is folded, and the result
+// is cut to MaxUserAgentRunes. Empty when nothing usable is left.
+func CleanUserAgent(s string) string {
+	s = strings.ToValidUTF8(s, "")
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && !unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)
+	return truncate(strings.Join(strings.Fields(s), " "), MaxUserAgentRunes)
 }
 
 var (

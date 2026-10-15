@@ -322,7 +322,7 @@ other = "Previous"
 other = "Next"
 
 ["bot.help"]
-other = "<b>What this bot can do</b>\n\n- <b>+ Event</b>: creates an event step by step and publishes it. Type the name or send a poster: I read the details from it and you confirm each value. At the end I send the link for buyers and a sample ticket.\n- <b>My events</b>: every event of your organization, upcoming first, with sold and free places and the money per date. On the event card you can edit the event, repeat it as new and see a sample ticket. You can also move or cancel a session. Buyers get an e-mail.\n- <b>Notifications</b>: where sales and refund alerts come from and how to connect your chat.\n- <b>Team</b>: the owner invites colleagues and removes them.\n- <b>Organization</b>: if you work for several organizations, switch between them here.\n- <b>Ticket scanner</b>: the app for checking tickets at the door, with links to Google Play and the App Store.\n- <b>Language</b>: English, Russian or Spanish."
+other = "<b>What this bot can do</b>\n\n- <b>+ Event</b>: creates an event step by step and publishes it. Type the name or send a poster: I read the details from it and you confirm each value. At the end I send the link for buyers and a sample ticket.\n- <b>My events</b>: every event of your organization, upcoming first, with sold and free places and the money per date. On the event card you can edit the event, repeat it as new and see a sample ticket. You can also move or cancel a session. Buyers get an e-mail.\n- <b>Notifications</b>: where sales and refund alerts come from and how to connect your chat.\n- <b>Team</b>: the owner changes the team, the manager sees it.\n- <b>Organization</b>: if you work for several organizations, switch between them here.\n- <b>Ticket scanner</b>: the app for checking tickets at the door, with links to Google Play and the App Store.\n- <b>Language</b>: English, Russian or Spanish."
 
 ["bot.events_empty"]
 other = "No events yet. Your first event appears here as soon as you create it."
@@ -2132,6 +2132,12 @@ other = "A new e-mail with a fresh link went to {{.Email}}. The old link no long
 
 ["bot.team.resend_too_soon"]
 other = "The last e-mail to {{.Email}} went out less than ten minutes ago. Try again a little later."
+
+["bot.team.readonly"]
+other = "Only the owner can change the team. To invite, resend or remove someone, please ask the owner."
+
+["bot.team.readonly_hint"]
+other = "You can see the team here, but only the owner can change it. To invite or remove someone, please ask the owner."
 
 ["bot.team.invitation_gone"]
 other = "That invitation no longer exists, or the person already accepted it."

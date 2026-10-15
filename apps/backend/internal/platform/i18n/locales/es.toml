@@ -180,7 +180,7 @@ other = "Anterior"
 other = "Siguiente"
 
 ["bot.help"]
-other = "<b>Qué puede hacer este bot</b>\n\n- <b>+ Evento</b>: crea un evento paso a paso y lo publica. Escribe el nombre o envía el cartel: leeré los datos y tú confirmas cada valor. Al final te envío el enlace para los compradores y una entrada de muestra.\n- <b>Mis eventos</b>: todos los eventos de tu organización, los próximos primero, con las plazas vendidas y libres y el dinero por fecha. En la ficha de un evento puedes editarlo, repetirlo como nuevo, ver una entrada de muestra y mover o cancelar una sesión: los compradores reciben un correo.\n- <b>Notificaciones</b>: de dónde llegan los avisos de ventas y devoluciones y cómo conectar tu chat.\n- <b>Equipo</b>: el propietario invita a sus compañeros y los quita.\n- <b>Organización</b>: si trabajas para varias organizaciones, cambia entre ellas aquí.\n- <b>Escáner de entradas</b>: la aplicación para comprobar las entradas en la puerta, con enlaces a Google Play y App Store.\n- <b>Idioma</b>: inglés, ruso o español."
+other = "<b>Qué puede hacer este bot</b>\n\n- <b>+ Evento</b>: crea un evento paso a paso y lo publica. Escribe el nombre o envía el cartel: leeré los datos y tú confirmas cada valor. Al final te envío el enlace para los compradores y una entrada de muestra.\n- <b>Mis eventos</b>: todos los eventos de tu organización, los próximos primero, con las plazas vendidas y libres y el dinero por fecha. En la ficha de un evento puedes editarlo, repetirlo como nuevo, ver una entrada de muestra y mover o cancelar una sesión: los compradores reciben un correo.\n- <b>Notificaciones</b>: de dónde llegan los avisos de ventas y devoluciones y cómo conectar tu chat.\n- <b>Equipo</b>: el propietario cambia el equipo, el gestor lo ve.\n- <b>Organización</b>: si trabajas para varias organizaciones, cambia entre ellas aquí.\n- <b>Escáner de entradas</b>: la aplicación para comprobar las entradas en la puerta, con enlaces a Google Play y App Store.\n- <b>Idioma</b>: inglés, ruso o español."
 
 ["bot.events_empty"]
 other = "Aún no hay eventos. El primero aparecerá aquí en cuanto lo crees."
@@ -1987,6 +1987,12 @@ other = "Un correo nuevo con un enlace nuevo ha salido a {{.Email}}. El enlace a
 
 ["bot.team.resend_too_soon"]
 other = "El último correo a {{.Email}} salió hace menos de diez minutos. Inténtalo un poco más tarde."
+
+["bot.team.readonly"]
+other = "Solo el propietario puede cambiar el equipo. Para invitar o quitar a alguien, pídeselo al propietario."
+
+["bot.team.readonly_hint"]
+other = "Aquí puedes ver el equipo, pero solo el propietario puede cambiarlo. Para invitar o quitar a alguien, pídeselo al propietario."
 
 ["bot.team.invitation_gone"]
 other = "Esa invitación ya no existe o ya fue aceptada."
