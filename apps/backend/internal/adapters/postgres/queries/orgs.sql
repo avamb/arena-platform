@@ -164,3 +164,9 @@ LEFT JOIN event_promoters ep ON ep.event_id = e.id AND ep.org_id = o.id
 LEFT JOIN org_promoters op ON op.id = ep.promoter_id AND op.org_id = o.id
                           AND op.archived_at IS NULL AND NULLIF(btrim(op.slug), '') IS NOT NULL
 WHERE  t.id = $1;
+
+-- name: ListOrganizationSlugs :many
+SELECT id, slug
+FROM   organizations
+WHERE  id = ANY($1::uuid[])
+  AND  deleted_at IS NULL;
