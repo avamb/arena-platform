@@ -17,8 +17,10 @@ import { SessionScreen } from "@/screens/SessionScreen";
 import { OrdersScreen } from "@/screens/OrdersScreen";
 import { OrderScreen } from "@/screens/OrderScreen";
 import { NotificationsScreen } from "@/screens/NotificationsScreen";
+import { PromotersScreen } from "@/screens/PromotersScreen";
+import { PromoterScreen } from "@/screens/PromoterScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
-import { parseEventsSearch, parseLoginSearch, parseOrdersSearch } from "@/lib/search";
+import { parseEventsSearch, parseLoginSearch, parseOrdersSearch, parsePromotersSearch } from "@/lib/search";
 
 const rootRoute = createRootRoute({ component: RootLayout, notFoundComponent: NotFoundScreen });
 
@@ -115,6 +117,20 @@ const notificationsRoute = createRoute({
   component: NotificationsScreen,
 });
 
+// 4-6
+const promotersRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/promoters",
+  validateSearch: parsePromotersSearch,
+  component: PromotersScreen,
+});
+
+const promoterRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/promoters/$promoterId",
+  component: PromoterScreen,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -131,6 +147,8 @@ export const routeTree = rootRoute.addChildren([
     ordersRoute,
     orderRoute,
     notificationsRoute,
+    promotersRoute,
+    promoterRoute,
   ]),
 ]);
 

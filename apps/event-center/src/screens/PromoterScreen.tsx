@@ -94,7 +94,7 @@ function FieldSection({
     onEdit(null);
   };
 
-  const save = (value: string | null, slugConfirmed = false) => {
+  const save = (value: string | null) => {
     const patch: PromoterPatch = { [field]: value };
     update.mutate(patch, {
       onSuccess: (res) => {
@@ -105,7 +105,6 @@ function FieldSection({
         else onSaved(t("promoters.saved"));
       },
     });
-    void slugConfirmed;
   };
 
   const onSubmit = (e: FormEvent) => {
@@ -199,7 +198,7 @@ function FieldSection({
           <p>{t("promoters.slug.warning")}</p>
           {update.error !== null && <ApiProblem error={update.error} testId="field-error" />}
           <div className="dialog-actions">
-            <button type="button" className="btn btn-primary" disabled={update.isPending} onClick={() => save(pendingSlug, true)} data-testid="slug-confirm-save">
+            <button type="button" className="btn btn-primary" disabled={update.isPending} onClick={() => save(pendingSlug)} data-testid="slug-confirm-save">
               {update.isPending ? t("promoters.saving") : t("promoters.slug.save")}
             </button>
             <button type="button" className="btn" disabled={update.isPending} onClick={close} data-testid="slug-confirm-back">

@@ -426,7 +426,9 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Список, правка, архив",
     bot: "promoters.go, `pr:`",
     web: "R3",
-    routes: [`GET ${O}/promoters`, `PATCH ${O}/promoters/{id}`],
+    ready: { twin: "live/promoters.spec.ts" },
+    routes: [`GET ${O}/promoters`, `POST ${O}/promoters`, `PATCH ${O}/promoters/{id}`],
+    note: "4-6: список с фильтром архива, карточка с правкой по одному полю, смена адреса страницы с вопросом «было → стало», архив и возврат, ссылка на публичную страницу с кнопкой копирования.",
   },
   // ── Данные организации ──────────────────────────────────────────────
   {
