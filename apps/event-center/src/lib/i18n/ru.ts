@@ -317,6 +317,8 @@ export const ru: Record<MessageKey, string> = {
   "apiError.promoDuplicate.next": "Название удалённого кода тоже остаётся занятым. Выберите другое название.",
   "apiError.eventHasPaidOrders.title": "По этому мероприятию проданы билеты, поэтому его нельзя удалить.",
   "apiError.eventHasPaidOrders.next": "Лучше отправьте мероприятие в архив. Проданные билеты остаются действительными.",
+  "apiError.lastOwner.title": "Это последний владелец организации.",
+  "apiError.lastOwner.next": "Сначала назначьте другого владельца. Потом можно удалить этого человека или сменить ему роль.",
 
   "confirmWord.cancel": "Отмена",
   "confirmWord.type": "Напишите слово",

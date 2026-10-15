@@ -317,6 +317,8 @@ export const en = {
   "apiError.promoDuplicate.next": "A deleted code keeps its name too. Choose another name.",
   "apiError.eventHasPaidOrders.title": "This event has sold tickets, so it cannot be deleted.",
   "apiError.eventHasPaidOrders.next": "Archive the event instead. The tickets that were sold stay valid.",
+  "apiError.lastOwner.title": "This is the last owner of the organization.",
+  "apiError.lastOwner.next": "Appoint another owner first. Then you can remove this person or change their role.",
 
   "confirmWord.cancel": "Cancel",
   "confirmWord.type": "Type the word",

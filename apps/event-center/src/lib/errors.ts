@@ -116,7 +116,8 @@ export type ApiErrorStem =
   | "webInvitationOff"
   | "invitationClosed"
   | "memberGone"
-  | "roleNotAllowed";
+  | "roleNotAllowed"
+  | "lastOwner";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -132,7 +133,7 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "taxIdInvalid", "legalCountryInvalid", "legalFormInvalid", "emailInvalid", "phoneInvalid", "sellerIncomplete",
   "apiKeyForbidden", "sellerHideOperatorOnly", "kybOperatorOnly", "legalNameRequired",
   // 4-5
-  "resendTooSoon", "invitationChannel", "webInvitationOff", "invitationClosed", "memberGone", "roleNotAllowed",
+  "resendTooSoon", "invitationChannel", "webInvitationOff", "invitationClosed", "memberGone", "roleNotAllowed", "lastOwner",
 ];
 
 /**
@@ -188,6 +189,7 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "complimentary.already_revoked": "invitationAlreadyRevoked",
   "complimentary.scanned_ticket_requires_manual_review": "invitationScanned",
   "complimentary.capacity_overflow": "tierSoldOut",
+  "membership.last_owner": "lastOwner",
   // 4-5: the team and its invitations (bot.* routes, DELETE members)
   "bot.invitation_resend_too_soon": "resendTooSoon",
   "bot.invitation_channel_unsupported": "invitationChannel",

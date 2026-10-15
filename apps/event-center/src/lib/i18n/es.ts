@@ -317,6 +317,8 @@ export const es: Record<MessageKey, string> = {
   "apiError.promoDuplicate.next": "El nombre de un código eliminado también sigue ocupado. Elige otro nombre.",
   "apiError.eventHasPaidOrders.title": "Este evento tiene entradas vendidas, así que no se puede eliminar.",
   "apiError.eventHasPaidOrders.next": "Archívalo en su lugar. Las entradas vendidas siguen siendo válidas.",
+  "apiError.lastOwner.title": "Esta persona es el último propietario de la organización.",
+  "apiError.lastOwner.next": "Nombra primero a otro propietario. Después podrás quitar a esta persona o cambiar su rol.",
 
   "confirmWord.cancel": "Cancelar",
   "confirmWord.type": "Escribe la palabra",
