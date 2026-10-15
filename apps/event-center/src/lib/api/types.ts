@@ -29,5 +29,8 @@ export type OrderDetail = S["OrderDetail"];
 export type OrderSummary = S["OrderSummary"];
 export type OrderTicketSummary = S["OrderTicketSummary"];
 export type OrderDeliveryEntry = S["OrderDeliveryEntry"];
+export type OrderLetter = S["OrderLetter"];
+export type OrderRefundLetter = S["OrderRefundLetter"];
+export type OrderResendTicketsResponse = S["OrderResendTicketsResponse"];
 export type OrderListResponse =
   paths["/v1/organizations/{org_id}/orders"]["get"]["responses"]["200"]["content"]["application/json"];

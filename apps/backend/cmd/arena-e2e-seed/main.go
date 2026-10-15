@@ -212,5 +212,9 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 			return fmt.Errorf("materialize places: %w", err)
 		}
 	}
-	return applyCancelOrderFixture(ctx, tx)
+	if err := applyCancelOrderFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 4-1: paid orders for the resend twin test.
+	return applyResendOrders(ctx, tx)
 }
