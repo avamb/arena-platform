@@ -377,6 +377,7 @@ export async function mockApi(
       if (body.email === "site@example.test") {
         return json(route, 409, { error: { code: "order.seller_site_order", message: "site order" } });
       }
+      if (body.email === "boom@example.test") return json(route, 500, { error: { code: "internal", message: "boom" } });
       return json(route, 202, {
         order_id: ORDER,
         queued_tickets: 1,

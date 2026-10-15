@@ -402,6 +402,7 @@ export const es: Record<MessageKey, string> = {
   "resend.noRecipient": "El pedido no tiene e-mail. Vuelve atrás y escribe la dirección a la que enviar el correo.",
   "resend.forbidden": "No tienes acceso para reenviar entradas. Pide a la persona propietaria de la organización el rol de gestor.",
   "resend.queuedNote": "El correo está en cola. Esta ficha mostrará su estado en cuanto el servicio de correo lo informe.",
+  "resend.unconfirmed": "No pudimos confirmar el envío. Revisa la línea de la carta en la ficha del pedido antes de enviar de nuevo.",
 
   "letter.title": "E-mails al comprador",
   "letter.frag.when": " el {time}",

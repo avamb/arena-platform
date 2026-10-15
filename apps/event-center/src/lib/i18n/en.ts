@@ -402,6 +402,7 @@ export const en = {
   "resend.noRecipient": "The order has no e-mail address. Go back and type the address to send the letter to.",
   "resend.forbidden": "You have no access to send tickets again. Ask the owner of the organization to give you the manager role.",
   "resend.queuedNote": "The letter is in the queue. This card shows its status as soon as the mail service reports it.",
+  "resend.unconfirmed": "We could not confirm the send. Check the letter line on the order card before sending again.",
 
   "letter.title": "Letters to the buyer",
   "letter.frag.when": " on {time}",

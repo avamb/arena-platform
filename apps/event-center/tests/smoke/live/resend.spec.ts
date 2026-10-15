@@ -10,6 +10,11 @@
  * and order.read; the agent holds neither: the button is absent, the order card
  * is not even readable, and the API itself answers 403 to the resend call.
  *
+ * It asserts through the API only (the harness has no database access): the
+ * delivery[] recipient and state, the order's buyer_email and the 409 of a
+ * seller site's order. The worker_jobs and order_events rows are proven by the
+ * Go e2e bot_e2e_resend_integration_test.go.
+ *
  * Data: the paid orders of apps/backend/cmd/arena-e2e-seed/resend_order_fixture.go
  * (fixed ids, repeated below). The harness runs no worker, so a resend leaves the
  * ticket's delivery job pending: the card says "in the queue".

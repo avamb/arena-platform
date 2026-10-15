@@ -15,7 +15,6 @@
  */
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ErrorNotice } from "@/components/ErrorNotice";
 import { useDialogBehaviour } from "@/components/useDialogBehaviour";
 import { resendOrderTickets } from "@/lib/api/endpoints";
 import type { OrderDetail, OrderResendTicketsResponse } from "@/lib/api/types";
@@ -36,7 +35,7 @@ type Step = "choose" | "email" | "confirm" | "result";
 type Outcome =
   | { kind: "done"; response: OrderResendTicketsResponse }
   | { kind: "refused"; failure: ResendFailure }
-  | { kind: "error"; error: unknown };
+  | { kind: "unconfirmed" };
 
 export interface ResendTicketsDialogProps {
   orgId: string;
@@ -109,8 +108,12 @@ export function ResendTicketsDialog({ orgId, order, onClose }: ResendTicketsDial
         setOutcome({ kind: "refused", failure });
         setStep("result");
       } else {
-        setOutcome({ kind: "error", error });
+        // The outcome is unknown: the request may have gone through. Never offer a blind
+        // retry (the route has no idempotency key, a second call mails the buyer again).
+        // Read the card again so its letter line shows what really happened.
+        setOutcome({ kind: "unconfirmed" });
         setStep("result");
+        void queryClient.invalidateQueries({ queryKey: ["order", orgId, order.id] });
       }
     } finally {
       busyRef.current = false;
@@ -253,13 +256,12 @@ export function ResendTicketsDialog({ orgId, order, onClose }: ResendTicketsDial
                 {t(resendFailureKey(outcome.failure), { number })}
               </p>
             )}
-            {outcome.kind === "error" && <ErrorNotice error={outcome.error} testId="resend-error" />}
+            {outcome.kind === "unconfirmed" && (
+              <p className="notice notice-bad" role="alert" data-testid="resend-unconfirmed">
+                {t("resend.unconfirmed")}
+              </p>
+            )}
             <div className="dialog-actions">
-              {outcome.kind === "error" && (
-                <button type="button" className="btn btn-primary" onClick={() => setStep("confirm")} data-testid="resend-retry">
-                  {t("common.retry")}
-                </button>
-              )}
               <button type="button" className="btn" onClick={onClose} data-testid="resend-close">
                 {t("resend.close")}
               </button>

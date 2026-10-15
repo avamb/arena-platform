@@ -201,6 +201,15 @@ test.describe("R1 read-only event center", () => {
     await page.getByTestId("resend-continue").click();
     await page.getByTestId("resend-send").click();
     await expect(page.getByTestId("resend-refused-site")).toContainText("sold through the seller's own site");
+    await page.getByTestId("resend-close").click();
+    // An unknown outcome (5xx): no blind retry, the person is sent to the letter line.
+    await page.getByTestId("resend-open").click();
+    await page.getByTestId("resend-other").click();
+    await page.getByTestId("resend-email").fill("boom@example.test");
+    await page.getByTestId("resend-continue").click();
+    await page.getByTestId("resend-send").click();
+    await expect(page.getByTestId("resend-unconfirmed")).toContainText("We could not confirm the send");
+    await expect(page.getByTestId("resend-retry")).toHaveCount(0);
     await noHorizontalScroll(page);
   });
 
