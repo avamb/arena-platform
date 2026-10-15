@@ -591,6 +591,10 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	// bot.invitation_email carries the Telegram deep link of an event-center
 	// bot invitation (spec 28 §3.3); the link needs EVENTS_TELEGRAM_BOT_USERNAME.
 	reg.Register(authemail.JobTypeBotInvitationEmail, authEmailHandler.HandleBotInvitationEmail)
+	// auth.org_added_email tells an EXISTING account it was added to an
+	// organization through the web channel of a bot invitation; it needs
+	// EVENT_CENTER_PUBLIC_URL.
+	reg.Register(authemail.JobTypeOrgAddedEmail, authEmailHandler.HandleOrgAddedEmail)
 	// onboarding.email carries the organizer-application letters (confirm and
 	// continue link, reminders, decision); its links need ONBOARDING_SITE_URL.
 	reg.Register(authemail.JobTypeOnboardingEmail, authEmailHandler.HandleOnboardingEmail)

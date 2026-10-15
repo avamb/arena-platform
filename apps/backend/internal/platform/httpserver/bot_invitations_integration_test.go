@@ -74,6 +74,9 @@ func newBotInviteFixture(t *testing.T, pool *pgxpool.Pool) *botInviteFixture {
 func (f *botInviteFixture) cleanup() {
 	ctx := context.Background()
 	_, _ = f.pool.Exec(ctx, `DELETE FROM worker_jobs WHERE job_type = $1 AND payload->>'email' = ANY($2)`, authemail.JobTypeBotInvitationEmail, f.emails)
+	// The web channel's letters (task 0-5): the setup-link job and the "added" job.
+	_, _ = f.pool.Exec(ctx, `DELETE FROM worker_jobs WHERE job_type = ANY($1) AND payload->>'email' = ANY($2)`,
+		[]string{authemail.JobTypePasswordResetEmail, authemail.JobTypeOrgAddedEmail}, f.emails)
 	_, _ = f.pool.Exec(ctx, `DELETE FROM bot_drafts WHERE org_id = $1`, f.orgID)
 	_, _ = f.pool.Exec(ctx, `DELETE FROM bot_telegram_links WHERE user_id IN (SELECT id FROM users WHERE email = ANY($1))`, f.emails)
 	_, _ = f.pool.Exec(ctx, `DELETE FROM bot_invitations WHERE org_id = $1`, f.orgID)
