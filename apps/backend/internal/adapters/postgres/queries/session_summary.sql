@@ -38,6 +38,30 @@ WHERE  s.event_id = $1
   AND  s.deleted_at IS NULL
 ORDER  BY s.start_at, s.id;
 
+-- name: ListEventSummaryHeaders :many
+-- The batch form of GetEventSummaryHeader: the events of the list that exist
+-- in the organization. An id of another organization or an unknown one is
+-- simply absent from the result.
+SELECT e.id, e.org_id, e.name, e.status, e.first_session_at, e.last_session_at
+FROM   events e
+WHERE  e.id = ANY($1::uuid[])
+  AND  e.org_id = $2
+  AND  e.deleted_at IS NULL;
+
+-- name: ListEventSummarySessionIDs :many
+-- (event, session) pairs for a batch of events, the same sessions
+-- ListEventSummarySessions returns for one: every non-deleted one, cancelled
+-- included. The organization is checked again here so the batch can never
+-- widen past it.
+SELECT s.event_id, s.id
+FROM   sessions s
+JOIN   events   e ON e.id = s.event_id
+WHERE  s.event_id = ANY($1::uuid[])
+  AND  e.org_id = $2
+  AND  e.deleted_at IS NULL
+  AND  s.deleted_at IS NULL
+ORDER  BY s.event_id, s.start_at, s.id;
+
 -- name: ListSessionSummaryPlaces :many
 -- One row per (session, category, kind). sold_upstream is the part of `sold`
 -- that was sold in the system the session was imported from: a 'sold' row

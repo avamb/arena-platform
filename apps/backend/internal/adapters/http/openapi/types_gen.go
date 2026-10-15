@@ -5900,6 +5900,76 @@ type EventPublicationListResponse struct {
 	Publications []EventPublication `json:"publications"`
 }
 
+// EventSalesSummary The top level of EventSummary for one event, without the per-category
+// table (`tiers`) and the per-session list (`sessions`): the numbers a
+// list of events shows next to each name. Built by the same assembly as
+// EventSummary, so for one event every field here equals the field of
+// the same name in `GET .../events/{event_id}/summary`. Read-only, no
+// buyer data.
+type EventSalesSummary struct {
+	// Complimentary Invitations over every session.
+	Complimentary SummaryComplimentary `json:"complimentary"`
+
+	// Entered The door count over every session.
+	Entered SummaryEntered `json:"entered"`
+
+	// Event The event the figures are about.
+	Event struct {
+		// FirstSessionAt Earliest start over the event's active, non-cancelled sessions, RFC3339 in UTC.
+		FirstSessionAt *time.Time `json:"first_session_at"`
+
+		// Id UUIDv7 of the event.
+		Id openapi_types.UUID `json:"id"`
+
+		// LastSessionAt Latest end over the same sessions, RFC3339 in UTC.
+		LastSessionAt *time.Time `json:"last_session_at"`
+
+		// Name Name of the event as stored.
+		Name string `json:"name"`
+
+		// OrgId UUIDv7 of the owning organization.
+		OrgId openapi_types.UUID `json:"org_id"`
+
+		// SessionCount Number of non-deleted sessions of the event, cancelled ones included.
+		SessionCount int `json:"session_count"`
+
+		// Status Event status (draft, published, cancelled, archived).
+		Status string `json:"status"`
+	} `json:"event"`
+
+	// Money The bottom line of the whole event, one entry per currency.
+	Money []SummaryMoneyItem `json:"money"`
+
+	// Orders Order totals of every session grouped by status, source and currency.
+	Orders []SummaryOrdersItem `json:"orders"`
+
+	// Places Places of every session, split by kind.
+	Places struct {
+		// Ga General admission places.
+		Ga SessionPlaceCounts `json:"ga"`
+
+		// Seats Seats of the seating plans.
+		Seats SessionPlaceCounts `json:"seats"`
+	} `json:"places"`
+
+	// Promos Promo codes the paid orders of every session used, merged by code and sorted.
+	Promos []SummaryPromoItem `json:"promos"`
+
+	// Refunds Refund totals of every session grouped by settlement, state and currency.
+	Refunds []SummaryRefundsItem `json:"refunds"`
+
+	// Tickets Tickets of every session by status.
+	Tickets SummaryTickets `json:"tickets"`
+}
+
+// EventSalesSummaryList The sales figures of the requested events, one entry per event found.
+type EventSalesSummaryList struct {
+	// Items One entry per requested event that exists in the organization, in
+	// the order the ids were given. An id of another organization, a
+	// deleted event or an unknown id has no entry.
+	Items []EventSalesSummary `json:"items"`
+}
+
 // EventSummary The session summary over every session of an event (EC-06): the same
 // places, categories, money, orders, tickets, door count, refunds,
 // promo codes and invitations as totals, plus one entry per session
@@ -14883,6 +14953,14 @@ type GetV1OrganizationsOrgIdCustomersParams struct {
 type ListOrgEventsParams struct {
 	// Lang BCP-47 locale override.
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdEventsSalesSummaryParams defines parameters for GetV1OrganizationsOrgIdEventsSalesSummary.
+type GetV1OrganizationsOrgIdEventsSalesSummaryParams struct {
+	// Ids Event ids as ONE string separated by commas (`ids=a,b,c`), at most
+	// 50. Repeating the parameter (`ids=a&ids=b`) is not supported: only
+	// the first value is read.
+	Ids string `form:"ids" json:"ids"`
 }
 
 // GetV1OrganizationsOrgIdEventsEventIdSalesCsvParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdSalesCsv.
