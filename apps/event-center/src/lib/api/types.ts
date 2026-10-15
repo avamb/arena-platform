@@ -30,3 +30,11 @@ export type OrderTicketSummary = S["OrderTicketSummary"];
 export type OrderDeliveryEntry = S["OrderDeliveryEntry"];
 export type OrderListResponse =
   paths["/v1/organizations/{org_id}/orders"]["get"]["responses"]["200"]["content"]["application/json"];
+
+// 4-3: promo codes.
+export type PromoCodeItem = S["PromoCodeItem"];
+export type PromoCodeListResponse = S["PromoCodeListResponse"];
+export type PromoCodeEnvelope = S["PromoCodeEnvelope"];
+export type PromoRedemptionItem = S["PromoRedemptionItem"];
+export type PromoRedemptionListResponse = S["PromoRedemptionListResponse"];
+export type CreatePromoCodeRequest = S["CreatePromoCodeRequest"];

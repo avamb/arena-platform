@@ -95,6 +95,11 @@ function OrgShell() {
                 {t("nav.orders")}
               </Link>
             )}
+            {access.can("promo.read") && (
+              <Link to="/o/$orgId/promo" params={{ orgId }} search={{}} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-promo">
+                {t("nav.promo")}
+              </Link>
+            )}
             <Link
               to="/o/$orgId/notifications"
               params={{ orgId }}

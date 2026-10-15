@@ -17,8 +17,12 @@ import { SessionScreen } from "@/screens/SessionScreen";
 import { OrdersScreen } from "@/screens/OrdersScreen";
 import { OrderScreen } from "@/screens/OrderScreen";
 import { NotificationsScreen } from "@/screens/NotificationsScreen";
+import { PromoListScreen } from "@/screens/PromoListScreen";
+import { PromoCreateScreen } from "@/screens/PromoCreateScreen";
+import { PromoScreen } from "@/screens/PromoScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
 import { parseEventsSearch, parseLoginSearch, parseOrdersSearch } from "@/lib/search";
+import { parsePromoCardSearch, parsePromoListSearch } from "@/lib/promo";
 
 const rootRoute = createRootRoute({ component: RootLayout, notFoundComponent: NotFoundScreen });
 
@@ -115,6 +119,27 @@ const notificationsRoute = createRoute({
   component: NotificationsScreen,
 });
 
+// 4-3: promo codes. "new" is listed before "$codeId" so it is never read as an id.
+const promoRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/promo",
+  validateSearch: parsePromoListSearch,
+  component: PromoListScreen,
+});
+
+const promoNewRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/promo/new",
+  component: PromoCreateScreen,
+});
+
+const promoCodeRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/promo/$codeId",
+  validateSearch: parsePromoCardSearch,
+  component: PromoScreen,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -131,6 +156,9 @@ export const routeTree = rootRoute.addChildren([
     ordersRoute,
     orderRoute,
     notificationsRoute,
+    promoRoute,
+    promoNewRoute,
+    promoCodeRoute,
   ]),
 ]);
 

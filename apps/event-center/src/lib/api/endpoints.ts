@@ -6,12 +6,16 @@
 import { call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type {
+  CreatePromoCodeRequest,
   EventListResponse,
   EventSummary,
   MeResponse,
   OrderDetail,
   OrderListResponse,
   OrgMeResponse,
+  PromoCodeEnvelope,
+  PromoCodeListResponse,
+  PromoRedemptionListResponse,
   SessionListResponse,
   SessionSummary,
   TicketTierListResponse,
@@ -122,5 +126,63 @@ export function downloadSampleTicket(orgId: string, sessionId: string, locale: s
     query: { locale },
     accept: "application/pdf",
     fallbackName: "sample-ticket.pdf",
+  });
+}
+
+// ── 4-3: promo codes ───────────────────────────────────────────────────
+
+export function listPromoCodes(orgId: string): Promise<PromoCodeListResponse> {
+  return call<PromoCodeListResponse>({ route: API.promoCodes, params: { org_id: orgId } });
+}
+
+export function fetchPromoCode(orgId: string, codeId: string): Promise<PromoCodeEnvelope> {
+  return call<PromoCodeEnvelope>({ route: API.promoCode, params: { org_id: orgId, id: codeId } });
+}
+
+export function createPromoCode(orgId: string, body: CreatePromoCodeRequest): Promise<PromoCodeEnvelope> {
+  return call<PromoCodeEnvelope>({ route: API.promoCodeCreate, params: { org_id: orgId }, body });
+}
+
+/** Pauses or activates a code. The body names only the status, so nothing else changes. */
+export function setPromoStatus(orgId: string, codeId: string, status: "active" | "paused"): Promise<PromoCodeEnvelope> {
+  return call<PromoCodeEnvelope>({
+    route: API.promoCodeUpdate,
+    params: { org_id: orgId, id: codeId },
+    body: { status },
+  });
+}
+
+/**
+ * Replaces the sessions a code is for. An EMPTY list means every session of
+ * the organization, future ones included (a club code). The body always names
+ * the array: an absent or null one would leave the stored value alone.
+ */
+export function setPromoSessions(orgId: string, codeId: string, sessionIds: readonly string[]): Promise<PromoCodeEnvelope> {
+  return call<PromoCodeEnvelope>({
+    route: API.promoCodeUpdate,
+    params: { org_id: orgId, id: codeId },
+    body: { applies_to_session_ids: [...sessionIds] },
+  });
+}
+
+export function deletePromoCode(orgId: string, codeId: string): Promise<unknown> {
+  return call<unknown>({ route: API.promoCodeDelete, params: { org_id: orgId, id: codeId } });
+}
+
+export function listPromoRedemptions(orgId: string, codeId: string): Promise<PromoRedemptionListResponse> {
+  return call<PromoRedemptionListResponse>({
+    route: API.promoRedemptions,
+    params: { org_id: orgId },
+    query: { promo_code_id: codeId },
+  });
+}
+
+export function downloadPromoCsv(orgId: string, codeId: string, locale: string): Promise<DownloadedFile> {
+  return download({
+    route: API.promoRedemptionsCsv,
+    params: { org_id: orgId, promo_code_id: codeId },
+    query: { locale },
+    accept: "text/csv",
+    fallbackName: "promo-usage.csv",
   });
 }
