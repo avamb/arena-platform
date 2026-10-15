@@ -3230,13 +3230,16 @@ type BindSessionSeatingResponse struct {
 
 // BotInvitation A bot invitation as the API reports it, never the code.
 type BotInvitation struct {
+	// Channel The channel the invitation was sent through, `telegram` or `web`. A `web` invitation is recorded as accepted at once and cannot be resent.
+	Channel string `json:"channel"`
+
 	// Delivery Always `email`; the deep link is mailed by arena-worker (bot.invitation_email).
 	Delivery string `json:"delivery"`
 
 	// Email The normalized invitee e-mail.
 	Email string `json:"email"`
 
-	// ExpiresAt When the one-time code stops working (7 days).
+	// ExpiresAt When the one-time code stops working (7 days). For a `web` invitation, when the password-setup link of a new account stops working.
 	ExpiresAt time.Time `json:"expires_at"`
 
 	// Id bot_invitations.id.
@@ -3313,6 +3316,18 @@ type BotInvitationAcceptResponseRole string
 // BotInvitationCreateRequest Body of POST /v1/organizations/{org_id}/bot-invitations: invite a
 // person into the Telegram event-center bot (spec 28 §3.3).
 type BotInvitationCreateRequest struct {
+	// Channel How the person is invited: `telegram` (the default when absent)
+	// mails the Telegram deep link of the bot; `web` mails the web
+	// event center instead, with no deep link and no Telegram code.
+	// For `web`, a NEW e-mail gets the one-time password-setup link
+	// (valid 7 days) and an EXISTING account gets a letter that says it
+	// was added and where to sign in, with no token. In both cases the
+	// membership exists at once and an existing membership keeps its
+	// role. Any other value is 400 `bot.invalid_channel`. This is a
+	// plain string with the two values named here, not an inline
+	// enum, so no generated constant is renamed.
+	Channel *string `json:"channel,omitempty"`
+
 	// Email The invitee's e-mail. An unknown address creates the user (with
 	// no usable password; the self-service reset sets one later), a
 	// known one is reused.
@@ -3320,6 +3335,8 @@ type BotInvitationCreateRequest struct {
 
 	// Locale Language of the invitation e-mail and of the bot's first messages
 	// (`en` default, `ru`, `es`). Unknown values fall back to `en`.
+	// With `channel` `web` and no locale, the language of an existing
+	// account's own preference is used.
 	Locale *string `json:"locale,omitempty"`
 
 	// Role The bot role the membership is created with: owner maps to the
@@ -3337,7 +3354,8 @@ type BotInvitationCreateRequestRole string
 
 // BotInvitationCreateResponse Response of POST /v1/organizations/{org_id}/bot-invitations.
 type BotInvitationCreateResponse struct {
-	// DeepLink `https://t.me/<bot>?start=inv_<code>`, present ONLY when the
+	// DeepLink `https://t.me/<bot>?start=inv_<code>`, present ONLY for a
+	// `telegram` invitation when the
 	// caller is the platform superadmin (X-Admin-Reason on record) and
 	// the bot username is configured, for the hand-over to
 	// organizations provisioned by hand. An organization owner never
@@ -3395,7 +3413,12 @@ type BotTeamMember struct {
 	// Email The member's e-mail, the name the bot shows.
 	Email string `json:"email"`
 
-	// InvitationExpiresAt When the invitation's code stops working. Absent with `invitation_state`.
+	// InvitationChannel How the invitation was sent, `telegram` or `web`. Absent with
+	// `invitation_state`. A `web` invitation cannot be resent
+	// (`resend_available_at` is never present for it).
+	InvitationChannel *string `json:"invitation_channel,omitempty"`
+
+	// InvitationExpiresAt When the invitation's code stops working (for a `web` invitation that is still `waiting`, when its setup link stops working). Absent with `invitation_state`.
 	InvitationExpiresAt *time.Time `json:"invitation_expires_at,omitempty"`
 
 	// InvitationId Id of that invitation, what the revoke and resend routes take. Absent with `invitation_state`.
@@ -3408,6 +3431,14 @@ type BotTeamMember struct {
 	// (sent, not opened, not expired) or `expired`. Absent for a member
 	// who has no bot invitation (added another way). Plain string on
 	// purpose: an inline enum would rename generated Go constants.
+	//
+	// For an invitation sent for the web event center (`invitation_channel`
+	// `web`) the invitation row is accepted at once, so the state comes
+	// from the setup link: `waiting` while the account that invitation
+	// created has an unused, unexpired password-setup token, `accepted`
+	// once it was used or none is left. For an account that already
+	// existed it is always `accepted`: the API cannot tell whether it
+	// ever chose a password.
 	InvitationState *string `json:"invitation_state,omitempty"`
 
 	// JoinedAt When the membership was created.
@@ -5853,6 +5884,16 @@ type EventItem struct {
 	// "Organizer". Null when the organization itself is the promoter.
 	PromoterName *string `json:"promoter_name"`
 
+	// PublicUrl Buyers' page of the event on the hosted sales site:
+	// `<PUBLIC_TICKETS_BASE_URL>/<page slug>/<event slug>`, where the
+	// page slug is the promoter's slug when the event has an active
+	// promoter with a page of its own, else the organization's slug.
+	// Empty string when the event has no slug yet or the server has no
+	// tickets base configured. It is the address, not a sign that the
+	// page is reachable: it is built whatever the publication status,
+	// so a draft event already carries it.
+	PublicUrl string `json:"public_url"`
+
 	// SalesState Where the event stands in its sale, computed on the server from
 	// its active, non-cancelled sessions (EC-02) so every client shows
 	// the same chip. One of `on_sale` (a session that has not ended,
@@ -6668,15 +6709,18 @@ type HostedPageResponse struct {
 	// present and the event has a promoter.
 	Promoter *HostedPagePromoter `json:"promoter,omitempty"`
 
-	// Seller Legal identity of the seller. Omitted unless the channel has
-	// `settings.hosted_page.show_seller = true`.
+	// Seller Legal identity of the seller. Omitted while the seller's profile is
+	// incomplete or a platform superadmin hid it for the channel
+	// (`settings.hosted_page.seller_hidden`).
 	Seller *HostedPageSeller `json:"seller,omitempty"`
 }
 
 // HostedPageSeller Legal identity of the seller of record, i.e. the organization that owns
-// the page. Present only when the channel the page is sold through has
-// `settings.hosted_page.show_seller = true` (default off). Empty values
-// are omitted.
+// the page. Present whenever the seller's profile is complete (legal name,
+// tax number, street, city, postal code and the channel's public e-mail
+// are all filled) unless a platform superadmin hid it for the channel
+// (`settings.hosted_page.seller_hidden`). The older `show_seller` flag no
+// longer decides. Empty values are omitted.
 type HostedPageSeller struct {
 	// Address Registered address; omitted when no address part is stored.
 	Address *HostedPageSellerAddress `json:"address,omitempty"`
@@ -6773,8 +6817,9 @@ type HostedPromoterPageResponse struct {
 	// present and the slug names a promoter rather than the organization.
 	Promoter *HostedPagePromoter `json:"promoter,omitempty"`
 
-	// Seller Legal identity of the seller. Omitted unless the channel has
-	// `settings.hosted_page.show_seller = true`.
+	// Seller Legal identity of the seller. Omitted while the seller's profile is
+	// incomplete or a platform superadmin hid it for the channel
+	// (`settings.hosted_page.seller_hidden`).
 	Seller *HostedPageSeller `json:"seller,omitempty"`
 }
 
@@ -10465,6 +10510,53 @@ type PaymentProviderConfigItemStatus string
 // via POST /v1/organizations/{org_id}/payment-configs/{id}/verify.
 type PaymentProviderConfigItemVerificationStatus string
 
+// PosterFacts What a poster says, normalized. An empty string, or an empty list,
+// means "not on the poster". Every value is a HINT for a wizard to
+// offer as a button; nothing is written from it.
+type PosterFacts struct {
+	// Age Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty.
+	Age string `json:"age"`
+
+	// Categories The ticket prices printed on the poster; empty when there are none.
+	Categories []PosterFactsCategory `json:"categories"`
+
+	// City City as printed, or empty.
+	City string `json:"city"`
+
+	// Date First date, `YYYY-MM-DD`, or empty.
+	Date string `json:"date"`
+
+	// Description A short description printed on the poster, or empty.
+	Description string `json:"description"`
+
+	// Name Event name as printed.
+	Name string `json:"name"`
+
+	// Time Start time, `HH:MM` 24-hour, or empty.
+	Time string `json:"time"`
+
+	// VenueName Venue name as printed, or empty.
+	VenueName string `json:"venue_name"`
+}
+
+// PosterFactsCategory One ticket price printed on a poster.
+type PosterFactsCategory struct {
+	// Currency ISO 4217 code, or an empty string when the poster shows no currency symbol.
+	Currency string `json:"currency"`
+
+	// Name Category name as printed (for example "Stalls"); empty when the poster gives only a price.
+	Name string `json:"name"`
+
+	// PriceMinor Price in minor currency units (3490 is 34.90).
+	PriceMinor int64 `json:"price_minor"`
+}
+
+// PosterFactsResponse The answer of the poster-reading route.
+type PosterFactsResponse struct {
+	// Facts What the model read from the poster.
+	Facts PosterFacts `json:"facts"`
+}
+
 // PriceBreakdownEnvelope Top-level response envelope returned by
 // `GET /v1/checkout/{id}/price-breakdown`.
 type PriceBreakdownEnvelope struct {
@@ -12057,6 +12149,9 @@ type SellerProfile struct {
 	// Channels The organization's hosted-page channels, oldest first.
 	Channels []SellerProfileChannel `json:"channels"`
 
+	// Complete True when no required organization field is missing (`missing` is empty). Each channel also needs its public e-mail, see `channels[].complete`.
+	Complete bool `json:"complete"`
+
 	// ContactFormToTelegram Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true).
 	ContactFormToTelegram *bool `json:"contact_form_to_telegram,omitempty"`
 
@@ -12096,6 +12191,9 @@ type SellerProfile struct {
 	// RegistrationNumber Company registration number.
 	RegistrationNumber *string `json:"registration_number"`
 
+	// SellerShown True when at least one channel's sales page shows the seller block now (`channels[].seller_shown`).
+	SellerShown bool `json:"seller_shown"`
+
 	// TaxId Tax or VAT identifier.
 	TaxId *string `json:"tax_id"`
 
@@ -12105,6 +12203,9 @@ type SellerProfile struct {
 
 // SellerProfileChannel One channel of the organization that runs a hosted sales page.
 type SellerProfileChannel struct {
+	// Complete True when no required data is missing for this channel (`missing` is empty).
+	Complete bool `json:"complete"`
+
 	// EmailLooksPersonal True when the public e-mail is at a free mailbox provider (gmail.com,
 	// inbox.ru, outlook.com, ...). A hint for the owner to use a role
 	// address; it never blocks a save.
@@ -12113,9 +12214,9 @@ type SellerProfileChannel struct {
 	// Id Sales channel id.
 	Id openapi_types.UUID `json:"id"`
 
-	// Missing Required data still empty before `show_seller` may be turned on, in a
-	// stable order: legal_name, tax_id, address_line1, address_city,
-	// address_postal_code, public_email. Empty when the block may be shown.
+	// Missing Required data still empty, in a stable order: legal_name, tax_id,
+	// address_line1, address_city, address_postal_code, public_email.
+	// Empty when the block is shown.
 	Missing []string `json:"missing"`
 
 	// Name Sales channel name.
@@ -12124,7 +12225,15 @@ type SellerProfileChannel struct {
 	// PublicContact The channel's published contact, null when it has none.
 	PublicContact *SellerProfileContact `json:"public_contact"`
 
-	// ShowSeller Whether the sales page of this channel shows the seller block (`settings.hosted_page.show_seller`).
+	// SellerHidden A platform superadmin hid the seller block of this channel (`settings.hosted_page.seller_hidden`). Only a platform superadmin can set it.
+	SellerHidden bool `json:"seller_hidden"`
+
+	// SellerShown Whether the channel's sales page shows the seller block now, that is the data is complete and the block is not hidden by a platform superadmin.
+	SellerShown bool `json:"seller_shown"`
+
+	// ShowSeller Legacy flag (`settings.hosted_page.show_seller`), kept for older
+	// clients. It no longer decides whether the sales page shows the
+	// block; read `seller_shown`.
 	ShowSeller bool `json:"show_seller"`
 }
 
@@ -13817,11 +13926,16 @@ type UpdateSeatingPlanRequestVisibility string
 // the stored value. `show_seller: true` is refused with 422
 // `seller.incomplete` (details.missing) while required data is empty, and
 // so is clearing the e-mail of a channel that keeps the block on.
+// `seller_hidden` may be changed by a platform superadmin only (403
+// `seller.hide_superadmin_only` for anyone else).
 type UpdateSellerDisplayRequest struct {
 	// PublicContact The published contact; null removes it.
 	PublicContact *SellerDisplayContactPatch `json:"public_contact"`
 
-	// ShowSeller Show the seller block on this channel's sales page.
+	// SellerHidden True keeps the seller block off this channel's sales page even when the data is complete; false shows it again. Only a platform superadmin (with `X-Admin-Reason`) may change it.
+	SellerHidden *bool `json:"seller_hidden,omitempty"`
+
+	// ShowSeller Legacy flag kept for older clients. It no longer decides whether the page shows the block.
 	ShowSeller *bool `json:"show_seller,omitempty"`
 }
 

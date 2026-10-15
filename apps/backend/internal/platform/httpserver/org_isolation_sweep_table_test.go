@@ -287,6 +287,7 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/tickets/{ticket_id}/scan-refund-exception": "platform superadmin only; the ticket must belong to the path org, checked inside refunds.Engine.GrantScanException (covered by TestScanException_SuperadminOnlyInsideTheOrganization)",
 	"POST /v1/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear":     "platform superadmin only; the ticket's organization (GetTicketOrgID) must be the path org (covered by TestReviewHoldClear_SuperadminOnlyInsideTheOrganization)",
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/sample-ticket":        "hsample",
+	"POST /v1/organizations/{org_id}/media/{media_id}/poster-facts":             "hmedia.PosterFacts (rowOrgAccess, then the object must carry the path org; covered by TestPosterFacts_RouteReadsOwnPosterAndKeepsOrganizationsApart)",
 
 	// hcheckout promo codes, hpayments payment configs, hbankaccounts, hapikeys,
 	// hbot invitations: queries scoped by (id, org_id).

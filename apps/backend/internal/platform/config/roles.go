@@ -124,7 +124,7 @@ var roleSecrets = []roleSecret{
 	{"OPS_TELEGRAM_BOT_TOKEN", []Role{RoleWorker}, func(c *Config) string { return c.OpsTelegramBotToken }},
 	{"SALES_TELEGRAM_BOT_TOKEN", []Role{RoleWorker}, func(c *Config) string { return c.SalesTelegramBotToken }},
 	{"EVENTS_TELEGRAM_BOT_TOKEN", []Role{RoleBot}, func(c *Config) string { return c.EventsTelegramBotToken }},
-	{"POSTER_LLM_API_KEY", []Role{RoleBot}, func(c *Config) string { return c.PosterLLMAPIKey }},
+	{"POSTER_LLM_API_KEY", []Role{RoleAPI}, func(c *Config) string { return c.PosterLLMAPIKey }},
 }
 
 // unusedSecretWarnings names every secret that is set although the role

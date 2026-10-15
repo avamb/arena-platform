@@ -5,3 +5,6 @@ test-results
 playwright-report
 *.tsbuildinfo
 tests/smoke/event-center-smoke.xml
+tests/smoke/event-center-live.xml
+tests/smoke/.live-env.json
+.live

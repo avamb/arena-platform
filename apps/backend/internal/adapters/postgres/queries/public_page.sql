@@ -324,7 +324,9 @@ LIMIT 200;
 -- GetHostedPageSeller reads the SELLER block of a hosted page: the legal
 -- identity of the page's own organization (the seller of record) and the
 -- two per-channel settings that govern its publication,
--- settings.hosted_page.show_seller (default off) and
+-- settings.hosted_page.seller_hidden (P1a: the block is shown whenever the
+-- profile is complete unless a platform superadmin hid it; the legacy
+-- show_seller is read but no longer decides) and
 -- settings.hosted_page.public_contact ({"email","phone"}, the ONLY source of
 -- a published contact: organizations.contact_email/contact_phone are never
 -- selected here). The channel is the hosted-page-enabled, not deleted channel
@@ -337,6 +339,7 @@ SELECT
     o.legal_address_line1, o.legal_address_line2, o.legal_address_postal_code,
     o.legal_address_city, o.legal_address_country, o.country, o.legal_form,
     COALESCE(sc.settings #>> '{hosted_page,show_seller}', '') = 'true' AS show_seller,
+    COALESCE(sc.settings #>> '{hosted_page,seller_hidden}', '') = 'true' AS seller_hidden,
     sc.settings #> '{hosted_page,public_contact}' AS public_contact
 FROM organizations o
 JOIN sales_channels sc ON sc.org_id = o.id

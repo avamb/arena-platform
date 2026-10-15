@@ -26,6 +26,15 @@ type TeamMember struct {
 	// InvitationID is the id the revoke and resend routes take;
 	// ResendAvailableAt is when a resend is allowed again (waiting and
 	// expired only; absent once the minimum interval has passed).
+	//
+	// For an invitation sent for the web event center (channel=web) the row is
+	// accepted at once, so the state is derived from the person's setup link:
+	// "waiting" while the account that invitation created has an unused,
+	// unexpired password_reset_tokens row, "accepted" once it was used or none
+	// is left, and always "accepted" for an account that already existed (the
+	// API cannot tell whether it ever chose a password).
+	// InvitationChannel is "telegram" or "web" when there is an invitation.
+	InvitationChannel   string     `json:"invitation_channel,omitempty"`
 	InvitationState     string     `json:"invitation_state,omitempty"`
 	InvitationID        *uuid.UUID `json:"invitation_id,omitempty"`
 	InvitationExpiresAt *time.Time `json:"invitation_expires_at,omitempty"`
@@ -100,8 +109,17 @@ func (h *Handler) HandleListTeam(w http.ResponseWriter, r *http.Request) {
 		if member.InvitationState != "" {
 			member.InvitationID = m.InvitationID
 			member.InvitationExpiresAt = m.InvitationExpiresAt
+			member.InvitationChannel = ChannelTelegram
+			if m.InvitationWeb {
+				member.InvitationChannel = ChannelWeb
+				if m.WebSetupExpiresAt != nil {
+					member.InvitationState = InvitationWaiting
+					member.InvitationExpiresAt = m.WebSetupExpiresAt
+				}
+			}
 		}
-		if (member.InvitationState == InvitationWaiting || member.InvitationState == InvitationExpired) && m.InvitationLastSentAt != nil {
+		// A web invitation has no letter to send again.
+		if member.InvitationChannel == ChannelTelegram && (member.InvitationState == InvitationWaiting || member.InvitationState == InvitationExpired) && m.InvitationLastSentAt != nil {
 			if at := m.InvitationLastSentAt.Add(ResendMinInterval); at.After(h.now()) {
 				member.ResendAvailableAt = &at
 			}

@@ -22,7 +22,9 @@ package eventbot
 //	og:tx           clear the tax number    og:k:<CC>   set the address country
 //	og:cv:<ch>      a channel's card        og:ce:<ch>  ask its e-mail  og:cp:<ch> ask its phone
 //	og:cxe:<ch>     clear the e-mail        og:cxp:<ch> clear the phone
-//	og:on:<ch>      show the seller block   og:off:<ch> hide it
+//	og:on:<ch> / og:off:<ch>  retired show/hide switch (P1a): an old button
+//	                only redraws the page card, the block is shown by itself
+//	                once the data is complete and only the operator can hide it
 
 import (
 	"context"
@@ -300,7 +302,6 @@ func orgChannel(p openapi.SellerProfile, id uuid.UUID) (openapi.SellerProfileCha
 }
 
 func (b *Bot) orgChannelPress(ctx context.Context, chatID int64, msgID *int, id *Identity, jwt string, st orgDataDialog, ch openapi.SellerProfileChannel, kind string) {
-	loc := id.Locale()
 	switch kind {
 	case "cv":
 		b.orgRenderChannel(ctx, chatID, msgID, id, st, ch, "")
@@ -311,15 +312,10 @@ func (b *Bot) orgChannelPress(ctx context.Context, chatID int64, msgID *int, id 
 		b.orgApplyDisplay(ctx, chatID, msgID, id, jwt, st, ch, map[string]any{"public_contact": map[string]any{"email": nil}}, "bot.og.cleared")
 	case "cxp":
 		b.orgApplyDisplay(ctx, chatID, msgID, id, jwt, st, ch, map[string]any{"public_contact": map[string]any{"phone": nil}}, "bot.og.cleared")
-	case "on":
-		if len(ch.Missing) > 0 {
-			// Say exactly what is missing; nothing is sent.
-			b.orgRenderChannel(ctx, chatID, msgID, id, st, ch, b.orgMissingText(loc, ch.Missing)+"\n\n")
-			return
-		}
-		b.orgApplyDisplay(ctx, chatID, msgID, id, jwt, st, ch, map[string]any{"show_seller": true}, "bot.og.shown_done")
-	case "off":
-		b.orgApplyDisplay(ctx, chatID, msgID, id, jwt, st, ch, map[string]any{"show_seller": false}, "bot.og.hidden_done")
+	case "on", "off":
+		// A button of an older screen: nothing is sent, the card shows the
+		// real state and what is missing.
+		b.orgRenderChannel(ctx, chatID, msgID, id, st, ch, "")
 	}
 }
 
@@ -486,11 +482,7 @@ func (b *Bot) orgCardText(loc string, p openapi.SellerProfile) string {
 		sb.WriteString("\n" + b.texts.T(loc, "bot.og.pages_none", nil))
 	}
 	for _, c := range p.Channels {
-		state := b.texts.T(loc, "bot.og.state_hidden", nil)
-		if c.ShowSeller {
-			state = b.texts.T(loc, "bot.og.state_shown", nil)
-		}
-		sb.WriteString("\n• " + Esc(c.Name) + ": " + state)
+		sb.WriteString("\n• " + Esc(c.Name) + ": " + b.orgSellerState(loc, c))
 	}
 	if len(p.Channels) > 0 {
 		tg := b.texts.T(loc, "bot.og.form_tg_off", nil)
@@ -501,8 +493,24 @@ func (b *Bot) orgCardText(loc string, p openapi.SellerProfile) string {
 	}
 	if len(p.Missing) > 0 {
 		sb.WriteString("\n\n" + b.orgMissingText(loc, p.Missing))
+	} else if p.Complete {
+		sb.WriteString("\n\n" + b.texts.T(loc, "bot.og.status_complete", nil))
 	}
 	return sb.String()
+}
+
+// orgSellerState is the one line that says whether a sales page shows the
+// seller block now: shown, hidden by the platform operator, or not yet shown
+// because data is missing. The server decides (seller_shown); the bot only
+// words it.
+func (b *Bot) orgSellerState(loc string, c openapi.SellerProfileChannel) string {
+	switch {
+	case c.SellerHidden:
+		return b.texts.T(loc, "bot.og.state_operator_hidden", nil)
+	case c.SellerShown:
+		return b.texts.T(loc, "bot.og.state_shown", nil)
+	}
+	return b.texts.T(loc, "bot.og.state_incomplete", nil)
 }
 
 func (b *Bot) orgCardRows(loc string, p openapi.SellerProfile) [][]models.InlineKeyboardButton {
@@ -561,10 +569,7 @@ func (b *Bot) orgRenderChannel(ctx context.Context, chatID int64, msgID *int, id
 			phone = *ch.PublicContact.Phone
 		}
 	}
-	state := b.texts.T(loc, "bot.og.state_hidden", nil)
-	if ch.ShowSeller {
-		state = b.texts.T(loc, "bot.og.state_shown", nil)
-	}
+	state := b.orgSellerState(loc, ch)
 	var sb strings.Builder
 	sb.WriteString(note)
 	sb.WriteString(b.texts.T(loc, "bot.og.page_card", map[string]any{"Name": Esc(ch.Name)}))
@@ -575,17 +580,12 @@ func (b *Bot) orgRenderChannel(ctx context.Context, chatID int64, msgID *int, id
 	if ch.EmailLooksPersonal && !strings.Contains(note, b.texts.T(loc, "bot.og.personal_email", nil)) {
 		sb.WriteString("\n\n" + b.texts.T(loc, "bot.og.personal_email", nil))
 	}
-	if len(ch.Missing) > 0 && !ch.ShowSeller && note == "" {
+	if len(ch.Missing) > 0 && note == "" {
 		sb.WriteString("\n\n" + b.orgMissingText(loc, ch.Missing))
 	}
 	cid := ch.Id.String()
 	rows := [][]models.InlineKeyboardButton{
 		{{Text: b.texts.T(loc, "bot.og.btn_email", nil), CallbackData: "og:ce:" + cid}, {Text: b.texts.T(loc, "bot.og.btn_phone", nil), CallbackData: "og:cp:" + cid}},
-	}
-	if ch.ShowSeller {
-		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.og.btn_hide", nil), CallbackData: "og:off:" + cid}})
-	} else {
-		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.og.btn_show", nil), CallbackData: "og:on:" + cid}})
 	}
 	rows = append(rows, []models.InlineKeyboardButton{
 		{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: "og:h"},

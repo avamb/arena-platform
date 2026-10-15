@@ -488,16 +488,24 @@ type Config struct {
 	BotArenaAPIURL string `env:"BOT_ARENA_API_URL" required:"false" default:"http://localhost:8080"`
 	// BotMetricsAddr is the bot's sidecar /healthz + /metrics listener.
 	BotMetricsAddr string `env:"BOT_METRICS_ADDR" required:"false" default:":9092"`
-	// PosterLLMAPIKey is the Anthropic API key the bot reads posters with
-	// (internal/platform/posterread): the wizard then offers the name, the
-	// date, the venue and the prices printed on a sent poster as one-tap
-	// answers. Empty switches the reading off; the wizard asks as before.
-	// Only the poster image ever travels to the model.
+	// PosterLLMAPIKey is the Anthropic API key arena-api reads posters with
+	// (internal/platform/posterread, POST .../media/{id}/poster-facts): the
+	// event wizards (Telegram bot, web) then offer the name, the date, the
+	// venue and the prices printed on a poster as one-tap answers. Only
+	// arena-api holds it since 2026-10-14 (the bot calls the API). Empty
+	// switches the reading off: the route answers 503
+	// media.poster_reader_not_configured and the wizards ask as before. Only
+	// the poster image ever travels to the model.
 	PosterLLMAPIKey string `env:"POSTER_LLM_API_KEY" required:"false" default:""`
 	// PosterLLMModel is the vision model used for that reading.
 	PosterLLMModel string `env:"POSTER_LLM_MODEL" required:"false" default:"claude-sonnet-5"`
 	// PosterLLMBaseURL is the Messages API origin (a stub in tests).
 	PosterLLMBaseURL string `env:"POSTER_LLM_BASE_URL" required:"false" default:"https://api.anthropic.com"`
+	// PosterReadsPerOrgPerDay caps the model calls of ONE organization in a
+	// sliding 24 hours (each call costs money). 0 switches the cap off. The
+	// counter lives in the memory of one arena-api process, so with several
+	// replicas the ceiling is this value times the replica count.
+	PosterReadsPerOrgPerDay int `env:"POSTER_READS_PER_ORG_PER_DAY" required:"false" default:"50"`
 	// OpsWatchdogHeartbeatHourUTC is the UTC hour (0-23) at which the
 	// ops.watchdog job sends its once-daily "still alive" digest.
 	OpsWatchdogHeartbeatHourUTC int `env:"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC" required:"false" default:"7"`
@@ -808,6 +816,16 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.PublicPromoFailIPLimit = iPromoFailIP
+
+	// POSTER_READS_PER_ORG_PER_DAY: model calls per organization per day.
+	posterReads, err := getenvInt("POSTER_READS_PER_ORG_PER_DAY", 50)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	if posterReads < 0 {
+		parseErrs = append(parseErrs, fmt.Errorf("POSTER_READS_PER_ORG_PER_DAY must not be negative (0 switches the cap off), got %d", posterReads))
+	}
+	cfg.PosterReadsPerOrgPerDay = posterReads
 
 	// PUBLIC_TICKETS_BASE_URL / WIDGET_PAYMENT_WINDOW_SECONDS /
 	// WIDGET_PAYMENT_GRACE_SECONDS — widget hosted-payment redirect flow.

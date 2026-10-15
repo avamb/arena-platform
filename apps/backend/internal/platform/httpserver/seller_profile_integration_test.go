@@ -110,6 +110,9 @@ func TestSellerProfile_OwnerFillsAndSwitches(t *testing.T) {
 	if !reflect.DeepEqual(p.Missing, wantMissing[:5]) {
 		t.Errorf("org missing = %v", p.Missing)
 	}
+	if p.Complete || p.SellerShown || p.Channels[0].Complete || p.Channels[0].SellerShown || p.Channels[0].SellerHidden {
+		t.Errorf("an empty profile is neither complete nor shown: %+v", p)
+	}
 
 	// ── the switch refuses and says what is missing; nothing is written ──────
 	code, raw = call(f.ownerID, http.MethodPatch, display, `{"show_seller": true}`)
@@ -164,6 +167,10 @@ func TestSellerProfile_OwnerFillsAndSwitches(t *testing.T) {
 	}
 	if p.LegalForm == nil || *p.LegalForm != "S.L." {
 		t.Errorf("profile legal_form = %v", p.LegalForm)
+	}
+	// P1a: complete data is shown with no switch at all.
+	if !p.Complete || !p.SellerShown || !ch.Complete || !ch.SellerShown || ch.ShowSeller {
+		t.Errorf("a complete profile must be shown by default: %+v", p)
 	}
 
 	// ── now the switch goes on, and every other setting survives ──────────────

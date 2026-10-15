@@ -132,6 +132,67 @@ components:
                 field: "message"
                 reason: "must not be empty"
 
+    PosterFactsCategory:
+      type: object
+      description: One ticket price printed on a poster.
+      required: [name, price_minor, currency]
+      properties:
+        name:
+          type: string
+          description: Category name as printed (for example "Stalls"); empty when the poster gives only a price.
+        price_minor:
+          type: integer
+          format: int64
+          description: Price in minor currency units (3490 is 34.90).
+        currency:
+          type: string
+          description: ISO 4217 code, or an empty string when the poster shows no currency symbol.
+
+    PosterFacts:
+      type: object
+      description: |
+        What a poster says, normalized. An empty string, or an empty list,
+        means "not on the poster". Every value is a HINT for a wizard to
+        offer as a button; nothing is written from it.
+      required: [name, date, time, venue_name, city, age, description, categories]
+      properties:
+        name:
+          type: string
+          description: Event name as printed.
+        date:
+          type: string
+          description: First date, `YYYY-MM-DD`, or empty.
+        time:
+          type: string
+          description: Start time, `HH:MM` 24-hour, or empty.
+        venue_name:
+          type: string
+          description: Venue name as printed, or empty.
+        city:
+          type: string
+          description: City as printed, or empty.
+        age:
+          type: string
+          description: Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty.
+        description:
+          type: string
+          description: A short description printed on the poster, or empty.
+        categories:
+          type: array
+          description: The ticket prices printed on the poster; empty when there are none.
+          items:
+            $ref: "#/components/schemas/PosterFactsCategory"
+
+    PosterFactsResponse:
+      type: object
+      description: The answer of the poster-reading route.
+      required: [facts]
+      properties:
+        facts:
+          allOf:
+            - $ref: "#/components/schemas/PosterFacts"
+          description: What the model read from the poster.
+
     MediaObject:
       type: object
       description: |
@@ -2595,6 +2656,21 @@ components:
           description: |
             Language of the invitation e-mail and of the bot's first messages
             (`en` default, `ru`, `es`). Unknown values fall back to `en`.
+            With `channel` `web` and no locale, the language of an existing
+            account's own preference is used.
+        channel:
+          type: string
+          description: |
+            How the person is invited: `telegram` (the default when absent)
+            mails the Telegram deep link of the bot; `web` mails the web
+            event center instead, with no deep link and no Telegram code.
+            For `web`, a NEW e-mail gets the one-time password-setup link
+            (valid 7 days) and an EXISTING account gets a letter that says it
+            was added and where to sign in, with no token. In both cases the
+            membership exists at once and an existing membership keeps its
+            role. Any other value is 400 `bot.invalid_channel`. This is a
+            plain string with the two values named here, not an inline
+            enum, so no generated constant is renamed.
     BotInvitation:
       type: object
       description: A bot invitation as the API reports it, never the code.
@@ -2608,6 +2684,7 @@ components:
         - user_created
         - expires_at
         - delivery
+        - channel
       properties:
         id:
           type: string
@@ -2637,10 +2714,13 @@ components:
         expires_at:
           type: string
           format: date-time
-          description: When the one-time code stops working (7 days).
+          description: When the one-time code stops working (7 days). For a `web` invitation, when the password-setup link of a new account stops working.
         delivery:
           type: string
           description: Always `email`; the deep link is mailed by arena-worker (bot.invitation_email).
+        channel:
+          type: string
+          description: The channel the invitation was sent through, `telegram` or `web`. A `web` invitation is recorded as accepted at once and cannot be resent.
     BotInvitationCreateResponse:
       type: object
       description: Response of POST /v1/organizations/{org_id}/bot-invitations.
@@ -2654,7 +2734,8 @@ components:
         deep_link:
           type: string
           description: |
-            `https://t.me/<bot>?start=inv_<code>`, present ONLY when the
+            `https://t.me/<bot>?start=inv_<code>`, present ONLY for a
+            `telegram` invitation when the
             caller is the platform superadmin (X-Admin-Reason on record) and
             the bot username is configured, for the hand-over to
             organizations provisioned by hand. An organization owner never
@@ -2762,6 +2843,20 @@ components:
             (sent, not opened, not expired) or `expired`. Absent for a member
             who has no bot invitation (added another way). Plain string on
             purpose: an inline enum would rename generated Go constants.
+
+            For an invitation sent for the web event center (`invitation_channel`
+            `web`) the invitation row is accepted at once, so the state comes
+            from the setup link: `waiting` while the account that invitation
+            created has an unused, unexpired password-setup token, `accepted`
+            once it was used or none is left. For an account that already
+            existed it is always `accepted`: the API cannot tell whether it
+            ever chose a password.
+        invitation_channel:
+          type: string
+          description: |
+            How the invitation was sent, `telegram` or `web`. Absent with
+            `invitation_state`. A `web` invitation cannot be resent
+            (`resend_available_at` is never present for it).
         invitation_id:
           type: string
           format: uuid
@@ -2769,7 +2864,7 @@ components:
         invitation_expires_at:
           type: string
           format: date-time
-          description: When the invitation's code stops working. Absent with `invitation_state`.
+          description: When the invitation's code stops working (for a `web` invitation that is still `waiting`, when its setup link stops working). Absent with `invitation_state`.
         resend_available_at:
           type: string
           format: date-time
@@ -6252,6 +6347,7 @@ components:
         - sales_state
         - next_session_at
         - session_count
+        - public_url
         - created_at
         - updated_at
       description: |
@@ -6339,6 +6435,18 @@ components:
             Name of the event's promoter, which the ticket PDF prints as
             "Organizer". Null when the organization itself is the promoter.
           example: "Partner Agency s.r.o."
+        public_url:
+          type: string
+          description: |
+            Buyers' page of the event on the hosted sales site:
+            `<PUBLIC_TICKETS_BASE_URL>/<page slug>/<event slug>`, where the
+            page slug is the promoter's slug when the event has an active
+            promoter with a page of its own, else the organization's slug.
+            Empty string when the event has no slug yet or the server has no
+            tickets base configured. It is the address, not a sign that the
+            page is reachable: it is built whatever the publication status,
+            so a draft event already carries it.
+          example: "https://tickets.arenasoldout.com/teatrkolibel/silver-hoof"
         sales_state:
           type: string
           description: |
@@ -6941,9 +7049,11 @@ components:
       required: [legal_name]
       description: |
         Legal identity of the seller of record, i.e. the organization that owns
-        the page. Present only when the channel the page is sold through has
-        `settings.hosted_page.show_seller = true` (default off). Empty values
-        are omitted.
+        the page. Present whenever the seller's profile is complete (legal name,
+        tax number, street, city, postal code and the channel's public e-mail
+        are all filled) unless a platform superadmin hid it for the channel
+        (`settings.hosted_page.seller_hidden`). The older `show_seller` flag no
+        longer decides. Empty values are omitted.
       properties:
         legal_name:
           type: string
@@ -6995,7 +7105,7 @@ components:
 
     SellerProfileChannel:
       type: object
-      required: [id, name, show_seller, public_contact, email_looks_personal, missing]
+      required: [id, name, show_seller, seller_hidden, complete, seller_shown, public_contact, email_looks_personal, missing]
       description: One channel of the organization that runs a hosted sales page.
       properties:
         id:
@@ -7008,7 +7118,19 @@ components:
           example: "Hosted page"
         show_seller:
           type: boolean
-          description: Whether the sales page of this channel shows the seller block (`settings.hosted_page.show_seller`).
+          description: |
+            Legacy flag (`settings.hosted_page.show_seller`), kept for older
+            clients. It no longer decides whether the sales page shows the
+            block; read `seller_shown`.
+        seller_hidden:
+          type: boolean
+          description: A platform superadmin hid the seller block of this channel (`settings.hosted_page.seller_hidden`). Only a platform superadmin can set it.
+        complete:
+          type: boolean
+          description: True when no required data is missing for this channel (`missing` is empty).
+        seller_shown:
+          type: boolean
+          description: Whether the channel's sales page shows the seller block now, that is the data is complete and the block is not hidden by a platform superadmin.
         public_contact:
           description: The channel's published contact, null when it has none.
           oneOf:
@@ -7023,16 +7145,16 @@ components:
         missing:
           type: array
           description: |
-            Required data still empty before `show_seller` may be turned on, in a
-            stable order: legal_name, tax_id, address_line1, address_city,
-            address_postal_code, public_email. Empty when the block may be shown.
+            Required data still empty, in a stable order: legal_name, tax_id,
+            address_line1, address_city, address_postal_code, public_email.
+            Empty when the block is shown.
           items:
             type: string
             description: Name of a missing field.
 
     SellerProfile:
       type: object
-      required: [org_id, org_name, country, missing, channels]
+      required: [org_id, org_name, country, missing, complete, seller_shown, channels]
       description: |
         The owner's "Organization data": the legal data the sales page prints in
         its seller block, and every hosted-page channel with its block settings.
@@ -7085,6 +7207,12 @@ components:
           items:
             type: string
             description: Name of a missing field.
+        complete:
+          type: boolean
+          description: True when no required organization field is missing (`missing` is empty). Each channel also needs its public e-mail, see `channels[].complete`.
+        seller_shown:
+          type: boolean
+          description: True when at least one channel's sales page shows the seller block now (`channels[].seller_shown`).
         channels:
           type: array
           description: The organization's hosted-page channels, oldest first.
@@ -7136,10 +7264,15 @@ components:
         the stored value. `show_seller: true` is refused with 422
         `seller.incomplete` (details.missing) while required data is empty, and
         so is clearing the e-mail of a channel that keeps the block on.
+        `seller_hidden` may be changed by a platform superadmin only (403
+        `seller.hide_superadmin_only` for anyone else).
       properties:
         show_seller:
           type: boolean
-          description: Show the seller block on this channel's sales page.
+          description: Legacy flag kept for older clients. It no longer decides whether the page shows the block.
+        seller_hidden:
+          type: boolean
+          description: True keeps the seller block off this channel's sales page even when the data is complete; false shows it again. Only a platform superadmin (with `X-Admin-Reason`) may change it.
         public_contact:
           description: The published contact; null removes it.
           oneOf:
@@ -7187,8 +7320,9 @@ components:
           example: "en"
         seller:
           description: |
-            Legal identity of the seller. Omitted unless the channel has
-            `settings.hosted_page.show_seller = true`.
+            Legal identity of the seller. Omitted while the seller's profile is
+            incomplete or a platform superadmin hid it for the channel
+            (`settings.hosted_page.seller_hidden`).
           allOf:
             - $ref: "#/components/schemas/HostedPageSeller"
         promoter:
@@ -7244,8 +7378,9 @@ components:
             $ref: "#/components/schemas/HostedPageEvent"
         seller:
           description: |
-            Legal identity of the seller. Omitted unless the channel has
-            `settings.hosted_page.show_seller = true`.
+            Legal identity of the seller. Omitted while the seller's profile is
+            incomplete or a platform superadmin hid it for the channel
+            (`settings.hosted_page.seller_hidden`).
           allOf:
             - $ref: "#/components/schemas/HostedPageSeller"
         promoter:
@@ -20702,6 +20837,15 @@ paths:
         the caller must be a member of the organization, an organization API
         key of it, or the platform superadmin with `X-Admin-Reason`. Only
         the superadmin gets the `deep_link` back in the response.
+
+        With `channel` `web` the same transaction writes the membership, an
+        invitation row that is already accepted (there is no Telegram code),
+        and the letter: a NEW account gets a `password_reset_tokens` row and
+        an `auth.password_reset_email` job (purpose `org_invitation`, the
+        link lands on the event center's `/accept-invite`), an EXISTING
+        account gets an `auth.org_added_email` job with no token. There is no
+        `deep_link`. It answers 503 `bot.web_invitation_not_configured`
+        while the event center address is not configured.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -20734,7 +20878,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/BotInvitationCreateResponse"
         "400":
-          description: Invalid body, e-mail or role (`bot.invalid_body`, `bot.invalid_email`, `bot.invalid_role`), or org_id is not a UUID
+          description: Invalid body, e-mail, role or channel (`bot.invalid_body`, `bot.invalid_email`, `bot.invalid_role`, `bot.invalid_channel`), or org_id is not a UUID
           content:
             application/json:
               schema:
@@ -20764,7 +20908,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: Database not wired
+          description: Database not wired, or `channel` is `web` and the event center address is not configured (`bot.web_invitation_not_configured`)
           content:
             application/json:
               schema:
@@ -20911,7 +21055,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
-          description: The invitation was already accepted (`bot.invitation_accepted`) or revoked (`bot.invitation_revoked`).
+          description: The invitation was already accepted (`bot.invitation_accepted`) or revoked (`bot.invitation_revoked`), or it was sent for the web event center and cannot be resent (`bot.invitation_channel_unsupported`; the person uses the password reset on the sign-in page).
           content:
             application/json:
               schema:
@@ -26617,8 +26761,8 @@ paths:
       description: |
         The owner's "Organization data" (HP-4a): the legal data the hosted sales
         page prints in its seller block, every hosted-page channel with
-        `show_seller` and its public contact, and what is still missing before
-        the block may be shown. Requires `org.update` in the organization (the
+        `seller_shown` (whether the page shows the seller block now), whether
+        the data is `complete`, its public contact, and what is still missing. Requires `org.update` in the organization (the
         owner; the manager does not hold it).
       tags: [v1]
       security:
@@ -26731,14 +26875,16 @@ paths:
       operationId: updateSellerDisplay
       summary: Switch the seller block and set the public contact of a sales-page channel
       description: |
-        Writes `settings.hosted_page.show_seller` and
-        `settings.hosted_page.public_contact` of one hosted-page channel of the
-        organization; every other setting is kept. Requires `org.update` in the
+        Writes `settings.hosted_page.public_contact`, the legacy
+        `show_seller` and the operator's `seller_hidden` of one hosted-page
+        channel of the organization; every other setting is kept. The seller
+        block is shown by default once the profile is complete; only a platform
+        superadmin (with `X-Admin-Reason`) can hide it with `seller_hidden`. Requires `org.update` in the
         organization. A channel of another organization, or one without a hosted
         page, answers 404 `seller.channel_not_found`. Audited as
         `v1.channel.seller_display_update` without the addresses.
 
-        This is the only route that writes these two keys: the generic channel
+        This is the only route that writes these keys: the generic channel
         create and PATCH keep the stored values whatever `settings` they are
         sent, and an organization API key is refused here.
       tags: [v1]
@@ -26785,7 +26931,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`).
+          description: Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`), or is not a platform superadmin but tries to change `seller_hidden` (`seller.hide_superadmin_only`).
           content:
             application/json:
               schema:
@@ -34381,6 +34527,100 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Media storage backend is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/media/{media_id}/poster-facts:
+    post:
+      operationId: postV1OrganizationsOrgIdMediaMediaIdPosterFacts
+      summary: Read a poster with the vision model
+      description: |
+        Reads the event poster stored as a media object of this organization
+        and answers what is printed on it: the name, the date and time, the
+        venue, the city, the age rating and the ticket prices. The values are
+        hints for an event wizard (the Telegram bot, the web event center) to
+        offer as buttons; nothing is stored and the answer is never cached.
+        Only the poster image travels to the model, never buyer data.
+
+        The model key lives on arena-api only. Without it the route answers
+        503 `media.poster_reader_not_configured` and a wizard asks every
+        question by hand. Each read costs money, so an organization gets at
+        most `POSTER_READS_PER_ORG_PER_DAY` reads (default 50) in a sliding
+        24 hours, then 429 `media.poster_reads_exhausted`; the counter lives
+        in the memory of one arena-api process. A refused request never takes
+        a slot. The image must be a JPEG or PNG of at most 5 MiB. The call may
+        take up to 45 seconds.
+
+        Requires the `event.update` permission in the path organization (the
+        owner and the manager hold it). A media object of another
+        organization is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema: { type: string, format: uuid }
+        - name: media_id
+          in: path
+          required: true
+          description: UUID of the poster's media object (`POST /v1/media`, owner type `event_poster`).
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: What the model read from the poster.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PosterFactsResponse"
+        "400":
+          description: org_id or media_id is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Media object not found, deleted, or owned by another organization (`media.not_found`), or its bytes are gone (`media.bytes_missing`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The image is not a JPEG or PNG (`media.poster_unsupported_type`) or is larger than 5 MiB (`media.poster_too_large`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: The organization used its poster readings for today (`media.poster_reads_exhausted`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Media lookup or byte read failed (`media.get_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Poster reading is not configured (`media.poster_reader_not_configured`), the model could not be reached (`media.poster_read_failed`), or media storage is not configured.
           content:
             application/json:
               schema:
