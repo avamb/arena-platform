@@ -93,7 +93,7 @@ func newPosterRig(t *testing.T) *posterRig {
 	allowed := true
 	rig.allow = &allowed
 	rig.h = New(nil, slog.New(slog.NewTextHandler(io.Discard, nil))).
-		WithRowOrgAccess(func(w http.ResponseWriter, _ *http.Request, _ uuid.UUID, write bool, code, msg string) bool {
+		WithRowOrgAccess(func(w http.ResponseWriter, _ *http.Request, _ uuid.UUID, write bool, code, _ string) bool {
 			if !write {
 				t.Errorf("poster reading must be a write for the organization guard")
 			}
