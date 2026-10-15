@@ -17361,7 +17361,12 @@ export interface components {
          * @description Describes a single buyer-form field exposed by the sales channel.
          *     The widget uses the `enabled` flag to decide whether to render the
          *     field and `required` to enforce client-side validation.
-         *     Feature #321 WID-0d.
+         *     Feature #321 WID-0d. Since P1b `name` (one field for first and last
+         *     name) and `phone` are always `enabled: true`; they are `required`
+         *     only when the sales channel's `collect_name` / `collect_phone` flag
+         *     is on, otherwise they are optional (the buyer may leave them empty).
+         *     A third mode, `off` (field not offered at all), will be added later
+         *     and will then show as `enabled: false`.
          */
         BuyerFieldItem: {
             /**
@@ -17369,7 +17374,10 @@ export interface components {
              * @enum {string}
              */
             key: "email" | "name" | "phone";
-            /** @description When true the field must be filled before submission. */
+            /**
+             * @description When true the field must be filled before submission. When false
+             *     and `enabled` is true the field is optional.
+             */
             required: boolean;
             /** @description When false the field should not be shown or submitted. */
             enabled: boolean;
@@ -17377,7 +17385,8 @@ export interface components {
         /**
          * @description Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
          *     `email` supersedes the top-level `holder_email` when both are present.
-         *     `name` and `phone` are validated against the channel's `buyer_fields` flags.
+         *     `name` and `phone` are optional unless the channel's `buyer_fields`
+         *     mark them `required`.
          */
         PublicBuyerInfo: {
             /**
@@ -17385,9 +17394,9 @@ export interface components {
              * @description Buyer's email address (ticket holder).
              */
             email: string;
-            /** @description Buyer's full name; required when the channel has collect_name enabled. */
+            /** @description Buyer's first and last name in one field; required only when the channel's `buyer_fields` entry `name` has `required` true, otherwise optional and may be empty or null. */
             name?: string | null;
-            /** @description Buyer's phone number; required when the channel has collect_phone enabled. */
+            /** @description Buyer's phone number; required only when the channel's `buyer_fields` entry `phone` has `required` true, otherwise optional and may be empty or null. */
             phone?: string | null;
         };
         PublicFeedCheckoutStartRequest: {
@@ -17410,8 +17419,9 @@ export interface components {
             ga_items?: components["schemas"]["PublicGAItem"][];
             /**
              * @description Structured buyer contact info (WID-0d). When present `buyer.email`
-             *     supersedes `holder_email`; name and phone are validated against the
-             *     channel's `buyer_fields` flags.
+             *     supersedes `holder_email`; an empty name or phone is refused only
+             *     (422 `checkout.buyer_name_required` / `checkout.buyer_phone_required`)
+             *     when the channel's `buyer_fields` mark that field `required`.
              */
             buyer?: components["schemas"]["PublicBuyerInfo"];
             /**
