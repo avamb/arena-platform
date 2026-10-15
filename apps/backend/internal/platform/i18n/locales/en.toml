@@ -964,7 +964,37 @@ other = "Press «Save changes». The changes reach the sales page within a minut
 other = "This event has a seating plan or no dates yet, so you cannot edit it from the bot. Use the admin page."
 
 ["bot.wz.edit_tickets_differ"]
-other = "The date {{.When}} carries other tickets than the first one. Saving writes the tickets shown here to every date."
+other = "The dates of this event have different categories. To change them, press «Prices and categories» and choose the date."
+
+["bot.wz.summary_tickets_by_date"]
+other = "The dates have different categories:"
+
+["bot.wz.ask_t_date"]
+other = "Choose the date whose prices and categories you want to change. Or press «For all dates»."
+
+["bot.wz.t_date_all_btn"]
+other = "For all dates"
+
+["bot.wz.t_for_all"]
+other = "For all dates of the event."
+
+["bot.wz.t_for_date"]
+other = "For the date {{.When}}."
+
+["bot.wz.ask_s_tickets"]
+other = "Categories of date {{.N}}.\nOn {{.Prev}}: {{.List}}\nUse the same categories, or set new ones for this date?"
+
+["bot.wz.s_tickets_same_btn"]
+other = "Same as on {{.Prev}}"
+
+["bot.wz.s_tickets_own_btn"]
+other = "Set new categories"
+
+["bot.wz.ack_tickets"]
+other = "Categories"
+
+["bot.wz.ask_more_sessions_edit"]
+other = "Add another date to this event?"
 
 ["bot.wz.edit_changed_meanwhile"]
 other = "Someone changed «{{.Name}}» elsewhere (on the site or in the admin) after you opened it. Save your version over it?"

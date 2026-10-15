@@ -197,6 +197,11 @@ var wizardKeys = []string{
 	"bot.wz.edit_footer",
 	"bot.wz.edit_seated",
 	"bot.wz.edit_tickets_differ",
+	// Categories per date (U-5): wizard_date_tickets.go.
+	"bot.wz.summary_tickets_by_date", "bot.wz.ask_t_date", "bot.wz.t_date_all_btn",
+	"bot.wz.t_for_all", "bot.wz.t_for_date", "bot.wz.ask_s_tickets",
+	"bot.wz.s_tickets_same_btn", "bot.wz.s_tickets_own_btn", "bot.wz.ack_tickets",
+	"bot.wz.ask_more_sessions_edit",
 	"bot.wz.edit_changed_meanwhile",
 	"bot.wz.edit_saved",
 	"bot.wz.copy_intro",
