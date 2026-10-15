@@ -2828,8 +2828,8 @@ export interface paths {
          * Read the organization's seller data and its sales-page channels
          * @description The owner's "Organization data" (HP-4a): the legal data the hosted sales
          *     page prints in its seller block, every hosted-page channel with
-         *     `show_seller` and its public contact, and what is still missing before
-         *     the block may be shown. Requires `org.update` in the organization (the
+         *     `seller_shown` (whether the page shows the seller block now), whether
+         *     the data is `complete`, its public contact, and what is still missing. Requires `org.update` in the organization (the
          *     owner; the manager does not hold it).
          */
         get: operations["getSellerProfile"];
@@ -2863,14 +2863,16 @@ export interface paths {
         head?: never;
         /**
          * Switch the seller block and set the public contact of a sales-page channel
-         * @description Writes `settings.hosted_page.show_seller` and
-         *     `settings.hosted_page.public_contact` of one hosted-page channel of the
-         *     organization; every other setting is kept. Requires `org.update` in the
+         * @description Writes `settings.hosted_page.public_contact`, the legacy
+         *     `show_seller` and the operator's `seller_hidden` of one hosted-page
+         *     channel of the organization; every other setting is kept. The seller
+         *     block is shown by default once the profile is complete; only a platform
+         *     superadmin (with `X-Admin-Reason`) can hide it with `seller_hidden`. Requires `org.update` in the
          *     organization. A channel of another organization, or one without a hosted
          *     page, answers 404 `seller.channel_not_found`. Audited as
          *     `v1.channel.seller_display_update` without the addresses.
          *
-         *     This is the only route that writes these two keys: the generic channel
+         *     This is the only route that writes these keys: the generic channel
          *     create and PATCH keep the stored values whatever `settings` they are
          *     sent, and an organization API key is refused here.
          */
@@ -13856,9 +13858,11 @@ export interface components {
         };
         /**
          * @description Legal identity of the seller of record, i.e. the organization that owns
-         *     the page. Present only when the channel the page is sold through has
-         *     `settings.hosted_page.show_seller = true` (default off). Empty values
-         *     are omitted.
+         *     the page. Present whenever the seller's profile is complete (legal name,
+         *     tax number, street, city, postal code and the channel's public e-mail
+         *     are all filled) unless a platform superadmin hid it for the channel
+         *     (`settings.hosted_page.seller_hidden`). The older `show_seller` flag no
+         *     longer decides. Empty values are omitted.
          */
         HostedPageSeller: {
             /**
@@ -13924,8 +13928,18 @@ export interface components {
              * @example Hosted page
              */
             name: string;
-            /** @description Whether the sales page of this channel shows the seller block (`settings.hosted_page.show_seller`). */
+            /**
+             * @description Legacy flag (`settings.hosted_page.show_seller`), kept for older
+             *     clients. It no longer decides whether the sales page shows the
+             *     block; read `seller_shown`.
+             */
             show_seller: boolean;
+            /** @description A platform superadmin hid the seller block of this channel (`settings.hosted_page.seller_hidden`). Only a platform superadmin can set it. */
+            seller_hidden: boolean;
+            /** @description True when no required data is missing for this channel (`missing` is empty). */
+            complete: boolean;
+            /** @description Whether the channel's sales page shows the seller block now, that is the data is complete and the block is not hidden by a platform superadmin. */
+            seller_shown: boolean;
             /** @description The channel's published contact, null when it has none. */
             public_contact: components["schemas"]["SellerProfileContact"] | null;
             /**
@@ -13935,9 +13949,9 @@ export interface components {
              */
             email_looks_personal: boolean;
             /**
-             * @description Required data still empty before `show_seller` may be turned on, in a
-             *     stable order: legal_name, tax_id, address_line1, address_city,
-             *     address_postal_code, public_email. Empty when the block may be shown.
+             * @description Required data still empty, in a stable order: legal_name, tax_id,
+             *     address_line1, address_city, address_postal_code, public_email.
+             *     Empty when the block is shown.
              */
             missing: string[];
         };
@@ -13981,6 +13995,10 @@ export interface components {
             legal_address_country?: string | null;
             /** @description Required organization fields still empty (the channel list adds public_email per channel). */
             missing: string[];
+            /** @description True when no required organization field is missing (`missing` is empty). Each channel also needs its public e-mail, see `channels[].complete`. */
+            complete: boolean;
+            /** @description True when at least one channel's sales page shows the seller block now (`channels[].seller_shown`). */
+            seller_shown: boolean;
             /** @description The organization's hosted-page channels, oldest first. */
             channels: components["schemas"]["SellerProfileChannel"][];
             /** @description Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true). */
@@ -14014,10 +14032,14 @@ export interface components {
          *     the stored value. `show_seller: true` is refused with 422
          *     `seller.incomplete` (details.missing) while required data is empty, and
          *     so is clearing the e-mail of a channel that keeps the block on.
+         *     `seller_hidden` may be changed by a platform superadmin only (403
+         *     `seller.hide_superadmin_only` for anyone else).
          */
         UpdateSellerDisplayRequest: {
-            /** @description Show the seller block on this channel's sales page. */
+            /** @description Legacy flag kept for older clients. It no longer decides whether the page shows the block. */
             show_seller?: boolean;
+            /** @description True keeps the seller block off this channel's sales page even when the data is complete; false shows it again. Only a platform superadmin (with `X-Admin-Reason`) may change it. */
+            seller_hidden?: boolean;
             /** @description The published contact; null removes it. */
             public_contact?: components["schemas"]["SellerDisplayContactPatch"] | null;
         };
@@ -14056,8 +14078,9 @@ export interface components {
              */
             default_locale: string;
             /**
-             * @description Legal identity of the seller. Omitted unless the channel has
-             *     `settings.hosted_page.show_seller = true`.
+             * @description Legal identity of the seller. Omitted while the seller's profile is
+             *     incomplete or a platform superadmin hid it for the channel
+             *     (`settings.hosted_page.seller_hidden`).
              */
             seller?: components["schemas"]["HostedPageSeller"];
             /**
@@ -14105,8 +14128,9 @@ export interface components {
              */
             events: components["schemas"]["HostedPageEvent"][];
             /**
-             * @description Legal identity of the seller. Omitted unless the channel has
-             *     `settings.hosted_page.show_seller = true`.
+             * @description Legal identity of the seller. Omitted while the seller's profile is
+             *     incomplete or a platform superadmin hid it for the channel
+             *     (`settings.hosted_page.seller_hidden`).
              */
             seller?: components["schemas"]["HostedPageSeller"];
             /**
@@ -32354,7 +32378,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`). */
+            /** @description Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`), or is not a platform superadmin but tries to change `seller_hidden` (`seller.hide_superadmin_only`). */
             403: {
                 headers: {
                     [name: string]: unknown;

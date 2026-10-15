@@ -6610,15 +6610,18 @@ type HostedPageResponse struct {
 	// present and the event has a promoter.
 	Promoter *HostedPagePromoter `json:"promoter,omitempty"`
 
-	// Seller Legal identity of the seller. Omitted unless the channel has
-	// `settings.hosted_page.show_seller = true`.
+	// Seller Legal identity of the seller. Omitted while the seller's profile is
+	// incomplete or a platform superadmin hid it for the channel
+	// (`settings.hosted_page.seller_hidden`).
 	Seller *HostedPageSeller `json:"seller,omitempty"`
 }
 
 // HostedPageSeller Legal identity of the seller of record, i.e. the organization that owns
-// the page. Present only when the channel the page is sold through has
-// `settings.hosted_page.show_seller = true` (default off). Empty values
-// are omitted.
+// the page. Present whenever the seller's profile is complete (legal name,
+// tax number, street, city, postal code and the channel's public e-mail
+// are all filled) unless a platform superadmin hid it for the channel
+// (`settings.hosted_page.seller_hidden`). The older `show_seller` flag no
+// longer decides. Empty values are omitted.
 type HostedPageSeller struct {
 	// Address Registered address; omitted when no address part is stored.
 	Address *HostedPageSellerAddress `json:"address,omitempty"`
@@ -6715,8 +6718,9 @@ type HostedPromoterPageResponse struct {
 	// present and the slug names a promoter rather than the organization.
 	Promoter *HostedPagePromoter `json:"promoter,omitempty"`
 
-	// Seller Legal identity of the seller. Omitted unless the channel has
-	// `settings.hosted_page.show_seller = true`.
+	// Seller Legal identity of the seller. Omitted while the seller's profile is
+	// incomplete or a platform superadmin hid it for the channel
+	// (`settings.hosted_page.seller_hidden`).
 	Seller *HostedPageSeller `json:"seller,omitempty"`
 }
 
@@ -11999,6 +12003,9 @@ type SellerProfile struct {
 	// Channels The organization's hosted-page channels, oldest first.
 	Channels []SellerProfileChannel `json:"channels"`
 
+	// Complete True when no required organization field is missing (`missing` is empty). Each channel also needs its public e-mail, see `channels[].complete`.
+	Complete bool `json:"complete"`
+
 	// ContactFormToTelegram Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true).
 	ContactFormToTelegram *bool `json:"contact_form_to_telegram,omitempty"`
 
@@ -12038,6 +12045,9 @@ type SellerProfile struct {
 	// RegistrationNumber Company registration number.
 	RegistrationNumber *string `json:"registration_number"`
 
+	// SellerShown True when at least one channel's sales page shows the seller block now (`channels[].seller_shown`).
+	SellerShown bool `json:"seller_shown"`
+
 	// TaxId Tax or VAT identifier.
 	TaxId *string `json:"tax_id"`
 
@@ -12047,6 +12057,9 @@ type SellerProfile struct {
 
 // SellerProfileChannel One channel of the organization that runs a hosted sales page.
 type SellerProfileChannel struct {
+	// Complete True when no required data is missing for this channel (`missing` is empty).
+	Complete bool `json:"complete"`
+
 	// EmailLooksPersonal True when the public e-mail is at a free mailbox provider (gmail.com,
 	// inbox.ru, outlook.com, ...). A hint for the owner to use a role
 	// address; it never blocks a save.
@@ -12055,9 +12068,9 @@ type SellerProfileChannel struct {
 	// Id Sales channel id.
 	Id openapi_types.UUID `json:"id"`
 
-	// Missing Required data still empty before `show_seller` may be turned on, in a
-	// stable order: legal_name, tax_id, address_line1, address_city,
-	// address_postal_code, public_email. Empty when the block may be shown.
+	// Missing Required data still empty, in a stable order: legal_name, tax_id,
+	// address_line1, address_city, address_postal_code, public_email.
+	// Empty when the block is shown.
 	Missing []string `json:"missing"`
 
 	// Name Sales channel name.
@@ -12066,7 +12079,15 @@ type SellerProfileChannel struct {
 	// PublicContact The channel's published contact, null when it has none.
 	PublicContact *SellerProfileContact `json:"public_contact"`
 
-	// ShowSeller Whether the sales page of this channel shows the seller block (`settings.hosted_page.show_seller`).
+	// SellerHidden A platform superadmin hid the seller block of this channel (`settings.hosted_page.seller_hidden`). Only a platform superadmin can set it.
+	SellerHidden bool `json:"seller_hidden"`
+
+	// SellerShown Whether the channel's sales page shows the seller block now, that is the data is complete and the block is not hidden by a platform superadmin.
+	SellerShown bool `json:"seller_shown"`
+
+	// ShowSeller Legacy flag (`settings.hosted_page.show_seller`), kept for older
+	// clients. It no longer decides whether the sales page shows the
+	// block; read `seller_shown`.
 	ShowSeller bool `json:"show_seller"`
 }
 
@@ -13759,11 +13780,16 @@ type UpdateSeatingPlanRequestVisibility string
 // the stored value. `show_seller: true` is refused with 422
 // `seller.incomplete` (details.missing) while required data is empty, and
 // so is clearing the e-mail of a channel that keeps the block on.
+// `seller_hidden` may be changed by a platform superadmin only (403
+// `seller.hide_superadmin_only` for anyone else).
 type UpdateSellerDisplayRequest struct {
 	// PublicContact The published contact; null removes it.
 	PublicContact *SellerDisplayContactPatch `json:"public_contact"`
 
-	// ShowSeller Show the seller block on this channel's sales page.
+	// SellerHidden True keeps the seller block off this channel's sales page even when the data is complete; false shows it again. Only a platform superadmin (with `X-Admin-Reason`) may change it.
+	SellerHidden *bool `json:"seller_hidden,omitempty"`
+
+	// ShowSeller Legacy flag kept for older clients. It no longer decides whether the page shows the block.
 	ShowSeller *bool `json:"show_seller,omitempty"`
 }
 
