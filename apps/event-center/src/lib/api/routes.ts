@@ -54,6 +54,17 @@ export const API = {
   promoters: { method: "GET", path: "/v1/organizations/{org_id}/promoters" },
   promoterCreate: { method: "POST", path: "/v1/organizations/{org_id}/promoters" },
   promoterUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/promoters/{id}" },
+  // 4-3: promo codes.
+  promoCodes: { method: "GET", path: "/v1/organizations/{org_id}/promo-codes" },
+  promoCode: { method: "GET", path: "/v1/organizations/{org_id}/promo-codes/{id}" },
+  promoCodeCreate: { method: "POST", path: "/v1/organizations/{org_id}/promo-codes" },
+  promoCodeUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/promo-codes/{id}" },
+  promoCodeDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/promo-codes/{id}" },
+  promoRedemptions: { method: "GET", path: "/v1/organizations/{org_id}/promo-code-redemptions" },
+  promoRedemptionsCsv: {
+    method: "GET",
+    path: "/v1/organizations/{org_id}/promo-codes/{promo_code_id}/redemptions.csv",
+  },
   // 4-1: the ticket letter of a paid order again, to its own or a one-time address.
   resendTickets: { method: "POST", path: "/v1/organizations/{org_id}/orders/{order_id}/resend-tickets" },
   // 4-2: cancel an unpaid order. Asks for the password again (spec 37 4.6).

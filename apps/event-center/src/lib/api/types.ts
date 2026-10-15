@@ -39,3 +39,10 @@ export type OrderListResponse =
 export type Promoter = S["Promoter"];
 export type PromoterListEnvelope = S["PromoterListEnvelope"];
 export type PromoterEnvelope = S["PromoterEnvelope"];
+// 4-3: promo codes.
+export type PromoCodeItem = S["PromoCodeItem"];
+export type PromoCodeListResponse = S["PromoCodeListResponse"];
+export type PromoCodeEnvelope = S["PromoCodeEnvelope"];
+export type PromoRedemptionItem = S["PromoRedemptionItem"];
+export type PromoRedemptionListResponse = S["PromoRedemptionListResponse"];
+export type CreatePromoCodeRequest = S["CreatePromoCodeRequest"];

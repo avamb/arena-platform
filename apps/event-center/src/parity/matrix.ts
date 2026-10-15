@@ -382,6 +382,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Список, карточка, использование",
     bot: "promo_dialog.go, `pm:`",
     web: "R3",
+    // 4-3
+    ready: { twin: "live/promo.spec.ts", smoke: "promo.mock.spec.ts" },
     routes: [
       `GET ${O}/promo-codes`,
       `GET ${O}/promo-codes/{id}`,
@@ -394,6 +396,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Создание, пауза, сеансы, удаление",
     bot: "promo_create.go, `pm:n`, `pm:ps`, `pm:se`, `pm:del`",
     web: "R3",
+    // 4-3
+    ready: { twin: "live/promo.spec.ts", smoke: "promo.mock.spec.ts" },
     routes: [`POST ${O}/promo-codes`, `PATCH ${O}/promo-codes/{id}`, `DELETE ${O}/promo-codes/{id}`],
   },
   // ── Пригласительные ─────────────────────────────────────────────────

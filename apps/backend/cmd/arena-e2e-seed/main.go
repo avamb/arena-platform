@@ -219,6 +219,10 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applyResendOrders(ctx, tx); err != nil {
 		return err
 	}
+	// 4-3: the promo-code twin test's extra rows (promo_fixture.go).
+	if err := applyPromoFixture(ctx, tx); err != nil {
+		return err
+	}
 	return applyForeignPromoter(ctx, tx)
 }
 
