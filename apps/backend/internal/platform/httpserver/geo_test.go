@@ -236,6 +236,29 @@ func TestGeo123_PublicGetCitiesRouteMounted(t *testing.T) {
 	}
 }
 
+// The 0-4 helpers are public and need no database for the zone list or the
+// input checks, so they answer through the real router.
+func TestGeo04_HelperRoutesAnswerThroughTheRouter(t *testing.T) {
+	s := buildGeoAdminServer(t)
+	for _, tc := range []struct {
+		url  string
+		code int
+		has  string
+	}{
+		{"/v1/geo/countries/ES/timezones", http.StatusOK, "Atlantic/Canary"},
+		{"/v1/geo/countries/cz/timezones", http.StatusOK, `"single":true`},
+		{"/v1/geo/countries/ZZ/timezones", http.StatusNotFound, "geo.country_not_found"},
+		{"/v1/geo/countries/ESP/currency", http.StatusBadRequest, "geo.invalid_iso2"},
+		{"/v1/geo/cities?country=ESP", http.StatusBadRequest, "geo.invalid_country"},
+	} {
+		rec := httptest.NewRecorder()
+		s.router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.url, nil))
+		if rec.Code != tc.code || !strings.Contains(rec.Body.String(), tc.has) {
+			t.Errorf("%s: %d %s, want %d containing %q", tc.url, rec.Code, rec.Body.String(), tc.code, tc.has)
+		}
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Step 3 — Admin endpoints require authentication (401 when no JWT)
 // ─────────────────────────────────────────────────────────────────────────────

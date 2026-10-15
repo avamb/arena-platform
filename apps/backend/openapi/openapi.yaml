@@ -5787,6 +5787,48 @@ components:
           type: string
           description: Localised display name (resolved from i18n_text)
           example: "Tel Aviv"
+        timezone:
+          type: string
+          description: |
+            IANA time zone the city is in, best effort: the zone the city's
+            name points at in the embedded GeoNames data, else the country's
+            only zone. Absent when it cannot be told (a city of a country
+            with several zones that the data does not know). Only the list
+            route fills it.
+          example: "Asia/Jerusalem"
+        source:
+          type: string
+          description: Where the item comes from. Always `platform` on a city row (list route only).
+          example: "platform"
+
+    GeoCitySuggestion:
+      type: object
+      required: [name, country_iso2, timezone, source]
+      description: |
+        A place from the embedded GeoNames data offered by the city search
+        (GET /v1/geo/cities with `q`). It is NOT a platform city: it has no id.
+        Choosing it means creating the city through
+        POST /v1/organizations/{org_id}/cities (a name that matches an
+        existing city returns that city).
+      properties:
+        name:
+          type: string
+          description: Display name of the place (the spelling of the top-cities list when it is on it, else its main name capitalised).
+          example: "Barcelona"
+        country_iso2:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: ISO 3166-1 alpha-2 code of the country that was searched.
+          example: "ES"
+        timezone:
+          type: string
+          description: IANA time zone the place is in.
+          example: "Europe/Madrid"
+        source:
+          type: string
+          description: Always `geonames`.
+          example: "geonames"
 
     GeoCitiesResponse:
       type: object
@@ -5797,9 +5839,60 @@ components:
           description: Ordered list of reference cities with localised names
           items:
             $ref: "#/components/schemas/GeoCityItem"
+        suggestions:
+          type: array
+          description: |
+            Present only when the request carried `q`: up to 20 places of the
+            `country` named in the request that start with the typed text,
+            the biggest cities first, leaving out cities already listed in
+            `cities`. Empty when `country` is absent.
+          items:
+            $ref: "#/components/schemas/GeoCitySuggestion"
         meta:
           description: Optional pagination metadata for clients that render paginated city lists.
           $ref: "#/components/schemas/PaginationMeta"
+
+    GeoTimezoneItem:
+      type: object
+      required: [id, label]
+      description: One IANA time zone of a country.
+      properties:
+        id:
+          type: string
+          description: IANA zone name, the value to store as a venue's timezone.
+          example: "Atlantic/Canary"
+        label:
+          type: string
+          description: Name for a person to pick by, the largest city in the zone.
+          example: "Las Palmas de Gran Canaria"
+
+    GeoCountryTimezonesResponse:
+      type: object
+      required: [timezones, single]
+      description: Response of GET /v1/geo/countries/{iso2}/timezones.
+      properties:
+        timezones:
+          type: array
+          description: The zones of the country, the zone of its biggest city first.
+          items:
+            $ref: "#/components/schemas/GeoTimezoneItem"
+        single:
+          type: boolean
+          description: |
+            True when the country has exactly one zone, so a client may fill
+            it in without asking. False when it has several (Spain and
+            Portugal among them) and the person must choose.
+
+    GeoCountryCurrencyResponse:
+      type: object
+      required: [currency]
+      description: Response of GET /v1/geo/countries/{iso2}/currency.
+      properties:
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          description: ISO 4217 currency of the country, as stored on the platform's country row.
+          example: "EUR"
 
     GeoCountryResponse:
       type: object
@@ -18826,8 +18919,18 @@ paths:
       operationId: getV1GeoCities
       summary: List reference cities, optionally filtered by country
       description: |
-        Returns reference cities ordered by slug. Pass ?country_id=<uuid> to
-        restrict results to one country. Names are locale-resolved from i18n_text.
+        Returns reference cities ordered by slug. Pass ?country_id=<uuid> or
+        ?country=<iso2> to restrict results to one country. Names are
+        locale-resolved from i18n_text.
+
+        With `q` (a typed beginning of a name, in Latin, Cyrillic or Hebrew
+        script, compared without case or accents) the list keeps the cities
+        whose name or slug starts with it (at most 20) and the answer gains a
+        `suggestions` array with up to 20 places of the `country` from the
+        embedded GeoNames data, each with its time zone. A suggestion is only
+        a hint: nothing is created by this route. A single-zone country
+        suggests only its largest cities.
+
         No authentication required.
       tags: [v1, geo]
       parameters:
@@ -18838,6 +18941,26 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: country
+          in: query
+          required: false
+          description: |
+            Filter cities by ISO 3166-1 alpha-2 country code (any case); ignored
+            when `country_id` is also given. Names the country whose GeoNames
+            data `q` draws suggestions from.
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+          example: "ES"
+        - name: q
+          in: query
+          required: false
+          description: City search text, at most 64 characters. Blank counts as absent.
+          schema:
+            type: string
+            maxLength: 64
+          example: "barc"
         - name: lang
           in: query
           required: false
@@ -18851,6 +18974,108 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GeoCitiesResponse"
+        "400":
+          description: |
+            `country_id` is not a UUID (`geo.invalid_country_id`), `country` is
+            not a two-letter code (`geo.invalid_country`) or `q` is longer than
+            64 characters (`geo.invalid_query`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Geo queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/geo/countries/{iso2}/timezones:
+    get:
+      operationId: getV1GeoCountryTimezones
+      summary: List the time zones of a country
+      description: |
+        Returns the IANA zones of the country, the zone of its biggest city
+        first, from the embedded GeoNames data. `single` tells a client whether
+        it may fill the zone in without asking: Spain (Europe/Madrid,
+        Atlantic/Canary, Africa/Ceuta) and Portugal (Europe/Lisbon,
+        Atlantic/Madeira, Atlantic/Azores) have several, the Czech Republic
+        one. No authentication required.
+      tags: [v1, geo]
+      parameters:
+        - name: iso2
+          in: path
+          required: true
+          description: ISO 3166-1 alpha-2 country code, any case.
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+          example: "ES"
+      responses:
+        "200":
+          description: The country's zones
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeoCountryTimezonesResponse"
+        "400":
+          description: The code is not two letters (`geo.invalid_iso2`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The data knows no such country (`geo.country_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Geo queries not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/geo/countries/{iso2}/currency:
+    get:
+      operationId: getV1GeoCountryCurrency
+      summary: Get the currency of a country
+      description: |
+        Returns the ISO 4217 currency stored on the platform's country row
+        (the base of the session currency chain). A country the platform has
+        no row for is 404. No authentication required.
+      tags: [v1, geo]
+      parameters:
+        - name: iso2
+          in: path
+          required: true
+          description: ISO 3166-1 alpha-2 country code, any case.
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+          example: "ES"
+      responses:
+        "200":
+          description: The country's currency
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeoCountryCurrencyResponse"
+        "400":
+          description: The code is not two letters (`geo.invalid_iso2`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The platform has no such country (`geo.country_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Geo queries not available
           content:
