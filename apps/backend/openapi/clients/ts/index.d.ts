@@ -6605,6 +6605,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/sales-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sales figures of a list of events
+         * @description The numbers a list of events shows next to each name, for up to 50
+         *     events in ONE request (WEB-LIST): for every id the same figures as the
+         *     top level of `GET .../events/{event_id}/summary` (places, money per
+         *     currency, orders, tickets, door count, refunds, promo codes,
+         *     invitations, session count) without the per-category table and the
+         *     per-session list. An id of another organization, a deleted event and
+         *     an unknown id are absent from the answer, never an error. The entries
+         *     come in the order the ids were given, a repeated id counts once.
+         *     Read-only and free of buyer data. Requires the `order.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsSalesSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/summary": {
         parameters: {
             query?: never;
@@ -12130,6 +12158,75 @@ export interface components {
             sessions: components["schemas"]["EventSummarySession"][];
         };
         /**
+         * @description The top level of EventSummary for one event, without the per-category
+         *     table (`tiers`) and the per-session list (`sessions`): the numbers a
+         *     list of events shows next to each name. Built by the same assembly as
+         *     EventSummary, so for one event every field here equals the field of
+         *     the same name in `GET .../events/{event_id}/summary`. Read-only, no
+         *     buyer data.
+         */
+        EventSalesSummary: {
+            /** @description The event the figures are about. */
+            event: {
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the event.
+                 */
+                id: string;
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the owning organization.
+                 */
+                org_id: string;
+                /** @description Name of the event as stored. */
+                name: string;
+                /** @description Event status (draft, published, cancelled, archived). */
+                status: string;
+                /**
+                 * Format: date-time
+                 * @description Earliest start over the event's active, non-cancelled sessions, RFC3339 in UTC.
+                 */
+                first_session_at: string | null;
+                /**
+                 * Format: date-time
+                 * @description Latest end over the same sessions, RFC3339 in UTC.
+                 */
+                last_session_at: string | null;
+                /** @description Number of non-deleted sessions of the event, cancelled ones included. */
+                session_count: number;
+            };
+            /** @description Places of every session, split by kind. */
+            places: {
+                /** @description Seats of the seating plans. */
+                seats: components["schemas"]["SessionPlaceCounts"];
+                /** @description General admission places. */
+                ga: components["schemas"]["SessionPlaceCounts"];
+            };
+            /** @description The bottom line of the whole event, one entry per currency. */
+            money: components["schemas"]["SummaryMoneyItem"][];
+            /** @description Order totals of every session grouped by status, source and currency. */
+            orders: components["schemas"]["SummaryOrdersItem"][];
+            /** @description Tickets of every session by status. */
+            tickets: components["schemas"]["SummaryTickets"];
+            /** @description The door count over every session. */
+            entered: components["schemas"]["SummaryEntered"];
+            /** @description Refund totals of every session grouped by settlement, state and currency. */
+            refunds: components["schemas"]["SummaryRefundsItem"][];
+            /** @description Promo codes the paid orders of every session used, merged by code and sorted. */
+            promos: components["schemas"]["SummaryPromoItem"][];
+            /** @description Invitations over every session. */
+            complimentary: components["schemas"]["SummaryComplimentary"];
+        };
+        /** @description The sales figures of the requested events, one entry per event found. */
+        EventSalesSummaryList: {
+            /**
+             * @description One entry per requested event that exists in the organization, in
+             *     the order the ids were given. An id of another organization, a
+             *     deleted event or an unknown id has no entry.
+             */
+            items: components["schemas"]["EventSalesSummary"][];
+        };
+        /**
          * @description A single active venue (physical event location owned by one organization).
          *     Any authenticated org may read venue data, but only the owning org may
          *     create, update, or soft-delete a venue.
@@ -17326,7 +17423,12 @@ export interface components {
          * @description Describes a single buyer-form field exposed by the sales channel.
          *     The widget uses the `enabled` flag to decide whether to render the
          *     field and `required` to enforce client-side validation.
-         *     Feature #321 WID-0d.
+         *     Feature #321 WID-0d. Since P1b `name` (one field for first and last
+         *     name) and `phone` are always `enabled: true`; they are `required`
+         *     only when the sales channel's `collect_name` / `collect_phone` flag
+         *     is on, otherwise they are optional (the buyer may leave them empty).
+         *     A third mode, `off` (field not offered at all), will be added later
+         *     and will then show as `enabled: false`.
          */
         BuyerFieldItem: {
             /**
@@ -17334,7 +17436,10 @@ export interface components {
              * @enum {string}
              */
             key: "email" | "name" | "phone";
-            /** @description When true the field must be filled before submission. */
+            /**
+             * @description When true the field must be filled before submission. When false
+             *     and `enabled` is true the field is optional.
+             */
             required: boolean;
             /** @description When false the field should not be shown or submitted. */
             enabled: boolean;
@@ -17342,7 +17447,8 @@ export interface components {
         /**
          * @description Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
          *     `email` supersedes the top-level `holder_email` when both are present.
-         *     `name` and `phone` are validated against the channel's `buyer_fields` flags.
+         *     `name` and `phone` are optional unless the channel's `buyer_fields`
+         *     mark them `required`.
          */
         PublicBuyerInfo: {
             /**
@@ -17350,9 +17456,9 @@ export interface components {
              * @description Buyer's email address (ticket holder).
              */
             email: string;
-            /** @description Buyer's full name; required when the channel has collect_name enabled. */
+            /** @description Buyer's first and last name in one field; required only when the channel's `buyer_fields` entry `name` has `required` true, otherwise optional and may be empty or null. */
             name?: string | null;
-            /** @description Buyer's phone number; required when the channel has collect_phone enabled. */
+            /** @description Buyer's phone number; required only when the channel's `buyer_fields` entry `phone` has `required` true, otherwise optional and may be empty or null. */
             phone?: string | null;
         };
         PublicFeedCheckoutStartRequest: {
@@ -17375,8 +17481,9 @@ export interface components {
             ga_items?: components["schemas"]["PublicGAItem"][];
             /**
              * @description Structured buyer contact info (WID-0d). When present `buyer.email`
-             *     supersedes `holder_email`; name and phone are validated against the
-             *     channel's `buyer_fields` flags.
+             *     supersedes `holder_email`; an empty name or phone is refused only
+             *     (422 `checkout.buyer_name_required` / `checkout.buyer_phone_required`)
+             *     when the channel's `buyer_fields` mark that field `required`.
              */
             buyer?: components["schemas"]["PublicBuyerInfo"];
             /**
@@ -44812,6 +44919,86 @@ export interface operations {
             };
             /** @description Event not found, or not part of this organization. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsSalesSummary: {
+        parameters: {
+            query: {
+                /**
+                 * @description Event ids as ONE string separated by commas (`ids=a,b,c`), at most
+                 *     50. Repeating the parameter (`ids=a&ids=b`) is not supported: only
+                 *     the first value is read.
+                 */
+                ids: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sales figures of the events found. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSalesSummaryList"];
+                };
+            };
+            /**
+             * @description org_id is not a valid UUID, `ids` is missing or empty
+             *     (`events.ids_required`), holds an id that is not a UUID
+             *     (`events.invalid_ids`) or names more than 50 ids
+             *     (`events.too_many_ids`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`) in this organization. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
