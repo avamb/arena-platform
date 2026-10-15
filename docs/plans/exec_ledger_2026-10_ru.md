@@ -285,12 +285,12 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 | U-1 | S / sonnet | `fix/transactional-no-unsubscribe` | #129 | **влито 15.10** (`fdd447d`): ссылку unsubscribe добавляет сам relay Brevo (заголовок List-Unsubscribe на транзакционной почте, снимается только на Enterprise через List-Help); в arena её нет. PR — guard-тесты + раздел 10 runbook с шагами владельца (В-10) |
 | 1-1 | M / sonnet + sonnet-ревью | `feat/s-1-1-event-materials-migration` | #133 | ревью «вливать», две текстовые правки внесены оркестратором, ждёт зелёный CI → вливание. Сдан: 0153 — таблицы галереи (≤6), видео (≤4), партнёрских ссылок (≤3), точки карты, фотоотчёта, `event_page_stats`; лимиты — CHECK позиции + UNIQUE (event_id, position) DEFERRABLE, зеркало в `eventmaterials`; owner types `event_gallery`/`event_report`; master слит (конфликт AGENTS.md), sonnet-ревью идёт, CI ждёт |
 | М1 | L / opus + opus-ревью | `feat/s-m1-macs-scan-events` | — | в работе |
-| S1a | M / sonnet + opus-ревью | `feat/s-s1a-seat-tier-renders` | — | в работе (ST-1 при изменении цен живых сеансов) |
+| S1a | M / sonnet + opus-ревью | `feat/s-s1a-seat-tier-renders` | #136 | PR открыт, master слит (конфликт AGENTS.md), отчёт исполнителя ещё не пришёл; opus-ревью идёт (ST-1 — по вердикту ревью) |
 | S2a | Ф / sonnet | `docs/s2a-mobile-seat-layout-mockup` | #131 | макет v2 сдан (артефакт https://claude.ai/artifact/77jviaSSp5qhdsYDUJxByK, `ebc029d`): автораскладка, перераскладка при идущих продажах (проданные с замком, выручка «по факту + бронь + остаток»), цена одной категории, выделение ряда тремя способами + список; ручки рядов только на масштабе «Крупно» (на «Весь зал» шаг рядов 14 px); файл вливается после CI, ST-7 — 6 вопросов владельцу (В-3, В-8) |
-| 4-1 | Ф / sonnet | `feat/w-4-1-resend` | — | в работе |
+| 4-1 | Ф / sonnet | `feat/w-4-1-resend` | #134 | сдан, CI зелёный: диалог «на адрес заказа / другой адрес», строки писем на карточке (`letters[]`), «Повторить» при `letter_failed`, отказ для заказа сайта; сид `resend_order_fixture.go`; близнец `live/resend.spec.ts` (6, три роли, строки БД); не проверено: живая доставка (воркера в харнессе нет), ветка `bil24_wp`-подписчика; sonnet-ревью идёт |
 | 4-2 | Ф / sonnet | `feat/w-4-2-cancel-order` | #132 | ревью «вливать с правками» (правка внесена: описание `X-Step-Up-Token` на маршруте отмены в openapi + TS-клиент, 8b5c8d4); master слит (1baa18c), ждёт зелёный CI → вливание |
 | 4-3 | Ф / sonnet | `feat/w-4-3-promo` | — | в работе |
-| 4-6 | Ф / sonnet | `feat/w-4-6-promoters` | — | в работе |
+| 4-6 | Ф / sonnet | `feat/w-4-6-promoters` | #135 | PR открыт, отчёт исполнителя ещё не пришёл; sonnet-ревью идёт |
 | U-2 | S / sonnet | `feat/u-2-unsubscribe-note` | — | в работе: пояснение про отписку и обещание «без рекламы без согласия» в футере всех писем покупателю (7 языков), guard-тест U-1 сужен до «нет ссылки/заголовка» |
 | 1-2a, 1-2b | M / sonnet | — | — | партия 2, после 1-1 |
 | 1-2c | M / sonnet | — | — | партия 2, после 1-2a/b |
