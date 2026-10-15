@@ -283,6 +283,16 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Event name, session start and the venue's zone (0-2): the card carries
+	// them itself, so a client never borrows them from the list row.
+	facts, err := h.queries.GetOrderEventFacts(r.Context(), orderID, orgID)
+	if err != nil {
+		h.logger.Error("horders: load event facts failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError,
+			httputil.ErrorEnvelope("orders.internal", "failed to load order event", r))
+		return
+	}
+
 	eventRows, err := h.queries.ListOrderEventsByOrder(r.Context(), orderID)
 	if err != nil {
 		h.logger.Error("horders: list events failed", slog.Any("error", err))
@@ -302,6 +312,9 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := orderSummary(order)
+	resp["event_name"] = facts.EventName
+	resp["session_start_at"] = facts.SessionStartAt.UTC().Format(time.RFC3339)
+	resp["venue_timezone"] = facts.VenueTimezone
 	resp["items"] = items
 	resp["tickets"] = extras.tickets
 	resp["events"] = events
