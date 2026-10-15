@@ -175,11 +175,14 @@ func TestS1a_CategoryPatch_OneSeatOnePriceInAllThreeRenders(t *testing.T) {
 		t.Fatalf("GET image status = %d, body %s", status, body)
 	}
 	imgCatPrice := map[int]string{}
+	imgCatID := map[int]string{} // sbt:index -> sbt:id (the categoryPriceId the plugin sends back)
 	for _, m := range s1aImageCat.FindAllStringSubmatch(string(body), -1) {
 		i, _ := strconv.Atoi(m[2])
 		imgCatPrice[i] = m[3]
+		imgCatID[i] = m[1]
 	}
 	imagePrice := map[int64]string{} // system_seat_id -> major units text
+	imageCatID := map[int64]string{} // system_seat_id -> sbt:id of its sbt:cat
 	for _, m := range s1aImageSeat.FindAllStringSubmatch(string(body), -1) {
 		id, _ := strconv.ParseInt(m[1], 10, 64)
 		cat, _ := strconv.Atoi(m[2])
@@ -188,6 +191,7 @@ func TestS1a_CategoryPatch_OneSeatOnePriceInAllThreeRenders(t *testing.T) {
 			t.Fatalf("image: seat %d points at sbt:cat %d that <metadata> does not declare", id, cat)
 		}
 		imagePrice[id] = p
+		imageCatID[id] = imgCatID[cat]
 	}
 
 	// ── render 3: GET_SEAT_LIST ──────────────────────────────────────────────
@@ -200,8 +204,10 @@ func TestS1a_CategoryPatch_OneSeatOnePriceInAllThreeRenders(t *testing.T) {
 		t.Fatalf("GET_SEAT_LIST resultCode = %v (%v)", code, listResp["description"])
 	}
 	listPrice := map[int64]float64{}
+	listCatID := map[int64]string{}
 	for _, seat := range sc1Objects(t, listResp, "seatList") {
 		listPrice[int64(numberField(t, seat, "seatId"))] = numberField(t, seat, "price")
+		listCatID[int64(numberField(t, seat, "seatId"))] = strconv.FormatInt(int64(numberField(t, seat, "categoryPriceId")), 10)
 	}
 
 	// ── one price per seat, in every render, for EVERY seat of the hall ──────
@@ -219,6 +225,11 @@ func TestS1a_CategoryPatch_OneSeatOnePriceInAllThreeRenders(t *testing.T) {
 		}
 		if got := listPrice[sysID]; got != float64(want)/100 {
 			t.Errorf("GET_SEAT_LIST: seat %s (id %d) price = %v, want %v", key, sysID, got, float64(want)/100)
+		}
+		// The plugin RESERVEs with the sbt:id of the seat's sbt:cat: it must be
+		// a real wire id and the one GET_SEAT_LIST names for the same seat.
+		if img, list := imageCatID[sysID], listCatID[sysID]; img == "0" || img != list {
+			t.Errorf("seat %s (id %d): image category id %q, GET_SEAT_LIST categoryPriceId %q", key, sysID, img, list)
 		}
 	}
 	// The tier that anchors no plan category came through as a synthetic one.
