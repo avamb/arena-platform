@@ -207,5 +207,6 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 			return fmt.Errorf("materialize places: %w", err)
 		}
 	}
-	return nil
+	// 4-3: the promo-code twin test's extra rows (promo_fixture.go).
+	return applyPromoFixture(ctx, tx)
 }
