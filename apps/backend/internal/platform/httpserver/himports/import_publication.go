@@ -109,6 +109,11 @@ func (h *Handler) ensureChannelPublication(
 	if len(targets) == 0 {
 		return nil, nil
 	}
+	// A dry run binds nothing: no publication, no feed token, no storefront
+	// page switched on. It stops once the warnings above are known.
+	if plan.Mode.DryRun {
+		return nil, nil
+	}
 
 	// The publish gate may have refused the transition (applyPublish warns on
 	// its own); re-reading the row is the only honest way to tell "already
@@ -171,34 +176,58 @@ func (h *Handler) ensureChannelPublication(
 // error costs no write. A nil Handler.queries (unit tests without a
 // database) accepts an empty list and refuses a non-empty one.
 func (h *Handler) resolveChannelIDs(ctx context.Context, orgID uuid.UUID, req bil24compat.ImportSessionRequest) ([]uuid.UUID, error) {
+	ids, errs := h.checkChannelIDs(ctx, orgID, req, false)
+	if len(errs) > 0 {
+		return nil, errs[0]
+	}
+	return ids, nil
+}
+
+// checkChannelIDs is resolveChannelIDs reporting every refused entry when all
+// is set (the dry run), the first one otherwise. An infrastructure failure
+// always ends the check.
+func (h *Handler) checkChannelIDs(ctx context.Context, orgID uuid.UUID, req bil24compat.ImportSessionRequest, all bool) ([]uuid.UUID, []error) {
 	if len(req.ChannelIDs) == 0 {
 		return nil, nil
 	}
 	out := make([]uuid.UUID, 0, len(req.ChannelIDs))
 	seen := make(map[uuid.UUID]bool, len(req.ChannelIDs))
-	for _, raw := range req.ChannelIDs {
+	var errs []error
+	for k, raw := range req.ChannelIDs {
+		field := fmt.Sprintf("/channelIds/%d", k)
 		raw = trimSpace(raw)
 		id, err := uuid.Parse(raw)
 		if err != nil {
-			return nil, failImport(http.StatusUnprocessableEntity, "import.invalid_channel",
-				"channelIds entry "+raw+" is not a UUID")
+			errs = append(errs, failImportAt(http.StatusUnprocessableEntity, "import.invalid_channel", field,
+				"channelIds entry "+raw+" is not a UUID"))
+			if !all {
+				return nil, errs
+			}
+			continue
 		}
 		if seen[id] {
 			continue
 		}
 		seen[id] = true
 		if h.queries == nil {
-			return nil, failImport(http.StatusUnprocessableEntity, "import.invalid_channel",
-				"channelIds cannot be verified without a database")
+			return nil, append(errs, failImportAt(http.StatusUnprocessableEntity, "import.invalid_channel", field,
+				"channelIds cannot be verified without a database"))
 		}
 		if _, err := h.queries.GetSalesChannelByID(ctx, id, orgID); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return nil, failImport(http.StatusUnprocessableEntity, "import.invalid_channel",
-					"channelIds entry "+raw+" is not a sales channel of this organization")
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return nil, append(errs, fmt.Errorf("read sales channel %s: %w", id, err))
 			}
-			return nil, fmt.Errorf("read sales channel %s: %w", id, err)
+			errs = append(errs, failImportAt(http.StatusUnprocessableEntity, "import.invalid_channel", field,
+				"channelIds entry "+raw+" is not a sales channel of this organization"))
+			if !all {
+				return nil, errs
+			}
+			continue
 		}
 		out = append(out, id)
+	}
+	if len(errs) > 0 {
+		return nil, errs
 	}
 	return out, nil
 }

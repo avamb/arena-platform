@@ -62,6 +62,10 @@ type importPlan struct {
 	// ChannelIDs are the request's channelIds, already checked to be sales
 	// channels of OrgID (import.invalid_channel otherwise).
 	ChannelIDs []uuid.UUID
+	// Mode is the import mode: a dry run executes the same steps inside a
+	// transaction that is rolled back, and skips every step whose effect
+	// would outlive it (dry_run.go).
+	Mode importMode
 }
 
 // importResult is the identifier set the response is built from.
@@ -167,10 +171,14 @@ func (h *Handler) executeImport(ctx context.Context, q *gen.Queries, tx pgx.Tx, 
 	// The compat ids are read back rather than echoed from the payload: after
 	// registerExternal every id in the mapping IS the payload's, and reading
 	// it makes the response provably consistent with what GET_ALL_ACTIONS
-	// will later report.
-	compat, err := ensureCompatIDs(ctx, tx, eventID, sessionID, venueID, orderedTiers)
-	if err != nil {
-		return importResult{}, err
+	// will later report. A dry run mints none: the sequence would move for
+	// rows that are rolled back.
+	var compat ImportCompatIDs
+	if !plan.Mode.DryRun {
+		compat, err = ensureCompatIDs(ctx, tx, eventID, sessionID, venueID, orderedTiers)
+		if err != nil {
+			return importResult{}, err
+		}
 	}
 
 	return importResult{
@@ -256,13 +264,11 @@ func (h *Handler) resolveVenue(ctx context.Context, q *gen.Queries, tx pgx.Tx, p
 	}
 	address := optString(v.Address)
 
-	existing, err := q.GetVenueByBil24ExternalID(ctx, ext)
-	switch {
-	case err == nil:
-		if existing.OrgID != plan.OrgID {
-			return uuid.Nil, failImport(http.StatusConflict, "import.venue_owned_by_other_org",
-				"venue "+ext+" is already imported into a different organization")
-		}
+	existing, found, err := findBil24Venue(ctx, q, plan)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if found {
 		if err := q.UpdateImportedVenueGeography(ctx, existing.ID, cityID, address, "", v.GeoLat, v.GeoLon, country); err != nil {
 			return uuid.Nil, fmt.Errorf("update venue geography: %w", err)
 		}
@@ -270,8 +276,6 @@ func (h *Handler) resolveVenue(ctx context.Context, q *gen.Queries, tx pgx.Tx, p
 			return uuid.Nil, err
 		}
 		return existing.ID, nil
-	case !errors.Is(err, pgx.ErrNoRows):
-		return uuid.Nil, fmt.Errorf("lookup venue by external id: %w", err)
 	}
 
 	name := trimSpace(v.VenueName)
@@ -286,6 +290,25 @@ func (h *Handler) resolveVenue(ctx context.Context, q *gen.Queries, tx pgx.Tx, p
 		return uuid.Nil, err
 	}
 	return created.ID, nil
+}
+
+// findBil24Venue finds the venue the payload's venue.venueId was imported as,
+// refusing one another organization owns. found is false for a new venue.
+func findBil24Venue(ctx context.Context, q *gen.Queries, plan importPlan) (gen.VenueRow, bool, error) {
+	ext := externalIDString(plan.Request.Venue.VenueID)
+	existing, err := q.GetVenueByBil24ExternalID(ctx, ext)
+	switch {
+	case err == nil:
+		if existing.OrgID != plan.OrgID {
+			return gen.VenueRow{}, false, failImportAt(http.StatusConflict, "import.venue_owned_by_other_org", "/venue/venueId",
+				"venue "+ext+" is already imported into a different organization")
+		}
+		return existing, true, nil
+	case errors.Is(err, pgx.ErrNoRows):
+		return gen.VenueRow{}, false, nil
+	default:
+		return gen.VenueRow{}, false, fmt.Errorf("lookup venue by external id: %w", err)
+	}
 }
 
 // resolveGeography maps venue.countryName / venue.cityName onto arena's geo
@@ -378,30 +401,11 @@ func (h *Handler) resolveEvent(ctx context.Context, q *gen.Queries, tx pgx.Tx, p
 	a := plan.Request.Action
 	ext := externalIDString(a.ActionID)
 
-	eventID, err := compatids.Resolve(ctx, tx, compatids.KindAction, a.ActionID)
-	if err != nil && !errors.Is(err, compatids.ErrNotFound) {
-		return uuid.Nil, fmt.Errorf("resolve action compat id: %w", err)
+	eventID, err := findBil24Event(ctx, q, tx, plan)
+	if err != nil {
+		return uuid.Nil, err
 	}
-	if errors.Is(err, compatids.ErrNotFound) {
-		row, lookupErr := q.GetEventByBil24ExternalID(ctx, ext)
-		switch {
-		case lookupErr == nil:
-			eventID = row.ID
-		case !errors.Is(lookupErr, pgx.ErrNoRows):
-			return uuid.Nil, fmt.Errorf("lookup event by external id: %w", lookupErr)
-		}
-	}
-
-	if eventID != uuid.Nil {
-		existing, getErr := q.GetEventRaw(ctx, eventID)
-		if getErr != nil {
-			return uuid.Nil, fmt.Errorf("read event %s: %w", eventID, getErr)
-		}
-		if existing.OrgID != plan.OrgID {
-			return uuid.Nil, failImport(http.StatusConflict, "import.event_owned_by_other_org",
-				"action "+ext+" is already imported into a different organization")
-		}
-	} else {
+	if eventID == uuid.Nil {
 		created, insErr := q.InsertEvent(ctx, plan.OrgID, a.Name(), optString(a.Description), "draft", "public", nil)
 		if insErr != nil {
 			return uuid.Nil, fmt.Errorf("insert event: %w", insErr)
@@ -429,6 +433,40 @@ func (h *Handler) resolveEvent(ctx context.Context, q *gen.Queries, tx pgx.Tx, p
 	return eventID, nil
 }
 
+// findBil24Event finds the event behind action.actionId (the compat mapping
+// first, then the events.external_bil24_id mirror), refusing one another
+// organization owns. uuid.Nil means the import creates it.
+func findBil24Event(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan) (uuid.UUID, error) {
+	a := plan.Request.Action
+	ext := externalIDString(a.ActionID)
+
+	eventID, err := compatids.Resolve(ctx, tx, compatids.KindAction, a.ActionID)
+	if err != nil && !errors.Is(err, compatids.ErrNotFound) {
+		return uuid.Nil, fmt.Errorf("resolve action compat id: %w", err)
+	}
+	if errors.Is(err, compatids.ErrNotFound) {
+		row, lookupErr := q.GetEventByBil24ExternalID(ctx, ext)
+		switch {
+		case lookupErr == nil:
+			eventID = row.ID
+		case !errors.Is(lookupErr, pgx.ErrNoRows):
+			return uuid.Nil, fmt.Errorf("lookup event by external id: %w", lookupErr)
+		}
+	}
+	if eventID == uuid.Nil {
+		return uuid.Nil, nil
+	}
+	existing, getErr := q.GetEventRaw(ctx, eventID)
+	if getErr != nil {
+		return uuid.Nil, fmt.Errorf("read event %s: %w", eventID, getErr)
+	}
+	if existing.OrgID != plan.OrgID {
+		return uuid.Nil, failImportAt(http.StatusConflict, "import.event_owned_by_other_org", "/action/actionId",
+			"action "+ext+" is already imported into a different organization")
+	}
+	return eventID, nil
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Step 4 — session
 // ─────────────────────────────────────────────────────────────────────────────
@@ -448,15 +486,14 @@ func (h *Handler) resolveSession(
 	endAt := plan.StartAt.Add(defaultSessionDuration)
 	capacity := plan.Request.TotalAvailability()
 
-	sessionID, err := compatids.Resolve(ctx, tx, compatids.KindActionEvent, ae.ActionEventID)
-	if err != nil && !errors.Is(err, compatids.ErrNotFound) {
-		return uuid.Nil, false, fmt.Errorf("resolve action event compat id: %w", err)
+	sessionID, sctx, err := findBil24Session(ctx, q, tx, plan)
+	if err != nil {
+		return uuid.Nil, false, err
 	}
 
-	if errors.Is(err, compatids.ErrNotFound) {
+	if sessionID == uuid.Nil {
 		if capacity <= 0 {
-			return uuid.Nil, false, failImport(http.StatusUnprocessableEntity, "import.capacity_required",
-				"categoryList must declare a positive total availability for a new general-admission session")
+			return uuid.Nil, false, errCapacityRequired()
 		}
 		status := "draft"
 		if plan.Request.Publish {
@@ -473,22 +510,6 @@ func (h *Handler) resolveSession(
 			return uuid.Nil, false, regErr
 		}
 		return created.ID, true, nil
-	}
-
-	sctx, err := q.GetSessionImportContext(ctx, sessionID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			// The mapping outlived the session (soft-deleted catalog row). The
-			// operator must clean that up; silently minting a second session
-			// under the same Bil24 id would break idempotency for good.
-			return uuid.Nil, false, failImport(http.StatusConflict, "import.session_deleted",
-				"actionEvent "+externalIDString(ae.ActionEventID)+" maps to a deleted arena session")
-		}
-		return uuid.Nil, false, fmt.Errorf("read session %s: %w", sessionID, err)
-	}
-	if sctx.OrgID != plan.OrgID {
-		return uuid.Nil, false, failImport(http.StatusConflict, "import.session_owned_by_other_org",
-			"actionEvent "+externalIDString(ae.ActionEventID)+" is already imported into a different organization")
 	}
 
 	// Currency is immutable once money changed hands (spec §13.2 step 10).
@@ -523,10 +544,47 @@ func (h *Handler) resolveSession(
 	if err := applyImportSaleTimes(ctx, q, plan, sessionID, sctx.EventID, plan.StartAt); err != nil {
 		return uuid.Nil, false, err
 	}
-	if err := applySessionChange(ctx, tx, sessionID, before.State, plan.Request.ChangeMessage); err != nil {
+	if err := applySessionChange(ctx, tx, plan, before); err != nil {
 		return uuid.Nil, false, err
 	}
 	return sessionID, false, nil
+}
+
+// findBil24Session finds the session behind actionEvent.actionEventId,
+// refusing a mapping whose session was deleted or belongs to another
+// organization. uuid.Nil means the import creates it.
+func findBil24Session(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan) (uuid.UUID, gen.SessionImportContextRow, error) {
+	ae := plan.Request.ActionEvent
+	sessionID, err := compatids.Resolve(ctx, tx, compatids.KindActionEvent, ae.ActionEventID)
+	if errors.Is(err, compatids.ErrNotFound) {
+		return uuid.Nil, gen.SessionImportContextRow{}, nil
+	}
+	if err != nil {
+		return uuid.Nil, gen.SessionImportContextRow{}, fmt.Errorf("resolve action event compat id: %w", err)
+	}
+	sctx, err := q.GetSessionImportContext(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// The mapping outlived the session (soft-deleted catalog row). The
+			// operator must clean that up; silently minting a second session
+			// under the same Bil24 id would break idempotency for good.
+			return uuid.Nil, sctx, failImportAt(http.StatusConflict, "import.session_deleted", "/actionEvent/actionEventId",
+				"actionEvent "+externalIDString(ae.ActionEventID)+" maps to a deleted arena session")
+		}
+		return uuid.Nil, sctx, fmt.Errorf("read session %s: %w", sessionID, err)
+	}
+	if sctx.OrgID != plan.OrgID {
+		return uuid.Nil, sctx, failImportAt(http.StatusConflict, "import.session_owned_by_other_org", "/actionEvent/actionEventId",
+			"actionEvent "+externalIDString(ae.ActionEventID)+" is already imported into a different organization")
+	}
+	return sessionID, sctx, nil
+}
+
+// errCapacityRequired refuses a NEW general-admission session whose
+// categories declare no place at all.
+func errCapacityRequired() error {
+	return failImportAt(http.StatusUnprocessableEntity, "import.capacity_required", "/categoryList",
+		"categoryList must declare a positive total availability for a new general-admission session")
 }
 
 // syncInventoryLedger brings the session-level inventory_ledger row (tier_id IS
@@ -603,9 +661,8 @@ func (h *Handler) upsertTiers(ctx context.Context, q *gen.Queries, tx pgx.Tx, pl
 			name = "Category " + externalIDString(c.CategoryPriceID)
 		}
 		price := c.PriceMinorUnits()
-		if price < 0 {
-			return nil, nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_price",
-				fmt.Sprintf("categoryList[%d].price must not be negative", i))
+		if err := checkCategoryPrice(i, price); err != nil {
+			return nil, nil, nil, err
 		}
 		mode := "fixed"
 		if price == 0 {
@@ -647,7 +704,8 @@ func (h *Handler) upsertTiers(ctx context.Context, q *gen.Queries, tx pgx.Tx, pl
 			// category id was reused across action events. Re-pointing the
 			// mapping would corrupt the other session's outbound ids, so this
 			// is a conflict the operator has to resolve upstream.
-			return nil, nil, nil, failImport(http.StatusConflict, "import.category_bound_elsewhere",
+			return nil, nil, nil, failImportAt(http.StatusConflict, "import.category_bound_elsewhere",
+				fmt.Sprintf("/categoryList/%d/categoryPriceId", i),
 				"categoryPriceId "+externalIDString(c.CategoryPriceID)+" is already bound to a ticket tier of a different session")
 		}
 		if updErr != nil {
@@ -705,6 +763,11 @@ func (h *Handler) applyPublish(ctx context.Context, q *gen.Queries, plan importP
 		}
 	}
 
+	// A dry run stops at the gate: it reports the gate's warnings, never the
+	// transition itself.
+	if plan.Mode.DryRun {
+		return false, nil
+	}
 	if _, err := q.UpdateEventStatus(ctx, eventID, plan.OrgID, "published"); err != nil {
 		return false, fmt.Errorf("publish event: %w", err)
 	}
@@ -780,11 +843,8 @@ func (h *Handler) sideLoadPoster(ctx context.Context, orgID uuid.UUID, req bil24
 		warnings.add(WarnPosterSkipped, "poster "+raw+" was not imported: "+reason)
 		return nil
 	}
-	if h.media == nil || h.http == nil {
-		return skip("media storage is not configured on this deployment")
-	}
-	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
-		return skip("only http(s) poster urls are supported")
+	if reason := h.posterPrecheck(raw); reason != "" {
+		return skip(reason)
 	}
 
 	fetchCtx, cancel := context.WithTimeout(ctx, posterFetchTimeout)
@@ -865,6 +925,19 @@ func (h *Handler) sideLoadPoster(ctx context.Context, orgID uuid.UUID, req bil24
 	return &id
 }
 
+// posterPrecheck is the part of the poster side-load that needs no network:
+// why the poster at raw cannot be fetched at all, "" when it can be tried.
+// The dry run reports exactly these reasons and fetches nothing.
+func (h *Handler) posterPrecheck(raw string) string {
+	if h.media == nil || h.http == nil {
+		return "media storage is not configured on this deployment"
+	}
+	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
+		return "only http(s) poster urls are supported"
+	}
+	return ""
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -883,6 +956,15 @@ func registerExternal(ctx context.Context, tx pgx.Tx, kind compatids.Kind, platf
 	default:
 		return fmt.Errorf("register %s compat id: %w", kind, err)
 	}
+}
+
+// checkCategoryPrice refuses a negative category price (both importers).
+func checkCategoryPrice(i int, price int64) error {
+	if price < 0 {
+		return failImportAt(http.StatusUnprocessableEntity, "import.invalid_price", fmt.Sprintf("/categoryList/%d/price", i),
+			fmt.Sprintf("categoryList[%d].price must not be negative", i))
+	}
+	return nil
 }
 
 // externalIDString renders a Bil24 identifier the way both the compat mapping

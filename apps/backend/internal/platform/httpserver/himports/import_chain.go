@@ -129,9 +129,8 @@ func applyArenaCategoryExtras(
 			if err := q.DeleteTierChain(ctx, ordered[i]); err != nil {
 				return nil, fmt.Errorf("remove category chain link: %w", err)
 			}
-		case j < 0 || j >= len(list) || j == i || ordered[j] == ordered[i]:
-			return nil, failImport(http.StatusUnprocessableEntity, "import.invalid_next_category",
-				fmt.Sprintf("categoryList[%d].nextCategoryIndex %d must point at another category of the list", i, j))
+		case nextIndexOutsideList(i, j, len(list)) || ordered[j] == ordered[i]:
+			return nil, errInvalidNextCategory(i, j)
 		default:
 			if err := q.UpsertTierChain(ctx, ordered[i], ordered[j]); err != nil {
 				return nil, fmt.Errorf("write category chain link: %w", err)
@@ -156,10 +155,10 @@ func applyArenaCategoryExtras(
 		}
 		switch n := *c.SellLimit; {
 		case n < 0:
-			return nil, failImport(http.StatusUnprocessableEntity, "import.invalid_sell_limit",
-				fmt.Sprintf("categoryList[%d].sellLimit must be 0 (remove) or a positive number of tickets", i))
+			return nil, errNegativeSellLimit(i)
 		case n > 0 && !linked[ordered[i]]:
-			return nil, failImport(http.StatusUnprocessableEntity, "import.invalid_sell_limit",
+			return nil, failImportAt(http.StatusUnprocessableEntity, "import.invalid_sell_limit",
+				fmt.Sprintf("/categoryList/%d/sellLimit", i),
 				fmt.Sprintf("categoryList[%d].sellLimit needs a nextCategoryIndex: only a category that hands its places on can stop at a number of tickets", i))
 		case linked[ordered[i]]:
 			var limit *int32
@@ -179,7 +178,7 @@ func applyArenaCategoryExtras(
 	for _, l := range links {
 		ci.next[l.TierID] = l
 		if _, dup := ci.targets[l.NextTierID]; dup {
-			return nil, failImport(http.StatusUnprocessableEntity, "import.invalid_next_category",
+			return nil, failImportAt(http.StatusUnprocessableEntity, "import.invalid_next_category", "/categoryList",
 				"two categories hand their places to the same category; a chain is a single line")
 		}
 		ci.targets[l.NextTierID] = struct{}{}
@@ -188,7 +187,7 @@ func applyArenaCategoryExtras(
 		seen := map[uuid.UUID]struct{}{l.TierID: {}}
 		for cur := l.NextTierID; ; {
 			if _, loop := seen[cur]; loop {
-				return nil, failImport(http.StatusUnprocessableEntity, "import.category_chain_cycle",
+				return nil, failImportAt(http.StatusUnprocessableEntity, "import.category_chain_cycle", "/categoryList",
 					"the categories' nextCategoryIndex links form a cycle")
 			}
 			seen[cur] = struct{}{}
@@ -225,46 +224,11 @@ func replaceImportedSchedule(
 	basePrice int64,
 	in []bil24compat.ImportPriceWindow,
 ) error {
-	bad := func(msg string) error {
-		return failImport(http.StatusUnprocessableEntity, "import.invalid_price_schedule",
-			fmt.Sprintf("categoryList[%d].priceSchedule: %s", idx, msg))
+	windows, err := parseImportedSchedule(idx, basePrice, in)
+	if err != nil {
+		return err
 	}
-	if len(in) > maxImportPriceWindows {
-		return bad("at most 50 windows")
-	}
-	if len(in) > 0 && basePrice <= 0 {
-		return bad("only a paid (fixed-price) category carries a price schedule")
-	}
-	windows := make([]importWindow, 0, len(in))
-	for k, w := range in {
-		from, err := time.Parse(time.RFC3339, strings.TrimSpace(w.ValidFrom))
-		if err != nil {
-			return bad(fmt.Sprintf("[%d].validFrom must be RFC3339", k))
-		}
-		var to *time.Time
-		if raw := strings.TrimSpace(w.ValidTo); raw != "" {
-			t, err := time.Parse(time.RFC3339, raw)
-			if err != nil {
-				return bad(fmt.Sprintf("[%d].validTo must be RFC3339", k))
-			}
-			if !t.After(from) {
-				return bad(fmt.Sprintf("[%d].validTo must be after validFrom", k))
-			}
-			to = &t
-		}
-		amount := w.PriceMinorUnits()
-		if amount < 0 {
-			return bad(fmt.Sprintf("[%d].price must not be negative", k))
-		}
-		windows = append(windows, importWindow{from: from.UTC(), to: to, amount: amount})
-	}
-	sort.Slice(windows, func(a, b int) bool { return windows[a].from.Before(windows[b].from) })
-	for k := 1; k < len(windows); k++ {
-		prev := windows[k-1]
-		if prev.to == nil || windows[k].from.Before(*prev.to) {
-			return bad("windows overlap")
-		}
-	}
+	bad := func(msg string) error { return errInvalidPriceSchedule(idx, msg) }
 
 	if _, err := q.DeleteTierPriceWindowsByTier(ctx, tierID); err != nil {
 		return fmt.Errorf("clear price schedule: %w", err)
@@ -279,6 +243,73 @@ func replaceImportedSchedule(
 		}
 	}
 	return nil
+}
+
+// parseImportedSchedule checks a category's priceSchedule and returns its
+// windows sorted by start: at most 50, only on a paid category, RFC3339
+// bounds, an end after its start, no negative price, no overlap.
+func parseImportedSchedule(idx int, basePrice int64, in []bil24compat.ImportPriceWindow) ([]importWindow, error) {
+	bad := func(msg string) error { return errInvalidPriceSchedule(idx, msg) }
+	if len(in) > maxImportPriceWindows {
+		return nil, bad("at most 50 windows")
+	}
+	if len(in) > 0 && basePrice <= 0 {
+		return nil, bad("only a paid (fixed-price) category carries a price schedule")
+	}
+	windows := make([]importWindow, 0, len(in))
+	for k, w := range in {
+		from, err := time.Parse(time.RFC3339, strings.TrimSpace(w.ValidFrom))
+		if err != nil {
+			return nil, bad(fmt.Sprintf("[%d].validFrom must be RFC3339", k))
+		}
+		var to *time.Time
+		if raw := strings.TrimSpace(w.ValidTo); raw != "" {
+			t, err := time.Parse(time.RFC3339, raw)
+			if err != nil {
+				return nil, bad(fmt.Sprintf("[%d].validTo must be RFC3339", k))
+			}
+			if !t.After(from) {
+				return nil, bad(fmt.Sprintf("[%d].validTo must be after validFrom", k))
+			}
+			to = &t
+		}
+		amount := w.PriceMinorUnits()
+		if amount < 0 {
+			return nil, bad(fmt.Sprintf("[%d].price must not be negative", k))
+		}
+		windows = append(windows, importWindow{from: from.UTC(), to: to, amount: amount})
+	}
+	sort.Slice(windows, func(a, b int) bool { return windows[a].from.Before(windows[b].from) })
+	for k := 1; k < len(windows); k++ {
+		prev := windows[k-1]
+		if prev.to == nil || windows[k].from.Before(*prev.to) {
+			return nil, bad("windows overlap")
+		}
+	}
+	return windows, nil
+}
+
+func errInvalidPriceSchedule(idx int, msg string) error {
+	return failImportAt(http.StatusUnprocessableEntity, "import.invalid_price_schedule",
+		fmt.Sprintf("/categoryList/%d/priceSchedule", idx),
+		fmt.Sprintf("categoryList[%d].priceSchedule: %s", idx, msg))
+}
+
+// nextIndexOutsideList reports a nextCategoryIndex j of entry i that cannot
+// name another category of an n-entry list (-1, the removal, is handled
+// before this is asked).
+func nextIndexOutsideList(i, j, n int) bool { return j < 0 || j >= n || j == i }
+
+func errInvalidNextCategory(i, j int) error {
+	return failImportAt(http.StatusUnprocessableEntity, "import.invalid_next_category",
+		fmt.Sprintf("/categoryList/%d/nextCategoryIndex", i),
+		fmt.Sprintf("categoryList[%d].nextCategoryIndex %d must point at another category of the list", i, j))
+}
+
+func errNegativeSellLimit(i int) error {
+	return failImportAt(http.StatusUnprocessableEntity, "import.invalid_sell_limit",
+		fmt.Sprintf("/categoryList/%d/sellLimit", i),
+		fmt.Sprintf("categoryList[%d].sellLimit must be 0 (remove) or a positive number of tickets", i))
 }
 
 // chainPlaces is the number of places every member of the chain owns

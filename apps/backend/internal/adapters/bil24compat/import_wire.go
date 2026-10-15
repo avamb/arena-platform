@@ -316,46 +316,75 @@ func (r ImportSessionRequest) TotalAvailability() int32 {
 // only checked when non-zero. Returns an error wrapping
 // ErrExternalIDOutOfRange naming the offending field.
 func (r ImportSessionRequest) ValidateExternalIDs() error {
-	required := []struct {
-		field string
-		value int64
-	}{
-		{"action.actionId", r.Action.ActionID},
-		{"actionEvent.actionEventId", r.ActionEvent.ActionEventID},
-		{"venue.venueId", r.Venue.VenueID},
+	if v := r.ExternalIDViolations(); len(v) > 0 {
+		return v[0]
+	}
+	return nil
+}
+
+// IDViolation is one identifier of the payload that breaks its source's
+// range rule. Field is the dotted name used in error messages
+// ("categoryList[2].categoryPriceId"), Pointer the RFC 6901 JSON pointer of
+// the same field ("/categoryList/2/categoryPriceId").
+type IDViolation struct {
+	Field   string
+	Pointer string
+	Value   int64
+	err     error
+}
+
+// Error renders the violation exactly as ValidateExternalIDs and
+// ValidateArenaIDs have always reported it.
+func (v IDViolation) Error() string { return fmt.Sprintf("%s=%d: %v", v.Field, v.Value, v.err) }
+
+// Unwrap exposes ErrExternalIDOutOfRange / ErrArenaIDOutOfRange.
+func (v IDViolation) Unwrap() error { return v.err }
+
+type idField struct {
+	field, pointer string
+	value          int64
+}
+
+// ExternalIDViolations lists EVERY identifier ValidateExternalIDs refuses, in
+// the order it checks them; ValidateExternalIDs reports the first one. The
+// event-bundle dry run reports them all.
+func (r ImportSessionRequest) ExternalIDViolations() []IDViolation {
+	var out []IDViolation
+	required := []idField{
+		{"action.actionId", "/action/actionId", r.Action.ActionID},
+		{"actionEvent.actionEventId", "/actionEvent/actionEventId", r.ActionEvent.ActionEventID},
+		{"venue.venueId", "/venue/venueId", r.Venue.VenueID},
 	}
 	for _, f := range required {
 		if f.value <= 0 || f.value >= ExternalIDCeiling {
-			return fmt.Errorf("%s=%d: %w", f.field, f.value, ErrExternalIDOutOfRange)
+			out = append(out, IDViolation{f.field, f.pointer, f.value, ErrExternalIDOutOfRange})
 		}
 	}
 
-	optional := []struct {
-		field string
-		value int64
-	}{
-		{"venue.cityId", r.Venue.CityID},
-		{"venue.countryId", r.Venue.CountryID},
-		{"actionEvent.seatingPlanId", r.ActionEvent.SeatingPlanID},
+	optional := []idField{
+		{"venue.cityId", "/venue/cityId", r.Venue.CityID},
+		{"venue.countryId", "/venue/countryId", r.Venue.CountryID},
+		{"actionEvent.seatingPlanId", "/actionEvent/seatingPlanId", r.ActionEvent.SeatingPlanID},
 	}
 	for _, f := range optional {
 		if f.value == 0 {
 			continue
 		}
 		if f.value < 0 || f.value >= ExternalIDCeiling {
-			return fmt.Errorf("%s=%d: %w", f.field, f.value, ErrExternalIDOutOfRange)
+			out = append(out, IDViolation{f.field, f.pointer, f.value, ErrExternalIDOutOfRange})
 		}
 	}
 
 	for i, c := range r.CategoryList {
 		if c.CategoryPriceID <= 0 || c.CategoryPriceID >= ExternalIDCeiling {
-			return fmt.Errorf("categoryList[%d].categoryPriceId=%d: %w", i, c.CategoryPriceID, ErrExternalIDOutOfRange)
+			out = append(out, IDViolation{fmt.Sprintf("categoryList[%d].categoryPriceId", i),
+				fmt.Sprintf("/categoryList/%d/categoryPriceId", i), c.CategoryPriceID, ErrExternalIDOutOfRange})
 		}
 	}
 	// seatList seat ids are NOT range-checked here: Bil24 seat ids legitimately
 	// exceed 1e9 (the spec example carries 2873098559) and they are stored in
 	// session_seats.system_seat_id, not in the compat_ids mapping table.
-	return nil
+	return out
 }
 
 // NormalizedExternalRef returns ExternalRef with surrounding whitespace
@@ -374,20 +403,27 @@ func (r ImportSessionRequest) NormalizedExternalRef() string {
 // source=arena in this wave (spec §1), and a stray seatList only earns a
 // warning.
 func (r ImportSessionRequest) ValidateArenaIDs() error {
-	fields := []struct {
-		field string
-		value int64
-	}{
-		{"action.actionId", r.Action.ActionID},
-		{"actionEvent.actionEventId", r.ActionEvent.ActionEventID},
-		{"venue.venueId", r.Venue.VenueID},
+	if v := r.ArenaIDViolations(); len(v) > 0 {
+		return v[0]
+	}
+	return nil
+}
+
+// ArenaIDViolations lists EVERY identifier ValidateArenaIDs refuses, in the
+// order it checks them; ValidateArenaIDs reports the first one.
+func (r ImportSessionRequest) ArenaIDViolations() []IDViolation {
+	var out []IDViolation
+	fields := []idField{
+		{"action.actionId", "/action/actionId", r.Action.ActionID},
+		{"actionEvent.actionEventId", "/actionEvent/actionEventId", r.ActionEvent.ActionEventID},
+		{"venue.venueId", "/venue/venueId", r.Venue.VenueID},
 	}
 	for _, f := range fields {
 		if f.value == 0 {
 			continue
 		}
 		if f.value < ExternalIDCeiling {
-			return fmt.Errorf("%s=%d: %w", f.field, f.value, ErrArenaIDOutOfRange)
+			out = append(out, IDViolation{f.field, f.pointer, f.value, ErrArenaIDOutOfRange})
 		}
 	}
 	for i, c := range r.CategoryList {
@@ -395,10 +431,11 @@ func (r ImportSessionRequest) ValidateArenaIDs() error {
 			continue
 		}
 		if c.CategoryPriceID < ExternalIDCeiling {
-			return fmt.Errorf("categoryList[%d].categoryPriceId=%d: %w", i, c.CategoryPriceID, ErrArenaIDOutOfRange)
+			out = append(out, IDViolation{fmt.Sprintf("categoryList[%d].categoryPriceId", i),
+				fmt.Sprintf("/categoryList/%d/categoryPriceId", i), c.CategoryPriceID, ErrArenaIDOutOfRange})
 		}
 	}
-	return nil
+	return out
 }
 
 // ParseLocalStart converts the wire "DD.MM.YYYY" day and "HH:MM" time into an
