@@ -7697,7 +7697,9 @@ type MACSScanResult struct {
 	// `scan.invalid_scanned_at`, `scan.scanned_at_in_future`,
 	// `scan.invalid_result`, `scan.ticket_required`,
 	// `scan.invalid_system_ticket_id`, `scan.invalid_barcode`,
-	// `scan.field_too_long`, `scan.ticket_not_found` (unknown, or a
+	// `scan.field_too_long`, `scan.invalid_field` (a value that can
+	// never be stored, such as a NUL character; not retryable),
+	// `scan.ticket_not_found` (unknown, or a
 	// ticket of another organization), `scan.ticket_mismatch`, or
 	// `scan.temporarily_unavailable` (retryable).
 	ErrorCode *string `json:"error_code,omitempty"`

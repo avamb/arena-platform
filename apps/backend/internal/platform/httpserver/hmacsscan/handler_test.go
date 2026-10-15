@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
@@ -142,6 +144,9 @@ func TestValidate(t *testing.T) {
 		{"barcode only", func(s *ScanInput) { s.SystemTicketID = nil; s.Barcode = code }, ""},
 		{"long gate", func(s *ScanInput) { s.Gate = strings.Repeat("g", 201) }, CodeFieldTooLong},
 		{"long scanner name", func(s *ScanInput) { s.ScannerName = strings.Repeat("n", 201) }, CodeFieldTooLong},
+		{"NUL in scan id", func(s *ScanInput) { s.ScanID = "s\x00-1" }, CodeInvalidScanID},
+		{"NUL in gate", func(s *ScanInput) { s.Gate = "Main\x00" }, CodeInvalidField},
+		{"NUL in scanner id", func(s *ScanInput) { s.ScannerID = "\x00" }, CodeInvalidField},
 	}
 	for _, c := range cases {
 		in := base
@@ -274,6 +279,27 @@ func TestHandle_PartialSuccessAndRetryable(t *testing.T) {
 		}
 		if _, ok := r["ticket_id"]; !ok {
 			t.Errorf("result %d has no ticket_id key", i)
+		}
+	}
+}
+
+// A data or integrity error repeats on every attempt, so it is never
+// retryable; anything else (a lost connection, a deadlock) is.
+func TestUnavailable_DataErrorsAreNotRetryable(t *testing.T) {
+	h := New(nil, nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	for _, c := range []struct {
+		err       error
+		code      string
+		retryable bool
+	}{
+		{&pgconn.PgError{Code: "22021"}, CodeInvalidField, false},
+		{fmt.Errorf("insert: %w", &pgconn.PgError{Code: "23514"}), CodeInvalidField, false},
+		{&pgconn.PgError{Code: "40P01"}, CodeUnavailable, true},
+		{errors.New("connection reset"), CodeUnavailable, true},
+	} {
+		r := h.unavailable("s", "insert", c.err)
+		if r.ErrorCode != c.code || r.Retryable != c.retryable || r.Status != StatusRejected {
+			t.Errorf("%v: %+v, want %s retryable=%v", c.err, r, c.code, c.retryable)
 		}
 	}
 }

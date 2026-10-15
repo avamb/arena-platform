@@ -5,10 +5,12 @@ import (
 	"errors"
 	"log/slog"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
@@ -232,6 +234,13 @@ func duplicateOf(scanID string, prev gen.ScanEventRow) ScanResult {
 func (h *Handler) unavailable(scanID, step string, err error) ScanResult {
 	h.logger.Error("macs_scan_events: scan not recorded",
 		slog.String("scan_id", scanID), slog.String("step", step), slog.String("error", err.Error()))
+	// A data or integrity error (SQLSTATE class 22 or 23) repeats on every
+	// attempt: answering it retryable would make MACS resend the scan, and a
+	// batch made only of such scans would be a 503 forever.
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && (strings.HasPrefix(pgErr.Code, "22") || strings.HasPrefix(pgErr.Code, "23")) {
+		return rejected(scanID, CodeInvalidField, "a value of this scan cannot be stored; it will not be accepted on a retry either")
+	}
 	return ScanResult{ScanID: scanID, Status: StatusRejected, ErrorCode: CodeUnavailable,
 		Error: "the scan could not be recorded now; send it again", Retryable: true}
 }

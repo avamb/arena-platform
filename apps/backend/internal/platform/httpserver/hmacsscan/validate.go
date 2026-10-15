@@ -52,9 +52,13 @@ const (
 	CodeInvalidTicketID  = "scan.invalid_system_ticket_id"
 	CodeInvalidBarcode   = "scan.invalid_barcode"
 	CodeFieldTooLong     = "scan.field_too_long"
-	CodeTicketNotFound   = "scan.ticket_not_found"
-	CodeTicketMismatch   = "scan.ticket_mismatch"
-	CodeUnavailable      = "scan.temporarily_unavailable"
+	// CodeInvalidField is a value the database can never store (a NUL
+	// character in a text field, or another data error): sending it again
+	// can never succeed, so it is never retryable.
+	CodeInvalidField   = "scan.invalid_field"
+	CodeTicketNotFound = "scan.ticket_not_found"
+	CodeTicketMismatch = "scan.ticket_mismatch"
+	CodeUnavailable    = "scan.temporarily_unavailable"
 )
 
 // Field limits.
@@ -105,8 +109,8 @@ func (s scan) credentialCode() string {
 // rejection.
 func validate(in ScanInput, now time.Time) (scan, ScanResult, bool) {
 	id := strings.TrimSpace(in.ScanID)
-	if id == "" || utf8.RuneCountInString(id) > maxScanIDLen {
-		return scan{}, rejected(in.ScanID, CodeInvalidScanID, "scan_id is required, at most 128 characters"), false
+	if id == "" || utf8.RuneCountInString(id) > maxScanIDLen || strings.ContainsRune(id, 0) {
+		return scan{}, rejected(in.ScanID, CodeInvalidScanID, "scan_id is required, at most 128 characters, without NUL"), false
 	}
 	in.ScanID = id
 	at, err := time.Parse(time.RFC3339, strings.TrimSpace(in.ScannedAt))
@@ -129,6 +133,11 @@ func validate(in ScanInput, now time.Time) (scan, ScanResult, bool) {
 	for _, f := range []string{in.ScannerID, in.ScannerName, in.Gate} {
 		if utf8.RuneCountInString(f) > maxLabelLen {
 			return scan{}, rejected(id, CodeFieldTooLong, "scanner_id, scanner_name and gate are at most 200 characters"), false
+		}
+		// PostgreSQL text cannot hold NUL: such a value would fail the
+		// INSERT on every attempt and keep the batch retryable forever.
+		if strings.ContainsRune(f, 0) {
+			return scan{}, rejected(id, CodeInvalidField, "scanner_id, scanner_name and gate must not contain NUL"), false
 		}
 	}
 	if in.SystemTicketID != nil {

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -305,5 +306,92 @@ func TestMACSScanEvents_ForeignTicketIsRejectedPerScan(t *testing.T) {
 	}
 	if n := m.count(t, `SELECT count(*) FROM tickets WHERE id = ANY($1) AND used_at IS NOT NULL`, []uuid.UUID{foreign.tickets[0], foreign.tickets[1]}); n != 0 {
 		t.Fatalf("foreign ticket stamped used: %d", n)
+	}
+}
+
+// The same batch delivered by several MACS workers at once is recorded
+// once: one accepted answer, one scan row, one v1.ticket.scanned event.
+func TestMACSScanEvents_ParallelIdenticalBatchesWriteOnce(t *testing.T) {
+	m := newMACSScanEnv(t)
+	id0 := m.systemID(t, m.f.tickets[0])
+	scanID := "m1p-" + uuid.NewString()[:8]
+	at := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+	body, err := json.Marshal(map[string]any{"scans": []map[string]any{
+		{"scan_id": scanID, "system_ticket_id": id0, "result": "admitted", "scanned_at": at},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig := hmacsscan.SignatureHeader(m.secret, body)
+	const n = 8
+	sts := make([]int, n)
+	outs := make([]map[string]any, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		// No t.Fatal off the test goroutine: errors are collected instead.
+		go func(i int) {
+			defer wg.Done()
+			req, err := http.NewRequest(http.MethodPost, m.pf.ts.URL+"/v1/macs/scan-events", strings.NewReader(string(body)))
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set(hmacsscan.HeaderSubscriberID, m.subID.String())
+			req.Header.Set(hmacsscan.HeaderSignature, sig)
+			resp, err := m.pf.client.Do(req)
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			defer resp.Body.Close()
+			sts[i] = resp.StatusCode
+			outs[i] = map[string]any{}
+			errs[i] = json.NewDecoder(resp.Body).Decode(&outs[i])
+		}(i)
+	}
+	wg.Wait()
+	accepted := 0
+	for i := 0; i < n; i++ {
+		if errs[i] != nil || sts[i] != http.StatusAccepted {
+			t.Fatalf("delivery %d: %v %d %v", i, errs[i], sts[i], outs[i])
+		}
+		accepted += int(outs[i]["accepted"].(float64))
+	}
+	if accepted != 1 {
+		t.Fatalf("accepted %d times, want once", accepted)
+	}
+	if c := m.count(t, `SELECT count(*) FROM scan_events WHERE subscriber_id = $1`, m.subID); c != 1 {
+		t.Fatalf("scan rows: %d, want 1", c)
+	}
+	if c := m.count(t, `SELECT count(*) FROM outbox_events WHERE event_type = 'v1.ticket.scanned' AND aggregate_id = $1 AND payload->>'external_scan_id' = $2`,
+		m.f.tickets[0].String(), scanID); c != 1 {
+		t.Fatalf("v1.ticket.scanned rows: %d, want 1", c)
+	}
+}
+
+// A value PostgreSQL cannot store (NUL) is rejected for good, never
+// answered retryable: a batch made only of such scans must not be a 503
+// that MACS resends forever.
+func TestMACSScanEvents_UnstorableValueIsNotRetryable(t *testing.T) {
+	m := newMACSScanEnv(t)
+	id0 := m.systemID(t, m.f.tickets[0])
+	at := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+	st, out, _, _ := m.signedPost(t, []map[string]any{
+		{"scan_id": "m1n-" + uuid.NewString()[:8] + "\x00", "system_ticket_id": id0, "result": "admitted", "scanned_at": at},
+		{"scan_id": "m1n-" + uuid.NewString()[:8], "system_ticket_id": id0, "result": "admitted", "scanned_at": at, "gate": "Main\x00"},
+	})
+	if st != http.StatusAccepted {
+		t.Fatalf("batch: %d %v", st, out)
+	}
+	for i, r := range resultsOf(t, out) {
+		if r["status"] != hmacsscan.StatusRejected || r["retryable"] == true {
+			t.Errorf("scan %d: %v, want rejected and not retryable", i, r)
+		}
+	}
+	if c := m.count(t, `SELECT count(*) FROM scan_events WHERE subscriber_id = $1`, m.subID); c != 0 {
+		t.Fatalf("scan rows: %d, want 0", c)
 	}
 }
