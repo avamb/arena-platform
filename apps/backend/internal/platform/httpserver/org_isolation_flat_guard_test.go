@@ -142,6 +142,7 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/payment-intents/webhook/{config_id}", flatPublic, "provider signature of that configuration"},
 	{"POST", "/v1/refunds/webhook", flatPublic, "provider signature"},
 	{"POST", "/v1/billing/stripe/webhook", flatPublic, "provider signature"},
+	{"POST", "/v1/macs/scan-events", flatPublic, "HMAC of the MACS subscriber named in X-MACS-Subscriber-Id; tickets resolved only inside that subscriber's organization, any other ticket rejected per scan as not found"},
 	{"POST", "/v1/webhooks/brevo", flatPublic, "BREVO_WEBHOOK_TOKEN as a bearer header; letters matched by the tracking header or the message id"},
 	{"POST", "/v1/webhooks/brevo/{token}", flatPublic, "BREVO_WEBHOOK_TOKEN in the path; letters matched by the tracking header or the message id"},
 

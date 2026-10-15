@@ -55,6 +55,10 @@ func (s *Server) mountScannerRoutes(r chi.Router) {
 // POST /v1/admin/tickets/{id}/delivery/resend (feature #276, A-15).
 func (s *Server) mountScannerCallbackRoutes(r chi.Router) {
 	r.Post("/scanner/scan-events", s.handleScannerScanEvents)
+	// Scans MACS posts back (task M1): authenticated by the HMAC of the MACS
+	// subscriber named in X-MACS-Subscriber-Id, not by a JWT. Always mounted,
+	// self-gated with 503 like the scanner callback above.
+	r.Post("/macs/scan-events", s.handleMACSScanEvents)
 }
 
 // mountBarcodeBatchRoutes mounts external barcode batch import endpoints

@@ -280,3 +280,29 @@ func TestMergeEventTiers_DifferentPricesStayApart(t *testing.T) {
 		t.Fatal("an empty table must encode as [] not null")
 	}
 }
+
+// M1: the door count is split by who reported the admission, merged across
+// the sessions of an event, sorted by source, and [] for a quiet door.
+func TestBuildSummary_AdmissionsBySource(t *testing.T) {
+	s1, s2 := uuid.New(), uuid.New()
+	rows := summaryRows{admissions: []gen.SessionSummaryAdmissionsRow{
+		{SessionID: s1, Source: "macs", Tickets: 3, Scans: 4},
+		{SessionID: s1, Source: "arena_scanner", Tickets: 1, Scans: 1},
+		{SessionID: s2, Source: "macs", Tickets: 2, Scans: 2},
+	}}
+	got := buildSummaryCore(rows).Entered.BySource
+	want := []summaryAdmission{{Source: "arena_scanner", Tickets: 1, Scans: 1}, {Source: "macs", Tickets: 5, Scans: 6}}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("by source: %+v, want %+v", got, want)
+	}
+	if one := buildSummaryCore(rows.forSession(s2)).Entered.BySource; len(one) != 1 || one[0].Tickets != 2 {
+		t.Fatalf("one session: %+v", one)
+	}
+	if g := rows.groupBySession(); len(g[s1].admissions) != 2 || len(g[s2].admissions) != 1 {
+		t.Fatalf("grouped: %+v", g)
+	}
+	raw, _ := json.Marshal(buildSummaryCore(summaryRows{}).Entered)
+	if string(raw) != `{"used":0,"total":0,"by_source":[]}` {
+		t.Fatalf("quiet door: %s", raw)
+	}
+}

@@ -35,7 +35,7 @@ const summaryCommon = {
   money,
   orders: [],
   tickets: { active: 12, cancelled: 1, transferred: 0, used: 3, complimentary: 2 },
-  entered: { used: 3, total: 12 },
+  entered: { used: 3, total: 12, by_source: [{ source: "macs", tickets: 3, scans: 3 }] },
   refunds: [],
   promos: [{ id: "p1", code: "SPRING", currency: "EUR", orders: 2, redemptions: 2, discount: 500 }],
   complimentary: { orders: 1, tickets: 2 },
