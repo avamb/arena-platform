@@ -172,6 +172,18 @@ func (h *Handler) loadSummaryRows(ctx context.Context, sessionIDs []uuid.UUID) (
 // queriesSummaryRows is loadSummaryRows on an explicit query set, so the CSV
 // export (hexport) reads the very same aggregates through LoadSessionSummary.
 func queriesSummaryRows(ctx context.Context, q *gen.Queries, sessionIDs []uuid.UUID) (summaryRows, string, error) {
+	return queriesSummaryRowsOpt(ctx, q, sessionIDs, true)
+}
+
+// loadSummaryRowsNoTiers is loadSummaryRows without the per-category query,
+// for a caller that never reads the category table (the batch sales summary):
+// ListSessionSummaryTiers joins every order item of every session, and the
+// places totals do not depend on it (foldTiers counts every place row).
+func (h *Handler) loadSummaryRowsNoTiers(ctx context.Context, sessionIDs []uuid.UUID) (summaryRows, string, error) {
+	return queriesSummaryRowsOpt(ctx, h.queries, sessionIDs, false)
+}
+
+func queriesSummaryRowsOpt(ctx context.Context, q *gen.Queries, sessionIDs []uuid.UUID, withTiers bool) (summaryRows, string, error) {
 	var (
 		r   summaryRows
 		err error
@@ -179,8 +191,10 @@ func queriesSummaryRows(ctx context.Context, q *gen.Queries, sessionIDs []uuid.U
 	if r.places, err = q.ListSessionSummaryPlaces(ctx, sessionIDs); err != nil {
 		return r, "places", err
 	}
-	if r.tiers, err = q.ListSessionSummaryTiers(ctx, sessionIDs); err != nil {
-		return r, "tiers", err
+	if withTiers {
+		if r.tiers, err = q.ListSessionSummaryTiers(ctx, sessionIDs); err != nil {
+			return r, "tiers", err
+		}
 	}
 	if r.orders, err = q.ListSessionSummaryOrders(ctx, sessionIDs); err != nil {
 		return r, "orders", err
@@ -441,4 +455,58 @@ func foldPromos(promos []gen.SessionSummaryPromoRow) []summaryPromo {
 		return a.Currency < b.Currency
 	})
 	return out
+}
+
+// groupBySession splits the rows of many sessions once, so a batch of events
+// reads each session's rows without scanning everything again (forSession is
+// for one session at a time).
+func (r summaryRows) groupBySession() map[uuid.UUID]summaryRows {
+	out := map[uuid.UUID]summaryRows{}
+	for _, x := range r.places {
+		g := out[x.SessionID]
+		g.places = append(g.places, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.tiers {
+		g := out[x.SessionID]
+		g.tiers = append(g.tiers, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.orders {
+		g := out[x.SessionID]
+		g.orders = append(g.orders, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.tickets {
+		g := out[x.SessionID]
+		g.tickets = append(g.tickets, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.refunds {
+		g := out[x.SessionID]
+		g.refunds = append(g.refunds, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.promos {
+		g := out[x.SessionID]
+		g.promos = append(g.promos, x)
+		out[x.SessionID] = g
+	}
+	for _, x := range r.complimentary {
+		g := out[x.SessionID]
+		g.complimentary = append(g.complimentary, x)
+		out[x.SessionID] = g
+	}
+	return out
+}
+
+// append adds the rows of another set.
+func (r *summaryRows) append(o summaryRows) {
+	r.places = append(r.places, o.places...)
+	r.tiers = append(r.tiers, o.tiers...)
+	r.orders = append(r.orders, o.orders...)
+	r.tickets = append(r.tickets, o.tickets...)
+	r.refunds = append(r.refunds, o.refunds...)
+	r.promos = append(r.promos, o.promos...)
+	r.complimentary = append(r.complimentary, o.complimentary...)
 }
