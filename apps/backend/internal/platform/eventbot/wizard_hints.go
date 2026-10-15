@@ -66,7 +66,7 @@ func (d *Draft) hintCategory(step string) (DraftHintCategory, bool) {
 	case stTName, stTPrice, stXCurrency:
 		return cats[0], true
 	case stTCatName:
-		if n := len(d.Tickets.Categories); n < len(cats) {
+		if n := len(d.tk().Categories); n < len(cats) {
 			return cats[n], true
 		}
 	case stTCatPrice:
@@ -75,7 +75,7 @@ func (d *Draft) hintCategory(step string) (DraftHintCategory, bool) {
 				return c, true
 			}
 		}
-		if n := len(d.Tickets.Categories); n < len(cats) {
+		if n := len(d.tk().Categories); n < len(cats) {
 			return cats[n], true
 		}
 	}
