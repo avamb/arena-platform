@@ -454,3 +454,37 @@ func (q *Queries) SoftDeleteOrganization(ctx context.Context, id uuid.UUID) (Org
 	row := q.db.QueryRow(ctx, softDeleteOrganization, id)
 	return scanOrganizationRow(row)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListOrganizationSlugs
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listOrganizationSlugs = `-- name: ListOrganizationSlugs :many
+SELECT id, slug
+FROM   organizations
+WHERE  id = ANY($1::uuid[])
+  AND  deleted_at IS NULL`
+
+// ListOrganizationSlugs returns the public slug of each given active
+// organization, keyed by organization id, in one round trip. An unknown or
+// deleted organization is absent from the map.
+func (q *Queries) ListOrganizationSlugs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	out := make(map[uuid.UUID]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := q.db.Query(ctx, listOrganizationSlugs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var slug string
+		if err := rows.Scan(&id, &slug); err != nil {
+			return nil, err
+		}
+		out[id] = slug
+	}
+	return out, rows.Err()
+}
