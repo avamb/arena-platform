@@ -396,6 +396,7 @@ func (h *Handler) HandleResendInvitation(w http.ResponseWriter, r *http.Request)
 			MembershipRole: membershipRole,
 			ExpiresAt:      expiresAt.Format(time.RFC3339),
 			Delivery:       "email",
+			Channel:        ChannelTelegram,
 		},
 		"resend_available_at": updated.LastSentAt.Add(ResendMinInterval).Format(time.RFC3339),
 	}
@@ -412,6 +413,12 @@ func (h *Handler) resendRefusal(w http.ResponseWriter, r *http.Request, inv gen.
 	case inv.RevokedAt != nil:
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			"bot.invitation_revoked", "the invitation was revoked", r,
+		))
+		return true
+	case IsWebInvitation(inv):
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+			"bot.invitation_channel_unsupported",
+			"an invitation sent for the web event center cannot be resent: ask the person to use the password reset on the sign-in page", r,
 		))
 		return true
 	case inv.AcceptedAt != nil:

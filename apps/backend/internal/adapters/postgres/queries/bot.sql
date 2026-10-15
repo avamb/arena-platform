@@ -8,6 +8,17 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
           accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at;
 
+-- name: InsertWebBotInvitation :one
+-- The record of an invitation sent for the web event center (channel=web): the
+-- membership exists at once and there is no Telegram code to redeem, so the
+-- row is born accepted (accepted_at set, accepted_telegram_user_id NULL - that
+-- pair is what tells it from a Telegram invitation) with a random,
+-- never-disclosed code hash.
+INSERT INTO bot_invitations (org_id, user_id, email, role, code_hash, invited_by, expires_at, membership_created, accepted_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+RETURNING id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
+          accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at;
+
 -- name: GetBotInvitationByCodeHash :one
 SELECT id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
        accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at
@@ -286,11 +297,18 @@ SELECT u.id      AS user_id,
        inv.id           AS invitation_id,
        inv.accepted_at  AS invitation_accepted_at,
        inv.expires_at   AS invitation_expires_at,
-       inv.last_sent_at AS invitation_last_sent_at
+       inv.last_sent_at AS invitation_last_sent_at,
+       (inv.accepted_at IS NOT NULL AND inv.accepted_telegram_user_id IS NULL) AS invitation_web,
+       -- A web invitation of an account that invitation CREATED (same
+       -- transaction, so the same now()) is still waiting while its setup link
+       -- is unused and alive.
+       (SELECT max(t.expires_at) FROM password_reset_tokens t
+        WHERE t.user_id = u.id AND t.used_at IS NULL AND t.expires_at > now()
+          AND u.created_at = inv.created_at) AS web_setup_expires_at
 FROM   memberships m
 JOIN   users u ON u.id = m.user_id
 LEFT JOIN LATERAL (
-           SELECT i.id, i.accepted_at, i.expires_at, i.last_sent_at
+           SELECT i.id, i.accepted_at, i.accepted_telegram_user_id, i.created_at, i.expires_at, i.last_sent_at
            FROM   bot_invitations i
            WHERE  i.user_id = u.id AND i.org_id = m.org_id AND i.revoked_at IS NULL
            ORDER  BY (i.accepted_at IS NOT NULL) DESC, i.created_at DESC
