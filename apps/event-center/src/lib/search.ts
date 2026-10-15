@@ -45,6 +45,15 @@ export function parsePasswordLink(query: string): PasswordLinkSearch {
   return out;
 }
 
+// 4-6
+export interface PromotersSearch {
+  f?: "archived";
+}
+
+export function parsePromotersSearch(raw: Record<string, unknown>): PromotersSearch {
+  return raw.f === "archived" ? { f: "archived" } : {};
+}
+
 export interface EventsSearch {
   f?: EventFilter;
   q?: string;

@@ -92,9 +92,14 @@ func run(args []string) error {
 	out := fs.String("out", "", "write the JSON description to this file instead of stdout")
 	cancelOp := fs.String("cancel-order-op", "", "4-2 twin helper: reset, inspect or pay (see cancel_order_fixture.go)")
 	cancelOrder := fs.String("order-id", "", "the order --cancel-order-op inspect or pay works on")
+	teamOp := fs.String("team-op", "", "4-5 twin helper: reset, age, expire or inspect (see team_fixture.go)")
+	teamEmail := fs.String("team-email", "", "the address --team-op age, expire or inspect works on")
 	orgDataOp := fs.String("org-data-op", "", "4-7 twin helper: reset, inspect or hide (see org_data_fixture.go)")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *teamOp != "" {
+		return runTeamOp(*teamOp, *teamEmail)
 	}
 	if *cancelOp != "" {
 		return runCancelOrderOp(*cancelOp, *cancelOrder)
@@ -223,5 +228,44 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	// 4-1: paid orders for the resend twin test.
-	return applyResendOrders(ctx, tx)
+	if err := applyResendOrders(ctx, tx); err != nil {
+		return err
+	}
+	if err := applyTeamFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 4-3: the promo-code twin test's extra rows (promo_fixture.go).
+	if err := applyPromoFixture(ctx, tx); err != nil {
+		return err
+	}
+	return applyForeignPromoter(ctx, tx)
+}
+
+// Task 4-6 (the web promoters screens): ANOTHER organization with one
+// promoter, so the twin test can prove that a promoter of a foreign
+// organization is neither listed nor reachable by its id. The constants are
+// public on purpose: the spec names them.
+const (
+	foreignOrgID        = "fe0000e2-0000-7000-8000-0000000000f1"
+	foreignPromoterID   = "fe0000e2-0000-7000-8000-0000000000f2"
+	foreignOrgName      = "E2E Other Org"
+	foreignPromoterName = "E2E Foreign Promoter"
+	foreignPromoterSlug = "e2e-foreign-promoter"
+)
+
+// applyForeignPromoter is additive and idempotent like the rest of the seed.
+func applyForeignPromoter(ctx context.Context, tx pgx.Tx) error {
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organizations (id, name, slug, country, default_locale, reservation_ttl_seconds)
+		VALUES ($1, $2, 'e2e-other-org', 'ES', 'en', 1200)
+		ON CONFLICT (id) DO NOTHING`, foreignOrgID, foreignOrgName); err != nil {
+		return fmt.Errorf("insert foreign organization: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO org_promoters (id, org_id, name, slug)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (id) DO NOTHING`, foreignPromoterID, foreignOrgID, foreignPromoterName, foreignPromoterSlug); err != nil {
+		return fmt.Errorf("insert foreign promoter: %w", err)
+	}
+	return nil
 }

@@ -12,7 +12,7 @@
  */
 import type { Locale } from "@/lib/i18n";
 
-export const CONFIRM_KINDS = ["cancel_order", "cancel_session", "delete_event", "refund", "annul_invitation"] as const;
+export const CONFIRM_KINDS = ["cancel_order", "cancel_session", "delete_event", "refund", "annul_invitation", "delete_promo"] as const;
 export type ConfirmKind = (typeof CONFIRM_KINDS)[number];
 
 export const CONFIRM_WORDS: Record<ConfirmKind, Record<Locale, string>> = {
@@ -21,6 +21,8 @@ export const CONFIRM_WORDS: Record<ConfirmKind, Record<Locale, string>> = {
   delete_event: { en: "DELETE", ru: "УДАЛИТЬ", es: "ELIMINAR" },
   refund: { en: "REFUND", ru: "ВЕРНУТЬ", es: "DEVOLVER" },
   annul_invitation: { en: "ANNUL", ru: "АННУЛИРОВАТЬ", es: "ANULAR" },
+  // 4-3: the bot's promo delete word is the same word as the event's.
+  delete_promo: { en: "DELETE", ru: "УДАЛИТЬ", es: "ELIMINAR" },
 };
 
 /** The bot catalog key that holds each word. Used by the drift test. */
@@ -30,7 +32,20 @@ export const BOT_KEYS: Record<ConfirmKind, string> = {
   delete_event: "bot.evs.delete_word",
   refund: "bot.ref.word",
   annul_invitation: "bot.inv.revoke_word",
+  delete_promo: "bot.promo.delete_word",
 };
+
+/**
+ * Kinds that may share one word, because the two actions never stand on the
+ * same screen: deleting an event and deleting a promo code (the bot uses the
+ * same word for both). Every other pair must differ.
+ */
+export const SHARED_WORD_KINDS: readonly (readonly [ConfirmKind, ConfirmKind])[] = [["delete_event", "delete_promo"]];
+
+/** True when two different kinds are allowed to take the same word. */
+export function mayShareWord(a: ConfirmKind, b: ConfirmKind): boolean {
+  return SHARED_WORD_KINDS.some(([x, y]) => (a === x && b === y) || (a === y && b === x));
+}
 
 /** The word to show for an action in the person's language. */
 export function confirmWord(kind: ConfirmKind, locale: Locale): string {

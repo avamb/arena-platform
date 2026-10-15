@@ -255,38 +255,3 @@ func seatKeyIndex(g seating.Geometry) map[string]seating.Seat {
 	}
 	return out
 }
-
-// resolveCategoryTiers projects session_seats.tier_id back onto geometry
-// category buckets: the first seat (in ListSessionSeats seat_key order)
-// whose tier_id resolves to a live ticket_tiers row anchors its category.
-// First-seat-wins keeps the resolution stable across renames; seats whose
-// tier_id does not match any row in tiers (e.g. a tier soft-deleted after
-// bind) are skipped so a later seat can still anchor the category.
-func resolveCategoryTiers(
-	g seating.Geometry,
-	seats []gen.SessionSeatRow,
-	tiers []gen.TicketTierRow,
-	seatIdx map[string]seating.Seat,
-) map[int]gen.TicketTierRow {
-	tierByID := make(map[string]gen.TicketTierRow, len(tiers))
-	for _, t := range tiers {
-		tierByID[t.ID.String()] = t
-	}
-	out := make(map[int]gen.TicketTierRow, len(g.Categories))
-	for _, s := range seats {
-		if s.TierID == nil {
-			continue
-		}
-		seat, ok := seatIdx[s.SeatKey]
-		if !ok {
-			continue
-		}
-		if _, already := out[seat.CategoryIndex]; already {
-			continue
-		}
-		if tier, ok := tierByID[s.TierID.String()]; ok {
-			out[seat.CategoryIndex] = tier
-		}
-	}
-	return out
-}
