@@ -53,5 +53,8 @@ func (s *Server) mountMaterialsExtrasRoutes(r chi.Router) {
 		pr.Put(ev+"/photo-report/order", s.orgGated(h.HandleReorderReportPhotos))
 		pr.Patch(ev+"/photo-report/{photo_id}", s.orgGated(h.HandlePatchReportPhoto))
 		pr.Delete(ev+"/photo-report/{photo_id}", s.orgGated(h.HandleDeleteReportPhoto))
+		// Task 1-2c: copy the gallery, videos, partner links and map point of
+		// another event of the same organization onto this one.
+		pr.Post(ev+"/materials/copy-from/{source_event_id}", s.orgGated(h.HandleCopyMaterials))
 	})
 }

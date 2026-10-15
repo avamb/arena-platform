@@ -102,6 +102,10 @@ type hostedPageResponse struct {
 	Promoter *hostedPagePromoterResponse `json:"promoter,omitempty"`
 	// ContactForm is present when the page offers "Write to the organizer".
 	ContactForm *hostedPageContactForm `json:"contact_form,omitempty"`
+	// Materials is the event's gallery, videos, partner links, map point and
+	// (once the event is over) photo report (task 1-2c). Always present;
+	// every list is [] when empty.
+	Materials publicMaterials `json:"materials"`
 }
 
 // hostedPromoterPageResponse is the full JSON envelope for GET
@@ -226,6 +230,7 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 	// page: the form's messages go to the organization's owner only.
 	toOwner := byPromoter || h.eventToOwner(ctx, resolved.OrgID, eventSlug)
 	resp.Seller, resp.Promoter, resp.ContactForm = h.sellerBlocks(ctx, resolved.OrgID, resolved.FeedToken, &resolved.EventID, toOwner)
+	resp.Materials = h.loadPublicMaterials(ctx, resolved.EventID, time.Now().UTC())
 
 	// Venue name(s) are cheap (one aggregate query keyed by event id) and
 	// presentational — a lookup failure must not turn a resolved page into a

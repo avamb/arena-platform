@@ -4308,6 +4308,27 @@ type ConfirmCheckoutRequest struct {
 	TierId *openapi_types.UUID `json:"tier_id"`
 }
 
+// CopyEventMaterialsResponse What `POST .../materials/copy-from/{source_event_id}` copied.
+type CopyEventMaterialsResponse struct {
+	// EventId UUIDv7 of the event that received the materials.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Gallery Gallery photos copied (a photo whose media object was deleted is skipped).
+	Gallery int `json:"gallery"`
+
+	// MapPoint True when the source had a map point and it was copied.
+	MapPoint bool `json:"map_point"`
+
+	// PartnerLinks Partner links copied.
+	PartnerLinks int `json:"partner_links"`
+
+	// SourceEventId UUIDv7 of the event the materials were copied from.
+	SourceEventId openapi_types.UUID `json:"source_event_id"`
+
+	// Videos Video links copied.
+	Videos int `json:"videos"`
+}
+
 // CreateApiKeyRequest Request body for POST /v1/organizations/{org_id}/api-keys.
 type CreateApiKeyRequest struct {
 	// ChannelId Optional sales channel the key speaks for. Events the key
@@ -5695,6 +5716,62 @@ type EventArtistListEnvelope struct {
 	Artists []EventArtist `json:"artists"`
 }
 
+// EventBundleGalleryItem One gallery photo of the event, in the organizer's view.
+type EventBundleGalleryItem struct {
+	// Caption Optional caption, up to 200 characters.
+	Caption *string `json:"caption"`
+
+	// MediaId UUIDv7 of the media object (owner type `event_gallery`) that holds the picture.
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Position Display order, 0 to 5.
+	Position int `json:"position"`
+}
+
+// EventBundleMapPoint The one map point of the event, in the organizer's view.
+type EventBundleMapPoint struct {
+	// Label Optional text shown with the point.
+	Label *string `json:"label"`
+
+	// Latitude Latitude in degrees, -90 to 90.
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in degrees, -180 to 180.
+	Longitude float64 `json:"longitude"`
+}
+
+// EventBundleMaterials The page materials of the event (task 1-2c), read BESIDE the bundles:
+// an import does not read them. A client that copies an event imports
+// the bundles as a new event and then calls
+// `POST .../events/{new_event_id}/materials/copy-from/{event_id}` to
+// move these four lists onto it. The photo report is not listed: it is
+// about a show that already happened and is never copied.
+type EventBundleMaterials struct {
+	// Gallery Gallery photos in display order. Never null.
+	Gallery []EventBundleGalleryItem `json:"gallery"`
+
+	// MapPoint The event's map point, null when it has none.
+	MapPoint *EventBundleMapPoint `json:"map_point"`
+
+	// PartnerLinks Partner links in display order. Never null.
+	PartnerLinks []EventBundlePartnerLink `json:"partner_links"`
+
+	// Videos Video links in display order. Never null.
+	Videos []EventBundleVideo `json:"videos"`
+}
+
+// EventBundlePartnerLink One "where else to buy" link of the event, in the organizer's view.
+type EventBundlePartnerLink struct {
+	// Position Display order, 0 to 2.
+	Position int `json:"position"`
+
+	// SellerName Who sells there.
+	SellerName string `json:"seller_name"`
+
+	// Url The other seller's https page for this event.
+	Url string `json:"url"`
+}
+
 // EventBundleReadResponse Answer of GET /v1/organizations/{org_id}/events/{event_id}/event-bundle
 // (task 3-2): the event read back as `ImportEventBundleRequest`
 // bundles, one per session (the import takes one date per call),
@@ -5730,6 +5807,12 @@ type EventBundleReadResponse struct {
 	// EventId UUIDv7 of the event.
 	EventId openapi_types.UUID `json:"event_id"`
 
+	// Materials The event's gallery, videos, partner links and map point, beside
+	// the bundles (an import does not read them). See
+	// `EventBundleMaterials` and
+	// `POST .../events/{event_id}/materials/copy-from/{source_event_id}`.
+	Materials EventBundleMaterials `json:"materials"`
+
 	// PosterMediaId Media id of the event's poster, null when it has none. The bundles carry no `bigPosterUrl`.
 	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
 
@@ -5761,6 +5844,21 @@ type EventBundleSkipped struct {
 
 	// SessionId UUIDv7 of the session that was left out.
 	SessionId openapi_types.UUID `json:"session_id"`
+}
+
+// EventBundleVideo One video link of the event, in the organizer's view.
+type EventBundleVideo struct {
+	// Position Display order, 0 to 3.
+	Position int `json:"position"`
+
+	// Provider `youtube`, `vimeo`, `rutube` or `https` (a plain link).
+	Provider string `json:"provider"`
+
+	// Url The https link as stored.
+	Url string `json:"url"`
+
+	// VideoId The id parsed out of the link; null for `https`.
+	VideoId *string `json:"video_id"`
 }
 
 // EventContactResponse The organizer contact of an event after PUT .../events/{event_id}/contact.
@@ -6938,6 +7036,11 @@ type HostedPageResponse struct {
 
 	// FeedToken Opaque feed token to pass to the `<arena-tickets>` widget.
 	FeedToken string `json:"feed_token"`
+
+	// Materials The event's gallery, videos, "where else to buy" links, map point
+	// and, once the event is over, its photo report (task 1-2c). Always
+	// present; every list is `[]` when empty.
+	Materials PublicEventMaterials `json:"materials"`
 
 	// Org Public-safe organization branding.
 	Org HostedPageOrg `json:"org"`
@@ -11225,6 +11328,32 @@ type PublicBuyerInfo struct {
 	Phone *string `json:"phone"`
 }
 
+// PublicEventMaterials The materials of an event's page (task 1-2c), the same block on the
+// hosted page (`GET /v1/public/pages/{org_slug}/{event_slug}`) and on
+// the widget feed (`GET /v1/public/feeds/{feed_token}/events/{event_id}`).
+// Always present; every list is `[]` when empty, never null. Read in
+// one query for a live, published event. The organizer edits these under
+// `/v1/organizations/{org_id}/events/{event_id}/…`.
+type PublicEventMaterials struct {
+	// Gallery Gallery photos in display order (at most 6). A photo whose media object was deleted is left out.
+	Gallery []PublicMaterialPhoto `json:"gallery"`
+
+	// MapPoint The event's map point, null when it has none.
+	MapPoint *PublicMaterialMapPoint `json:"map_point"`
+
+	// PartnerLinks "Where else to buy" links in display order (at most 3), each with its seller.
+	PartnerLinks []PublicMaterialPartnerLink `json:"partner_links"`
+
+	// ReportPhotos The photo report in display order (at most 30). Empty until the
+	// event is over: it opens when the end of the event's last live
+	// (not deleted, not cancelled) session has passed, follows a session
+	// that moves, and stays empty for an event without a live session.
+	ReportPhotos []PublicMaterialPhoto `json:"report_photos"`
+
+	// Videos Video links in display order (at most 4).
+	Videos []PublicMaterialVideo `json:"videos"`
+}
+
 // PublicFeedCheckoutQuoteRequest The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
 // (seated `seats`, general-admission `ga_items`, or both) plus the
 // optional promo code. The quote takes no buyer details.
@@ -11376,6 +11505,67 @@ type PublicGAItem struct {
 
 	// TierId UUID of the ticket tier.
 	TierId openapi_types.UUID `json:"tier_id"`
+}
+
+// PublicMaterialMapPoint The one map point of an event, as buyers see it (task 1-2c).
+type PublicMaterialMapPoint struct {
+	// Label Optional text shown with the point.
+	Label *string `json:"label"`
+
+	// Latitude Latitude in degrees, -90 to 90.
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in degrees, -180 to 180.
+	Longitude float64 `json:"longitude"`
+}
+
+// PublicMaterialPartnerLink One "where else to buy" link of an event, as buyers see it (task 1-2c).
+type PublicMaterialPartnerLink struct {
+	// SellerName Who sells there; shown beside the link so the buyer knows.
+	SellerName string `json:"seller_name"`
+
+	// Url The other seller's page for this event; always an https address.
+	Url string `json:"url"`
+}
+
+// PublicMaterialPhoto One picture of an event's gallery or photo report, as buyers see it
+// (task 1-2c).
+type PublicMaterialPhoto struct {
+	// Caption Optional caption, up to 200 characters.
+	Caption *string `json:"caption"`
+
+	// Height Height in pixels when the upload pipeline knew it, else null.
+	Height *int `json:"height"`
+
+	// MediaId UUIDv7 of the media object that holds the picture.
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Url Absolute signed address of the picture (the same mechanism as the
+	// poster and the logo of the page); host-relative only on a
+	// deployment without media storage.
+	Url string `json:"url"`
+
+	// Width Width in pixels when the upload pipeline knew it, else null.
+	Width *int `json:"width"`
+}
+
+// PublicMaterialVideo One video link of an event, as buyers see it (task 1-2c).
+type PublicMaterialVideo struct {
+	// EmbedUrl Address for an iframe: `https://www.youtube-nocookie.com/embed/<id>`,
+	// `https://player.vimeo.com/video/<id>` or
+	// `https://rutube.ru/play/embed/<id>`. Null for `https`, which has
+	// no embed.
+	EmbedUrl *string `json:"embed_url"`
+
+	// Provider Where the video lives: `youtube`, `vimeo`, `rutube`, or `https`
+	// (any other https page, shown as a plain link).
+	Provider string `json:"provider"`
+
+	// Url The original https link the organizer pasted.
+	Url string `json:"url"`
+
+	// VideoId The id parsed out of the link; null for `https`.
+	VideoId *string `json:"video_id"`
 }
 
 // PublishEventRequest Request body for `POST /v1/events/{event_id}/publications`.

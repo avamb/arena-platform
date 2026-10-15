@@ -7304,9 +7304,131 @@ components:
           description: Promoter display name.
           example: "Cultura Viva"
 
+    PublicMaterialPhoto:
+      type: object
+      required: [media_id, url, caption, width, height]
+      description: |
+        One picture of an event's gallery or photo report, as buyers see it
+        (task 1-2c).
+      properties:
+        media_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the media object that holds the picture.
+        url:
+          type: string
+          description: |
+            Absolute signed address of the picture (the same mechanism as the
+            poster and the logo of the page); host-relative only on a
+            deployment without media storage.
+        caption:
+          type: [string, "null"]
+          description: Optional caption, up to 200 characters.
+        width:
+          type: [integer, "null"]
+          description: Width in pixels when the upload pipeline knew it, else null.
+        height:
+          type: [integer, "null"]
+          description: Height in pixels when the upload pipeline knew it, else null.
+
+    PublicMaterialVideo:
+      type: object
+      required: [provider, video_id, embed_url, url]
+      description: One video link of an event, as buyers see it (task 1-2c).
+      properties:
+        provider:
+          type: string
+          description: |
+            Where the video lives: `youtube`, `vimeo`, `rutube`, or `https`
+            (any other https page, shown as a plain link).
+          example: youtube
+        video_id:
+          type: [string, "null"]
+          description: The id parsed out of the link; null for `https`.
+        embed_url:
+          type: [string, "null"]
+          description: |
+            Address for an iframe: `https://www.youtube-nocookie.com/embed/<id>`,
+            `https://player.vimeo.com/video/<id>` or
+            `https://rutube.ru/play/embed/<id>`. Null for `https`, which has
+            no embed.
+        url:
+          type: string
+          description: The original https link the organizer pasted.
+
+    PublicMaterialPartnerLink:
+      type: object
+      required: [url, seller_name]
+      description: One "where else to buy" link of an event, as buyers see it (task 1-2c).
+      properties:
+        url:
+          type: string
+          description: The other seller's page for this event; always an https address.
+        seller_name:
+          type: string
+          description: Who sells there; shown beside the link so the buyer knows.
+
+    PublicMaterialMapPoint:
+      type: object
+      required: [latitude, longitude, label]
+      description: The one map point of an event, as buyers see it (task 1-2c).
+      properties:
+        latitude:
+          type: number
+          format: double
+          description: Latitude in degrees, -90 to 90.
+        longitude:
+          type: number
+          format: double
+          description: Longitude in degrees, -180 to 180.
+        label:
+          type: [string, "null"]
+          description: Optional text shown with the point.
+
+    PublicEventMaterials:
+      type: object
+      required: [gallery, videos, partner_links, map_point, report_photos]
+      description: |
+        The materials of an event's page (task 1-2c), the same block on the
+        hosted page (`GET /v1/public/pages/{org_slug}/{event_slug}`) and on
+        the widget feed (`GET /v1/public/feeds/{feed_token}/events/{event_id}`).
+        Always present; every list is `[]` when empty, never null. Read in
+        one query for a live, published event. The organizer edits these under
+        `/v1/organizations/{org_id}/events/{event_id}/…`.
+      properties:
+        gallery:
+          type: array
+          description: Gallery photos in display order (at most 6). A photo whose media object was deleted is left out.
+          items:
+            $ref: "#/components/schemas/PublicMaterialPhoto"
+        videos:
+          type: array
+          description: Video links in display order (at most 4).
+          items:
+            $ref: "#/components/schemas/PublicMaterialVideo"
+        partner_links:
+          type: array
+          description: '"Where else to buy" links in display order (at most 3), each with its seller.'
+          items:
+            $ref: "#/components/schemas/PublicMaterialPartnerLink"
+        map_point:
+          description: The event's map point, null when it has none.
+          oneOf:
+            - $ref: "#/components/schemas/PublicMaterialMapPoint"
+            - type: "null"
+        report_photos:
+          type: array
+          description: |
+            The photo report in display order (at most 30). Empty until the
+            event is over: it opens when the end of the event's last live
+            (not deleted, not cancelled) session has passed, follows a session
+            that moves, and stays empty for an event without a live session.
+          items:
+            $ref: "#/components/schemas/PublicMaterialPhoto"
+
     HostedPageResponse:
       type: object
-      required: [org, event, feed_token, default_locale]
+      required: [org, event, feed_token, default_locale, materials]
       description: |
         Response envelope for GET /v1/public/pages/{org_slug}/{event_slug} —
         the resolver behind the shared hosted sales page
@@ -7353,6 +7475,13 @@ components:
             without a public e-mail link this form as <page>#contact.
           allOf:
             - $ref: "#/components/schemas/HostedPageContactForm"
+        materials:
+          description: |
+            The event's gallery, videos, "where else to buy" links, map point
+            and, once the event is over, its photo report (task 1-2c). Always
+            present; every list is `[]` when empty.
+          allOf:
+            - $ref: "#/components/schemas/PublicEventMaterials"
 
     HostedPromoterPageResponse:
       type: object
@@ -15437,6 +15566,124 @@ components:
         message:
           type: string
           description: Human-readable explanation of the reason.
+    EventBundleGalleryItem:
+      type: object
+      required: [media_id, caption, position]
+      description: One gallery photo of the event, in the organizer's view.
+      properties:
+        media_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the media object (owner type `event_gallery`) that holds the picture.
+        caption:
+          type: [string, "null"]
+          description: Optional caption, up to 200 characters.
+        position:
+          type: integer
+          description: Display order, 0 to 5.
+    EventBundleVideo:
+      type: object
+      required: [provider, video_id, url, position]
+      description: One video link of the event, in the organizer's view.
+      properties:
+        provider:
+          type: string
+          description: "`youtube`, `vimeo`, `rutube` or `https` (a plain link)."
+        video_id:
+          type: [string, "null"]
+          description: The id parsed out of the link; null for `https`.
+        url:
+          type: string
+          description: The https link as stored.
+        position:
+          type: integer
+          description: Display order, 0 to 3.
+    EventBundlePartnerLink:
+      type: object
+      required: [url, seller_name, position]
+      description: One "where else to buy" link of the event, in the organizer's view.
+      properties:
+        url:
+          type: string
+          description: The other seller's https page for this event.
+        seller_name:
+          type: string
+          description: Who sells there.
+        position:
+          type: integer
+          description: Display order, 0 to 2.
+    EventBundleMapPoint:
+      type: object
+      required: [latitude, longitude, label]
+      description: The one map point of the event, in the organizer's view.
+      properties:
+        latitude:
+          type: number
+          format: double
+          description: Latitude in degrees, -90 to 90.
+        longitude:
+          type: number
+          format: double
+          description: Longitude in degrees, -180 to 180.
+        label:
+          type: [string, "null"]
+          description: Optional text shown with the point.
+    EventBundleMaterials:
+      type: object
+      required: [gallery, videos, partner_links, map_point]
+      description: |
+        The page materials of the event (task 1-2c), read BESIDE the bundles:
+        an import does not read them. A client that copies an event imports
+        the bundles as a new event and then calls
+        `POST .../events/{new_event_id}/materials/copy-from/{event_id}` to
+        move these four lists onto it. The photo report is not listed: it is
+        about a show that already happened and is never copied.
+      properties:
+        gallery:
+          type: array
+          description: Gallery photos in display order. Never null.
+          items:
+            $ref: "#/components/schemas/EventBundleGalleryItem"
+        videos:
+          type: array
+          description: Video links in display order. Never null.
+          items:
+            $ref: "#/components/schemas/EventBundleVideo"
+        partner_links:
+          type: array
+          description: Partner links in display order. Never null.
+          items:
+            $ref: "#/components/schemas/EventBundlePartnerLink"
+        map_point:
+          description: The event's map point, null when it has none.
+          oneOf:
+            - $ref: "#/components/schemas/EventBundleMapPoint"
+            - type: "null"
+    CopyEventMaterialsResponse:
+      type: object
+      required: [event_id, source_event_id, gallery, videos, partner_links, map_point]
+      description: What `POST .../materials/copy-from/{source_event_id}` copied.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the event that received the materials.
+        source_event_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the event the materials were copied from.
+        gallery:
+          type: integer
+          description: Gallery photos copied (a photo whose media object was deleted is skipped).
+        videos:
+          type: integer
+          description: Video links copied.
+        partner_links:
+          type: integer
+          description: Partner links copied.
+        map_point:
+          type: boolean
+          description: True when the source had a map point and it was copied.
     EventBundleReadResponse:
       type: object
       description: |
@@ -15475,11 +15722,20 @@ components:
         - bundles
         - skipped
         - warnings
+        - materials
       properties:
         event_id:
           type: string
           format: uuid
           description: UUIDv7 of the event.
+        materials:
+          description: |
+            The event's gallery, videos, partner links and map point, beside
+            the bundles (an import does not read them). See
+            `EventBundleMaterials` and
+            `POST .../events/{event_id}/materials/copy-from/{source_event_id}`.
+          allOf:
+            - $ref: "#/components/schemas/EventBundleMaterials"
         status:
           type: string
           description: The event's own status (`draft`, `published`, `cancelled` or `archived`). A draft event is readable.
@@ -27541,6 +27797,95 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/events/{event_id}/materials/copy-from/{source_event_id}:
+    post:
+      operationId: copyEventMaterials
+      summary: Copy the page materials of another event onto this one
+      description: |
+        Task 1-2c. Copies the gallery photos, video links, partner links and
+        the map point of the SOURCE event (`source_event_id`) onto the event in
+        the path, which must hold none of them (409 `event.materials_not_empty`;
+        that also makes a repeated call harmless: the second one finds the
+        first one's rows and refuses). The photo report is not copied: it is
+        about a show that already happened. Gallery rows keep the same media
+        object as the source (nothing ties a media object to one event, and
+        removing a photo from one event never deletes it), a photo whose media
+        object was deleted is skipped, and positions are renumbered from 0.
+        Both events must be live events of the organization in the path; the
+        route is for the client-side "copy an event" flow: read the source with
+        GET .../event-bundle, import its bundles as a new event, then call this.
+        Runs in one transaction under the target's materials locks and writes
+        one audit event (`v1.event.materials.copy`). Requires `event.update` and
+        membership of the organization.
+      tags: [v1, events]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event that receives the materials.
+          schema: { type: string, format: uuid }
+        - name: source_event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event the materials are copied from.
+          schema: { type: string, format: uuid }
+      responses:
+        "201":
+          description: The materials were copied; the counts say how many rows of each list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopyEventMaterialsResponse"
+        "400":
+          description: The source is the event itself (`event.materials_copy_same_event`), or org_id or event_id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The target or the source is not a live event of this organization, or the source id is not a UUID (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The target event already has gallery photos, videos, partner links or a map point (`event.materials_not_empty`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/events/{event_id}/event-bundle:
     get:
       operationId: getEventBundle
@@ -37420,7 +37765,22 @@ paths:
                 required: [event]
                 properties:
                   event:
-                    $ref: "#/components/schemas/EventItem"
+                    description: |
+                      The event with its sessions and, since task 1-2c, a
+                      `materials` block (see `PublicEventMaterials`): gallery,
+                      videos, "where else to buy" links, map point and the
+                      photo report (empty until the event is over). The block
+                      is the same as on the hosted page.
+                    allOf:
+                      - $ref: "#/components/schemas/EventItem"
+                      - type: object
+                        required: [materials]
+                        description: Fields added to the event on this route.
+                        properties:
+                          materials:
+                            description: The event's page materials; every list is `[]` when empty.
+                            allOf:
+                              - $ref: "#/components/schemas/PublicEventMaterials"
         "404":
           description: Event not found or not published to this feed token.
           content:
