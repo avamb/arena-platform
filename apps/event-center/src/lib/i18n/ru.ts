@@ -741,6 +741,8 @@ export const ru: Record<MessageKey, string> = {
   "apiError.sellerHideOperatorOnly.next": "Если это нужно изменить, напишите оператору платформы.",
   "apiError.kybOperatorOnly.title": "Статус проверки меняет только оператор платформы.",
   "apiError.kybOperatorOnly.next": "Вы можете попросить проверку. Напишите оператору платформы.",
+  "apiError.legalNameRequired.title": "Юридическое название нельзя очистить, пока организация проходит проверку.",
+  "apiError.legalNameRequired.next": "Оставьте юридическое название или напишите оператору платформы, если его нужно сменить. Ничего не сохранено.",
   // 4-5
   "nav.team": "Команда",
   "team.title": "Команда",

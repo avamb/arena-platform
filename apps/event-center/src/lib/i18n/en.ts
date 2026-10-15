@@ -741,6 +741,8 @@ export const en = {
   "apiError.sellerHideOperatorOnly.next": "Write to the platform operator if this should change.",
   "apiError.kybOperatorOnly.title": "Only the platform operator can change the verification status.",
   "apiError.kybOperatorOnly.next": "You can ask for a review. Write to the platform operator.",
+  "apiError.legalNameRequired.title": "The legal name cannot be empty while the organization is under verification.",
+  "apiError.legalNameRequired.next": "Keep the legal name, or write to the platform operator if it must change. Nothing was saved.",
   // 4-5
   "nav.team": "Team",
   "team.title": "Team",

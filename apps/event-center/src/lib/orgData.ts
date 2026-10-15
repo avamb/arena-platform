@@ -89,7 +89,7 @@ export function normalizePhone(raw: string): string | null {
   return digits >= 6 && digits <= 15 ? v : null;
 }
 
-const PERSONAL_DOMAINS = new Set([
+export const PERSONAL_DOMAINS = new Set([
   "gmail.com", "googlemail.com",
   "inbox.ru", "mail.ru", "bk.ru", "list.ru", "internet.ru",
   "yandex.ru", "yandex.com", "yandex.by", "yandex.kz", "ya.ru",

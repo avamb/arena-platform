@@ -105,6 +105,7 @@ export type ApiErrorStem =
   | "apiKeyForbidden"
   | "sellerHideOperatorOnly"
   | "kybOperatorOnly"
+  | "legalNameRequired"
   // 4-5
   | "resendTooSoon"
   | "invitationChannel"
@@ -123,7 +124,7 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "promoRateLimited", "promoDuplicate", "eventHasPaidOrders",
   // 4-7
   "taxIdInvalid", "legalCountryInvalid", "legalFormInvalid", "emailInvalid", "phoneInvalid", "sellerIncomplete",
-  "apiKeyForbidden", "sellerHideOperatorOnly", "kybOperatorOnly",
+  "apiKeyForbidden", "sellerHideOperatorOnly", "kybOperatorOnly", "legalNameRequired",
   // 4-5
   "resendTooSoon", "invitationChannel", "webInvitationOff", "invitationClosed", "memberGone", "roleNotAllowed",
 ];
@@ -172,6 +173,7 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "org.identity_fields_api_key_forbidden": "apiKeyForbidden",
   "seller.hide_superadmin_only": "sellerHideOperatorOnly",
   "org.kyb_status_superadmin_only": "kybOperatorOnly",
+  "org.legal_name_required": "legalNameRequired",
   "seller.channel_not_found": "notFound",
   // 4-5: the team and its invitations (bot.* routes, DELETE members)
   "bot.invitation_resend_too_soon": "resendTooSoon",

@@ -741,6 +741,8 @@ export const es: Record<MessageKey, string> = {
   "apiError.sellerHideOperatorOnly.next": "Si esto debe cambiar, escribe al operador de la plataforma.",
   "apiError.kybOperatorOnly.title": "Solo el operador de la plataforma puede cambiar el estado de verificación.",
   "apiError.kybOperatorOnly.next": "Puedes pedir una revisión. Escribe al operador de la plataforma.",
+  "apiError.legalNameRequired.title": "El nombre legal no puede quedar vacío mientras la organización está en verificación.",
+  "apiError.legalNameRequired.next": "Mantén el nombre legal o escribe al operador de la plataforma si debe cambiar. No se guardó nada.",
   // 4-5
   "nav.team": "Equipo",
   "team.title": "Equipo",
