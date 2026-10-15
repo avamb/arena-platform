@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -112,10 +113,9 @@ func (h *Handler) HandleGetPublicSessionSchema(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Resolve category -> tier by inspecting session_seats: any seat that
-	// carries a resolvable tier_id anchors the category. First-seat-wins
-	// keeps the resolution stable across renames (shared helper in
-	// types.go, also used by the BSS layout.svg renderer).
+	// Resolve every seat's category from its own session_seats.tier_id
+	// (S1a, seat_categories.go - shared with the BSS layout.svg and the
+	// Bil24 image renderers).
 	seats, err := h.queries.ListSessionSeats(ctx, sessionID)
 	if err != nil {
 		h.logger.Error("seating_public: list session seats failed",
@@ -141,7 +141,7 @@ func (h *Handler) HandleGetPublicSessionSchema(w http.ResponseWriter, r *http.Re
 		))
 		return
 	}
-	categoryToTier := resolveCategoryTiers(geom, seats, tiers, seatKeyIndex(geom))
+	res := resolveSeatCategories(geom, seats, tiers, seatKeyIndex(geom))
 
 	// AB-48: resolve scheduled prices once for all tiers (ONE resolver).
 	effPrices, err := priceresolve.ForTiers(ctx, h.queries, tiers, time.Now().UTC())
@@ -156,33 +156,7 @@ func (h *Handler) HandleGetPublicSessionSchema(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	categories := make([]map[string]any, 0, len(geom.Categories))
-	for _, cat := range geom.Categories {
-		entry := map[string]any{
-			"index":         cat.Index,
-			"name":          cat.Name,
-			"color":         cat.Color,
-			"price_hint":    cat.PriceHint,
-			"currency_hint": cat.CurrencyHint,
-		}
-		if tier, hasTier := categoryToTier[cat.Index]; hasTier {
-			entry["tier_id"] = tier.ID.String()
-			entry["tier_name"] = tier.Name
-			entry["pricing_mode"] = tier.PricingMode
-			entry["price_amount"] = tier.PriceAmount
-			entry["currency"] = tier.Currency
-			// AB-48: effective (scheduled) price + next change for the widget.
-			entry["current_price"] = tier.PriceAmount
-			entry["next_price_change_at"] = nil
-			if eff, ok := effPrices[tier.ID]; ok {
-				entry["current_price"] = eff.Amount
-				if eff.NextChangeAt != nil {
-					entry["next_price_change_at"] = eff.NextChangeAt.UTC().Format(time.RFC3339)
-				}
-			}
-		}
-		categories = append(categories, entry)
-	}
+	categories, extraCategories := buildCategoryOverlay(geom, res, effPrices)
 
 	sessSeatVersion := schemaRow.SeatStatusVersion
 	planVersionID := ""
@@ -200,8 +174,71 @@ func (h *Handler) HandleGetPublicSessionSchema(w http.ResponseWriter, r *http.Re
 		"capacity_standing":       schemaRow.CapacityStanding,
 		"geometry":                json.RawMessage(schemaRow.Geometry),
 		"category_prices":         categories,
+		// S1a: per-seat truth. seat_category_index maps seat_key to the
+		// category index (a category_prices or extra_categories entry)
+		// that carries the seat's own session_seats.tier_id, ONLY for seats
+		// whose category differs from geometry.seats[].category_index.
+		// The geometry itself stays byte-for-byte the stored one.
+		"seat_category_index": res.SeatIndex,
+		"extra_categories":    extraCategories,
 	}
 	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+// buildCategoryOverlay builds the `category_prices` and `extra_categories`
+// arrays of the /schema response from the per-seat resolution (S1a).
+// category_prices keeps one entry per plan category in geometry order;
+// extra_categories lists the synthetic categories of tiers that carry
+// repainted seats but are the home tier of no plan category. Pure, so the
+// response shape is unit-testable without a database.
+func buildCategoryOverlay(
+	geom seating.Geometry,
+	res seatCategoryResolution,
+	effPrices map[uuid.UUID]priceresolve.Effective,
+) (categories, extraCategories []map[string]any) {
+	applyTier := func(entry map[string]any, tier gen.TicketTierRow) {
+		entry["tier_id"] = tier.ID.String()
+		entry["tier_name"] = tier.Name
+		entry["pricing_mode"] = tier.PricingMode
+		entry["price_amount"] = tier.PriceAmount
+		entry["currency"] = tier.Currency
+		// AB-48: effective (scheduled) price + next change for the widget.
+		entry["current_price"] = tier.PriceAmount
+		entry["next_price_change_at"] = nil
+		if eff, ok := effPrices[tier.ID]; ok {
+			entry["current_price"] = eff.Amount
+			if eff.NextChangeAt != nil {
+				entry["next_price_change_at"] = eff.NextChangeAt.UTC().Format(time.RFC3339)
+			}
+		}
+	}
+	categories = make([]map[string]any, 0, len(geom.Categories))
+	for _, cat := range geom.Categories {
+		entry := map[string]any{
+			"index":         cat.Index,
+			"name":          cat.Name,
+			"color":         cat.Color,
+			"price_hint":    cat.PriceHint,
+			"currency_hint": cat.CurrencyHint,
+		}
+		if tier, hasTier := res.Home[cat.Index]; hasTier {
+			applyTier(entry, tier)
+		}
+		categories = append(categories, entry)
+	}
+	extraCategories = make([]map[string]any, 0, len(res.Extra))
+	for _, e := range res.Extra {
+		entry := map[string]any{
+			"index":         e.Index,
+			"name":          e.Tier.Name,
+			"color":         e.Color,
+			"price_hint":    "",
+			"currency_hint": "",
+		}
+		applyTier(entry, e.Tier)
+		extraCategories = append(extraCategories, entry)
+	}
+	return categories, extraCategories
 }
 
 // HandleGetPublicSessionSeatStatus serves both the full snapshot and the
