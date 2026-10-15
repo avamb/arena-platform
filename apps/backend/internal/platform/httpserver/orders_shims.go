@@ -48,6 +48,14 @@ func (s *Server) handleOrderConsents(w http.ResponseWriter, r *http.Request) {
 	s.ordersHandler().HandleConsents(w, r)
 }
 
+// handleOrderLetterInteractions serves GET .../orders/{order_id}/letter-interactions (U-7).
+func (s *Server) handleOrderLetterInteractions(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.ordersHandler().HandleLetterInteractions(w, r)
+}
+
 func (s *Server) handleSessionSummary(w http.ResponseWriter, r *http.Request) {
 	if !s.enforceOrgMembership(w, r, "org_id") {
 		return

@@ -326,17 +326,19 @@ func Apply(ctx context.Context, txb TxBeginner, ev ProviderEvent) (Outcome, erro
 // logInteraction keeps every open, proxy open and click with its own time
 // (email_letter_events keeps only the first and last of each type). A
 // redelivered event is the same row (unique on letter, event, time, link).
+// The reader's user agent is stored here and nowhere else (migration 0156):
+// not in email_letter_events.payload, not in any log line.
 func logInteraction(ctx context.Context, tx pgx.Tx, letterID uuid.UUID, ev ProviderEvent) error {
 	switch ev.Event {
 	case EventOpened, EventProxyOpen, EventClick:
 	default:
 		return nil
 	}
-	_, err := tx.Exec(ctx, `INSERT INTO email_letter_interactions (letter_id, event, occurred_at, link)
-		SELECT $1, $2, $3, $4
+	_, err := tx.Exec(ctx, `INSERT INTO email_letter_interactions (letter_id, event, occurred_at, link, user_agent)
+		SELECT $1, $2, $3, $4, $6
 		WHERE (SELECT count(*) FROM email_letter_interactions WHERE letter_id = $1) < $5
 		ON CONFLICT DO NOTHING`,
-		letterID, ev.Event, ev.At, nonEmpty(ev.Link), maxInteractionsPerLetter)
+		letterID, ev.Event, ev.At, nonEmpty(ev.Link), maxInteractionsPerLetter, nonEmpty(ev.UserAgent))
 	if err != nil {
 		return fmt.Errorf("emailstatus: log interaction: %w", err)
 	}

@@ -7477,6 +7477,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/orders/{order_id}/letter-interactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The opens and clicks of an order's letters
+         * @description Lists, for each letter that left arena for this order (ticket, change,
+         *     cancellation and refund letters), every open, proxy open and click
+         *     Brevo reported with its time and the reader's user agent (U-7,
+         *     `email_letter_interactions`). This is dispute (chargeback) evidence
+         *     and the only route that answers the user agent; it is kept with the
+         *     letter, at least 24 and at most 36 months from the event date.
+         *     Brevo's webhook carries no reader IP address, so none is answered.
+         *     Requires the `order.read` permission. An order of another
+         *     organization answers the route's own 404 `orders.not_found`. Only
+         *     people read it: a member of the organization or the platform
+         *     superadmin; an organization API key is refused (403
+         *     `orders.letter_interactions_api_key_forbidden`).
+         */
+        get: operations["getV1OrganizationsOrgIdOrdersOrderIdLetterInteractions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/orders/{order_id}/refund-options": {
         parameters: {
             query?: never;
@@ -18744,6 +18775,56 @@ export interface components {
             order_id: string;
             /** @description The consents, oldest first; empty when the order was bought without one. */
             consents: components["schemas"]["OrderConsentItem"][];
+        };
+        /** @description One open, proxy open or click Brevo reported on a letter (U-7). Dispute evidence; personal data. */
+        LetterInteractionItem: {
+            /**
+             * @description What happened, `opened`, `proxy_open` or `click`. A proxy open (a mail client that pre-loads images) proves delivery, not reading.
+             * @example opened
+             */
+            event: string;
+            /**
+             * Format: date-time
+             * @description When the provider says it happened (RFC 3339, UTC).
+             */
+            occurred_at: string;
+            /**
+             * @description The clicked link, scheme, host and path only (long token-like segments replaced by `{token}`); null for an open.
+             * @example https://tickets.example.com/t/{token}
+             */
+            link: string | null;
+            /** @description The reader's mail client or browser string as Brevo reported it (at most 512 characters); null when the event carried none. Brevo sends no reader IP address. */
+            user_agent: string | null;
+        };
+        /** @description One letter of an order with every interaction reported on it (U-7). */
+        LetterInteractionsItem: {
+            /**
+             * Format: uuid
+             * @description The letter, the same id as `letters[].id` of the order card.
+             */
+            letter_id: string;
+            /**
+             * @description The letter kind, `ticket`, `change`, `cancel` or `refund`.
+             * @example ticket
+             */
+            kind: string;
+            /**
+             * Format: date-time
+             * @description When the letter was handed to the mail relay (RFC 3339, UTC).
+             */
+            sent_at: string;
+            /** @description Every open, proxy open and click of the letter, oldest first; empty when none was reported. */
+            interactions: components["schemas"]["LetterInteractionItem"][];
+        };
+        /** @description The opens and clicks of one order's letters (U-7). */
+        OrderLetterInteractionsResponse: {
+            /**
+             * Format: uuid
+             * @description The order.
+             */
+            order_id: string;
+            /** @description The order's letters that left arena, oldest first; empty when none did. */
+            letters: components["schemas"]["LetterInteractionsItem"][];
         };
         PublicFeedCheckoutStartResponse: {
             /** @description The created checkout session with pricing snapshot and state. */
@@ -49715,6 +49796,85 @@ export interface operations {
                 };
             };
             /** @description Actor does not hold the required permission (`order.read`), is not a member of the organization, or is an organization API key (`orders.consents_api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization (`orders.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`orders.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Orders are not available (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdOrdersOrderIdLetterInteractions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The order's letters with their interactions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderLetterInteractionsResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`), is not a member of the organization, or is an organization API key (`orders.letter_interactions_api_key_forbidden`). */
             403: {
                 headers: {
                     [name: string]: unknown;

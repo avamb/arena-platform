@@ -7928,6 +7928,36 @@ type InventoryRowItem struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// LetterInteractionItem One open, proxy open or click Brevo reported on a letter (U-7). Dispute evidence; personal data.
+type LetterInteractionItem struct {
+	// Event What happened, `opened`, `proxy_open` or `click`. A proxy open (a mail client that pre-loads images) proves delivery, not reading.
+	Event string `json:"event"`
+
+	// Link The clicked link, scheme, host and path only (long token-like segments replaced by `{token}`); null for an open.
+	Link *string `json:"link"`
+
+	// OccurredAt When the provider says it happened (RFC 3339, UTC).
+	OccurredAt time.Time `json:"occurred_at"`
+
+	// UserAgent The reader's mail client or browser string as Brevo reported it (at most 512 characters); null when the event carried none. Brevo sends no reader IP address.
+	UserAgent *string `json:"user_agent"`
+}
+
+// LetterInteractionsItem One letter of an order with every interaction reported on it (U-7).
+type LetterInteractionsItem struct {
+	// Interactions Every open, proxy open and click of the letter, oldest first; empty when none was reported.
+	Interactions []LetterInteractionItem `json:"interactions"`
+
+	// Kind The letter kind, `ticket`, `change`, `cancel` or `refund`.
+	Kind string `json:"kind"`
+
+	// LetterId The letter, the same id as `letters[].id` of the order card.
+	LetterId openapi_types.UUID `json:"letter_id"`
+
+	// SentAt When the letter was handed to the mail relay (RFC 3339, UTC).
+	SentAt time.Time `json:"sent_at"`
+}
+
 // MACSActionEvent Denormalized event context on every MACS ticket.
 type MACSActionEvent struct {
 	// ActionLegalOwner Legal name of the organizing entity (org.legal_name or org.name).
@@ -9579,6 +9609,15 @@ type OrderLetter struct {
 
 	// TicketIds Tickets the letter carries (empty for change, cancellation and refund letters).
 	TicketIds []openapi_types.UUID `json:"ticket_ids"`
+}
+
+// OrderLetterInteractionsResponse The opens and clicks of one order's letters (U-7).
+type OrderLetterInteractionsResponse struct {
+	// Letters The order's letters that left arena, oldest first; empty when none did.
+	Letters []LetterInteractionsItem `json:"letters"`
+
+	// OrderId The order.
+	OrderId openapi_types.UUID `json:"order_id"`
 }
 
 // OrderListItem defines model for OrderListItem.

@@ -12042,6 +12042,65 @@ components:
           items:
             $ref: "#/components/schemas/OrderConsentItem"
 
+    LetterInteractionItem:
+      type: object
+      required: [event, occurred_at, link, user_agent]
+      description: One open, proxy open or click Brevo reported on a letter (U-7). Dispute evidence; personal data.
+      properties:
+        event:
+          type: string
+          description: What happened, `opened`, `proxy_open` or `click`. A proxy open (a mail client that pre-loads images) proves delivery, not reading.
+          example: "opened"
+        occurred_at:
+          type: string
+          format: date-time
+          description: When the provider says it happened (RFC 3339, UTC).
+        link:
+          type: [string, "null"]
+          description: The clicked link, scheme, host and path only (long token-like segments replaced by `{token}`); null for an open.
+          example: "https://tickets.example.com/t/{token}"
+        user_agent:
+          type: [string, "null"]
+          description: The reader's mail client or browser string as Brevo reported it (at most 512 characters); null when the event carried none. Brevo sends no reader IP address.
+
+    LetterInteractionsItem:
+      type: object
+      required: [letter_id, kind, sent_at, interactions]
+      description: One letter of an order with every interaction reported on it (U-7).
+      properties:
+        letter_id:
+          type: string
+          format: uuid
+          description: The letter, the same id as `letters[].id` of the order card.
+        kind:
+          type: string
+          description: The letter kind, `ticket`, `change`, `cancel` or `refund`.
+          example: "ticket"
+        sent_at:
+          type: string
+          format: date-time
+          description: When the letter was handed to the mail relay (RFC 3339, UTC).
+        interactions:
+          type: array
+          description: Every open, proxy open and click of the letter, oldest first; empty when none was reported.
+          items:
+            $ref: "#/components/schemas/LetterInteractionItem"
+
+    OrderLetterInteractionsResponse:
+      type: object
+      required: [order_id, letters]
+      description: The opens and clicks of one order's letters (U-7).
+      properties:
+        order_id:
+          type: string
+          format: uuid
+          description: The order.
+        letters:
+          type: array
+          description: The order's letters that left arena, oldest first; empty when none did.
+          items:
+            $ref: "#/components/schemas/LetterInteractionsItem"
+
     PublicFeedCheckoutStartResponse:
       type: object
       required: [checkout_session, redirect_url, checkout_token, expires_at]
@@ -43646,6 +43705,81 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Actor does not hold the required permission (`order.read`), is not a member of the organization, or is an organization API key (`orders.consents_api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Order not found, or not linked to this organization (`orders.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`orders.internal`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Orders are not available (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/orders/{order_id}/letter-interactions:
+    get:
+      operationId: getV1OrganizationsOrgIdOrdersOrderIdLetterInteractions
+      summary: The opens and clicks of an order's letters
+      description: |
+        Lists, for each letter that left arena for this order (ticket, change,
+        cancellation and refund letters), every open, proxy open and click
+        Brevo reported with its time and the reader's user agent (U-7,
+        `email_letter_interactions`). This is dispute (chargeback) evidence
+        and the only route that answers the user agent; it is kept with the
+        letter, at least 24 and at most 36 months from the event date.
+        Brevo's webhook carries no reader IP address, so none is answered.
+        Requires the `order.read` permission. An order of another
+        organization answers the route's own 404 `orders.not_found`. Only
+        people read it: a member of the organization or the platform
+        superadmin; an organization API key is refused (403
+        `orders.letter_interactions_api_key_forbidden`).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: order_id
+          in: path
+          required: true
+          description: UUIDv7 of the order
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The order's letters with their interactions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderLetterInteractionsResponse"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`order.read`), is not a member of the organization, or is an organization API key (`orders.letter_interactions_api_key_forbidden`).
           content:
             application/json:
               schema:
