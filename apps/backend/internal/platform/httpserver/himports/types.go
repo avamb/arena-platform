@@ -232,6 +232,22 @@ func (s *warningSink) add(code, message string) {
 	s.items = append(s.items, Warning{Code: code, Message: message})
 }
 
+// drop removes the warning with code, if any. The dry run uses it to
+// withhold a warning built from another organization's row.
+func (s *warningSink) drop(code string) {
+	if _, ok := s.seen[code]; !ok {
+		return
+	}
+	delete(s.seen, code)
+	kept := s.items[:0]
+	for _, w := range s.items {
+		if w.Code != code {
+			kept = append(kept, w)
+		}
+	}
+	s.items = kept
+}
+
 // list returns the accumulated warnings, never nil — the response contract
 // promises an array.
 func (s *warningSink) list() []Warning {

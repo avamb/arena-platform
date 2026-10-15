@@ -169,7 +169,7 @@ func (h *Handler) runDryImport(w http.ResponseWriter, r *http.Request, prep prep
 		if prep.plan.Source == bil24compat.SourceArena {
 			facts = h.checkArenaReferences(ctx, q, tx, prep, warnings, issues)
 		} else {
-			facts = h.checkBil24References(ctx, q, tx, prep, issues)
+			facts = h.checkBil24References(ctx, q, tx, prep, warnings, issues)
 		}
 		if issues.empty() {
 			if _, err := h.executorFor(prep.plan.Source)(ctx, q, tx, prep.plan, warnings); err != nil {
@@ -323,13 +323,22 @@ func (h *Handler) checkArenaReferences(ctx context.Context, q *gen.Queries, tx p
 
 // checkBil24References is stage 2 for source=bil24: the venue, event and
 // session the payload's ids map to, each looked up on its own.
-func (h *Handler) checkBil24References(ctx context.Context, q *gen.Queries, tx pgx.Tx, prep preparedImport, issues *issueSink) dryFacts {
+func (h *Handler) checkBil24References(ctx context.Context, q *gen.Queries, tx pgx.Tx, prep preparedImport, warnings *warningSink, issues *issueSink) dryFacts {
 	plan := prep.plan
 	var f dryFacts
 	f.loc = prep.loc
 
-	if _, _, err := findBil24Venue(ctx, q, plan); err != nil && issues.add(err) {
-		return f
+	if _, _, err := findBil24Venue(ctx, q, plan); err != nil {
+		// Stage 1 read the zone of the venue this Bil24 id belongs to. When
+		// that venue is another organization's, or could not be checked,
+		// nothing learned from it may reach the report: no venue_timezone
+		// default and no "venue keeps its stored timezone" warning. The
+		// import itself answers the 409 alone and shows neither.
+		f.loc = nil
+		warnings.drop(WarnVenueTimezoneKept)
+		if issues.add(err) {
+			return f
+		}
 	}
 	eventID, err := findBil24Event(ctx, q, tx, plan)
 	switch {
@@ -356,7 +365,7 @@ func (h *Handler) checkBil24References(ctx context.Context, q *gen.Queries, tx p
 			issues.add(errCapacityRequired())
 		}
 	}
-	if prep.loc != nil && prep.startOK && !plan.StartAt.IsZero() {
+	if f.loc != nil && prep.startOK && !plan.StartAt.IsZero() {
 		f.startAt = plan.StartAt
 		if _, _, doorsErr := importDoorsOpen(plan.Request.ActionEvent, plan.StartAt); doorsErr != nil {
 			issues.add(doorsErr)
