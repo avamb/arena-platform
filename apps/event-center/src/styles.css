@@ -612,6 +612,8 @@ label {
 textarea {
   width: 100%;
   resize: vertical;
+}
+
 /* 4-3: promo codes (forms, the session picker). */
 fieldset {
   border: 1px solid var(--border);

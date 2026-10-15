@@ -128,6 +128,8 @@ const invitationsRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/invitations",
   component: InvitationsScreen,
+});
+
 // 4-6
 const promotersRoute = createRoute({
   getParentRoute: () => orgRoute,

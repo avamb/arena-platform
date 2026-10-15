@@ -311,7 +311,7 @@ export function issueInvitation(orgId: string, input: InvitationInput): Promise<
  * place goes back on sale. Arena does not tell the guest. 409
  * `complimentary.already_revoked` or `complimentary.scanned_ticket_requires_manual_review`.
  */
-export function revokeInvitation(issuanceId: string): Promise<void> {
+export function annulInvitation(issuanceId: string): Promise<void> {
   return call<void>({
     route: API.complimentaryRevoke,
     params: { id: issuanceId },

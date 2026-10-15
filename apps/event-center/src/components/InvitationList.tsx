@@ -13,7 +13,7 @@ import { useState } from "react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmWordDialog } from "@/components/ConfirmWordDialog";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
-import { listInvitations, revokeInvitation, type InvitationState } from "@/lib/api/endpoints";
+import { listInvitations, annulInvitation, type InvitationState } from "@/lib/api/endpoints";
 import type { ComplimentaryListItem } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
@@ -115,7 +115,7 @@ export function InvitationList({ orgId, canIssue }: { orgId: string; canIssue: b
   const onConfirm = async () => {
     if (annulling === null) return;
     try {
-      await revokeInvitation(annulling.id);
+      await annulInvitation(annulling.id);
     } catch (err) {
       await reload(); // the state may have changed meanwhile
       throw err; // the dialog says what happened and what to do

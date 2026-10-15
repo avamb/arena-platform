@@ -98,7 +98,7 @@ export type ApiErrorStem =
   | "invitationTooMany"
   | "invitationRecipient"
   | "invitationAlreadyRevoked"
-  | "invitationScanned";
+  | "invitationScanned"
   // 4-5
   | "resendTooSoon"
   | "invitationChannel"
