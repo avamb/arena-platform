@@ -7964,6 +7964,101 @@ type MACSOrder struct {
 	TicketList *[]MACSTicket `json:"ticketList,omitempty"`
 }
 
+// MACSScanBatchRequest Body of `POST /v1/macs/scan-events`.
+type MACSScanBatchRequest struct {
+	// Scans One to 500 scans, in any order.
+	Scans []MACSScanInput `json:"scans"`
+}
+
+// MACSScanBatchResponse The 202 answer of `POST /v1/macs/scan-events`.
+type MACSScanBatchResponse struct {
+	// Accepted Scans recorded by this request.
+	Accepted int `json:"accepted"`
+
+	// Duplicates Scans recorded before; nothing was written for them.
+	Duplicates int `json:"duplicates"`
+
+	// Rejected Scans not recorded.
+	Rejected int `json:"rejected"`
+
+	// Results One entry per request scan, in request order.
+	Results []MACSScanResult `json:"results"`
+}
+
+// MACSScanInput One scan as MACS reports it. The ticket is named by
+// `system_ticket_id`, by `barcode`, or by both (they must then name
+// the same ticket). Unknown keys are ignored.
+type MACSScanInput struct {
+	// Barcode The 13-digit EAN-13 the scanner read (the `barcode` of the MACS
+	// export): a stored barcode of the ticket, or the legacy
+	// platform code of a ticket without one.
+	Barcode *string `json:"barcode,omitempty"`
+
+	// Gate Entrance the scan was made at.
+	Gate *string `json:"gate,omitempty"`
+
+	// Result The verdict at the door: `admitted`, `rejected` or `duplicate`.
+	// `rejected` and `duplicate` are stored as a denied scan; the
+	// MACS word is kept in the `v1.ticket.scanned` payload.
+	Result string `json:"result"`
+
+	// ScanId MACS's own id of the scan, unique per subscriber. Stored as
+	// `scan_events.external_scan_id`; a scan id already delivered
+	// is answered `duplicate` and writes nothing.
+	ScanId string `json:"scan_id"`
+
+	// ScannedAt When the scan happened, RFC 3339 with a zone. May lie in the
+	// past (an offline scanner sends its backlog later); more than
+	// 5 minutes in the future is rejected.
+	ScannedAt time.Time `json:"scanned_at"`
+
+	// ScannerId Stable id of the scanner device (stored as device_id).
+	ScannerId *string `json:"scanner_id,omitempty"`
+
+	// ScannerName Human name of the scanner (stored as scanner_label).
+	ScannerName *string `json:"scanner_name,omitempty"`
+
+	// SystemTicketId The `id` of the MACS export (`tickets.system_ticket_id`).
+	SystemTicketId *int64 `json:"system_ticket_id,omitempty"`
+}
+
+// MACSScanResult The outcome of one scan, in request order.
+type MACSScanResult struct {
+	// Error Human-readable reason of the rejection.
+	Error *string `json:"error,omitempty"`
+
+	// ErrorCode Why a scan was rejected: `scan.invalid_scan_id`,
+	// `scan.invalid_scanned_at`, `scan.scanned_at_in_future`,
+	// `scan.invalid_result`, `scan.ticket_required`,
+	// `scan.invalid_system_ticket_id`, `scan.invalid_barcode`,
+	// `scan.field_too_long`, `scan.invalid_field` (a value that can
+	// never be stored, such as a NUL character; not retryable),
+	// `scan.ticket_not_found` (unknown, or a
+	// ticket of another organization), `scan.ticket_mismatch`, or
+	// `scan.temporarily_unavailable` (retryable).
+	ErrorCode *string `json:"error_code,omitempty"`
+
+	// FirstAdmission True when this scan stamped `tickets.used_at`: an admitted scan
+	// of a valid ticket that was not used before.
+	FirstAdmission bool `json:"first_admission"`
+
+	// Retryable True when the same scan may be sent again later (a database failure).
+	Retryable *bool `json:"retryable,omitempty"`
+
+	// ScanEventId The scan_events row; set for accepted and, when known, duplicate scans.
+	ScanEventId *openapi_types.UUID `json:"scan_event_id,omitempty"`
+
+	// ScanId Echo of the request `scan_id`.
+	ScanId string `json:"scan_id"`
+
+	// Status `accepted` (recorded now), `duplicate` (recorded before, nothing
+	// written) or `rejected` (not recorded, see `error_code`).
+	Status string `json:"status"`
+
+	// TicketId The arena ticket the scan was recorded for; null when rejected.
+	TicketId *openapi_types.UUID `json:"ticket_id"`
+}
+
 // MACSTicket One issued ticket in MACS import format.
 type MACSTicket struct {
 	// ActionEvent Denormalized event context on every MACS ticket.
@@ -13352,6 +13447,19 @@ type StartCheckoutRequest struct {
 	UserId *openapi_types.UUID `json:"user_id"`
 }
 
+// SummaryAdmission The admitted scans of one source (scan_events.source, migration 0154).
+type SummaryAdmission struct {
+	// Scans Every admitted scan of this source, repeat scans and scans of tickets cancelled since included.
+	Scans int64 `json:"scans"`
+
+	// Source `arena_scanner` (POST /v1/scanner/scan-events) or `macs`
+	// (POST /v1/macs/scan-events).
+	Source string `json:"source"`
+
+	// Tickets Valid tickets with at least one admitted scan of this source.
+	Tickets int64 `json:"tickets"`
+}
+
 // SummaryComplimentary Invitations: paid orders written with source=complimentary (the
 // gateway's CREATE_ORDER_EXT `complimentary` flag) and the valid
 // tickets of either invitation path (such orders, or the admin
@@ -13366,6 +13474,12 @@ type SummaryComplimentary struct {
 
 // SummaryEntered How many valid tickets were scanned at the door ("entered N of M").
 type SummaryEntered struct {
+	// BySource Admitted scans split by who reported them, sorted by source;
+	// empty when nobody was scanned. A ticket admitted by both sources
+	// counts under both, so the per-source tickets need not add up to
+	// `used`.
+	BySource []SummaryAdmission `json:"by_source"`
+
 	// Total Every valid ticket.
 	Total int64 `json:"total"`
 
@@ -15475,6 +15589,15 @@ type GetV1GeoCountriesParams struct {
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
 
+// PostMACSScanEventsParams defines parameters for PostMACSScanEvents.
+type PostMACSScanEventsParams struct {
+	// XMACSSubscriberId Id of the MACS subscriber (GET /v1/organizations/{org_id}/macs-webhook answers it).
+	XMACSSubscriberId openapi_types.UUID `json:"X-MACS-Subscriber-Id"`
+
+	// XMACSSignature sha256=<hex HMAC-SHA256 of the raw body under the subscriber's signing_secret>.
+	XMACSSignature string `json:"X-MACS-Signature"`
+}
+
 // RecordConsentJSONBody defines parameters for RecordConsent.
 type RecordConsentJSONBody struct {
 	Granted bool   `json:"granted"`
@@ -16289,6 +16412,9 @@ type PatchSessionSeatsCategoryJSONRequestBody = PatchSessionSeatsCategoryRequest
 
 // PublishEventJSONRequestBody defines body for PublishEvent for application/json ContentType.
 type PublishEventJSONRequestBody = PublishEventRequest
+
+// PostMACSScanEventsJSONRequestBody defines body for PostMACSScanEvents for application/json ContentType.
+type PostMACSScanEventsJSONRequestBody = MACSScanBatchRequest
 
 // RecordConsentJSONRequestBody defines body for RecordConsent for application/json ContentType.
 type RecordConsentJSONRequestBody RecordConsentJSONBody

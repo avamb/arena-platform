@@ -542,3 +542,49 @@ func (q *Queries) ListSessionSummaryComplimentary(ctx context.Context, sessionID
 	}
 	return items, rows.Err()
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListSessionSummaryAdmissions
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listSessionSummaryAdmissions = `-- name: ListSessionSummaryAdmissions :many
+SELECT se.session_id, se.source,
+       count(DISTINCT se.ticket_id) FILTER (WHERE t.status = 'active')::bigint AS tickets,
+       count(*)::bigint AS scans
+FROM   scan_events se
+JOIN   sessions s ON s.id = se.session_id
+JOIN   events   e ON e.id = s.event_id
+LEFT JOIN tickets t ON t.id = se.ticket_id
+WHERE  se.session_id = ANY($1::uuid[])
+  AND  se.result = 'admitted'
+  AND  se.org_id = e.org_id
+GROUP  BY se.session_id, se.source`
+
+// SessionSummaryAdmissionsRow counts the admitted scans of one session from
+// one source (arena_scanner or macs, migration 0154). Tickets is the number
+// of valid tickets with at least one such scan, Scans every admitted row.
+type SessionSummaryAdmissionsRow struct {
+	SessionID uuid.UUID `json:"session_id"`
+	Source    string    `json:"source"`
+	Tickets   int64     `json:"tickets"`
+	Scans     int64     `json:"scans"`
+}
+
+// ListSessionSummaryAdmissions returns the door admissions of the given
+// sessions grouped by source. A session without admitted scans has no row.
+func (q *Queries) ListSessionSummaryAdmissions(ctx context.Context, sessionIDs []uuid.UUID) ([]SessionSummaryAdmissionsRow, error) {
+	rows, err := q.db.Query(ctx, listSessionSummaryAdmissions, sessionIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SessionSummaryAdmissionsRow
+	for rows.Next() {
+		var i SessionSummaryAdmissionsRow
+		if err := rows.Scan(&i.SessionID, &i.Source, &i.Tickets, &i.Scans); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	return items, rows.Err()
+}

@@ -5442,6 +5442,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/macs/scan-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * MACS — record a batch of door scans
+         * @description MACS, the gate system of the WordPress clients, posts its scans back
+         *     to arena (task M1, spec 17 "Scans from MACS"). No JWT: the batch is
+         *     signed with the `signing_secret` of the organization's MACS
+         *     subscriber (`webhook_subscribers` of kind `macs`, the secret arena
+         *     signs its own MACS webhooks with), as
+         *     `X-MACS-Signature: sha256=<hex HMAC-SHA256 of the raw body>`, and
+         *     the subscriber is named in `X-MACS-Subscriber-Id`. An unknown or
+         *     inactive subscriber and a wrong signature answer the same 401.
+         *
+         *     Each scan is recorded in its own transaction as one `scan_events`
+         *     row with `source = macs`, together with the `v1.ticket.scanned`
+         *     outbox event and, for the first admission of a valid ticket, the
+         *     `tickets.used_at` stamp and an audit row. Scans are processed in
+         *     order of `scanned_at`, so a late batch of an offline scanner stamps
+         *     its earliest admission. Only tickets of the subscriber's
+         *     organization are recorded; any other ticket is rejected per scan
+         *     with `scan.ticket_not_found`, like an unknown one.
+         *
+         *     Idempotency: `(subscriber, scan_id)`. Sending a batch again answers
+         *     every scan `duplicate` and writes nothing. A scan with another
+         *     `scan_id` but the same barcode and `scanned_at` as a recorded one is
+         *     a duplicate too.
+         *
+         *     A recorded admission blocks every refund of the ticket, exactly like
+         *     an admission by arena's own scanner (the rule "a ticket scanned at
+         *     the gate is never refunded").
+         *
+         *     Partial success: per-scan problems are reported on the scan's own
+         *     result; the answer is 202 whenever at least one scan could be
+         *     judged. At most 500 scans and 1 MiB per batch, 120 batches a minute
+         *     per subscriber.
+         */
+        post: operations["postMACSScanEvents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/feeds/{feed_token}/events": {
         parameters: {
             query?: never;
@@ -12363,6 +12413,31 @@ export interface components {
              * @description Every valid ticket.
              */
             total: number;
+            /**
+             * @description Admitted scans split by who reported them, sorted by source;
+             *     empty when nobody was scanned. A ticket admitted by both sources
+             *     counts under both, so the per-source tickets need not add up to
+             *     `used`.
+             */
+            by_source: components["schemas"]["SummaryAdmission"][];
+        };
+        /** @description The admitted scans of one source (scan_events.source, migration 0154). */
+        SummaryAdmission: {
+            /**
+             * @description `arena_scanner` (POST /v1/scanner/scan-events) or `macs`
+             *     (POST /v1/macs/scan-events).
+             */
+            source: string;
+            /**
+             * Format: int64
+             * @description Valid tickets with at least one admitted scan of this source.
+             */
+            tickets: number;
+            /**
+             * Format: int64
+             * @description Every admitted scan of this source, repeat scans and scans of tickets cancelled since included.
+             */
+            scans: number;
         };
         /**
          * @description Invitations: paid orders written with source=complimentary (the
@@ -19926,6 +20001,106 @@ export interface components {
         ScannerScanBatchResponse: {
             /** @description One entry per request `scans` entry, in the same order. */
             results: components["schemas"]["ScannerScanResult"][];
+        };
+        /**
+         * @description One scan as MACS reports it. The ticket is named by
+         *     `system_ticket_id`, by `barcode`, or by both (they must then name
+         *     the same ticket). Unknown keys are ignored.
+         */
+        MACSScanInput: {
+            /**
+             * @description MACS's own id of the scan, unique per subscriber. Stored as
+             *     `scan_events.external_scan_id`; a scan id already delivered
+             *     is answered `duplicate` and writes nothing.
+             */
+            scan_id: string;
+            /**
+             * Format: int64
+             * @description The `id` of the MACS export (`tickets.system_ticket_id`).
+             */
+            system_ticket_id?: number;
+            /**
+             * @description The 13-digit EAN-13 the scanner read (the `barcode` of the MACS
+             *     export): a stored barcode of the ticket, or the legacy
+             *     platform code of a ticket without one.
+             */
+            barcode?: string;
+            /**
+             * @description The verdict at the door: `admitted`, `rejected` or `duplicate`.
+             *     `rejected` and `duplicate` are stored as a denied scan; the
+             *     MACS word is kept in the `v1.ticket.scanned` payload.
+             */
+            result: string;
+            /**
+             * Format: date-time
+             * @description When the scan happened, RFC 3339 with a zone. May lie in the
+             *     past (an offline scanner sends its backlog later); more than
+             *     5 minutes in the future is rejected.
+             */
+            scanned_at: string;
+            /** @description Stable id of the scanner device (stored as device_id). */
+            scanner_id?: string;
+            /** @description Human name of the scanner (stored as scanner_label). */
+            scanner_name?: string;
+            /** @description Entrance the scan was made at. */
+            gate?: string;
+        };
+        /** @description Body of `POST /v1/macs/scan-events`. */
+        MACSScanBatchRequest: {
+            /** @description One to 500 scans, in any order. */
+            scans: components["schemas"]["MACSScanInput"][];
+        };
+        /** @description The outcome of one scan, in request order. */
+        MACSScanResult: {
+            /** @description Echo of the request `scan_id`. */
+            scan_id: string;
+            /**
+             * @description `accepted` (recorded now), `duplicate` (recorded before, nothing
+             *     written) or `rejected` (not recorded, see `error_code`).
+             */
+            status: string;
+            /**
+             * Format: uuid
+             * @description The scan_events row; set for accepted and, when known, duplicate scans.
+             */
+            scan_event_id?: string;
+            /**
+             * Format: uuid
+             * @description The arena ticket the scan was recorded for; null when rejected.
+             */
+            ticket_id: string | null;
+            /**
+             * @description True when this scan stamped `tickets.used_at`: an admitted scan
+             *     of a valid ticket that was not used before.
+             */
+            first_admission: boolean;
+            /**
+             * @description Why a scan was rejected: `scan.invalid_scan_id`,
+             *     `scan.invalid_scanned_at`, `scan.scanned_at_in_future`,
+             *     `scan.invalid_result`, `scan.ticket_required`,
+             *     `scan.invalid_system_ticket_id`, `scan.invalid_barcode`,
+             *     `scan.field_too_long`, `scan.invalid_field` (a value that can
+             *     never be stored, such as a NUL character; not retryable),
+             *     `scan.ticket_not_found` (unknown, or a
+             *     ticket of another organization), `scan.ticket_mismatch`, or
+             *     `scan.temporarily_unavailable` (retryable).
+             */
+            error_code?: string;
+            /** @description Human-readable reason of the rejection. */
+            error?: string;
+            /** @description True when the same scan may be sent again later (a database failure). */
+            retryable?: boolean;
+        };
+        /** @description The 202 answer of `POST /v1/macs/scan-events`. */
+        MACSScanBatchResponse: {
+            /** @description Scans recorded by this request. */
+            accepted: number;
+            /** @description Scans recorded before; nothing was written for them. */
+            duplicates: number;
+            /** @description Scans not recorded. */
+            rejected: number;
+            /** @description One entry per request scan, in request order. */
+            results: components["schemas"]["MACSScanResult"][];
         };
         /**
          * @description Single event-publication row connecting an event to an agent
@@ -43310,6 +43485,94 @@ export interface operations {
              *     route is always mounted so the openapi-drift coverage
              *     check can see it; the handler self-gates on the
              *     missing dependency.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postMACSScanEvents: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Id of the MACS subscriber (GET /v1/organizations/{org_id}/macs-webhook answers it). */
+                "X-MACS-Subscriber-Id": string;
+                /** @description sha256=<hex HMAC-SHA256 of the raw body under the subscriber's signing_secret>. */
+                "X-MACS-Signature": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MACSScanBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description The batch was judged; see each scan's status. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MACSScanBatchResponse"];
+                };
+            };
+            /**
+             * @description The body is not JSON with a `scans` array (`macs.invalid_body`)
+             *     or the array is empty (`macs.empty_batch`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description A header is missing (`macs.missing_signature`), or the
+             *     subscriber is unknown or inactive, or the signature does not
+             *     match (`macs.invalid_signature`).
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description More than 500 scans (`macs.batch_too_large`) or a body larger
+             *     than 1 MiB (`macs.body_too_large`); page the upload.
+             */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 120 batches a minute from one subscriber (`macs.rate_limited`, with Retry-After). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description No database (`dependency.database_unavailable`), or no scan of the
+             *     batch could be recorded now (`macs.temporarily_unavailable`);
+             *     send the same batch again.
              */
             503: {
                 headers: {
