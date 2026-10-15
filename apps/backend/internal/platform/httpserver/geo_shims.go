@@ -38,6 +38,14 @@ func (s *Server) handleListCities(w http.ResponseWriter, r *http.Request) {
 	s.geoHandler().HandleListCities(w, r)
 }
 
+func (s *Server) handleCountryTimezones(w http.ResponseWriter, r *http.Request) {
+	s.geoHandler().HandleCountryTimezones(w, r)
+}
+
+func (s *Server) handleCountryCurrency(w http.ResponseWriter, r *http.Request) {
+	s.geoHandler().HandleCountryCurrency(w, r)
+}
+
 // ─── admin write handler shims ────────────────────────────────────────────────
 
 func (s *Server) handleCreateCountry(w http.ResponseWriter, r *http.Request) {
