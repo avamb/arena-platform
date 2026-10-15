@@ -7496,8 +7496,8 @@ export interface paths {
          *     Requires the `order.read` permission. An order of another
          *     organization answers the route's own 404 `orders.not_found`. Only
          *     people read it: a member of the organization or the platform
-         *     superadmin; an organization API key is refused (403
-         *     `orders.letter_interactions_api_key_forbidden`).
+         *     superadmin, who sends an `X-Admin-Reason` header; an organization
+         *     API key is refused (403 `orders.letter_interactions_api_key_forbidden`).
          */
         get: operations["getV1OrganizationsOrgIdOrdersOrderIdLetterInteractions"];
         put?: never;
@@ -18793,7 +18793,7 @@ export interface components {
              * @example https://tickets.example.com/t/{token}
              */
             link: string | null;
-            /** @description The reader's mail client or browser string as Brevo reported it (at most 512 characters); null when the event carried none. Brevo sends no reader IP address. */
+            /** @description The reader's mail client or browser string as Brevo reported it (at most 512 characters); null when the event carried none. On a `proxy_open` it may be the proxy's string (for example Apple Mail Privacy Protection), not the reader's. Brevo sends no reader IP address. */
             user_agent: string | null;
         };
         /** @description One letter of an order with every interaction reported on it (U-7). */

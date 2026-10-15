@@ -7939,7 +7939,7 @@ type LetterInteractionItem struct {
 	// OccurredAt When the provider says it happened (RFC 3339, UTC).
 	OccurredAt time.Time `json:"occurred_at"`
 
-	// UserAgent The reader's mail client or browser string as Brevo reported it (at most 512 characters); null when the event carried none. Brevo sends no reader IP address.
+	// UserAgent The reader's mail client or browser string as Brevo reported it (at most 512 characters); null when the event carried none. On a `proxy_open` it may be the proxy's string (for example Apple Mail Privacy Protection), not the reader's. Brevo sends no reader IP address.
 	UserAgent *string `json:"user_agent"`
 }
 
