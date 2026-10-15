@@ -102,6 +102,14 @@ function OrgShell() {
                 activeProps={{ "aria-current": "page", className: "active" }}
               >
                 {t("nav.invitations")}
+            {access.can("promoter.read") && (
+              <Link to="/o/$orgId/promoters" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
+                {t("nav.promoters")}
+              </Link>
+            )}
+            {access.can("promo.read") && (
+              <Link to="/o/$orgId/promo" params={{ orgId }} search={{}} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-promo">
+                {t("nav.promo")}
               </Link>
             )}
             <Link
@@ -111,6 +119,11 @@ function OrgShell() {
             >
               {t("nav.notifications")}
             </Link>
+            {access.can("membership.read") && (
+              <Link to="/o/$orgId/team" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
+                {t("nav.team")}
+              </Link>
+            )}
             {orgCount > 1 && <Link to="/orgs">{t("nav.switchOrg")}</Link>}
           </nav>
           <div className="topbar-tools">

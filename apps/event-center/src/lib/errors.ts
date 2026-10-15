@@ -99,6 +99,13 @@ export type ApiErrorStem =
   | "invitationRecipient"
   | "invitationAlreadyRevoked"
   | "invitationScanned";
+  // 4-5
+  | "resendTooSoon"
+  | "invitationChannel"
+  | "webInvitationOff"
+  | "invitationClosed"
+  | "memberGone"
+  | "roleNotAllowed";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -109,6 +116,9 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "tierSaleWindow", "promoNotApplicable", "promoMinimum", "promoExhausted", "promoPerCustomer",
   "promoRateLimited", "promoDuplicate", "eventHasPaidOrders", "invitationTooMany", "invitationRecipient",
   "invitationAlreadyRevoked", "invitationScanned",
+  "promoRateLimited", "promoDuplicate", "eventHasPaidOrders",
+  // 4-5
+  "resendTooSoon", "invitationChannel", "webInvitationOff", "invitationClosed", "memberGone", "roleNotAllowed",
 ];
 
 /**
@@ -149,6 +159,20 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "complimentary.already_revoked": "invitationAlreadyRevoked",
   "complimentary.scanned_ticket_requires_manual_review": "invitationScanned",
   "complimentary.capacity_overflow": "tierSoldOut",
+  // 4-5: the team and its invitations (bot.* routes, DELETE members)
+  "bot.invitation_resend_too_soon": "resendTooSoon",
+  "bot.invitation_channel_unsupported": "invitationChannel",
+  "bot.web_invitation_not_configured": "webInvitationOff",
+  "bot.invitation_revoked": "invitationClosed",
+  "bot.invitation_accepted": "invitationClosed",
+  "bot.invitation_not_found": "memberGone",
+  "membership.not_found": "memberGone",
+  "membership.role_not_allowed": "roleNotAllowed",
+  "bot.invalid_channel": "invalid",
+  "bot.invalid_email": "invalid",
+  "bot.invalid_role": "invalid",
+  "membership.empty_body": "invalid",
+  "membership.invalid_role": "invalid",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",

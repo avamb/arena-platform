@@ -50,6 +50,21 @@ export const API = {
   // phone in a query string is written by every proxy log (spec 37 §13).
   orderSearch: { method: "POST", path: "/v1/organizations/{org_id}/orders/search" },
   order: { method: "GET", path: "/v1/organizations/{org_id}/orders/{id}" },
+  // 4-6
+  promoters: { method: "GET", path: "/v1/organizations/{org_id}/promoters" },
+  promoterCreate: { method: "POST", path: "/v1/organizations/{org_id}/promoters" },
+  promoterUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/promoters/{id}" },
+  // 4-3: promo codes.
+  promoCodes: { method: "GET", path: "/v1/organizations/{org_id}/promo-codes" },
+  promoCode: { method: "GET", path: "/v1/organizations/{org_id}/promo-codes/{id}" },
+  promoCodeCreate: { method: "POST", path: "/v1/organizations/{org_id}/promo-codes" },
+  promoCodeUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/promo-codes/{id}" },
+  promoCodeDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/promo-codes/{id}" },
+  promoRedemptions: { method: "GET", path: "/v1/organizations/{org_id}/promo-code-redemptions" },
+  promoRedemptionsCsv: {
+    method: "GET",
+    path: "/v1/organizations/{org_id}/promo-codes/{promo_code_id}/redemptions.csv",
+  },
   // 4-1: the ticket letter of a paid order again, to its own or a one-time address.
   resendTickets: { method: "POST", path: "/v1/organizations/{org_id}/orders/{order_id}/resend-tickets" },
   // 4-2: cancel an unpaid order. Asks for the password again (spec 37 4.6).
@@ -59,6 +74,13 @@ export const API = {
   complimentaryIssue: { method: "POST", path: "/v1/organizations/{org_id}/complimentary" },
   // A flat route: the row's own organization is checked on the server.
   complimentaryRevoke: { method: "POST", path: "/v1/complimentary/{id}/revoke" },
+  // 4-5: the team. The invitation has two channels (web, telegram); removing a
+  // member names the ONE role to revoke in the body (AGENTS.md).
+  botTeam: { method: "GET", path: "/v1/organizations/{org_id}/bot-team" },
+  inviteMember: { method: "POST", path: "/v1/organizations/{org_id}/bot-invitations" },
+  revokeInvitation: { method: "DELETE", path: "/v1/organizations/{org_id}/bot-invitations/{id}" },
+  resendInvitation: { method: "POST", path: "/v1/organizations/{org_id}/bot-invitations/{id}/resend" },
+  removeMember: { method: "DELETE", path: "/v1/organizations/{org_id}/members/{user_id}" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;
