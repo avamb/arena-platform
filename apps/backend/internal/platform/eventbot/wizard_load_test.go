@@ -149,8 +149,12 @@ func TestLoadEventDraft_SingleCategoryWithSchedule(t *testing.T) {
 	r.press("e:date", stSDate)
 	r.text("16.12.2026", stSTime)
 	r.press("default", stSSame)
-	r.press("same", stSMore)
-	r.press("next", stEditMenu) // tickets exist: no ticket questions again
+	r.press("same", stSTickets)
+	r.press("st:same", stSMore) // the categories of the date before, as new ones
+	r.press("next", stEditMenu)
+	if nt := d.Sessions[1].Tickets; nt == nil || len(nt.Categories) != 1 || nt.Categories[0].TierID != "" || nt.Categories[0].Name != "Вход в зал" {
+		t.Fatalf("the added date's categories = %+v", nt)
+	}
 	if len(d.Sessions) != 2 || d.Sessions[0].SessionID == "" || d.Sessions[1].SessionID != "" || d.Sessions[1].VenueID != ds.VenueID {
 		t.Fatalf("sessions after add = %+v", d.Sessions)
 	}
@@ -237,8 +241,12 @@ func TestLoadEventDraft_SequenceAndParallelAndCopy(t *testing.T) {
 	if d2.Tickets.Mode != ModeParallel || len(d2.Tickets.Categories) != 2 || d2.Tickets.Categories[0].Name != "Партер" || d2.Tickets.Categories[0].Places != 200 || d2.Tickets.Categories[1].Places != 100 {
 		t.Fatalf("parallel = %+v", d2.Tickets)
 	}
-	if len(notes) != 1 || !strings.Contains(notes[0], "16.12.2026") {
+	if len(notes) != 1 || !strings.Contains(notes[0], "разные категории") {
 		t.Fatalf("notes = %v", notes)
+	}
+	// Each date keeps its own categories with its own ids.
+	if t2 := d2.Sessions[1].Tickets; t2 == nil || t2.Mode != ModeSingle || len(t2.Categories) != 1 || t2.Categories[0].PriceMinor != 1500 || t2.Categories[0].TierID != g.tiers[s2.Id][0].Id.String() {
+		t.Fatalf("second date tickets = %+v", t2)
 	}
 
 	// The copy: no ids, no dates, the tickets kept, straight to the first

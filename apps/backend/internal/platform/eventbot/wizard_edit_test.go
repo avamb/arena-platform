@@ -134,8 +134,11 @@ func TestEdit_BackToTheEventRestoresWhatWasHalfEdited(t *testing.T) {
 
 	r.press("e:tickets", stTName)
 	r.text("Другое имя", stTPrice)
-	if len(d.Tickets.Categories) != 1 || d.Tickets.Categories[0].Name != "Другое имя" {
-		t.Fatalf("categories while editing = %+v", d.Tickets.Categories)
+	if len(d.tk().Categories) != 1 || d.tk().Categories[0].Name != "Другое имя" {
+		t.Fatalf("categories while editing = %+v", d.tk().Categories)
+	}
+	if d.Sessions[0].Tickets.Categories[0] != before[0] {
+		t.Fatalf("the date changed before the last question: %+v", d.Sessions[0].Tickets.Categories)
 	}
 	r.press("e:home", stEditMenu)
 	if len(d.Tickets.Categories) != 1 || d.Tickets.Categories[0] != before[0] {
@@ -159,7 +162,8 @@ func TestEdit_BackToTheEventRestoresWhatWasHalfEdited(t *testing.T) {
 	r.press("e:date", stSDate)
 	r.text("20.12.2026", stSTime)
 	r.press("default", stSSame)
-	r.press("same", stSMore)
+	r.press("same", stSTickets)
+	r.press("st:same", stSMore)
 	r.press("e:home", stEditMenu)
 	if len(d.Sessions) != 2 || !contains(d.Changed, "dates") {
 		t.Fatalf("finished date: sessions=%d changed=%v", len(d.Sessions), d.Changed)

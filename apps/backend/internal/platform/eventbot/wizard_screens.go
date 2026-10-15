@@ -44,7 +44,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 	}
 	header := func(n int, titleKey string) string {
 		if d.Mode == ModeEdit && d.Scratch.Edit != "" {
-			return t("bot.wz.edit_step_title", map[string]any{"Title": t("bot.wz.edit_field_"+d.Scratch.Edit, nil)})
+			return t("bot.wz.edit_step_title", map[string]any{"Title": t("bot.wz.edit_field_"+d.Scratch.Edit, nil)}) + w.ticketsForLine(loc, d)
 		}
 		return t("bot.wz.step_title", map[string]any{"N": n, "Title": t(titleKey, nil)})
 	}
@@ -341,8 +341,43 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		return Screen{Text: header(2, "bot.wz.title_when") + text, Buttons: nav(rows...)}, nil
 
 	case stSMore:
-		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_more_sessions", nil),
+		ask := t("bot.wz.ask_more_sessions", nil)
+		if d.Mode == ModeEdit {
+			// An added date has its own categories: the creation text's "the
+			// same prices as the first one" is not true here.
+			ask = t("bot.wz.ask_more_sessions_edit", nil)
+		}
+		return Screen{Text: header(2, "bot.wz.title_when") + ask,
 			Buttons: nav([]Button{btn("bot.wz.more_session_btn", "more"), btn("bot.wz.sessions_done_btn", "next")})}, nil
+
+	case stSTickets:
+		if d.Cur < 1 || d.Cur > len(d.Sessions) {
+			return Screen{Text: d.Step, Buttons: nav()}, nil
+		}
+		prev := d.Sessions[d.Cur-1]
+		ptk := d.ticketsOf(d.Cur - 1)
+		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_s_tickets", map[string]any{
+			"N": d.Cur + 1, "Prev": dateLabel(prev), "List": w.ticketsText(loc, d.currencyOrGuess(), ptk)}),
+			Buttons: nav(
+				[]Button{{Label: t("bot.wz.s_tickets_same_btn", map[string]any{"Prev": dateLabel(prev)}), Data: "st:same"}},
+				[]Button{btn("bot.wz.s_tickets_own_btn", "st:own")},
+			)}, nil
+
+	case stTDate:
+		rows := [][]Button{}
+		for i, s := range d.Sessions {
+			label := dateLabel(s)
+			if s.VenueName != "" {
+				label += " · " + s.VenueName
+			}
+			rows = append(rows, []Button{{Label: truncate(label, 56), Data: "td:" + itoa(i+1)}})
+		}
+		rows = append(rows, []Button{btn("bot.wz.t_date_all_btn", "td:all")})
+		now := w.ticketsText(loc, d.currencyOrGuess(), d.ticketsOf(0))
+		if d.ticketsDiffer() {
+			now = w.ticketsByDate(loc, d)
+		}
+		return Screen{Text: clipMessage(header(3, "bot.wz.title_tickets")+now+"\n\n"+t("bot.wz.ask_t_date", nil), maxMessageRunes), Buttons: nav(rows...)}, nil
 
 	case stTMode:
 		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_mode", nil),
@@ -371,7 +406,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 
 	case stTChangeMore:
 		items := []string{}
-		for _, s := range d.Tickets.Schedule {
+		for _, s := range d.tk().Schedule {
 			items = append(items, t("bot.wz.summary_schedule_item", map[string]any{"Date": DisplayDate(s.From), "Price": FormatMoney(s.PriceMinor, d.currencyOrGuess(), loc)}))
 		}
 		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_change_more", map[string]any{"List": strings.Join(items, ", ")}),
@@ -384,7 +419,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		return Screen{Text: text, Buttons: nav([]Button{btn("bot.wz.t_kind_parallel", "kind:parallel")}, []Button{btn("bot.wz.t_kind_sequence", "kind:sequence")})}, nil
 
 	case stTCatName:
-		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_name", map[string]any{"N": len(d.Tickets.Categories) + 1}), Buttons: nav()}, nil
+		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_name", map[string]any{"N": len(d.tk().Categories) + 1}), Buttons: nav()}, nil
 	case stTCatPrice:
 		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_price", map[string]any{"Name": Esc(d.Scratch.Cat.Name)}), Buttons: nav()}, nil
 	case stTCatPlaces:
@@ -396,7 +431,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		return w.dateQuestion(loc, d, header(3, "bot.wz.title_tickets"), t("bot.wz.ask_t_cat_until", map[string]any{"Name": Esc(d.Scratch.Cat.Name)}), nav), nil
 
 	case stTCatMore:
-		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_more", map[string]any{"List": w.categoriesList(loc, d)}),
+		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_more", map[string]any{"List": w.categoriesList(loc, d.currencyOrGuess(), d.tk())}),
 			Buttons: nav([]Button{btn("bot.wz.t_cat_more_btn", "more"), btn("bot.wz.t_cat_done_btn", "done")})}, nil
 
 	case stXDescription:
@@ -480,7 +515,9 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 			[]Button{btn("bot.ses.open_btn", "e:sessions")},
 			[]Button{btn("bot.wz.edit_exit_btn", "cancel")},
 		)
-		return Screen{Text: text, Buttons: rows}, nil
+		// A card listing many dates with their own categories stays under
+		// Telegram's message limit.
+		return Screen{Text: clipMessage(text, maxMessageRunes), Buttons: rows}, nil
 
 	case stCancel:
 		ask, drop := "bot.wz.cancel_ask_create", "bot.wz.cancel_drop_btn"
@@ -536,20 +573,11 @@ func (w *Wizard) Summary(loc string, d *Draft) string {
 	}
 	b.WriteString(t("bot.wz.summary_sessions", map[string]any{"N": len(d.Sessions), "List": strings.Join(sessions, "; ")}))
 	b.WriteString("\n")
-	switch d.Tickets.Mode {
-	case ModeSingle:
-		if len(d.Tickets.Categories) > 0 {
-			c := d.Tickets.Categories[0]
-			sched := ""
-			for _, s := range d.Tickets.Schedule {
-				sched += ", " + t("bot.wz.summary_schedule_item", map[string]any{"Date": DisplayDate(s.From), "Price": FormatMoney(s.PriceMinor, cur, loc)})
-			}
-			b.WriteString(t("bot.wz.summary_single", map[string]any{"Name": Esc(c.Name), "Price": FormatMoney(c.PriceMinor, cur, loc), "Schedule": sched}))
-		}
-	case ModeParallel:
-		b.WriteString(t("bot.wz.summary_parallel", map[string]any{"List": w.categoriesList(loc, d)}))
-	case ModeSequence:
-		b.WriteString(t("bot.wz.summary_sequence", map[string]any{"List": w.categoriesList(loc, d)}))
+	if d.ticketsDiffer() {
+		// The dates sell different categories: each date on its own line.
+		b.WriteString(w.ticketsByDate(loc, d))
+	} else {
+		b.WriteString(w.ticketsText(loc, cur, d.ticketsOf(0)))
 	}
 	if len(d.Channels) > 1 {
 		names := []string{}
@@ -571,14 +599,72 @@ func (w *Wizard) Summary(loc string, d *Draft) string {
 	return b.String()
 }
 
+// ticketsText is one ticket part as a sentence: "One category …", "At once:
+// …" or "In stages: …".
+func (w *Wizard) ticketsText(loc, cur string, tk *DraftTickets) string {
+	t := func(key string, data map[string]any) string { return w.texts.T(loc, key, data) }
+	switch tk.Mode {
+	case ModeSingle:
+		if len(tk.Categories) > 0 {
+			c := tk.Categories[0]
+			sched := ""
+			for _, s := range tk.Schedule {
+				sched += ", " + t("bot.wz.summary_schedule_item", map[string]any{"Date": DisplayDate(s.From), "Price": FormatMoney(s.PriceMinor, cur, loc)})
+			}
+			return t("bot.wz.summary_single", map[string]any{"Name": Esc(c.Name), "Price": FormatMoney(c.PriceMinor, cur, loc), "Schedule": sched})
+		}
+	case ModeParallel:
+		return t("bot.wz.summary_parallel", map[string]any{"List": w.categoriesList(loc, cur, tk)})
+	case ModeSequence:
+		return t("bot.wz.summary_sequence", map[string]any{"List": w.categoriesList(loc, cur, tk)})
+	}
+	return ""
+}
+
+// ticketsByDate lists the categories date by date: "Categories differ by
+// date:" and a line per date.
+func (w *Wizard) ticketsByDate(loc string, d *Draft) string {
+	cur := d.currencyOrGuess()
+	lines := []string{w.texts.T(loc, "bot.wz.summary_tickets_by_date", nil)}
+	for i, s := range d.Sessions {
+		lines = append(lines, "• "+dateLabel(s)+": "+w.ticketsText(loc, cur, d.ticketsOf(i)))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// ticketsForLine names, on a ticket question of an edited event, which date
+// the categories are for (or that they are for every date); an event with
+// one date needs no such line.
+func (w *Wizard) ticketsForLine(loc string, d *Draft) string {
+	if d.Scratch.Work == nil || !isTicketStep(d.Step) || len(d.Sessions) < 2 {
+		return ""
+	}
+	if d.Scratch.WorkAll {
+		return w.texts.T(loc, "bot.wz.t_for_all", nil) + "\n"
+	}
+	if i := d.Scratch.WorkFor - 1; i >= 0 && i < len(d.Sessions) {
+		return w.texts.T(loc, "bot.wz.t_for_date", map[string]any{"When": dateLabel(d.Sessions[i])}) + "\n"
+	}
+	return ""
+}
+
+// isTicketStep reports whether the step is one of the ticket questions.
+func isTicketStep(step string) bool {
+	switch step {
+	case stTName, stTPrice, stTChanges, stTChangeDate, stTChangePrice, stTChangeMore,
+		stTCatName, stTCatPrice, stTCatPlaces, stTCatLast, stTCatUntil, stTCatMore:
+		return true
+	}
+	return false
+}
+
 // categoriesList renders "VIP 500 ILS × 20, Standard 250 ILS × 60" or
 // "Start 99 ILS 3 tickets or until 30.09 → Regular 199 ILS → Door 249 ILS".
-func (w *Wizard) categoriesList(loc string, d *Draft) string {
-	cur := d.currencyOrGuess()
+func (w *Wizard) categoriesList(loc, cur string, tk *DraftTickets) string {
 	parts := []string{}
-	for _, c := range d.Tickets.Categories {
+	for _, c := range tk.Categories {
 		p := Esc(c.Name) + " " + FormatMoney(c.PriceMinor, cur, loc)
-		switch d.Tickets.Mode {
+		switch tk.Mode {
 		case ModeParallel:
 			p += " × " + itoa(c.Places)
 		case ModeSequence:
@@ -595,7 +681,7 @@ func (w *Wizard) categoriesList(loc string, d *Draft) string {
 		}
 		parts = append(parts, p)
 	}
-	if d.Tickets.Mode == ModeSequence {
+	if tk.Mode == ModeSequence {
 		return strings.Join(parts, " → ")
 	}
 	return strings.Join(parts, ", ")

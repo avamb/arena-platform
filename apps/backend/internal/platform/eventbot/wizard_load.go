@@ -32,8 +32,11 @@ type EditIO interface {
 var ErrNotEditable = errors.New("eventbot: event cannot be edited from the bot")
 
 // LoadEventDraft reads the event and builds a ModeEdit draft positioned at
-// the edit card. The returned notes are things the person should know before
-// saving (e.g. that other dates carry different tickets).
+// the edit card. Every date carries its own categories, read from that
+// date's tiers with their own ids (two dates of one event may sell different
+// categories); Draft.Tickets mirrors the first date. The returned notes are
+// things the person should know before saving (e.g. that the dates carry
+// different categories, which are then changed date by date).
 func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, eventID uuid.UUID) (*Draft, []string, error) {
 	ev, err := io.GetEvent(ctx, ws.JWT, eventID)
 	if err != nil {
@@ -96,7 +99,6 @@ func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, e
 	d.Publish = string(ev.Status) == "published"
 
 	var notes []string
-	var firstTiers []openapi.TicketTierItem
 	for i, s := range live {
 		v := byVenue[s.VenueId.String()]
 		loc := time.UTC
@@ -135,23 +137,33 @@ func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, e
 		if err != nil {
 			return nil, nil, err
 		}
-		if i == 0 {
-			firstTiers = tiers
-			d.Tickets, err = w.loadTickets(ctx, io, ws, eventID, s, tiers, loc)
+		var own DraftTickets
+		switch {
+		case len(tiers) == 0 && i > 0:
+			// A later date with no category yet: it sells nothing until one
+			// is given to it, in the first date's mode.
+			own = DraftTickets{Mode: d.Tickets.Mode}
+		default:
+			own, err = w.loadTickets(ctx, io, ws, eventID, s, tiers, loc)
 			if err != nil {
 				return nil, nil, err
 			}
-		} else if !sameTickets(firstTiers, tiers) {
-			notes = append(notes, w.texts.T(ws.Locale, "bot.wz.edit_tickets_differ", map[string]any{"When": DisplayDate(ds.Date) + " " + ds.Time}))
 		}
+		if i == 0 {
+			d.Tickets = cloneTickets(own)
+		}
+		ds.Tickets = &own
 		d.Sessions = append(d.Sessions, ds)
 	}
 	d.Cur = len(d.Sessions) - 1
+	if d.ticketsDiffer() {
+		notes = append(notes, w.texts.T(ws.Locale, "bot.wz.edit_tickets_differ", nil))
+	}
 	return d, notes, nil
 }
 
-// loadTickets reads the first session's categories into the draft's ticket
-// part, recognising the three shapes the wizard writes (logic doc §5).
+// loadTickets reads one session's categories into a ticket part,
+// recognising the three shapes the wizard writes (logic doc §5).
 func (w *Wizard) loadTickets(ctx context.Context, io EditIO, ws WizSession, eventID uuid.UUID, s openapi.SessionItem, tiers []openapi.TicketTierItem, loc *time.Location) (DraftTickets, error) {
 	if len(tiers) == 0 {
 		return DraftTickets{}, ErrNotEditable
@@ -236,30 +248,6 @@ func (w *Wizard) loadTickets(ctx context.Context, io EditIO, ws WizSession, even
 	return out, nil
 }
 
-// sameTickets reports whether two sessions carry the same categories (by
-// name and price), which is what "the tickets are the same on every date"
-// means to the organizer.
-func sameTickets(a, b []openapi.TicketTierItem) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	key := func(ts []openapi.TicketTierItem) []string {
-		out := make([]string, 0, len(ts))
-		for _, t := range ts {
-			out = append(out, strings.ToLower(strings.TrimSpace(t.Name))+"@"+itoa(int(t.PriceAmount)))
-		}
-		sort.Strings(out)
-		return out
-	}
-	ka, kb := key(a), key(b)
-	for i := range ka {
-		if ka[i] != kb[i] {
-			return false
-		}
-	}
-	return true
-}
-
 // CopyDraft turns a loaded event into a fresh ModeCreate draft: the ids are
 // stripped, the dates cleared, and the wizard resumes at the first date —
 // "repeat as new", the organizer's most frequent operation.
@@ -271,11 +259,9 @@ func CopyDraft(src *Draft) *Draft {
 	d.Event.EventID, d.Event.UpdatedAt = "", ""
 	d.Sessions = nil
 	d.Cur = 0
-	d.Tickets.Categories = append([]DraftCategory(nil), src.Tickets.Categories...)
-	for i := range d.Tickets.Categories {
-		d.Tickets.Categories[i].TierID = ""
-	}
-	d.Tickets.Schedule = append([]DraftPriceStep(nil), src.Tickets.Schedule...)
+	// A copy sells one set of categories on every date: the first date's.
+	d.Tickets = withoutTierIDs(src.Tickets)
+	d.Changed = nil
 	d.Channels = nil
 	d.Publish = true
 	// The tickets and the rest are already there: once the dates are in, the

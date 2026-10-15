@@ -819,7 +819,37 @@ other = "Pulsa «Guardar cambios»: los cambios llegarán a la página de ventas
 other = "Este evento tiene un plano de asientos o todavía no tiene fechas, así que no se puede editar desde el bot. Usa la página de administración."
 
 ["bot.wz.edit_tickets_differ"]
-other = "La fecha {{.When}} tiene entradas distintas a las de la primera; al guardar, las entradas que ves aquí se escribirán en todas las fechas."
+other = "Las sesiones de este evento tienen categorías distintas. Para cambiarlas, pulsa «Precios y categorías» y elige la sesión."
+
+["bot.wz.summary_tickets_by_date"]
+other = "Las sesiones tienen categorías distintas:"
+
+["bot.wz.ask_t_date"]
+other = "Elige la sesión cuyos precios y categorías quieres cambiar. O pulsa «Para todas las sesiones»."
+
+["bot.wz.t_date_all_btn"]
+other = "Para todas las sesiones"
+
+["bot.wz.t_for_all"]
+other = "Para todas las sesiones del evento."
+
+["bot.wz.t_for_date"]
+other = "Para la sesión {{.When}}."
+
+["bot.wz.ask_s_tickets"]
+other = "Categorías de la sesión {{.N}}.\nEn la sesión {{.Prev}}: {{.List}}\n¿Usas las mismas categorías o defines otras nuevas para esta sesión?"
+
+["bot.wz.s_tickets_same_btn"]
+other = "Las mismas que {{.Prev}}"
+
+["bot.wz.s_tickets_own_btn"]
+other = "Definir nuevas"
+
+["bot.wz.ack_tickets"]
+other = "Categorías"
+
+["bot.wz.ask_more_sessions_edit"]
+other = "¿Añadir otra sesión a este evento?"
 
 ["bot.wz.edit_changed_meanwhile"]
 other = "«{{.Name}}» se ha modificado en otro sitio (la web o la administración) después de que lo abrieras. ¿Guardar tu versión por encima?"

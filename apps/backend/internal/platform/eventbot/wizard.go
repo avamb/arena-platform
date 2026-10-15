@@ -30,7 +30,7 @@ import (
 
 // draftSchemaVersion is bumped when Draft changes shape; an older draft is
 // discarded rather than half-understood.
-const draftSchemaVersion = 2
+const draftSchemaVersion = 3
 
 // Steps of the wizard (Draft.Step).
 const (
@@ -71,6 +71,8 @@ const (
 	stTCatLast      = "t_cat_last"
 	stTCatUntil     = "t_cat_until"
 	stTCatMore      = "t_cat_more"
+	stTDate         = "t_date"    // edited event: which date's categories change
+	stSTickets      = "s_tickets" // edited event, new date: same categories or its own
 	stXDescription  = "x_description"
 	stXCurrency     = "x_currency"
 	stXChannels     = "x_channels"
@@ -166,6 +168,14 @@ type DraftSession struct {
 	// it (0 = not given). See wizard_sale_times.go.
 	SalesEndMin int `json:"sales_end_min,omitempty"`
 	DoorsMin    int `json:"doors_min,omitempty"`
+	// Tickets are this date's own categories (wizard_date_tickets.go). Every
+	// date of an edited event carries them, because two dates of one event
+	// may sell different categories; a new event leaves them nil and every
+	// date sells Draft.Tickets.
+	Tickets *DraftTickets `json:"tickets,omitempty"`
+	// Dirty marks an existing date whose categories were changed in this
+	// edit: only such dates (and new ones) are sent again on save.
+	Dirty bool `json:"dirty,omitempty"`
 }
 
 // DraftTickets is the ticket part of the draft.
@@ -235,6 +245,12 @@ type DraftScratch struct {
 	// the zone question until the person confirms it.
 	TzHint     string `json:"tz_hint,omitempty"`
 	SameAsPrev bool   `json:"same_as_prev"`
+	// Work is the ticket part the ticket questions fill while an edited
+	// event changes the categories of one date (WorkFor, 1-based) or of every
+	// date (WorkAll); nil means the questions fill Draft.Tickets.
+	Work    *DraftTickets `json:"work,omitempty"`
+	WorkFor int           `json:"work_for,omitempty"`
+	WorkAll bool          `json:"work_all,omitempty"`
 }
 
 // DraftSaved is what the non-atomic save already wrote.
@@ -623,6 +639,7 @@ func (d *Draft) goHome() {
 	d.Scratch.Edit = ""
 	d.Scratch.ReturnToSummary = false
 	d.Scratch.PrevCats, d.Scratch.PrevSchedule, d.Scratch.PrevSessions = nil, nil, 0
+	d.Scratch.Work, d.Scratch.WorkFor, d.Scratch.WorkAll = nil, 0, false
 	d.History = nil
 	d.Step = stEditMenu
 }
@@ -643,20 +660,17 @@ func (d *Draft) startEdit(field, step string) {
 	d.Step = step
 }
 
-// cancelEdit leaves the part being edited without applying it: re-entered
-// categories are put back, a half-entered date is dropped.
+// cancelEdit leaves the part being edited without applying it: categories
+// being re-entered are dropped (they live in Scratch.Work until the last
+// question, so the date keeps the ones it had), a half-entered date is
+// dropped.
 func (d *Draft) cancelEdit() {
 	switch d.Scratch.Edit {
-	case "tickets":
-		if len(d.Scratch.PrevCats) > 0 {
-			d.Tickets.Categories = d.Scratch.PrevCats
-			d.Tickets.Schedule = d.Scratch.PrevSchedule
-		}
 	case "dates":
 		for n := len(d.Sessions); n > d.Scratch.PrevSessions; n-- {
 			last := d.Sessions[n-1]
-			if last.VenueID != "" && last.Capacity > 0 {
-				break // a finished date stays
+			if last.VenueID != "" && last.Capacity > 0 && last.Tickets != nil {
+				break // a finished date (place and categories chosen) stays
 			}
 			d.Sessions = d.Sessions[:n-1]
 		}
@@ -995,7 +1009,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 				return t("bot.wz.err_duplicate_session", nil), nil
 			}
 			note = w.sessionAddedNote(loc, d)
-			d.goTo(stSMore)
+			d.goTo(d.afterSessionStep())
 		case "other":
 			d.goTo(stSCountry)
 		}
@@ -1209,10 +1223,10 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 	case stTMode:
 		switch data {
 		case "mode:single":
-			d.Tickets = DraftTickets{Mode: ModeSingle}
+			*d.tk() = DraftTickets{Mode: ModeSingle}
 			d.goTo(stTName)
 		case "mode:multi":
-			d.Tickets = DraftTickets{}
+			*d.tk() = DraftTickets{}
 			d.goTo(stTKind)
 		}
 
@@ -1232,7 +1246,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 				d.carryTierID(&cat)
 			}
 		}
-		d.Tickets.Categories = []DraftCategory{cat}
+		d.tk().Categories = []DraftCategory{cat}
 		d.goTo(stTPrice)
 
 	case stTPrice:
@@ -1240,14 +1254,14 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		if !ok {
 			return t("bot.wz.err_price", nil), nil
 		}
-		d.Tickets.Categories[0].PriceMinor = p
+		d.tk().Categories[0].PriceMinor = p
 		d.goTo(stTChanges)
 
 	case stTChanges:
 		switch data {
 		case "no":
-			d.Tickets.Schedule = nil
-			d.section(stXDescription)
+			d.tk().Schedule = nil
+			d.ticketsDone()
 		case "yes":
 			d.goTo(stTChangeDate)
 		}
@@ -1257,7 +1271,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		if !ok {
 			return t("bot.wz.err_date", nil), nil
 		}
-		if n := len(d.Tickets.Schedule); n > 0 && iso <= d.Tickets.Schedule[n-1].From {
+		if sched := d.tk().Schedule; len(sched) > 0 && iso <= sched[len(sched)-1].From {
 			return t("bot.wz.err_change_date_order", nil), nil
 		}
 		d.Scratch.Step = DraftPriceStep{From: iso}
@@ -1269,7 +1283,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			return t("bot.wz.err_price", nil), nil
 		}
 		d.Scratch.Step.PriceMinor = p
-		d.Tickets.Schedule = append(d.Tickets.Schedule, d.Scratch.Step)
+		d.tk().Schedule = append(d.tk().Schedule, d.Scratch.Step)
 		d.Scratch.Step = DraftPriceStep{}
 		d.goTo(stTChangeMore)
 
@@ -1278,19 +1292,19 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		case "more":
 			d.goTo(stTChangeDate)
 		case "done":
-			d.section(stXDescription)
+			d.ticketsDone()
 		}
 
 	case stTKind:
 		switch data {
 		case "kind:parallel":
-			d.Tickets.Mode = ModeParallel
+			d.tk().Mode = ModeParallel
 		case "kind:sequence":
-			d.Tickets.Mode = ModeSequence
+			d.tk().Mode = ModeSequence
 		default:
 			return "", nil
 		}
-		d.Tickets.Categories = nil
+		d.tk().Categories = nil
 		d.Scratch.Cat = DraftCategory{}
 		d.goTo(stTCatName)
 
@@ -1298,7 +1312,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		if text == "" {
 			return t("bot.wz.err_name", nil), nil
 		}
-		for _, c := range d.Tickets.Categories {
+		for _, c := range d.tk().Categories {
 			if strings.EqualFold(c.Name, text) {
 				return t("bot.wz.err_cat_dup", map[string]any{"Name": Esc(text)}), nil
 			}
@@ -1313,9 +1327,9 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		}
 		d.Scratch.Cat.PriceMinor = p
 		switch {
-		case d.Tickets.Mode == ModeParallel:
+		case d.tk().Mode == ModeParallel:
 			d.goTo(stTCatPlaces)
-		case len(d.Tickets.Categories) == 0:
+		case len(d.tk().Categories) == 0:
 			d.goTo(stTCatUntil) // the first one cannot be the last
 		default:
 			d.goTo(stTCatLast)
@@ -1327,9 +1341,9 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			// The last category sells until the session starts: it has no end.
 			d.Scratch.Cat.SellUntil, d.Scratch.Cat.SellLimit = "", 0
 			d.carryTierID(&d.Scratch.Cat)
-			d.Tickets.Categories = append(d.Tickets.Categories, d.Scratch.Cat)
+			d.tk().Categories = append(d.tk().Categories, d.Scratch.Cat)
 			d.Scratch.Cat = DraftCategory{}
-			d.section(stXDescription)
+			d.ticketsDone()
 		case "next":
 			d.goTo(stTCatUntil)
 		}
@@ -1341,7 +1355,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		}
 		d.Scratch.Cat.Places = n
 		d.carryTierID(&d.Scratch.Cat)
-		d.Tickets.Categories = append(d.Tickets.Categories, d.Scratch.Cat)
+		d.tk().Categories = append(d.tk().Categories, d.Scratch.Cat)
 		d.Scratch.Cat = DraftCategory{}
 		d.goTo(stTCatMore)
 
@@ -1350,12 +1364,12 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		if !ok {
 			return t("bot.wz.err_cat_end", nil), nil
 		}
-		if prev := lastUntil(d.Tickets.Categories); until != "" && prev != "" && until < prev {
+		if prev := lastUntil(d.tk().Categories); until != "" && prev != "" && until < prev {
 			return t("bot.wz.err_until_order", map[string]any{"Name": Esc(d.Scratch.Cat.Name)}), nil
 		}
 		d.Scratch.Cat.SellUntil, d.Scratch.Cat.SellLimit = until, limit
 		d.carryTierID(&d.Scratch.Cat)
-		d.Tickets.Categories = append(d.Tickets.Categories, d.Scratch.Cat)
+		d.tk().Categories = append(d.tk().Categories, d.Scratch.Cat)
 		d.Scratch.Cat = DraftCategory{}
 		d.goTo(stTCatName) // it ends, so another follows
 
@@ -1364,16 +1378,17 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		case "more":
 			d.goTo(stTCatName)
 		case "done":
-			if len(d.Tickets.Categories) < 2 {
+			tk := d.tk()
+			if len(tk.Categories) < 2 {
 				return t("bot.wz.err_min_two", nil), nil
 			}
-			if d.Tickets.Mode == ModeSequence {
+			if tk.Mode == ModeSequence {
 				// The last category sells until the session starts: its own
 				// end, if one was typed, is dropped (spec: the last one has none).
-				last := &d.Tickets.Categories[len(d.Tickets.Categories)-1]
+				last := &tk.Categories[len(tk.Categories)-1]
 				last.SellUntil, last.SellLimit = "", 0
 			}
-			d.section(stXDescription)
+			d.ticketsDone()
 		}
 
 	case stXDescription:
@@ -1476,19 +1491,33 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			d.Scratch.PrevSessions = len(d.Sessions)
 			d.Cur = len(d.Sessions)
 		case "e:tickets":
-			// "One or several" and "all at once or in turn" are fixed once the
-			// event exists; the categories are re-entered in place.
-			prevCats, prevSchedule := d.Tickets.Categories, d.Tickets.Schedule
-			d.startEdit("tickets", stTCatName)
-			d.Scratch.ReturnToSummary = true
-			d.Scratch.PrevCats, d.Scratch.PrevSchedule = prevCats, prevSchedule
-			d.Tickets.Categories = nil
-			if d.Tickets.Mode == ModeSingle {
-				d.Tickets.Schedule = nil
-				d.Step = stTName
-			} else {
-				d.Scratch.Cat = DraftCategory{}
+			d.openTicketsEdit()
+		}
+
+	case stTDate:
+		// Which date's categories change: one date, or every date at once.
+		if data == "td:all" {
+			d.goTo(d.startTickets(0, *d.ticketsOf(0), true))
+			break
+		}
+		if raw, ok := strings.CutPrefix(data, "td:"); ok {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n < 1 || n > len(d.Sessions) {
+				return "", nil
 			}
+			d.goTo(d.startTickets(n, *d.ticketsOf(n - 1), true))
+		}
+
+	case stSTickets:
+		// A date added to an edited event: a copy of the categories of the
+		// date before it (as new categories of this date), or its own.
+		prev := d.ticketsOf(d.Cur - 1)
+		switch data {
+		case "st:same":
+			d.setDateTickets(d.Cur, withoutTierIDs(*prev))
+			d.goTo(stSMore)
+		case "st:own":
+			d.goTo(d.startTickets(d.Cur+1, *prev, false))
 		}
 
 	case stSummary:
@@ -1513,18 +1542,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			d.History = nil
 			d.Scratch.ReturnToSummary = true
 			if d.Mode == ModeEdit {
-				// "One or several" and "all at once or in turn" are fixed once
-				// the event exists; the categories are re-entered in place.
-				d.Scratch.PrevCats = d.Tickets.Categories
-				if d.Tickets.Mode == ModeSingle {
-					d.Tickets.Categories = nil
-					d.Tickets.Schedule = nil
-					d.Step = stTName
-				} else {
-					d.Tickets.Categories = nil
-					d.Scratch.Cat = DraftCategory{}
-					d.Step = stTCatName
-				}
+				d.openTicketsEdit()
 				break
 			}
 			d.Step = stTMode
@@ -1566,7 +1584,7 @@ func (w *Wizard) finishSession(loc string, d *Draft) (string, error) {
 		return w.texts.T(loc, "bot.wz.err_duplicate_session", nil), nil
 	}
 	note := w.sessionAddedNote(loc, d)
-	d.goTo(stSMore)
+	d.goTo(d.afterSessionStep())
 	return note, nil
 }
 
