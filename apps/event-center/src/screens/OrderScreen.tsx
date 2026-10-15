@@ -1,10 +1,10 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { fetchOrder } from "@/lib/api/endpoints";
-import type { OrderDetail } from "@/lib/api/types";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { DELIVERY_STATES, UNPAID_REASONS, orderNumber, seatText, ticketDelivery } from "@/lib/orders";
+import { UNPAID_REASONS, orderNumber, seatText, ticketDelivery } from "@/lib/orders";
+import { OrderLetters } from "@/components/OrderLetters";
 import { CancelOrder } from "@/components/CancelOrder";
 import { Badge, ErrorBox, Loading } from "@/components/ui";
 import { useOrg } from "@/screens/OrgLayout";
@@ -29,20 +29,6 @@ function deliveryKey(status: string | undefined): MessageKey {
 
 function channelKey(kind: string): MessageKey {
   return kind === "site" || kind === "hosted_page" || kind === "widget" ? `channel.${kind}` : "channel.other";
-}
-
-function DeliveryState({ order }: { order: OrderDetail }) {
-  const { t } = useI18n();
-  const state = order.delivery_state;
-  if (order.tickets.length === 0 || state === "none" || !(DELIVERY_STATES as readonly string[]).includes(state)) {
-    return null;
-  }
-  const tone = state === "sent" ? "notice-ok" : state === "failed" ? "notice-bad" : "";
-  return (
-    <p className={`notice ${tone}`} data-testid="delivery-state">
-      {t(`delivery.state.${state as "sent" | "pending" | "failed"}`)}
-    </p>
-  );
 }
 
 export function OrderScreen() {
@@ -84,7 +70,7 @@ export function OrderScreen() {
 
       <CancelOrder orgId={orgId} orderId={o.id} systemId={o.system_id} status={o.status} canWrite={access.can("order.write")} />
 
-      <DeliveryState order={o} />
+      <OrderLetters orgId={orgId} order={o} can={access.can} />
       {unpaid !== null && o.unpaid_reason.length > 0 && (
         <section aria-labelledby="order-unpaid">
           <h2 id="order-unpaid">{t("order.unpaid")}</h2>

@@ -6,13 +6,24 @@
 import { call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type {
+  CreatePromoCodeRequest,
+  BotInvitationCreateResponse,
+  BotInvitationResendResponse,
+  BotInvitationRevokeResponse,
+  BotTeamResponse,
   EventListResponse,
   EventSummary,
   MeResponse,
   OrderDetail,
   OrderListResponse,
+  OrderResendTicketsResponse,
   OrderSummary,
   OrgMeResponse,
+  PromoterEnvelope,
+  PromoterListEnvelope,
+  PromoCodeEnvelope,
+  PromoCodeListResponse,
+  PromoRedemptionListResponse,
   SessionListResponse,
   SessionSummary,
   TicketTierListResponse,
@@ -126,6 +137,112 @@ export function downloadSampleTicket(orgId: string, sessionId: string, locale: s
   });
 }
 
+// 4-6
+/** Every promoter of the organization, archived ones included (the screen filters). */
+export function listPromoters(orgId: string): Promise<PromoterListEnvelope> {
+  return call<PromoterListEnvelope>({ route: API.promoters, params: { org_id: orgId }, query: { include_archived: "true" } });
+}
+
+export interface PromoterCreateBody {
+  name: string;
+  legal_id?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  website?: string;
+}
+
+export function createPromoter(orgId: string, body: PromoterCreateBody): Promise<PromoterEnvelope> {
+  return call<PromoterEnvelope>({ route: API.promoterCreate, params: { org_id: orgId }, body });
+}
+
+/** Tri-state like the API: an absent key keeps the value, null clears it. */
+export type PromoterPatch = Partial<{
+  name: string;
+  legal_id: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  website: string | null;
+  slug: string;
+  archived: boolean;
+}>;
+
+export function updatePromoter(orgId: string, promoterId: string, body: PromoterPatch): Promise<PromoterEnvelope> {
+  return call<PromoterEnvelope>({ route: API.promoterUpdate, params: { org_id: orgId, id: promoterId }, body });
+}
+
+// ── 4-3: promo codes ───────────────────────────────────────────────────
+
+export function listPromoCodes(orgId: string): Promise<PromoCodeListResponse> {
+  return call<PromoCodeListResponse>({ route: API.promoCodes, params: { org_id: orgId } });
+}
+
+export function fetchPromoCode(orgId: string, codeId: string): Promise<PromoCodeEnvelope> {
+  return call<PromoCodeEnvelope>({ route: API.promoCode, params: { org_id: orgId, id: codeId } });
+}
+
+export function createPromoCode(orgId: string, body: CreatePromoCodeRequest): Promise<PromoCodeEnvelope> {
+  return call<PromoCodeEnvelope>({ route: API.promoCodeCreate, params: { org_id: orgId }, body });
+}
+
+/** Pauses or activates a code. The body names only the status, so nothing else changes. */
+export function setPromoStatus(orgId: string, codeId: string, status: "active" | "paused"): Promise<PromoCodeEnvelope> {
+  return call<PromoCodeEnvelope>({
+    route: API.promoCodeUpdate,
+    params: { org_id: orgId, id: codeId },
+    body: { status },
+  });
+}
+
+/**
+ * Replaces the sessions a code is for. An EMPTY list means every session of
+ * the organization, future ones included (a club code). The body always names
+ * the array: an absent or null one would leave the stored value alone.
+ */
+export function setPromoSessions(orgId: string, codeId: string, sessionIds: readonly string[]): Promise<PromoCodeEnvelope> {
+  return call<PromoCodeEnvelope>({
+    route: API.promoCodeUpdate,
+    params: { org_id: orgId, id: codeId },
+    body: { applies_to_session_ids: [...sessionIds] },
+  });
+}
+
+export function deletePromoCode(orgId: string, codeId: string): Promise<unknown> {
+  return call<unknown>({ route: API.promoCodeDelete, params: { org_id: orgId, id: codeId } });
+}
+
+export function listPromoRedemptions(orgId: string, codeId: string): Promise<PromoRedemptionListResponse> {
+  return call<PromoRedemptionListResponse>({
+    route: API.promoRedemptions,
+    params: { org_id: orgId },
+    query: { promo_code_id: codeId },
+  });
+}
+
+export function downloadPromoCsv(orgId: string, codeId: string, locale: string): Promise<DownloadedFile> {
+  return download({
+    route: API.promoRedemptionsCsv,
+    params: { org_id: orgId, promo_code_id: codeId },
+    query: { locale },
+    accept: "text/csv",
+    fallbackName: "promo-usage.csv",
+  });
+}
+
+/**
+ * Sends the tickets of a paid order again (4-1). Without `email` the letter goes to
+ * the order's own address. With it, the address is used once and kept 24 hours on
+ * the delivery task: it never replaces the order's buyer e-mail.
+ */
+export function resendOrderTickets(orgId: string, orderId: string, email?: string): Promise<OrderResendTicketsResponse> {
+  return call<OrderResendTicketsResponse>({
+    route: API.resendTickets,
+    params: { org_id: orgId, order_id: orderId },
+    body: email !== undefined && email !== "" ? { email } : undefined,
+  });
+}
+
 /**
  * Cancels a `pending_payment` order and ends the hold on its seats (4-2).
  * The caller has already checked the typed word. `headers` carries the
@@ -133,4 +250,57 @@ export function downloadSampleTicket(orgId: string, sessionId: string, locale: s
  */
 export function cancelOrder(orgId: string, orderId: string, headers: Record<string, string>): Promise<OrderSummary> {
   return call<OrderSummary>({ route: API.cancelOrder, params: { org_id: orgId, id: orderId }, body: {}, headers });
+}
+
+// ─── 4-5: the team ───────────────────────────────────────────────────────────
+
+/** The organization's owners and managers with where each invitation stands. */
+export function fetchTeam(orgId: string): Promise<BotTeamResponse> {
+  return call<BotTeamResponse>({ route: API.botTeam, params: { org_id: orgId } });
+}
+
+export type InviteChannel = "web" | "telegram";
+export type InviteRole = "owner" | "manager";
+
+export interface InviteInput {
+  email: string;
+  role: InviteRole;
+  channel: InviteChannel;
+  /** The language of the letter: en, ru or es. */
+  locale: string;
+}
+
+/**
+ * Invites a person. The membership exists at once (a person who is already a
+ * member keeps their role); `channel` decides what the letter opens.
+ */
+export function inviteMember(orgId: string, input: InviteInput): Promise<BotInvitationCreateResponse> {
+  return call<BotInvitationCreateResponse>({ route: API.inviteMember, params: { org_id: orgId }, body: input });
+}
+
+/** Sends a Telegram invitation again. A web invitation answers 409. Too soon is 429. */
+export function resendInvitation(orgId: string, invitationId: string, locale?: string): Promise<BotInvitationResendResponse> {
+  return call<BotInvitationResendResponse>({
+    route: API.resendInvitation,
+    params: { org_id: orgId, id: invitationId },
+    body: locale === undefined ? {} : { locale },
+  });
+}
+
+/** Annuls an invitation. The membership it created goes too, when the person never took part. */
+export function revokeInvitation(orgId: string, invitationId: string): Promise<BotInvitationRevokeResponse> {
+  return call<BotInvitationRevokeResponse>({ route: API.revokeInvitation, params: { org_id: orgId, id: invitationId } });
+}
+
+/**
+ * Removes ONE role of a member. The body names it: an empty body is 400
+ * `membership.empty_body`. The role is the row's `membership_role`.
+ * (The generated body type lists no `org_admin`, which the server accepts.)
+ */
+export function removeMember(orgId: string, userId: string, membershipRole: string): Promise<{ revoked: boolean }> {
+  return call<{ revoked: boolean }>({
+    route: API.removeMember,
+    params: { org_id: orgId, user_id: userId },
+    body: { role: membershipRole },
+  });
 }

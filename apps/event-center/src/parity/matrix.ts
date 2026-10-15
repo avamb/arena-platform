@@ -356,7 +356,10 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Повторная отправка билетов",
     bot: "resend.go, `or:r:`",
     web: "R3",
+    // 4-1
+    ready: { twin: "live/resend.spec.ts" },
     routes: [`POST ${O}/orders/{order_id}/resend-tickets`],
+    note: "Окно «на адрес заказа / на другой адрес», подтверждение, результат. Заказ сайта-продавца отклоняет API (`order.seller_site_order`). Строки статуса писем (`letters[]`) стоят на карточке заказа. Кнопка видна по праву `ticket.update` в `GET …/me`.",
   },
   // ── Возвраты ────────────────────────────────────────────────────────
   {
@@ -379,6 +382,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Список, карточка, использование",
     bot: "promo_dialog.go, `pm:`",
     web: "R3",
+    // 4-3
+    ready: { twin: "live/promo.spec.ts", smoke: "promo.mock.spec.ts" },
     routes: [
       `GET ${O}/promo-codes`,
       `GET ${O}/promo-codes/{id}`,
@@ -391,6 +396,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Создание, пауза, сеансы, удаление",
     bot: "promo_create.go, `pm:n`, `pm:ps`, `pm:se`, `pm:del`",
     web: "R3",
+    // 4-3
+    ready: { twin: "live/promo.spec.ts", smoke: "promo.mock.spec.ts" },
     routes: [`POST ${O}/promo-codes`, `PATCH ${O}/promo-codes/{id}`, `DELETE ${O}/promo-codes/{id}`],
   },
   // ── Пригласительные ─────────────────────────────────────────────────
@@ -414,6 +421,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Команда, приглашение, удаление",
     bot: "team.go, `team:`",
     web: "R3",
+    // 4-5
+    ready: { twin: "live/team.spec.ts" },
     routes: [
       `GET ${O}/bot-team`,
       `POST ${O}/bot-invitations`,
@@ -421,7 +430,7 @@ export const PARITY: readonly ParityRow[] = [
       `POST ${O}/bot-invitations/{id}/resend`,
       `DELETE ${O}/members/{user_id}`,
     ],
-    note: "Ждёт A2: приглашение с каналом web или telegram.",
+    note: "Приглашение с каналом web или telegram. Для web-приглашения нет повторной отправки и отзыва: потерянную ссылку заменяет «Забыли пароль». Удаление называет роль участника в теле запроса. Своя строка не удаляется: последнего владельца снять нельзя.",
   },
   // ── Промоутеры ──────────────────────────────────────────────────────
   {
@@ -429,7 +438,9 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Список, правка, архив",
     bot: "promoters.go, `pr:`",
     web: "R3",
-    routes: [`GET ${O}/promoters`, `PATCH ${O}/promoters/{id}`],
+    ready: { twin: "live/promoters.spec.ts" },
+    routes: [`GET ${O}/promoters`, `POST ${O}/promoters`, `PATCH ${O}/promoters/{id}`],
+    note: "4-6: список с фильтром архива, карточка с правкой по одному полю, смена адреса страницы с вопросом «было → стало», архив и возврат, ссылка на публичную страницу с кнопкой копирования.",
   },
   // ── Данные организации ──────────────────────────────────────────────
   {
@@ -460,7 +471,7 @@ export const PARITY: readonly ParityRow[] = [
     bot: "bot.go, `/start inv_…`",
     web: "—",
     routes: ["POST /v1/bot/invitations/accept"],
-    note: "В вебе: письмо с установкой пароля ведёт на `/accept-invite`. Приглашение из «Команды» с каналом web — задача A2.",
+    note: "В вебе: письмо с установкой пароля ведёт на `/accept-invite`. Приглашение из «Команды» с каналом web — экран «Команда» (4-5).",
   },
 ];
 

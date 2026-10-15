@@ -29,5 +29,27 @@ export type OrderDetail = S["OrderDetail"];
 export type OrderSummary = S["OrderSummary"];
 export type OrderTicketSummary = S["OrderTicketSummary"];
 export type OrderDeliveryEntry = S["OrderDeliveryEntry"];
+export type OrderLetter = S["OrderLetter"];
+export type OrderRefundLetter = S["OrderRefundLetter"];
+export type OrderResendTicketsResponse = S["OrderResendTicketsResponse"];
 export type OrderListResponse =
   paths["/v1/organizations/{org_id}/orders"]["get"]["responses"]["200"]["content"]["application/json"];
+
+// 4-6
+export type Promoter = S["Promoter"];
+export type PromoterListEnvelope = S["PromoterListEnvelope"];
+export type PromoterEnvelope = S["PromoterEnvelope"];
+// 4-3: promo codes.
+export type PromoCodeItem = S["PromoCodeItem"];
+export type PromoCodeListResponse = S["PromoCodeListResponse"];
+export type PromoCodeEnvelope = S["PromoCodeEnvelope"];
+export type PromoRedemptionItem = S["PromoRedemptionItem"];
+export type PromoRedemptionListResponse = S["PromoRedemptionListResponse"];
+export type CreatePromoCodeRequest = S["CreatePromoCodeRequest"];
+// 4-5: the team screen.
+export type BotTeamMember = S["BotTeamMember"];
+export type BotTeamResponse = S["BotTeamResponse"];
+export type BotInvitation = S["BotInvitation"];
+export type BotInvitationCreateResponse = S["BotInvitationCreateResponse"];
+export type BotInvitationResendResponse = S["BotInvitationResendResponse"];
+export type BotInvitationRevokeResponse = S["BotInvitationRevokeResponse"];

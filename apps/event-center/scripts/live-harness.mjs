@@ -132,6 +132,8 @@ const apiEnv = {
   // The vite dev server is another origin than the API: the browser needs CORS.
   CORS_ALLOWED_ORIGINS: `http://127.0.0.1:${uiPort},http://localhost:${uiPort}`,
   EVENT_CENTER_PUBLIC_URL: `http://127.0.0.1:${uiPort}`,
+  // The hosted sales site: promoter cards show "<this>/<slug>" (task 4-6).
+  PUBLIC_TICKETS_BASE_URL: process.env.PUBLIC_TICKETS_BASE_URL ?? "https://tickets.e2e.test",
 };
 log(`starting arena-api on ${apiBase}`);
 const api = spawn(apiBin, [], { cwd: repoRoot, env: apiEnv, stdio: ["ignore", "inherit", "inherit"] });
