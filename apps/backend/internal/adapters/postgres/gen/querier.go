@@ -475,6 +475,14 @@ type Querier interface {
 	GetMACSSubscriberByOrg(ctx context.Context, orgID uuid.UUID) (WebhookSubscriberRow, error)
 	ListActiveMACSSubscribers(ctx context.Context) ([]WebhookSubscriberRow, error)
 	DeactivateMACSSubscriberByOrg(ctx context.Context, orgID uuid.UUID) (WebhookSubscriberRow, error)
+	GetMACSSubscriberByID(ctx context.Context, id uuid.UUID) (WebhookSubscriberRow, error)
+
+	// M1 — scans MACS posts back (macs_scan_events.sql.go, migration 0164).
+	InsertMACSScanEvent(ctx context.Context, p InsertMACSScanEventParams) (ScanEventRow, bool, error)
+	GetScanEventBySubscriberScan(ctx context.Context, subscriberID uuid.UUID, externalScanID string) (ScanEventRow, error)
+	ResolveMACSScanTicketBySystemID(ctx context.Context, systemTicketID int64) (MACSScanTicketRow, error)
+	ResolveMACSScanTicketByBarcode(ctx context.Context, barcode string) (MACSScanTicketRow, error)
+	ListSessionSummaryAdmissions(ctx context.Context, sessionIDs []uuid.UUID) ([]SessionSummaryAdmissionsRow, error)
 
 	// External reconciliation — partner report submission, auto-match, exception queue (feature #147)
 	InsertReconciliationReport(ctx context.Context, allocationID uuid.UUID, partnerOrgID uuid.UUID, totalLines int32, matchedLines int32, exceptionLines int32, status string, notes *string) (ReconciliationReportRow, error)

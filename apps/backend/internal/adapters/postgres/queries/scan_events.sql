@@ -100,3 +100,61 @@ SET    used_at    = $2,
        updated_at = now()
 WHERE  id        = $1
   AND  used_at IS NULL;
+
+-- ─── MACS scans (POST /v1/macs/scan-events, migration 0164) ────────────────
+
+-- name: InsertMACSScanEvent :one
+-- One scan reported by MACS. ON CONFLICT DO NOTHING covers BOTH unique
+-- indexes: (subscriber_id, external_scan_id) — MACS re-sent a scan it
+-- already delivered — and (credential_code, scanned_at) — the same physical
+-- scan is already recorded. No row back means "already recorded"; the
+-- handler then looks the existing row up.
+INSERT INTO scan_events (
+    org_id, event_id, session_id, ticket_id,
+    credential_code, scanned_at, gate, device_id, result,
+    source, scanner_label, external_scan_id, subscriber_id
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'macs', $10, $11, $12)
+ON CONFLICT DO NOTHING
+RETURNING id, org_id, event_id, session_id, ticket_id,
+          credential_code, scanned_at, gate, device_id, result, received_at;
+
+-- name: GetScanEventBySubscriberScan :one
+SELECT id, org_id, event_id, session_id, ticket_id,
+       credential_code, scanned_at, gate, device_id, result, received_at
+FROM   scan_events
+WHERE  subscriber_id    = $1
+  AND  external_scan_id = $2;
+
+-- name: ResolveMACSScanTicketBySystemID :one
+-- The ticket MACS names by its integer id (macs export `id` =
+-- tickets.system_ticket_id), locked for the admission stamp. has_ean13 tells
+-- the legacy barcode fallback whether the ticket carries a stored EAN-13.
+SELECT t.id, t.session_id, s.event_id, e.org_id, t.status, t.used_at,
+       t.system_ticket_id,
+       EXISTS (SELECT 1 FROM ticket_credentials tc
+               WHERE tc.ticket_id = t.id AND tc.type = 'ean13') AS has_ean13
+FROM   tickets  t
+JOIN   sessions s ON s.id = t.session_id
+JOIN   events   e ON e.id = s.event_id
+WHERE  t.system_ticket_id = $1
+FOR UPDATE OF t;
+
+-- name: ResolveMACSScanTicketByBarcode :one
+-- The ticket behind a 13-digit barcode MACS printed (macs export `barcode`).
+-- Goes through barcodes.external_ref (indexed, migration 0106): the minted
+-- EAN-13 credential is written there first with the same value, and an
+-- imported legacy barcode lives only there.
+SELECT t.id, t.session_id, s.event_id, e.org_id, t.status, t.used_at,
+       t.system_ticket_id,
+       EXISTS (SELECT 1 FROM ticket_credentials tc
+               WHERE tc.ticket_id = t.id AND tc.type = 'ean13') AS has_ean13
+FROM   barcodes b
+JOIN   tickets  t ON t.id = b.ticket_id
+JOIN   sessions s ON s.id = t.session_id
+JOIN   events   e ON e.id = s.event_id
+WHERE  b.external_ref = $1
+  AND  b.ticket_id IS NOT NULL
+ORDER  BY b.created_at, b.id
+LIMIT  1
+FOR UPDATE OF t;

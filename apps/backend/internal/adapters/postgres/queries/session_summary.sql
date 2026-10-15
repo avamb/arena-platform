@@ -171,3 +171,22 @@ SELECT sid.id AS session_id,
             AND  t.status = 'active'
             AND  (t.complimentary_issuance_id IS NOT NULL OR o.source = 'complimentary'))::bigint AS tickets
 FROM   unnest($1::uuid[]) AS sid(id);
+
+-- name: ListSessionSummaryAdmissions :many
+-- Admissions at the door by who reported them (scan_events.source, migration
+-- 0164): `tickets` counts the valid tickets with at least one admitted scan
+-- of that source, `scans` every admitted scan row of it (repeat scans and
+-- scans of tickets cancelled since included). Only scans recorded for the
+-- session's own organization count, the rule refunds/scanned.go uses. A
+-- session with no admitted scan has no row.
+SELECT se.session_id, se.source,
+       count(DISTINCT se.ticket_id) FILTER (WHERE t.status = 'active')::bigint AS tickets,
+       count(*)::bigint AS scans
+FROM   scan_events se
+JOIN   sessions s ON s.id = se.session_id
+JOIN   events   e ON e.id = s.event_id
+LEFT JOIN tickets t ON t.id = se.ticket_id
+WHERE  se.session_id = ANY($1::uuid[])
+  AND  se.result = 'admitted'
+  AND  se.org_id = e.org_id
+GROUP  BY se.session_id, se.source;
