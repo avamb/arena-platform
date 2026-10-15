@@ -115,6 +115,32 @@ func (sw *SlidingWindow) Allow(key string) bool {
 	return len(valid) <= sw.maxAttempts
 }
 
+// Take records an attempt only when the key is still under the limit and
+// reports whether it did. Unlike Allow, a refused attempt is NOT recorded:
+// Take counts a quota of things done (a paid model call), not guesses, so a
+// caller that keeps asking after the limit does not push its own window
+// further out and the slice cannot grow past MaxAttempts.
+func (sw *SlidingWindow) Take(key string) bool {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+
+	now := sw.nowFn()
+	cutoff := now.Add(-sw.window)
+	hits := sw.windows[key]
+	valid := hits[:0]
+	for _, t := range hits {
+		if t.After(cutoff) {
+			valid = append(valid, t)
+		}
+	}
+	if len(valid) >= sw.maxAttempts {
+		sw.windows[key] = valid
+		return false
+	}
+	sw.windows[key] = append(valid, now)
+	return true
+}
+
 // Count returns the number of attempts within the current sliding window for
 // the given key. Does not modify state.
 func (sw *SlidingWindow) Count(key string) int {
