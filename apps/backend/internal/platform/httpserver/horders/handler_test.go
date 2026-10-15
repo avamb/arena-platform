@@ -101,6 +101,14 @@ func (f *fakeRows) Conn() *pgx.Conn                              { return nil }
 // a query whose org_id argument doesn't match realOrgID returns
 // pgx.ErrNoRows, proving tenant isolation the same way the real WHERE clause
 // does.
+// The event facts every fakeDB order carries on its card (0-2).
+const (
+	testEventName = "Swan Lake"
+	testVenueZone = "Europe/Madrid"
+)
+
+var testSessionStart = time.Date(2099, 2, 1, 19, 0, 0, 0, time.UTC)
+
 type fakeDB struct {
 	orderFound bool
 	orderVals  []any
@@ -150,6 +158,13 @@ func (f *fakeDB) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
 		return &fakeRow{vals: []any{int64(1)}}
 	case strings.Contains(sql, "FROM   sales_channels"):
 		return &fakeRow{err: pgx.ErrNoRows}
+	case strings.Contains(sql, "-- name: GetOrderEventFacts"):
+		// 0-2: event name, session start, venue zone; same org predicate.
+		orgID, _ := args[1].(uuid.UUID)
+		if !f.orderFound || orgID != f.realOrgID {
+			return &fakeRow{err: pgx.ErrNoRows}
+		}
+		return &fakeRow{vals: []any{testEventName, testSessionStart, testVenueZone}}
 	case strings.Contains(sql, "FROM   orders"):
 		if !f.orderFound {
 			return &fakeRow{err: pgx.ErrNoRows}
@@ -368,6 +383,10 @@ func TestHandleGet_FullAssembly(t *testing.T) {
 	}
 	if body["status"] != "paid" {
 		t.Errorf("status = %v, want paid", body["status"])
+	}
+	if body["event_name"] != testEventName || body["venue_timezone"] != testVenueZone ||
+		body["session_start_at"] != testSessionStart.Format(time.RFC3339) {
+		t.Errorf("event facts = %v / %v / %v", body["event_name"], body["session_start_at"], body["venue_timezone"])
 	}
 	if body["org_id"] != orgID.String() {
 		t.Errorf("org_id = %v, want %v", body["org_id"], orgID.String())
