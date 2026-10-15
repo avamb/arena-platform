@@ -37,6 +37,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 )
@@ -67,6 +68,20 @@ type cityResponse struct {
 	CountryIso2 string `json:"country_iso2,omitempty"`
 	Slug        string `json:"slug"`
 	Name        string `json:"name"`
+	// Timezone is the IANA zone the city is in, best effort (list route only).
+	Timezone string `json:"timezone,omitempty"`
+	// Source is always "platform" here (list route only); see citySuggestion.
+	Source string `json:"source,omitempty"`
+}
+
+// citySuggestion is one place of the embedded GeoNames data offered by the
+// list route's ?q= search. It is not a platform city: it has no id, and
+// choosing it means creating the city through POST .../cities.
+type citySuggestion struct {
+	Name        string `json:"name"`
+	CountryIso2 string `json:"country_iso2"`
+	Timezone    string `json:"timezone"`
+	Source      string `json:"source"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -150,9 +165,17 @@ func (h *Handler) HandleListCountries(w http.ResponseWriter, r *http.Request) {
 
 // HandleListCities serves GET /v1/geo/cities.
 //
-// Optional query parameter:
+// Optional query parameters:
 //   - country_id (UUID) — when provided, only cities belonging to that country
 //     are returned.
+//   - country (ISO 3166-1 alpha-2) — same filter by code; ignored when
+//     country_id is also given. Also names the country whose GeoNames data
+//     the q search draws suggestions from.
+//   - q — a typed beginning of a city name (any script): keeps the platform
+//     cities whose name or slug starts with it (at most 20) and adds a
+//     "suggestions" array (at most 20) with source "geonames"
+//     (internal/platform/geotz) for the country named by ?country=, leaving
+//     out places the platform already has. Suggestions create nothing.
 //
 // Returns a JSON array of cities. Localized names are resolved from i18n_text
 // with the same fallback chain as HandleListCountries.
@@ -167,6 +190,11 @@ func (h *Handler) HandleListCities(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	locale := h.GeoLocale(r)
+
+	country, q, ok := cityQuery(w, r)
+	if !ok {
+		return
+	}
 
 	// Parse optional country_id filter.
 	var countryID *uuid.UUID
@@ -184,27 +212,47 @@ func (h *Handler) HandleListCities(w http.ResponseWriter, r *http.Request) {
 		countryID = &parsed
 	}
 
-	rows, err := h.queries.ListCities(ctx, locale, countryID)
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"geo.list_cities_failed",
-			"failed to list cities",
-			r,
-		))
-		return
+	// A country code is resolved to its row first so the read below is
+	// limited to that country's cities (this route is public and a search
+	// calls it on every keystroke); a code with no row has no platform cities.
+	noPlatformCities := false
+	if countryID == nil && country != "" {
+		row, err := h.queries.GetCountryByISO2(ctx, country)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			noPlatformCities = true
+		case err != nil:
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"geo.list_cities_failed",
+				"failed to list cities",
+				r,
+			))
+			return
+		default:
+			countryID = &row.ID
+		}
 	}
 
-	result := make([]cityResponse, 0, len(rows))
-	for _, row := range rows {
-		result = append(result, cityResponse{
-			ID:          row.ID.String(),
-			CountryID:   row.CountryID.String(),
-			CountryIso2: row.CountryIso2,
-			Slug:        row.Slug,
-			Name:        row.Name,
-		})
+	var rows []gen.ListCityRow
+	if !noPlatformCities {
+		var err error
+		rows, err = h.queries.ListCities(ctx, locale, countryID)
+		if err != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"geo.list_cities_failed",
+				"failed to list cities",
+				r,
+			))
+			return
+		}
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"cities": result})
+
+	result, suggestions := assembleCities(rows, country, countryID != nil, q)
+	body := map[string]any{"cities": result}
+	if q != "" {
+		body["suggestions"] = suggestions
+	}
+	httputil.WriteJSON(w, http.StatusOK, body)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
