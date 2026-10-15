@@ -10665,15 +10665,16 @@ type PromoterListEnvelope struct {
 
 // PublicBuyerInfo Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
 // `email` supersedes the top-level `holder_email` when both are present.
-// `name` and `phone` are validated against the channel's `buyer_fields` flags.
+// `name` and `phone` are optional unless the channel's `buyer_fields`
+// mark them `required`.
 type PublicBuyerInfo struct {
 	// Email Buyer's email address (ticket holder).
 	Email openapi_types.Email `json:"email"`
 
-	// Name Buyer's full name; required when the channel has collect_name enabled.
+	// Name Buyer's first and last name in one field; required only when the channel's `buyer_fields` entry `name` has `required` true, otherwise optional and may be empty or null.
 	Name *string `json:"name"`
 
-	// Phone Buyer's phone number; required when the channel has collect_phone enabled.
+	// Phone Buyer's phone number; required only when the channel's `buyer_fields` entry `phone` has `required` true, otherwise optional and may be empty or null.
 	Phone *string `json:"phone"`
 }
 
@@ -10712,7 +10713,8 @@ type PublicFeedCheckoutQuoteResponse struct {
 type PublicFeedCheckoutStartRequest struct {
 	// Buyer Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
 	// `email` supersedes the top-level `holder_email` when both are present.
-	// `name` and `phone` are validated against the channel's `buyer_fields` flags.
+	// `name` and `phone` are optional unless the channel's `buyer_fields`
+	// mark them `required`.
 	Buyer *PublicBuyerInfo `json:"buyer,omitempty"`
 
 	// GaItems GA items for GA or hybrid sessions.
