@@ -5785,6 +5785,16 @@ type EventItem struct {
 	// "Organizer". Null when the organization itself is the promoter.
 	PromoterName *string `json:"promoter_name"`
 
+	// PublicUrl Buyers' page of the event on the hosted sales site:
+	// `<PUBLIC_TICKETS_BASE_URL>/<page slug>/<event slug>`, where the
+	// page slug is the promoter's slug when the event has an active
+	// promoter with a page of its own, else the organization's slug.
+	// Empty string when the event has no slug yet or the server has no
+	// tickets base configured. It is the address, not a sign that the
+	// page is reachable: it is built whatever the publication status,
+	// so a draft event already carries it.
+	PublicUrl string `json:"public_url"`
+
 	// SalesState Where the event stands in its sale, computed on the server from
 	// its active, non-cancelled sessions (EC-02) so every client shows
 	// the same chip. One of `on_sale` (a session that has not ended,

@@ -184,6 +184,11 @@ func (q *Queries) PromoterSlugTaken(ctx context.Context, slug string) (bool, err
 type EventPromoterRef struct {
 	PromoterID uuid.UUID `json:"promoter_id"`
 	Name       string    `json:"name"`
+	// Slug is the promoter's public page address, "" when it has none.
+	Slug string `json:"slug"`
+	// Archived is true for an archived promoter: its public page no longer
+	// resolves, so the slug must not be used to build a link.
+	Archived bool `json:"archived"`
 }
 
 const setEventPromoter = `-- name: SetEventPromoter :exec
@@ -213,7 +218,7 @@ func (q *Queries) DeleteEventPromoter(ctx context.Context, eventID, orgID uuid.U
 }
 
 const listEventPromoters = `-- name: ListEventPromoters :many
-SELECT ep.event_id, p.id, p.name
+SELECT ep.event_id, p.id, p.name, COALESCE(p.slug, ''), p.archived_at IS NOT NULL
 FROM   event_promoters ep
 JOIN   org_promoters   p ON p.id = ep.promoter_id
 WHERE  ep.event_id = ANY($1::uuid[])`
@@ -234,7 +239,7 @@ func (q *Queries) ListEventPromoters(ctx context.Context, eventIDs []uuid.UUID) 
 	for rows.Next() {
 		var eventID uuid.UUID
 		var ref EventPromoterRef
-		if err := rows.Scan(&eventID, &ref.PromoterID, &ref.Name); err != nil {
+		if err := rows.Scan(&eventID, &ref.PromoterID, &ref.Name, &ref.Slug, &ref.Archived); err != nil {
 			return nil, err
 		}
 		out[eventID] = ref

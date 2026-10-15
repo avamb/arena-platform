@@ -22,6 +22,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgread"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/publicurl"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -168,6 +169,16 @@ type EventResponse struct {
 	// promoter. Hydrated by hydrateEvents, never by EventFromRow.
 	PromoterID   *string `json:"promoter_id"`
 	PromoterName *string `json:"promoter_name"`
+	// promoterSlug is the linked promoter's page address, "" when it has none
+	// or is archived. Internal input for PublicURL, never serialized.
+	promoterSlug string
+	// PublicURL is the buyers' page of the event, built by publicurl.Page
+	// from PUBLIC_TICKETS_BASE_URL, the promoter's (else the organization's)
+	// slug and the event slug. "" when the event has no slug or the server
+	// has no base. It is an address, not a sign that the page is reachable:
+	// it does not depend on the publication status. Hydrated by
+	// hydrateEvents, never by EventFromRow.
+	PublicURL string `json:"public_url"`
 	// SalesState / NextSessionAt / SessionCount are computed from the
 	// event's active sessions (EC-02, sales_state.go) and hydrated by
 	// hydrateEvents, never by EventFromRow. SalesState is one of on_sale,
@@ -230,6 +241,7 @@ func EventFromRow(e gen.EventRow) EventResponse {
 func (h *Handler) hydrateEvents(ctx context.Context, responses []eventResponse) {
 	h.hydrateVenueNames(ctx, responses)
 	h.hydratePromoters(ctx, responses)
+	h.hydratePublicURLs(ctx, responses)
 	h.hydrateSalesStates(ctx, responses)
 }
 
@@ -268,7 +280,52 @@ func (h *Handler) hydratePromoters(ctx context.Context, responses []eventRespons
 			name := ref.Name
 			responses[i].PromoterID = &pid
 			responses[i].PromoterName = &name
+			if !ref.Archived {
+				responses[i].promoterSlug = ref.Slug
+			}
 		}
+	}
+}
+
+// hydratePublicURLs fills PublicURL (after hydratePromoters, which supplies
+// the promoter slug). It costs at most one batched query for the slugs of the
+// organizations of events that have a slug, and none when the server has no
+// tickets base. A failure logs and leaves PublicURL empty: the address is
+// presentational and must not fail the request.
+func (h *Handler) hydratePublicURLs(ctx context.Context, responses []eventResponse) {
+	if h.eventQueries == nil || h.ticketsBaseURL == "" || len(responses) == 0 {
+		return
+	}
+	seen := make(map[uuid.UUID]struct{}, len(responses))
+	orgIDs := make([]uuid.UUID, 0, len(responses))
+	for _, r := range responses {
+		if r.Slug == nil || *r.Slug == "" {
+			continue
+		}
+		if id, err := uuid.Parse(r.OrgID); err == nil {
+			if _, dup := seen[id]; !dup {
+				seen[id] = struct{}{}
+				orgIDs = append(orgIDs, id)
+			}
+		}
+	}
+	if len(orgIDs) == 0 {
+		return
+	}
+	slugs, err := h.eventQueries.ListOrganizationSlugs(ctx, orgIDs)
+	if err != nil {
+		h.logger.Warn("event: public url hydration failed", slog.String("error", err.Error()))
+		return
+	}
+	for i := range responses {
+		if responses[i].Slug == nil {
+			continue
+		}
+		orgID, err := uuid.Parse(responses[i].OrgID)
+		if err != nil {
+			continue
+		}
+		responses[i].PublicURL = publicurl.Page(h.ticketsBaseURL, slugs[orgID], responses[i].promoterSlug, *responses[i].Slug)
 	}
 }
 
