@@ -174,7 +174,7 @@ FROM   unnest($1::uuid[]) AS sid(id);
 
 -- name: ListSessionSummaryAdmissions :many
 -- Admissions at the door by who reported them (scan_events.source, migration
--- 0164): `tickets` counts the valid tickets with at least one admitted scan
+-- 0154): `tickets` counts the valid tickets with at least one admitted scan
 -- of that source, `scans` every admitted scan row of it (repeat scans and
 -- scans of tickets cancelled since included). Only scans recorded for the
 -- session's own organization count, the rule refunds/scanned.go uses. A

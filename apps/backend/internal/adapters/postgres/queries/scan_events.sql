@@ -101,7 +101,7 @@ SET    used_at    = $2,
 WHERE  id        = $1
   AND  used_at IS NULL;
 
--- ─── MACS scans (POST /v1/macs/scan-events, migration 0164) ────────────────
+-- ─── MACS scans (POST /v1/macs/scan-events, migration 0154) ────────────────
 
 -- name: InsertMACSScanEvent :one
 -- One scan reported by MACS. ON CONFLICT DO NOTHING covers BOTH unique

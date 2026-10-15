@@ -424,7 +424,7 @@ Other request-level answers: `400 macs.invalid_body` / `macs.empty_batch`,
   does not stamp `used_at`.
 - **Storage:** one `scan_events` row per scan with `source = macs`,
   `subscriber_id`, `external_scan_id` (= `scan_id`), `scanner_label`
-  (= `scanner_name`), `device_id` (= `scanner_id`), `gate` (migration 0164).
+  (= `scanner_name`), `device_id` (= `scanner_id`), `gate` (migration 0154).
   Each scan is its own transaction, with the `v1.ticket.scanned` outbox event
   (spec 15) and, for a first admission, the audit row `v1.ticket.admitted`
   (`actor_type = macs_subscriber`, `actor_id` = the subscriber id).

@@ -12421,7 +12421,7 @@ export interface components {
              */
             by_source: components["schemas"]["SummaryAdmission"][];
         };
-        /** @description The admitted scans of one source (scan_events.source, migration 0164). */
+        /** @description The admitted scans of one source (scan_events.source, migration 0154). */
         SummaryAdmission: {
             /**
              * @description `arena_scanner` (POST /v1/scanner/scan-events) or `macs`

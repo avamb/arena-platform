@@ -4818,7 +4818,7 @@ components:
     SummaryAdmission:
       type: object
       required: [source, tickets, scans]
-      description: The admitted scans of one source (scan_events.source, migration 0164).
+      description: The admitted scans of one source (scan_events.source, migration 0154).
       properties:
         source:
           type: string

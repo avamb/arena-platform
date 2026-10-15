@@ -477,7 +477,7 @@ type Querier interface {
 	DeactivateMACSSubscriberByOrg(ctx context.Context, orgID uuid.UUID) (WebhookSubscriberRow, error)
 	GetMACSSubscriberByID(ctx context.Context, id uuid.UUID) (WebhookSubscriberRow, error)
 
-	// M1 — scans MACS posts back (macs_scan_events.sql.go, migration 0164).
+	// M1 — scans MACS posts back (macs_scan_events.sql.go, migration 0154).
 	InsertMACSScanEvent(ctx context.Context, p InsertMACSScanEventParams) (ScanEventRow, bool, error)
 	GetScanEventBySubscriberScan(ctx context.Context, subscriberID uuid.UUID, externalScanID string) (ScanEventRow, error)
 	ResolveMACSScanTicketBySystemID(ctx context.Context, systemTicketID int64, orgID uuid.UUID) (MACSScanTicketRow, error)

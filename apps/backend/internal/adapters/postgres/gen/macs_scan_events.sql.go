@@ -1,5 +1,5 @@
 // Hand-maintained typed query wrapper; follows sqlc output conventions.
-// source: scan_events.sql (MACS section, migration 0164)
+// source: scan_events.sql (MACS section, migration 0154)
 //
 // M1 — scans MACS posts back to arena through POST /v1/macs/scan-events.
 

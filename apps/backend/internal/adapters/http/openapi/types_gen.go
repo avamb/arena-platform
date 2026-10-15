@@ -13447,7 +13447,7 @@ type StartCheckoutRequest struct {
 	UserId *openapi_types.UUID `json:"user_id"`
 }
 
-// SummaryAdmission The admitted scans of one source (scan_events.source, migration 0164).
+// SummaryAdmission The admitted scans of one source (scan_events.source, migration 0154).
 type SummaryAdmission struct {
 	// Scans Every admitted scan of this source, repeat scans and scans of tickets cancelled since included.
 	Scans int64 `json:"scans"`

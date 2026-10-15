@@ -561,7 +561,7 @@ WHERE  se.session_id = ANY($1::uuid[])
 GROUP  BY se.session_id, se.source`
 
 // SessionSummaryAdmissionsRow counts the admitted scans of one session from
-// one source (arena_scanner or macs, migration 0164). Tickets is the number
+// one source (arena_scanner or macs, migration 0154). Tickets is the number
 // of valid tickets with at least one such scan, Scans every admitted row.
 type SessionSummaryAdmissionsRow struct {
 	SessionID uuid.UUID `json:"session_id"`

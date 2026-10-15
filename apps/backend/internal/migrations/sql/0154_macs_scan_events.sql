@@ -8,7 +8,7 @@
 -- Those scans land in the same scan_events table as arena's own scanner,
 -- told apart by `source`:
 --
---   * arena_scanner — POST /v1/scanner/scan-events (every row before 0164).
+--   * arena_scanner — POST /v1/scanner/scan-events (every row before 0154).
 --   * macs          — POST /v1/macs/scan-events; subscriber_id and
 --                     external_scan_id are then both set.
 --

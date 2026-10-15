@@ -99,7 +99,7 @@ type summaryTickets struct {
 
 // summaryEntered is the door count: Used valid tickets were scanned, Total
 // is every valid ticket ("entered N of M"). BySource splits the admitted
-// scans by who reported them (scan_events.source, migration 0164): arena's
+// scans by who reported them (scan_events.source, migration 0154): arena's
 // own scanner or MACS. A ticket admitted by both counts under both, so the
 // per-source Tickets do not have to add up to Used.
 type summaryEntered struct {
