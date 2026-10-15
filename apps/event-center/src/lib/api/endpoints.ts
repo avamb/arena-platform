@@ -12,6 +12,8 @@ import type {
   OrderDetail,
   OrderListResponse,
   OrgMeResponse,
+  PromoterEnvelope,
+  PromoterListEnvelope,
   SessionListResponse,
   SessionSummary,
   TicketTierListResponse,
@@ -123,4 +125,39 @@ export function downloadSampleTicket(orgId: string, sessionId: string, locale: s
     accept: "application/pdf",
     fallbackName: "sample-ticket.pdf",
   });
+}
+
+// 4-6
+/** Every promoter of the organization, archived ones included (the screen filters). */
+export function listPromoters(orgId: string): Promise<PromoterListEnvelope> {
+  return call<PromoterListEnvelope>({ route: API.promoters, params: { org_id: orgId }, query: { include_archived: "true" } });
+}
+
+export interface PromoterCreateBody {
+  name: string;
+  legal_id?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  website?: string;
+}
+
+export function createPromoter(orgId: string, body: PromoterCreateBody): Promise<PromoterEnvelope> {
+  return call<PromoterEnvelope>({ route: API.promoterCreate, params: { org_id: orgId }, body });
+}
+
+/** Tri-state like the API: an absent key keeps the value, null clears it. */
+export type PromoterPatch = Partial<{
+  name: string;
+  legal_id: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  website: string | null;
+  slug: string;
+  archived: boolean;
+}>;
+
+export function updatePromoter(orgId: string, promoterId: string, body: PromoterPatch): Promise<PromoterEnvelope> {
+  return call<PromoterEnvelope>({ route: API.promoterUpdate, params: { org_id: orgId, id: promoterId }, body });
 }

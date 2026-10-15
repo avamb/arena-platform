@@ -207,5 +207,34 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 			return fmt.Errorf("materialize places: %w", err)
 		}
 	}
+	return applyForeignPromoter(ctx, tx)
+}
+
+// Task 4-6 (the web promoters screens): ANOTHER organization with one
+// promoter, so the twin test can prove that a promoter of a foreign
+// organization is neither listed nor reachable by its id. The constants are
+// public on purpose: the spec names them.
+const (
+	foreignOrgID        = "fe0000e2-0000-7000-8000-0000000000f1"
+	foreignPromoterID   = "fe0000e2-0000-7000-8000-0000000000f2"
+	foreignOrgName      = "E2E Other Org"
+	foreignPromoterName = "E2E Foreign Promoter"
+	foreignPromoterSlug = "e2e-foreign-promoter"
+)
+
+// applyForeignPromoter is additive and idempotent like the rest of the seed.
+func applyForeignPromoter(ctx context.Context, tx pgx.Tx) error {
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organizations (id, name, slug, country, default_locale, reservation_ttl_seconds)
+		VALUES ($1, $2, 'e2e-other-org', 'ES', 'en', 1200)
+		ON CONFLICT (id) DO NOTHING`, foreignOrgID, foreignOrgName); err != nil {
+		return fmt.Errorf("insert foreign organization: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO org_promoters (id, org_id, name, slug)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (id) DO NOTHING`, foreignPromoterID, foreignOrgID, foreignPromoterName, foreignPromoterSlug); err != nil {
+		return fmt.Errorf("insert foreign promoter: %w", err)
+	}
 	return nil
 }

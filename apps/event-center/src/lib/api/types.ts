@@ -30,3 +30,8 @@ export type OrderTicketSummary = S["OrderTicketSummary"];
 export type OrderDeliveryEntry = S["OrderDeliveryEntry"];
 export type OrderListResponse =
   paths["/v1/organizations/{org_id}/orders"]["get"]["responses"]["200"]["content"]["application/json"];
+
+// 4-6
+export type Promoter = S["Promoter"];
+export type PromoterListEnvelope = S["PromoterListEnvelope"];
+export type PromoterEnvelope = S["PromoterEnvelope"];

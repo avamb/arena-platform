@@ -50,6 +50,10 @@ export const API = {
   // phone in a query string is written by every proxy log (spec 37 §13).
   orderSearch: { method: "POST", path: "/v1/organizations/{org_id}/orders/search" },
   order: { method: "GET", path: "/v1/organizations/{org_id}/orders/{id}" },
+  // 4-6
+  promoters: { method: "GET", path: "/v1/organizations/{org_id}/promoters" },
+  promoterCreate: { method: "POST", path: "/v1/organizations/{org_id}/promoters" },
+  promoterUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/promoters/{id}" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;

@@ -13625,6 +13625,16 @@ export interface components {
              * @example https://partner.example
              */
             website: string | null;
+            /**
+             * @description The promoter's own buyers' page on the hosted sales site:
+             *     `<PUBLIC_TICKETS_BASE_URL>/<slug>`. Empty string when the
+             *     promoter has no slug or the server has no tickets base
+             *     configured. It is the address, not a sign that the page opens:
+             *     an archived promoter keeps its address here while its page
+             *     answers 404.
+             * @example https://tickets.arenasoldout.com/teatrkolibel
+             */
+            public_url: string;
             /** @description True when the promoter is archived and can no longer be linked to an event. */
             archived: boolean;
             /**

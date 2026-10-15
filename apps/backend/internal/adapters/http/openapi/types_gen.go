@@ -10933,6 +10933,14 @@ type Promoter struct {
 	// session moves or is cancelled (migration 0121).
 	PhoneHidden bool `json:"phone_hidden"`
 
+	// PublicUrl The promoter's own buyers' page on the hosted sales site:
+	// `<PUBLIC_TICKETS_BASE_URL>/<slug>`. Empty string when the
+	// promoter has no slug or the server has no tickets base
+	// configured. It is the address, not a sign that the page opens:
+	// an archived promoter keeps its address here while its page
+	// answers 404.
+	PublicUrl string `json:"public_url"`
+
 	// Slug Public page address: `https://tickets.arenasoldout.com/{slug}`.
 	// Lower-case a-z, 0-9 and single hyphens, 2–64 characters,
 	// unique across the platform together with organization slugs
