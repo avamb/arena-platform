@@ -11,8 +11,10 @@ func TestTake_RefusedAttemptIsNotRecorded(t *testing.T) {
 	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 	sw := New(Config{MaxAttempts: 2, Window: time.Hour, Now: func() time.Time { return now }})
 
-	if !sw.Take("org") || !sw.Take("org") {
-		t.Fatal("the first two takes must pass")
+	for i := 0; i < 2; i++ {
+		if !sw.Take("org") {
+			t.Fatalf("take %d must pass", i+1)
+		}
 	}
 	for i := 0; i < 5; i++ {
 		now = now.Add(time.Minute)
