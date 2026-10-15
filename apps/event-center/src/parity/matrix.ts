@@ -358,7 +358,10 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Повторная отправка билетов",
     bot: "resend.go, `or:r:`",
     web: "R3",
+    // 4-1
+    ready: { twin: "live/resend.spec.ts" },
     routes: [`POST ${O}/orders/{order_id}/resend-tickets`],
+    note: "Окно «на адрес заказа / на другой адрес», подтверждение, результат. Заказ сайта-продавца отклоняет API (`order.seller_site_order`). Строки статуса писем (`letters[]`) стоят на карточке заказа. Кнопка видна по праву `ticket.update` в `GET …/me`.",
   },
   // ── Возвраты ────────────────────────────────────────────────────────
   {

@@ -219,5 +219,9 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applyOrgDataFixture(ctx, tx); err != nil {
 		return err
 	}
-	return applyCancelOrderFixture(ctx, tx)
+	if err := applyCancelOrderFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 4-1: paid orders for the resend twin test.
+	return applyResendOrders(ctx, tx)
 }
