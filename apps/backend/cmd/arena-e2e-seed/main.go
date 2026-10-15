@@ -215,6 +215,10 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applyCancelOrderFixture(ctx, tx); err != nil {
 		return err
 	}
+	// 4-1: paid orders for the resend twin test.
+	if err := applyResendOrders(ctx, tx); err != nil {
+		return err
+	}
 	// 4-3: the promo-code twin test's extra rows (promo_fixture.go).
 	return applyPromoFixture(ctx, tx)
 }
