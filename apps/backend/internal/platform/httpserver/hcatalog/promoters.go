@@ -39,6 +39,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/geoslug"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/publicurl"
 )
 
 // PromoterResponse is the JSON shape of one promoter.
@@ -53,6 +54,12 @@ type PromoterResponse struct {
 	// Address and Website are optional free text (migration 0139).
 	Address *string `json:"address"`
 	Website *string `json:"website"`
+	// PublicURL is the promoter's own buyers' page, built by publicurl.Page
+	// from PUBLIC_TICKETS_BASE_URL and the slug. Empty when the promoter has
+	// no slug or the server has no tickets base. It is the address, not a
+	// sign that the page opens: an archived promoter keeps its address here
+	// while its page answers 404.
+	PublicURL string `json:"public_url"`
 	// PhoneHidden keeps Phone out of letters to buyers.
 	PhoneHidden bool    `json:"phone_hidden"`
 	Archived    bool    `json:"archived"`
@@ -81,6 +88,15 @@ func PromoterFromRow(p gen.OrgPromoterRow) PromoterResponse {
 	if p.ArchivedAt != nil {
 		s := p.ArchivedAt.UTC().Format(time.RFC3339)
 		resp.ArchivedAt = &s
+	}
+	return resp
+}
+
+// promoterResponse renders a row and fills the page address.
+func (h *Handler) promoterResponse(p gen.OrgPromoterRow) PromoterResponse {
+	resp := PromoterFromRow(p)
+	if p.Slug != nil {
+		resp.PublicURL = publicurl.Page(h.ticketsBaseURL, "", *p.Slug, "")
 	}
 	return resp
 }
@@ -307,7 +323,7 @@ func (h *Handler) HandleListPromoters(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]PromoterResponse, 0, len(rows))
 	for _, p := range rows {
-		out = append(out, PromoterFromRow(p))
+		out = append(out, h.promoterResponse(p))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"promoters": out})
 }
@@ -448,7 +464,7 @@ func (h *Handler) HandleCreatePromoter(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("promoter.commit_failed", "failed to commit transaction", r))
 		return
 	}
-	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"promoter": PromoterFromRow(p)})
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"promoter": h.promoterResponse(p)})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -647,7 +663,7 @@ func (h *Handler) HandleUpdatePromoter(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("promoter.commit_failed", "failed to commit transaction", r))
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"promoter": PromoterFromRow(updated)})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"promoter": h.promoterResponse(updated)})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

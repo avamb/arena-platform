@@ -13788,6 +13788,16 @@ export interface components {
              * @example https://partner.example
              */
             website: string | null;
+            /**
+             * @description The promoter's own buyers' page on the hosted sales site:
+             *     `<PUBLIC_TICKETS_BASE_URL>/<slug>`. Empty string when the
+             *     promoter has no slug or the server has no tickets base
+             *     configured. It is the address, not a sign that the page opens:
+             *     an archived promoter keeps its address here while its page
+             *     answers 404.
+             * @example https://tickets.arenasoldout.com/teatrkolibel
+             */
+            public_url: string;
             /** @description True when the promoter is archived and can no longer be linked to an event. */
             archived: boolean;
             /**
@@ -19675,8 +19685,10 @@ export interface components {
          *     `price_hint`, `currency_hint` are copied verbatim from the stored
          *     geometry (import-time authoring hints). The `tier_*` / `price_*`
          *     fields are populated when the operator has already mapped the
-         *     category to a live `ticket_tiers` row through SEAT-B2 binding —
-         *     first-seat-wins so the resolution stays stable across renames.
+         *     category to a live `ticket_tiers` row through SEAT-B2 binding. The
+         *     tier shown is the one carried by most of the category's seats (ties:
+         *     the first seat in `seat_key` order), so repainting a few seats with
+         *     `PATCH .../seats/category` never relabels the rest of the category.
          */
         SeatingCategoryPrice: {
             /** @description 1-based category index from the imported geometry. */
@@ -19764,6 +19776,27 @@ export interface components {
             };
             /** @description Per-category tier / price resolution overlay, in geometry order. */
             category_prices: components["schemas"]["SeatingCategoryPrice"][];
+            /**
+             * @description Per-seat category truth (S1a). Maps `seat_key` to the category
+             *     `index` (an entry of `category_prices` or `extra_categories`) that
+             *     carries the seat's own `session_seats.tier_id`, ONLY for seats
+             *     whose category differs from their `category_index` in the geometry
+             *     after `PATCH .../seats/category` repainted them. Empty on a session
+             *     where no seat was repainted. Clients apply it over the geometry
+             *     before drawing so a seat shows the price of its own tier, the
+             *     same number `GET_SEAT_LIST` and the Bil24 image carry.
+             */
+            seat_category_index?: {
+                [key: string]: number;
+            };
+            /**
+             * @description Synthetic categories (S1a) for tiers that carry repainted seats but
+             *     are the home tier of no plan category. Indexes follow the plan's
+             *     last category index; entries have the same shape as
+             *     `category_prices`. Empty when every repainted seat moved to a plan
+             *     category.
+             */
+            extra_categories?: components["schemas"]["SeatingCategoryPrice"][];
         };
         /**
          * @description Response body for `GET /v1/event-sessions/{id}/seat-status`. When
