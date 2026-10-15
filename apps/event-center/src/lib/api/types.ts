@@ -26,6 +26,7 @@ export type SessionPlaceCounts = S["SessionPlaceCounts"];
 export type SummaryMoneyItem = S["SummaryMoneyItem"];
 export type OrderListItem = S["OrderListItem"];
 export type OrderDetail = S["OrderDetail"];
+export type OrderSummary = S["OrderSummary"];
 export type OrderTicketSummary = S["OrderTicketSummary"];
 export type OrderDeliveryEntry = S["OrderDeliveryEntry"];
 export type OrderLetter = S["OrderLetter"];

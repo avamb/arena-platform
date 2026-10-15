@@ -434,6 +434,12 @@ export const en = {
   "letter.refund.delayed": "Refund e-mail: delivery is delayed{to}. The mail service will try again by itself.",
   "letter.refund.stuck": "Refund e-mail: sent{when}, but not delivered{to} in 6 hours. The buyer most likely did not get it. Tell the buyer about the refund yourself.",
   "letter.refund.bounced": "The refund e-mail did not reach{to}: the buyer's mail server refused it.{why} The refund is done. Tell the buyer about it yourself.",
+
+  // 4-2
+  "order.cancel.button": "Cancel order",
+  "order.cancel.done": "The order is canceled and its seats are free again.",
+  "order.cancel.changed.title": "The order changed while you were working.",
+  "order.cancel.changed.next": "It is no longer waiting for payment (now: {status}), so nothing was canceled. The card shows the latest data.",
 } as const;
 
 export type MessageKey = keyof typeof en;

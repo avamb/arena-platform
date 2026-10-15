@@ -434,4 +434,10 @@ export const es: Record<MessageKey, string> = {
   "letter.refund.delayed": "E-mail de reembolso: la entrega se retrasa{to}. El servicio de correo lo reintentará solo.",
   "letter.refund.stuck": "E-mail de reembolso: enviado{when}, pero no entregado{to} en 6 horas. Lo más probable es que el comprador no lo haya recibido. Avisa tú mismo al comprador del reembolso.",
   "letter.refund.bounced": "El e-mail de reembolso no llegó{to}: el servidor de correo del comprador lo rechazó.{why} El reembolso está hecho. Avísale tú mismo al comprador.",
+
+  // 4-2
+  "order.cancel.button": "Cancelar pedido",
+  "order.cancel.done": "El pedido está cancelado y sus plazas vuelven a estar libres.",
+  "order.cancel.changed.title": "El pedido cambió mientras trabajabas.",
+  "order.cancel.changed.next": "Ya no espera el pago (ahora: {status}), así que no se canceló nada. La ficha muestra los datos más recientes.",
 };

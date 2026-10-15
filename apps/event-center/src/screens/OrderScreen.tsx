@@ -5,6 +5,7 @@ import { formatDateTime, formatMoney } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { UNPAID_REASONS, orderNumber, seatText, ticketDelivery } from "@/lib/orders";
 import { OrderLetters } from "@/components/OrderLetters";
+import { CancelOrder } from "@/components/CancelOrder";
 import { Badge, ErrorBox, Loading } from "@/components/ui";
 import { useOrg } from "@/screens/OrgLayout";
 import { OrderStatusBadge } from "@/screens/OrdersScreen";
@@ -66,6 +67,8 @@ export function OrderScreen() {
           · {formatDateTime(o.session_start_at, tz, locale)}
         </p>
       )}
+
+      <CancelOrder orgId={orgId} orderId={o.id} systemId={o.system_id} status={o.status} canWrite={access.can("order.write")} />
 
       <OrderLetters orgId={orgId} order={o} can={access.can} />
       {unpaid !== null && o.unpaid_reason.length > 0 && (
