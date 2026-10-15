@@ -6286,6 +6286,7 @@ components:
         - sales_state
         - next_session_at
         - session_count
+        - public_url
         - created_at
         - updated_at
       description: |
@@ -6373,6 +6374,18 @@ components:
             Name of the event's promoter, which the ticket PDF prints as
             "Organizer". Null when the organization itself is the promoter.
           example: "Partner Agency s.r.o."
+        public_url:
+          type: string
+          description: |
+            Buyers' page of the event on the hosted sales site:
+            `<PUBLIC_TICKETS_BASE_URL>/<page slug>/<event slug>`, where the
+            page slug is the promoter's slug when the event has an active
+            promoter with a page of its own, else the organization's slug.
+            Empty string when the event has no slug yet or the server has no
+            tickets base configured. It is the address, not a sign that the
+            page is reachable: it is built whatever the publication status,
+            so a draft event already carries it.
+          example: "https://tickets.arenasoldout.com/teatrkolibel/silver-hoof"
         sales_state:
           type: string
           description: |
