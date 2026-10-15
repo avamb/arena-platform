@@ -46,7 +46,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -218,16 +217,19 @@ func RenderBSSLayoutSVG(
 	// coordinates + category index; category_index → Category for the
 	// PriceCategory swatches.
 	seatGeomByKey := seatKeyIndex(g)
-	categoryByIndex := make(map[int]seating.Category, len(g.Categories))
-	for _, c := range g.Categories {
+
+	// Every seat takes its category from its OWN session_seats.tier_id
+	// (S1a): a seat repainted by PATCH .../seats/category shows the
+	// category and price of its tier, not of its plan category. The
+	// resolution (seat_categories.go) also appends a synthetic category
+	// for a tier that anchors no plan category.
+	res := resolveSeatCategories(g, seats, tiers, seatGeomByKey)
+	categoryToTier := res.CategoryTiers()
+	sortedCats := res.Categories(g)
+	categoryByIndex := make(map[int]seating.Category, len(sortedCats))
+	for _, c := range sortedCats {
 		categoryByIndex[c.Index] = c
 	}
-
-	// Resolve category → tier by inspecting the live session_seats
-	// snapshot: any seat carrying a resolvable tier_id anchors its
-	// category bucket. First-seat-wins keeps resolution stable across
-	// renames (shared helper in types.go, also used by /schema).
-	categoryToTier := resolveCategoryTiers(g, seats, tiers, seatGeomByKey)
 
 	// Roll up per-category live counters. sold = seats currently in
 	// status="sold"; used = seats not in status="available" (i.e. any of
@@ -241,7 +243,8 @@ func RenderBSSLayoutSVG(
 		if !ok {
 			continue
 		}
-		c := counts[cat.CategoryIndex]
+		effective := res.EffectiveIndex(s.SeatKey, cat.CategoryIndex)
+		c := counts[effective]
 		switch s.Status {
 		case "sold":
 			c.sold++
@@ -249,7 +252,7 @@ func RenderBSSLayoutSVG(
 		case "held", "unavailable":
 			c.used++
 		}
-		counts[cat.CategoryIndex] = c
+		counts[effective] = c
 	}
 
 	// Build a stable seats-by-(sector,row) index so the row groups render
@@ -291,10 +294,6 @@ func RenderBSSLayoutSVG(
 	// metadata block. Category swatches are 1-based; we walk in Index
 	// ASC order (already canonicalised).
 	buf.WriteString(`  <g id="PriceCategory">` + "\n")
-	sortedCats := append([]seating.Category(nil), g.Categories...)
-	sort.SliceStable(sortedCats, func(i, j int) bool {
-		return sortedCats[i].Index < sortedCats[j].Index
-	})
 	for _, cat := range sortedCats {
 		cnt := counts[cat.Index]
 		price := int64(0)
@@ -341,12 +340,13 @@ func RenderBSSLayoutSVG(
 					state = statusToBSS(sessionSeat.Status)
 					sbtID = sessionSeat.ID.String()
 				}
-				cat := categoryByIndex[seat.CategoryIndex]
+				effective := res.EffectiveIndex(key, seat.CategoryIndex)
+				cat := categoryByIndex[effective]
 				fmt.Fprintf(&buf,
 					`      <circle sbt:seat=%s sbt:id=%s sbt:cat="%d" sbt:state="%d" cx="%s" cy="%s" r="%s" fill=%s/>`+"\n",
 					xmlAttrString(seat.Number),
 					xmlAttrString(sbtID),
-					seat.CategoryIndex,
+					effective,
 					state,
 					formatFloat(seat.X),
 					formatFloat(seat.Y),
