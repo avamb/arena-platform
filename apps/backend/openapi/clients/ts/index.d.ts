@@ -6952,7 +6952,8 @@ export interface paths {
         put?: never;
         /**
          * Cancel a pending order
-         * @description Cancels an order (feature #489, W1-A6d, spec §14.2). Only an order
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Cancels an order (feature #489, W1-A6d, spec §14.2). Only an order
          *     in `pending_payment` status can be cancelled; any other status
          *     answers 409. A successful cancellation also releases the order's
          *     reservation hold. Requires the `order.write` permission.

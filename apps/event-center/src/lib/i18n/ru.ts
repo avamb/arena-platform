@@ -449,4 +449,9 @@ export const ru: Record<MessageKey, string> = {
   "promoters.archive.done": "{name} в архиве.",
   "promoters.restore.btn": "Вернуть промоутера из архива",
   "promoters.restore.done": "{name} снова активен.",
+  // 4-2
+  "order.cancel.button": "Отменить заказ",
+  "order.cancel.done": "Заказ отменён, его места снова свободны.",
+  "order.cancel.changed.title": "Пока вы работали, заказ изменился.",
+  "order.cancel.changed.next": "Он уже не ждёт оплаты (сейчас: {status}), поэтому ничего не отменено. Карточка показывает свежие данные.",
 };

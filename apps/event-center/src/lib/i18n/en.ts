@@ -449,6 +449,11 @@ export const en = {
   "promoters.archive.done": "{name} is archived.",
   "promoters.restore.btn": "Restore the promoter",
   "promoters.restore.done": "{name} is active again.",
+  // 4-2
+  "order.cancel.button": "Cancel order",
+  "order.cancel.done": "The order is canceled and its seats are free again.",
+  "order.cancel.changed.title": "The order changed while you were working.",
+  "order.cancel.changed.next": "It is no longer waiting for payment (now: {status}), so nothing was canceled. The card shows the latest data.",
 } as const;
 
 export type MessageKey = keyof typeof en;

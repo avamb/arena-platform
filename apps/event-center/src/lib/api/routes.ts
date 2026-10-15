@@ -54,6 +54,8 @@ export const API = {
   promoters: { method: "GET", path: "/v1/organizations/{org_id}/promoters" },
   promoterCreate: { method: "POST", path: "/v1/organizations/{org_id}/promoters" },
   promoterUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/promoters/{id}" },
+  // 4-2: cancel an unpaid order. Asks for the password again (spec 37 4.6).
+  cancelOrder: { method: "POST", path: "/v1/organizations/{org_id}/orders/{id}/cancel" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;

@@ -11,6 +11,7 @@ import type {
   MeResponse,
   OrderDetail,
   OrderListResponse,
+  OrderSummary,
   OrgMeResponse,
   PromoterEnvelope,
   PromoterListEnvelope,
@@ -160,4 +161,13 @@ export type PromoterPatch = Partial<{
 
 export function updatePromoter(orgId: string, promoterId: string, body: PromoterPatch): Promise<PromoterEnvelope> {
   return call<PromoterEnvelope>({ route: API.promoterUpdate, params: { org_id: orgId, id: promoterId }, body });
+}
+
+/**
+ * Cancels a `pending_payment` order and ends the hold on its seats (4-2).
+ * The caller has already checked the typed word. `headers` carries the
+ * step-up token (`withStepUp`). A paid order answers 409 `orders.invalid_transition`.
+ */
+export function cancelOrder(orgId: string, orderId: string, headers: Record<string, string>): Promise<OrderSummary> {
+  return call<OrderSummary>({ route: API.cancelOrder, params: { org_id: orgId, id: orderId }, body: {}, headers });
 }

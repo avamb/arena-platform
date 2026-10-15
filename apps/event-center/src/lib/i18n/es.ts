@@ -449,4 +449,9 @@ export const es: Record<MessageKey, string> = {
   "promoters.archive.done": "{name} está archivado.",
   "promoters.restore.btn": "Restaurar al promotor",
   "promoters.restore.done": "{name} vuelve a estar activo.",
+  // 4-2
+  "order.cancel.button": "Cancelar pedido",
+  "order.cancel.done": "El pedido está cancelado y sus plazas vuelven a estar libres.",
+  "order.cancel.changed.title": "El pedido cambió mientras trabajabas.",
+  "order.cancel.changed.next": "Ya no espera el pago (ahora: {status}), así que no se canceló nada. La ficha muestra los datos más recientes.",
 };
