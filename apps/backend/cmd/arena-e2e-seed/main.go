@@ -90,8 +90,13 @@ func main() {
 func run(args []string) error {
 	fs := flag.NewFlagSet("arena-e2e-seed", flag.ContinueOnError)
 	out := fs.String("out", "", "write the JSON description to this file instead of stdout")
+	cancelOp := fs.String("cancel-order-op", "", "4-2 twin helper: reset, inspect or pay (see cancel_order_fixture.go)")
+	cancelOrder := fs.String("order-id", "", "the order --cancel-order-op inspect or pay works on")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *cancelOp != "" {
+		return runCancelOrderOp(*cancelOp, *cancelOrder)
 	}
 	cfg, err := config.LoadFor(config.RoleMigrate)
 	if err != nil {
@@ -206,6 +211,9 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 		if err := gaquota.CreateCategory(ctx, gen.New(tx), sid, tid, 30); err != nil {
 			return fmt.Errorf("materialize places: %w", err)
 		}
+	}
+	if err := applyCancelOrderFixture(ctx, tx); err != nil {
+		return err
 	}
 	// 4-3: the promo-code twin test's extra rows (promo_fixture.go).
 	return applyPromoFixture(ctx, tx)

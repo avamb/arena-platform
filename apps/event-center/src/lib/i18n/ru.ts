@@ -489,4 +489,10 @@ export const ru: Record<MessageKey, string> = {
   "confirmWord.delete_promo.title": "Удалить этот промокод?",
   "confirmWord.delete_promo.explain": "Код пропадёт из списка, а его использования здесь открыть нельзя. Название останется занятым, новый код с таким названием создать не получится. Уже оплаченные заказы не меняются. Отменить это нельзя.",
   "confirmWord.delete_promo.button": "Удалить промокод",
+
+  // 4-2
+  "order.cancel.button": "Отменить заказ",
+  "order.cancel.done": "Заказ отменён, его места снова свободны.",
+  "order.cancel.changed.title": "Пока вы работали, заказ изменился.",
+  "order.cancel.changed.next": "Он уже не ждёт оплаты (сейчас: {status}), поэтому ничего не отменено. Карточка показывает свежие данные.",
 };

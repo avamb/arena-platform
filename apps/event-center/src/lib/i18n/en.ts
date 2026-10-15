@@ -489,6 +489,12 @@ export const en = {
   "confirmWord.delete_promo.title": "Delete this promo code?",
   "confirmWord.delete_promo.explain": "The code leaves the list and its uses cannot be opened here. Its name stays taken, so no new code can have the same name. Orders already paid do not change. This cannot be undone.",
   "confirmWord.delete_promo.button": "Delete the code",
+
+  // 4-2
+  "order.cancel.button": "Cancel order",
+  "order.cancel.done": "The order is canceled and its seats are free again.",
+  "order.cancel.changed.title": "The order changed while you were working.",
+  "order.cancel.changed.next": "It is no longer waiting for payment (now: {status}), so nothing was canceled. The card shows the latest data.",
 } as const;
 
 export type MessageKey = keyof typeof en;

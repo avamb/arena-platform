@@ -61,6 +61,8 @@ export const API = {
     method: "GET",
     path: "/v1/organizations/{org_id}/promo-codes/{promo_code_id}/redemptions.csv",
   },
+  // 4-2: cancel an unpaid order. Asks for the password again (spec 37 4.6).
+  cancelOrder: { method: "POST", path: "/v1/organizations/{org_id}/orders/{id}/cancel" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;

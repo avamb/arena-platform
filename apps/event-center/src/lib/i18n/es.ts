@@ -489,4 +489,10 @@ export const es: Record<MessageKey, string> = {
   "confirmWord.delete_promo.title": "¿Eliminar este código promocional?",
   "confirmWord.delete_promo.explain": "El código sale de la lista y sus usos ya no se pueden abrir aquí. Su nombre sigue ocupado, así que ningún código nuevo podrá llamarse igual. Los pedidos ya pagados no cambian. No se puede deshacer.",
   "confirmWord.delete_promo.button": "Eliminar el código",
+
+  // 4-2
+  "order.cancel.button": "Cancelar pedido",
+  "order.cancel.done": "El pedido está cancelado y sus plazas vuelven a estar libres.",
+  "order.cancel.changed.title": "El pedido cambió mientras trabajabas.",
+  "order.cancel.changed.next": "Ya no espera el pago (ahora: {status}), así que no se canceló nada. La ficha muestra los datos más recientes.",
 };
