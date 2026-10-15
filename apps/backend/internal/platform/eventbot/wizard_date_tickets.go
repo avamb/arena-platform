@@ -86,13 +86,13 @@ func (d *Draft) startTickets(n int, src DraftTickets, carry bool) string {
 }
 
 // ticketsDone ends the ticket questions: an edited event writes the working
-// copy to its date(s) and returns to "one more date?" (a new date) or to the
+// copy to its date(s) and shows the new date's summary (a new date) or the
 // card; a new event walks on to the next section.
 func (d *Draft) ticketsDone() {
 	if d.Scratch.Work != nil {
 		d.commitTickets()
 		if d.Scratch.Edit == "dates" {
-			d.goTo(stSMore)
+			d.goTo(stSConfirm)
 			return
 		}
 	}
@@ -135,6 +135,12 @@ func (d *Draft) setDateTickets(i int, t DraftTickets) {
 	}
 	s.Tickets = &t
 	s.Dirty = true
+	s.CopiedFrom = ""
+	if i < len(d.Saved.Sessions) {
+		// A date changed after a save that stopped half way is sent again,
+		// with what it has now.
+		d.Saved.Sessions[i].Done = false
+	}
 	if t.Mode == ModeParallel {
 		if n := placesOf(t); n > 0 {
 			s.Capacity = n
@@ -176,14 +182,110 @@ func placesOf(t DraftTickets) int {
 }
 
 // afterSessionStep is the question after a date's place and capacity: a date
-// added to an edited event first asks about its categories; otherwise "one
-// more date?".
+// added to an edited event first asks about its categories (or, when it has
+// them already and only its places changed, shows its summary again);
+// otherwise "one more date?".
 func (d *Draft) afterSessionStep() string {
 	if d.Mode == ModeEdit && d.Cur > 0 && d.Cur < len(d.Sessions) && d.Sessions[d.Cur].SessionID == "" {
+		if d.Sessions[d.Cur].Tickets != nil {
+			return stSConfirm
+		}
 		return stSTickets
 	}
 	return stSMore
 }
+
+// fitTicketsToDate makes copied categories fit a date: a price change that
+// starts after the date is dropped, and a stage that would sell past the date
+// ends on it (the same last day the "own categories" questions allow). Stages
+// sold one after another are then re-linked (fitStagesToDate), so the chain
+// the import gets is one it accepts. It returns how many were changed.
+func fitTicketsToDate(t *DraftTickets, date string) int {
+	if date == "" {
+		return 0
+	}
+	n := 0
+	kept := t.Schedule[:0]
+	for _, s := range t.Schedule {
+		if s.From > date {
+			n++
+			continue
+		}
+		kept = append(kept, s)
+	}
+	t.Schedule = kept
+	if t.Mode == ModeSequence {
+		return n + fitStagesToDate(t, date)
+	}
+	for i := range t.Categories {
+		if c := &t.Categories[i]; c.SellUntil != "" && c.SellUntil > date {
+			c.SellUntil = date
+			n++
+		}
+	}
+	return n
+}
+
+// fitStagesToDate fits stages sold one after another to a date. Moving
+// every late end onto the date alone gives a chain the import refuses (422
+// import.invalid_sale_window): a stage that opens when the one before it
+// ends (a date-only step) and ends that same day has a window that ends
+// where it starts. So:
+//   - a stage that would end no later than the date-only stage before it
+//     never sells and is removed; its count limit goes to the next stage
+//     with a limit;
+//   - the first stage without a count limit that sells up to the date itself
+//     becomes the last one (no end): every stage after it would open only
+//     after the date, and is removed;
+//   - a single stage left is sold as one category (ModeSingle).
+//
+// It returns how many stages were changed or removed.
+func fitStagesToDate(t *DraftTickets, date string) int {
+	cats := t.Categories
+	n := 0
+	var kept []DraftCategory
+	carry := 0
+	for i, c := range cats {
+		last := i == len(cats)-1
+		changed := false
+		if !last && c.SellUntil > date {
+			c.SellUntil = date
+			changed = true
+		}
+		if !last && len(kept) > 0 {
+			prev := kept[len(kept)-1]
+			if prev.SellLimit == 0 && prev.SellUntil != "" && c.SellUntil != "" && c.SellUntil <= prev.SellUntil {
+				carry += c.SellLimit
+				n++
+				continue
+			}
+		}
+		if carry > 0 && !last && c.SellLimit > 0 {
+			c.SellLimit += carry
+			carry = 0
+			changed = true
+		}
+		if !last && c.SellLimit == 0 && c.SellUntil != "" && c.SellUntil >= date {
+			c.SellUntil = ""
+			kept = append(kept, c)
+			n += len(cats) - i // this stage and every one after it
+			break
+		}
+		if changed {
+			n++
+		}
+		kept = append(kept, c)
+	}
+	if len(kept) == 1 {
+		kept[0].SellUntil, kept[0].SellLimit = "", 0
+		t.Mode = ModeSingle
+	}
+	t.Categories = kept
+	return n
+}
+
+// hasCategories reports whether a ticket part sells anything.
+func hasCategories(t DraftTickets) bool { return len(t.Categories) > 0 }
 
 // sameTicketsShape reports whether two dates sell the same categories (by
 // name, price, places and ends — tier ids aside), which is when the card
@@ -221,12 +323,31 @@ func (d *Draft) ticketsDiffer() bool {
 
 // sendPlan says which dates the save posts. A new event posts every date. An
 // edited event posts a date it adds and a date whose categories changed; a
-// changed currency touches every date (it is stored per date); any other
-// change of the event itself (name, poster, …) rides on the first date. A
-// date nobody touched is not posted again: a re-import would close any of
-// its categories the bundle cannot describe and bump its seat version for
-// nothing.
+// changed currency touches every date that sells something (it is stored per
+// date — a date without categories is left alone, a bundle with none would
+// describe nothing); any other change of the event itself (name, poster, …)
+// rides on the first date. A date nobody touched is not posted again: a
+// re-import would close any of its categories the bundle cannot describe and
+// bump its seat version for nothing.
 func (d *Draft) sendPlan() []bool {
+	out := d.plannedDates()
+	if d.Mode != ModeEdit {
+		return out
+	}
+	for _, p := range out {
+		if p {
+			return out
+		}
+	}
+	if len(out) > 0 {
+		out[0] = true
+	}
+	return out
+}
+
+// plannedDates is sendPlan without its fallback: the dates that carry a
+// change of their own (an added date, new categories, a new currency).
+func (d *Draft) plannedDates() []bool {
 	out := make([]bool, len(d.Sessions))
 	if d.Mode != ModeEdit {
 		for i := range out {
@@ -234,15 +355,11 @@ func (d *Draft) sendPlan() []bool {
 		}
 		return out
 	}
-	anything := false
+	currency := contains(d.Changed, "currency")
 	for i, s := range d.Sessions {
-		if s.SessionID == "" || s.Dirty || contains(d.Changed, "currency") {
+		if s.SessionID == "" || s.Dirty || (currency && hasCategories(*d.ticketsOf(i))) {
 			out[i] = true
-			anything = true
 		}
-	}
-	if !anything && len(out) > 0 {
-		out[0] = true
 	}
 	return out
 }

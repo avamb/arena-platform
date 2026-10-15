@@ -230,7 +230,6 @@ var wizardKeys = []string{
 	"bot.wz.edit_desc_none",
 	"bot.wz.clear_description_btn",
 	"bot.wz.edit_card_title",
-	"bot.wz.edit_card_changed",
 	"bot.wz.edit_card_clean",
 	"bot.wz.edit_b_name",
 	"bot.wz.edit_b_desc",
@@ -265,6 +264,20 @@ var wizardKeys = []string{
 	"bot.wz.region.africa",
 	"bot.wz.region.oceania",
 	"bot.wz.region.other",
+	// Undo, the publish preview and the new date's summary (U-5b):
+	// wizard_undo.go, wizard_preview.go.
+	"bot.wz.edit_undone", "bot.wz.edit_undo_btn", "bot.wz.edit_undo_date", "bot.wz.edit_undo_tickets",
+	"bot.wz.edit_card_changes", "bot.wz.edit_card_hint", "bot.wz.edit_card_partly_saved", "bot.wz.edit_to_card_btn",
+	"bot.wz.edit_chg_none", "bot.wz.edit_chg_field", "bot.wz.edit_chg_name", "bot.wz.edit_chg_description",
+	"bot.wz.edit_chg_description_removed", "bot.wz.edit_chg_poster", "bot.wz.edit_chg_date", "bot.wz.edit_chg_tickets",
+	"bot.wz.cancel_draft_empty", "bot.wz.cancel_draft_has", "bot.wz.summary_no_categories",
+	"bot.wz.t_for_one", "bot.wz.t_progress", "bot.wz.t_nothing_yet", "bot.wz.t_date_all_note",
+	"bot.wz.s_tickets_trimmed", "bot.wz.s_removed", "bot.wz.s_confirm", "bot.wz.s_confirm_same",
+	"bot.wz.s_confirm_own_btn", "bot.wz.s_confirm_cap_btn", "bot.wz.s_confirm_drop_btn", "bot.wz.s_confirm_next_btn",
+	"bot.wz.preview_title", "bot.wz.preview_new_date", "bot.wz.preview_date_tickets", "bot.wz.preview_date_resent",
+	"bot.wz.preview_unchanged", "bot.wz.preview_already", "bot.wz.preview_no_categories", "bot.wz.preview_warn_closed",
+	"bot.wz.preview_warn_renamed", "bot.wz.preview_warn_closed_many", "bot.wz.preview_warn_renamed_many", "bot.wz.preview_warn_places", "bot.wz.preview_footer", "bot.wz.preview_publish_btn", "bot.wz.preview_back_btn",
+	"bot.wz.warn_tier_not_in_payload",
 }
 
 func init() {

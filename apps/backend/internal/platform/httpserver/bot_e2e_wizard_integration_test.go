@@ -378,7 +378,15 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE events SET updated_at = now() + interval '1 minute' WHERE id = $1`, eventID); err != nil {
 		t.Fatal(err)
 	}
-	press("wz:publish", "меняли в другом месте")
+	// "Publish changes" first shows what goes to the site; only the
+	// preview's own button saves.
+	preview := press("wz:publish", "Что уйдёт на сайт")
+	for _, want := range []string{"«" + eventName + "» → «" + renamed + "»", "Возраст: 16+ → 18+", "новые категории"} {
+		if !strings.Contains(preview, want) {
+			t.Errorf("publish preview lacks %q:\n%s", want, preview)
+		}
+	}
+	press("wz:publish:go", "меняли в другом месте")
 	// An edited, published event shows the buyers' link right in the message.
 	editSaved := press("wz:publish:force", "Сохранено")
 	if !strings.Contains(editSaved, "https://tickets.test/") || !strings.Contains(editSaved, "🔗") {

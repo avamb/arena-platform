@@ -230,9 +230,24 @@ func TestBotE2E_WizardPerDateCategories(t *testing.T) {
 	say("Дополнительный детский", "Цена категории")
 	say("35", "Сколько мест в категории")
 	say("3", "Добавить ещё")
-	press("wz:done", "ещё один сеанс к этому мероприятию")
+	// U-5b: the new date is summed up before "one more date?".
+	summary := press("wz:done", "Всё верно")
+	for _, want := range []string{"Сеанс 3", "18.12.2099 18:00", "Ребёнок 4–9 лет + взрослый"} {
+		if !strings.Contains(summary, want) {
+			t.Errorf("new date summary lacks %q:\n%s", want, summary)
+		}
+	}
+	press("wz:sc:next", "ещё один сеанс к этому мероприятию")
 	press("wz:next", "Правка мероприятия")
-	press("wz:publish", "Сохранено")
+	// "Publish changes" shows what goes to the site first; the dates nobody
+	// touched are named as unchanged.
+	preview := press("wz:publish", "Что уйдёт на сайт")
+	for _, want := range []string{"Новая дата 18.12.2099 18:00", "Не меняются: 15.12.2099 18:00, 16.12.2099 18:00"} {
+		if !strings.Contains(preview, want) {
+			t.Errorf("publish preview lacks %q:\n%s", want, preview)
+		}
+	}
+	press("wz:publish:go", "Сохранено")
 
 	var s3 uuid.UUID
 	var cap3 int32
@@ -255,6 +270,66 @@ func TestBotE2E_WizardPerDateCategories(t *testing.T) {
 		t.Fatalf("date 2 was touched:\nbefore %s\nafter  %s", before2, got)
 	}
 
+	// ── U-5b, the live case of 2026-10-15: a date added by mistake is taken
+	// back on the card, and so is a changed age. Nothing is left to publish
+	// and nothing reaches arena.
+	before3 := snapshot(s3)
+	lastButtons := func() []string {
+		t.Helper()
+		_, _, data := tg.lastOf(e2eDatesTelegramUser)
+		return data
+	}
+	hasButton := func(data []string, want string) bool {
+		for _, d := range data {
+			if d == want {
+				return true
+			}
+		}
+		return false
+	}
+	press("wz:edit:"+eventID.String(), "Правим")
+	press("wz:e:date", "Дата сеанса 4")
+	sayDate("19.12.2099", "2099-12-19", "Время начала")
+	say("18:00", "Продажа билетов закроется в начале")
+	press("wz:se:0", "Во сколько открывается вход")
+	press("wz:none", "Сеанс 4 там же")
+	press("wz:same", "Категории сеанса 4")
+	if s := press("wz:st:same", "Всё верно"); !strings.Contains(s, "как на сеансе 18.12.2099 18:00") {
+		t.Errorf("copied date summary:\n%s", s)
+	}
+	press("wz:sc:next", "ещё один сеанс к этому мероприятию")
+	card = press("wz:next", "Правка мероприятия")
+	if !strings.Contains(card, "Новая дата 19.12.2099 18:00") || !hasButton(lastButtons(), "wz:e:undo:date:4") || !hasButton(lastButtons(), "wz:publish") {
+		t.Fatalf("card with a new date: buttons %v\n%s", lastButtons(), card)
+	}
+	press("wz:e:undo:date:4", "Отменено: новая дата 19.12.2099 18:00")
+	if data := lastButtons(); hasButton(data, "wz:publish") || hasPrefixData(data, "wz:e:undo:") {
+		t.Fatalf("the date is taken back, yet the card offers %v", data)
+	}
+	press("wz:e:age", "Сейчас")
+	press("wz:age:6+", "Возраст: 0+ → 6+")
+	if data := lastButtons(); !hasButton(data, "wz:e:undo:age") || !hasButton(data, "wz:publish") {
+		t.Fatalf("card after an age change offers %v", data)
+	}
+	press("wz:e:undo:age", "Отменено: Возраст")
+	if data := lastButtons(); hasButton(data, "wz:publish") || hasPrefixData(data, "wz:e:undo:") {
+		t.Fatalf("the age is taken back, yet the card offers %v", data)
+	}
+	var datesNow int
+	var ageNow string
+	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM sessions WHERE event_id = $1 AND deleted_at IS NULL), coalesce(age_rating, '')
+	        FROM events WHERE id = $1`, eventID).Scan(&datesNow, &ageNow); err != nil {
+		t.Fatalf("event after undo: %v", err)
+	}
+	if datesNow != 3 || ageNow != "0+" {
+		t.Fatalf("undo reached arena: %d dates, age %q", datesNow, ageNow)
+	}
+	for i, pair := range [][2]string{{before1, snapshot(s1)}, {before2, snapshot(s2)}, {before3, snapshot(s3)}} {
+		if pair[0] != pair[1] {
+			t.Fatalf("date %d was touched by an undone edit:\nbefore %s\nafter  %s", i+1, pair[0], pair[1])
+		}
+	}
+
 	// ── Changing date 1's categories leaves date 2 alone.
 	press("wz:edit:"+eventID.String(), "Правим")
 	press("wz:e:tickets", "Выберите сеанс")
@@ -267,7 +342,15 @@ func TestBotE2E_WizardPerDateCategories(t *testing.T) {
 	say("40", "Сколько мест в категории")
 	say("3", "Добавить ещё")
 	press("wz:done", "Правка мероприятия")
-	press("wz:publish", "Сохранено")
+	// A renamed category is a new one: the preview says the old one closes.
+	preview = press("wz:publish", "Что уйдёт на сайт")
+	for _, want := range []string{"категория «Ребёнок 4–6 лет + взрослый» будет закрыта", "будет создана «Ребёнок 4–7 лет + взрослый»",
+		"Не меняются: 16.12.2099 18:00, 18.12.2099 18:00"} {
+		if !strings.Contains(preview, want) {
+			t.Errorf("rename preview lacks %q:\n%s", want, preview)
+		}
+	}
+	press("wz:publish:go", "Сохранено")
 
 	if got := snapshot(s2); got != before2 {
 		t.Fatalf("date 2 was touched by date 1's change:\nbefore %s\nafter  %s", before2, got)
