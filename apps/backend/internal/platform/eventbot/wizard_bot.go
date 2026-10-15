@@ -21,6 +21,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/publicurl"
 )
 
 // wizard_bot.go — how the wizard lives inside the Telegram bot: drafts are
@@ -595,28 +596,28 @@ func (b *Bot) storefrontLink(ctx context.Context, jwt string, orgID uuid.UUID, p
 	if b.ticketsBaseURL == "" {
 		return ""
 	}
-	pageSlug := ""
+	promoterSlug := ""
 	if promoterID != "" {
 		if promoters, err := b.arena.Promoters(ctx, jwt, orgID); err == nil {
 			for _, p := range promoters {
 				if p.ID == promoterID && p.Slug != "" {
-					pageSlug = p.Slug
+					promoterSlug = p.Slug
 				}
 			}
 		}
 	}
-	if pageSlug == "" {
-		orgSlug, err := b.arena.OrganizationSlug(ctx, jwt, orgID)
-		if err != nil || orgSlug == "" {
+	// The organization's slug is only read when the promoter has no page of
+	// its own, as before. The address shape itself lives in publicurl.Page,
+	// shared with the event card's public_url.
+	orgSlug := ""
+	if promoterSlug == "" {
+		slug, err := b.arena.OrganizationSlug(ctx, jwt, orgID)
+		if err != nil || slug == "" {
 			return ""
 		}
-		pageSlug = orgSlug
+		orgSlug = slug
 	}
-	base := strings.TrimRight(b.ticketsBaseURL, "/") + "/" + pageSlug
-	if eventSlug == "" {
-		return base
-	}
-	return base + "/" + eventSlug
+	return publicurl.Page(b.ticketsBaseURL, orgSlug, promoterSlug, eventSlug)
 }
 
 // eventLink is the buyers' page of a PUBLISHED event that already has its
