@@ -103,7 +103,7 @@ func (Desirability) Suggest(g seating.Geometry, a Annotations, st SessionState, 
 		return Layout{}, Metrics{}, ErrNoSeats
 	}
 	scores := seatScores(g, seats, a)
-	units := buildUnits(g, seats, scores, p.Bool(ParamCheaperRowEdges))
+	units := buildUnits(seats, scores, p.Bool(ParamCheaperRowEdges))
 	cutUnits(units, plan.Shares, len(seats))
 
 	l := Layout{Slots: plan.Slots(), Assignments: make(map[string]string, len(seats))}
@@ -227,7 +227,7 @@ func rowRanks(g seating.Geometry, seats []PlacedSeat, dist []float64) []float64 
 
 // buildUnits groups the seats into rows, or into middles and edges of long
 // rows when edges is true.
-func buildUnits(g seating.Geometry, seats []PlacedSeat, scores []float64, edges bool) []*unit {
+func buildUnits(seats []PlacedSeat, scores []float64, edges bool) []*unit {
 	// Seats of one row are contiguous in the flattened list.
 	var units []*unit
 	rowNo := 0

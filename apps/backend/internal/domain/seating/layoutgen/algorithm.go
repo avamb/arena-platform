@@ -260,6 +260,7 @@ var defaultRegistry = NewRegistry()
 // it runs from an init(), where a bad algorithm must stop the binary.
 func Register(a Algorithm) {
 	if err := defaultRegistry.Register(a); err != nil {
+		// allow:panic: init-time programmer error (bad or duplicate algorithm), never request-driven.
 		panic(err)
 	}
 }
