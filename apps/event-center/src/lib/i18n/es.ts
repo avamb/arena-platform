@@ -882,4 +882,10 @@ export const es: Record<MessageKey, string> = {
   "apiError.memberGone.next": "Recarga la página para ver el equipo actualizado.",
   "apiError.roleNotAllowed.title": "Este rol no se puede cambiar aquí.",
   "apiError.roleNotAllowed.next": "Solo lo gestiona el equipo de la plataforma. Escribe a soporte si lo necesitas.",
+  // V1: VIP mark of a ticket.
+  "vip.badge": "VIP",
+  "vip.mark": "Marcar la entrada {number} como VIP",
+  "vip.unmark": "Quitar VIP de la entrada {number}",
+  "vip.private": "La marca VIP es solo para tu equipo. No se imprime en la entrada y el invitado no la ve.",
+  "invitations.confirm.vip": "Marcar estas invitaciones como VIP",
 };

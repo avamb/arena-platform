@@ -882,4 +882,10 @@ export const ru: Record<MessageKey, string> = {
   "apiError.memberGone.next": "Обновите страницу, чтобы увидеть свежую команду.",
   "apiError.roleNotAllowed.title": "Эту роль здесь изменить нельзя.",
   "apiError.roleNotAllowed.next": "Ею управляет только команда платформы. Если это нужно, напишите в поддержку.",
+  // V1: VIP-флаг билета.
+  "vip.badge": "VIP",
+  "vip.mark": "Отметить билет {number} как VIP",
+  "vip.unmark": "Снять VIP с билета {number}",
+  "vip.private": "Отметка VIP видна только вашей команде. Её нет на билете, и гость её не видит.",
+  "invitations.confirm.vip": "Отметить эти приглашения как VIP",
 };

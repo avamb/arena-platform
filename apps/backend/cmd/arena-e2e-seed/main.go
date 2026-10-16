@@ -246,7 +246,11 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applyForeignPromoter(ctx, tx); err != nil {
 		return err
 	}
-	return applyInvitationsFixture(ctx, tx)
+	if err := applyInvitationsFixture(ctx, tx); err != nil {
+		return err
+	}
+	// V1: a paid two-ticket order for the VIP twin test (vip_fixture.go).
+	return applyVIPOrder(ctx, tx)
 }
 
 // Task 4-6 (the web promoters screens): ANOTHER organization with one
