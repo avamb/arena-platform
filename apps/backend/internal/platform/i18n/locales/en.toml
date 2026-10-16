@@ -3761,3 +3761,21 @@ other = "← Back to the card"
 
 ["bot.wz.warn_tier_not_in_payload"]
 other = "Arena closed the categories that are not in the new list. Tickets sold in them stay valid."
+
+["bot.ord.vip_mark"]
+other = "⭐ VIP"
+
+["bot.ord.vip_on_btn"]
+other = "⭐ Mark №{{.Num}} as VIP"
+
+["bot.ord.vip_off_btn"]
+other = "Remove VIP from №{{.Num}}"
+
+["bot.inv.vip_line"]
+other = "⭐ The invitations are marked VIP. The guest does not see the mark."
+
+["bot.inv.vip_on_btn"]
+other = "☐ Mark as VIP"
+
+["bot.inv.vip_off_btn"]
+other = "☑ VIP: press to remove"

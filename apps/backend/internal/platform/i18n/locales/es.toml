@@ -3616,3 +3616,21 @@ other = "← Volver a la ficha"
 
 ["bot.wz.warn_tier_not_in_payload"]
 other = "Las categorías que no están en la lista nueva quedaron cerradas. Las entradas vendidas siguen siendo válidas."
+
+["bot.ord.vip_mark"]
+other = "⭐ VIP"
+
+["bot.ord.vip_on_btn"]
+other = "⭐ Marcar la n.º {{.Num}} como VIP"
+
+["bot.ord.vip_off_btn"]
+other = "Quitar VIP de la n.º {{.Num}}"
+
+["bot.inv.vip_line"]
+other = "⭐ Las invitaciones se marcan como VIP. El invitado no ve la marca."
+
+["bot.inv.vip_on_btn"]
+other = "☐ Marcar como VIP"
+
+["bot.inv.vip_off_btn"]
+other = "☑ VIP: pulsa para quitar"

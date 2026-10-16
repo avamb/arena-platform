@@ -3755,3 +3755,21 @@ other = "← Назад к карточке"
 
 ["bot.wz.warn_tier_not_in_payload"]
 other = "Категории, которых нет в новом списке, закрыты. Проданные в них билеты остаются в силе."
+
+["bot.ord.vip_mark"]
+other = "⭐ VIP"
+
+["bot.ord.vip_on_btn"]
+other = "⭐ Отметить №{{.Num}} как VIP"
+
+["bot.ord.vip_off_btn"]
+other = "Снять VIP с №{{.Num}}"
+
+["bot.inv.vip_line"]
+other = "⭐ Приглашения отмечены как VIP. Гость отметку не видит."
+
+["bot.inv.vip_on_btn"]
+other = "☐ Отметить как VIP"
+
+["bot.inv.vip_off_btn"]
+other = "☑ VIP: нажмите, чтобы снять"

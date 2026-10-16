@@ -26,6 +26,8 @@ type InvitationInput struct {
 	// BatchID makes a retry safe: the API answers a repeated (organization,
 	// batch) with the first result and sends no second letter.
 	BatchID string
+	// VIP marks the tickets with the organizer's private VIP flag (task V1).
+	VIP bool
 }
 
 // InvitationTicket is a ticket the API issued.
@@ -59,6 +61,9 @@ func (c *ArenaClient) IssueInvitation(ctx context.Context, jwt string, orgID uui
 	}
 	if in.Name != "" {
 		body["recipient_names"] = []string{in.Name}
+	}
+	if in.VIP {
+		body["vip"] = true
 	}
 	var out InvitationIssued
 	err := c.do(ctx, http.MethodPost, "/v1/organizations/"+orgID.String()+"/complimentary", jwt, body, &out)
