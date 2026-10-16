@@ -8,8 +8,10 @@ package billing_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -125,9 +127,33 @@ func TestFoundation_StandardPriceListIsFoundFrom2026(t *testing.T) {
 					t.Fatalf("%s: low price rule sale currency = %v", cur, r.SaleCurrency)
 				}
 			}
+			wantParams := map[string]string{
+				"low_price_formula":         `{"threshold_minor":1000,"strict_below":true,"pct_bp":400,"min_minor":10,"max_minor":35,"seated_surcharge_minor":20}`,
+				"fixed_per_ticket":          `{"unseated_minor":59,"seated_minor":109}`,
+				"credit_pack":               `{"seated_surcharge_minor":35}`,
+				"percent_of_price_with_cap": `{"pct_bp":200,"cap_minor":300}`,
+			}
+			for _, r := range rules {
+				var got, want map[string]any
+				if err := json.Unmarshal(r.Params, &got); err != nil {
+					t.Fatal(err)
+				}
+				if err := json.Unmarshal([]byte(wantParams[r.RuleType]), &want); err != nil {
+					t.Fatalf("%s: unexpected rule type %q", cur, r.RuleType)
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Fatalf("%s %s params = %s, want %s", cur, r.RuleType, r.Params, wantParams[r.RuleType])
+				}
+			}
 			packs, err := q.ListPriceListPacks(ctx, pl.ID)
 			if err != nil {
 				t.Fatal(err)
+			}
+			wantPacks := [][2]int64{{1650, 55}, {5200, 52}, {14700, 49}, {23000, 46}, {43000, 43}, {100000, 40}, {190000, 38}}
+			for i, w := range wantPacks {
+				if i >= len(packs) || packs[i].FaceMinor != w[0] || packs[i].UnseatedRateMinor != w[1] || packs[i].SeatedSurchargeMinor != 35 {
+					t.Fatalf("%s pack %d = %+v, want face %d rate %d surcharge 35", cur, i+1, packs, w[0], w[1])
+				}
 			}
 			if len(packs) != 7 || packs[0].FaceMinor != 1650 || packs[0].UnseatedRateMinor != 55 ||
 				packs[6].FaceMinor != 190000 || packs[6].UnseatedRateMinor != 38 || packs[6].SeatedSurchargeMinor != 35 {

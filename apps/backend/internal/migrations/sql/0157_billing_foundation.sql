@@ -350,7 +350,7 @@ SELECT o.id, 'EUR', x.unseated_minor, x.seated_minor, '2026-01-01T00:00:00Z',
        'подтвердить (политика §12 п.7)', 'migration'
 FROM   organizations o
 JOIN   (VALUES
-    ('Lampyris%',          50::bigint, 100::bigint),
+    ('%Lampyris%',        50::bigint, 100::bigint),
     ('Vino%Co%',           50::bigint, 100::bigint),
     ('%Учебный театр%',   100::bigint, 100::bigint),
     ('%Колыбель%',        100::bigint, 100::bigint)
