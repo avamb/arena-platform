@@ -354,9 +354,13 @@ func (b *Bot) onbCollect(ctx context.Context, chatID int64, from *models.User, d
 		// The application now holds the name, phone and e-mail: the dialog
 		// must not keep a stranger's personal data (nor have it end up in the
 		// database backups) for the rest of its lifetime.
+		// The row is deleted BEFORE the reply: the reply is what a test (or the
+		// applicant) sees first, and a check of bot_dialogs that follows it
+		// must not find the row still there (CI race, 2026-10-16). clear marks
+		// the dialog dropped, so the reply hook does not write it back.
 		d.step, d.first, d.last, d.phone = onbIdle, "", "", ""
-		b.onbRoute(ctx, chatID, from, d, &app)
 		b.onb.clear(ctx, from.ID, d)
+		b.onbRoute(ctx, chatID, from, d, &app)
 	}
 }
 
