@@ -31,7 +31,11 @@ import type {
   PromoRedemptionListResponse,
   SessionListResponse,
   SessionSummary,
+  TicketTierEnvelope,
   TicketTierListResponse,
+  TierPriceScheduleEnvelope,
+  TierPriceWindowInput,
+  UpdateTicketTierRequest,
 } from "@/lib/api/types";
 
 export function fetchMe(): Promise<MeResponse> {
@@ -432,5 +436,44 @@ export function removeMember(orgId: string, userId: string, membershipRole: stri
     route: API.removeMember,
     params: { org_id: orgId, user_id: userId },
     body: { role: membershipRole },
+  });
+}
+
+// ─── 5-4: a date's categories ────────────────────────────────────────────────
+
+export interface TierRef {
+  orgId: string;
+  eventId: string;
+  sessionId: string;
+  tierId: string;
+}
+
+const tierParams = (r: TierRef) => ({
+  org_id: r.orgId,
+  event_id: r.eventId,
+  session_id: r.sessionId,
+  id: r.tierId,
+});
+
+/**
+ * Changes ONE thing of a category. The body is exactly the keys to change:
+ * an absent key keeps the stored value, an explicit null clears a sale-window
+ * edge (UpdateTicketTierRequest is tri-state for those two).
+ */
+export function updateTier(ref: TierRef, body: UpdateTicketTierRequest): Promise<TicketTierEnvelope> {
+  return call<TicketTierEnvelope>({ route: API.tierUpdate, params: tierParams(ref), body });
+}
+
+/** The category's price windows, to find the one in force now. */
+export function fetchTierSchedule(ref: TierRef): Promise<TierPriceScheduleEnvelope> {
+  return call<TierPriceScheduleEnvelope>({ route: API.tierSchedule, params: tierParams(ref) });
+}
+
+/** Replaces the whole schedule. Send every window back, the changed one included. */
+export function putTierSchedule(ref: TierRef, windows: TierPriceWindowInput[]): Promise<TierPriceScheduleEnvelope> {
+  return call<TierPriceScheduleEnvelope>({
+    route: API.tierSchedulePut,
+    params: tierParams(ref),
+    body: { windows },
   });
 }

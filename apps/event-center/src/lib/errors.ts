@@ -117,7 +117,11 @@ export type ApiErrorStem =
   | "invitationClosed"
   | "memberGone"
   | "roleNotAllowed"
-  | "lastOwner";
+  | "lastOwner"
+  // 5-4
+  | "tierPriceInvalid"
+  | "tierCapacityInvalid"
+  | "tierPriceWindows";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -134,6 +138,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "apiKeyForbidden", "sellerHideOperatorOnly", "kybOperatorOnly", "legalNameRequired",
   // 4-5
   "resendTooSoon", "invitationChannel", "webInvitationOff", "invitationClosed", "memberGone", "roleNotAllowed", "lastOwner",
+  // 5-4
+  "tierPriceInvalid", "tierCapacityInvalid", "tierPriceWindows",
 ];
 
 /**
@@ -204,6 +210,18 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "bot.invalid_role": "invalid",
   "membership.empty_body": "invalid",
   "membership.invalid_role": "invalid",
+  // 5-4: PATCH tier and PUT price-schedule
+  "tier.invalid_fixed_price": "tierPriceInvalid",
+  "tier.invalid_free_price": "tierPriceInvalid",
+  "tier.invalid_price_window": "tierPriceInvalid",
+  "tier.invalid_prices": "tierPriceInvalid",
+  "tier.invalid_capacity": "tierCapacityInvalid",
+  "tier.capacity_required": "tierCapacityInvalid",
+  "tier.price_windows_overlap": "tierPriceWindows",
+  "tier.too_many_price_windows": "tierPriceWindows",
+  "tier.schedule_requires_fixed_mode": "tierPriceWindows",
+  "tier.invalid_sale_window_start": "tierSaleWindow",
+  "tier.invalid_sale_window_end": "tierSaleWindow",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",

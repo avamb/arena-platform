@@ -312,6 +312,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Открыть или закрыть продажи категории",
     bot: "categories.go, `ct:op`, `ct:cl`",
     web: "R4",
+    // 5-4
+    ready: { twin: "live/categories.spec.ts" },
     routes: [`PATCH ${O}/events/{event_id}/sessions/{session_id}/tiers/{id}`],
   },
   {
@@ -319,6 +321,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Цена, окно продаж, количество",
     bot: "categories.go, `ct:pr`, `ct:wn`, `ct:qt`",
     web: "R4",
+    // 5-4
+    ready: { twin: "live/categories.spec.ts" },
     routes: [
       `PATCH ${O}/events/{event_id}/sessions/{session_id}/tiers/{id}`,
       `GET ${O}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule`,

@@ -61,3 +61,11 @@ export type BotInvitation = S["BotInvitation"];
 export type BotInvitationCreateResponse = S["BotInvitationCreateResponse"];
 export type BotInvitationResendResponse = S["BotInvitationResendResponse"];
 export type BotInvitationRevokeResponse = S["BotInvitationRevokeResponse"];
+// 5-4: a date's categories (open, price, sale window, quantity).
+export type TicketTierEnvelope = S["TicketTierEnvelope"];
+export type UpdateTicketTierRequest = S["UpdateTicketTierRequest"];
+export type TierPriceWindow = S["TierPriceWindow"];
+export type TierPriceWindowInput = S["TierPriceWindowInput"];
+export type TierPriceSchedule = S["TierPriceSchedule"];
+export type TierPriceScheduleEnvelope = S["TierPriceScheduleEnvelope"];
+export type PutTierPriceScheduleRequest = S["PutTierPriceScheduleRequest"];
