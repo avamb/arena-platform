@@ -72,6 +72,24 @@ export interface PageStrings {
   contactErrElsewhere: string;
   /** A letter's #contact link reached a page that shows no form. */
   contactUnavailable: string;
+  /** Page materials (materials.ts): section headings and controls. */
+  materialsGallery: string;
+  materialsVideos: string;
+  materialsMap: string;
+  materialsPartners: string;
+  materialsReport: string;
+  videoLabel: string;
+  videoPlay: string;
+  /** Prefix of "Open on YouTube" — the provider's name follows. */
+  videoOpenOn: string;
+  mapOpenOsm: string;
+  mapOpenGoogle: string;
+  mapCoordinates: string;
+  photoOpen: string;
+  lightboxClose: string;
+  lightboxPrev: string;
+  lightboxNext: string;
+  partnerOpen: string;
 }
 
 const STRINGS: Record<PageLocale, PageStrings> = {
@@ -122,6 +140,22 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrCall: "If it is urgent, call the organizer:",
     contactErrElsewhere: "If it is urgent, look for the organizer's phone or e-mail on their own website or social pages.",
     contactUnavailable: "You cannot write to the organizer through this page right now. Try again later.",
+    materialsGallery: "Photos",
+    materialsVideos: "Video",
+    materialsMap: "How to get there",
+    materialsPartners: "Where else to buy",
+    materialsReport: "Photo report",
+    videoLabel: "Video",
+    videoPlay: "Play video",
+    videoOpenOn: "Open on",
+    mapOpenOsm: "Open in OpenStreetMap",
+    mapOpenGoogle: "Open in Google Maps",
+    mapCoordinates: "Coordinates",
+    photoOpen: "Enlarge photo",
+    lightboxClose: "Close",
+    lightboxPrev: "Previous photo",
+    lightboxNext: "Next photo",
+    partnerOpen: "Buy there",
   },
   ru: {
     loading: 'Загрузка события…',
@@ -170,6 +204,22 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrCall: "Если вопрос срочный, позвоните организатору:",
     contactErrElsewhere: "Если вопрос срочный, найдите телефон или e-mail организатора на его сайте или в соцсетях.",
     contactUnavailable: "Сейчас написать организатору через эту страницу нельзя. Попробуйте позже.",
+    materialsGallery: "Фото",
+    materialsVideos: "Видео",
+    materialsMap: "Как добраться",
+    materialsPartners: "Где ещё купить",
+    materialsReport: "Фотоотчёт",
+    videoLabel: "Видео",
+    videoPlay: "Смотреть видео",
+    videoOpenOn: "Открыть на",
+    mapOpenOsm: "Открыть в OpenStreetMap",
+    mapOpenGoogle: "Открыть в Google Maps",
+    mapCoordinates: "Координаты",
+    photoOpen: "Увеличить фото",
+    lightboxClose: "Закрыть",
+    lightboxPrev: "Предыдущее фото",
+    lightboxNext: "Следующее фото",
+    partnerOpen: "Купить там",
   },
   cs: {
     loading: 'Načítání akce…',
@@ -218,6 +268,22 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrCall: "Pokud je to naléhavé, zavolejte pořadateli:",
     contactErrElsewhere: "Pokud je to naléhavé, najděte telefon nebo e-mail pořadatele na jeho webu nebo sociálních sítích.",
     contactUnavailable: "Pořadateli teď přes tuto stránku napsat nelze. Zkuste to později.",
+    materialsGallery: "Fotky",
+    materialsVideos: "Video",
+    materialsMap: "Jak se tam dostat",
+    materialsPartners: "Kde ještě koupit",
+    materialsReport: "Fotoreportáž",
+    videoLabel: "Video",
+    videoPlay: "Přehrát video",
+    videoOpenOn: "Otevřít na",
+    mapOpenOsm: "Otevřít v OpenStreetMap",
+    mapOpenGoogle: "Otevřít v Google Maps",
+    mapCoordinates: "Souřadnice",
+    photoOpen: "Zvětšit fotku",
+    lightboxClose: "Zavřít",
+    lightboxPrev: "Předchozí fotka",
+    lightboxNext: "Další fotka",
+    partnerOpen: "Koupit tam",
   },
   he: {
     loading: 'טוען את האירוע…',
@@ -266,6 +332,22 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrCall: "אם זה דחוף, התקשרו למארגן:",
     contactErrElsewhere: "אם זה דחוף, חפשו את הטלפון או האימייל של המארגן באתר שלו או ברשתות החברתיות.",
     contactUnavailable: "כרגע אי אפשר לכתוב למארגן דרך הדף הזה. נסו שוב מאוחר יותר.",
+    materialsGallery: "תמונות",
+    materialsVideos: "וידאו",
+    materialsMap: "איך מגיעים",
+    materialsPartners: "איפה עוד אפשר לקנות",
+    materialsReport: "סיכום תמונות מהאירוע",
+    videoLabel: "וידאו",
+    videoPlay: "הפעלת הווידאו",
+    videoOpenOn: "פתיחה ב",
+    mapOpenOsm: "פתיחה ב-OpenStreetMap",
+    mapOpenGoogle: "פתיחה ב-Google Maps",
+    mapCoordinates: "קואורדינטות",
+    photoOpen: "הגדלת התמונה",
+    lightboxClose: "סגירה",
+    lightboxPrev: "התמונה הקודמת",
+    lightboxNext: "התמונה הבאה",
+    partnerOpen: "לקנות שם",
   },
   es: {
     loading: 'Cargando evento…',
@@ -314,6 +396,22 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrCall: "Si es urgente, llama al organizador:",
     contactErrElsewhere: "Si es urgente, busca el teléfono o el correo del organizador en su web o en sus redes sociales.",
     contactUnavailable: "Ahora no puedes escribir al organizador desde esta página. Inténtalo más tarde.",
+    materialsGallery: "Fotos",
+    materialsVideos: "Vídeo",
+    materialsMap: "Cómo llegar",
+    materialsPartners: "Dónde más comprar",
+    materialsReport: "Reportaje fotográfico",
+    videoLabel: "Vídeo",
+    videoPlay: "Reproducir el vídeo",
+    videoOpenOn: "Abrir en",
+    mapOpenOsm: "Abrir en OpenStreetMap",
+    mapOpenGoogle: "Abrir en Google Maps",
+    mapCoordinates: "Coordenadas",
+    photoOpen: "Ampliar la foto",
+    lightboxClose: "Cerrar",
+    lightboxPrev: "Foto anterior",
+    lightboxNext: "Foto siguiente",
+    partnerOpen: "Comprar allí",
   },
 };
 
