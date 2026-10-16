@@ -3616,3 +3616,27 @@ other = "← Volver a la ficha"
 
 ["bot.wz.warn_tier_not_in_payload"]
 other = "Las categorías que no están en la lista nueva quedaron cerradas. Las entradas vendidas siguen siendo válidas."
+
+["bot.ord.scan_src_arena_scanner"]
+other = "escáner de Arena"
+
+["bot.ord.scan_src_macs"]
+other = "MACS"
+
+["bot.ord.scan_gate"]
+other = " · acceso {{.Gate}}"
+
+["bot.ord.scan_denied"]
+other = " · ✖ rechazado {{.When}}"
+
+["bot.ses.not_entered_btn"]
+other = "No han entrado"
+
+["bot.ses.not_entered_head"]
+other = "<b>Aún no han entrado</b>\n{{.Scope}}\nEntradas: {{.Count}}"
+
+["bot.ses.not_entered_empty"]
+other = "Todos los que tienen una entrada válida ya han entrado."
+
+["bot.ses.not_entered_invite"]
+other = "invitación"

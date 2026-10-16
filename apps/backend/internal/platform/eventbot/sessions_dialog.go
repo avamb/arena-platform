@@ -438,6 +438,10 @@ func (b *Bot) sesShowCard(ctx context.Context, chatID int64, msgID *int, jwt, lo
 	if dlg.CanSales {
 		rows = append(rows, []Button{b.sesBtn(loc, "bot.ec.summary_btn", "sm", nil), b.sesBtn(loc, "bot.ec.csv_btn", "csv", nil)})
 		rows = append(rows, []Button{b.sesBtn(loc, "bot.ord.btn", "or", nil)})
+		if !it.cancelled() {
+			// Who has not come in yet (M2).
+			rows = append(rows, []Button{b.sesBtn(loc, "bot.ses.not_entered_btn", "ne:1", nil)})
+		}
 	}
 	if !it.cancelled() {
 		text += "\n" + b.sesSaleTimesLine(loc, it)
@@ -760,6 +764,13 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 		b.showOrdersFresh(ctx, chatID, &msgID, from, ordersScope{
 			SessionID: &session, BackEvent: &event, Name: dlg.EventName + " · " + FormatWhen(it.Start, it.Tz),
 		})
+	case strings.HasPrefix(data, "ne:"):
+		if dlg.Cur < 0 || dlg.Cur >= len(dlg.Items) || !canViewSales(id) || dlg.Items[dlg.Cur].cancelled() {
+			return
+		}
+		it := dlg.Items[dlg.Cur]
+		scope := "<b>" + Esc(FormatWhen(it.Start, it.Tz)) + "</b>"
+		b.showNotEntered(ctx, chatID, &msgID, from, id, jwt, it.ID, scope, ParsePage(strings.TrimPrefix(data, "ne:")))
 	case data == "ct":
 		if dlg.Cur < 0 || dlg.Cur >= len(dlg.Items) || !canCategories(id) || dlg.Items[dlg.Cur].cancelled() {
 			return

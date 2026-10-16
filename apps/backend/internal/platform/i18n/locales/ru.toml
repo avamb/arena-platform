@@ -3755,3 +3755,27 @@ other = "← Назад к карточке"
 
 ["bot.wz.warn_tier_not_in_payload"]
 other = "Категории, которых нет в новом списке, закрыты. Проданные в них билеты остаются в силе."
+
+["bot.ord.scan_src_arena_scanner"]
+other = "сканер Arena"
+
+["bot.ord.scan_src_macs"]
+other = "МАКС"
+
+["bot.ord.scan_gate"]
+other = " · вход {{.Gate}}"
+
+["bot.ord.scan_denied"]
+other = " · ✖ отказ на входе {{.When}}"
+
+["bot.ses.not_entered_btn"]
+other = "Не прошли"
+
+["bot.ses.not_entered_head"]
+other = "<b>Ещё не прошли</b>\n{{.Scope}}\nБилетов: {{.Count}}"
+
+["bot.ses.not_entered_empty"]
+other = "Все, у кого есть действующий билет, уже прошли."
+
+["bot.ses.not_entered_invite"]
+other = "приглашение"

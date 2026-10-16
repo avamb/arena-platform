@@ -77,7 +77,8 @@ func TestSessionTickets_ScansTwinSources(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		c := context.Background()
-		_, _ = f.pool.Exec(c, `DELETE FROM scan_events WHERE org_id = $1`, f.orgA)
+		_, _ = f.pool.Exec(c, `DELETE FROM scan_events WHERE org_id = ANY($1)`, []uuid.UUID{f.orgA, f.orgB})
+		_, _ = f.pool.Exec(c, `DELETE FROM api_keys WHERE org_id = $1`, f.orgA)
 		_, _ = f.pool.Exec(c, `DELETE FROM webhook_subscribers WHERE id = $1`, subID)
 		_, _ = f.pool.Exec(c, `DELETE FROM order_items WHERE ticket_id = $1`, cancelled)
 		_, _ = f.pool.Exec(c, `DELETE FROM tickets WHERE id = ANY($1)`, []uuid.UUID{invite, cancelled})
