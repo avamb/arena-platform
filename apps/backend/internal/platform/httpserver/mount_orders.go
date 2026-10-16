@@ -44,5 +44,7 @@ func (s *Server) mountOrderRoutes(r chi.Router) {
 		s.applyAuth(pr, "ticket.update", "orders")
 		// Send an order's tickets again, to its own address or a one-time one (EC-13).
 		pr.Post("/organizations/{org_id}/orders/{order_id}/resend-tickets", s.handleResendOrderTickets)
+		// The organizer's private VIP mark of one ticket (V1).
+		pr.Patch("/organizations/{org_id}/tickets/{ticket_id}/vip", s.handleSetTicketVIP)
 	})
 }

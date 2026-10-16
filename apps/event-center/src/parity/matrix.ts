@@ -363,6 +363,16 @@ export const PARITY: readonly ParityRow[] = [
     routes: [`POST ${O}/orders/{order_id}/resend-tickets`],
     note: "Окно «на адрес заказа / на другой адрес», подтверждение, результат. Заказ сайта-продавца отклоняет API (`order.seller_site_order`). Строки статуса писем (`letters[]`) стоят на карточке заказа. Кнопка видна по праву `ticket.update` в `GET …/me`.",
   },
+  {
+    area: "Заказы",
+    fn: "VIP-билет",
+    bot: "order_vip.go, `or:vip:`, `iv:vip:`",
+    web: "R3",
+    // V1
+    ready: { twin: "live/vip.spec.ts" },
+    routes: [`PATCH ${O}/tickets/{ticket_id}/vip`],
+    note: "Отметка видна только команде организации: её нет на PDF-билете и в письмах покупателю. Кнопка видна по праву `ticket.update` в `GET …/me`. Приглашение можно выдать сразу с отметкой (поле `vip` при выдаче).",
+  },
   // ── Возвраты ────────────────────────────────────────────────────────
   {
     area: "Возвраты",

@@ -135,6 +135,7 @@ func (h *Handler) HandleListComplimentaryIssuances(w http.ResponseWriter, r *htt
 				"holder_name":      t.HolderName,
 				"status":           t.Status,
 				"used":             t.Used,
+				"vip":              t.VIP,
 			})
 		}
 	}

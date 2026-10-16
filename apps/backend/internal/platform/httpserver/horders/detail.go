@@ -80,6 +80,7 @@ func ticketEntry(r gen.OrderTicketDetailRow, currency string) map[string]any {
 		"currency":         currency,
 		"barcode":          barcode,
 		"used_at":          timePtr(r.UsedAt),
+		"vip":              r.VIP,
 	}
 	return m
 }

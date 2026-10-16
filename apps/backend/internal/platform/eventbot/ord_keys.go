@@ -29,6 +29,7 @@ var ordKeys = []string{
 	"bot.ord.reason_unknown", "bot.ord.reason_provider",
 	"bot.ord.cancel_btn", "bot.ord.cancel_word", "bot.ord.cancel_ask", "bot.ord.cancel_wrong", "bot.ord.cancel_done",
 	"bot.ord.cancel_not_possible",
+	"bot.ord.vip_mark", "bot.ord.vip_on_btn", "bot.ord.vip_off_btn",
 }
 
 func init() {

@@ -882,6 +882,12 @@ export const en = {
   "apiError.memberGone.next": "Reload the page to see the latest team.",
   "apiError.roleNotAllowed.title": "This role cannot be changed here.",
   "apiError.roleNotAllowed.next": "Only the platform team manages it. Write to support if it is needed.",
+  // V1: VIP mark of a ticket.
+  "vip.badge": "VIP",
+  "vip.mark": "Mark ticket {number} as VIP",
+  "vip.unmark": "Remove VIP from ticket {number}",
+  "vip.private": "The VIP mark is for your team only. It is not printed on the ticket and the guest does not see it.",
+  "invitations.confirm.vip": "Mark these invitations as VIP",
 } as const;
 
 export type MessageKey = keyof typeof en;

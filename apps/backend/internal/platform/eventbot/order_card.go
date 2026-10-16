@@ -69,6 +69,7 @@ func (b *Bot) showOrderCard(ctx context.Context, chatID int64, editMsgID *int, f
 	plain := note + b.orderCardText(loc, detail, meta, private, true)
 	kb := b.withResendButton(b.orderCardKeyboard(loc, detail), id, detail, private) // EC-13, resend.go
 	kb = b.withRefundButton(kb, id, detail, private)                                // EC-21, refund_dialog.go
+	kb = b.withVIPButtons(kb, id, detail)                                           // V1, order_vip.go
 	if ticketLetterStatus(detail).failed() {
 		// A lost ticket letter: the resend button says what it does now.
 		kb = relabelButton(kb, "or:r:s:"+detail.Id.String(), b.texts.T(loc, "bot.ord.letter_retry_btn", nil))
@@ -218,6 +219,9 @@ func (b *Bot) ticketLine(loc string, t openapi.OrderTicketSummary, tz string) st
 	entered := ""
 	if t.UsedAt != nil {
 		entered = b.texts.T(loc, "bot.ord.entered", map[string]any{"When": Esc(FormatWhen(*t.UsedAt, tz))})
+	}
+	if t.Vip {
+		tier = b.texts.T(loc, "bot.ord.vip_mark", nil) + " · " + tier
 	}
 	return b.texts.T(loc, "bot.ord.ticket_line", map[string]any{
 		"Tier": tier, "Price": FormatMoney(t.Price, t.Currency, loc), "Code": Esc(t.Barcode),

@@ -69,6 +69,9 @@ type createComplimentaryIssuanceRequest struct {
 	BatchID        string   `json:"batch_id"`
 	IssuedBy       *string  `json:"issued_by"`
 	Notes          *string  `json:"notes"`
+	// VIP marks every ticket of the issuance with the organizer's VIP flag
+	// (task V1): the same column as a bought ticket, never printed on the PDF.
+	VIP bool `json:"vip"`
 }
 
 // HandleCreateComplimentaryIssuance serves POST /v1/organizations/{org_id}/complimentary.
@@ -180,7 +183,7 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 		existingTickets, _ := h.complimentaryQueries.ListTicketsByComplimentaryIssuance(ctx, existing.ID)
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"issuance":          complimentaryIssuanceFromRow(existing),
-			"tickets":           complimentaryTicketsFromRows(existingTickets),
+			"tickets":           h.complimentaryTickets(ctx, existingTickets),
 			"letters":           h.issuanceLetters(ctx, existing.ID),
 			"idempotent_replay": true,
 		})
@@ -390,6 +393,21 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// Step 7c: an invitation issued as VIP takes the mark in this transaction
+	// (V1), so no reader ever sees it half marked.
+	if req.VIP {
+		if err := complQ.SetTicketsVIPByIssuance(ctx, issuance.ID, vipActorID(r)); err != nil {
+			h.logger.Error("complimentary: mark vip failed",
+				slog.String("issuance_id", issuance.ID.String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"complimentary.vip_failed", "failed to mark the tickets as VIP", r,
+			))
+			return
+		}
+	}
+
 	// Step 8: Transition issuance status to 'issued'.
 	issuance, err = complQ.UpdateComplimentaryIssuanceStatus(ctx, issuance.ID, "issued")
 	if err != nil {
@@ -425,7 +443,7 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"issuance":          complimentaryIssuanceFromRow(issuance),
-		"tickets":           complimentaryTicketsFromRows(tickets),
+		"tickets":           h.complimentaryTickets(ctx, tickets),
 		"letters":           h.issuanceLetters(ctx, issuance.ID),
 		"idempotent_replay": false,
 	})
@@ -496,7 +514,7 @@ func (h *Handler) HandleGetComplimentaryIssuance(w http.ResponseWriter, r *http.
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"issuance": complimentaryIssuanceFromRow(issuance),
-		"tickets":  complimentaryTicketsFromRows(tickets),
+		"tickets":  h.complimentaryTickets(ctx, tickets),
 		"letters":  h.issuanceLetters(ctx, id),
 	})
 }

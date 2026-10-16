@@ -266,6 +266,8 @@ var inPlaceToggles = []string{
 	"or:f:t:",  // refund: a ticket
 	"or:f:all", // refund: every ticket
 	"or:f:nt",  // refund: the buyer letter
+	"or:vip:",  // order card: the VIP mark of a ticket
+	"iv:vip:",  // invitation: the VIP tick of the confirmation
 	"wz:ch:",   // wizard: a sales channel
 	"pm:k:t:",  // promo code: a session
 	"onb:ct:",  // application: a consent
