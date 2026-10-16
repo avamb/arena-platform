@@ -73,6 +73,9 @@ var ForbiddenScopeExact = map[string]bool{
 	"reconciliation.review": true,
 	"barcode_batch.approve": true,
 	"seating_plan.verify":   true,
+	// legal.manage writes the terms template every organization's buyers
+	// accept (migration 0159, P3a): platform superadmin only.
+	"legal.manage": true,
 }
 
 // IsForbiddenScope reports whether scope may never be carried by an API key.

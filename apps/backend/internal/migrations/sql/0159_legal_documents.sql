@@ -213,7 +213,7 @@ ON CONFLICT DO NOTHING;
 -- for the lawyer (ST-3). legaldocs.TestSeededTemplates_Parse parses it.
 -- +goose StatementBegin
 INSERT INTO legal_documents (kind, locale, version, status, body_template, published_at)
-SELECT 'sale_terms', l.locale, 1, 'published', $terms$DRAFT — awaiting legal review. This is a working draft of the terms of sale. It is not final and it is not legal advice.
+SELECT 'sale_terms', l.locale, 1, 'published', $seed$DRAFT — awaiting legal review. This is a working draft of the terms of sale. It is not final and it is not legal advice.
 
 ## Terms of sale
 
@@ -273,7 +273,7 @@ The privacy policy linked on the checkout page explains how your personal data i
 These terms are governed by the law of {{law.country}}. This does not take away the protection that the law of your country of residence gives you as a consumer.
 {{else}}
 These terms are governed by the law of the country of the seller. This does not take away the protection that the law of your country of residence gives you as a consumer.
-{{/if}}$terms$, now()
+{{/if}}$seed$, now()
 FROM (VALUES ('en'), ('ru'), ('cs'), ('he'), ('es'), ('de'), ('fr')) AS l(locale);
 -- +goose StatementEnd
 

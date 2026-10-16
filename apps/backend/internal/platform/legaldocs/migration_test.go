@@ -79,7 +79,7 @@ func TestMigration0159_ChecksMatchGoConstants(t *testing.T) {
 // lawyer, and renders with no placeholder left over.
 func TestSeededTemplates_Parse(t *testing.T) {
 	up := migrationUp(t)
-	m := regexp.MustCompile(`(?s)\$terms\$(.*?)\$terms\$`).FindStringSubmatch(up)
+	m := regexp.MustCompile(`(?s)\$seed\$(.*?)\$seed\$`).FindStringSubmatch(up)
 	if m == nil {
 		t.Fatal("seed template not found")
 	}

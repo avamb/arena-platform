@@ -756,7 +756,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	}
 
 	showWithdrawalNotice := h.showWithdrawalNotice(ctx, event.OrgID)
-	consent := h.consentBlock(consentRequired, consentLegalName)
+	consent := h.consentBlockFor(ctx, consentRequired, consentLegalName, eventID, feedToken)
 
 	if h.sessionQueries != nil {
 		sessions, err := h.sessionQueries.ListSessionsByEvent(ctx, eventID)
