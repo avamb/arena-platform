@@ -117,6 +117,7 @@ func (b *Bot) showEventCard(ctx context.Context, chatID int64, editMsgID *int, f
 	})
 
 	head += b.promoterEventLine(loc, *event) // who promotes it (EC-14)
+	head += b.pageStatsLine(ctx, loc, jwt, orgID, eventID) // page views of the hosted page (HP-2a)
 
 	var sum *openapi.EventSummary
 	if canViewSales(id) {

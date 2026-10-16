@@ -248,6 +248,12 @@ var orgIsolationAuditedSafe = map[string]string{
 	"DELETE /v1/organizations/{org_id}/events/{id}":                  "events",
 	"DELETE /v1/organizations/{org_id}/events/{id}/artists/{aid}":    "events",
 	"GET /v1/organizations/{org_id}/events/{event_id}/delete-impact": "events",
+	// hpagestats and hexport page-stats (task 2-3): GetEventPageStatsHeader is
+	// scoped by (event id, org id) and answers pgx.ErrNoRows for a foreign
+	// event (404 event.not_found); every counter query is keyed by the event
+	// id it returned. TestPageStats_OrganizerReadStaysInsideTheOrganization.
+	"GET /v1/organizations/{org_id}/events/{event_id}/page-stats":     "hpagestats",
+	"GET /v1/organizations/{org_id}/events/{event_id}/page-stats.csv": "hpagestats",
 	// himports.HandleEventBundleRead (task 3-2): GetEventRaw, then the event's
 	// organization must equal the path organization (404 event.not_found).
 	// TestEventBundleRead_OrganizationBoundary drives a foreign, unknown and

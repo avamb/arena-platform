@@ -3761,3 +3761,6 @@ other = "← Back to the card"
 
 ["bot.wz.warn_tier_not_in_payload"]
 other = "Arena closed the categories that are not in the new list. Tickets sold in them stay valid."
+
+["bot.ec.page_stats_line"]
+other = "Page views: {{.Views}} in {{.Days}} days{{if .Suspect}} ({{.Suspect}} of them look like bots){{end}}"
