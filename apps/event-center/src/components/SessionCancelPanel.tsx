@@ -84,7 +84,10 @@ export function SessionCancelPanel({ orgId, eventId, sessionId, startAt, timezon
       throw new ApiError(422, "session.change_message_too_long", "the message to buyers is too long");
     }
     try {
-      const answer = await patchSession(orgId, eventId, sessionId, cancelBody(noticeToSend(impact, message.text)));
+      // Never drop the message because the dry run is not in state right now.
+      const known = impact ?? (await fetchChangeImpact(orgId, sessionId, impactQuery({ cancel: true, locale })));
+      const text = impact === null && !message.touched ? known.default_message : message.text;
+      const answer = await patchSession(orgId, eventId, sessionId, cancelBody(noticeToSend(known, text)));
       await queryClient.invalidateQueries();
       setWordOpen(false);
       onDone({ queued: answer.change?.queued ?? 0 });

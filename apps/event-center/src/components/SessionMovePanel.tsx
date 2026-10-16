@@ -112,7 +112,13 @@ export function SessionMovePanel({ orgId, eventId, sessionId, startAt, venueId, 
       throw new ApiError(422, "session.change_message_too_long", "the message to buyers is too long");
     }
     try {
-      const answer = await patchSession(orgId, eventId, sessionId, moveBody(proposal, noticeToSend(impact, message.text)));
+      // The message must never be dropped because the dry run's answer is not
+      // in state at this moment (it is cleared while a new check runs): ask
+      // again, so a change that has buyers always travels with its text.
+      const known =
+        impact ?? (await fetchChangeImpact(orgId, sessionId, impactQuery({ startAt: proposal.startAt, venueId: proposal.venueId, locale })));
+      const text = impact === null && !message.touched ? known.default_message : message.text;
+      const answer = await patchSession(orgId, eventId, sessionId, moveBody(proposal, noticeToSend(known, text)));
       await queryClient.invalidateQueries();
       onDone({ startAt: answer.session.start_at, queued: answer.change?.queued ?? 0 });
     } catch (error) {
