@@ -882,4 +882,17 @@ export const es: Record<MessageKey, string> = {
   "apiError.memberGone.next": "Recarga la página para ver el equipo actualizado.",
   "apiError.roleNotAllowed.title": "Este rol no se puede cambiar aquí.",
   "apiError.roleNotAllowed.next": "Solo lo gestiona el equipo de la plataforma. Escribe a soporte si lo necesitas.",
+  // 2-3
+  "pageStats.title": "Estadísticas de la página",
+  "pageStats.note": "Es una orientación, no una prueba para una cuenta de publicidad: un bot puede parecer una persona y una persona puede bloquear el contador. Últimos 30 días.",
+  "pageStats.views": "Abrieron la página",
+  "pageStats.plays": "Pulsaron play en un vídeo",
+  "pageStats.clicks": "Siguieron un enlace de un socio",
+  "pageStats.suspect": "de ellos, {count} parecen bots",
+  "pageStats.sources": "De dónde llegan los visitantes",
+  "pageStats.direct": "Sin campaña",
+  "pageStats.col.source": "Fuente",
+  "pageStats.col.campaign": "Campaña",
+  "pageStats.col.views": "Visitas a la página",
+  "pageStats.csv": "Descargar el CSV de estadísticas",
 };

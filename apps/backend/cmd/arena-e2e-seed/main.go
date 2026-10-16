@@ -246,6 +246,10 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applyForeignPromoter(ctx, tx); err != nil {
 		return err
 	}
+	// 2-3: page statistics counters for the event screen's block.
+	if err := applyPageStatsFixture(ctx, tx); err != nil {
+		return err
+	}
 	return applyInvitationsFixture(ctx, tx)
 }
 

@@ -882,4 +882,17 @@ export const ru: Record<MessageKey, string> = {
   "apiError.memberGone.next": "Обновите страницу, чтобы увидеть свежую команду.",
   "apiError.roleNotAllowed.title": "Эту роль здесь изменить нельзя.",
   "apiError.roleNotAllowed.next": "Ею управляет только команда платформы. Если это нужно, напишите в поддержку.",
+  // 2-3
+  "pageStats.title": "Статистика страницы",
+  "pageStats.note": "Это ориентир, а не доказательство для рекламного кабинета: бот может выглядеть как человек, а человек может отключить счётчик. Последние 30 дней.",
+  "pageStats.views": "Открыли страницу",
+  "pageStats.plays": "Нажали «play» на видео",
+  "pageStats.clicks": "Перешли по ссылке партнёра",
+  "pageStats.suspect": "из них похожи на ботов: {count}",
+  "pageStats.sources": "Откуда пришли посетители",
+  "pageStats.direct": "Без кампании",
+  "pageStats.col.source": "Источник",
+  "pageStats.col.campaign": "Кампания",
+  "pageStats.col.views": "Просмотры",
+  "pageStats.csv": "Скачать CSV статистики",
 };

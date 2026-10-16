@@ -7,6 +7,7 @@ import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { Badge, DownloadButton, Empty, ErrorBox, Loading } from "@/components/ui";
 import { SalesFigures } from "@/components/SalesFigures";
+import { PageStats } from "@/components/PageStats";
 import { useOrg } from "@/screens/OrgLayout";
 import { SalesStateBadge, useEventsList } from "@/screens/EventsScreen";
 
@@ -68,6 +69,8 @@ export function EventScreen() {
   const canSessions = access.can("session.read");
   // The export routes need both permissions (mount_export.go).
   const canCsv = canSales && canSessions;
+  // 2-3: the page statistics need event.read (the route's own gate).
+  const canPageStats = access.can("event.read");
   const events = useEventsList(orgId);
   const summary = useQuery({
     queryKey: ["eventSummary", orgId, eventId],
@@ -164,6 +167,8 @@ export function EventScreen() {
           {t(canSessions ? "event.noSales" : "event.noSessions", { org: orgName })}
         </p>
       )}
+
+      {canPageStats && <PageStats orgId={orgId} eventId={eventId} />}
 
       {(canSales || canSessions) && (
         <section aria-labelledby="event-sessions">
