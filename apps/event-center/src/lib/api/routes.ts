@@ -88,6 +88,12 @@ export const API = {
   revokeInvitation: { method: "DELETE", path: "/v1/organizations/{org_id}/bot-invitations/{id}" },
   resendInvitation: { method: "POST", path: "/v1/organizations/{org_id}/bot-invitations/{id}/resend" },
   removeMember: { method: "DELETE", path: "/v1/organizations/{org_id}/members/{user_id}" },
+  // 5-2: move or cancel a session. The dry run first, then ONE PATCH of the
+  // existing session (a cancellation is status "cancelled", never a delete).
+  sessionChangeImpact: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/change-impact" },
+  sessionUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{id}" },
+  eventContact: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/contact" },
+  venues: { method: "GET", path: "/v1/organizations/{org_id}/venues" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;
