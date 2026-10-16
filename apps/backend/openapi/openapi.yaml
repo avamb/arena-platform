@@ -7477,6 +7477,141 @@ components:
           items:
             $ref: "#/components/schemas/PublicMaterialPhoto"
 
+    PageTrackRequest:
+      type: object
+      required: [kind]
+      description: |
+        Body of POST /v1/public/pages/{org_slug}/{event_slug}/track, the hosted
+        page's statistics beacon (HP-2a). Unknown fields are ignored.
+      properties:
+        kind:
+          type: string
+          description: |
+            What happened: `page_view`, `video_play` or `partner_click`. Any
+            other value is refused with 400 `track.invalid_kind`.
+          example: "page_view"
+        utm_source:
+          type: string
+          description: |
+            Optional `utm_source` of the page address. Only the characters
+            `A-Z a-z 0-9 . _ ~ -` are kept (a value with any other character is
+            counted as empty) and it is cut to 64 characters.
+          example: "instagram"
+        utm_campaign:
+          type: string
+          description: Optional `utm_campaign` of the page address, cleaned like `utm_source`.
+          example: "spring"
+
+    PageStatsCounts:
+      type: object
+      required: [hits, suspect_hits]
+      description: A pair of counters of one kind.
+      properties:
+        hits:
+          type: integer
+          format: int64
+          description: Hits that looked like a person with a browser.
+        suspect_hits:
+          type: integer
+          format: int64
+          description: Hits counted apart because the browser looked like a bot (or sent no User-Agent).
+
+    PageStatsKinds:
+      type: object
+      required: [page_view, video_play, partner_click]
+      description: The counters of the three kinds.
+      properties:
+        page_view:
+          description: Opened the event page.
+          allOf:
+            - $ref: "#/components/schemas/PageStatsCounts"
+        video_play:
+          description: Pressed play on a video of the page.
+          allOf:
+            - $ref: "#/components/schemas/PageStatsCounts"
+        partner_click:
+          description: Followed a "where else to buy" link.
+          allOf:
+            - $ref: "#/components/schemas/PageStatsCounts"
+
+    PageStatsDay:
+      type: object
+      required: [day, page_view, video_play, partner_click]
+      description: The counters of one calendar day (in the venue's zone) that has data.
+      properties:
+        day:
+          type: string
+          description: The day, `YYYY-MM-DD`.
+          example: "2026-05-06"
+        page_view:
+          description: Opened the event page.
+          allOf:
+            - $ref: "#/components/schemas/PageStatsCounts"
+        video_play:
+          description: Pressed play on a video of the page.
+          allOf:
+            - $ref: "#/components/schemas/PageStatsCounts"
+        partner_click:
+          description: Followed a "where else to buy" link.
+          allOf:
+            - $ref: "#/components/schemas/PageStatsCounts"
+
+    PageStatsSource:
+      type: object
+      required: [utm_source, utm_campaign, hits, suspect_hits]
+      description: One utm pair of the page views. Visits that carried no utm are the pair of two empty strings.
+      properties:
+        utm_source:
+          type: string
+          description: The cleaned `utm_source`, empty when none.
+        utm_campaign:
+          type: string
+          description: The cleaned `utm_campaign`, empty when none.
+        hits:
+          type: integer
+          format: int64
+          description: Page views that looked like a person.
+        suspect_hits:
+          type: integer
+          format: int64
+          description: Page views counted apart as probable bots.
+
+    PageStatsResponse:
+      type: object
+      required: [event_id, from, to, timezone, totals, days, sources]
+      description: |
+        The statistics of an event's hosted page for a window of days. A guide
+        for the organizer, not proof for an advertising account: a bot may look
+        like a person and a person may block the beacon.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: The event.
+        from:
+          type: string
+          description: First day of the window, `YYYY-MM-DD`.
+        to:
+          type: string
+          description: Last day of the window (inclusive), `YYYY-MM-DD`.
+        timezone:
+          type: [string, "null"]
+          description: IANA zone of the event's venue that decides which day a hit belongs to; null (UTC days) while the event has no session.
+        totals:
+          description: Sums over the whole window.
+          allOf:
+            - $ref: "#/components/schemas/PageStatsKinds"
+        days:
+          type: array
+          description: The days that have data, oldest first. A day without hits is absent.
+          items:
+            $ref: "#/components/schemas/PageStatsDay"
+        sources:
+          type: array
+          description: The utm pairs of the page views, biggest first, at most 20.
+          items:
+            $ref: "#/components/schemas/PageStatsSource"
+
     HostedPageResponse:
       type: object
       required: [org, event, feed_token, default_locale, materials]
@@ -38348,6 +38483,82 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/public/pages/{org_slug}/{event_slug}/track:
+    post:
+      operationId: postPublicPageTrack
+      summary: Count a page view, a video play or a partner click of a hosted page
+      description: |
+        The hosted page's statistics beacon (HP-2a). No JWT, no cookie. One
+        call adds one hit to a counter row of the event: the day (the calendar
+        day in the venue's zone), the kind and the two cleaned utm values. The
+        visitor's IP address, User-Agent, country and time of day are never
+        stored and never logged; an obvious bot (by User-Agent, or none) is
+        counted in `suspect_hits` instead of `hits`. The numbers are a guide for
+        the organizer, not proof for an advertising account.
+
+        The page is resolved like `GET /v1/public/pages/{org_slug}/{event_slug}`
+        (an organization's or a promoter's slug) and answers the same
+        `404 page.not_found` for every miss. One event keeps at most 200
+        different utm pairs a day; more are counted without utm.
+
+        Rate limited by the page (`PUBLIC_PAGE_TRACK_EVENT_RATE_LIMIT`) and by
+        client IP (`PUBLIC_PAGE_TRACK_IP_RATE_LIMIT`) before any database read;
+        a request over a limit is answered 429 `track.rate_limited` and is not
+        counted.
+      tags: [PublicFeed]
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Organization or promoter slug, matched case-insensitively.
+        - name: event_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Event slug, matched case-insensitively.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PageTrackRequest"
+      responses:
+        "204":
+          description: Counted.
+        "400":
+          description: The body is not a JSON object (`track.invalid_body`) or the kind is not allowed (`track.invalid_kind`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Page not found (`page.not_found`), one outcome for every miss.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited (`track.rate_limited`, with Retry-After).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The hit could not be written (`track.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/public/pages/{org_slug}:
     get:
       operationId: getPublicPromoterPage
@@ -42950,6 +43161,185 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "413":
           description: The export exceeds the row limit (`export.too_many_rows`, details `rows` and `max_rows`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`export.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Export queries unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/page-stats:
+    get:
+      operationId: getV1OrganizationsOrgIdEventsEventIdPageStats
+      summary: Statistics of the event's hosted page
+      description: |
+        Page views, video plays and partner-link clicks counted by the page's
+        beacon (`POST /v1/public/pages/{org_slug}/{event_slug}/track`), per
+        day in the venue's zone, with the totals of the window and the biggest
+        utm pairs of the page views. By default the window is the last 30 days
+        ending today in the venue's zone; `from` and `to` (`YYYY-MM-DD`,
+        inclusive) set it, at most 366 days. Hits of probable bots are in
+        `suspect_hits`. A guide for the organizer, not proof for an advertising
+        account.
+
+        Requires `event.read`; an event of another organization (or a deleted
+        one) is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          description: First day, `YYYY-MM-DD`. Default 29 days before `to`.
+          schema: { type: string }
+        - name: to
+          in: query
+          required: false
+          description: Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The statistics of the window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageStatsResponse"
+        "400":
+          description: A path parameter is not a UUID, or the window is wrong (`page_stats.invalid_date`, `page_stats.invalid_range`, `page_stats.range_too_long`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found, or not part of this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`page_stats.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/page-stats.csv:
+    get:
+      operationId: getV1OrganizationsOrgIdEventsEventIdPageStatsCsv
+      summary: Statistics of the event's hosted page as a CSV file
+      description: |
+        The counter rows behind `page-stats`: one row per day, kind and utm
+        pair (day, kind, utm source, utm campaign, count, probable bots). Same
+        window rules as the JSON route, same csvexport rules as the other
+        exports (UTF-8 with a BOM, `;` separator, header language by `locale`
+        / `lang` / Accept-Language). The file is event-level: a page view
+        belongs to the event, not to a session or a category.
+
+        Requires `event.read`; an event of another organization is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          description: First day, `YYYY-MM-DD`. Default 29 days before `to`.
+          schema: { type: string }
+        - name: to
+          in: query
+          required: false
+          description: Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone.
+          schema: { type: string }
+        - name: locale
+          in: query
+          required: false
+          description: Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+          schema: { type: string }
+      responses:
+        "200":
+          description: |
+            The CSV attachment, `Content-Disposition: attachment;
+            filename="page-stats_<event slug or id>_<YYYY-MM-DD>.csv"`.
+          content:
+            text/csv:
+              schema:
+                type: string
+                description: Header row and one line per counter row.
+        "400":
+          description: A path parameter is not a UUID, or the window is wrong.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found, or not part of this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: The export exceeds the row limit (`export.too_many_rows`).
           content:
             application/json:
               schema:
