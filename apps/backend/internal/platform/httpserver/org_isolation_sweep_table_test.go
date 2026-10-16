@@ -230,6 +230,12 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers":                    "tiers",
 	"PUT /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule": "tiers",
 
+	// S1e seat-layout allocator (seat_layout_shims.go): requireSessionInPathOrg
+	// before the handler; seat_layout_suggest_integration_test.go drives a
+	// foreign session and expects 404.
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms": "seat layout",
+	"POST /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest":   "seat layout",
+
 	// hcatalog event gallery and videos (task 1-2a, event_materials.go):
 	// materialsPrep runs requireEventInOrg first and every query is scoped by
 	// (id, event_id). event_materials_integration_test.go drives a foreign event.

@@ -39,6 +39,7 @@ that exists to exercise the panic-recoverer middleware.
 | `internal/platform/httpserver/debug_panic.go` | 27 | (a) invariant | Dedicated `GET /v1/debug/panic` endpoint that exists solely to exercise the panic-recoverer middleware in integration tests; mounted only when `DEBUG_ROUTES_ENABLED=true`. |
 | `internal/platform/httpserver/mount_v1.go` | 108 | (c) init | `applyAuthScoped` refuses to mount routes when the database permission checker cannot resolve roles inside one organization (PERM-ORG): such a wiring would decide org-scoped routes wrongly. Runs while routes mount at boot. |
 | `internal/platform/networkscope/networkscope.go` | 187 | (c) init | Constructor nil-dependency guard (`NewScoper` requires a non-nil `Querier`); called only from boot wiring. |
+| `internal/domain/seating/layoutgen/algorithm.go` | 264 | (c) init | `layoutgen.Register` runs from an algorithm's `init()` and refuses an invalid id, a duplicate id or a schema whose default does not decode (task S1e): a binary with such an algorithm must not start. |
 | `internal/platform/refunds/engine.go` | 214 | (c) init | `refunds.New` refuses unsafe timing options (`Options.Validate`: a provider call must fit inside the in-flight marker, a sweep pass inside the worker's stale claim); the options are code constants set at boot (PAY-03). |
 
 `cmd/arena-migrate/main.go:403` (goose `Fatalf` adapter) is exempt

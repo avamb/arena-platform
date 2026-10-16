@@ -4527,6 +4527,317 @@ components:
           format: int64
           description: Places withheld from sale by an operator.
 
+    SeatLayoutParam:
+      type: object
+      required: [name, type, required, default, label_key]
+      description: |
+        One parameter of a seat-layout algorithm (task S1e). Clients draw the
+        form from this description and never hard-code an algorithm. Labels
+        are i18n keys, never texts.
+      properties:
+        name:
+          type: string
+          description: Parameter name as sent in `params` of the suggest request.
+        type:
+          type: string
+          description: "One of `integer`, `boolean`, `enum`, `integer_list` (a JSON array of integers)."
+        required:
+          type: boolean
+          description: Whether the parameter must be sent (a parameter with a default never needs to be).
+        min:
+          type: integer
+          format: int64
+          description: Lower bound of an integer, or of every item of an integer list.
+        max:
+          type: integer
+          format: int64
+          description: Upper bound of an integer, or of every item of an integer list.
+        min_items:
+          type: integer
+          description: Shortest allowed integer list.
+        max_items:
+          type: integer
+          description: Longest allowed integer list.
+        default:
+          description: Value used when the parameter is left out, of the parameter's own type; null when there is none.
+        options:
+          type: array
+          description: Allowed values of an `enum` parameter.
+          items:
+            $ref: "#/components/schemas/SeatLayoutParamOption"
+        unit:
+          type: string
+          description: "How to read an integer: `count`, `minor_currency` (minor units of the session currency) or `percent`."
+        label_key:
+          type: string
+          description: i18n key of the parameter's label.
+        hint_key:
+          type: string
+          description: i18n key of an optional hint under the field.
+
+    SeatLayoutParamOption:
+      type: object
+      required: [value, label_key]
+      description: One value of an enum parameter of a seat-layout algorithm.
+      properties:
+        value:
+          type: string
+          description: The value as sent in `params`.
+        label_key:
+          type: string
+          description: i18n key of the value's label.
+
+    SeatLayoutAlgorithm:
+      type: object
+      required: [id, label_key, required_annotations, params]
+      description: One seat-layout algorithm of the registry with its parameter schema.
+      properties:
+        id:
+          type: string
+          description: Stable algorithm id (`desirability`, ...), sent back as `algorithm` of the suggest request.
+        label_key:
+          type: string
+          description: i18n key of the algorithm's name.
+        description_key:
+          type: string
+          description: i18n key of a short description of the algorithm.
+        required_annotations:
+          type: array
+          description: "Annotations the algorithm cannot work without (for example `focal_point`, the stage)."
+          items:
+            type: string
+        params:
+          type: array
+          description: The algorithm's parameters.
+          items:
+            $ref: "#/components/schemas/SeatLayoutParam"
+
+    SeatLayoutAlgorithmsResponse:
+      type: object
+      required: [session_id, currency, algorithms]
+      description: The seat-layout algorithms a session can use (task S1e).
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the session.
+        currency:
+          type: string
+          description: ISO 4217 currency of the session; every `minor_currency` parameter is in it.
+        algorithms:
+          type: array
+          description: Every registered algorithm, sorted by id.
+          items:
+            $ref: "#/components/schemas/SeatLayoutAlgorithm"
+
+    SeatLayoutPoint:
+      type: object
+      required: [x, y]
+      description: A point in canvas coordinates of the seating plan.
+      properties:
+        x:
+          type: number
+          description: Horizontal canvas coordinate.
+        y:
+          type: number
+          description: Vertical canvas coordinate.
+
+    SeatLayoutAnnotations:
+      type: object
+      description: |
+        Plan facts the allocator may need that are not part of the geometry.
+        Until they are stored on the seating plan (S1d) they travel in the
+        suggest request.
+      properties:
+        focal_point:
+          description: The stage, in canvas coordinates. The desirability algorithm requires it.
+          allOf:
+            - $ref: "#/components/schemas/SeatLayoutPoint"
+        section_weights:
+          type: object
+          description: Section key to weight from 0 (least wanted) to 1 (as good as the geometry says). A section left out weighs 1.
+          additionalProperties:
+            type: number
+        obstructed_seat_keys:
+          type: array
+          description: Seats with a restricted view.
+          items:
+            type: string
+
+    SeatLayoutSuggestRequest:
+      type: object
+      required: [algorithm]
+      description: Body of POST .../seat-layout/suggest (task S1e).
+      properties:
+        algorithm:
+          type: string
+          description: Id of the algorithm from GET .../seat-layout/algorithms.
+        params:
+          type: object
+          description: Parameter values by name, checked against the algorithm's schema. A left-out or null parameter takes its default.
+          additionalProperties: true
+        annotations:
+          description: Stage, section weights and obstructed seats of the plan.
+          allOf:
+            - $ref: "#/components/schemas/SeatLayoutAnnotations"
+
+    SeatLayoutSlot:
+      type: object
+      required: [key, price_amount, share]
+      description: One proposed category.
+      properties:
+        key:
+          type: string
+          description: Slot key (`c1` is the dearest for the desirability algorithm).
+        name:
+          type: string
+          description: Optional proposed name.
+        color:
+          type: string
+          description: Optional proposed colour, `#rrggbb`.
+        price_amount:
+          type: integer
+          format: int64
+          description: Proposed price in minor units of the session currency.
+        share:
+          type: number
+          description: Target share of the hall, 0 to 1.
+
+    SeatLayoutProposal:
+      type: object
+      required: [slots, assignments, frozen_seat_keys]
+      description: A proposed layout. Nothing is applied.
+      properties:
+        slots:
+          type: array
+          description: The proposed categories.
+          items:
+            $ref: "#/components/schemas/SeatLayoutSlot"
+        assignments:
+          type: object
+          description: seat_key to slot key for every seat that is not sold or held (closed seats included).
+          additionalProperties:
+            type: string
+        frozen_seat_keys:
+          type: array
+          description: Sold and held seats, left in their category at their own price, sorted.
+          items:
+            type: string
+
+    SeatLayoutSlotMetrics:
+      type: object
+      required: [slot_key, price_amount, seats, open_seats, revenue_minor, share]
+      description: Revenue estimate of one proposed category.
+      properties:
+        slot_key:
+          type: string
+          description: Key of the slot.
+        price_amount:
+          type: integer
+          format: int64
+          description: Proposed price in minor units.
+        seats:
+          type: integer
+          description: Free seats the layout puts in the slot, closed seats included.
+        open_seats:
+          type: integer
+          description: Free seats of the slot that are open for sale.
+        revenue_minor:
+          type: integer
+          format: int64
+          description: open_seats times price_amount.
+        share:
+          type: number
+          description: Actual share of the hall in the slot, 0 to 1.
+
+    SeatLayoutMetrics:
+      type: object
+      required: [currency, total_seats, sold_frozen, sold_seats, held_seats, closed_seats, revenue_sold_minor, revenue_held_minor, revenue_remaining_minor, revenue_estimate_minor, by_slot]
+      description: |
+        Revenue estimate of a proposal, a reference figure and never an
+        optimum: sold seats at the price they were sold for, held seats at
+        the price they are held for, every open free seat at the proposed
+        price. Closed seats are left out.
+      properties:
+        currency:
+          type: string
+          description: ISO 4217 currency of every amount.
+        total_seats:
+          type: integer
+          description: Seats of the plan.
+        sold_frozen:
+          type: integer
+          description: Frozen seats, sold plus held.
+        sold_seats:
+          type: integer
+          description: Sold seats.
+        held_seats:
+          type: integer
+          description: Seats in a hold.
+        closed_seats:
+          type: integer
+          description: Free seats an operator closed for sale.
+        revenue_sold_minor:
+          type: integer
+          format: int64
+          description: Sold seats at the price they were sold for.
+        revenue_held_minor:
+          type: integer
+          format: int64
+          description: Held seats at the price they are held for.
+        revenue_remaining_minor:
+          type: integer
+          format: int64
+          description: Open free seats at the proposed prices.
+        revenue_estimate_minor:
+          type: integer
+          format: int64
+          description: Sold plus held plus remaining.
+        by_slot:
+          type: array
+          description: The estimate per proposed category.
+          items:
+            $ref: "#/components/schemas/SeatLayoutSlotMetrics"
+
+    SeatLayoutSuggestResponse:
+      type: object
+      required: [session_id, algorithm, params, currency, seating_plan_version_id, geometry_checksum, seat_status_version, layout, metrics]
+      description: A seat-layout proposal (task S1e). Nothing was written.
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the session.
+        algorithm:
+          type: string
+          description: Id of the algorithm that made the proposal.
+        params:
+          type: object
+          description: The parameters used, defaults filled in.
+          additionalProperties: true
+        currency:
+          type: string
+          description: ISO 4217 currency of the session.
+        seating_plan_version_id:
+          type: string
+          format: uuid
+          description: Plan version whose geometry was read.
+        geometry_checksum:
+          type: string
+          description: Checksum of that geometry.
+        seat_status_version:
+          type: integer
+          format: int64
+          description: The session's seat_status_version the proposal was made against.
+        layout:
+          description: The proposal.
+          allOf:
+            - $ref: "#/components/schemas/SeatLayoutProposal"
+        metrics:
+          description: Its revenue estimate.
+          allOf:
+            - $ref: "#/components/schemas/SeatLayoutMetrics"
+
     SessionSummary:
       type: object
       required: [session, places, tiers, money, orders, tickets, entered, refunds, promos, complimentary]
@@ -42797,6 +43108,167 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Order queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdSeatLayoutAlgorithms
+      summary: Seat-layout algorithms and their parameters
+      description: |
+        Lists every seat-layout algorithm of the registry with the schema of
+        its parameters (number of categories 1 to 15, prices, shares,
+        options), so the seat manager and the bot draw the form without
+        knowing any algorithm (spec 26 §4.1, task S1e). Read-only. The
+        session must belong to this organization. Requires
+        `event_session.assign_seating_plan`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The algorithms.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatLayoutAlgorithmsResponse"
+        "400":
+          description: org_id or session_id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold `event_session.assign_seating_plan` in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest:
+    post:
+      operationId: postV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest
+      summary: Propose a seat layout
+      description: |
+        Runs one seat-layout algorithm on the geometry of the session's plan
+        version and the current state of its seats, and answers the proposed
+        categories, the category of every free seat and a revenue estimate
+        (spec 26 §4.1, task S1e). Writes NOTHING: applying a layout is a
+        separate step. Sold and held seats are never moved; they count in the
+        estimate at the price they were sold or held for ("sold by fact plus
+        the rest at the new prices"). Until the plan stores its annotations
+        (S1d), the stage and section weights travel in the body. Requires
+        `event_session.assign_seating_plan`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SeatLayoutSuggestRequest"
+      responses:
+        "200":
+          description: The proposal and its estimate.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatLayoutSuggestResponse"
+        "400":
+          description: |
+            Invalid path parameter or body (`seat_layout.invalid_body`), an
+            unknown algorithm (`seat_layout.unknown_algorithm`), a parameter
+            outside the algorithm's schema (`seat_layout.invalid_param`) or an
+            invalid annotation (`seat_layout.invalid_annotation`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold `event_session.assign_seating_plan` in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            The session has no seating plan (`seat_layout.no_seating_plan`),
+            its plan has no seats (`seat_layout.no_seats`), or the algorithm
+            needs an annotation that was not given
+            (`seat_layout.annotation_required`, for example the stage).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
           content:
             application/json:
               schema:
