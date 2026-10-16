@@ -64,9 +64,12 @@ func seedPacks(plID uuid.UUID, currency string) []gen.PriceListPackRow {
 type termsSpec struct {
 	currency string
 	plan     string
-	override *gen.OrgRateOverrideRow
-	extra    []gen.PriceListRuleRow
-	at       time.Time
+	// lowPriceParams, when set, replaces the params of the seeded
+	// low_price_formula rule.
+	lowPriceParams string
+	override       *gen.OrgRateOverrideRow
+	extra          []gen.PriceListRuleRow
+	at             time.Time
 }
 
 // buildTerms assembles Terms on the standard-2026 seed for one account.
@@ -86,6 +89,9 @@ func buildTerms(t *testing.T, s termsSpec) billing.Terms {
 	terms := gen.BillingAccountTermsRow{ID: uuid.New(), AccountID: acc.ID, EffectiveFrom: seedDate,
 		PriceListCode: "standard-2026", PlanKind: s.plan, BillingCycle: "monthly"}
 	rules := append(seedRules(pl.ID, s.currency), s.extra...)
+	if s.lowPriceParams != "" {
+		rules[0].Params = []byte(s.lowPriceParams)
+	}
 	for i := range s.extra {
 		rules[len(rules)-len(s.extra)+i].PriceListID = pl.ID
 	}
