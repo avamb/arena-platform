@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildBundle, stubDay, STUB_TIME } from "@/lib/wizard/bundle";
+import { buildBundle, buildBundles, wireDay } from "@/lib/wizard/bundle";
 import { newDraft, reduceDraft, type DraftAction, type WizardDraft } from "@/lib/wizard/draft";
 
 const NOW = new Date("2026-10-16T10:00:00Z");
-const opts = { now: NOW, orgId: "org-1" };
+const opts = { orgId: "org-1" };
 
 function draftOf(...actions: DraftAction[]): WizardDraft {
   return actions.reduce((d, a) => reduceDraft(d, a, NOW), newDraft("draft-1", NOW));
@@ -71,17 +71,50 @@ describe("buildBundle", () => {
     expect(b.actionEvent.currency).toBe("");
   });
 
-  it("stands in for the missing date and category with a marked stub a year ahead", () => {
-    const b = buildBundle(draftOf(), opts);
-    expect(b.actionEvent.day).toBe("16.10.2027");
-    expect(b.actionEvent.time).toBe(STUB_TIME);
-    expect(b.categoryList).toEqual([{ categoryPriceName: "Category 1", price: 1, availability: 1 }]);
+  it("sends the first date with the venue's seats as its places", () => {
+    const d = draftOf(
+      { type: "venueExisting", venue: { id: "v-1", name: "Hall", timezone: "Europe/Madrid", capacity: 300, country: null } },
+      { type: "dateDay", key: "d1", value: "2027-03-05" },
+      { type: "dateField", key: "d1", field: "time", value: "1900" },
+      { type: "catField", key: "d1", catKey: "d1-c1", field: "name", value: " Admission " },
+      { type: "catField", key: "d1", catKey: "d1-c1", field: "price", value: "18,90" },
+    );
+    const b = buildBundle(d, opts);
+    expect(b.actionEvent).toEqual({ day: "05.03.2027", time: "19:00", currency: "", sellEndTime: "2027-03-05T19:00:00+01:00" });
+    expect(b.categoryList).toEqual([
+      { categoryPriceName: "Admission", price: 18.9, availability: 300, nextCategoryIndex: -1, priceSchedule: [] },
+    ]);
+  });
+
+  it("makes one bundle per date with its own key, and a second date may sell the same as the first", () => {
+    const d = draftOf(
+      { type: "dateDay", key: "d1", value: "2027-03-05" },
+      { type: "dateField", key: "d1", field: "time", value: "19:00" },
+      { type: "dateField", key: "d1", field: "capacity", value: "50" },
+      { type: "catField", key: "d1", catKey: "d1-c1", field: "price", value: "10" },
+      { type: "dateAdd", key: "d2", defaultName: "Admission" },
+      { type: "dateDay", key: "d2", value: "2027-03-06" },
+    );
+    const [a, b] = buildBundles(d, opts);
+    expect(a.externalRef).toBe("web:org-1:draft-1:1");
+    expect(b.externalRef).toBe("web:org-1:draft-1:2");
+    // The new date starts like the one before: its time, its places and its categories.
+    expect(b.actionEvent.time).toBe("19:00");
+    expect(b.categoryList).toEqual(a.categoryList);
+    expect(b.actionEvent.day).toBe("06.03.2027");
+  });
+
+  it("leaves out the sales end and doors when the start is not a real time", () => {
+    const d = draftOf({ type: "dateDay", key: "d1", value: "2027-03-05" }, { type: "dateField", key: "d1", field: "time", value: "later" });
+    const b = buildBundle(d, opts);
+    expect(b.actionEvent.sellEndTime).toBeUndefined();
+    expect(b.actionEvent.doorsOpenTime).toBeUndefined();
   });
 });
 
-describe("stubDay", () => {
-  it("is the bot's DD.MM.YYYY, one year after today", () => {
-    expect(stubDay(new Date("2026-01-05T00:00:00Z"))).toBe("05.01.2027");
-    expect(stubDay(new Date("2028-12-31T23:59:00Z"))).toBe("31.12.2029");
+describe("wireDay", () => {
+  it("is the bot's DD.MM.YYYY", () => {
+    expect(wireDay("2027-01-05")).toBe("05.01.2027");
+    expect(wireDay("")).toBe("");
   });
 });

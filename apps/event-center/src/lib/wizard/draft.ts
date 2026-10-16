@@ -2,13 +2,15 @@
  * The draft of the event wizard (task 6-1a, spec 40 section 5.6, plan stage 6).
  *
  * Pure types and a reducer, free of React, so every rule is tested without a
- * DOM. The draft holds what the person typed in the sections "Event" and
- * "Venue". Dates, tickets and saving join in 6-1b and 6-1c: they bump
- * DRAFT_VERSION, and an older stored draft is then dropped, never half read.
+ * DOM. The draft holds what the person typed in the sections "Event",
+ * "Venue", "Dates" and "Tickets" (the last two are datesDraft.ts, 6-1b).
+ * Saving joins in 6-1c. A new section bumps DRAFT_VERSION, and an older
+ * stored draft is then dropped, never half read.
  *
  * The draft lives in this browser only (localStorage, one per organization).
  * It holds an event name, a description and a venue: no personal data.
  */
+import { applyDateAction, emptyDate, isBlankDate, isDateAction, parseDates, type DateAction, type DateEntry } from "@/lib/wizard/datesDraft";
 
 /** The age ratings the database accepts (`events_age_rating_check`, migration 0051). */
 export const AGE_OPTIONS = ["0+", "6+", "12+", "16+", "18+", "NR"] as const;
@@ -24,7 +26,7 @@ export const MAX_DESCRIPTION_RUNES = 4000;
 /** The largest hall the wizard accepts, as the bot's `maxCount`. */
 export const MAX_CAPACITY = 1_000_000;
 
-export const DRAFT_VERSION = 1;
+export const DRAFT_VERSION = 2;
 
 export type VenueMode = "" | "existing" | "new";
 
@@ -64,6 +66,8 @@ export interface WizardDraft {
   id: string;
   event: EventSection;
   venue: VenueSection;
+  /** The dates, in the order the person added them; always at least one. */
+  dates: DateEntry[];
   /** ISO 4217, upper case; "" = not known yet. */
   currency: string;
   /** Where the currency came from: the country (auto), or typed by the person. */
@@ -90,12 +94,18 @@ export function emptyVenue(): VenueSection {
   };
 }
 
-export function newDraft(id: string, now: Date = new Date()): WizardDraft {
+/**
+ * A new draft with one empty date. `defaultName` is the name of its first
+ * category ("Admission" in the person's language), like the bot's default
+ * button.
+ */
+export function newDraft(id: string, now: Date = new Date(), defaultName = ""): WizardDraft {
   return {
     version: DRAFT_VERSION,
     id,
     event: emptyEvent(),
     venue: emptyVenue(),
+    dates: [emptyDate("d1", defaultName)],
     currency: "",
     currencySource: "auto",
     updatedAt: now.toISOString(),
@@ -121,7 +131,8 @@ export type DraftAction =
   | { type: "country"; iso2: string }
   | { type: "timezone"; value: string }
   | { type: "currency"; value: string; source: "auto" | "typed" }
-  | { type: "reset"; id: string };
+  | DateAction
+  | { type: "reset"; id: string; defaultName: string };
 
 /** Folds an answer into the draft. The clock is passed in, so the reducer stays pure. */
 export function reduceDraft(draft: WizardDraft, action: DraftAction, now: Date = new Date()): WizardDraft {
@@ -176,7 +187,9 @@ function apply(d: WizardDraft, a: DraftAction): WizardDraft {
       return { ...d, currency: value, currencySource: a.source };
     }
     case "reset":
-      return newDraft(a.id);
+      return newDraft(a.id, new Date(), a.defaultName);
+    default:
+      return isDateAction(a) ? applyDateAction(d, a) : d;
   }
 }
 
@@ -193,7 +206,9 @@ export function isBlank(d: WizardDraft): boolean {
     v.newName === "" &&
     v.countryIso2 === "" &&
     v.cityName === "" &&
-    v.capacity === ""
+    v.capacity === "" &&
+    d.dates.length === 1 &&
+    isBlankDate(d.dates[0])
   );
 }
 
@@ -328,6 +343,8 @@ export function parseDraft(raw: unknown): WizardDraft | null {
     return null;
   }
   if (existingCapacity !== null && typeof existingCapacity !== "number") return null;
+  const dates = parseDates(o.dates);
+  if (dates === null) return null;
   return {
     version: DRAFT_VERSION,
     id,
@@ -344,6 +361,7 @@ export function parseDraft(raw: unknown): WizardDraft | null {
       timezone,
       capacity,
     },
+    dates,
     currency,
     currencySource: source,
     updatedAt,

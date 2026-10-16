@@ -3,9 +3,10 @@
  * (`POST .../imports/event-bundle?dry_run=true`, task 3-1).
  *
  * The check lists EVERY error of a bundle with the JSON pointer of the field
- * it is about. This file turns a pointer into a field of the form, hides the
- * errors that belong to a part of the bundle the wizard does not have yet (the
- * stub date and category, see bundle.ts) and keeps the rest for the screen.
+ * it is about. This file turns a pointer into a field of the event or venue
+ * form, sets aside the errors that belong to one DATE of the bundle (they are
+ * mapped to that date's fields by dateErrors.ts) and keeps the rest for the
+ * screen.
  *
  * Pure: no React, no network.
  */
@@ -72,23 +73,22 @@ const POINTER_TO_FIELD: Record<string, FormField> = {
   "/actionEvent/currency": "currency",
 };
 
-/**
- * Pointers of the bundle that the sections on screen do not fill. In 6-1a
- * these hold a stub, so an error about them says "fill in the dates", not
- * "this section is wrong".
- */
-const LATER_PREFIXES = ["/actionEvent", "/categoryList", "/externalRef", "/seatList", "/svg"];
+/** Pointers of the part of the bundle that belongs to one date: its times, its categories, its key. */
+const DATE_PREFIXES = ["/actionEvent", "/categoryList", "/externalRef", "/seatList", "/svg"];
 
-export type PointerTarget = { kind: "field"; field: FormField } | { kind: "later" } | { kind: "general" };
+/** True for a pointer that belongs to one date's part of the bundle (the currency is the event's). */
+export function isDatePointer(pointer: string): boolean {
+  if (pointer in POINTER_TO_FIELD) return false;
+  return DATE_PREFIXES.some((prefix) => pointer === prefix || pointer.startsWith(`${prefix}/`));
+}
+
+export type PointerTarget = { kind: "field"; field: FormField } | { kind: "date" } | { kind: "general" };
 
 /** Where an error with this JSON pointer belongs. */
 export function targetOfPointer(pointer: string): PointerTarget {
   const known = POINTER_TO_FIELD[pointer];
   if (known !== undefined) return { kind: "field", field: known };
-  for (const prefix of LATER_PREFIXES) {
-    if (pointer === prefix || pointer.startsWith(`${prefix}/`)) return { kind: "later" };
-  }
-  return { kind: "general" };
+  return isDatePointer(pointer) ? { kind: "date" } : { kind: "general" };
 }
 
 export interface SplitErrors {
@@ -96,18 +96,18 @@ export interface SplitErrors {
   byField: Partial<Record<FormField, CheckError[]>>;
   /** Errors about the whole bundle or a field the form does not know. */
   general: CheckError[];
-  /** Errors about the stub parts: not shown as errors. */
-  later: CheckError[];
+  /** Errors about one date's part of the bundle (dateErrors.ts places them). */
+  dated: CheckError[];
 }
 
 export function splitErrors(errors: readonly CheckError[]): SplitErrors {
-  const out: SplitErrors = { byField: {}, general: [], later: [] };
+  const out: SplitErrors = { byField: {}, general: [], dated: [] };
   for (const err of errors) {
     const target = targetOfPointer(err.field);
     if (target.kind === "field") {
       (out.byField[target.field] ??= []).push(err);
-    } else if (target.kind === "later") {
-      out.later.push(err);
+    } else if (target.kind === "date") {
+      out.dated.push(err);
     } else {
       out.general.push(err);
     }
@@ -120,10 +120,7 @@ export function failingFields(split: SplitErrors): FormField[] {
   return FORM_FIELDS.filter((f) => (split.byField[f]?.length ?? 0) > 0);
 }
 
-/**
- * The sections are correct when the check found nothing about them. The stub
- * errors are not the sections' business.
- */
+/** The event and venue sections are correct when the check found nothing about them. */
 export function sectionsCorrect(split: SplitErrors): boolean {
   return failingFields(split).length === 0 && split.general.length === 0;
 }

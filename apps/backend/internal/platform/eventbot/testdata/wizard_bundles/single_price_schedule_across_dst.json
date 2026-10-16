@@ -1,0 +1,134 @@
+{
+  "description": "A price schedule whose steps start on both sides of the March clock change.",
+  "input": {
+    "event": {
+      "name": "Golden schedule",
+      "description": "Prices rise.",
+      "age": "12+",
+      "promoterId": "22222222-2222-4222-8222-222222222222"
+    },
+    "currency": "CZK",
+    "venue": {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "name": "Golden Hall",
+      "timezone": "Europe/Prague",
+      "capacity": 500
+    },
+    "externalRefPrefix": "web:org-1:draft-3",
+    "dates": [
+      {
+        "day": "2027-04-20",
+        "time": "18:00",
+        "salesEnd": "",
+        "doors": "17:00",
+        "capacity": "",
+        "tickets": {
+          "mode": "single",
+          "categories": [
+            {
+              "name": "Standard",
+              "price": "1 200,50",
+              "places": "",
+              "until": "",
+              "limit": ""
+            }
+          ],
+          "schedule": [
+            {
+              "from": "2027-03-27",
+              "price": "900"
+            },
+            {
+              "from": "2027-03-28",
+              "price": "1.000,5"
+            },
+            {
+              "from": "2027-04-10",
+              "price": "1200"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "bundles": [
+    {
+      "source": "arena",
+      "externalRef": "web:org-1:draft-3:1",
+      "action": {
+        "actionId": 0,
+        "actionName": "Golden schedule",
+        "fullActionName": "",
+        "description": "Prices rise.",
+        "bigPosterUrl": "",
+        "age": "12+",
+        "organizerName": "",
+        "promoterId": "22222222-2222-4222-8222-222222222222",
+        "arenaEventId": ""
+      },
+      "actionEvent": {
+        "actionEventId": 0,
+        "day": "20.04.2027",
+        "time": "18:00",
+        "endTime": "",
+        "currency": "CZK",
+        "sellEndTime": "2027-04-20T18:00:00+02:00",
+        "sellStartTime": "",
+        "doorsOpenTime": "2027-04-20T17:00:00+02:00",
+        "chargePercent": 0,
+        "seatingPlanId": 0,
+        "seatingPlanName": "",
+        "arenaSessionId": ""
+      },
+      "venue": {
+        "arenaVenueId": "11111111-1111-4111-8111-111111111111",
+        "venueId": 0,
+        "venueName": "Golden Hall",
+        "address": "",
+        "cityId": 0,
+        "cityName": "",
+        "countryId": 0,
+        "countryName": "",
+        "timezone": "",
+        "geoLat": null,
+        "geoLon": null
+      },
+      "categoryList": [
+        {
+          "categoryPriceId": 0,
+          "categoryPriceName": "Standard",
+          "price": 1200.5,
+          "placement": false,
+          "availability": 500,
+          "sellStartTime": "",
+          "sellEndTime": "",
+          "nextCategoryIndex": -1,
+          "sellLimit": null,
+          "priceSchedule": [
+            {
+              "validFrom": "2027-03-27T00:00:00+01:00",
+              "validTo": "2027-03-28T00:00:00+01:00",
+              "price": 900
+            },
+            {
+              "validFrom": "2027-03-28T00:00:00+01:00",
+              "validTo": "2027-04-10T00:00:00+02:00",
+              "price": 1000.5
+            },
+            {
+              "validFrom": "2027-04-10T00:00:00+02:00",
+              "validTo": "",
+              "price": 1200
+            }
+          ],
+          "arenaTierId": ""
+        }
+      ],
+      "seatList": null,
+      "svg": "",
+      "publish": false,
+      "channelIds": null,
+      "changeMessage": ""
+    }
+  ]
+}

@@ -13,6 +13,19 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   "import.invalid_venue": "wizard.err.invalid_venue",
   "import.venue_name_required": "wizard.err.venue_name_required",
   "venue.timezone_required": "wizard.err.timezone_required",
+  // The dates and the tickets (6-1b).
+  "import.invalid_start_time": "wizard.err.invalid_start_time",
+  "import.invalid_sell_end_time": "wizard.err.invalid_sell_end_time",
+  "import.end_time_invalid": "wizard.err.end_time_invalid",
+  "import.invalid_doors_open_time": "wizard.err.invalid_doors_open_time",
+  "import.categories_required": "wizard.err.categories_required",
+  "import.invalid_price": "wizard.err.invalid_price",
+  "import.invalid_sale_window": "wizard.err.invalid_sale_window",
+  "import.invalid_sell_limit": "wizard.err.invalid_sell_limit",
+  "import.invalid_next_category": "wizard.err.invalid_next_category",
+  "import.category_chain_cycle": "wizard.err.category_chain_cycle",
+  "import.invalid_price_schedule": "wizard.err.invalid_price_schedule",
+  "import.capacity_required": "wizard.err.capacity_required",
 };
 
 const WARNING_KEYS: Record<string, MessageKey> = {
