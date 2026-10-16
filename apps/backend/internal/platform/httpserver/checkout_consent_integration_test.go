@@ -211,6 +211,8 @@ type consentRowWire struct {
 	SellerLegalName       *string `json:"seller_legal_name"`
 	TermsURL              *string `json:"terms_url"`
 	PrivacyURL            *string `json:"privacy_url"`
+	LegalRenderingID      *string `json:"legal_rendering_id"`
+	TermsSHA256           *string `json:"terms_sha256"`
 }
 
 func countConsents(t *testing.T, ctx context.Context, pool *pgxpool.Pool, orgID uuid.UUID) int {
@@ -272,7 +274,9 @@ func TestCheckoutConsent_FlagOnRequiresAndRecordsTheConsent(t *testing.T) {
 	// ── the feed session tells the widget ──────────────────────────────────
 	s := f.feedSession(t, srv)
 	if !s.Consent.Required || s.Consent.SellerLegalName != "Consent Teatro S.L." ||
-		s.Consent.TermsURL != "https://site.arena-integration.test/legal/buyer-terms" ||
+		!strings.HasPrefix(s.Consent.TermsURL, "https://app.bot.test/v1/public/pages/") ||
+		!strings.Contains(s.Consent.TermsURL, "/terms?") || !strings.Contains(s.Consent.TermsURL, "feed_token="+f.feedToken) ||
+		!strings.Contains(s.Consent.TermsURL, "format=html") ||
 		s.Consent.PrivacyURL != "https://site.arena-integration.test/legal/privacy" {
 		t.Fatalf("feed consent = %+v", s.Consent)
 	}
@@ -320,9 +324,13 @@ func TestCheckoutConsent_FlagOnRequiresAndRecordsTheConsent(t *testing.T) {
 		t.Fatalf("consents = %+v", got)
 	}
 	c := got.Consents[0]
-	if c.Kind != "sale_terms" || c.TermsVersion != "platform-terms:2026-10-15;seller:"+f.orgID.String() {
+	// P3a: the consent names the organizer terms rendering the buyer
+	// accepted, in the consent's language.
+	if c.Kind != "sale_terms" || !strings.HasPrefix(c.TermsVersion, "sale_terms:v") ||
+		!strings.HasSuffix(c.TermsVersion, ":es;seller:"+f.orgID.String()) {
 		t.Errorf("kind/version = %q / %q", c.Kind, c.TermsVersion)
 	}
+	assertConsentNamesTheRendering(t, ctx, srv, pool, c, s.Consent.TermsURL)
 	if c.ClientIP == nil || *c.ClientIP != "203.0.113.42" {
 		t.Errorf("client_ip = %v, want 203.0.113.42 (the request's RemoteAddr, not X-Forwarded-For)", c.ClientIP)
 	}

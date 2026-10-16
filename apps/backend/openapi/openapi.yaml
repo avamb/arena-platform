@@ -11968,7 +11968,13 @@ components:
           example: "Teatro Demo S.L."
         terms_url:
           type: string
-          description: The platform terms page (`PLATFORM_TERMS_URL`, else the site's /legal/terms); omitted when none is configured.
+          description: |
+            While `required` is true and the API knows its public base URL:
+            the organizer's terms of sale for this event and channel,
+            `<API>/v1/public/pages/{org_slug}/terms?event_id=..&feed_token=..&format=html`
+            (P3a; an HTML page until the tickets page renders the terms).
+            Otherwise the platform terms page (`PLATFORM_TERMS_URL`, else the
+            site's /legal/terms); omitted when none is configured.
         privacy_url:
           type: string
           description: The privacy policy (`ONBOARDING_PRIVACY_URL`, else the site's /legal/privacy); omitted when none is configured.
@@ -11992,8 +11998,11 @@ components:
           example: "sale_terms"
         terms_version:
           type: string
-          description: The version accepted, `platform-terms:<version>;seller:<organization id>` until the organizer's rendered terms exist.
-          example: "platform-terms:2026-10-15;seller:0190a2b4-6f00-7000-8000-000000000001"
+          description: |
+            The version accepted: `sale_terms:v<document version>:<language>;seller:<organization id>`
+            for the organizer's rendered terms (P3a, then `legal_rendering_id` is set),
+            `platform-terms:<version>;seller:<organization id>` for a consent to the platform terms.
+          example: "sale_terms:v1:es;seller:0190a2b4-6f00-7000-8000-000000000001"
         locale:
           type: [string, "null"]
           description: Language the checkbox was shown in, null when not stated.
@@ -12026,6 +12035,127 @@ components:
         privacy_url:
           type: [string, "null"]
           description: The privacy policy link the checkbox showed.
+        legal_rendering_id:
+          type: [string, "null"]
+          format: uuid
+          description: The rendering of the organizer's terms the buyer accepted (`legal_renderings`, P3a); null for a consent to the platform terms.
+        terms_sha256:
+          type: [string, "null"]
+          description: SHA-256 (hex) of that rendering's HTML at acceptance; null with `legal_rendering_id`.
+
+    PublicTermsResponse:
+      type: object
+      required: [document_version, rendering_id, locale, html, sha256, refund_mode, seller_legal_name]
+      description: The organizer's terms of sale rendered for one seller, channel, event and language (P3a).
+      properties:
+        document_version:
+          type: integer
+          description: Version of the template that was rendered.
+          example: 1
+        rendering_id:
+          type: string
+          format: uuid
+          description: The stored rendering (`legal_renderings`); a consent at checkout names it.
+        locale:
+          type: string
+          description: Language of the rendered version (after the fallback to `en`).
+          example: "es"
+        html:
+          type: string
+          description: The terms as HTML without scripts, styles or links, wrapped in `<article class="legal-document" lang=.. dir=..>`.
+        sha256:
+          type: string
+          description: SHA-256 (hex) of `html`.
+        refund_mode:
+          type: string
+          description: The refund policy stated, `no_refund`, `refund_until_sales_end` or `refund_by_law` (the event's, else the organization's, else `refund_by_law`).
+          example: "refund_by_law"
+        seller_legal_name:
+          type: string
+          description: The seller the terms name.
+          example: "Teatro Demo S.L."
+
+    LegalDocument:
+      type: object
+      required: [id, kind, locale, version, status, body_template, created_by, created_at, published_at, published_by, retired_at]
+      description: One version of a terms template (P3a). Immutable once published.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Version id.
+        kind:
+          type: string
+          description: Document kind, `sale_terms` so far.
+          example: "sale_terms"
+        locale:
+          type: string
+          description: Language of the template (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+          example: "en"
+        version:
+          type: integer
+          description: Version number within the kind and language, from 1.
+          example: 1
+        status:
+          type: string
+          description: "`draft`, `published` (at most one per kind and language) or `retired`."
+          example: "published"
+        body_template:
+          type: string
+          description: The template text with its placeholders.
+        created_by:
+          type: [string, "null"]
+          format: uuid
+          description: The operator who saved the draft; null for the seeded versions.
+        created_at:
+          type: string
+          format: date-time
+          description: When the draft was saved.
+        published_at:
+          type: [string, "null"]
+          format: date-time
+          description: When it was published; null for a draft.
+        published_by:
+          type: [string, "null"]
+          format: uuid
+          description: The operator who published it.
+        retired_at:
+          type: [string, "null"]
+          format: date-time
+          description: When a newer version replaced it.
+
+    LegalDocumentListResponse:
+      type: object
+      required: [items, placeholders]
+      description: Versions of the terms templates and the placeholder allowlist (P3a).
+      properties:
+        items:
+          type: array
+          description: The versions, newest first within each kind and language.
+          items:
+            $ref: "#/components/schemas/LegalDocument"
+        placeholders:
+          type: array
+          description: Every placeholder key a template may use.
+          items:
+            type: string
+
+    CreateLegalDocumentRequest:
+      type: object
+      required: [kind, locale, body_template]
+      description: A new draft of a terms template (P3a).
+      properties:
+        kind:
+          type: string
+          description: Document kind, `sale_terms`.
+          example: "sale_terms"
+        locale:
+          type: string
+          description: Language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+          example: "es"
+        body_template:
+          type: string
+          description: The template text, at most 100 000 characters, only allowlisted placeholders.
 
     OrderConsentsResponse:
       type: object
@@ -38423,6 +38553,113 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/public/pages/{org_slug}/terms:
+    get:
+      operationId: getPublicTerms
+      summary: The organizer's terms of sale for a hosted page slug
+      description: |
+        The organizer's terms of sale (line P, task P3a): the published
+        template of the platform with this seller's data substituted (legal
+        name and form, registration and tax numbers, address, public phone,
+        the promoter of the event, the refund policy, the seller's country).
+        The organizer never edits the text. No JWT required.
+
+        The slug is resolved like the hosted page: an organization first,
+        else a promoter that is not archived (then `event_slug` must name an
+        event linked to that promoter, and without it the promoter's data is
+        printed). The channel is the one of `feed_token` (any active channel
+        of that organization), else the organization's newest hosted-page
+        channel. For a `merchant_of_record` channel the platform is named as
+        the seller.
+
+        The rendering is stored once per document version and data
+        (`legal_renderings`): the same inputs always answer the same
+        `rendering_id` and `sha256`, and a consent at checkout names that
+        rendering. The texts seeded so far are English drafts marked
+        "DRAFT — awaiting legal review" in every language.
+
+        Any miss (unknown slug, no channel, an event that is not published,
+        not the promoter's, a feed token of another organization) answers the
+        same `404 page.not_found` as the hosted page. Rate-limited per client
+        IP. Cache-Control is short (30s).
+
+        The static segment `terms` takes precedence over the page route's
+        `{event_slug}`; no event is given the slug `terms`.
+      tags: [PublicFeed]
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Organization or promoter slug, matched case-insensitively.
+        - name: event_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: The event whose refund policy and promoter the terms state, by id (a published event of the organization); wins over `event_slug`. The checkout consent link uses it.
+        - name: event_slug
+          in: query
+          required: false
+          schema:
+            type: string
+          description: The same event by its slug.
+        - name: feed_token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: The feed token of the channel the terms are read for; another organization's token answers 404.
+        - name: locale
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`, a region subtag is ignored); else the first tag of Accept-Language; anything else and a language with no published version fall back to `en`.
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "`html` for a self-contained HTML page (no scripts, strict CSP) instead of JSON; any other value answers JSON."
+      responses:
+        "200":
+          description: The rendered terms, as JSON or as an HTML page when `format=html`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicTermsResponse"
+            text/html:
+              schema:
+                type: string
+                description: A complete HTML document holding the same `html`, the version and the SHA-256.
+        "404":
+          description: "`page.not_found` (any miss, see above) or `terms.not_published` (no version is published)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited (`page.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The terms could not be rendered (`terms.render_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/public/feeds/{feed_token}/checkout/start:
     post:
       operationId: startPublicFeedCheckout
@@ -45726,6 +45963,241 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "422":
           description: A value is out of range (onboarding.invalid_field)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/legal-documents:
+    get:
+      operationId: listLegalDocuments
+      summary: Admin - versions of the terms templates
+      description: |
+        Every version of the organizer terms templates (P3a), newest version
+        first within each kind and language, with the allowlist of
+        placeholders a template may use. Requires `legal.manage`, which only
+        platform_superadmin holds and no organization API key may carry.
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          description: Only this kind (`sale_terms`).
+          schema:
+            type: string
+        - name: locale
+          in: query
+          required: false
+          description: Only this language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The versions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegalDocumentListResponse"
+        "400":
+          description: Unknown kind or language (`legal.invalid_kind`, `legal.invalid_locale`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: createLegalDocument
+      summary: Admin - save a new draft of a terms template
+      description: |
+        Stores a new DRAFT, numbered after the last version of its kind and
+        language. The template may use only the allowlisted placeholders
+        (`{{key}}`, `{{#if key}}`, `{{else}}`, `{{/if}}`; headings `## `,
+        list items `- `, paragraphs): anything else answers 422 with every
+        problem and its line. Requires `legal.manage` and X-Admin-Reason;
+        audited (`v1.legal_document.create`).
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLegalDocumentRequest"
+      responses:
+        "201":
+          description: The draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegalDocument"
+        "400":
+          description: Missing X-Admin-Reason, a malformed body, an unknown kind or language.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Another draft of the same language was saved at the same moment (`legal.version_conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The template has problems (`legal.invalid_template`, `details.problems` lists them).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/legal-documents/{id}:
+    get:
+      operationId: getLegalDocument
+      summary: Admin - one version of a terms template
+      description: Requires `legal.manage`.
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Version id.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegalDocument"
+        "400":
+          description: The id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such version (`legal.document_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/legal-documents/{id}/publish:
+    post:
+      operationId: publishLegalDocument
+      summary: Admin - publish a draft of a terms template
+      description: |
+        The draft becomes the published version of its kind and language and
+        the previous published version is retired, in one transaction. A
+        published version never changes again (the database refuses it);
+        a new text is a new draft. Requires `legal.manage` and
+        X-Admin-Reason; audited (`v1.legal_document.publish`).
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Id of the draft.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: The published version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegalDocument"
+        "400":
+          description: Missing X-Admin-Reason or the id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such version (`legal.document_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The version is not a draft (`legal.not_draft`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The template no longer parses (`legal.invalid_template`).
           content:
             application/json:
               schema:

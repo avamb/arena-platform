@@ -5711,6 +5711,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/pages/{org_slug}/terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organizer's terms of sale for a hosted page slug
+         * @description The organizer's terms of sale (line P, task P3a): the published
+         *     template of the platform with this seller's data substituted (legal
+         *     name and form, registration and tax numbers, address, public phone,
+         *     the promoter of the event, the refund policy, the seller's country).
+         *     The organizer never edits the text. No JWT required.
+         *
+         *     The slug is resolved like the hosted page: an organization first,
+         *     else a promoter that is not archived (then `event_slug` must name an
+         *     event linked to that promoter, and without it the promoter's data is
+         *     printed). The channel is the one of `feed_token` (any active channel
+         *     of that organization), else the organization's newest hosted-page
+         *     channel. For a `merchant_of_record` channel the platform is named as
+         *     the seller.
+         *
+         *     The rendering is stored once per document version and data
+         *     (`legal_renderings`): the same inputs always answer the same
+         *     `rendering_id` and `sha256`, and a consent at checkout names that
+         *     rendering. The texts seeded so far are English drafts marked
+         *     "DRAFT — awaiting legal review" in every language.
+         *
+         *     Any miss (unknown slug, no channel, an event that is not published,
+         *     not the promoter's, a feed token of another organization) answers the
+         *     same `404 page.not_found` as the hosted page. Rate-limited per client
+         *     IP. Cache-Control is short (30s).
+         *
+         *     The static segment `terms` takes precedence over the page route's
+         *     `{event_slug}`; no event is given the slug `terms`.
+         */
+        get: operations["getPublicTerms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/feeds/{feed_token}/checkout/start": {
         parameters: {
             query?: never;
@@ -8220,6 +8266,82 @@ export interface paths {
          */
         put: operations["updateOnboardingSettings"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/legal-documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - versions of the terms templates
+         * @description Every version of the organizer terms templates (P3a), newest version
+         *     first within each kind and language, with the allowlist of
+         *     placeholders a template may use. Requires `legal.manage`, which only
+         *     platform_superadmin holds and no organization API key may carry.
+         */
+        get: operations["listLegalDocuments"];
+        put?: never;
+        /**
+         * Admin - save a new draft of a terms template
+         * @description Stores a new DRAFT, numbered after the last version of its kind and
+         *     language. The template may use only the allowlisted placeholders
+         *     (`{{key}}`, `{{#if key}}`, `{{else}}`, `{{/if}}`; headings `## `,
+         *     list items `- `, paragraphs): anything else answers 422 with every
+         *     problem and its line. Requires `legal.manage` and X-Admin-Reason;
+         *     audited (`v1.legal_document.create`).
+         */
+        post: operations["createLegalDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/legal-documents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - one version of a terms template
+         * @description Requires `legal.manage`.
+         */
+        get: operations["getLegalDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/legal-documents/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - publish a draft of a terms template
+         * @description The draft becomes the published version of its kind and language and
+         *     the previous published version is retired, in one transaction. A
+         *     published version never changes again (the database refuses it);
+         *     a new text is a new draft. Requires `legal.manage` and
+         *     X-Admin-Reason; audited (`v1.legal_document.publish`).
+         */
+        post: operations["publishLegalDocument"];
         delete?: never;
         options?: never;
         head?: never;
@@ -18705,7 +18827,14 @@ export interface components {
              * @example Teatro Demo S.L.
              */
             seller_legal_name?: string;
-            /** @description The platform terms page (`PLATFORM_TERMS_URL`, else the site's /legal/terms); omitted when none is configured. */
+            /**
+             * @description While `required` is true and the API knows its public base URL:
+             *     the organizer's terms of sale for this event and channel,
+             *     `<API>/v1/public/pages/{org_slug}/terms?event_id=..&feed_token=..&format=html`
+             *     (P3a; an HTML page until the tickets page renders the terms).
+             *     Otherwise the platform terms page (`PLATFORM_TERMS_URL`, else the
+             *     site's /legal/terms); omitted when none is configured.
+             */
             terms_url?: string;
             /** @description The privacy policy (`ONBOARDING_PRIVACY_URL`, else the site's /legal/privacy); omitted when none is configured. */
             privacy_url?: string;
@@ -18728,8 +18857,10 @@ export interface components {
              */
             kind: string;
             /**
-             * @description The version accepted, `platform-terms:<version>;seller:<organization id>` until the organizer's rendered terms exist.
-             * @example platform-terms:2026-10-15;seller:0190a2b4-6f00-7000-8000-000000000001
+             * @description The version accepted: `sale_terms:v<document version>:<language>;seller:<organization id>`
+             *     for the organizer's rendered terms (P3a, then `legal_rendering_id` is set),
+             *     `platform-terms:<version>;seller:<organization id>` for a consent to the platform terms.
+             * @example sale_terms:v1:es;seller:0190a2b4-6f00-7000-8000-000000000001
              */
             terms_version: string;
             /**
@@ -18765,6 +18896,122 @@ export interface components {
             terms_url: string | null;
             /** @description The privacy policy link the checkbox showed. */
             privacy_url: string | null;
+            /**
+             * Format: uuid
+             * @description The rendering of the organizer's terms the buyer accepted (`legal_renderings`, P3a); null for a consent to the platform terms.
+             */
+            legal_rendering_id?: string | null;
+            /** @description SHA-256 (hex) of that rendering's HTML at acceptance; null with `legal_rendering_id`. */
+            terms_sha256?: string | null;
+        };
+        /** @description The organizer's terms of sale rendered for one seller, channel, event and language (P3a). */
+        PublicTermsResponse: {
+            /**
+             * @description Version of the template that was rendered.
+             * @example 1
+             */
+            document_version: number;
+            /**
+             * Format: uuid
+             * @description The stored rendering (`legal_renderings`); a consent at checkout names it.
+             */
+            rendering_id: string;
+            /**
+             * @description Language of the rendered version (after the fallback to `en`).
+             * @example es
+             */
+            locale: string;
+            /** @description The terms as HTML without scripts, styles or links, wrapped in `<article class="legal-document" lang=.. dir=..>`. */
+            html: string;
+            /** @description SHA-256 (hex) of `html`. */
+            sha256: string;
+            /**
+             * @description The refund policy stated, `no_refund`, `refund_until_sales_end` or `refund_by_law` (the event's, else the organization's, else `refund_by_law`).
+             * @example refund_by_law
+             */
+            refund_mode: string;
+            /**
+             * @description The seller the terms name.
+             * @example Teatro Demo S.L.
+             */
+            seller_legal_name: string;
+        };
+        /** @description One version of a terms template (P3a). Immutable once published. */
+        LegalDocument: {
+            /**
+             * Format: uuid
+             * @description Version id.
+             */
+            id: string;
+            /**
+             * @description Document kind, `sale_terms` so far.
+             * @example sale_terms
+             */
+            kind: string;
+            /**
+             * @description Language of the template (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+             * @example en
+             */
+            locale: string;
+            /**
+             * @description Version number within the kind and language, from 1.
+             * @example 1
+             */
+            version: number;
+            /**
+             * @description `draft`, `published` (at most one per kind and language) or `retired`.
+             * @example published
+             */
+            status: string;
+            /** @description The template text with its placeholders. */
+            body_template: string;
+            /**
+             * Format: uuid
+             * @description The operator who saved the draft; null for the seeded versions.
+             */
+            created_by: string | null;
+            /**
+             * Format: date-time
+             * @description When the draft was saved.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When it was published; null for a draft.
+             */
+            published_at: string | null;
+            /**
+             * Format: uuid
+             * @description The operator who published it.
+             */
+            published_by: string | null;
+            /**
+             * Format: date-time
+             * @description When a newer version replaced it.
+             */
+            retired_at: string | null;
+        };
+        /** @description Versions of the terms templates and the placeholder allowlist (P3a). */
+        LegalDocumentListResponse: {
+            /** @description The versions, newest first within each kind and language. */
+            items: components["schemas"]["LegalDocument"][];
+            /** @description Every placeholder key a template may use. */
+            placeholders: string[];
+        };
+        /** @description A new draft of a terms template (P3a). */
+        CreateLegalDocumentRequest: {
+            /**
+             * @description Document kind, `sale_terms`.
+             * @example sale_terms
+             */
+            kind: string;
+            /**
+             * @description Language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+             * @example es
+             */
+            locale: string;
+            /** @description The template text, at most 100 000 characters, only allowlisted placeholders. */
+            body_template: string;
         };
         /** @description The consents of one order (P2). */
         OrderConsentsResponse: {
@@ -44113,6 +44360,77 @@ export interface operations {
             };
         };
     };
+    getPublicTerms: {
+        parameters: {
+            query?: {
+                /** @description The event whose refund policy and promoter the terms state, by id (a published event of the organization); wins over `event_slug`. The checkout consent link uses it. */
+                event_id?: string;
+                /** @description The same event by its slug. */
+                event_slug?: string;
+                /** @description The feed token of the channel the terms are read for; another organization's token answers 404. */
+                feed_token?: string;
+                /** @description Language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`, a region subtag is ignored); else the first tag of Accept-Language; anything else and a language with no published version fall back to `en`. */
+                locale?: string;
+                /** @description `html` for a self-contained HTML page (no scripts, strict CSP) instead of JSON; any other value answers JSON. */
+                format?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Organization or promoter slug, matched case-insensitively. */
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rendered terms, as JSON or as an HTML page when `format=html`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicTermsResponse"];
+                    "text/html": string;
+                };
+            };
+            /** @description `page.not_found` (any miss, see above) or `terms.not_published` (no version is published). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited (`page.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The terms could not be rendered (`terms.render_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     startPublicFeedCheckout: {
         parameters: {
             query?: never;
@@ -51991,6 +52309,269 @@ export interface operations {
                 };
             };
             /** @description A value is out of range (onboarding.invalid_field) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listLegalDocuments: {
+        parameters: {
+            query?: {
+                /** @description Only this kind (`sale_terms`). */
+                kind?: string;
+                /** @description Only this language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`). */
+                locale?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The versions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegalDocumentListResponse"];
+                };
+            };
+            /** @description Unknown kind or language (`legal.invalid_kind`, `legal.invalid_locale`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createLegalDocument: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateLegalDocumentRequest"];
+            };
+        };
+        responses: {
+            /** @description The draft. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegalDocument"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, a malformed body, an unknown kind or language. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Another draft of the same language was saved at the same moment (`legal.version_conflict`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The template has problems (`legal.invalid_template`, `details.problems` lists them). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getLegalDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Version id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegalDocument"];
+                };
+            };
+            /** @description The id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such version (`legal.document_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    publishLegalDocument: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the draft. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The published version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegalDocument"];
+                };
+            };
+            /** @description Missing X-Admin-Reason or the id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such version (`legal.document_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The version is not a draft (`legal.not_draft`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The template no longer parses (`legal.invalid_template`). */
             422: {
                 headers: {
                     [name: string]: unknown;

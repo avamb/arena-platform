@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -30,6 +31,10 @@ type orderConsent struct {
 	SellerLegalName       *string `json:"seller_legal_name"`
 	TermsURL              *string `json:"terms_url"`
 	PrivacyURL            *string `json:"privacy_url"`
+	// The organizer terms rendering accepted (P3a) and its SHA-256; null
+	// when the consent named only the platform terms.
+	LegalRenderingID *string `json:"legal_rendering_id"`
+	TermsSHA256      *string `json:"terms_sha256"`
 }
 
 func orderConsentFromRow(c gen.CheckoutConsentRow) orderConsent {
@@ -47,7 +52,17 @@ func orderConsentFromRow(c gen.CheckoutConsentRow) orderConsent {
 		SellerLegalName:       c.SellerLegalName,
 		TermsURL:              c.TermsURL,
 		PrivacyURL:            c.PrivacyURL,
+		LegalRenderingID:      renderingID(c.LegalRenderingID),
+		TermsSHA256:           c.TermsSHA256,
 	}
+}
+
+func renderingID(id *uuid.UUID) *string {
+	if id == nil {
+		return nil
+	}
+	s := id.String()
+	return &s
 }
 
 // HandleConsents serves GET /v1/organizations/{org_id}/orders/{order_id}/consents
