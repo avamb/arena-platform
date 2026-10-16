@@ -61,3 +61,7 @@ export type BotInvitation = S["BotInvitation"];
 export type BotInvitationCreateResponse = S["BotInvitationCreateResponse"];
 export type BotInvitationResendResponse = S["BotInvitationResendResponse"];
 export type BotInvitationRevokeResponse = S["BotInvitationRevokeResponse"];
+// M2: door scans on the order card, the session's ticket list.
+export type TicketScan = S["TicketScan"];
+export type SessionTicketItem = S["SessionTicketItem"];
+export type SessionTicketList = S["SessionTicketList"];

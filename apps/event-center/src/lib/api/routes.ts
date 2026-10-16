@@ -88,6 +88,8 @@ export const API = {
   revokeInvitation: { method: "DELETE", path: "/v1/organizations/{org_id}/bot-invitations/{id}" },
   resendInvitation: { method: "POST", path: "/v1/organizations/{org_id}/bot-invitations/{id}/resend" },
   removeMember: { method: "DELETE", path: "/v1/organizations/{org_id}/members/{user_id}" },
+  // M2: the tickets of a session with their entry at the door.
+  sessionTickets: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/tickets" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;

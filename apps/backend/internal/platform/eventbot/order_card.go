@@ -215,10 +215,7 @@ func (b *Bot) ticketLine(loc string, t openapi.OrderTicketSummary, tz string) st
 	if key := ticketStatusKey(t.Status); key != "" {
 		status = b.texts.T(loc, key, nil)
 	}
-	entered := ""
-	if t.UsedAt != nil {
-		entered = b.texts.T(loc, "bot.ord.entered", map[string]any{"When": Esc(FormatWhen(*t.UsedAt, tz))})
-	}
+	entered := b.entryLine(loc, t, tz)
 	return b.texts.T(loc, "bot.ord.ticket_line", map[string]any{
 		"Tier": tier, "Price": FormatMoney(t.Price, t.Currency, loc), "Code": Esc(t.Barcode),
 		"Seat": seat, "Status": status, "Entered": entered,

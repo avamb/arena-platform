@@ -882,6 +882,26 @@ export const en = {
   "apiError.memberGone.next": "Reload the page to see the latest team.",
   "apiError.roleNotAllowed.title": "This role cannot be changed here.",
   "apiError.roleNotAllowed.next": "Only the platform team manages it. Write to support if it is needed.",
+  // M2
+  "scan.title": "Door scans",
+  "scan.admitted": "Entered",
+  "scan.denied": "Turned away",
+  "scan.gate": "gate {gate}",
+  "scan.source.arena_scanner": "Arena scanner",
+  "scan.source.macs": "MACS",
+  "sessionTickets.title": "Tickets",
+  "sessionTickets.filter": "Show tickets",
+  "sessionTickets.filter.notEntered": "Not entered",
+  "sessionTickets.filter.entered": "Entered",
+  "sessionTickets.filter.all": "All",
+  "sessionTickets.total": "Tickets: {count}",
+  "sessionTickets.empty.notEntered": "Everyone with a valid ticket has come in.",
+  "sessionTickets.empty.other": "There are no tickets here yet.",
+  "sessionTickets.more": "Show more",
+  "sessionTickets.invitation": "Invitation",
+  "sessionTickets.order": "Order {number}",
+  "sessionTickets.enteredAt": "Entered {time}",
+  "sessionTickets.lastScan": "Last scan: {result}, {time}",
 } as const;
 
 export type MessageKey = keyof typeof en;

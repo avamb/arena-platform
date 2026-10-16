@@ -246,7 +246,11 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applyForeignPromoter(ctx, tx); err != nil {
 		return err
 	}
-	return applyInvitationsFixture(ctx, tx)
+	if err := applyInvitationsFixture(ctx, tx); err != nil {
+		return err
+	}
+	// M2: the door-scans twin test's rows (scans_fixture.go).
+	return applyScansFixture(ctx, tx)
 }
 
 // Task 4-6 (the web promoters screens): ANOTHER organization with one
