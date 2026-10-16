@@ -48,6 +48,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/seatlayout"
 )
 
 // categoryBodyLimit caps the JSON payload for the reassign endpoint. A
@@ -324,80 +325,47 @@ func (h *Handler) HandlePatchSessionSeatsCategory(w http.ResponseWriter, r *http
 		return
 	}
 
-	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	// The write goes through seatlayout.ApplyBatch (task S1c): one
+	// transaction that locks the sessions row first (the one
+	// seat_status_version bump), locks the seats FOR UPDATE in seat_key
+	// order, records a session_seat_batches row (kind paint) and writes the
+	// audit event with its batch_id. Strict keeps this route all-or-nothing:
+	// a seat that became held/sold after the pre-check above rolls the whole
+	// call back with 409, so no subset of the selection is silently
+	// re-priced (§AB-39 TOCTOU guard).
+	changes := make([]seatlayout.Change, 0, len(target))
+	for _, key := range target {
+		tid := tierID
+		changes = append(changes, seatlayout.Change{SeatKey: key, TierID: &tid})
+	}
+	batch, err := seatlayout.ApplyBatch(ctx, h.pool, h.queries, seatlayout.BatchInput{
+		SessionID: sessionID,
+		Actor:     batchActor(ctx),
+		Kind:      seatlayout.KindPaint,
+		Changes:   changes,
+		Strict:    true,
+		Audit: func(ctx context.Context, tx pgx.Tx, b seatlayout.Batch) error {
+			return h.writeSessionAuditTx(ctx, tx, r, "v1.session.seats.category", sessionID, map[string]any{
+				"batch_id":            b.ID.String(),
+				"tier_id":             tierID.String(),
+				"seat_status_version": b.SeatStatusVersion,
+				"updated_seat_keys":   target,
+				"unknown_seat_keys":   unknown,
+				"requested_count":     len(req.SeatKeys),
+				"updated_count":       len(target),
+				"unknown_count":       len(unknown),
+			})
+		},
+	})
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "failed to begin transaction", r,
-		))
-		return
-	}
-	// WithoutCancel: the rollback must still run when the request ctx is
-	// already cancelled (guardrail #178).
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	qtx := h.queries.WithTx(tx)
-
-	newVersion, err := qtx.IncrementSessionSeatStatusVersion(ctx, sessionID)
-	if err != nil {
-		h.logger.Error("seating: category patch version bump failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating.category_patch_failed", "failed to bump seat_status_version", r,
-		))
-		return
-	}
-
-	// Bulk UPDATE. The query is column-side gated to kind='seat' in
-	// available/unavailable status, so a seat that became held/sold
-	// between the pre-check snapshot and this UPDATE is skipped by the
-	// WHERE clause. rowsAffected < len(target) therefore means a
-	// concurrent status change — roll back and 409 so no subset of the
-	// selection is silently re-priced (§AB-39 TOCTOU guard).
-	rows, err := qtx.BulkSetSessionSeatTier(ctx, sessionID, target, tierID)
-	if err != nil {
-		h.logger.Error("seating: category patch bulk update failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating.category_patch_failed", "failed to reassign seat tiers", r,
-		))
-		return
-	}
-	if rows != int64(len(target)) {
-		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
-			"seating.category_reassign_conflict",
-			"seat status changed concurrently; re-fetch and retry",
-			r,
-			map[string]any{
-				"expected_updates": len(target),
-				"actual_updates":   rows,
-			},
-		))
-		return
-	}
-
-	if err := h.writeSessionAuditTx(ctx, tx, r, "v1.session.seats.category", sessionID, map[string]any{
-		"tier_id":             tierID.String(),
-		"seat_status_version": newVersion,
-		"updated_seat_keys":   target,
-		"unknown_seat_keys":   unknown,
-		"requested_count":     len(req.SeatKeys),
-		"updated_count":       len(target),
-		"unknown_count":       len(unknown),
-	}); err != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating.audit_failed", "failed to write audit event", r,
-		))
-		return
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating.commit_failed", "failed to commit transaction", r,
-		))
+		h.writeCategoryBatchError(w, r, err, sessionID, tierID, len(target))
 		return
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, categoryPatchResponse{
 		SessionID:         sessionID.String(),
 		TierID:            tierID.String(),
-		SeatStatusVersion: newVersion,
+		SeatStatusVersion: batch.SeatStatusVersion,
 		UpdatedSeatKeys:   target,
 		UnknownSeatKeys:   unknown,
 		Summary: categorySummary{
@@ -406,6 +374,53 @@ func (h *Handler) HandlePatchSessionSeatsCategory(w http.ResponseWriter, r *http
 			Unknown:   len(unknown),
 		},
 	})
+}
+
+// writeCategoryBatchError maps a seatlayout error of the category PATCH to
+// the codes this route has always answered.
+func (h *Handler) writeCategoryBatchError(
+	w http.ResponseWriter, r *http.Request, err error, sessionID, tierID uuid.UUID, expected int,
+) {
+	var conflict *seatlayout.ConflictError
+	var tierErr *seatlayout.TierError
+	var auditErr *seatlayout.AuditError
+	switch {
+	case errors.As(err, &conflict):
+		keys := make([]string, 0, len(conflict.Skipped))
+		for _, s := range conflict.Skipped {
+			keys = append(keys, s.SeatKey)
+		}
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"seating.category_reassign_conflict",
+			"seat status changed concurrently; re-fetch and retry",
+			r,
+			map[string]any{
+				"expected_updates":      expected,
+				"actual_updates":        expected - len(keys),
+				"conflicting_seat_keys": keys,
+			},
+		))
+	case errors.As(err, &tierErr):
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			"seating.tier_not_found_in_session",
+			"tier_id does not reference an active tier of this session",
+			r,
+			map[string]any{"tier_id": tierID.String(), "session_id": sessionID.String()},
+		))
+	case errors.Is(err, seatlayout.ErrSessionNotFound):
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"session.not_found", "session not found", r,
+		))
+	case errors.As(err, &auditErr):
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating.audit_failed", "failed to write audit event", r,
+		))
+	default:
+		h.logger.Error("seating: category patch batch failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating.category_patch_failed", "failed to reassign seat tiers", r,
+		))
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
