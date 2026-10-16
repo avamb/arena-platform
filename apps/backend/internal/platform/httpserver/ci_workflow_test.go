@@ -59,13 +59,13 @@ func TestCIWorkflow108_LintJobExists(t *testing.T) {
 	}
 }
 
-func TestCIWorkflow108_LintJobUsesSetupGo124(t *testing.T) {
+func TestCIWorkflow108_LintJobUsesSetupGo126(t *testing.T) {
 	content := ciWorkflowContent(t)
 	if !strings.Contains(content, "setup-go") {
 		t.Error("ci.yml lint job missing actions/setup-go step")
 	}
-	if !strings.Contains(content, "1.24") {
-		t.Error("ci.yml does not specify Go 1.24")
+	if !strings.Contains(content, "1.26.9") {
+		t.Error("ci.yml does not specify Go 1.26.9")
 	}
 }
 
