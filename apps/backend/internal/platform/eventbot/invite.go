@@ -272,7 +272,7 @@ func (b *Bot) inviteCallback(ctx context.Context, chatID int64, msgID int, from 
 		if step != invStepConfirm {
 			return
 		}
-		if _, issued := inviteOutcome(st); len(issued) == 0 {
+		if issued, _ := inviteOutcome(st); len(issued) == 0 {
 			st.VIP = arg == "1"
 			st.Batch = strings.ReplaceAll(uuid.NewString(), "-", "")
 		}
@@ -655,7 +655,7 @@ func (b *Bot) showInviteConfirm(ctx context.Context, chatID int64, editMsgID *in
 		text += "\n\n" + b.texts.T(loc, "bot.inv.vip_line", nil)
 	}
 	rows := [][]models.InlineKeyboardButton{{b.invButton(loc, "bot.inv.send_btn", "iv:go")}}
-	if _, issued := inviteOutcome(st); len(issued) == 0 {
+	if issued, _ := inviteOutcome(st); len(issued) == 0 {
 		// The button says what pressing it WILL do, not the current state only.
 		if st.VIP {
 			rows = append(rows, []models.InlineKeyboardButton{b.invButton(loc, "bot.inv.vip_off_btn", "iv:vip:0")})

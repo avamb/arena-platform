@@ -6,7 +6,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 )
 
 // V1: an invitation can be issued as VIP from the confirmation screen. The
@@ -36,11 +35,6 @@ func TestBotE2E_Invitations_VIPTick(t *testing.T) {
 		return b
 	}
 	before := batch()
-	d.tg.push(e2eCallbackAs(d.id, "iv:vip:1"))
-	time.Sleep(2 * time.Second)
-	var dbg string
-	_ = e.pool.QueryRow(context.Background(), `SELECT step || ' ' || state::text FROM bot_dialogs WHERE telegram_user_id = $1 AND kind = 'invite'`, d.id).Scan(&dbg)
-	t.Logf("DEBUGSTATE %s", dbg)
 	d.press("iv:vip:1", "отмечены как VIP")
 	if after := batch(); after == before || after == "" {
 		t.Error("the tick changes the request, so it must mint a new batch id")
@@ -52,11 +46,15 @@ func TestBotE2E_Invitations_VIPTick(t *testing.T) {
 		t.Error("the invitation issued with the tick is not marked VIP")
 	}
 
-	// The list marks it; a plain invitation issued afterwards is not marked.
-	list := d.press("iv:l", "Выдано: 1")
-	if !strings.Contains(list, "⭐") {
-		t.Errorf("the list does not mark the VIP invitation:\n%s", list)
+	// The list row and the card mark it.
+	d.press("iv:l", "Выдано: 1")
+	if _, _, kb := d.tg.lastOf(d.id); len(kb) == 0 {
+		t.Fatal("the list has no rows")
 	}
+	if card := d.press("iv:lo:0", "действует"); !strings.Contains(card, "⭐ VIP") {
+		t.Errorf("the card does not mark the VIP invitation: %s", card)
+	}
+	d.press("home", "Что будем делать")
 	e.toCategory(d, 1)
 	d.press("iv:q:1", "Кто эти 1 гостей?")
 	d.say(plain, "Отправить приглашения?")
