@@ -1,0 +1,11 @@
+package billing
+
+import "testing"
+
+// A test may clean up its own fixture rows and insert directly.
+func TestCleanup(t *testing.T) {
+	_ = `DELETE FROM charges WHERE org_id = $1`
+	_ = `UPDATE credit_ledger SET note = 'x'`
+	_ = `INSERT INTO charges (id) VALUES ($1)`
+	type Bad struct{ AmountMinor float64 }
+}
