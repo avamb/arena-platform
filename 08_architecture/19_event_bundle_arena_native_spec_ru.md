@@ -214,6 +214,44 @@ CREATE UNIQUE INDEX session_external_refs_session_uq ON session_external_refs (s
 решение этой волны не должно этому мешать: в частности, `compat_ids` и `externalRef` не зависят от
 режима рассадки, а валидация `seatList` для `arena` сейчас — только предупреждение, не 422.
 
+### 8.1 Сеанс по схеме зала: `actionEvent.arenaSeatingPlanVersionId` (задача S1b, 2026-10-16)
+
+Реализовано вместо arena-формата `svg`: места берутся из уже загруженной версии схемы площадки,
+а не из пакета. `svg` и `seatList` при `source=arena` по-прежнему не читаются — теперь это
+предупреждение `import.field_ignored_for_source` (код `import.seating_not_imported` остался только
+за Bil24-путём: `seatList` без `svg`).
+
+- **Новый сеанс.** `actionEvent.arenaSeatingPlanVersionId` — UUID версии схемы ЭТОЙ организации
+  (чужая или неизвестная → 422 `import.invalid_seating_plan_version`), нарисованной для площадки
+  сеанса (иначе 422 `import.seating_plan_venue_mismatch`; площадку выбирают `venue.arenaVenueId`).
+  Сеанс получает все места схемы: строка `session_seats` kind `seat` на каждое место геометрии и
+  `ga_unit` на каждое место GA-зоны (ключи `ga|c<индекс>|<n>`), режим `assigned_seats` / `hybrid` /
+  `general_admission` по геометрии, привязку к версии, `inventory_ledger` по числу мест. Шаг записи
+  мест один на три пути (привязка схемы, Bil24-импорт, пакет) — пакет `httpserver/seatmint`.
+- **Стартовая раскладка = категории схемы** (спека 26 §3.2). Каждая запись `categoryList` цен
+  ровно одну категорию схемы, у которой есть места: по `categoryList[].planCategoryIndex`
+  (1-based индекс категории геометрии), без него — по имени (без учёта регистра и пробелов;
+  подходит и имя геометрии, и переопределение имени схемы). Ошибки с путём поля: 422
+  `import.seating_category_unmatched` (нет пары, имя называет несколько категорий),
+  `import.seating_category_duplicate` (две записи на одну категорию),
+  `import.seating_category_missing` (категория схемы без цены, путь `/categoryList`).
+  `availability` сидячей категории игнорируется (её места — кресла схемы); у GA-зоны 0 оставляет
+  вместимость зоны из схемы, положительное число меняет её как у обычной GA-категории. Связь
+  `nextCategoryIndex` к сидячей категории или от неё — 422 `import.seated_category_chain`.
+- **Существующий сеанс** (`arenaSessionId`, `externalRef`, `actionEventId`) схему не меняет и мест
+  не трогает: поле отсутствует или равно версии сеанса, иначе 409
+  `import.seating_plan_version_conflict` (и для GA-сеанса без схемы). Категории сопоставляются как
+  обычно и меняют цену, окна и расписание; квоты (`syncImportedCategoryQuotas`) действуют только
+  на GA-части.
+- **Dry run** проверяет версию, площадку и все пары категорий на стадии 2 (все ошибки сразу),
+  стадия 3 пишет места в откатываемой транзакции.
+- **Чтение** `GET …/events/{event_id}/event-bundle` отдаёт сеанс со схемой (раньше — `skipped`):
+  `arenaSeatingPlanVersionId`, `placement: true` у сидячих категорий и `planCategoryIndex` у
+  категории, которая «домашняя» для категории схемы (правило большинства мест, как у рендеров
+  S1a). Пакет круговой: повторный импорт ничего не меняет; копия (без `arenaSessionId` и
+  `arenaTierId`) создаёт те же места. В `skipped` с кодом `event_bundle.session_seated` остаются
+  только сеансы с местами без версии схемы.
+
 ## 9. Тестовая стратегия
 
 Юнит (без БД, `himports`): ladder валидации для `source` (обязательность, mismatch на алиасе,

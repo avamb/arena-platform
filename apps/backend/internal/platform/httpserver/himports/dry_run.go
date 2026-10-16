@@ -274,6 +274,7 @@ func (h *Handler) checkArenaReferences(ctx context.Context, q *gen.Queries, tx p
 		return f
 	}
 	d, err := h.planArenaVenue(ctx, q, tx, plan, match, warnings)
+	venueKnown := err == nil
 	if err != nil {
 		if issues.add(err) {
 			return f
@@ -300,8 +301,32 @@ func (h *Handler) checkArenaReferences(ctx context.Context, q *gen.Queries, tx p
 
 	if matched {
 		f.newSession = match.SessionID == uuid.Nil
-		if f.newSession && req.TotalAvailability() <= 0 {
+		seatedNew := f.newSession && trimSpace(req.ActionEvent.ArenaSeatingPlanVersionID) != ""
+		if f.newSession && !seatedNew && req.TotalAvailability() <= 0 {
 			issues.add(errCapacityRequired())
+		}
+		// Task S1b: the seating plan version, read only — the existing
+		// session's own, or the new session's plan with its venue and every
+		// category pair, all reported together.
+		if !f.newSession {
+			if err := checkArenaSeatingKept(ctx, q, plan, match); err != nil && issues.add(err) {
+				return f
+			}
+		} else if seatedNew {
+			sp, err := lookupArenaSeatingPlan(ctx, q, plan)
+			switch {
+			case err != nil:
+				if issues.add(err) {
+					return f
+				}
+			case sp != nil:
+				if venueKnown {
+					issues.add(sp.checkVenue(d.venueID))
+				}
+				for _, mErr := range sp.matchPlan(req.CategoryList) {
+					issues.add(mErr)
+				}
+			}
 		}
 		var existing []gen.TicketTierRow
 		if match.SessionID != uuid.Nil {
@@ -462,6 +487,7 @@ func normalizeBundle(prep preparedImport) bil24compat.ImportSessionRequest {
 	e.SellEndTime, e.SellStartTime = trimSpace(e.SellEndTime), trimSpace(e.SellStartTime)
 	e.DoorsOpenTime = trimPtr(e.DoorsOpenTime)
 	e.SeatingPlanName, e.ArenaSessionID = trimSpace(e.SeatingPlanName), trimSpace(e.ArenaSessionID)
+	e.ArenaSeatingPlanVersionID = trimSpace(e.ArenaSeatingPlanVersionID)
 
 	v := &n.Venue
 	v.ArenaVenueID, v.VenueName, v.Address = trimSpace(v.ArenaVenueID), trimSpace(v.VenueName), trimSpace(v.Address)

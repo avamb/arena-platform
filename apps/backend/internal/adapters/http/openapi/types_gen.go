@@ -5794,7 +5794,11 @@ type EventBundlePartnerLink struct {
 // the organization's channels it is published into; `promoterId` is ""
 // when the organization itself promotes the event. `bigPosterUrl` is
 // left empty on purpose (an import without one keeps the stored
-// poster): the poster is `poster_media_id`.
+// poster): the poster is `poster_media_id`. A session bound to a
+// seating plan version carries `actionEvent.arenaSeatingPlanVersionId`,
+// `placement: true` on its seated categories and `planCategoryIndex`
+// on each category that sells a plan category (task S1b); a re-import
+// keeps the plan and every place.
 //
 // Left out: deleted and cancelled sessions, sessions a bundle cannot
 // carry (listed in `skipped` with the reason), the open/closed flag of
@@ -5832,8 +5836,9 @@ type EventBundleReadResponse struct {
 // `EventBundleReadResponse`, with the reason.
 type EventBundleSkipped struct {
 	// Code Stable reason: `event_bundle.session_cancelled`,
-	// `event_bundle.session_seated` (a seating plan or assigned seats:
-	// a bundle carries general admission only),
+	// `event_bundle.session_seated` (assigned seats without a seating
+	// plan version a bundle could name; a session bound to a version
+	// is written with `arenaSeatingPlanVersionId`),
 	// `event_bundle.session_pay_what_you_want` (a category a bundle
 	// cannot say) or `event_bundle.session_venue_missing` (the venue
 	// was deleted).
@@ -7255,6 +7260,21 @@ type ImportBil24SessionActionEvent struct {
 	// to a session of this organization (event-bundle spec §3.1, §3.2).
 	ActionEventId int64 `json:"actionEventId"`
 
+	// ArenaSeatingPlanVersionId Arena extension, source=arena only (task S1b): the seating plan
+	// version a NEW session is created from — a version of a plan of
+	// this organization drawn for the session's venue (422
+	// import.invalid_seating_plan_version for an unknown or foreign
+	// version, 422 import.seating_plan_venue_mismatch for another
+	// venue). The session gets every place of the plan (one seat per
+	// geometry seat, the GA zones' places) in admission mode
+	// assigned_seats, hybrid or general_admission, and each
+	// categoryList entry prices one plan category (see
+	// `planCategoryIndex`). On a session that already exists it must
+	// be absent or the version the session is bound to (409
+	// import.seating_plan_version_conflict): a bundle never re-binds a
+	// plan or touches places. Omitted when empty.
+	ArenaSeatingPlanVersionId *openapi_types.UUID `json:"arenaSeatingPlanVersionId,omitempty"`
+
 	// ArenaSessionId Arena extension, source=arena only: the session this bundle edits,
 	// by its arena id (as listed by GET .../events/{event_id}/sessions).
 	// With it the top-level externalRef may be omitted — the session
@@ -7358,9 +7378,28 @@ type ImportBil24SessionCategory struct {
 	// (import.invalid_next_category / import.category_chain_cycle).
 	NextCategoryIndex *int `json:"nextCategoryIndex,omitempty"`
 
-	// Placement Whether the category is seated. Seated categories are accepted but
-	// imported as general admission by this endpoint.
+	// Placement Whether the category is seated. On import it is informational:
+	// whether a category is seated follows from the places it owns (a
+	// source=arena bundle takes them from
+	// `actionEvent.arenaSeatingPlanVersionId`). GET .../event-bundle
+	// writes true for a category that owns plan seats. For a seated
+	// category `availability` is ignored: its places are the plan's
+	// seats.
 	Placement *bool `json:"placement,omitempty"`
+
+	// PlanCategoryIndex Arena extension, source=arena only (task S1b): the 1-based index
+	// of the seating-plan category this entry prices when the bundle
+	// creates a session from `actionEvent.arenaSeatingPlanVersionId`.
+	// Without it the entry is matched to the plan category of the same
+	// name (case- and space-insensitive; the plan's display-name
+	// override counts too). Every plan category that has places needs
+	// exactly one entry: 422 import.seating_category_unmatched (no
+	// pair, ambiguous name), import.seating_category_duplicate (two
+	// entries for one category) or import.seating_category_missing (a
+	// plan category nobody prices). Ignored on a session that already
+	// exists; written by GET .../event-bundle for the plan category a
+	// tier sells. Omitted when absent.
+	PlanCategoryIndex *int `json:"planCategoryIndex,omitempty"`
 
 	// Price Ticket price in MAJOR currency units, as Bil24 sends it. Converted to
 	// the integer minor units arena stores, rounded half away from zero.
