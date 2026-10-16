@@ -101,16 +101,18 @@ export function zonedToInstant(day: string, hhmm: string, zone: string): string 
   const [year, month, dd] = [Number(d[1]), Number(d[2]), Number(d[3])];
   const [hour, minute] = [Number(tm[1]), Number(tm[2])];
   const asUtc = Date.UTC(year, month - 1, dd, hour, minute);
-  const first = zoneOffset(asUtc, zone);
-  if (first === null) return null;
-  let guess = asUtc - first;
-  const second = zoneOffset(guess, zone);
-  if (second === null) return null;
-  guess = asUtc - second;
-  const check = wallClock(guess, zone);
-  if (check === null || check.year !== year || check.month !== month || check.day !== dd || check.hour !== hour || check.minute !== minute) {
-    return null;
+  const oneDay = 24 * 3600 * 1000;
+  const before = zoneOffset(asUtc - oneDay, zone);
+  const after = zoneOffset(asUtc + oneDay, zone);
+  if (before === null || after === null) return null;
+  let guess: number | null = null;
+  for (const off of new Set([before, after])) {
+    const cand = asUtc - off;
+    const check = wallClock(cand, zone);
+    if (check === null || check.year !== year || check.month !== month || check.day !== dd || check.hour !== hour || check.minute !== minute) continue;
+    if (guess === null || cand < guess) guess = cand;
   }
+  if (guess === null) return null;
   return new Date(guess).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 

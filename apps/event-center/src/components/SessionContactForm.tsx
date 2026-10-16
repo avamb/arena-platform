@@ -75,6 +75,7 @@ export function SessionContactForm({ orgId, eventId, contact, canEdit, onSaved }
     <form
       className="session-contact"
       aria-labelledby={`${ids}-title`}
+      noValidate
       data-testid="session-contact-form"
       onSubmit={(e) => {
         e.preventDefault();
