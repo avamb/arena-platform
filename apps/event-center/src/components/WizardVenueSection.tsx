@@ -50,9 +50,24 @@ export function WizardVenueSection({ draft, dispatch, touch, errorOf }: SectionP
     enabled: currencyCountry.length === 2,
     ...FOREVER,
   });
+  // The currency follows the country. When there is no country, or its currency
+  // is not known (still loading, or a 404), the value that came from a country
+  // is cleared: it would belong to the previous country. A typed currency is
+  // never touched (the reducer keeps it). While the venue list is loading, a
+  // chosen venue's country is not known yet, so a restored draft keeps its value.
+  const countryKnown = v.mode !== "existing" || !canRead || venues.data !== undefined;
   useEffect(() => {
-    if (currency.data !== undefined) dispatch({ type: "currency", value: currency.data.currency, source: "auto" });
-  }, [currency.data, dispatch]);
+    if (currencyCountry === "") {
+      if (countryKnown) dispatch({ type: "currency", value: "", source: "auto" });
+      return;
+    }
+    dispatch({ type: "currency", value: currency.data?.currency ?? "", source: "auto" });
+  }, [currencyCountry, currency.data, countryKnown, dispatch]);
+
+  // A draft restored by a role that cannot list venues cannot keep "existing".
+  useEffect(() => {
+    if (!canRead && v.mode === "existing") dispatch({ type: "venueMode", mode: "new" });
+  }, [canRead, v.mode, dispatch]);
 
   const newMode = v.mode === "new";
   const zones = useQuery({
@@ -93,17 +108,22 @@ export function WizardVenueSection({ draft, dispatch, touch, errorOf }: SectionP
     <fieldset className="org-form" data-testid="wizard-venue">
       <legend>{t("wizard.section.venue")}</legend>
       <div role="radiogroup" aria-label={t("wizard.venue.mode")}>
-        {(["existing", "new"] as const).map((m) => (
+        {(canRead ? (["existing", "new"] as const) : (["new"] as const)).map((m) => (
           <label key={m} className="check">
             <input type="radio" name={`${ids}-mode`} checked={v.mode === m} onChange={() => setMode(m)} data-testid={`wizard-venue-mode-${m}`} />
             <span>{t(m === "existing" ? "wizard.venue.modeExisting" : "wizard.venue.modeNew")}</span>
           </label>
         ))}
       </div>
+      {!canRead && (
+        <p className="field-hint" data-testid="wizard-venue-noread">
+          {t("wizard.venue.noRead")}
+        </p>
+      )}
 
-      {v.mode === "existing" && (
+      {v.mode === "existing" && canRead && (
         <>
-          {canRead && !venues.isLoading && list.length === 0 && <p className="field-hint">{t("wizard.venue.none")}</p>}
+          {!venues.isLoading && list.length === 0 && <p className="field-hint">{t("wizard.venue.none")}</p>}
           <SelectField
             label={t("wizard.venue.pick")}
             error={errorOf("venueExisting")}

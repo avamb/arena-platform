@@ -142,6 +142,12 @@ test.describe("event wizard: Event and Venue", () => {
     await expect(page.getByTestId("wizard-currency")).toHaveValue("CZK", { timeout: 15_000 });
     await expect(status(page)).toContainText("Everything you filled in is correct", { timeout: 20_000 });
 
+    // No country: the currency that came from the country goes with it (a typed one would stay).
+    await page.getByTestId("wizard-venue-country").selectOption("");
+    await expect(page.getByTestId("wizard-currency")).toHaveValue("", { timeout: 15_000 });
+    await page.getByTestId("wizard-venue-country").selectOption("CZ");
+    await expect(page.getByTestId("wizard-currency")).toHaveValue("CZK", { timeout: 15_000 });
+
     // Seats are a whole number.
     await page.getByTestId("wizard-venue-capacity").fill("lots");
     await expect(page.getByTestId("wizard-venue-capacity-error")).toContainText("whole number");
