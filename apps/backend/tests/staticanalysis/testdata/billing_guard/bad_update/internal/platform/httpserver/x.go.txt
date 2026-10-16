@@ -1,0 +1,6 @@
+package httpserver
+
+const fix = `UPDATE charges SET amount_minor = 1 WHERE id = $1`
+
+const fix2 = `UPDATE
+	charge_reversals SET reason = 'x'`
