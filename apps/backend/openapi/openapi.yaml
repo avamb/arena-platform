@@ -6508,6 +6508,14 @@ components:
             Number of active, non-cancelled sessions of the event, past ones
             included — the same count the hosted page reports.
           example: 2
+        email_note:
+          type: [string, "null"]
+          description: |
+            The organizer's own text of the event (EC-31, migration 0161): up
+            to 2000 characters of plain text that the ticket and the
+            session-change e-mails print under "About the event". Null when
+            the event has none.
+          example: "Come 30 minutes early. The cloakroom is free."
         visibility:
           type: string
           enum: [public, private, unlisted]
@@ -7725,6 +7733,17 @@ components:
             Tri-state (absent=keep, null=clear, value=set).
             Comma-separated SEO keywords for the event page (AB-45c).
           example: "festival,music,outdoor,summer"
+        email_note:
+          type: [string, "null"]
+          description: |
+            Tri-state (absent=keep, null or "" = clear, value=set). The
+            organizer's own text that the ticket and session-change e-mails
+            print under "About the event". Plain text of at most 2000
+            characters: HTML tags are removed, control characters are
+            refused, at most 5 links and every link must be `https://`. A
+            refused text answers 400 `event.invalid_email_note` with
+            `error.details.reason`.
+          example: "Come 30 minutes early. The cloakroom is free."
 
     UpdateEventStatusRequest:
       type: object
@@ -7747,6 +7766,41 @@ components:
             combination is rejected with HTTP 422 and
             `error.code = "event.invalid_transition"`.
           example: "published"
+
+    EventEmailNoteTestRequest:
+      type: object
+      description: Optional body of the test-letter route.
+      properties:
+        to:
+          type: string
+          description: |
+            Address to send to: the caller's own, or that of an active member
+            of the organization. Empty means the caller's own address.
+          example: "manager@example.org"
+        note:
+          type: string
+          description: |
+            An unsaved draft to preview, filtered like PATCH `email_note`.
+            Absent means the stored text.
+          example: "Come 30 minutes early."
+        locale:
+          type: string
+          description: Language of the letter (en, ru, cs, de, es, fr, he). Empty means the caller's language.
+          example: "ru"
+
+    EventEmailNoteTestResponse:
+      type: object
+      required: [queued, to]
+      description: The test letter was queued.
+      properties:
+        queued:
+          type: boolean
+          description: Always true on success.
+          example: true
+        to:
+          type: string
+          description: The address the letter goes to.
+          example: "manager@example.org"
 
     EventEnvelope:
       type: object
@@ -15323,6 +15377,17 @@ components:
             (the organization itself is the promoter), a UUID links one of
             the organization's active promoters. Anything else answers 422
             `import.invalid_promoter`.
+        emailNote:
+          type: [string, "null"]
+          description: |
+            Arena event-bundle extension (source=arena only; EC-31, migration
+            0161): the organizer's own text that the ticket and session-change
+            e-mails print under "About the event". Absent or null keeps the
+            stored text, "" removes it, a string replaces it after the same
+            filter as PATCH `email_note` (plain text, at most 2000
+            characters, at most 5 `https://` links). A refused text answers
+            422 `import.invalid_email_note`. The event-bundle read answers
+            "" when the event has none.
     ImportBil24SessionActionEvent:
       type: object
       description: |
@@ -43383,6 +43448,97 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: Internal server error (`contact.update_failed`, `contact.audit_failed`, `contact.commit_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/email-note/test:
+    post:
+      operationId: postV1OrganizationsOrgIdEventsEventIdEmailNoteTest
+      summary: Mail the organizer a sample ticket letter with the event's own text
+      description: |
+        Queues a preview of the ticket e-mail with the event's own text
+        ("About the event", EC-31) so the organizer sees how buyers will read
+        it. The preview text is the `note` of the body (an unsaved draft,
+        filtered like PATCH `email_note`) or, when the body has none, the
+        stored text. The letter goes to the caller's own address, or to
+        `to`, which must be the caller's address or that of an active member
+        of the organization. It carries a "[Test]" mark in its subject, has no
+        ticket and no PDF, and is NOT recorded as a letter sent to a buyer.
+        At most 5 test letters an hour per organization (the counter lives in
+        the memory of one arena-api process). Requires `event.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventEmailNoteTestRequest"
+      responses:
+        "202":
+          description: The test letter is queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventEmailNoteTestResponse"
+        "400":
+          description: Invalid body (`event.invalid_json`), a refused text (`event.invalid_email_note`), a missing or invalid address (`event.email_note_test_recipient_required`, `event.email_note_test_invalid_recipient`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The event has no text to preview (`event.email_note_empty`) or `to` is not a member of the organization (`event.email_note_test_recipient_not_member`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: More than 5 test letters in an hour for this organization (`event.email_note_test_rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.email_note_test_failed`).
           content:
             application/json:
               schema:

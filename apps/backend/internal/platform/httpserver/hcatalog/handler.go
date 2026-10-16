@@ -83,6 +83,10 @@ type Handler struct {
 	// sales pages; it feeds the event card's public_url (publicurl.Page).
 	// Empty when unset: public_url is then "". Wired via WithTicketsBaseURL.
 	ticketsBaseURL string
+	// emailNoteTestLimiter caps the test letters of the event's own letter
+	// text per organization (EC-31). Wired by WithEmailNoteTestLimiter; nil
+	// means no cap.
+	emailNoteTestLimiter EmailNoteTestQuota
 }
 
 // New constructs a Handler from the caller's dependencies.

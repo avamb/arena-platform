@@ -57,6 +57,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/mediaresolver"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventnote"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventwatch"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
@@ -567,6 +568,15 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		Templates:   deliveryOpts.Templates,
 		DB:          pool,
 		Logger:      logger,
+	}))
+
+	// event.email_note_test mails the organizer a sample ticket letter with
+	// the event's own note (EC-31). A preview: never recorded as a buyer letter.
+	reg.Register(eventnote.JobTypeTestEmail, delivery.NewEventNoteTestHandler(delivery.EventNoteTestOptions{
+		Sender:    deliveryOpts.Sender,
+		Templates: deliveryOpts.Templates,
+		DB:        pool,
+		Logger:    logger,
 	}))
 
 	// auth.email_verification and auth.password_reset_email deliver
