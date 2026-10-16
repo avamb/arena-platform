@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -32,6 +31,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/seatmint"
 )
 
 // admissionMode → seating_plans.plan_type, mirroring hseating's
@@ -161,13 +161,7 @@ func (h *Handler) importSeating(
 	if err != nil {
 		return seatingOutcome{}, fmt.Errorf("lock seating plan version: %w", err)
 	}
-	capacity := locked.CapacitySeated
-	switch mode {
-	case "hybrid":
-		capacity = locked.CapacitySeated + locked.CapacityStanding
-	case "general_admission":
-		capacity = locked.CapacityStanding
-	}
+	capacity := seatmint.PlanCapacity(mode, locked)
 	if _, err := q.BindSessionSeatingPlan(ctx, sessionID, eventID, mode, &versionID, capacity); err != nil {
 		return seatingOutcome{}, fmt.Errorf("bind seating plan to session: %w", err)
 	}
@@ -355,99 +349,20 @@ func (h *Handler) materializeImportedSeats(
 		}
 	}
 
-	seatCount := geometry.SeatCount()
-	seatKeys := make([]string, 0, seatCount)
-	sectorNames := make([]string, 0, seatCount)
-	rowNames := make([]string, 0, seatCount)
-	seatNumbers := make([]string, 0, seatCount)
-	tiers := make([]*string, 0, seatCount)
-	systemSeatIDs := make([]*int64, 0, seatCount)
-	var maxExternalID int64
-	unmapped := false
-
-	for _, section := range geometry.Sections {
-		for _, row := range section.Rows {
-			for _, seat := range row.Seats {
-				seatKeys = append(seatKeys, seat.Key)
-				sectorNames = append(sectorNames, section.Name)
-				rowNames = append(rowNames, row.Name)
-				seatNumbers = append(seatNumbers, seat.Number)
-				if tierID, ok := tierByCategory[seat.CategoryIndex]; ok {
-					s := tierID.String()
-					tiers = append(tiers, &s)
-				} else {
-					// A category drawn in the svg but absent from categoryList
-					// is priceless, not fatal: the seat exists and can be
-					// priced later through the admin surface.
-					tiers = append(tiers, nil)
-					unmapped = true
-				}
-				if seat.ExternalID > 0 {
-					ext := seat.ExternalID
-					systemSeatIDs = append(systemSeatIDs, &ext)
-					if ext > maxExternalID {
-						maxExternalID = ext
-					}
-				} else {
-					systemSeatIDs = append(systemSeatIDs, nil)
-				}
-			}
-		}
+	// A category drawn in the svg but absent from categoryList is priceless,
+	// not fatal (Lenient): the seat exists and can be priced later through
+	// the admin surface; its GA zone, if any, gets no places — since
+	// migration 0101 a GA place belongs to a category.
+	minted, err := seatmint.Materialize(ctx, q, sessionID, geometry, tierByCategory,
+		mode != seatmint.ModeAssignedSeats, seatmint.Lenient)
+	if err != nil {
+		return 0, fmt.Errorf("materialize session seats: %w", err)
 	}
-	if unmapped {
+	if minted.UnmappedSeats {
 		warnings.add(WarnCategoryUnmapped,
 			"the seating plan references categories that categoryList does not declare; those seats were imported without a ticket tier")
 	}
-
-	source := gen.SeatIDSourceArena
-	if maxExternalID > 0 {
-		source = gen.SeatIDSourceBil24
-		// Push the arena sequence past every Bil24 id so a later plain
-		// materialization can never mint a colliding system_seat_id.
-		if err := q.AdvanceSessionSeatSystemIDSeq(ctx, maxExternalID); err != nil {
-			return 0, fmt.Errorf("advance seat id sequence: %w", err)
-		}
-	}
-	materialized := 0
-	if len(seatKeys) > 0 {
-		inserted, err := q.InsertSessionSeats(ctx, sessionID, seatKeys, sectorNames, rowNames,
-			seatNumbers, tiers, systemSeatIDs, source)
-		if err != nil {
-			return 0, fmt.Errorf("materialize session seats: %w", err)
-		}
-		materialized = int(inserted)
-	}
-
-	if mode != "assigned_seats" {
-		for _, cat := range geometry.GACategories() {
-			if cat.Capacity <= 0 || cat.Capacity > math.MaxInt32 {
-				continue
-			}
-			tierID, ok := tierByCategory[cat.Index]
-			if !ok {
-				// Since migration 0101 a General Admission place belongs to
-				// a category; a NULL-tier batch would be inventory nothing
-				// can sell. The unmapped-category warning above already
-				// tells the operator to price the category, after which the
-				// admin can give it a quantity.
-				continue
-			}
-			quantity := int32(cat.Capacity) //nolint:gosec // bound-checked above
-			inserted, err := q.InsertGAUnits(ctx, sessionID,
-				"ga|c"+strconv.Itoa(cat.Index), 0, &tierID, quantity)
-			if err != nil {
-				return 0, fmt.Errorf("materialize GA units: %w", err)
-			}
-			materialized += int(inserted)
-			// The places just minted ARE the quantity from now on: record it
-			// on ticket_tiers and reserve the category's own number so a
-			// later quota edit cannot collide with the geometry index.
-			if err := gaquota.AdoptPlanCategory(ctx, q, sessionID, tierID, quantity); err != nil {
-				return 0, fmt.Errorf("record GA category quantity: %w", err)
-			}
-		}
-	}
-	return materialized, nil
+	return minted.Seats + minted.GAPlaces, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
