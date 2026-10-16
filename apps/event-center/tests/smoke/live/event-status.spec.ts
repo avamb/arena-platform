@@ -80,7 +80,9 @@ async function mustList(request: APIRequestContext, role: Role, name: string): P
 function trackApi(page: Page): string[] {
   const calls: string[] = [];
   page.on("request", (req) => {
-    if (req.url().startsWith(env.api_base_url) && req.method() !== "GET" && req.method() !== "OPTIONS") {
+    // Sign-in and token refresh are writes too, but not the ones under test.
+    const path = new URL(req.url()).pathname;
+    if (req.url().startsWith(env.api_base_url) && req.method() !== "GET" && req.method() !== "OPTIONS" && !path.startsWith("/v1/auth/")) {
       calls.push(`${req.method()} ${new URL(req.url()).pathname}`);
     }
   });
@@ -243,7 +245,7 @@ test.describe("event status (live)", () => {
     const back = await request.post(orgPath(`/events/${event.id}/status`), { headers: bearer("organizer"), data: { status: "published" } });
     expect(back.status()).toBe(422);
     expect(((await back.json()) as { error: { code: string } }).error.code).toBe("event.invalid_transition");
-    // The sold ticket is untouched: the order is still paid.
+    // Delete stays on the card and is still refused with the numbers.
     await expect(page.getByTestId("event-status-delete")).toBeVisible();
     await page.getByTestId("event-status-delete").click();
     await expect(page.getByTestId("dry-run-blocked")).toBeVisible();
