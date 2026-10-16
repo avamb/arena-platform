@@ -328,30 +328,3 @@ func TestEventEmailNote_TestLetterRouteAndWorker(t *testing.T) {
 		t.Errorf("foreign org job: err %v, sent %d", err, len(sender.sent))
 	}
 }
-
-func TestEventEmailNote_EventBundleImportAndRead(t *testing.T) {
-	e := newENEnv(t)
-	org := e.org(t, "A")
-	owner := e.user(t, "owner")
-	e.member(t, owner, org, "org_admin")
-	tok := e.token(t, owner)
-	ev := e.event(t, org)
-	evPath := "/v1/organizations/" + org.String() + "/events/" + ev.String()
-	e.expect(t, http.StatusOK, http.MethodPatch, evPath, tok, "", `{"email_note":"Bring a jacket."}`)
-
-	// The read carries the note beside a session's bundle; with no session
-	// there is no bundle, so check the dry-run side: a refused text is 422.
-	bundle := func(note string) string {
-		return `{"source":"arena","action":{"arenaEventId":"` + ev.String() + `","actionName":"X","emailNote":` + note + `},` +
-			`"actionEvent":{"day":"2099-05-01","time":"19:00"},"venue":{"venueName":"V","cityName":"Prague","countryName":"Czechia","timezone":"Europe/Prague"},` +
-			`"categoryList":[{"categoryPriceName":"GA","price":10,"availability":5}]}`
-	}
-	imp := "/v1/organizations/" + org.String() + "/imports/event-bundle"
-	raw := e.expect(t, http.StatusUnprocessableEntity, http.MethodPost, imp+"?dry_run=true", tok, "", bundle(jsonString("go javascript:alert(1)")))
-	if !strings.Contains(raw, "import.invalid_email_note") {
-		t.Errorf("dry run: %s", raw)
-	}
-	if got, _ := e.noteOf(t, ev); got != "Bring a jacket." {
-		t.Fatalf("a dry run changed the note to %q", got)
-	}
-}

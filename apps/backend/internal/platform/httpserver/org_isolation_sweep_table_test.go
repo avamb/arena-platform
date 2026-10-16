@@ -230,6 +230,11 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers":                    "tiers",
 	"PUT /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule": "tiers",
 
+	// hcatalog test letter of the event's own text (task 7-1,
+	// event_email_note.go): requireEventInOrg runs before anything is read or
+	// queued. event_email_note_integration_test.go drives a foreign event.
+	"POST /v1/organizations/{org_id}/events/{event_id}/email-note/test": "event email note",
+
 	// hcatalog event gallery and videos (task 1-2a, event_materials.go):
 	// materialsPrep runs requireEventInOrg first and every query is scoped by
 	// (id, event_id). event_materials_integration_test.go drives a foreign event.
