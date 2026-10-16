@@ -379,7 +379,7 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 | П3a | L / opus + opus-ревью | `feat/p-3a-legal-documents` | — | в работе (тексты — английский черновик, ST-3 только для текстов) |
 | S1f | S / sonnet | `feat/s-s1f-seats-manage-permission` | — | в работе |
 | 2-3 | M / sonnet + opus-ревью | `feat/p-2-3-page-stats-track` | — | в работе |
-| 2-1 | M / sonnet (Ф) | `feat/p-2-1-page-materials` | — | в работе |
+| 2-1 | M / sonnet (Ф) | `feat/p-2-1-page-materials` | #164 | сдан (`e7385e1`): `lib/materials.ts` под карточкой покупки — галерея с лайтбоксом (без библиотек), видео (iframe `youtube-nocookie`/vimeo `dnt=1`/rutube только после клика, повторная проверка `embed_url` по `EMBED_RULES`, `sandbox`), карта (ссылки OSM/Google + координаты, без скриптов), партнёры («Продавец: …», `noopener nofollow`), фотоотчёт; CSP `frame-src` + тест сверки с `EMBED_RULES`; 5 локалей; хуки `onVideoPlay`/`onPartnerClick` для 2-3 (Р-21); ворота: type-check 0, vitest 154 (22 новых), build 0, контейнерный smoke 0; не проверено: живые плееры под `sandbox`, вёрстка глазами; sonnet-ревью (раннер, $0.15): «вливать с правками» — средние закрыты оркестратором (единственная копия CSP — `security-headers.conf.template`; бандл JS 42.6 → 52.5 КБ, gzip 14.5 → 17.7 КБ, лимита у страницы нет), низкие в бэклог: `photo.url` без проверки `https` в `materials.ts`, типы `Hosted*` в `api.ts` не из `@openapi`, `SCROLL_LOCK_CLASS` лайтбокса и контактной формы; master слит (`0a56ea8`), ждёт CI |
 | 7-1 | M / sonnet + sonnet-ревью | `feat/s-7-1-event-email-text` | — | в работе |
 | 7-3 | M / sonnet + sonnet-ревью | `feat/b-7-3-bot-materials` | — | в работе |
 | V1 | M / sonnet + sonnet-ревью | `feat/s-v1-ticket-vip` | — | в работе |
