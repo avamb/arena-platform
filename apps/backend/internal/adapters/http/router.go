@@ -830,7 +830,13 @@ func requestLogMiddleware(base *slog.Logger) func(http.Handler) http.Handler {
 			args := []any{
 				"method", r.Method,
 				"path", redactPath(r.URL.Path),
-				"remote_addr", r.RemoteAddr,
+			}
+			// The page statistics beacon promises that the visitor's address
+			// and browser are never stored or logged (HP-2a): its request
+			// records leave out remote_addr and user_agent.
+			beacon := isPageTrackBeacon(r)
+			if !beacon {
+				args = append(args, "remote_addr", r.RemoteAddr)
 			}
 			if auth := r.Header.Get("Authorization"); auth != "" {
 				args = append(args, "authorization", MaskSensitiveHeader("authorization", auth))
@@ -863,17 +869,35 @@ func requestLogMiddleware(base *slog.Logger) func(http.Handler) http.Handler {
 			// user agent) so log tail output is readable without wide terminals.
 			// request_id, correlation_id, and trace_id are prepended automatically
 			// by logging.FromContext via the enriched logger returned above.
-			logger.Info("http.request.completed",
+			doneArgs := []any{
 				"method", r.Method,
 				"route", route,
 				"status", status,
-				"latency_ms", float64(time.Since(start).Microseconds())/1000.0,
+				"latency_ms", float64(time.Since(start).Microseconds()) / 1000.0,
 				"bytes_in", bytesIn,
 				"bytes_out", ww.BytesWritten(),
-				"user_agent", r.Header.Get("User-Agent"),
-			)
+			}
+			if !beacon {
+				doneArgs = append(doneArgs, "user_agent", r.Header.Get("User-Agent"))
+			}
+			logger.Info("http.request.completed", doneArgs...)
 		})
 	}
+}
+
+// isPageTrackBeacon reports whether r is the hosted page's statistics beacon,
+// POST /v1/public/pages/{org_slug}/{event_slug}/track. A literal path test: this
+// package must not import the handler packages (see paymentReturnPath).
+func isPageTrackBeacon(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	rest, ok := strings.CutPrefix(r.URL.Path, "/v1/public/pages/")
+	if !ok {
+		return false
+	}
+	parts := strings.Split(rest, "/")
+	return len(parts) == 3 && parts[2] == "track"
 }
 
 // -----------------------------------------------------------------------------
