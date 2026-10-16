@@ -12,7 +12,7 @@
 # ============================================================
 
 # ---- Stage 1: build ----
-FROM golang:1.24-alpine AS build
+FROM golang:1.26.9-alpine AS build
 
 ENV CGO_ENABLED=0 \
     GOOS=linux \

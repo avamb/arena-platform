@@ -1,0 +1,7 @@
+package httpserver
+
+const sneak = `INSERT INTO charges (id) VALUES ($1)`
+
+func (s *Server) sneakCall() error {
+	return s.queries.InsertChargeReversal(ctx, nil)
+}
