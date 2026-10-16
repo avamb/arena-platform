@@ -654,6 +654,18 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         run: docker run --rm arena_new/arena-venue-gen:ci python -m m1_product --help
 
+      - name: Image smoke (the HTTP service answers /healthz)
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          docker run -d --name venue-gen-smoke -p 18090:8090 arena_new/arena-venue-gen:ci
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:18090/healthz; then ok=1; break; fi
+            sleep 1
+          done
+          docker logs venue-gen-smoke || true
+          docker rm -f venue-gen-smoke
+          test "${ok:-0}" = 1
+
   # ─────────────────────────────────────────────────────────────────
   # Job 6: Widget — Svelte 5 custom element (arena-tickets)
   #

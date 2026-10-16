@@ -399,10 +399,9 @@ services:
   #   - Opt-in: docker compose --profile venue-gen build venue_gen
   #     (a plain `docker compose up -d` does not start it).
   #   - NO host port on purpose: only arena-api talks to it, over the
-  #     compose network (http://venue_gen:<port>, the port arrives with
-  #     the HTTP service in G2a).
-  #   - Until G2a the image carries only the CLI, so the container prints
-  #     its help and exits; hence restart "no".
+  #     compose network (http://venue_gen:8090, G2a HTTP service:
+  #     POST /generate, GET /jobs/{id}, GET /healthz). No authentication,
+  #     so it must never get a published port.
   # ------------------------------------------------------------------
   venue_gen:
     build:
@@ -410,7 +409,13 @@ services:
     image: arena_new/arena-venue-gen:dev
     container_name: arena_venue_gen
     profiles: ["venue-gen"]
-    restart: "no"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # ------------------------------------------------------------------
   # prometheus : scrapes /metrics from api (and worker when it exposes
