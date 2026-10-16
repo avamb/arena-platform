@@ -1033,10 +1033,11 @@ export const en = {
   "wizard.err.invalid_sell_limit": "The number of tickets of a step must be a positive whole number, and only a step that hands over to the next one can have it.",
   "wizard.err.invalid_next_category": "The order of the steps is not correct. Check the steps of this date.",
   "wizard.err.category_chain_cycle": "The steps of this date go in a circle. Check their order.",
-  "wizard.err.invalid_price_schedule": "The price changes are not correct. Each one must start after the one before.",
+  "wizard.err.invalid_price_schedule": "The price changes are not correct. A free ticket cannot have price changes, and each change must start after the one before.",
   "wizard.err.capacity_required": "Type the number of places of this date.",
   "wizard.date.closeCalendar": "Close the calendar",
   "wizard.date.noDay": "No day chosen yet",
+  "wizard.err.timeRequired": "Type the start time, for example 19:00.",
 } as const;
 
 export type MessageKey = keyof typeof en;

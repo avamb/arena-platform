@@ -137,7 +137,9 @@ export function dateClientErrors(draft: WizardDraft): ClientDateErrors {
   draft.dates.forEach((date, index) => {
     const set = (suffix: string, key: MessageKey) => out.set(dateFieldKey(date.key, suffix), key);
     const time = parseTime(date.time);
-    if (nonEmpty(date.time) && time === null) set("time", "wizard.err.timeShape");
+    // The platform reads an empty start time as midnight, which nobody means: the wizard asks for it.
+    if (!nonEmpty(date.time)) set("time", "wizard.err.timeRequired");
+    else if (time === null) set("time", "wizard.err.timeShape");
     if (nonEmpty(date.endTime) && parseTime(date.endTime) === null) set("endTime", "wizard.err.timeShape");
     if (nonEmpty(date.salesEnd)) {
       const typed = parseTime(date.salesEnd);

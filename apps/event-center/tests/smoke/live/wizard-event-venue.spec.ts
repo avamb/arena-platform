@@ -21,9 +21,14 @@
  *    single check request; the API itself answers 403 to the agent.
  *
  * The harness builds the app with VITE_FEATURE_WIZARD=1 (playwright.live.config.ts).
+ *
+ * Since 6-1b the platform's check also judges the dates and the tickets, so a
+ * draft is "correct" only with one complete date (`fillFirstDate`); the dates
+ * and tickets themselves are proven by wizard-dates-tickets.spec.ts.
  */
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { liveEnv, noA11yViolations, person, signInAs, type Role } from "./liveEnv";
+import { fillFirstDate, openWizard, trackChecks } from "./wizardHelpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -53,23 +58,6 @@ async function counts(request: APIRequestContext): Promise<Counts> {
   };
 }
 
-/** Records the start time of every check request of the page. */
-function trackChecks(page: Page): number[] {
-  const stamps: number[] = [];
-  page.on("request", (r) => {
-    if (r.method() === "POST" && r.url().includes("/imports/event-bundle") && r.url().includes("dry_run=true")) stamps.push(Date.now());
-  });
-  return stamps;
-}
-
-async function openWizard(page: Page, role: Role) {
-  await signInAs(page, person(env, role));
-  await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
-  await page.getByTestId("nav-new-event").click();
-  await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events/new`));
-  await expect(page.getByRole("heading", { level: 1, name: "New event" })).toBeVisible();
-}
-
 const status = (page: Page) => page.getByTestId("wizard-status");
 
 test.describe("event wizard: Event and Venue", () => {
@@ -88,6 +76,7 @@ test.describe("event wizard: Event and Venue", () => {
     await expect(page.getByTestId("wizard-venue-facts")).toContainText("300");
     // The hall has no country, so no currency comes from it: type one.
     await page.getByTestId("wizard-currency").fill("EUR");
+    await fillFirstDate(page);
 
     await expect(status(page)).toContainText("Everything you filled in is correct", { timeout: 20_000 });
     await noA11yViolations(page);
@@ -100,6 +89,7 @@ test.describe("event wizard: Event and Venue", () => {
     await page.getByTestId("wizard-venue-mode-existing").check();
     await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
     await page.getByTestId("wizard-currency").fill("EUR");
+    await fillFirstDate(page);
     await page.getByTestId("wizard-name").fill("A name");
     await expect(status(page)).toContainText("Everything you filled in is correct", { timeout: 20_000 });
 
@@ -107,7 +97,7 @@ test.describe("event wizard: Event and Venue", () => {
     // The code import.action_name_required, in words, under the name.
     await expect(page.getByTestId("wizard-name-error")).toHaveText("Type the name of the event.", { timeout: 20_000 });
     await expect(status(page)).toContainText("1 to fix");
-    // The stub date and category are not the person's errors.
+    // The date and the category are fine: no general error either.
     await expect(page.getByTestId("wizard-general")).toHaveCount(0);
     await noA11yViolations(page);
 
@@ -133,6 +123,7 @@ test.describe("event wizard: Event and Venue", () => {
     await expect(page.getByTestId("wizard-venue-city")).toHaveValue("Barcelona");
     await expect(page.getByTestId("wizard-venue-timezone")).toHaveValue("Europe/Madrid");
     await page.getByTestId("wizard-venue-capacity").fill("1 200");
+    await fillFirstDate(page);
 
     await expect(status(page)).toContainText("Everything you filled in is correct", { timeout: 20_000 });
 
@@ -171,6 +162,7 @@ test.describe("event wizard: Event and Venue", () => {
     await page.getByTestId("wizard-venue-mode-existing").check();
     await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
     await page.getByTestId("wizard-currency").fill("EUR");
+    await fillFirstDate(page);
     await page.waitForTimeout(1500);
 
     const stamps = trackChecks(page);
@@ -202,6 +194,7 @@ test.describe("event wizard: Event and Venue", () => {
     await page.getByTestId("wizard-venue-mode-existing").check();
     await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
     await page.getByTestId("wizard-currency").fill("EUR");
+    await fillFirstDate(page);
     await expect(status(page)).toContainText("Everything you filled in is correct", { timeout: 20_000 });
     expect(stamps.length).toBeGreaterThanOrEqual(1);
   });

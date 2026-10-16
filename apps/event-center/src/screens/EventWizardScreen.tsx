@@ -166,7 +166,12 @@ function Wizard() {
   };
   const dateErrorOf = (dateKey: string, suffix: string): string | undefined => {
     const fk = dateFieldKey(dateKey, suffix);
-    if (!touched.has(fk)) return undefined;
+    // An error about the whole set of categories shows once the person has worked on a category or a price change.
+    const reached =
+      suffix === "tickets"
+        ? [...touched].some((k) => k.startsWith(`${dateKey}.c:`) || k.startsWith(`${dateKey}.s:`))
+        : touched.has(fk);
+    if (!reached) return undefined;
     const own = mineDates.get(fk);
     if (own !== undefined) return t(own);
     const first = dateServer.get(dateKey)?.byKey.get(fk)?.[0];

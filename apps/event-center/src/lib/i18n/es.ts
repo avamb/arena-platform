@@ -1033,8 +1033,9 @@ export const es: Record<MessageKey, string> = {
   "wizard.err.invalid_sell_limit": "El número de entradas de una etapa debe ser un entero positivo, y solo una etapa que pasa a la siguiente puede tenerlo.",
   "wizard.err.invalid_next_category": "El orden de las etapas no es correcto. Comprueba las etapas de esta fecha.",
   "wizard.err.category_chain_cycle": "Las etapas de esta fecha forman un círculo. Comprueba su orden.",
-  "wizard.err.invalid_price_schedule": "Los cambios de precio no son correctos. Cada uno debe empezar después del anterior.",
+  "wizard.err.invalid_price_schedule": "Los cambios de precio no son correctos. Una entrada gratuita no puede tener cambios de precio, y cada cambio debe empezar después del anterior.",
   "wizard.err.capacity_required": "Escribe el número de plazas de esta fecha.",
   "wizard.date.closeCalendar": "Cerrar el calendario",
   "wizard.date.noDay": "Aún no hay día elegido",
+  "wizard.err.timeRequired": "Escribe la hora de inicio, por ejemplo 19:00.",
 };

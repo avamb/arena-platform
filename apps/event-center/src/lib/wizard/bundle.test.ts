@@ -104,6 +104,12 @@ describe("buildBundle", () => {
     expect(b.actionEvent.day).toBe("06.03.2027");
   });
 
+  it("sends an end time only when one is typed, as the bot's does not", () => {
+    const base = [{ type: "dateField", key: "d1", field: "time", value: "19:00" }, { type: "dateDay", key: "d1", value: "2027-03-05" }] as const;
+    expect(buildBundle(draftOf(...base), opts).actionEvent.endTime).toBeUndefined();
+    expect(buildBundle(draftOf(...base, { type: "dateField", key: "d1", field: "endTime", value: "2145" }), opts).actionEvent.endTime).toBe("21:45");
+  });
+
   it("leaves out the sales end and doors when the start is not a real time", () => {
     const d = draftOf({ type: "dateDay", key: "d1", value: "2027-03-05" }, { type: "dateField", key: "d1", field: "time", value: "later" });
     const b = buildBundle(d, opts);

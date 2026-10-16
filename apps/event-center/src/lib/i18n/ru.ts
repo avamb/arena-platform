@@ -1033,8 +1033,9 @@ export const ru: Record<MessageKey, string> = {
   "wizard.err.invalid_sell_limit": "Число билетов этапа должно быть целым и больше нуля, и оно есть только у этапа, после которого идёт следующий.",
   "wizard.err.invalid_next_category": "Порядок этапов задан неверно. Проверьте этапы этой даты.",
   "wizard.err.category_chain_cycle": "Этапы этой даты идут по кругу. Проверьте их порядок.",
-  "wizard.err.invalid_price_schedule": "Изменения цены заданы неверно. Каждое должно начинаться позже предыдущего.",
+  "wizard.err.invalid_price_schedule": "Изменения цены заданы неверно. У бесплатного билета не бывает изменений цены, и каждое изменение должно начинаться позже предыдущего.",
   "wizard.err.capacity_required": "Укажите число мест на эту дату.",
   "wizard.date.closeCalendar": "Закрыть календарь",
   "wizard.date.noDay": "День ещё не выбран",
+  "wizard.err.timeRequired": "Введите время начала, например 19:00.",
 };

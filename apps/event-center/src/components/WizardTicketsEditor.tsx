@@ -112,6 +112,8 @@ export function WizardTicketsEditor({ draft, index, dispatch, errors, timezone }
         });
         const set = (name: "name" | "price" | "places" | "limit", value: string) => {
           errors.touch(dateFieldKey(key, catSuffix(c.key, name)));
+          // A step without a last day needs a number of tickets: the problem is shown on the day, so reaching the number reaches both.
+          if (name === "limit") errors.touch(dateFieldKey(key, catSuffix(c.key, "until")));
           dispatch({ type: "catField", key, catKey: c.key, field: name, value });
         };
         return (
