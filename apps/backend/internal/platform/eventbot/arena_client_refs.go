@@ -175,9 +175,15 @@ type UploadedMedia struct {
 // UploadPoster stores the poster bytes as an event_poster media object of
 // the organization and returns its id.
 func (c *ArenaClient) UploadPoster(ctx context.Context, jwt string, orgID uuid.UUID, filename, contentType string, data []byte) (UploadedMedia, error) {
+	return c.UploadMedia(ctx, jwt, orgID, "event_poster", filename, contentType, data)
+}
+
+// UploadMedia stores bytes as a media object of the organization under the
+// given owner type (event_poster, event_gallery, event_report) and returns it.
+func (c *ArenaClient) UploadMedia(ctx context.Context, jwt string, orgID uuid.UUID, ownerType, filename, contentType string, data []byte) (UploadedMedia, error) {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
-	_ = mw.WriteField("owner_type", "event_poster")
+	_ = mw.WriteField("owner_type", ownerType)
 	_ = mw.WriteField("org_id", orgID.String())
 	// The type must travel: CreateFormFile labels the part
 	// application/octet-stream, and a poster stored under that type was
