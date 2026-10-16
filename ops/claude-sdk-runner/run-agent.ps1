@@ -10,7 +10,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$PromptFile,
     [string]$Cwd = (Get-Location).Path,
-    [ValidateSet('read', 'edit')][string]$Mode = 'read',
+    [ValidateSet('read', 'edit', 'research')][string]$Mode = 'read',
     [string]$Model = 'claude-sonnet-5-5',
     [int]$MaxTurns = 30,
     [double]$MaxBudgetUsd = 3,

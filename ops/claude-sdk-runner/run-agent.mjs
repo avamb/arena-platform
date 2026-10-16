@@ -51,7 +51,7 @@ const out = path.resolve(arg('--out', path.join(HERE, 'runs', stamp)));
 
 if (!promptFile) { console.error('--prompt-file is required'); process.exit(2); }
 if (!existsSync(cwd)) { console.error(`cwd does not exist: ${cwd}`); process.exit(2); }
-if (!['read', 'edit'].includes(mode)) { console.error('--mode must be read or edit'); process.exit(2); }
+if (!['read', 'edit', 'research'].includes(mode)) { console.error('--mode must be read, edit or research'); process.exit(2); }
 
 const key = readFileSync(0, 'utf8').trim();
 if (!/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(key)) { console.error('stdin did not carry an Anthropic API key'); process.exit(2); }
@@ -65,11 +65,15 @@ mkdirSync(out, { recursive: true });
 const eventsPath = path.join(out, 'events.jsonl');
 const logEvent = obj => appendFileSync(eventsPath, redact(JSON.stringify(obj)) + '\n');
 
+// research: чтение + веб-поиск/веб-чтение (серверные инструменты Anthropic, оплачиваются с того же API-баланса).
 const READ_TOOLS = ['Read', 'Glob', 'Grep'];
 const EDIT_TOOLS = ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'Bash'];
-const allowedTools = mode === 'edit' ? EDIT_TOOLS : READ_TOOLS;
-const disallowedTools = ['WebSearch', 'WebFetch', 'Agent', 'Task', 'Skill', 'ToolSearch', 'AskUserQuestion',
-  'EnterPlanMode', 'ExitPlanMode', 'NotebookEdit', 'mcp__*', ...(mode === 'edit' ? [] : ['Bash', 'Write', 'Edit'])];
+const RESEARCH_TOOLS = ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch'];
+const allowedTools = mode === 'edit' ? EDIT_TOOLS : mode === 'research' ? RESEARCH_TOOLS : READ_TOOLS;
+const disallowedTools = ['Agent', 'Task', 'Skill', 'ToolSearch', 'AskUserQuestion',
+  'EnterPlanMode', 'ExitPlanMode', 'NotebookEdit', 'mcp__*',
+  ...(mode === 'edit' ? [] : ['Bash', 'Write', 'Edit']),
+  ...(mode === 'research' ? [] : ['WebSearch', 'WebFetch'])];
 
 const env = {
   PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP,
