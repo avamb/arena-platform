@@ -1,24 +1,26 @@
 /**
- * Turns the wizard draft into an event-bundle request (task 6-1a).
+ * Turns the wizard draft into event-bundle requests (tasks 6-1a and 6-1b).
  *
  * `buildBundle` is the web twin of the bot's `BuildBundle`
  * (apps/backend/internal/platform/eventbot/wizard_io.go) and the ONLY place a
  * draft becomes a bundle: a rule about what goes on the wire belongs here,
- * never in a screen. Task 6-1b compares its bytes with the bot's for the same
- * answers, so the field names and the shapes below are the bot's.
+ * never in a screen. The import takes ONE date per request, so a draft with
+ * three dates gives three bundles (`buildBundles`), each with its own
+ * idempotency key.
  *
- * It is a pure function of the draft and an options object (the clock and the
- * idempotency key are passed in).
+ * The tests compare its output with golden bundles written by the bot's own
+ * `BuildBundle` for the same answers (apps/backend/internal/platform/eventbot/
+ * testdata/wizard_bundles, `bundle.golden.test.ts`): the field names, the
+ * money in MAJOR units, the instants in the venue's zone and the chain of
+ * categories are the bot's. The venue block is 6-1a's own (a new venue is only
+ * described here; creating it is task 6-1c).
  *
- * The sections "Event" and "Venue" are all the wizard has in 6-1a. The
- * server's check needs a date and a category too, so until the later sections
- * exist the bundle carries a STUB of each (`stubbedParts`). A stub is never
- * shown to the person: the answers the check gives about a stub field are
- * filtered out (`validation.ts`) and are not errors of the sections on screen.
- * The stub is also the reason a bundle built here must never be SAVED before
- * 6-1c replaces it with real dates and categories.
+ * It is a pure function of the draft and an options object.
  */
-import { venueCapacity, type WizardDraft } from "@/lib/wizard/draft";
+import { venueCapacity, venueTimezone, type WizardDraft } from "@/lib/wizard/draft";
+import { effectiveTickets, type DateEntry, type TicketsPart } from "@/lib/wizard/datesDraft";
+import { doorsOffset, majorOf, parseCount, parsePriceMinor, parseTime, salesEndOffset } from "@/lib/wizard/parse";
+import { endOfInclusiveDayRfc3339, formatRfc3339, startOfDayRfc3339, wallToEpoch } from "@/lib/wizard/zones";
 
 export interface BundleAction {
   actionName: string;
@@ -34,6 +36,12 @@ export interface BundleActionEvent {
   /** HH:MM in the venue's zone. */
   time: string;
   currency: string;
+  /** Optional HH:MM end in the venue's zone. */
+  endTime?: string;
+  /** RFC 3339, in the venue's zone: when ticket sales close. */
+  sellEndTime?: string;
+  /** RFC 3339, in the venue's zone: when the doors open. */
+  doorsOpenTime?: string;
 }
 
 export interface BundleVenue {
@@ -45,11 +53,26 @@ export interface BundleVenue {
   countryName?: string;
 }
 
+export interface BundlePriceWindow {
+  validFrom: string;
+  validTo?: string;
+  /** MAJOR units. */
+  price: number;
+}
+
 export interface BundleCategory {
   categoryPriceName: string;
   /** MAJOR units, like the bot's `money.Major`. */
   price: number;
   availability: number;
+  /** The index of the category that takes over; -1 = none (the bot sends it on every category). */
+  nextCategoryIndex: number;
+  /** A step that sells at most this many tickets; 0 = no limit (sequence mode only). */
+  sellLimit?: number;
+  sellStartTime?: string;
+  sellEndTime?: string;
+  /** Always a list: an empty one clears the stored schedule, like the bot's. */
+  priceSchedule: BundlePriceWindow[];
 }
 
 export interface EventBundle {
@@ -63,41 +86,95 @@ export interface EventBundle {
 }
 
 export interface BuildOptions {
-  /** The clock: the stub date is a year after it. */
-  now: Date;
-  /** The date's idempotency key; the default names the draft (`web:<org>:<draft>:1`). */
+  /** The date's idempotency key; the default names the draft (`web:<org>:<draft>:<n>`). */
   externalRef?: string;
   orgId: string;
 }
 
-/** What of the bundle stands in for a section that does not exist yet. */
-export interface StubbedParts {
-  date: boolean;
-  categories: boolean;
+/** The wire form of a day, the bot's `DisplayDate`: DD.MM.YYYY. */
+export function wireDay(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m === null ? iso : `${m[3]}.${m[2]}.${Number(m[1])}`;
 }
 
-/** In 6-1a the wizard has neither dates nor categories. 6-1b makes this depend on the draft. */
-export function stubbedParts(_draft: WizardDraft): StubbedParts {
-  return { date: true, categories: true };
+/** The places of a date: what was typed, else the venue's seats, else 0. */
+export function datePlaces(draft: WizardDraft, date: DateEntry): number {
+  return parseCount(date.capacity) ?? venueCapacity(draft.venue) ?? 0;
 }
 
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
+/** The sales end of a date as minutes after the start; 0 when none is typed or it cannot be read. */
+function salesEndMin(start: string, typed: string): number {
+  if (typed.trim() === "") return 0;
+  return salesEndOffset(start, parseTime(typed) ?? "") ?? 0;
 }
 
-/** The stub date: the day a year after `now`, in the bot's DD.MM.YYYY form, at 19:00. */
-export function stubDay(now: Date): string {
-  const t = new Date(Date.UTC(now.getUTCFullYear() + 1, now.getUTCMonth(), now.getUTCDate()));
-  return `${pad(t.getUTCDate())}.${pad(t.getUTCMonth() + 1)}.${t.getUTCFullYear()}`;
+function categoryList(tk: TicketsPart, places: number, tz: string): BundleCategory[] {
+  const out: BundleCategory[] = [];
+  const price = (raw: string) => majorOf(parsePriceMinor(raw) ?? 0);
+  switch (tk.mode) {
+    case "single": {
+      const c = tk.categories[0];
+      if (c === undefined) return out;
+      const steps = tk.schedule.filter((s) => s.from !== "");
+      const windows: BundlePriceWindow[] = steps.map((s, i) => {
+        const w: BundlePriceWindow = { validFrom: startOfDayRfc3339(s.from, tz), price: price(s.price) };
+        if (i + 1 < steps.length) w.validTo = startOfDayRfc3339(steps[i + 1].from, tz);
+        return w;
+      });
+      out.push({
+        categoryPriceName: c.name.trim(),
+        price: price(c.price),
+        availability: places,
+        nextCategoryIndex: -1,
+        priceSchedule: windows,
+      });
+      return out;
+    }
+    case "parallel":
+      for (const c of tk.categories) {
+        out.push({
+          categoryPriceName: c.name.trim(),
+          price: price(c.price),
+          availability: parseCount(c.places) ?? 0,
+          nextCategoryIndex: -1,
+          priceSchedule: [],
+        });
+      }
+      return out;
+    case "sequence": {
+      const n = tk.categories.length;
+      tk.categories.forEach((c, i) => {
+        const cat: BundleCategory = {
+          categoryPriceName: c.name.trim(),
+          price: price(c.price),
+          availability: i === 0 ? places : 0,
+          nextCategoryIndex: -1,
+          priceSchedule: [],
+        };
+        if (i + 1 < n) {
+          cat.nextCategoryIndex = i + 1;
+          cat.sellLimit = parseCount(c.limit) ?? 0;
+          if (c.until !== "") {
+            // Inclusive day: the step ends when the next day begins.
+            cat.sellEndTime = endOfInclusiveDayRfc3339(c.until, tz);
+          }
+        } else {
+          cat.sellLimit = 0; // the last one sells until the event starts
+        }
+        out.push(cat);
+      });
+      // A category that follows a date-only step starts at that step's end.
+      for (let i = 1; i < out.length; i += 1) {
+        const prev = tk.categories[i - 1];
+        if (prev.until !== "" && parseCount(prev.limit) === null) out[i].sellStartTime = out[i - 1].sellEndTime;
+      }
+      return out;
+    }
+  }
 }
 
-export const STUB_TIME = "19:00";
-
-export function buildBundle(draft: WizardDraft, opts: BuildOptions): EventBundle {
-  const e = draft.event;
+function venueBlock(draft: WizardDraft): BundleVenue {
   const v = draft.venue;
-  const stub = stubbedParts(draft);
-
   const venue: BundleVenue = {};
   if (v.mode === "existing") {
     venue.arenaVenueId = v.existingId;
@@ -110,25 +187,52 @@ export function buildBundle(draft: WizardDraft, opts: BuildOptions): EventBundle
     if (v.cityName.trim() !== "") venue.cityName = v.cityName.trim();
     if (v.countryIso2 !== "") venue.countryName = v.countryIso2;
   }
+  return venue;
+}
+
+/** The bundle of date number `index` (0-based). */
+export function buildBundle(draft: WizardDraft, opts: BuildOptions, index = 0): EventBundle {
+  const e = draft.event;
+  const date = draft.dates[index];
+  const tz = venueTimezone(draft.venue);
+  const tickets = effectiveTickets(draft.dates, index);
+  const time = parseTime(date.time) ?? date.time.trim();
+
+  const actionEvent: BundleActionEvent = {
+    day: wireDay(date.day),
+    time,
+    currency: draft.currency.trim().toUpperCase(),
+  };
+  const end = date.endTime.trim();
+  if (end !== "") actionEvent.endTime = parseTime(end) ?? end;
+
+  // Sales end and doors open (migration 0128): offsets from the start, sent as
+  // instants in the venue's zone, only when the start is a real day and time.
+  const start = wallToEpoch(date.day, time, tz);
+  if (start !== null) {
+    const salesMin = salesEndMin(time, date.salesEnd);
+    actionEvent.sellEndTime = formatRfc3339(start + salesMin * 60_000, tz);
+    const before = date.doors.trim() === "" ? null : doorsOffset(time, parseTime(date.doors) ?? "");
+    if (before !== null) actionEvent.doorsOpenTime = formatRfc3339(start - before * 60_000, tz);
+  }
 
   return {
     source: "arena",
-    externalRef: opts.externalRef ?? `web:${opts.orgId}:${draft.id}:1`,
+    externalRef: opts.externalRef ?? `web:${opts.orgId}:${draft.id}:${index + 1}`,
     action: {
       actionName: e.name.trim(),
       description: e.description.trim(),
       age: e.age,
       promoterId: e.promoterId,
     },
-    actionEvent: {
-      day: stub.date ? stubDay(opts.now) : "",
-      time: stub.date ? STUB_TIME : "",
-      currency: draft.currency.trim().toUpperCase(),
-    },
-    venue,
-    categoryList: stub.categories
-      ? [{ categoryPriceName: "Category 1", price: 1, availability: venueCapacity(v) ?? 1 }]
-      : [],
+    actionEvent,
+    venue: venueBlock(draft),
+    categoryList: categoryList(tickets, datePlaces(draft, date), tz),
     publish: false,
   };
+}
+
+/** One bundle per date, in the order of the draft. */
+export function buildBundles(draft: WizardDraft, opts: Omit<BuildOptions, "externalRef">): EventBundle[] {
+  return draft.dates.map((_, i) => buildBundle(draft, opts, i));
 }

@@ -32,9 +32,9 @@ describe("targetOfPointer", () => {
     for (const [pointer, field] of Object.entries(cases)) expect(targetOfPointer(pointer), pointer).toEqual({ kind: "field", field });
   });
 
-  it("sends the stub parts to 'later' and anything unknown to 'general'", () => {
+  it("sends a date's own pointers to 'date' and anything unknown to 'general'", () => {
     for (const p of ["/actionEvent/day", "/actionEvent/time", "/categoryList", "/categoryList/0/price", "/externalRef"]) {
-      expect(targetOfPointer(p), p).toEqual({ kind: "later" });
+      expect(targetOfPointer(p), p).toEqual({ kind: "date" });
     }
     for (const p of ["", "/source", "/channelIds/0", "/action/arenaEventId"]) expect(targetOfPointer(p), p).toEqual({ kind: "general" });
   });
@@ -49,14 +49,14 @@ describe("splitErrors", () => {
     err("", "organization.contact_missing"),
   ];
 
-  it("keeps the section errors by field and hides the stub ones", () => {
+  it("keeps the section errors by field and sets the dates' ones aside", () => {
     const s = splitErrors(errors);
     expect(failingFields(s)).toEqual(["name", "venueTimezone"]);
-    expect(s.later.map((e) => e.code)).toEqual(["import.invalid_start_time", "import.categories_required"]);
+    expect(s.dated.map((e) => e.code)).toEqual(["import.invalid_start_time", "import.categories_required"]);
     expect(s.general.map((e) => e.code)).toEqual(["organization.contact_missing"]);
   });
 
-  it("calls the sections correct only when no field and no general error is left", () => {
+  it("calls the event and venue correct only when no field and no general error is left", () => {
     expect(sectionsCorrect(splitErrors([err("/actionEvent/day"), err("/categoryList")]))).toBe(true);
     expect(sectionsCorrect(splitErrors([err("/action/actionName")]))).toBe(false);
     expect(sectionsCorrect(splitErrors([err("")]))).toBe(false);

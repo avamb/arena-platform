@@ -27,7 +27,7 @@ describe("check messages", () => {
   it("only name codes the server really raises", () => {
     // The server owns the codes: a renamed one would silently lose its text.
     const root = fileURLToPath(new URL("../../../../backend/internal/platform/httpserver/himports/", import.meta.url));
-    const sources = ["import_arena.go", "bil24_session.go", "import_exec.go", "types.go", "dry_run.go"]
+    const sources = ["import_arena.go", "bil24_session.go", "import_exec.go", "types.go", "dry_run.go", "import_chain.go", "import_sale_times.go"]
       .map((f) => readFileSync(root + f, "utf8"))
       .join("\n");
     for (const code of [...KNOWN_ERROR_CODES, ...KNOWN_WARNING_CODES]) {

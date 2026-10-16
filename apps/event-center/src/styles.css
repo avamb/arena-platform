@@ -768,3 +768,23 @@ fieldset legend {
   justify-content: flex-start;
   text-align: start;
 }
+
+/* 6-1b: dates and tickets of the wizard. */
+.wizard .check input {
+  width: auto;
+}
+
+.wizard-date,
+.wizard-cat {
+  margin-block: 1rem;
+}
+
+.wizard-cat {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
+
+.wizard-day {
+  margin-block: 0.5rem;
+}

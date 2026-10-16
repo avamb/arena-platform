@@ -1,0 +1,165 @@
+{
+  "description": "Categories one after another: a date-only step, a date-and-count step, a count-only step and the last one.",
+  "input": {
+    "event": {
+      "name": "Golden sequence",
+      "description": "Early birds first.",
+      "age": "16+",
+      "promoterId": ""
+    },
+    "currency": "EUR",
+    "venue": {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "name": "Golden Hall",
+      "timezone": "Europe/Madrid",
+      "capacity": 200
+    },
+    "externalRefPrefix": "web:org-1:draft-5",
+    "dates": [
+      {
+        "day": "2027-09-18",
+        "time": "21:30",
+        "salesEnd": "",
+        "doors": "",
+        "capacity": "180",
+        "tickets": {
+          "mode": "sequence",
+          "categories": [
+            {
+              "name": "Early bird",
+              "price": "15",
+              "places": "",
+              "until": "2027-07-31",
+              "limit": ""
+            },
+            {
+              "name": "Regular",
+              "price": "20",
+              "places": "",
+              "until": "2027-08-31",
+              "limit": "50"
+            },
+            {
+              "name": "Late",
+              "price": "25",
+              "places": "",
+              "until": "",
+              "limit": "30"
+            },
+            {
+              "name": "At the door",
+              "price": "30",
+              "places": "",
+              "until": "",
+              "limit": ""
+            }
+          ],
+          "schedule": []
+        }
+      }
+    ]
+  },
+  "bundles": [
+    {
+      "source": "arena",
+      "externalRef": "web:org-1:draft-5:1",
+      "action": {
+        "actionId": 0,
+        "actionName": "Golden sequence",
+        "fullActionName": "",
+        "description": "Early birds first.",
+        "bigPosterUrl": "",
+        "age": "16+",
+        "organizerName": "",
+        "promoterId": "",
+        "arenaEventId": ""
+      },
+      "actionEvent": {
+        "actionEventId": 0,
+        "day": "18.09.2027",
+        "time": "21:30",
+        "endTime": "",
+        "currency": "EUR",
+        "sellEndTime": "2027-09-18T21:30:00+02:00",
+        "sellStartTime": "",
+        "doorsOpenTime": null,
+        "chargePercent": 0,
+        "seatingPlanId": 0,
+        "seatingPlanName": "",
+        "arenaSessionId": ""
+      },
+      "venue": {
+        "arenaVenueId": "11111111-1111-4111-8111-111111111111",
+        "venueId": 0,
+        "venueName": "Golden Hall",
+        "address": "",
+        "cityId": 0,
+        "cityName": "",
+        "countryId": 0,
+        "countryName": "",
+        "timezone": "",
+        "geoLat": null,
+        "geoLon": null
+      },
+      "categoryList": [
+        {
+          "categoryPriceId": 0,
+          "categoryPriceName": "Early bird",
+          "price": 15,
+          "placement": false,
+          "availability": 180,
+          "sellStartTime": "",
+          "sellEndTime": "2027-08-01T00:00:00+02:00",
+          "nextCategoryIndex": 1,
+          "sellLimit": 0,
+          "priceSchedule": [],
+          "arenaTierId": ""
+        },
+        {
+          "categoryPriceId": 0,
+          "categoryPriceName": "Regular",
+          "price": 20,
+          "placement": false,
+          "availability": 0,
+          "sellStartTime": "2027-08-01T00:00:00+02:00",
+          "sellEndTime": "2027-09-01T00:00:00+02:00",
+          "nextCategoryIndex": 2,
+          "sellLimit": 50,
+          "priceSchedule": [],
+          "arenaTierId": ""
+        },
+        {
+          "categoryPriceId": 0,
+          "categoryPriceName": "Late",
+          "price": 25,
+          "placement": false,
+          "availability": 0,
+          "sellStartTime": "",
+          "sellEndTime": "",
+          "nextCategoryIndex": 3,
+          "sellLimit": 30,
+          "priceSchedule": [],
+          "arenaTierId": ""
+        },
+        {
+          "categoryPriceId": 0,
+          "categoryPriceName": "At the door",
+          "price": 30,
+          "placement": false,
+          "availability": 0,
+          "sellStartTime": "",
+          "sellEndTime": "",
+          "nextCategoryIndex": -1,
+          "sellLimit": 0,
+          "priceSchedule": [],
+          "arenaTierId": ""
+        }
+      ],
+      "seatList": null,
+      "svg": "",
+      "publish": false,
+      "channelIds": null,
+      "changeMessage": ""
+    }
+  ]
+}
