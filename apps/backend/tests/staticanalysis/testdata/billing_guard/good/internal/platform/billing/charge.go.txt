@@ -1,0 +1,25 @@
+package billing
+
+import "context"
+
+// Money carries minor units with their currency.
+type Money struct {
+	Minor    int64
+	Currency string
+}
+
+// Quote is a price quote.
+type Quote struct {
+	UnitPriceMinor int64
+	Rate           int64
+	RateBp         int64
+	Currency       string
+}
+
+// Record appends a charge through the generated wrapper: allowed here only.
+func (s *Service) Record(ctx context.Context, m Money) error {
+	return s.q.InsertCharge(ctx, m.Minor, m.Currency)
+}
+
+// A ratio in basis points stays an integer.
+func shareBp(a, b int64) int64 { return a * 10_000 / b }
