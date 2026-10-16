@@ -641,7 +641,10 @@ func (h *Handler) upsertArenaSession(
 	}
 
 	var capacityPtr *int32
-	if capacity > 0 {
+	// A session bound to a seating plan sizes itself from its places
+	// (syncInventoryLedger → gaquota.Recompute); the bundle's availability sum
+	// says nothing about its seats, so it is not written even for a moment.
+	if capacity > 0 && m.Ctx.AdmissionMode == "general_admission" {
 		capacityPtr = &capacity
 	}
 	status := ""
