@@ -737,3 +737,19 @@ fieldset legend {
   margin: 0;
   padding-inline-start: 1.25rem;
 }
+
+/* 5-2: move or cancel a session. */
+.session-change {
+  margin-block: 1.5rem;
+}
+
+.session-change-panel {
+  max-width: 36rem;
+}
+
+.session-change-panel input[type="time"],
+.session-change-panel select,
+.session-contact input[type="email"],
+.session-contact input[type="tel"] {
+  width: 100%;
+}

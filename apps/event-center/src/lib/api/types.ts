@@ -61,3 +61,10 @@ export type BotInvitation = S["BotInvitation"];
 export type BotInvitationCreateResponse = S["BotInvitationCreateResponse"];
 export type BotInvitationResendResponse = S["BotInvitationResendResponse"];
 export type BotInvitationRevokeResponse = S["BotInvitationRevokeResponse"];
+// 5-2: move or cancel a session, the organizer contact, the venues list.
+export type SessionChangeImpact = S["SessionChangeImpact"];
+export type SessionChangeSummary = S["SessionChangeSummary"];
+export type SessionEnvelope = S["SessionEnvelope"];
+export type OrganizerContact = S["OrganizerContact"];
+export type EventContactResponse = S["EventContactResponse"];
+export type VenueItem = S["VenueItem"];

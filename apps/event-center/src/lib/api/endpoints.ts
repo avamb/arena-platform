@@ -12,6 +12,7 @@ import type {
   BotInvitationResendResponse,
   BotInvitationRevokeResponse,
   BotTeamResponse,
+  EventContactResponse,
   EventListResponse,
   EventSummary,
   MeResponse,
@@ -29,10 +30,14 @@ import type {
   PromoCodeEnvelope,
   PromoCodeListResponse,
   PromoRedemptionListResponse,
+  SessionChangeImpact,
+  SessionEnvelope,
   SessionListResponse,
   SessionSummary,
   TicketTierListResponse,
+  VenueItem,
 } from "@/lib/api/types";
+import type { SessionPatchBody } from "@/lib/sessionChange";
 
 export function fetchMe(): Promise<MeResponse> {
   return call<MeResponse>({ route: API.me });
@@ -433,4 +438,37 @@ export function removeMember(orgId: string, userId: string, membershipRole: stri
     params: { org_id: orgId, user_id: userId },
     body: { role: membershipRole },
   });
+}
+
+// ─── 5-2: move or cancel a session ───────────────────────────────────────────
+
+/** The dry run of a move or a cancellation. Writes nothing. See impactQuery(). */
+export function fetchChangeImpact(
+  orgId: string,
+  sessionId: string,
+  query: Record<string, string>,
+): Promise<SessionChangeImpact> {
+  return call<SessionChangeImpact>({
+    route: API.sessionChangeImpact,
+    params: { org_id: orgId, session_id: sessionId },
+    query,
+  });
+}
+
+/** The ONE write of a move or a cancellation: a PATCH of the existing session. */
+export function patchSession(orgId: string, eventId: string, sessionId: string, body: SessionPatchBody): Promise<SessionEnvelope> {
+  return call<SessionEnvelope>({ route: API.sessionUpdate, params: { org_id: orgId, event_id: eventId, id: sessionId }, body });
+}
+
+/** The e-mail buyers answer to when a session changes (the event's promoter, else the organization). */
+export function setEventContact(
+  orgId: string,
+  eventId: string,
+  input: { email: string; phone: string | null; phone_hidden: boolean },
+): Promise<EventContactResponse> {
+  return call<EventContactResponse>({ route: API.eventContact, params: { org_id: orgId, event_id: eventId }, body: input });
+}
+
+export function listVenues(orgId: string): Promise<{ venues: VenueItem[] }> {
+  return call<{ venues: VenueItem[] }>({ route: API.venues, params: { org_id: orgId } });
 }
