@@ -115,19 +115,21 @@ func scanPriceListRuleRow(row interface{ Scan(dest ...any) error }) (PriceListRu
 
 // PriceListPackRow is one credit-pack tier of a price-list version.
 type PriceListPackRow struct {
-	ID                   uuid.UUID `json:"id"`
-	PriceListID          uuid.UUID `json:"price_list_id"`
-	Tier                 int16     `json:"tier"`
-	FaceMinor            int64     `json:"face_minor"`
-	UnseatedRateMinor    int64     `json:"unseated_rate_minor"`
-	SeatedSurchargeMinor int64     `json:"seated_surcharge_minor"`
-	Active               bool      `json:"active"`
-	SortOrder            int32     `json:"sort_order"`
+	ID          uuid.UUID `json:"id"`
+	PriceListID uuid.UUID `json:"price_list_id"`
+	// Currency is the price list's: a pack's money is in its list's currency.
+	Currency             string `json:"currency"`
+	Tier                 int16  `json:"tier"`
+	FaceMinor            int64  `json:"face_minor"`
+	UnseatedRateMinor    int64  `json:"unseated_rate_minor"`
+	SeatedSurchargeMinor int64  `json:"seated_surcharge_minor"`
+	Active               bool   `json:"active"`
+	SortOrder            int32  `json:"sort_order"`
 }
 
 func scanPriceListPackRow(row interface{ Scan(dest ...any) error }) (PriceListPackRow, error) {
 	var r PriceListPackRow
-	err := row.Scan(&r.ID, &r.PriceListID, &r.Tier, &r.FaceMinor, &r.UnseatedRateMinor,
+	err := row.Scan(&r.ID, &r.PriceListID, &r.Currency, &r.Tier, &r.FaceMinor, &r.UnseatedRateMinor,
 		&r.SeatedSurchargeMinor, &r.Active, &r.SortOrder)
 	return r, err
 }
@@ -302,10 +304,11 @@ func (q *Queries) ListPriceListRules(ctx context.Context, priceListID uuid.UUID)
 }
 
 const listPriceListPacks = `-- name: ListPriceListPacks :many
-SELECT id, price_list_id, tier, face_minor, unseated_rate_minor, seated_surcharge_minor, active, sort_order
-FROM   price_list_packs
-WHERE  price_list_id = $1
-ORDER BY sort_order, tier`
+SELECT p.id, p.price_list_id, pl.currency, p.tier, p.face_minor, p.unseated_rate_minor, p.seated_surcharge_minor, p.active, p.sort_order
+FROM   price_list_packs p
+JOIN   price_lists pl ON pl.id = p.price_list_id
+WHERE  p.price_list_id = $1
+ORDER BY p.sort_order, p.tier`
 
 // ListPriceListPacks returns the credit-pack tiers of one price-list version,
 // inactive ones included.

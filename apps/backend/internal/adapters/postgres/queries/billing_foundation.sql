@@ -41,10 +41,11 @@ WHERE  price_list_id = $1
 ORDER BY line, sort_order, id;
 
 -- name: ListPriceListPacks :many
-SELECT id, price_list_id, tier, face_minor, unseated_rate_minor, seated_surcharge_minor, active, sort_order
-FROM   price_list_packs
-WHERE  price_list_id = $1
-ORDER BY sort_order, tier;
+SELECT p.id, p.price_list_id, pl.currency, p.tier, p.face_minor, p.unseated_rate_minor, p.seated_surcharge_minor, p.active, p.sort_order
+FROM   price_list_packs p
+JOIN   price_lists pl ON pl.id = p.price_list_id
+WHERE  p.price_list_id = $1
+ORDER BY p.sort_order, p.tier;
 
 -- name: GetBillingAccount :one
 SELECT id, org_id, currency, issuer_id, account_kind, payer, tax_status,
