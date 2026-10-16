@@ -51,7 +51,7 @@ func TestRecordPageTrack_BoundsCardinality(t *testing.T) {
 	}
 }
 
-func TestRecordPageTrack_NilSafe(t *testing.T) {
+func TestRecordPageTrack_NilSafe(_ *testing.T) {
 	var m *observability.Metrics
 	m.RecordPageTrack("page_view", observability.PageTrackCounted)
 	(&observability.Metrics{}).RecordPageTrack("page_view", observability.PageTrackCounted)
