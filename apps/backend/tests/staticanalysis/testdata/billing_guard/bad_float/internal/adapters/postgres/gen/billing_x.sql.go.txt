@@ -1,0 +1,16 @@
+package gen
+
+// RateRow breaks all three rules.
+type RateRow struct {
+	FeeAmount  float64
+	PriceMinor int
+	TotalMinor int64
+}
+
+// Quote is fine except for the narrow pointer.
+type Quote struct {
+	UnitPriceMinor *int32
+	Currency       string
+}
+
+func Convert(x float32) float64 { return 0 }
