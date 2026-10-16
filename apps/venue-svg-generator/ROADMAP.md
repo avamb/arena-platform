@@ -35,7 +35,9 @@
 - никаких `sbt:*` атрибутов;
 - `seating-json-v1` остаётся отчётом о происхождении мест (sheet/cell, карантин), а не входом платформы.
 
-Доказательство, что такой SVG проходит импорт: `arena_importsvg_proof` (фаза 10B/10C — Aribau, `BALCONY`, ряд 15, 3 места, `arena-target-profile.json`, exporter `arena_authoring_exporter.py`, expected-import). **Внимание:** папка в upstream-`.gitignore` и в монорепо не попала; код exporter-а переносится в `xlsx_seating_adapter/profiles` вместе с HTTP-слоем (G2a).
+Доказательство, что такой SVG проходит импорт: `arena_importsvg_proof` (фаза 10B/10C — Aribau, `BALCONY`, ряд 15, 3 места, `arena-target-profile.json`, exporter `arena_authoring_exporter.py`, expected-import). Папка `arena_importsvg_proof` в монорепо не попала (upstream-`.gitignore`, клиентские данные), поэтому exporter перенесён в пакет `arena_export` (G2a, без `--sample` и «TEST ONLY»; временная категория, холст и радиус задаются профилем `arena_export/profiles/arena-authoring-v1.json`).
+
+**Статус M3 (G2a): авторский SVG под `ImportSVG`, проверяется тестом в arena.** Go-тест `apps/backend/internal/domain/seating/venue_gen_authoring_test.go` читает синтетический SVG `arena_export/testdata/synthetic_authoring.svg` (его создаёт exporter, файл закоммичен) и проверяет число мест, идентификаторы (сектор, ряд, номер), координаты, радиус, одну категорию и отсутствие предупреждений. HTTP-слой `service/` отдаёт этот SVG и отчёт `seating-json-v1` (`POST /generate`, `GET /jobs/{id}`). Новые тесты генератора подхватывает CI-job «Venue SVG generator» (`pytest.ini`, пути `arena_export` и `service`).
 
 Проверки M3:
 
