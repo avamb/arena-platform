@@ -1,0 +1,12 @@
+{
+  "profile_id": "arena-authoring-v1",
+  "target": "arena-go-importsvg",
+  "commercial_data": false,
+  "category": {
+    "name": "PLACEHOLDER",
+    "color": "#00aaff",
+    "index": 1
+  },
+  "stroke_width_px": 3,
+  "legend": ["Sold", "None", "Reserved", "MyTickets"]
+}
