@@ -284,7 +284,7 @@
 | Сеансы | Перенос сеанса | sessions_dialog.go, `ses:mv`, `ses:go` | R4 | — | `GET /v1/organizations/{org_id}/sessions/{session_id}/change-impact`<br>`PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}` |  |
 | Сеансы | Отмена сеанса | sessions_dialog.go, `ses:cx`, `ses:cxall` (слово) | R4 | — | `GET /v1/organizations/{org_id}/sessions/{session_id}/change-impact`<br>`PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}` |  |
 | Сеансы | Контакт организатора для писем | sessions_dialog.go (`sesSaveContact`) | R4 | — | `PUT /v1/organizations/{org_id}/events/{event_id}/contact` |  |
-| Сеансы | Конец продаж и «вход с» | sessions_sale_times.go, `ses:se`, `ses:dr` | R4 | — | `PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}` |  |
+| Сеансы | Конец продаж и «вход с» | sessions_sale_times.go, `ses:se`, `ses:dr` | R4 | ✔ `live/sale-times.spec.ts` | `PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}` |  |
 | Категории | Категории сеанса (чтение) | categories.go, `ct:e:`, `ct:v:` | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers` |  |
 | Категории | Открыть или закрыть продажи категории | categories.go, `ct:op`, `ct:cl` | R4 | — | `PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}` |  |
 | Категории | Цена, окно продаж, количество | categories.go, `ct:pr`, `ct:wn`, `ct:qt` | R4 | — | `PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}`<br>`GET /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule`<br>`PUT /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule` |  |
