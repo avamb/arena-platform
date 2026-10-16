@@ -30,7 +30,7 @@ func TestData_HasNoVIPField(t *testing.T) {
 	var walk func(typ reflect.Type, path string)
 	seen := map[reflect.Type]bool{}
 	walk = func(typ reflect.Type, path string) {
-		for typ.Kind() == reflect.Ptr || typ.Kind() == reflect.Slice {
+		for typ.Kind() == reflect.Pointer || typ.Kind() == reflect.Slice {
 			typ = typ.Elem()
 		}
 		if typ.Kind() != reflect.Struct || seen[typ] {
