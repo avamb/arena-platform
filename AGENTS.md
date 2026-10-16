@@ -8,8 +8,16 @@ entries short and factual.
 ## Build & run
 
 <!-- Fill in: exact build/run commands for backend and frontends. -->
-- Backend is Go; this host has Go natively AND docker (golang:1.24 image used
+- Backend is Go; this host has Go natively AND docker (golang:1.26.9 image used
   for pinned-version verification).
+- **The Go version is pinned in five places that must move together:** `go.mod`
+  (`go` + `toolchain`), the `Dockerfile` builder stage, every `setup-go` step of
+  `ci.yml` and `load-test.yml`, and the tests that read them
+  (`httpserver/ci_workflow_test.go`, `dockerfile_compose_test.go`). Check
+  dependency vulnerabilities with `go.exe run golang.org/x/vuln/cmd/govulncheck@latest ./...`;
+  the only remaining findings (2026-10-16) are `github.com/docker/docker` via
+  the testcontainers test helper `internal/tests/pgtest`, no fixed version
+  exists and no shipped binary links it.
 - `go` is NOT on the default shell PATH on this Windows host. Prefix commands
   with `$env:PATH = "C:\Program Files\Go\bin;$env:PATH"` (PowerShell) or the
   bash equivalent, otherwise every `go` invocation fails with
@@ -295,7 +303,7 @@ entries short and factual.
   `q.freezeAfter(n)` (`worker_jobs_persistence_test.go`) and `q.thaw()` before
   the next worker starts. To reproduce such a race, temporarily add a
   `time.Sleep` to `inMemoryQueue.MarkDone`; `go test -race` needs cgo, which
-  this Windows host lacks, so run it in `golang:1.24` via docker.
+  this Windows host lacks, so run it in `golang:1.26.9` via docker.
 - **Windows file locking**: On this Windows host, tests that call
   `LocalStorage.Get` (which opens an `*os.File`) must explicitly `Close()` the
   body before calling `Delete()` — Windows refuses to delete open files. Linux
