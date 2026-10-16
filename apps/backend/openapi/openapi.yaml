@@ -3674,6 +3674,220 @@ components:
               type: string
               description: Human-readable explanation.
 
+    SeatBatchRequest:
+      type: object
+      description: One batch of seat changes (task S1c).
+      required: [kind, changes]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          description: "`paint` (tier_id only), `close` (status unavailable only), `open` (status available only) or `apply_layout` (either or both)."
+        changes:
+          type: array
+          description: The seats to change, at most 10 000. A seat_key may appear twice only with the same target.
+          items:
+            $ref: "#/components/schemas/SeatBatchChangeRequest"
+        new_tiers:
+          type: array
+          description: Categories to create inside the batch. Not supported yet; a non-empty list answers 422 `seat_batch.new_tiers_unsupported`.
+          items:
+            type: object
+            description: A category to create (reserved).
+    SeatBatchChangeRequest:
+      type: object
+      description: What one seat should become; at least one of tier_id and status.
+      required: [seat_key]
+      additionalProperties: false
+      properties:
+        seat_key:
+          type: string
+          description: The seat's key.
+        tier_id:
+          type: string
+          format: uuid
+          description: The category to put the seat in, a live category of this session.
+        status:
+          type: string
+          description: "`available` or `unavailable`."
+    SeatBatchSeatState:
+      type: object
+      description: A seat's category and status before or after a batch.
+      required: [tier_id, status]
+      properties:
+        tier_id:
+          type: [string, "null"]
+          format: uuid
+          description: The seat's category, null when it has none.
+        status:
+          type: string
+          description: "`available` or `unavailable`."
+    SeatBatchChange:
+      type: object
+      description: One seat a batch changed.
+      required: [seat_key, from, to]
+      properties:
+        seat_key:
+          type: string
+          description: The seat's key.
+        from:
+          description: The seat before the batch.
+          allOf:
+            - $ref: "#/components/schemas/SeatBatchSeatState"
+        to:
+          description: The seat after the batch.
+          allOf:
+            - $ref: "#/components/schemas/SeatBatchSeatState"
+    SeatBatchSkipped:
+      type: object
+      description: One seat a batch left alone.
+      required: [seat_key, reason]
+      properties:
+        seat_key:
+          type: string
+          description: The seat's key.
+        reason:
+          type: string
+          description: "`sold`, `held`, `seat_not_found`, `unknown_status`, `ga_unit` (a General Admission place cannot change category), `changed_since` (a revert found the seat changed again) or `tier_unavailable` (a revert's category was deleted)."
+        status:
+          type: string
+          description: The seat's status when it was skipped; absent for an unknown key.
+    SeatBatch:
+      type: object
+      description: One recorded batch of seat changes.
+      required: [id, session_id, kind, actor_id, actor_label, seat_status_version, applied_at, reverted_at, reverted_by_batch_id, reverts_batch_id, changes, skipped]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the batch.
+        session_id:
+          type: string
+          format: uuid
+          description: UUID of the session.
+        kind:
+          type: string
+          description: "`paint`, `close`, `open`, `apply_layout` or `revert`."
+        actor_id:
+          type: [string, "null"]
+          format: uuid
+          description: Who applied the batch, null for a principal that is not a UUID.
+        actor_label:
+          type: string
+          description: The kind of principal that applied the batch (`user`, `service`, ...).
+        seat_status_version:
+          type: integer
+          format: int64
+          description: The session's seat_status_version after the batch (one bump per batch).
+        applied_at:
+          type: string
+          format: date-time
+          description: When the batch was applied.
+        reverted_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the batch was reverted, null while it is not.
+        reverted_by_batch_id:
+          type: [string, "null"]
+          format: uuid
+          description: The revert batch, null while the batch is not reverted.
+        reverts_batch_id:
+          type: [string, "null"]
+          format: uuid
+          description: For a revert, the batch it reverted; null otherwise.
+        changes:
+          type: array
+          description: The seats the batch changed.
+          items:
+            $ref: "#/components/schemas/SeatBatchChange"
+        skipped:
+          type: array
+          description: The seats the batch left alone, with the reason.
+          items:
+            $ref: "#/components/schemas/SeatBatchSkipped"
+        unchanged_seat_keys:
+          type: array
+          description: Seats that already were in the requested state. Only in the answer of an apply or a revert.
+          items:
+            type: string
+    SeatBatchList:
+      type: object
+      description: One page of a session's batches.
+      required: [items, total, has_more]
+      properties:
+        items:
+          type: array
+          description: The batches, newest first.
+          items:
+            $ref: "#/components/schemas/SeatBatch"
+        total:
+          type: integer
+          format: int64
+          description: Number of batches of the session.
+        has_more:
+          type: boolean
+          description: True when another page follows.
+    SeatHistoryEntry:
+      type: object
+      description: One batch as seen from one seat.
+      required: [batch_id, kind, actor_label, applied_at, reverted_at, reverted_by_batch_id, outcome]
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+          description: UUID of the batch.
+        kind:
+          type: string
+          description: The batch's kind.
+        actor_label:
+          type: string
+          description: The kind of principal that applied the batch.
+        applied_at:
+          type: string
+          format: date-time
+          description: When the batch was applied.
+        reverted_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the batch was reverted, null while it is not.
+        reverted_by_batch_id:
+          type: [string, "null"]
+          format: uuid
+          description: The revert batch, null while the batch is not reverted.
+        outcome:
+          type: string
+          description: "`changed` or `skipped`."
+        reason:
+          type: string
+          description: Why the seat was skipped (SeatBatchSkipped.reason); only for `skipped`.
+        from:
+          description: The seat before the batch; only for `changed`.
+          allOf:
+            - $ref: "#/components/schemas/SeatBatchSeatState"
+        to:
+          description: The seat after the batch; only for `changed`.
+          allOf:
+            - $ref: "#/components/schemas/SeatBatchSeatState"
+    SeatHistory:
+      type: object
+      description: One page of a seat's history.
+      required: [seat_key, items, total, has_more]
+      properties:
+        seat_key:
+          type: string
+          description: The seat's key.
+        items:
+          type: array
+          description: The entries, newest first.
+          items:
+            $ref: "#/components/schemas/SeatHistoryEntry"
+        total:
+          type: integer
+          format: int64
+          description: Number of entries.
+        has_more:
+          type: boolean
+          description: True when another page follows.
     OrderRefundQueueItem:
       description: A refund in the organization's queue, with what is needed to place it.
       allOf:
@@ -43470,6 +43684,334 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Session queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/seat-batches:
+    post:
+      operationId: postV1OrganizationsOrgIdSessionsSessionIdSeatBatches
+      summary: Apply a batch of seat changes to a session
+      description: |
+        Repaints seats into another category (`paint`), closes them (`close`),
+        opens them (`open`) or does any mix of the two (`apply_layout`) in ONE
+        transaction (seatlayout.ApplyBatch, task S1c): the session row is
+        locked first and its `seat_status_version` is bumped exactly once,
+        the seats are locked in seat_key order, every changed seat is stamped
+        with the new version, and the batch is recorded so it can be listed
+        and reverted. A sold or held seat is frozen: it is listed in
+        `skipped` with a reason and the batch still applies the rest. A
+        General Admission place opens and closes but never changes category
+        (`ga_unit`). `new_tiers` (creating a category inside the batch) is not
+        supported yet and answers 422 `seat_batch.new_tiers_unsupported`.
+        Requires the `event_session.assign_seating_plan` permission in the
+        organization. Audited as `v1.session.seat_batch.apply` with
+        `batch_id`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUID of the session
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SeatBatchRequest"
+      responses:
+        "201":
+          description: The batch was applied and recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatBatch"
+        "400":
+          description: Invalid path parameter or body (`seat_batch.invalid_body`, `seat_batch.invalid_kind`, `seat_batch.no_changes`, `seat_batch.invalid_change`, `seat_batch.duplicate_seat_key`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: More than 10 000 changes (`seat_batch.too_many_changes`), a category that is not a live category of this session (`seat_batch.tier_not_in_session`), or `new_tiers` (`seat_batch.new_tiers_unsupported`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The batch could not be applied (`seat_batch.failed`, `seating.audit_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdSeatBatches
+      summary: List the seat batches of a session
+      description: |
+        The batches applied to the session, newest first, with their changes
+        and skipped seats. Requires the `event_session.assign_seating_plan`
+        permission in the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUID of the session
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1-50 (default 20).
+          schema: { type: integer, minimum: 1, maximum: 50 }
+        - name: offset
+          in: query
+          required: false
+          description: Number of batches to skip (default 0).
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: One page of batches.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatBatchList"
+        "400":
+          description: Invalid path parameter, limit or offset (`seat_batch.invalid_page`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The batches could not be read (`seat_batch.list_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/seat-batches/{batch_id}/revert:
+    post:
+      operationId: postV1OrganizationsOrgIdSessionsSessionIdSeatBatchesBatchIdRevert
+      summary: Revert a seat batch
+      description: |
+        Applies a NEW batch (kind `revert`) that puts every seat the original
+        batch changed back into its previous category and status, under the
+        same rules: a seat that is now sold or held is skipped, and so is a
+        seat a later batch changed again (`changed_since`) or whose previous
+        category was deleted (`tier_unavailable`). The original batch gets
+        `reverted_at` and `reverted_by_batch_id`. A batch is reverted at most
+        once and a revert is never reverted. Requires the
+        `event_session.assign_seating_plan` permission in the organization.
+        Audited as `v1.session.seat_batch.revert` with `batch_id`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUID of the session
+          schema: { type: string, format: uuid }
+        - name: batch_id
+          in: path
+          required: true
+          description: UUID of the batch to revert
+          schema: { type: string, format: uuid }
+      responses:
+        "201":
+          description: The revert batch that was applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatBatch"
+        "400":
+          description: A path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found or not part of this organization (`session.not_found`), or no such batch of this session (`seat_batch.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The batch was already reverted (`seat_batch.already_reverted`) or is itself a revert (`seat_batch.revert_not_allowed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The revert could not be applied (`seat_batch.failed`, `seating.audit_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/seats/{seat_key}/history:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdSeatsSeatKeyHistory
+      summary: History of one seat
+      description: |
+        Every batch that changed the seat, or tried to and skipped it, newest
+        first. `seat_key` must be path-escaped (`Parter|A|1` is sent as
+        `Parter%7CA%7C1`). Requires the `event_session.assign_seating_plan`
+        permission in the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUID of the session
+          schema: { type: string, format: uuid }
+        - name: seat_key
+          in: path
+          required: true
+          description: The seat's key, path-escaped.
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1-100 (default 50).
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - name: offset
+          in: query
+          required: false
+          description: Number of entries to skip (default 0).
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: One page of the seat's history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatHistory"
+        "400":
+          description: Invalid path parameter, seat key, limit or offset (`seat_batch.invalid_seat_key`, `seat_batch.invalid_page`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The history could not be read (`seat_batch.list_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
           content:
             application/json:
               schema:

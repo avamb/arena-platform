@@ -7390,6 +7390,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/sessions/{session_id}/seat-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the seat batches of a session
+         * @description The batches applied to the session, newest first, with their changes
+         *     and skipped seats. Requires the `event_session.assign_seating_plan`
+         *     permission in the organization.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSeatBatches"];
+        put?: never;
+        /**
+         * Apply a batch of seat changes to a session
+         * @description Repaints seats into another category (`paint`), closes them (`close`),
+         *     opens them (`open`) or does any mix of the two (`apply_layout`) in ONE
+         *     transaction (seatlayout.ApplyBatch, task S1c): the session row is
+         *     locked first and its `seat_status_version` is bumped exactly once,
+         *     the seats are locked in seat_key order, every changed seat is stamped
+         *     with the new version, and the batch is recorded so it can be listed
+         *     and reverted. A sold or held seat is frozen: it is listed in
+         *     `skipped` with a reason and the batch still applies the rest. A
+         *     General Admission place opens and closes but never changes category
+         *     (`ga_unit`). `new_tiers` (creating a category inside the batch) is not
+         *     supported yet and answers 422 `seat_batch.new_tiers_unsupported`.
+         *     Requires the `event_session.assign_seating_plan` permission in the
+         *     organization. Audited as `v1.session.seat_batch.apply` with
+         *     `batch_id`.
+         */
+        post: operations["postV1OrganizationsOrgIdSessionsSessionIdSeatBatches"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/seat-batches/{batch_id}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revert a seat batch
+         * @description Applies a NEW batch (kind `revert`) that puts every seat the original
+         *     batch changed back into its previous category and status, under the
+         *     same rules: a seat that is now sold or held is skipped, and so is a
+         *     seat a later batch changed again (`changed_since`) or whose previous
+         *     category was deleted (`tier_unavailable`). The original batch gets
+         *     `reverted_at` and `reverted_by_batch_id`. A batch is reverted at most
+         *     once and a revert is never reverted. Requires the
+         *     `event_session.assign_seating_plan` permission in the organization.
+         *     Audited as `v1.session.seat_batch.revert` with `batch_id`.
+         */
+        post: operations["postV1OrganizationsOrgIdSessionsSessionIdSeatBatchesBatchIdRevert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/seats/{seat_key}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * History of one seat
+         * @description Every batch that changed the seat, or tried to and skipped it, newest
+         *     first. `seat_key` must be path-escaped (`Parter|A|1` is sent as
+         *     `Parter%7CA%7C1`). Requires the `event_session.assign_seating_plan`
+         *     permission in the organization.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSeatsSeatKeyHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/orders/{id}/cancel": {
         parameters: {
             query?: never;
@@ -11531,6 +11621,169 @@ export interface components {
                 /** @description Human-readable explanation. */
                 message?: string;
             };
+        };
+        /** @description One batch of seat changes (task S1c). */
+        SeatBatchRequest: {
+            /** @description `paint` (tier_id only), `close` (status unavailable only), `open` (status available only) or `apply_layout` (either or both). */
+            kind: string;
+            /** @description The seats to change, at most 10 000. A seat_key may appear twice only with the same target. */
+            changes: components["schemas"]["SeatBatchChangeRequest"][];
+            /** @description Categories to create inside the batch. Not supported yet; a non-empty list answers 422 `seat_batch.new_tiers_unsupported`. */
+            new_tiers?: Record<string, never>[];
+        };
+        /** @description What one seat should become; at least one of tier_id and status. */
+        SeatBatchChangeRequest: {
+            /** @description The seat's key. */
+            seat_key: string;
+            /**
+             * Format: uuid
+             * @description The category to put the seat in, a live category of this session.
+             */
+            tier_id?: string;
+            /** @description `available` or `unavailable`. */
+            status?: string;
+        };
+        /** @description A seat's category and status before or after a batch. */
+        SeatBatchSeatState: {
+            /**
+             * Format: uuid
+             * @description The seat's category, null when it has none.
+             */
+            tier_id: string | null;
+            /** @description `available` or `unavailable`. */
+            status: string;
+        };
+        /** @description One seat a batch changed. */
+        SeatBatchChange: {
+            /** @description The seat's key. */
+            seat_key: string;
+            /** @description The seat before the batch. */
+            from: components["schemas"]["SeatBatchSeatState"];
+            /** @description The seat after the batch. */
+            to: components["schemas"]["SeatBatchSeatState"];
+        };
+        /** @description One seat a batch left alone. */
+        SeatBatchSkipped: {
+            /** @description The seat's key. */
+            seat_key: string;
+            /** @description `sold`, `held`, `seat_not_found`, `unknown_status`, `ga_unit` (a General Admission place cannot change category), `changed_since` (a revert found the seat changed again) or `tier_unavailable` (a revert's category was deleted). */
+            reason: string;
+            /** @description The seat's status when it was skipped; absent for an unknown key. */
+            status?: string;
+        };
+        /** @description One recorded batch of seat changes. */
+        SeatBatch: {
+            /**
+             * Format: uuid
+             * @description UUID of the batch.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the session.
+             */
+            session_id: string;
+            /** @description `paint`, `close`, `open`, `apply_layout` or `revert`. */
+            kind: string;
+            /**
+             * Format: uuid
+             * @description Who applied the batch, null for a principal that is not a UUID.
+             */
+            actor_id: string | null;
+            /** @description The kind of principal that applied the batch (`user`, `service`, ...). */
+            actor_label: string;
+            /**
+             * Format: int64
+             * @description The session's seat_status_version after the batch (one bump per batch).
+             */
+            seat_status_version: number;
+            /**
+             * Format: date-time
+             * @description When the batch was applied.
+             */
+            applied_at: string;
+            /**
+             * Format: date-time
+             * @description When the batch was reverted, null while it is not.
+             */
+            reverted_at: string | null;
+            /**
+             * Format: uuid
+             * @description The revert batch, null while the batch is not reverted.
+             */
+            reverted_by_batch_id: string | null;
+            /**
+             * Format: uuid
+             * @description For a revert, the batch it reverted; null otherwise.
+             */
+            reverts_batch_id: string | null;
+            /** @description The seats the batch changed. */
+            changes: components["schemas"]["SeatBatchChange"][];
+            /** @description The seats the batch left alone, with the reason. */
+            skipped: components["schemas"]["SeatBatchSkipped"][];
+            /** @description Seats that already were in the requested state. Only in the answer of an apply or a revert. */
+            unchanged_seat_keys?: string[];
+        };
+        /** @description One page of a session's batches. */
+        SeatBatchList: {
+            /** @description The batches, newest first. */
+            items: components["schemas"]["SeatBatch"][];
+            /**
+             * Format: int64
+             * @description Number of batches of the session.
+             */
+            total: number;
+            /** @description True when another page follows. */
+            has_more: boolean;
+        };
+        /** @description One batch as seen from one seat. */
+        SeatHistoryEntry: {
+            /**
+             * Format: uuid
+             * @description UUID of the batch.
+             */
+            batch_id: string;
+            /** @description The batch's kind. */
+            kind: string;
+            /** @description The kind of principal that applied the batch. */
+            actor_label: string;
+            /**
+             * Format: date-time
+             * @description When the batch was applied.
+             */
+            applied_at: string;
+            /**
+             * Format: date-time
+             * @description When the batch was reverted, null while it is not.
+             */
+            reverted_at: string | null;
+            /**
+             * Format: uuid
+             * @description The revert batch, null while the batch is not reverted.
+             */
+            reverted_by_batch_id: string | null;
+            /** @description `changed` or `skipped`. */
+            outcome: string;
+            /** @description Why the seat was skipped (SeatBatchSkipped.reason); only for `skipped`. */
+            reason?: string;
+            /** @description The seat before the batch; only for `changed`. */
+            from?: components["schemas"]["SeatBatchSeatState"];
+            /** @description The seat after the batch; only for `changed`. */
+            to?: components["schemas"]["SeatBatchSeatState"];
+        };
+        /** @description One page of a seat's history. */
+        SeatHistory: {
+            /** @description The seat's key. */
+            seat_key: string;
+            /** @description The entries, newest first. */
+            items: components["schemas"]["SeatHistoryEntry"][];
+            /**
+             * Format: int64
+             * @description Number of entries.
+             */
+            total: number;
+            /** @description True when another page follows. */
+            has_more: boolean;
         };
         /** @description A refund in the organization's queue, with what is needed to place it. */
         OrderRefundQueueItem: components["schemas"]["OrderRefundItem"] & {
@@ -49548,6 +49801,358 @@ export interface operations {
                 };
             };
             /** @description Session queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdSeatBatches: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1-50 (default 20). */
+                limit?: number;
+                /** @description Number of batches to skip (default 0). */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of batches. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatBatchList"];
+                };
+            };
+            /** @description Invalid path parameter, limit or offset (`seat_batch.invalid_page`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The batches could not be read (`seat_batch.list_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdSessionsSessionIdSeatBatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeatBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description The batch was applied and recorded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatBatch"];
+                };
+            };
+            /** @description Invalid path parameter or body (`seat_batch.invalid_body`, `seat_batch.invalid_kind`, `seat_batch.no_changes`, `seat_batch.invalid_change`, `seat_batch.duplicate_seat_key`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 10 000 changes (`seat_batch.too_many_changes`), a category that is not a live category of this session (`seat_batch.tier_not_in_session`), or `new_tiers` (`seat_batch.new_tiers_unsupported`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The batch could not be applied (`seat_batch.failed`, `seating.audit_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdSessionsSessionIdSeatBatchesBatchIdRevert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the session */
+                session_id: string;
+                /** @description UUID of the batch to revert */
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The revert batch that was applied. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatBatch"];
+                };
+            };
+            /** @description A path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found or not part of this organization (`session.not_found`), or no such batch of this session (`seat_batch.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The batch was already reverted (`seat_batch.already_reverted`) or is itself a revert (`seat_batch.revert_not_allowed`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The revert could not be applied (`seat_batch.failed`, `seating.audit_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdSeatsSeatKeyHistory: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1-100 (default 50). */
+                limit?: number;
+                /** @description Number of entries to skip (default 0). */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the session */
+                session_id: string;
+                /** @description The seat's key, path-escaped. */
+                seat_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the seat's history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatHistory"];
+                };
+            };
+            /** @description Invalid path parameter, seat key, limit or offset (`seat_batch.invalid_seat_key`, `seat_batch.invalid_page`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The history could not be read (`seat_batch.list_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

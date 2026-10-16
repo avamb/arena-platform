@@ -335,7 +335,6 @@ func (h *Handler) HandleListSeatBatches(w http.ResponseWriter, r *http.Request) 
 	))
 }
 
-
 func (h *Handler) listBatches(ctx context.Context, sessionID, orgID uuid.UUID, limit, offset int32) ([]seatlayout.Batch, error) {
 	rows, err := h.queries.ListSessionSeatBatches(ctx, sessionID, orgID, limit, offset)
 	if err != nil {
