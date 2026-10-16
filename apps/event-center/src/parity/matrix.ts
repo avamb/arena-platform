@@ -482,6 +482,26 @@ export const PARITY: readonly ParityRow[] = [
     routes: ["POST /v1/bot/invitations/accept"],
     note: "В вебе: письмо с установкой пароля ведёт на `/accept-invite`. Приглашение из «Команды» с каналом web — экран «Команда» (4-5).",
   },
+  // M2
+  {
+    area: "Заказы",
+    fn: "Проходки в заказе",
+    bot: "order_card.go, `or:v:` (строка билета)",
+    web: "R3",
+    ready: { twin: "live/scans.spec.ts" },
+    routes: [`GET ${O}/orders/{id}`],
+    note: "У билета до пяти последних сканов: время, итог (прошёл или отказ), кто сообщил (сканер Arena или МАКС), вход. Первый вход одинаково берётся из сканера Arena и из МАКС (`used_at`).",
+  },
+  // M2
+  {
+    area: "Заказы",
+    fn: "Билеты сеанса и фильтр «Не прошли»",
+    bot: "session_not_entered.go, `ses:ne:`",
+    web: "R4",
+    ready: { twin: "live/scans.spec.ts" },
+    routes: [`GET ${O}/sessions/{session_id}/tickets`],
+    note: "Постраничный список билетов сеанса: номер, заказ, покупатель, вход. «Не прошли» — активные билеты без входа. Ключ организации сюда не допущен (имена и e-mail покупателей). Столбцы «Время входа», «Источник входа», «Сканер / вход» есть и в файле продаж.",
+  },
 ];
 
 /** Every route of the matrix, without duplicates. */

@@ -17,6 +17,7 @@ import type {
   MeResponse,
   OrderDetail,
   OrderLetter,
+  SessionTicketList,
   OrderListResponse,
   OrderResendTicketsResponse,
   OrderSummary,
@@ -432,5 +433,22 @@ export function removeMember(orgId: string, userId: string, membershipRole: stri
     route: API.removeMember,
     params: { org_id: orgId, user_id: userId },
     body: { role: membershipRole },
+  });
+}
+
+// M2
+export interface SessionTicketsQuery {
+  /** false = active tickets nobody entered with, true = tickets with an entry, absent = all. */
+  entered?: boolean;
+  limit: number;
+  offset: number;
+}
+
+/** One page of a session's tickets with the buyer and the entry at the door. */
+export function fetchSessionTickets(orgId: string, sessionId: string, q: SessionTicketsQuery): Promise<SessionTicketList> {
+  return call<SessionTicketList>({
+    route: API.sessionTickets,
+    params: { org_id: orgId, session_id: sessionId },
+    query: { entered: q.entered === undefined ? undefined : String(q.entered), limit: q.limit, offset: q.offset },
   });
 }

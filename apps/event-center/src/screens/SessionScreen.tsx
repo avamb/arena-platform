@@ -12,6 +12,7 @@ import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { Badge, DownloadButton, ErrorBox, Loading } from "@/components/ui";
 import { SalesFigures } from "@/components/SalesFigures";
+import { SessionTickets } from "@/components/SessionTickets";
 import { useOrg } from "@/screens/OrgLayout";
 
 function tierPrice(tier: TicketTierItem, locale: string, t: ReturnType<typeof useI18n>["t"]): string {
@@ -198,6 +199,8 @@ export function SessionScreen() {
           {tiers.data !== undefined && <TiersTable tiers={tiers.data.tiers} />}
         </section>
       )}
+      {/* M2 */}
+      {canSales && <SessionTickets orgId={orgId} sessionId={sessionId} tz={tz} />}
     </article>
   );
 }

@@ -6,6 +6,7 @@ import { useI18n, type MessageKey } from "@/lib/i18n";
 import { UNPAID_REASONS, orderNumber, seatText, ticketDelivery } from "@/lib/orders";
 import { OrderLetters } from "@/components/OrderLetters";
 import { CancelOrder } from "@/components/CancelOrder";
+import { TicketScans } from "@/components/TicketScans";
 import { Badge, ErrorBox, Loading } from "@/components/ui";
 import { useOrg } from "@/screens/OrgLayout";
 import { OrderStatusBadge } from "@/screens/OrdersScreen";
@@ -175,6 +176,8 @@ export function OrderScreen() {
                     })}
                   </dd>
                 </dl>
+                {/* M2 */}
+                <TicketScans scans={tk.scans} tz={tz} />
               </li>
             );
           })}
