@@ -270,10 +270,12 @@ func (h *Handler) writeBatchError(w http.ResponseWriter, r *http.Request, err er
 }
 
 // pageParams reads limit/offset; a bad value is a 400.
-func pageParams(w http.ResponseWriter, r *http.Request, def, max int) (int32, int32, bool) {
-	limit, offset := def, 0
+// ParseInt with bitSize 32 keeps every value inside int32 by construction.
+func pageParams(w http.ResponseWriter, r *http.Request, def, max int32) (int32, int32, bool) {
+	limit, offset := def, int32(0)
 	if v := r.URL.Query().Get("limit"); v != "" {
-		n, err := strconv.Atoi(v)
+		n64, err := strconv.ParseInt(v, 10, 32)
+		n := int32(n64)
 		if err != nil || n < 1 || n > max {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"seat_batch.invalid_page", "limit must be an integer between 1 and the maximum", r,
@@ -284,7 +286,8 @@ func pageParams(w http.ResponseWriter, r *http.Request, def, max int) (int32, in
 		limit = n
 	}
 	if v := r.URL.Query().Get("offset"); v != "" {
-		n, err := strconv.Atoi(v)
+		n64, err := strconv.ParseInt(v, 10, 32)
+		n := int32(n64)
 		if err != nil || n < 0 || n > 1_000_000 {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"seat_batch.invalid_page", "offset must be a non-negative integer", r,
@@ -294,7 +297,7 @@ func pageParams(w http.ResponseWriter, r *http.Request, def, max int) (int32, in
 		}
 		offset = n
 	}
-	return int32(limit), int32(offset), true //nolint:gosec // bounded above
+	return limit, offset, true
 }
 
 type seatBatchListResponse struct {
