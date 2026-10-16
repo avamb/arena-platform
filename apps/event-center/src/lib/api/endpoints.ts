@@ -12,6 +12,8 @@ import type {
   BotInvitationResendResponse,
   BotInvitationRevokeResponse,
   BotTeamResponse,
+  EventDeleteImpact,
+  EventEnvelope,
   EventListResponse,
   EventSummary,
   MeResponse,
@@ -433,4 +435,25 @@ export function removeMember(orgId: string, userId: string, membershipRole: stri
     params: { org_id: orgId, user_id: userId },
     body: { role: membershipRole },
   });
+}
+
+// ─── 5-1: the status of an event ─────────────────────────────────────────────
+
+/**
+ * Moves an event along its lifecycle (`event.publish`). Re-applying the same
+ * status is a silent 200. 422: `event.invalid_transition`,
+ * `event.publish_requires_session`, `event.publish_requires_priced_tier`.
+ */
+export function updateEventStatus(orgId: string, eventId: string, status: string): Promise<EventEnvelope> {
+  return call<EventEnvelope>({ route: API.eventStatus, params: { org_id: orgId, id: eventId }, body: { status } });
+}
+
+/** The dry run of a delete: what it would touch and whether it is allowed. Writes nothing. */
+export function fetchEventDeleteImpact(orgId: string, eventId: string): Promise<EventDeleteImpact> {
+  return call<EventDeleteImpact>({ route: API.eventDeleteImpact, params: { org_id: orgId, event_id: eventId } });
+}
+
+/** Deletes an event that sold nothing. 409 `event.has_paid_orders` otherwise. */
+export function deleteEvent(orgId: string, eventId: string): Promise<unknown> {
+  return call<unknown>({ route: API.eventDelete, params: { org_id: orgId, id: eventId } });
 }

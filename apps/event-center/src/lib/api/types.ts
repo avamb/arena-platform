@@ -61,3 +61,6 @@ export type BotInvitation = S["BotInvitation"];
 export type BotInvitationCreateResponse = S["BotInvitationCreateResponse"];
 export type BotInvitationResendResponse = S["BotInvitationResendResponse"];
 export type BotInvitationRevokeResponse = S["BotInvitationRevokeResponse"];
+// 5-1: event status
+export type EventEnvelope = S["EventEnvelope"];
+export type EventDeleteImpact = S["EventDeleteImpact"];

@@ -117,7 +117,11 @@ export type ApiErrorStem =
   | "invitationClosed"
   | "memberGone"
   | "roleNotAllowed"
-  | "lastOwner";
+  | "lastOwner"
+  // 5-1
+  | "eventInvalidTransition"
+  | "eventNeedsSession"
+  | "eventNeedsTier";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -134,6 +138,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "apiKeyForbidden", "sellerHideOperatorOnly", "kybOperatorOnly", "legalNameRequired",
   // 4-5
   "resendTooSoon", "invitationChannel", "webInvitationOff", "invitationClosed", "memberGone", "roleNotAllowed", "lastOwner",
+  // 5-1
+  "eventInvalidTransition", "eventNeedsSession", "eventNeedsTier",
 ];
 
 /**
@@ -204,6 +210,10 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "bot.invalid_role": "invalid",
   "membership.empty_body": "invalid",
   "membership.invalid_role": "invalid",
+  // 5-1: the status of an event
+  "event.invalid_transition": "eventInvalidTransition",
+  "event.publish_requires_session": "eventNeedsSession",
+  "event.publish_requires_priced_tier": "eventNeedsTier",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",

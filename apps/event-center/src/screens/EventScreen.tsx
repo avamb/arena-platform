@@ -7,6 +7,7 @@ import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { Badge, DownloadButton, Empty, ErrorBox, Loading } from "@/components/ui";
 import { SalesFigures } from "@/components/SalesFigures";
+import { EventStatusBlock } from "@/components/EventStatusBlock";
 import { useOrg } from "@/screens/OrgLayout";
 import { SalesStateBadge, useEventsList } from "@/screens/EventsScreen";
 
@@ -140,6 +141,15 @@ export function EventScreen() {
           </Link>
         )}
       </div>
+
+      <EventStatusBlock
+        orgId={orgId}
+        eventId={eventId}
+        eventName={event.name}
+        status={event.status}
+        canPublish={access.can("event.publish")}
+        canDelete={access.can("event.delete")}
+      />
 
       {canSales && (
         <section aria-labelledby="event-totals">
