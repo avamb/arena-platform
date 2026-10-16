@@ -24622,8 +24622,8 @@ paths:
         seat-key list, per-outcome counts, and the actor.
 
         Requires JWT authentication and the
-        `event_session.assign_seating_plan` permission (same
-        operational role used for SEAT-B2 binding).
+        `session.seats.manage` permission (migration 0157, separate
+        from binding a plan).
       tags: [v1, seating]
       security:
         - bearerAuth: []
@@ -24685,7 +24685,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor does not hold event_session.assign_seating_plan
+          description: Actor does not hold session.seats.manage
           content:
             application/json:
               schema:
@@ -30831,7 +30831,7 @@ paths:
       summary: Admin-only per-seat inventory (AB-39)
       description: |
         Returns per-seat rows with `tier_id` for the admin seat table.
-        Requires JWT + `event_session.assign_seating_plan`. Tenant is
+        Requires JWT + `session.seats.manage`. Tenant is
         resolved from the session's owning organization.
       tags: [v1, seating]
       security:
@@ -30905,7 +30905,7 @@ paths:
           * Unknown seat_keys are reported in `unknown_seat_keys` — they
             do NOT fail the request.
 
-        Requires JWT + `event_session.assign_seating_plan`. Tenant is
+        Requires JWT + `session.seats.manage`. Tenant is
         resolved from the session's owning organization.
       tags: [v1, seating]
       security:
@@ -30965,7 +30965,7 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: |
-            Caller lacks `event_session.assign_seating_plan` or is not a
+            Caller lacks `session.seats.manage` or is not a
             member of the session's owning organization
             (`org.access_denied`).
           content:

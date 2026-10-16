@@ -73,13 +73,12 @@ func (s *Server) mountSeatingRoutes(r chi.Router) {
 		)
 	})
 
-	// Operator seat block/unblock surface (feature #308, Wave SEAT-B4). Same
-	// permission family as the bind endpoint above — operators authorised to
-	// assign a seating plan to a session are the same population authorised
-	// to close individual seats / rows / sectors for sale (tech seats, house
-	// holds, blocked sightlines).
+	// Operator seat block/unblock surface (feature #308, Wave SEAT-B4). Gated by
+	// session.seats.manage (migration 0157, task S1f), no longer the bind
+	// permission: binding a plan is setup, closing individual seats / rows /
+	// sectors for sale (tech seats, house holds, blocked sightlines) is routine.
 	r.Group(func(pr chi.Router) {
-		s.applyAuth(pr, "event_session.assign_seating_plan", "seating")
+		s.applyAuth(pr, "session.seats.manage", "seating")
 		pr.Patch(
 			"/organizations/{org_id}/events/{event_id}/sessions/{id}/seats",
 			s.handlePatchSessionSeats,
@@ -88,12 +87,12 @@ func (s *Server) mountSeatingRoutes(r chi.Router) {
 
 	// AB-39 (feature #429): per-seat price category reassignment + admin
 	// seat inventory read surface. Flat paths — the shim resolves the
-	// session's org before enforcing membership. Same permission family:
-	// an operator authorised to bind a plan is authorised to move seats
-	// between the tiers minted from it, and to see the underlying tier
+	// session's org before enforcing membership. Gated by session.seats.manage
+	// (migration 0157, task S1f): moving seats between the tiers minted from
+	// a plan and reading the underlying tier
 	// binding per seat (which the public seat-status endpoint hides).
 	r.Group(func(pr chi.Router) {
-		s.applyAuth(pr, "event_session.assign_seating_plan", "seating")
+		s.applyAuth(pr, "session.seats.manage", "seating")
 		pr.Patch(
 			"/event-sessions/{id}/seats/category",
 			s.handlePatchSessionSeatsCategory,
