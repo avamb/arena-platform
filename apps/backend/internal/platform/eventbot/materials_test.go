@@ -76,7 +76,7 @@ func TestMaterialsErrKey(t *testing.T) {
 func TestNormalizeMaterialLink(t *testing.T) {
 	t.Parallel()
 	for in, want := range map[string]string{
-		"  https://youtu.be/abc ":           "https://youtu.be/abc",
+		"  https://youtu.be/abc ":            "https://youtu.be/abc",
 		"youtu.be/abc":                       "https://youtu.be/abc",
 		"ticketportal.cz/event/12":           "https://ticketportal.cz/event/12",
 		"http://example.com/x":               "http://example.com/x", // the API refuses it in its own words
