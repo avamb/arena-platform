@@ -47,9 +47,12 @@ SELECT t.id, t.system_ticket_id, t.status AS ticket_status, t.used_at, t.issued_
        oi.total AS item_total,
        tc.payload AS barcode,
        sc.name AS channel_name,
-       pc.code AS promo_code
+       pc.code AS promo_code,
+       fs.scanned_at AS entered_at, fs.source AS entered_source,
+       fs.scanner_label AS entered_scanner, fs.gate AS entered_gate
 FROM      tickets t
 JOIN      sessions s            ON s.id = t.session_id
+JOIN      events ev             ON ev.id = s.event_id
 LEFT JOIN venues v              ON v.id = s.venue_id
 LEFT JOIN orders o              ON o.id = t.order_id
 LEFT JOIN checkout_sessions cs  ON cs.id = t.checkout_session_id
@@ -64,6 +67,12 @@ LEFT JOIN ticket_credentials tc ON tc.ticket_id = t.id AND tc.type = 'ean13'
 LEFT JOIN sales_channels sc     ON sc.id = COALESCE(o.channel_id, cs.channel_id)
 LEFT JOIN promo_code_redemptions pr ON pr.order_id = o.id
 LEFT JOIN promo_codes pc        ON pc.id = COALESCE(pr.promo_code_id, cs.promo_code_id)
+LEFT JOIN LATERAL (
+    SELECT se.scanned_at, se.source, se.scanner_label, se.gate FROM scan_events se
+    WHERE  se.ticket_id = t.id AND se.result = 'admitted' AND se.org_id = ev.org_id
+    ORDER  BY se.scanned_at, se.id
+    LIMIT  1
+) fs ON true
 WHERE  ($1::uuid IS NULL OR t.session_id = $1::uuid)
   AND  ($2::uuid IS NULL OR s.event_id   = $2::uuid)
   AND  s.deleted_at IS NULL

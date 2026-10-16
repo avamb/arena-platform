@@ -63,6 +63,14 @@ func (s *Server) handleSessionSummary(w http.ResponseWriter, r *http.Request) {
 	s.ordersHandler().HandleSessionSummary(w, r)
 }
 
+// handleSessionTickets serves GET .../sessions/{session_id}/tickets (M2).
+func (s *Server) handleSessionTickets(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.ordersHandler().HandleSessionTickets(w, r)
+}
+
 func (s *Server) handleEventSummary(w http.ResponseWriter, r *http.Request) {
 	if !s.enforceOrgMembership(w, r, "org_id") {
 		return
