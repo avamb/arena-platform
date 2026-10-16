@@ -445,7 +445,8 @@ SELECT t.system_ticket_id,
        NULLIF(btrim(ord.currency), '') AS price_currency,
        COALESCE(s.poster_media_id, e.poster_media_id) AS poster_media_id,
        epr.name                      AS promoter_name,
-       s.doors_open_at               AS doors_open_at
+       s.doors_open_at               AS doors_open_at,
+       een.note                      AS email_note
 FROM       tickets t
 LEFT JOIN  sessions      s  ON s.id  = t.session_id
 LEFT JOIN  events        e  ON e.id  = s.event_id
@@ -459,6 +460,7 @@ LEFT JOIN  customers     cu ON cu.id = ord.customer_id
 LEFT JOIN  order_items   oi ON oi.ticket_id = t.id
 LEFT JOIN  event_promoters ep ON ep.event_id = e.id
 LEFT JOIN  org_promoters  epr ON epr.id = ep.promoter_id
+LEFT JOIN  event_email_notes een ON een.event_id = e.id
 WHERE  t.id = $1`
 
 // TicketPresentationRow is everything the ticket e-mail body and the PDF
@@ -524,6 +526,9 @@ type TicketPresentationRow struct {
 	// DoorsOpenAt is sessions.doors_open_at (migration 0128): when the venue
 	// lets people in, printed beside the start. NULL when not given.
 	DoorsOpenAt *time.Time `json:"doors_open_at"`
+	// EmailNote is the organizer's own text of the event (event_email_notes,
+	// migration 0161) that the ticket letter prints. NULL when there is none.
+	EmailNote *string `json:"email_note"`
 }
 
 // GetTicketPresentationByID resolves the presentation values for one
@@ -552,6 +557,7 @@ func (q *Queries) GetTicketPresentationByID(ctx context.Context, ticketID uuid.U
 		&p.PosterMediaID,
 		&p.PromoterName,
 		&p.DoorsOpenAt,
+		&p.EmailNote,
 	)
 	return p, err
 }

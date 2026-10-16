@@ -33,6 +33,10 @@
       <tr><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;">Total paid</td><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;white-space:nowrap;text-align:right;">{{.Total}}</td></tr>
     </table>
   </td></tr>{{end}}
+  {{with .EventNote.Paragraphs}}<tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">About the event</div>
+    {{range .}}<p style="margin:0 0 8px 0;color:#46555f;font-size:14px;line-height:1.6;white-space:pre-line;">{{range .}}{{if .URL}}<a href="{{.URL}}" rel="noopener" style="color:#1a73e8;">{{.Text}}</a>{{else}}{{.Text}}{{end}}{{end}}</p>{{end}}
+  </td></tr>{{end}}
   {{if .WithdrawalNotice}}<tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Tickets for an event on a specific date are not covered by the right of withdrawal. Your order became binding when you paid.</td></tr>{{end}}
   <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Open the file on your phone and show the barcode at the entrance — no need to print.</td></tr>
   {{if .Branding.ContactEmail}}<tr><td style="padding:8px 32px 16px 32px;color:#46555f;font-size:14px;line-height:1.6;">If you have any questions, just reply to this email.</td></tr>{{end}}
@@ -79,7 +83,10 @@ Payment:
 {{end}}{{with .ServiceFee}}- Service fee: {{.}}
 {{end}}- Total paid: {{.Total}}
 {{end}}
-{{if .WithdrawalNotice}}Tickets for an event on a specific date are not covered by the right of withdrawal. Your order became binding when you paid.
+{{with .EventNote.Plain}}About the event:
+{{.}}
+
+{{end}}{{if .WithdrawalNotice}}Tickets for an event on a specific date are not covered by the right of withdrawal. Your order became binding when you paid.
 
 {{end}}Open the file on your phone and show the barcode at the entrance — no need to print.
 {{if .Branding.ContactEmail}}If you have any questions, just reply to this email.
