@@ -111,6 +111,7 @@ var flatRouteFamilies = []flatFamily{
 	{"GET", "/v1/public/feeds/{feed_token}/events/{event_id}", flatPublic, "feed token or checkout token in the URL"},
 	{"GET", "/v1/public/pages/{org_slug}", flatPublic, "feed token or checkout token in the URL"},
 	{"GET", "/v1/public/pages/{org_slug}/{event_slug}", flatPublic, "feed token or checkout token in the URL"},
+	{"GET", "/v1/public/pages/{org_slug}/terms", flatPublic, "public page slug; the organizer's published terms, a feed token of another organization answers 404 (hlegal)"},
 	{"GET", "/v1/public/payment-return", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/checkout/{checkout_token}/recover", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/organizer-contact/{org_slug}", flatPublic, "public page slug; reads only whether the page has a form, never answers the address (hcontact)"},
@@ -199,6 +200,10 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/admin/users/{user_id}/global-roles", flatPlatform, "superadmin or platform permission"},
 	{"POST", "/v1/admin/users/{user_id}/reactivate", flatPlatform, "superadmin or platform permission"},
 	{"PUT", "/v1/admin/onboarding/settings", flatPlatform, "superadmin or platform permission"},
+	{"GET", "/v1/admin/legal-documents", flatPlatform, "legal.manage"},
+	{"POST", "/v1/admin/legal-documents", flatPlatform, "legal.manage"},
+	{"GET", "/v1/admin/legal-documents/{id}", flatPlatform, "legal.manage"},
+	{"POST", "/v1/admin/legal-documents/{id}/publish", flatPlatform, "legal.manage"},
 	{"*", "/v1/operator-networks", flatPlatform, "network.* permissions"},
 	// /v1/operator-networks/*  (flatPlatform): network.* permissions
 	{"GET", "/v1/operator-networks/{id}", flatPlatform, "network.* permissions"},

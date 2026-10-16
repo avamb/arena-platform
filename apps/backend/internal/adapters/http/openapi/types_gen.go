@@ -4576,6 +4576,18 @@ type CreateEventRequestStatus string
 // CreateEventRequestVisibility Initial visibility. Defaults to `public` on the server when omitted.
 type CreateEventRequestVisibility string
 
+// CreateLegalDocumentRequest A new draft of a terms template (P3a).
+type CreateLegalDocumentRequest struct {
+	// BodyTemplate The template text, at most 100 000 characters, only allowlisted placeholders.
+	BodyTemplate string `json:"body_template"`
+
+	// Kind Document kind, `sale_terms`.
+	Kind string `json:"kind"`
+
+	// Locale Language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+	Locale string `json:"locale"`
+}
+
 // CreateOperatorNetworkRequest defines model for CreateOperatorNetworkRequest.
 type CreateOperatorNetworkRequest struct {
 	// Name Human-readable network name (trimmed server-side)
@@ -7928,6 +7940,51 @@ type InventoryRowItem struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// LegalDocument One version of a terms template (P3a). Immutable once published.
+type LegalDocument struct {
+	// BodyTemplate The template text with its placeholders.
+	BodyTemplate string `json:"body_template"`
+
+	// CreatedAt When the draft was saved.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy The operator who saved the draft; null for the seeded versions.
+	CreatedBy *openapi_types.UUID `json:"created_by"`
+
+	// Id Version id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Document kind, `sale_terms` so far.
+	Kind string `json:"kind"`
+
+	// Locale Language of the template (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+	Locale string `json:"locale"`
+
+	// PublishedAt When it was published; null for a draft.
+	PublishedAt *time.Time `json:"published_at"`
+
+	// PublishedBy The operator who published it.
+	PublishedBy *openapi_types.UUID `json:"published_by"`
+
+	// RetiredAt When a newer version replaced it.
+	RetiredAt *time.Time `json:"retired_at"`
+
+	// Status `draft`, `published` (at most one per kind and language) or `retired`.
+	Status string `json:"status"`
+
+	// Version Version number within the kind and language, from 1.
+	Version int `json:"version"`
+}
+
+// LegalDocumentListResponse Versions of the terms templates and the placeholder allowlist (P3a).
+type LegalDocumentListResponse struct {
+	// Items The versions, newest first within each kind and language.
+	Items []LegalDocument `json:"items"`
+
+	// Placeholders Every placeholder key a template may use.
+	Placeholders []string `json:"placeholders"`
+}
+
 // LetterInteractionItem One open, proxy open or click Brevo reported on a letter (U-7). Dispute evidence; personal data.
 type LetterInteractionItem struct {
 	// Event What happened, `opened`, `proxy_open` or `click`. A proxy open (a mail client that pre-loads images) proves delivery, not reading.
@@ -9288,6 +9345,9 @@ type OrderConsentItem struct {
 	// Kind What was accepted. Only `sale_terms` so far (the organizer's sale terms and the platform policy).
 	Kind string `json:"kind"`
 
+	// LegalRenderingId The rendering of the organizer's terms the buyer accepted (`legal_renderings`, P3a); null for a consent to the platform terms.
+	LegalRenderingId *openapi_types.UUID `json:"legal_rendering_id"`
+
 	// Locale Language the checkbox was shown in, null when not stated.
 	Locale *string `json:"locale"`
 
@@ -9300,10 +9360,15 @@ type OrderConsentItem struct {
 	// SellerLegalName The seller name the checkbox showed.
 	SellerLegalName *string `json:"seller_legal_name"`
 
+	// TermsSha256 SHA-256 (hex) of that rendering's HTML at acceptance; null with `legal_rendering_id`.
+	TermsSha256 *string `json:"terms_sha256"`
+
 	// TermsUrl The sale terms link the checkbox showed.
 	TermsUrl *string `json:"terms_url"`
 
-	// TermsVersion The version accepted, `platform-terms:<version>;seller:<organization id>` until the organizer's rendered terms exist.
+	// TermsVersion The version accepted: `sale_terms:v<document version>:<language>;seller:<organization id>`
+	// for the organizer's rendered terms (P3a, then `legal_rendering_id` is set),
+	// `platform-terms:<version>;seller:<organization id>` for a consent to the platform terms.
 	TermsVersion string `json:"terms_version"`
 
 	// UserAgent The buyer's browser string at purchase (at most 512 characters); null when none was sent.
@@ -11772,6 +11837,30 @@ type PublicMaterialVideo struct {
 
 	// VideoId The id parsed out of the link; null for `https`.
 	VideoId *string `json:"video_id"`
+}
+
+// PublicTermsResponse The organizer's terms of sale rendered for one seller, channel, event and language (P3a).
+type PublicTermsResponse struct {
+	// DocumentVersion Version of the template that was rendered.
+	DocumentVersion int `json:"document_version"`
+
+	// Html The terms as HTML without scripts, styles or links, wrapped in `<article class="legal-document" lang=.. dir=..>`.
+	Html string `json:"html"`
+
+	// Locale Language of the rendered version (after the fallback to `en`).
+	Locale string `json:"locale"`
+
+	// RefundMode The refund policy stated, `no_refund`, `refund_until_sales_end` or `refund_by_law` (the event's, else the organization's, else `refund_by_law`).
+	RefundMode string `json:"refund_mode"`
+
+	// RenderingId The stored rendering (`legal_renderings`); a consent at checkout names it.
+	RenderingId openapi_types.UUID `json:"rendering_id"`
+
+	// SellerLegalName The seller the terms name.
+	SellerLegalName string `json:"seller_legal_name"`
+
+	// Sha256 SHA-256 (hex) of `html`.
+	Sha256 string `json:"sha256"`
 }
 
 // PublishEventRequest Request body for `POST /v1/events/{event_id}/publications`.
@@ -15254,6 +15343,27 @@ type GetV1AdminCustomerImportsIdRowsParams struct {
 // GetV1AdminCustomerImportsIdRowsParamsAction defines parameters for GetV1AdminCustomerImportsIdRows.
 type GetV1AdminCustomerImportsIdRowsParamsAction string
 
+// ListLegalDocumentsParams defines parameters for ListLegalDocuments.
+type ListLegalDocumentsParams struct {
+	// Kind Only this kind (`sale_terms`).
+	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
+
+	// Locale Only this language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// CreateLegalDocumentParams defines parameters for CreateLegalDocument.
+type CreateLegalDocumentParams struct {
+	// XAdminReason Human-readable business reason for this change (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PublishLegalDocumentParams defines parameters for PublishLegalDocument.
+type PublishLegalDocumentParams struct {
+	// XAdminReason Human-readable business reason for this change (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // AttachNetworkAgentParams defines parameters for AttachNetworkAgent.
 type AttachNetworkAgentParams struct {
 	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
@@ -16226,6 +16336,21 @@ type ListPublicFeedEventsParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// GetPublicTermsParams defines parameters for GetPublicTerms.
+type GetPublicTermsParams struct {
+	// EventSlug The event whose refund policy and promoter the terms state (a published event of the organization).
+	EventSlug *string `form:"event_slug,omitempty" json:"event_slug,omitempty"`
+
+	// FeedToken The feed token of the channel the terms are read for; another organization's token answers 404.
+	FeedToken *string `form:"feed_token,omitempty" json:"feed_token,omitempty"`
+
+	// Locale Language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`, a region subtag is ignored); else the first tag of Accept-Language; anything else and a language with no published version fall back to `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+
+	// Format `html` for a self-contained HTML page (no scripts, strict CSP) instead of JSON; any other value answers JSON.
+	Format *string `form:"format,omitempty" json:"format,omitempty"`
+}
+
 // GetPublicPaymentReturnParams defines parameters for GetPublicPaymentReturn.
 type GetPublicPaymentReturnParams struct {
 	// R The buyer's own page to land on (the `return_url` the checkout was
@@ -16396,6 +16521,9 @@ type PatchV1AdminGeoCountriesIso2JSONRequestBody = GeoUpdateCountryRequest
 
 // PostV1AdminImpersonateJSONRequestBody defines body for PostV1AdminImpersonate for application/json ContentType.
 type PostV1AdminImpersonateJSONRequestBody = ImpersonateRequest
+
+// CreateLegalDocumentJSONRequestBody defines body for CreateLegalDocument for application/json ContentType.
+type CreateLegalDocumentJSONRequestBody = CreateLegalDocumentRequest
 
 // AttachNetworkAgentJSONRequestBody defines body for AttachNetworkAgent for application/json ContentType.
 type AttachNetworkAgentJSONRequestBody = AttachNetworkOrganizationRequest
