@@ -307,7 +307,10 @@ func run() error {
 
 	// Drain the goroutine so the test/process exits with no live handler.
 	select {
-	case <-listenErrCh:
+	case err := <-listenErrCh:
+		if err != nil {
+			logger.Warn("listener exited with error during shutdown", "error", err.Error())
+		}
 	case <-time.After(cfg.ShutdownTimeout):
 	}
 
