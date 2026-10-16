@@ -1,0 +1,31 @@
+package delivery
+
+import (
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventnote"
+)
+
+// eventNoteBlock turns the stored note (event_email_notes, EC-31) into the
+// block the templates print. The zero Block prints nothing.
+func eventNoteBlock(note string) eventnote.Block {
+	return eventnote.Parse(note)
+}
+
+// ticketEventNote is the note the e-mail of the given template kind prints:
+// the ticket letter only. An invitation is a gift and carries the organizer's
+// words in its own way, a refund or a cancellation is not the place for them.
+func ticketEventNote(kind, note string) eventnote.Block {
+	if kind != templates.TemplateKindTicket {
+		return eventnote.Block{}
+	}
+	return eventNoteBlock(note)
+}
+
+// changeEventNote is the note of a session-change letter. A cancellation
+// ("moves" false) prints none: the event is not happening.
+func changeEventNote(moves bool, note string) eventnote.Block {
+	if !moves {
+		return eventnote.Block{}
+	}
+	return eventNoteBlock(note)
+}

@@ -57,6 +57,9 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 	if err := applyArenaPromoter(ctx, q, plan, eventID); err != nil {
 		return importResult{}, err
 	}
+	if err := applyArenaEmailNote(ctx, q, plan, eventID); err != nil {
+		return importResult{}, err
+	}
 	venueID, loc, err := h.resolveArenaVenue(ctx, q, tx, plan, match, warnings)
 	if err != nil {
 		return importResult{}, err

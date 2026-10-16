@@ -135,10 +135,12 @@ type bundleSource struct {
 	// PromoterID is the promoter linked to the event, nil for none.
 	PromoterID       *uuid.UUID
 	PromoterArchived bool
-	ChannelIDs       []uuid.UUID
-	Sessions         []bundleSessionSource
-	Windows          map[uuid.UUID][]gen.TicketTierPriceRow
-	Materials        EventBundleMaterials
+	// EmailNote is the event's own letter text, "" when it has none.
+	EmailNote  string
+	ChannelIDs []uuid.UUID
+	Sessions   []bundleSessionSource
+	Windows    map[uuid.UUID][]gen.TicketTierPriceRow
+	Materials  EventBundleMaterials
 }
 
 // HandleEventBundleRead serves GET .../events/{event_id}/event-bundle.
@@ -219,6 +221,13 @@ func loadBundleSource(ctx context.Context, q *gen.Queries, orgID, eventID uuid.U
 		default:
 			src.PromoterArchived = p.ArchivedAt != nil
 		}
+	}
+
+	switch note, nErr := q.GetEventEmailNote(ctx, eventID, orgID); {
+	case nErr == nil:
+		src.EmailNote = note
+	case !errors.Is(nErr, pgx.ErrNoRows):
+		return bundleSource{}, fmt.Errorf("read event email note: %w", nErr)
 	}
 
 	if src.ChannelIDs, err = q.ListEventPublicationChannelIDs(ctx, eventID, orgID); err != nil {
@@ -305,6 +314,8 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 		none := ""
 		promoter = &none
 	}
+	// "" = the event has no letter text of its own (posting it back clears nothing).
+	emailNote := src.EmailNote
 	channelIDs := make([]string, 0, len(src.ChannelIDs))
 	for _, id := range src.ChannelIDs {
 		channelIDs = append(channelIDs, id.String())
@@ -366,6 +377,7 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 				Description:  derefString(src.Event.Description),
 				Age:          derefString(src.Event.AgeRating),
 				PromoterID:   promoter,
+				EmailNote:    &emailNote,
 			},
 			ActionEvent: ae,
 			Venue: bil24compat.ImportSessionVenue{

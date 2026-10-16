@@ -186,8 +186,12 @@ type EventResponse struct {
 	SalesState    string  `json:"sales_state"`
 	NextSessionAt *string `json:"next_session_at"`
 	SessionCount  int     `json:"session_count"`
-	CreatedAt     string  `json:"created_at"`
-	UpdatedAt     string  `json:"updated_at"`
+	// EmailNote is the organizer's own text of the event that the ticket and
+	// session-change letters print (EC-31, event_email_notes). nil when the
+	// event has none. Hydrated by hydrateEvents, never by EventFromRow.
+	EmailNote *string `json:"email_note"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
 }
 
 func eventFromRow(e gen.EventRow) eventResponse {
@@ -243,6 +247,7 @@ func (h *Handler) hydrateEvents(ctx context.Context, responses []eventResponse) 
 	h.hydratePromoters(ctx, responses)
 	h.hydratePublicURLs(ctx, responses)
 	h.hydrateSalesStates(ctx, responses)
+	h.hydrateEmailNotes(ctx, responses)
 }
 
 // hydratedEvent is EventFromRow plus hydrateEvents for a single event.
@@ -673,6 +678,9 @@ type updateEventRequest struct {
 	TrailerURL       optionalString `json:"trailer_url"`
 	MetaDescription  optionalString `json:"meta_description"`
 	MetaKeywords     optionalString `json:"meta_keywords"`
+	// EmailNote is the organizer's own letter text (EC-31): absent keeps,
+	// null or "" clears, a string sets it after eventnote.Normalize.
+	EmailNote optionalString `json:"email_note"`
 }
 
 func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
@@ -724,6 +732,13 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// email_note (EC-31) is checked BEFORE anything is written, so a refused
+	// text leaves the event as it was.
+	emailNote, emailNoteSet, ok := parseEmailNote(w, r, req.EmailNote)
+	if !ok {
+		return
+	}
+
 	var description *string
 	if req.Description != nil {
 		trimmed := strings.TrimSpace(*req.Description)
@@ -764,6 +779,16 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 			"event.update_failed", "failed to update event", r,
 		))
 		return
+	}
+
+	if emailNoteSet {
+		if err := h.saveEmailNote(r, eventID, orgID, emailNote); err != nil {
+			h.logger.Error("event: email note update failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.email_note_update_failed", "failed to update the event letter text", r,
+			))
+			return
+		}
 	}
 
 	// clear_session_overrides (AB-47): when requested, null out the session-level

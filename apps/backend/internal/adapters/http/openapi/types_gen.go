@@ -5917,6 +5917,29 @@ type EventDeleteResponse struct {
 	Event EventItem `json:"event"`
 }
 
+// EventEmailNoteTestRequest Optional body of the test-letter route.
+type EventEmailNoteTestRequest struct {
+	// Locale Language of the letter (en, ru, cs, de, es, fr, he). Empty means the caller's language.
+	Locale *string `json:"locale,omitempty"`
+
+	// Note An unsaved draft to preview, filtered like PATCH `email_note`.
+	// Absent means the stored text.
+	Note *string `json:"note,omitempty"`
+
+	// To Address to send to: the caller's own, or that of an active member
+	// of the organization. Empty means the caller's own address.
+	To *string `json:"to,omitempty"`
+}
+
+// EventEmailNoteTestResponse The test letter was queued.
+type EventEmailNoteTestResponse struct {
+	// Queued Always true on success.
+	Queued bool `json:"queued"`
+
+	// To The address the letter goes to.
+	To string `json:"to"`
+}
+
 // EventEnvelope Single-event response envelope.
 type EventEnvelope struct {
 	// Event A single event organized by one organization. Since Wave 4
@@ -6013,6 +6036,12 @@ type EventItem struct {
 	// DurationMinutes Event runtime in minutes (AB-45c).
 	// Tri-state PATCH: absent=keep, null=clear, value=set.
 	DurationMinutes *int32 `json:"duration_minutes"`
+
+	// EmailNote The organizer's own text of the event (EC-31, migration 0161): up
+	// to 2000 characters of plain text that the ticket and the
+	// session-change e-mails print under "About the event". Null when
+	// the event has none.
+	EmailNote *string `json:"email_note"`
 
 	// FirstSessionAt Earliest `start_at` over the event's active, non-cancelled
 	// sessions (RFC 3339, UTC). Maintained by a database trigger
@@ -7229,6 +7258,16 @@ type ImportBil24SessionAction struct {
 
 	// Description Free-form action description copied into the event description.
 	Description *string `json:"description,omitempty"`
+
+	// EmailNote Arena event-bundle extension (source=arena only; EC-31, migration
+	// 0161): the organizer's own text that the ticket and session-change
+	// e-mails print under "About the event". Absent or null keeps the
+	// stored text, "" removes it, a string replaces it after the same
+	// filter as PATCH `email_note` (plain text, at most 2000
+	// characters, at most 5 `https://` links). A refused text answers
+	// 422 `import.invalid_email_note`. The event-bundle read answers
+	// "" when the event has none.
+	EmailNote *string `json:"emailNote"`
 
 	// FullActionName Full action name. Preferred over actionName as the event title.
 	FullActionName *string `json:"fullActionName,omitempty"`
@@ -14323,6 +14362,15 @@ type UpdateEventRequest struct {
 	// Event runtime in minutes (AB-45c).
 	DurationMinutes *int32 `json:"duration_minutes"`
 
+	// EmailNote Tri-state (absent=keep, null or "" = clear, value=set). The
+	// organizer's own text that the ticket and session-change e-mails
+	// print under "About the event". Plain text of at most 2000
+	// characters: HTML tags are removed, control characters are
+	// refused, at most 5 links and every link must be `https://`. A
+	// refused text answers 400 `event.invalid_email_note` with
+	// `error.details.reason`.
+	EmailNote *string `json:"email_note"`
+
 	// Genre Tri-state (absent=keep, null=clear, value=set).
 	// Event genre/category string (AB-45c).
 	Genre *string `json:"genre"`
@@ -16618,6 +16666,9 @@ type CreateEventJSONRequestBody = CreateEventRequest
 
 // SetEventContactJSONRequestBody defines body for SetEventContact for application/json ContentType.
 type SetEventContactJSONRequestBody = SetEventContactRequest
+
+// PostV1OrganizationsOrgIdEventsEventIdEmailNoteTestJSONRequestBody defines body for PostV1OrganizationsOrgIdEventsEventIdEmailNoteTest for application/json ContentType.
+type PostV1OrganizationsOrgIdEventsEventIdEmailNoteTestJSONRequestBody = EventEmailNoteTestRequest
 
 // SetEventMapPointJSONRequestBody defines body for SetEventMapPoint for application/json ContentType.
 type SetEventMapPointJSONRequestBody = SetEventMapPointRequest

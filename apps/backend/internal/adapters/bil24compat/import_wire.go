@@ -78,6 +78,12 @@ type ImportSessionAction struct {
 	// (the organization itself is the promoter), a UUID names one of the
 	// organization's active promoters. The Bil24-format importer ignores it.
 	PromoterID *string `json:"promoterId"`
+	// EmailNote is an arena-native event-bundle extension (EC-31, migration
+	// 0161, source=arena only): the organizer's own text that the ticket and
+	// session-change letters print under "About the event". Absent or null
+	// keeps the stored text, "" removes it, a string is filtered by
+	// eventnote.Normalize (422 import.invalid_email_note when refused).
+	EmailNote *string `json:"emailNote"`
 	// ArenaEventID (arena extension, source=arena only) addresses an existing
 	// event of the organization by its arena UUID — what an event center
 	// reads from GET /v1/organizations/{org_id}/events. It plays the role
