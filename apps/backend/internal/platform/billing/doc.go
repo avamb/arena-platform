@@ -9,7 +9,8 @@
 // the date of an event, Rate turns one event into a charge (a pure
 // function), ClassifyLowPrice snapshots the low-price class of a sale and
 // PackTicketRate reads a credit pack's per-ticket rate. Collection of
-// billable events and writing charges is block B2. Every rate, threshold and cap is a
+// billable events and writing charges is block B2. Percentages are rounded
+// DOWN to a whole minor unit (integer floor), never to the nearest. Every rate, threshold and cap is a
 // price-list row seeded by migration 0157, never a constant in this package.
 //
 // Money is int64 minor units with the currency next to it, never a float.

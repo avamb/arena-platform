@@ -110,7 +110,8 @@ func TermsAt(ctx context.Context, q TermsQueries, accountID uuid.UUID, occurredA
 
 // NewTerms assembles a Terms from rows already read, parsing and checking
 // every rule. TermsAt calls it; tests may too. It refuses a price list whose
-// currency is not the account's, a plan kind it does not know, an
+// currency is not the account's or whose code is not the one the terms
+// name, a plan kind it does not know, an
 // individual rate in another currency, and two rules of one type for the
 // same line, event kind and sale currency (the choice between them would be
 // arbitrary).
@@ -119,6 +120,9 @@ func NewTerms(at time.Time, acc gen.BillingAccountRow, terms gen.BillingAccountT
 ) (Terms, error) {
 	if pl.Currency != acc.Currency {
 		return Terms{}, fmt.Errorf("billing: price list %s is in %s, account %s in %s", pl.ID, pl.Currency, acc.ID, acc.Currency)
+	}
+	if pl.Code != terms.PriceListCode {
+		return Terms{}, fmt.Errorf("billing: price list %s is %q, terms %s name %q", pl.ID, pl.Code, terms.ID, terms.PriceListCode)
 	}
 	if terms.AccountID != acc.ID {
 		return Terms{}, fmt.Errorf("billing: terms %s belong to account %s, not %s", terms.ID, terms.AccountID, acc.ID)

@@ -97,9 +97,10 @@ type Charge struct {
 }
 
 // Rate computes the charge of one billable event under terms. It is a pure
-// function: no database, no clock. Rounding is integer floor in minor units
-// of the account currency, the same convention as
-// hcheckout.ComputePricingLines (amount × basis points / 10000).
+// function: no database, no clock. Every percentage is rounded DOWN to a
+// whole minor unit of the account currency (integer floor of amount × basis
+// points / 10000, the convention of hcheckout.ComputePricingLines): 2 % of
+// 25.75 is 0.51, 4 % of 3.33 is 0.13. Caps and minimums apply after it.
 //
 // Order of the rules:
 //
@@ -118,7 +119,8 @@ type Charge struct {
 //     line on (price − discount), seated or not; a sale in another currency
 //     than the account's is deferred (fx_rate_missing).
 //   - ticket_sold of class low_price: low_price_formula of the standard line
-//     for the sale currency, which must be the account currency.
+//     for the sale currency; a sale currency other than the account's is
+//     deferred (fx_rate_missing), a class without such a rule is an error.
 //   - ticket_sold otherwise: fixed_per_ticket of the standard line.
 //   - event_published: fixed_per_event when the price list has one, else 0,
 //     no_rule (standard-2026 has none).
@@ -250,10 +252,6 @@ func rateVenue(terms Terms, ev Event, net int64, c Charge) (Charge, error) {
 }
 
 func rateLowPrice(terms Terms, ev Event, net int64, c Charge) (Charge, error) {
-	if ev.Currency != terms.Currency {
-		return Charge{}, fmt.Errorf("%w: low_price class on a %s sale for a %s account", ErrInconsistentEvent,
-			ev.Currency, terms.Currency)
-	}
 	r, ok := lowPriceRule(terms, ev.Currency)
 	if !ok {
 		return Charge{}, fmt.Errorf("%w: low_price class but price list %s has no low_price_formula for %s",
@@ -266,6 +264,13 @@ func rateLowPrice(terms Terms, ev Event, net int64, c Charge) (Charge, error) {
 	c.Inputs["min_minor"] = lp.MinMinor
 	c.Inputs["max_minor"] = lp.MaxMinor
 	c.Inputs["seated_surcharge_minor"] = lp.SeatedSurchargeMinor
+	if ev.Currency != terms.Currency {
+		// A threshold in the sale currency, a charge in the account
+		// currency: the percentage needs the exchange rate of the sale day
+		// (41 section 5.7), deferred exactly like the venue percentage.
+		c.Deferred = DeferredFXRateMissing
+		return c, nil
+	}
 	share, err := basisPoints(net, lp.PctBP)
 	if err != nil {
 		return Charge{}, err
