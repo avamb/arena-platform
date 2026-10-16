@@ -352,8 +352,13 @@ test.describe("refund an order (live)", () => {
     expect(create.status(), "agent POST refunds").toBe(403);
 
     const calls = trackApi(page);
-    await openCard(page, "agent", ORDER_OWNER);
+    await signInAs(page, person(env, "agent"));
+    await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
+    await page.goto(`/o/${env.org_id}/orders/${ORDER_OWNER}`);
+    // The agent may not read orders, so the card is not drawn and no refund button is.
+    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("refund-open")).toHaveCount(0);
+    await expect(page.getByTestId("refund-panel")).toHaveCount(0);
     expect(calls.some((c) => c.includes("/refund-options") || c === createPath(ORDER_OWNER))).toBe(false);
     expect(rows(ORDER_OWNER).refunds).toBe(0);
     expect(await stripeCalls(request)).toEqual([]);
