@@ -40,6 +40,11 @@ health check `GET /health`. Add the app's origin to `CORS_ALLOWED_ORIGINS` of ar
 Production: `https://events.arenasoldout.com`; the step-by-step checklist is
 `docs/ops/event_center_rollout_ru.md`, and `scripts/check-live.ps1` checks the live site.
 
+Build flag `VITE_FEATURE_WIZARD`: `1` shows "+ Event" and the event wizard
+(sections Event and Venue, task 6-1a). It is OFF by default, so production builds
+leave it out; set it as a build argument of the staging application. The flag is
+inlined at build time, like `VITE_API_BASE_URL`.
+
 Password letters of organizers link here (`/reset-password`, `/accept-invite`) once
 arena-api and arena-worker carry `EVENT_CENTER_PUBLIC_URL`; platform users keep
 the admin-web link (`APP_PUBLIC_URL`).

@@ -246,7 +246,11 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applyForeignPromoter(ctx, tx); err != nil {
 		return err
 	}
-	return applyInvitationsFixture(ctx, tx)
+	if err := applyInvitationsFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 6-1a: a promoter and a seat count for the wizard's twin test.
+	return applyWizardFixture(ctx, tx)
 }
 
 // Task 4-6 (the web promoters screens): ANOTHER organization with one

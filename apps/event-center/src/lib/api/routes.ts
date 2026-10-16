@@ -109,7 +109,7 @@ export function buildPath(
   params: Record<string, string> = {},
   query: Record<string, string | number | undefined> = {},
 ): string {
-  const path = route.path.replace(/\{([a-z_]+)\}/g, (_match, name: string) => {
+  const path = route.path.replace(/\{([a-z0-9_]+)\}/g, (_match, name: string) => {
     const value = params[name];
     if (value === undefined || value.length === 0) {
       throw new Error(`buildPath: missing value for {${name}} in ${route.path}`);

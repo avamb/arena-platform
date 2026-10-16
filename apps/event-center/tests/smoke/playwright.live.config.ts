@@ -55,7 +55,8 @@ export default defineConfig({
       url: `http://127.0.0.1:${uiPort}/`,
       timeout: 60_000,
       reuseExistingServer: !process.env.CI,
-      env: { VITE_API_BASE_URL: `http://127.0.0.1:${apiPort}` },
+      // VITE_FEATURE_WIZARD: the event wizard is behind a build flag (6-1a); the live build has it on.
+      env: { VITE_API_BASE_URL: `http://127.0.0.1:${apiPort}`, VITE_FEATURE_WIZARD: "1" },
     },
   ],
 });

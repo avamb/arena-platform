@@ -119,6 +119,7 @@ export function WizardVenueSection({ draft, dispatch, touch, errorOf }: SectionP
                     : { id: found.id, name: found.name, timezone: found.timezone ?? null, capacity: found.capacity_default ?? null, country: found.country ?? null },
               });
             }}
+            onBlur={() => touch("venueExisting")}
             testId="wizard-venue-pick"
           >
             <option value="">{t("wizard.venue.pickPlaceholder")}</option>
@@ -161,6 +162,7 @@ export function WizardVenueSection({ draft, dispatch, touch, errorOf }: SectionP
               dispatch({ type: "country", iso2 });
               setShowCities(false);
             }}
+            onBlur={() => touch("venueCountry")}
             testId="wizard-venue-country"
           >
             <option value="">{t("wizard.f.countryPlaceholder")}</option>
@@ -231,6 +233,7 @@ export function WizardVenueSection({ draft, dispatch, touch, errorOf }: SectionP
                 touch("venueTimezone");
                 dispatch({ type: "timezone", value });
               }}
+              onBlur={() => touch("venueTimezone")}
               testId="wizard-venue-timezone"
             >
               <option value="">{t("wizard.f.timezonePlaceholder")}</option>

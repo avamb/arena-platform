@@ -482,6 +482,24 @@ export const PARITY: readonly ParityRow[] = [
     routes: ["POST /v1/bot/invitations/accept"],
     note: "В вебе: письмо с установкой пароля ведёт на `/accept-invite`. Приглашение из «Команды» с каналом web — экран «Команда» (4-5).",
   },
+  // 6-1a
+  {
+    area: "Мероприятия",
+    fn: "Мастер: мероприятие и площадка",
+    bot: "wizard*.go, `wz:` (шаги названия, возраста, промоутера, площадки)",
+    web: "R2",
+    ready: { twin: "live/wizard-event-venue.spec.ts" },
+    routes: [
+      `POST ${O}/imports/event-bundle`,
+      `GET ${O}/venues`,
+      `GET ${O}/promoters`,
+      "GET /v1/geo/countries",
+      "GET /v1/geo/cities",
+      "GET /v1/geo/countries/{iso2}/timezones",
+      "GET /v1/geo/countries/{iso2}/currency",
+    ],
+    note: "6-1a: форма из двух разделов с проверкой на лету (`?dry_run=true`, не чаще раза в секунду, ошибки по `errors[].field`), черновик в браузере. Под флагом сборки `VITE_FEATURE_WIZARD=1`. Даты, билеты и сохранение — 6-1b и 6-1c.",
+  },
 ];
 
 /** Every route of the matrix, without duplicates. */
