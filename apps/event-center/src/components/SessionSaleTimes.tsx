@@ -35,6 +35,10 @@ export interface SessionSaleTimesProps {
   doorsOpenAt: string | null;
   /** The venue's IANA zone; null when unknown. */
   timezone: string | null;
+  /** True when the zone is missing only because the session summary did not load. */
+  zoneUnloaded?: boolean;
+  /** A canceled session: the times are shown, never changed. */
+  readOnly?: boolean;
 }
 
 export function SessionSaleTimes(props: SessionSaleTimesProps) {
@@ -45,11 +49,16 @@ export function SessionSaleTimes(props: SessionSaleTimesProps) {
       <h2 id="sale-times-title">{t("saleTimes.title")}</h2>
       {timezone === null ? (
         <p className="notice" data-testid="sale-times-no-zone">
-          {t("saleTimes.noZone")}
+          {props.zoneUnloaded === true ? t("saleTimes.zoneUnloaded") : t("saleTimes.noZone")}
         </p>
       ) : (
         <>
           <p className="muted">{t("saleTimes.hint", { zone: zoneLabel(timezone) })}</p>
+          {props.readOnly === true && (
+            <p className="notice" data-testid="sale-times-readonly">
+              {t("saleTimes.cancelledNote")}
+            </p>
+          )}
           <TimeRow kind="salesEnd" current={props.salesEndAt} {...props} timezone={timezone} />
           <TimeRow kind="doors" current={props.doorsOpenAt} {...props} timezone={timezone} />
         </>
@@ -64,7 +73,7 @@ interface RowProps extends SessionSaleTimesProps {
   timezone: string;
 }
 
-function TimeRow({ kind, current, orgId, eventId, sessionId, startAt, timezone }: RowProps) {
+function TimeRow({ kind, current, orgId, eventId, sessionId, startAt, timezone, readOnly = false }: RowProps) {
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -138,7 +147,7 @@ function TimeRow({ kind, current, orgId, eventId, sessionId, startAt, timezone }
       <h3>{label}</h3>
       <p data-testid={`${testId}-value`}>{valueText}</p>
       <p className="muted">{help}</p>
-      {!editing && (
+      {!editing && !readOnly && (
         <div className="actions">
           <button type="button" className="btn" onClick={open} data-testid={`${testId}-change`}>
             {kind === "doors" && current === null ? t("saleTimes.set") : t("saleTimes.change")}

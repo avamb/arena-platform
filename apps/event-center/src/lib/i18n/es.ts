@@ -909,6 +909,8 @@ export const es: Record<MessageKey, string> = {
   "saleTimes.saved": "Guardado.",
   "saleTimes.removed": "La hora se ha quitado.",
   "saleTimes.noZone": "El recinto no tiene zona horaria, así que aquí no se pueden cambiar las horas. Escribe a soporte.",
+  "saleTimes.zoneUnloaded": "No pudimos cargar la zona horaria del recinto, así que ahora no se pueden cambiar las horas. Recarga la página. Si sigue igual, escribe a soporte.",
+  "saleTimes.cancelledNote": "Esta sesión está cancelada, así que no se pueden cambiar sus horas. Abajo se muestran como estaban.",
   "saleTimes.error.time": "Escribe la hora así: 18:30.",
   "saleTimes.error.day": "Elige el día.",
   "saleTimes.error.gap": "Esa hora no existe ese día, porque cambia el reloj. Elige otra hora.",

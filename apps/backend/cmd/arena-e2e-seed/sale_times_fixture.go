@@ -55,9 +55,12 @@ func applySaleTimesFixture(ctx context.Context, tx pgx.Tx) error {
 	if err := run("session", `
 		INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, status, admission_mode, currency, currency_source)
 		VALUES ($1, $2, $3, $4, $4::timestamptz + interval '2 hours', 10, 'scheduled', 'general_admission', 'EUR', 'override')
-		ON CONFLICT (id) DO NOTHING`, saleTimesSessionID, saleTimesEventID, venueID, start); err != nil {
+		ON CONFLICT (id) DO UPDATE SET start_at = EXCLUDED.start_at, end_at = EXCLUDED.end_at,
+			status = 'scheduled', deleted_at = NULL`, saleTimesSessionID, saleTimesEventID, venueID, start); err != nil {
 		return err
 	}
+	// A moved start_at carries the sales end along (migration 0128's trigger); the
+	// explicit reset also clears the doors time and covers a start that did not move.
 	return run("reset times", `
 		UPDATE sessions SET sales_end_at = start_at, doors_open_at = NULL
 		WHERE id = $1`, saleTimesSessionID)

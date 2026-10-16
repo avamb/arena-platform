@@ -909,6 +909,8 @@ export const en = {
   "saleTimes.saved": "Saved.",
   "saleTimes.removed": "The time is removed.",
   "saleTimes.noZone": "The venue has no time zone on file, so the times cannot be changed here. Write to support.",
+  "saleTimes.zoneUnloaded": "We could not load the time zone of the venue, so the times cannot be changed now. Reload the page. If it stays this way, write to support.",
+  "saleTimes.cancelledNote": "This session is canceled, so its times cannot be changed. The times below are shown as they were.",
   "saleTimes.error.time": "Type the time like 18:30.",
   "saleTimes.error.day": "Pick the day.",
   "saleTimes.error.gap": "This time does not exist on that day, because the clocks change. Pick another time.",

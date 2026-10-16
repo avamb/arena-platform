@@ -211,6 +211,8 @@ export function SessionScreen() {
           salesEndAt={item.sales_end_at}
           doorsOpenAt={item.doors_open_at ?? null}
           timezone={tz}
+          zoneUnloaded={summary.data === undefined}
+          readOnly={(head?.status ?? item.status) === "cancelled"}
         />
       )}
     </article>
