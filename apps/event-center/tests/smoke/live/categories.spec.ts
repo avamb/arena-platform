@@ -25,6 +25,10 @@ const env = liveEnv();
 const EVENT = "fe0000e2-0000-7000-8000-00000000e501";
 const SESSION = "fe0000e2-0000-7000-8000-00000000e502";
 const FOREIGN_ORG = "fe0000e2-0000-7000-8000-0000000000f1";
+// Another organization's date and category (categories_fixture.go).
+const FOREIGN_EVENT = "fe0000e2-0000-7000-8000-00000000e522";
+const FOREIGN_SESSION = "fe0000e2-0000-7000-8000-00000000e523";
+const FOREIGN_TIER = "fe0000e2-0000-7000-8000-00000000e524";
 
 const STANDING = "E2E Cat Standing";
 const BALCONY = "E2E Cat Balcony";
@@ -328,8 +332,26 @@ test.describe("categories of a date (live, three roles)", () => {
     // The same ids under another organization's path change nothing.
     const free = await apiTier(request, FREE);
     const foreign = await request.patch(`${tiersUrl(FOREIGN_ORG)}/${free.id}`, { headers: auth("org_admin"), data: { is_open: false } });
-    expect([403, 404], "a foreign organization's path").toContain(foreign.status());
+    // A non-member of the path organization stops at the permission gate (PERM-ORG): 403.
+    expect(foreign.status(), "a foreign organization's path").toBe(403);
     expect((await apiTier(request, FREE)).is_open).toBe(true);
+
+    // A foreign ROW under the caller's own path is the route's own 404, and nothing changes.
+    for (const role of ["org_admin", "organizer"] as const) {
+      const row = await request.patch(
+        `${base}/events/${FOREIGN_EVENT}/sessions/${FOREIGN_SESSION}/tiers/${FOREIGN_TIER}`,
+        { headers: auth(role), data: { is_open: false, capacity: 1 } },
+      );
+      expect(row.status(), `PATCH another organization's category as ${role}`).toBe(404);
+      const sched = await request.get(
+        `${base}/events/${FOREIGN_EVENT}/sessions/${FOREIGN_SESSION}/tiers/${FOREIGN_TIER}/price-schedule`,
+        { headers: auth(role) },
+      );
+      expect(sched.status(), `GET another organization's price schedule as ${role}`).toBe(404);
+    }
+    const untouched = seed("inspect")["E2E Foreign Category"];
+    expect(untouched.is_open).toBe(true);
+    expect(untouched.capacity).toBeNull();
   });
 
   test("manager (organizer) can change categories like the owner", async ({ page, request }) => {
@@ -356,31 +378,23 @@ test.describe("categories of a date (live, three roles)", () => {
   });
 
   test("agent: the screen follows what the server allows, and the API refuses the rest", async ({ page, request }) => {
+    // The seed's truth: the agent role holds no category rights at all.
     const me = await orgMe(request, "agent");
-    const canRead = me.permissions.includes("tier.read");
-    const canUpdate = me.permissions.includes("tier.update");
+    expect(me.permissions).not.toContain("tier.update");
+    expect(me.permissions).not.toContain("tier.read");
     const free = await apiTier(request, FREE);
 
     const patch = await request.patch(`${tiersUrl()}/${free.id}`, { headers: auth("agent"), data: { is_open: false } });
-    expect(patch.status(), "PATCH as agent").toBe(canUpdate ? 200 : 403);
-    if (canUpdate) await request.patch(`${tiersUrl()}/${free.id}`, { headers: auth("org_admin"), data: { is_open: true } });
+    expect(patch.status(), "PATCH as agent").toBe(403);
+    const list = await request.get(tiersUrl(), { headers: auth("agent") });
+    expect(list.status(), "GET tiers as agent").toBe(403);
     expect((await apiTier(request, FREE)).is_open, "the category was not changed by an agent").toBe(true);
 
     await signInAs(page, person(env, "agent"));
     await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
     await page.goto(`/o/${env.org_id}/events/${EVENT}/sessions/${SESSION}`);
-    if (!canRead) {
-      await expect(page.getByTestId("tiers-table")).toHaveCount(0);
-      await expect(page.getByTestId("tier-manage")).toHaveCount(0);
-      return;
-    }
-    await expect(page.getByTestId("tiers-table")).toBeVisible();
-    if (canUpdate) {
-      await expect(page.getByTestId("tier-manage").first()).toBeVisible();
-    } else {
-      await expect(page.getByTestId("tier-manage")).toHaveCount(0);
-      await expect(page.getByTestId("categories-read-only")).toBeVisible();
-    }
-    await noA11yViolations(page);
+    await expect(page.getByTestId("tiers-table")).toHaveCount(0);
+    await expect(page.getByTestId("tier-manage")).toHaveCount(0);
+    await expect(page.getByTestId("category-card")).toHaveCount(0);
   });
 });

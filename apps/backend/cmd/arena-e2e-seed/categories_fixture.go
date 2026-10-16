@@ -48,6 +48,12 @@ const (
 	catLedgerID  = "fe0000e2-0000-7000-8000-00000000e504"
 
 	catEventName = "E2E Categories Show"
+
+	// The other organization's rows (foreignOrgID, main.go).
+	catForeignVenueID   = "fe0000e2-0000-7000-8000-00000000e521"
+	catForeignEventID   = "fe0000e2-0000-7000-8000-00000000e522"
+	catForeignSessionID = "fe0000e2-0000-7000-8000-00000000e523"
+	catForeignTierID    = "fe0000e2-0000-7000-8000-00000000e524"
 )
 
 // catTier is one category of the fixture.
@@ -134,6 +140,31 @@ func applyCategoriesFixture(ctx context.Context, tx pgx.Tx) error {
 			}
 		}
 	}
+	// ANOTHER organization's date with one category, so the twin can prove
+	// that a foreign row under the caller's own path is the route's 404.
+	for _, step := range []struct{ what, sql string }{
+		{"foreign venue", `INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, 'E2E Other Hall', 'Europe/Madrid') ON CONFLICT (id) DO NOTHING`},
+		{"foreign event", `INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, 'E2E Other Categories Show', 'published', 'public') ON CONFLICT (id) DO NOTHING`},
+		{"foreign session", `INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, status, admission_mode, currency, currency_source)
+			VALUES ($1, $2, $3, $4, $4::timestamptz + interval '2 hours', 5, 'scheduled', 'general_admission', 'EUR', 'override') ON CONFLICT (id) DO NOTHING`},
+		{"foreign category", `INSERT INTO ticket_tiers (id, session_id, name, pricing_mode, price_amount, currency, sort_order)
+			VALUES ($1, $2, 'E2E Foreign Category', 'fixed', 1000, 'EUR', 0) ON CONFLICT (id) DO NOTHING`},
+	} {
+		var args []any
+		switch step.what {
+		case "foreign venue":
+			args = []any{catForeignVenueID, foreignOrgID}
+		case "foreign event":
+			args = []any{catForeignEventID, foreignOrgID}
+		case "foreign session":
+			args = []any{catForeignSessionID, catForeignEventID, catForeignVenueID, start}
+		default:
+			args = []any{catForeignTierID, catForeignSessionID}
+		}
+		if err := run(step.what, step.sql, args...); err != nil {
+			return err
+		}
+	}
 	// Early hands its free places to Late.
 	if err := run("chain", `INSERT INTO ticket_tier_chain (tier_id, next_tier_id) VALUES ($1, $2)`, tiers[2].ID, tiers[3].ID); err != nil {
 		return err
@@ -187,7 +218,7 @@ func runCategoriesOp(op string) error {
 		return printCancelOrderJSON(map[string]string{"ok": "reset"})
 	case "inspect":
 		out := map[string]catInspect{}
-		for _, t := range catTiers() {
+		for _, t := range append(catTiers(), catTier{ID: catForeignTierID, Name: "E2E Foreign Category"}) {
 			var c catInspect
 			var name string
 			if err := pool.QueryRow(ctx, `
