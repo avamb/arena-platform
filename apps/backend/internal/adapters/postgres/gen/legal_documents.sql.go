@@ -277,6 +277,19 @@ func (q *Queries) GetLegalTermsEventBySlug(ctx context.Context, orgID uuid.UUID,
 	return scanLegalTermsEvent(q.db.QueryRow(ctx, getLegalTermsEventBySlug, orgID, eventSlug, promoterID))
 }
 
+const getLegalTermsPublishedEventByID = `-- name: GetLegalTermsPublishedEventByID :one
+` + legalTermsEventSelect + `WHERE e.org_id = $1
+  AND e.id = $2
+  AND e.status = 'published'
+  AND e.deleted_at IS NULL
+  AND ($3::uuid IS NULL OR epr.promoter_id = $3::uuid)`
+
+// GetLegalTermsPublishedEventByID is GetLegalTermsEventBySlug by id: the
+// public terms link names the event by id, which every event has.
+func (q *Queries) GetLegalTermsPublishedEventByID(ctx context.Context, orgID, eventID uuid.UUID, promoterID *uuid.UUID) (LegalTermsEventRow, error) {
+	return scanLegalTermsEvent(q.db.QueryRow(ctx, getLegalTermsPublishedEventByID, orgID, eventID, promoterID))
+}
+
 const getLegalTermsEventByID = `-- name: GetLegalTermsEventByID :one
 ` + legalTermsEventSelect + `WHERE e.org_id = $1
   AND e.id = $2

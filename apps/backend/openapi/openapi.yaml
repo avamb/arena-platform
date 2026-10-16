@@ -11971,7 +11971,7 @@ components:
           description: |
             While `required` is true and the API knows its public base URL:
             the organizer's terms of sale for this event and channel,
-            `<API>/v1/public/pages/{org_slug}/terms?event_slug=..&feed_token=..&format=html`
+            `<API>/v1/public/pages/{org_slug}/terms?event_id=..&feed_token=..&format=html`
             (P3a; an HTML page until the tickets page renders the terms).
             Otherwise the platform terms page (`PLATFORM_TERMS_URL`, else the
             site's /legal/terms); omitted when none is configured.
@@ -38593,12 +38593,19 @@ paths:
           schema:
             type: string
           description: Organization or promoter slug, matched case-insensitively.
+        - name: event_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: The event whose refund policy and promoter the terms state, by id (a published event of the organization); wins over `event_slug`. The checkout consent link uses it.
         - name: event_slug
           in: query
           required: false
           schema:
             type: string
-          description: The event whose refund policy and promoter the terms state (a published event of the organization).
+          description: The same event by its slug.
         - name: feed_token
           in: query
           required: false

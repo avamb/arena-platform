@@ -74,6 +74,14 @@ func (s *fakeStore) GetLegalTermsEventByID(_ context.Context, _, id uuid.UUID) (
 	return gen.LegalTermsEventRow{}, pgx.ErrNoRows
 }
 
+func (s *fakeStore) GetLegalTermsPublishedEventByID(ctx context.Context, org, id uuid.UUID, promoterID *uuid.UUID) (gen.LegalTermsEventRow, error) {
+	e, err := s.GetLegalTermsEventByID(ctx, org, id)
+	if err != nil || (promoterID != nil && (e.PromoterID == nil || *e.PromoterID != *promoterID)) {
+		return gen.LegalTermsEventRow{}, pgx.ErrNoRows
+	}
+	return e, nil
+}
+
 func (s *fakeStore) GetLegalTermsPromoter(context.Context, uuid.UUID, uuid.UUID) (gen.LegalTermsPromoterRow, error) {
 	return gen.LegalTermsPromoterRow{}, pgx.ErrNoRows
 }

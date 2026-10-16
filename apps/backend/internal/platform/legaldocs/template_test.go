@@ -119,7 +119,8 @@ func TestRender_HebrewIsRightToLeft(t *testing.T) {
 func TestRender_IsDeterministic(t *testing.T) {
 	tpl := mustParse(t, "## T\n{{seller.legal_name}} {{#if refund.no_refund}}none{{/if}}")
 	v := Values{"seller.legal_name": "A", "refund.no_refund": true}
-	if Render(tpl, v, "en") != Render(tpl, v, "en") {
+	first, second := Render(tpl, v, "en"), Render(tpl, v, "en")
+	if first != second {
 		t.Fatal("two renders differ")
 	}
 }

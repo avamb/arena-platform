@@ -3,7 +3,7 @@
 //
 // While a channel asks for the consent, the feed session's consent block
 // points terms_url at the organizer's terms page,
-// <API>/v1/public/pages/<org slug>/terms?event_slug=..&feed_token=..&format=html
+// <API>/v1/public/pages/<org slug>/terms?event_id=..&feed_token=..&format=html
 // (a direct API address until the tickets page renders the terms, P3c), and
 // checkout/start stores WHICH rendering the buyer accepted: its id and the
 // SHA-256 of its HTML in checkout_consents, and the document version in
@@ -50,10 +50,11 @@ func (h *Handler) legalTermsURL(ctx context.Context, eventID uuid.UUID, feedToke
 		)
 		return ""
 	}
+	// The event goes by id, which every event has: a link by slug would
+	// render without the event for an event that has none, and the stored
+	// rendering would not be the one behind the link.
 	q := url.Values{}
-	if link.EventSlug != nil && strings.TrimSpace(*link.EventSlug) != "" {
-		q.Set("event_slug", strings.TrimSpace(*link.EventSlug))
-	}
+	q.Set("event_id", eventID.String())
 	q.Set("feed_token", feedToken)
 	q.Set("format", "html")
 	return h.legalTermsBase + "/v1/public/pages/" + url.PathEscape(link.OrgSlug) + "/terms?" + q.Encode()

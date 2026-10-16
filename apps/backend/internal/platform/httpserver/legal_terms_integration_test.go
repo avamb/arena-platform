@@ -9,14 +9,17 @@
 //     event's refund policy and promoter, resolves a promoter slug, answers
 //     the hosted page's 404 for every miss, and serves a script-free HTML
 //     page with format=html.
+//
 //   - The database keeps a published template and a rendering frozen.
+//
 //   - The superadmin's template routes: draft, 422 for an unknown
 //     placeholder, publish retires the previous version, 409 for a second
 //     publish, 403 for an owner, legal.manage is never an API key scope.
+//
 //   - The checkout consent names the rendering behind its terms link
 //     (assertConsentNamesTheRendering, called from the P2 test).
 //
-//	go test -tags integration ./apps/backend/internal/platform/httpserver/ -run 'TestLegal|TestCheckoutConsent'
+//     go test -tags integration ./apps/backend/internal/platform/httpserver/ -run 'TestLegal|TestCheckoutConsent'
 package httpserver
 
 import (
@@ -116,8 +119,8 @@ func TestLegalTerms_PublicPage(t *testing.T) {
 		es.SHA256 != shaHex(es.HTML) || es.DocumentVersion < 1 {
 		t.Fatalf("terms = %+v", es)
 	}
-	if rec.Header().Get("Cache-Control") == "" || rec.Header().Get("Vary") != "" {
-		t.Errorf("headers: cache %q vary %q", rec.Header().Get("Cache-Control"), rec.Header().Get("Vary"))
+	if rec.Header().Get("Cache-Control") == "" || strings.Contains(strings.Join(rec.Header().Values("Vary"), ","), "Accept-Language") {
+		t.Errorf("headers: cache %q vary %q", rec.Header().Get("Cache-Control"), rec.Header().Values("Vary"))
 	}
 	_, again := getTerms(t, srv, base+"?locale=es", nil)
 	if again.RenderingID != es.RenderingID {
@@ -133,15 +136,20 @@ func TestLegalTerms_PublicPage(t *testing.T) {
 		t.Errorf("it -> %q", w.Locale)
 	}
 	rec, he := getTerms(t, srv, base, map[string]string{"Accept-Language": "he-IL,he;q=0.9"})
-	if he.Locale != "he" || !strings.Contains(he.HTML, `dir="rtl"`) || rec.Header().Get("Vary") != "Accept-Language" {
-		t.Errorf("he: %q vary %q", he.Locale, rec.Header().Get("Vary"))
+	vary := strings.Join(rec.Header().Values("Vary"), ",")
+	if he.Locale != "he" || !strings.Contains(he.HTML, `dir="rtl"`) || !strings.Contains(vary, "Accept-Language") || !strings.Contains(vary, "Origin") {
+		t.Errorf("he: %q vary %q", he.Locale, vary)
 	}
 
 	// ── the event's refund policy wins; its promoter is named ────────────
 	if _, err := pool.Exec(ctx, `INSERT INTO event_promoters (event_id, org_id, promoter_id) VALUES ($1, $2, $3)`, f.eventID, f.orgID, promoterID); err != nil {
 		t.Fatalf("link promoter: %v", err)
 	}
+	_, byID := getTerms(t, srv, base+"?locale=en&event_id="+f.eventID.String(), nil)
 	_, ev := getTerms(t, srv, base+"?locale=en&event_slug=LEGAL-SHOW", nil)
+	if byID.RenderingID != ev.RenderingID {
+		t.Errorf("event by id and by slug render differently: %s %s", byID.RenderingID, ev.RenderingID)
+	}
 	if ev.RefundMode != "no_refund" || !strings.Contains(ev.HTML, "Kolybel Productions (B-777)") ||
 		!strings.Contains(ev.HTML, "You cannot return a ticket") || ev.RenderingID == es.RenderingID {
 		t.Fatalf("event terms: %+v", ev)
@@ -164,6 +172,8 @@ func TestLegalTerms_PublicPage(t *testing.T) {
 	for _, path := range []string{
 		"/v1/public/pages/no-such-slug-" + suffix + "/terms",
 		base + "?event_slug=no-such-event",
+		base + "?event_id=" + uuid.NewString(),
+		base + "?event_id=not-a-uuid",
 		base + "?feed_token=no-such-token",
 		base + "?feed_token=" + url.QueryEscape(other.feedToken),
 	} {

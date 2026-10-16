@@ -30,6 +30,7 @@ type Store interface {
 	GetLegalTermsSeller(ctx context.Context, orgID uuid.UUID, feedToken string) (gen.LegalTermsSellerRow, error)
 	GetLegalTermsEventBySlug(ctx context.Context, orgID uuid.UUID, eventSlug string, promoterID *uuid.UUID) (gen.LegalTermsEventRow, error)
 	GetLegalTermsEventByID(ctx context.Context, orgID, eventID uuid.UUID) (gen.LegalTermsEventRow, error)
+	GetLegalTermsPublishedEventByID(ctx context.Context, orgID, eventID uuid.UUID, promoterID *uuid.UUID) (gen.LegalTermsEventRow, error)
 	GetLegalTermsPromoter(ctx context.Context, orgID, promoterID uuid.UUID) (gen.LegalTermsPromoterRow, error)
 	GetLegalRenderingByInputs(ctx context.Context, documentID uuid.UUID, inputsHash string) (gen.LegalRenderingRow, error)
 	InsertLegalRendering(ctx context.Context, p gen.InsertLegalRenderingParams) (gen.LegalRenderingRow, error)
@@ -43,11 +44,13 @@ type TermsRequest struct {
 	// FeedToken picks the channel (any active channel of OrgID); empty =
 	// the organization's newest hosted-page channel.
 	FeedToken string
-	// EventID (checkout) or EventSlug (public page) names the event, whose
-	// refund policy and promoter the terms state. At most one is used;
-	// EventID wins.
-	EventID   *uuid.UUID
-	EventSlug string
+	// EventID (checkout), PublicEventID or EventSlug (public page) names
+	// the event, whose refund policy and promoter the terms state. At most
+	// one is used, in that order. The public ones must name a published
+	// event (of the promoter, when PromoterID is set).
+	EventID       *uuid.UUID
+	PublicEventID *uuid.UUID
+	EventSlug     string
 	// PromoterID: the page slug named a promoter. An event must then be
 	// linked to it; without an event its data is the promoter's.
 	PromoterID *uuid.UUID
@@ -113,6 +116,15 @@ func RenderTerms(ctx context.Context, s Store, req TermsRequest) (Rendering, err
 	switch {
 	case req.EventID != nil:
 		e, err := s.GetLegalTermsEventByID(ctx, req.OrgID, *req.EventID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Rendering{}, ErrNotFound
+		}
+		if err != nil {
+			return Rendering{}, fmt.Errorf("legaldocs: event: %w", err)
+		}
+		event = &e
+	case req.PublicEventID != nil:
+		e, err := s.GetLegalTermsPublishedEventByID(ctx, req.OrgID, *req.PublicEventID, req.PromoterID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Rendering{}, ErrNotFound
 		}

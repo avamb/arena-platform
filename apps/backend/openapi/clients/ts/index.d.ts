@@ -18830,7 +18830,7 @@ export interface components {
             /**
              * @description While `required` is true and the API knows its public base URL:
              *     the organizer's terms of sale for this event and channel,
-             *     `<API>/v1/public/pages/{org_slug}/terms?event_slug=..&feed_token=..&format=html`
+             *     `<API>/v1/public/pages/{org_slug}/terms?event_id=..&feed_token=..&format=html`
              *     (P3a; an HTML page until the tickets page renders the terms).
              *     Otherwise the platform terms page (`PLATFORM_TERMS_URL`, else the
              *     site's /legal/terms); omitted when none is configured.
@@ -44363,7 +44363,9 @@ export interface operations {
     getPublicTerms: {
         parameters: {
             query?: {
-                /** @description The event whose refund policy and promoter the terms state (a published event of the organization). */
+                /** @description The event whose refund policy and promoter the terms state, by id (a published event of the organization); wins over `event_slug`. The checkout consent link uses it. */
+                event_id?: string;
+                /** @description The same event by its slug. */
                 event_slug?: string;
                 /** @description The feed token of the channel the terms are read for; another organization's token answers 404. */
                 feed_token?: string;

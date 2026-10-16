@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -95,8 +96,9 @@ func requestLocale(r *http.Request) (string, bool) {
 
 // HandlePublicTerms serves GET /v1/public/pages/{org_slug}/terms.
 //
-// Query: locale (else Accept-Language, else English), event_slug (the terms
-// of one event: its refund policy and promoter), feed_token (the channel the
+// Query: locale (else Accept-Language, else English), event_id or
+// event_slug (the terms of one published event: its refund policy and
+// promoter; event_id wins), feed_token (the channel the
 // terms are read for; else the organization's newest hosted-page channel),
 // format=html (a self-contained page instead of JSON).
 //
@@ -138,13 +140,23 @@ func (h *Handler) HandlePublicTerms(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := r.URL.Query()
+	var eventID *uuid.UUID
+	if raw := strings.TrimSpace(q.Get("event_id")); raw != "" {
+		id, perr := uuid.Parse(raw)
+		if perr != nil {
+			notFound(w, r)
+			return
+		}
+		eventID = &id
+	}
 	locale, fromHeader := requestLocale(r)
 	rendering, err := legaldocs.RenderTerms(ctx, h.queries, legaldocs.TermsRequest{
-		OrgID:      owner.OrgID,
-		FeedToken:  q.Get("feed_token"),
-		EventSlug:  q.Get("event_slug"),
-		PromoterID: owner.PromoterID,
-		Locale:     locale,
+		OrgID:         owner.OrgID,
+		FeedToken:     q.Get("feed_token"),
+		PublicEventID: eventID,
+		EventSlug:     q.Get("event_slug"),
+		PromoterID:    owner.PromoterID,
+		Locale:        locale,
 	})
 	switch {
 	case errors.Is(err, legaldocs.ErrNotFound):
@@ -161,7 +173,8 @@ func (h *Handler) HandlePublicTerms(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Cache-Control", "public, max-age=30, stale-while-revalidate=15")
 	if fromHeader {
-		w.Header().Set("Vary", "Accept-Language")
+		// Add, never Set: the CORS middleware's Vary: Origin must stay.
+		w.Header().Add("Vary", "Accept-Language")
 	}
 	if strings.EqualFold(strings.TrimSpace(q.Get("format")), "html") {
 		writeTermsPage(w, rendering)

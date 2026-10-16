@@ -16338,7 +16338,10 @@ type ListPublicFeedEventsParams struct {
 
 // GetPublicTermsParams defines parameters for GetPublicTerms.
 type GetPublicTermsParams struct {
-	// EventSlug The event whose refund policy and promoter the terms state (a published event of the organization).
+	// EventId The event whose refund policy and promoter the terms state, by id (a published event of the organization); wins over `event_slug`. The checkout consent link uses it.
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
+
+	// EventSlug The same event by its slug.
 	EventSlug *string `form:"event_slug,omitempty" json:"event_slug,omitempty"`
 
 	// FeedToken The feed token of the channel the terms are read for; another organization's token answers 404.

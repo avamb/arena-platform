@@ -79,6 +79,19 @@ WHERE e.org_id = $1
   AND e.deleted_at IS NULL
   AND ($3::uuid IS NULL OR epr.promoter_id = $3::uuid);
 
+-- name: GetLegalTermsPublishedEventByID :one
+SELECT
+    e.id, e.slug, e.refund_policy_mode,
+    p.id, p.name, p.legal_id, p.address, p.website
+FROM events e
+LEFT JOIN event_promoters epr ON epr.event_id = e.id AND epr.org_id = e.org_id
+LEFT JOIN org_promoters p ON p.id = epr.promoter_id AND p.org_id = epr.org_id
+WHERE e.org_id = $1
+  AND e.id = $2
+  AND e.status = 'published'
+  AND e.deleted_at IS NULL
+  AND ($3::uuid IS NULL OR epr.promoter_id = $3::uuid);
+
 -- name: GetLegalTermsEventByID :one
 SELECT
     e.id, e.slug, e.refund_policy_mode,
