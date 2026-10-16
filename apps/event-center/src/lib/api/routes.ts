@@ -69,6 +69,9 @@ export const API = {
   resendTickets: { method: "POST", path: "/v1/organizations/{org_id}/orders/{order_id}/resend-tickets" },
   // 4-2: cancel an unpaid order. Asks for the password again (spec 37 4.6).
   cancelOrder: { method: "POST", path: "/v1/organizations/{org_id}/orders/{id}/cancel" },
+  // 8-1: refund tickets of an order. The create asks for the password again (spec 37 4.6).
+  refundOptions: { method: "GET", path: "/v1/organizations/{org_id}/orders/{order_id}/refund-options" },
+  refundCreate: { method: "POST", path: "/v1/organizations/{org_id}/orders/{order_id}/refunds" },
   // 4-7: the owner's "Organization data".
   orgDetail: { method: "GET", path: "/v1/organizations/{id}" },
   orgUpdate: { method: "PATCH", path: "/v1/organizations/{id}" },

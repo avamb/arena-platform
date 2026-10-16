@@ -74,6 +74,8 @@ interface SendOptions {
   accept?: string;
   /** Extra headers, for example X-Step-Up-Token on a money request. */
   headers?: Record<string, string>;
+  /** How long to wait for the answer. Default 30 s; a refund waits for the provider. */
+  timeoutMs?: number;
 }
 
 async function send(opts: SendOptions): Promise<Response> {
@@ -92,7 +94,7 @@ async function send(opts: SendOptions): Promise<Response> {
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, TIMEOUT_MS);
+  }, opts.timeoutMs ?? TIMEOUT_MS);
   try {
     return await fetch(`${config.apiBaseUrl}${buildPath(opts.route, opts.params, opts.query)}`, {
       method: opts.route.method,

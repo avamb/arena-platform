@@ -26,6 +26,8 @@ export interface LiveEnv {
   event_id: string;
   event_name: string;
   session_id: string;
+  /** The harness's Stripe stub (task 8-1): GET /__calls, POST /__reset. */
+  stripe_stub_url: string;
   people: Person[];
 }
 

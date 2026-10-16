@@ -16,6 +16,7 @@
  *   ARENA_LIVE_API_PORT     arena-api port, default 18086
  *   ARENA_LIVE_READY_PORT   the harness's own readiness port, default 18087
  *   ARENA_LIVE_UI_PORT      the vite dev server port (CORS origin), default 5177
+ *   ARENA_LIVE_STRIPE_PORT  the harness's Stripe stub (refunds, task 8-1), default 18088
  *   ARENA_API_BIN           a prebuilt arena-api (CI); else built with go
  *   ARENA_E2E_SEED_BIN      a prebuilt arena-e2e-seed (CI); else built with go
  *   JWT_SIGNING_SECRET      default: a fixed test value
@@ -39,7 +40,9 @@ const exe = process.platform === "win32" ? ".exe" : "";
 const apiPort = Number(process.env.ARENA_LIVE_API_PORT ?? 18086);
 const readyPort = Number(process.env.ARENA_LIVE_READY_PORT ?? 18087);
 const uiPort = Number(process.env.ARENA_LIVE_UI_PORT ?? 5177);
+const stripePort = Number(process.env.ARENA_LIVE_STRIPE_PORT ?? 18088);
 const apiBase = `http://127.0.0.1:${apiPort}`;
+const stripeBase = `http://127.0.0.1:${stripePort}`;
 
 function log(msg) {
   console.log(`[live-harness] ${msg}`);
@@ -122,7 +125,82 @@ const seeded = spawnSync(seedBin, [], { cwd: repoRoot, env: process.env, encodin
 if (seeded.status !== 0) die(`arena-e2e-seed failed:\n${seeded.stderr}`);
 const fixture = JSON.parse(seeded.stdout);
 
-// 2. The real arena-api.
+// 2. A Stripe stub for the refund twin (task 8-1). arena-api sends every
+//    Stripe call of the fixture's test configuration here
+//    (STRIPE_API_BASE_URL, refused in production by config.Validate), so no
+//    test ever reaches Stripe. It answers what the refund engine asks:
+//      POST /v1/refunds        a refund; the same Idempotency-Key answers the
+//                              first refund again, as Stripe does. An amount
+//                              of 777 (7.77) is declined with a Stripe error
+//                              object, so the spec can show a refusal.
+//      GET  /v1/refunds/{id}   a refund read back
+//      GET  /v1/balance        what a credential check asks
+//      GET  /__calls           every refund call it received (for the spec)
+//      POST /__reset           forgets them
+const stripeCalls = [];
+const stripeRefunds = new Map(); // idempotency key -> answer
+let stripeSeq = 0;
+function stripeJson(res, status, body) {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(body));
+}
+const stripeStub = createServer((req, res) => {
+  const path = (req.url ?? "/").split("?")[0];
+  let raw = "";
+  req.on("data", (c) => {
+    raw += c;
+  });
+  req.on("end", () => {
+    if (req.method === "GET" && path === "/__calls") return stripeJson(res, 200, stripeCalls);
+    if (req.method === "POST" && path === "/__reset") {
+      stripeCalls.length = 0;
+      stripeRefunds.clear();
+      return stripeJson(res, 200, { ok: true });
+    }
+    if (req.method === "GET" && path === "/v1/balance") {
+      return stripeJson(res, 200, { object: "balance", available: [], pending: [], livemode: false });
+    }
+    if (req.method === "POST" && path === "/v1/refunds") {
+      const form = new URLSearchParams(raw);
+      const key = req.headers["idempotency-key"] ?? "";
+      const amount = Number(form.get("amount") ?? 0);
+      stripeCalls.push({ amount, payment_intent: form.get("payment_intent"), key, order: form.get("metadata[arena_order_id]") });
+      const seen = stripeRefunds.get(key);
+      if (seen !== undefined) return stripeJson(res, seen.status, seen.body);
+      let answer;
+      if (amount === 777) {
+        answer = {
+          status: 400,
+          body: { error: { type: "invalid_request_error", code: "charge_disputed", message: "The charge is disputed and cannot be refunded." } },
+        };
+      } else {
+        stripeSeq += 1;
+        answer = {
+          status: 200,
+          body: {
+            id: `re_e2e_${stripeSeq}`,
+            object: "refund",
+            status: "succeeded",
+            amount,
+            currency: "eur",
+            payment_intent: form.get("payment_intent"),
+          },
+        };
+      }
+      if (key !== "") stripeRefunds.set(key, answer);
+      return stripeJson(res, answer.status, answer.body);
+    }
+    if (req.method === "GET" && path.startsWith("/v1/refunds/")) {
+      const id = path.slice("/v1/refunds/".length);
+      for (const a of stripeRefunds.values()) if (a.body.id === id) return stripeJson(res, 200, a.body);
+      return stripeJson(res, 404, { error: { type: "invalid_request_error", code: "resource_missing", message: "No such refund" } });
+    }
+    return stripeJson(res, 404, { error: { type: "invalid_request_error", message: `stub: ${req.method} ${path}` } });
+  });
+});
+stripeStub.listen(stripePort, "127.0.0.1");
+
+// 3. The real arena-api.
 const apiBin = backendBinary("ARENA_API_BIN", "./apps/backend/cmd/arena-api", "arena-api");
 const apiEnv = {
   ...process.env,
@@ -134,6 +212,8 @@ const apiEnv = {
   EVENT_CENTER_PUBLIC_URL: `http://127.0.0.1:${uiPort}`,
   // The hosted sales site: promoter cards show "<this>/<slug>" (task 4-6).
   PUBLIC_TICKETS_BASE_URL: process.env.PUBLIC_TICKETS_BASE_URL ?? "https://tickets.e2e.test",
+  // Every Stripe call goes to the stub above, never to Stripe (task 8-1).
+  STRIPE_API_BASE_URL: `${stripeBase}/v1`,
 };
 log(`starting arena-api on ${apiBase}`);
 const api = spawn(apiBin, [], { cwd: repoRoot, env: apiEnv, stdio: ["ignore", "inherit", "inherit"] });
@@ -153,6 +233,7 @@ function stop() {
   }
   api.kill();
   ready.close();
+  stripeStub.close();
   setTimeout(() => process.exit(0), 300);
 }
 process.on("SIGINT", stop);
@@ -169,7 +250,7 @@ ready.listen(readyPort, "127.0.0.1");
 
 await waitFor(`${apiBase}/healthz`, "arena-api");
 
-// 3. Sign the three in once: proves the fixture works against the real login
+// 4. Sign the three in once: proves the fixture works against the real login
 //    and gives API-level assertions an access token (about 15 minutes).
 const people = [];
 for (const p of fixture.people) {
@@ -187,6 +268,7 @@ writeFileSync(
       event_id: fixture.event_id,
       event_name: fixture.event_name,
       session_id: fixture.session_id,
+      stripe_stub_url: stripeBase,
       people,
     },
     null,
