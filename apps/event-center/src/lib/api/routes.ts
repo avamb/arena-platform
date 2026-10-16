@@ -88,6 +88,9 @@ export const API = {
   revokeInvitation: { method: "DELETE", path: "/v1/organizations/{org_id}/bot-invitations/{id}" },
   resendInvitation: { method: "POST", path: "/v1/organizations/{org_id}/bot-invitations/{id}/resend" },
   removeMember: { method: "DELETE", path: "/v1/organizations/{org_id}/members/{user_id}" },
+  // 2-3: statistics of the event's hosted page (page views, video plays, partner clicks).
+  eventPageStats: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/page-stats" },
+  eventPageStatsCsv: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/page-stats.csv" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;

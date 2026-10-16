@@ -61,3 +61,6 @@ export type BotInvitation = S["BotInvitation"];
 export type BotInvitationCreateResponse = S["BotInvitationCreateResponse"];
 export type BotInvitationResendResponse = S["BotInvitationResendResponse"];
 export type BotInvitationRevokeResponse = S["BotInvitationRevokeResponse"];
+// 2-3: statistics of the hosted page (beacon counters).
+export type PageStatsResponse = S["PageStatsResponse"];
+export type PageStatsCounts = S["PageStatsCounts"];

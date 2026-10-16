@@ -5656,6 +5656,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/pages/{org_slug}/{event_slug}/track": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Count a page view, a video play or a partner click of a hosted page
+         * @description The hosted page's statistics beacon (HP-2a). No JWT, no cookie. One
+         *     call adds one hit to a counter row of the event: the day (the calendar
+         *     day in the venue's zone), the kind and the two cleaned utm values. The
+         *     visitor's IP address, User-Agent, country and time of day are never
+         *     stored and never logged; an obvious bot (by User-Agent, or none) is
+         *     counted in `suspect_hits` instead of `hits`. The numbers are a guide for
+         *     the organizer, not proof for an advertising account.
+         *
+         *     The page is resolved like `GET /v1/public/pages/{org_slug}/{event_slug}`
+         *     (an organization's or a promoter's slug) and answers the same
+         *     `404 page.not_found` for every miss. One event keeps at most 200
+         *     different utm pairs a day; more are counted without utm.
+         *
+         *     Rate limited by the page (`PUBLIC_PAGE_TRACK_EVENT_RATE_LIMIT`) and by
+         *     client IP (`PUBLIC_PAGE_TRACK_IP_RATE_LIMIT`) before any database read;
+         *     a request over a limit is answered 429 `track.rate_limited` and is not
+         *     counted.
+         */
+        post: operations["postPublicPageTrack"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/pages/{org_slug}": {
         parameters: {
             query?: never;
@@ -7213,6 +7249,63 @@ export interface paths {
          *     organization is a 404.
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdSalesCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/page-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Statistics of the event's hosted page
+         * @description Page views, video plays and partner-link clicks counted by the page's
+         *     beacon (`POST /v1/public/pages/{org_slug}/{event_slug}/track`), per
+         *     day in the venue's zone, with the totals of the window and the biggest
+         *     utm pairs of the page views. By default the window is the last 30 days
+         *     ending today in the venue's zone; `from` and `to` (`YYYY-MM-DD`,
+         *     inclusive) set it, at most 366 days. Hits of probable bots are in
+         *     `suspect_hits`. A guide for the organizer, not proof for an advertising
+         *     account.
+         *
+         *     Requires `event.read`; an event of another organization (or a deleted
+         *     one) is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsEventIdPageStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/page-stats.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Statistics of the event's hosted page as a CSV file
+         * @description The counter rows behind `page-stats`: one row per day, kind and utm
+         *     pair (day, kind, utm source, utm campaign, count, probable bots). Same
+         *     window rules as the JSON route, same csvexport rules as the other
+         *     exports (UTF-8 with a BOM, `;` separator, header language by `locale`
+         *     / `lang` / Accept-Language). The file is event-level: a page view
+         *     belongs to the event, not to a session or a category.
+         *
+         *     Requires `event.read`; an event of another organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsEventIdPageStatsCsv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -14865,6 +14958,107 @@ export interface components {
              *     that moves, and stays empty for an event without a live session.
              */
             report_photos: components["schemas"]["PublicMaterialPhoto"][];
+        };
+        /**
+         * @description Body of POST /v1/public/pages/{org_slug}/{event_slug}/track, the hosted
+         *     page's statistics beacon (HP-2a). Unknown fields are ignored.
+         */
+        PageTrackRequest: {
+            /**
+             * @description What happened: `page_view`, `video_play` or `partner_click`. Any
+             *     other value is refused with 400 `track.invalid_kind`.
+             * @example page_view
+             */
+            kind: string;
+            /**
+             * @description Optional `utm_source` of the page address. Only the characters
+             *     `A-Z a-z 0-9 . _ ~ -` are kept (a value with any other character is
+             *     counted as empty) and it is cut to 64 characters.
+             * @example instagram
+             */
+            utm_source?: string;
+            /**
+             * @description Optional `utm_campaign` of the page address, cleaned like `utm_source`.
+             * @example spring
+             */
+            utm_campaign?: string;
+        };
+        /** @description A pair of counters of one kind. */
+        PageStatsCounts: {
+            /**
+             * Format: int64
+             * @description Hits that looked like a person with a browser.
+             */
+            hits: number;
+            /**
+             * Format: int64
+             * @description Hits counted apart because the browser looked like a bot (or sent no User-Agent).
+             */
+            suspect_hits: number;
+        };
+        /** @description The counters of the three kinds. */
+        PageStatsKinds: {
+            /** @description Opened the event page. */
+            page_view: components["schemas"]["PageStatsCounts"];
+            /** @description Pressed play on a video of the page. */
+            video_play: components["schemas"]["PageStatsCounts"];
+            /** @description Followed a "where else to buy" link. */
+            partner_click: components["schemas"]["PageStatsCounts"];
+        };
+        /** @description The counters of one calendar day (in the venue's zone) that has data. */
+        PageStatsDay: {
+            /**
+             * @description The day, `YYYY-MM-DD`.
+             * @example 2026-05-06
+             */
+            day: string;
+            /** @description Opened the event page. */
+            page_view: components["schemas"]["PageStatsCounts"];
+            /** @description Pressed play on a video of the page. */
+            video_play: components["schemas"]["PageStatsCounts"];
+            /** @description Followed a "where else to buy" link. */
+            partner_click: components["schemas"]["PageStatsCounts"];
+        };
+        /** @description One utm pair of the page views. Visits that carried no utm are the pair of two empty strings. */
+        PageStatsSource: {
+            /** @description The cleaned `utm_source`, empty when none. */
+            utm_source: string;
+            /** @description The cleaned `utm_campaign`, empty when none. */
+            utm_campaign: string;
+            /**
+             * Format: int64
+             * @description Page views that looked like a person.
+             */
+            hits: number;
+            /**
+             * Format: int64
+             * @description Page views counted apart as probable bots.
+             */
+            suspect_hits: number;
+        };
+        /**
+         * @description The statistics of an event's hosted page for a window of days. A guide
+         *     for the organizer, not proof for an advertising account: a bot may look
+         *     like a person and a person may block the beacon.
+         */
+        PageStatsResponse: {
+            /**
+             * Format: uuid
+             * @description The event.
+             */
+            event_id: string;
+            /** @description First day of the window, `YYYY-MM-DD`. */
+            from: string;
+            /** @description Last day of the window (inclusive), `YYYY-MM-DD`. */
+            to: string;
+            /** @description IANA zone of the event's venue that decides which day a hit belongs to; null (UTC days) while the event has no session. */
+            timezone: string | null;
+            /** @description Sums over the whole window. */
+            totals: components["schemas"]["PageStatsKinds"];
+            /** @description The days that have data, oldest first. A day without hits is absent. */
+            days: components["schemas"]["PageStatsDay"][];
+            /** @description The utm pairs of the page views, biggest first, at most 20. */
+            sources: components["schemas"]["PageStatsSource"][];
         };
         /**
          * @description Response envelope for GET /v1/public/pages/{org_slug}/{event_slug} —
@@ -44063,6 +44257,78 @@ export interface operations {
             };
         };
     };
+    postPublicPageTrack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization or promoter slug, matched case-insensitively. */
+                org_slug: string;
+                /** @description Event slug, matched case-insensitively. */
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageTrackRequest"];
+            };
+        };
+        responses: {
+            /** @description Counted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is not a JSON object (`track.invalid_body`) or the kind is not allowed (`track.invalid_kind`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Page not found (`page.not_found`), one outcome for every miss. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited (`track.rate_limited`, with Retry-After). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The hit could not be written (`track.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getPublicPromoterPage: {
         parameters: {
             query?: never;
@@ -49002,6 +49268,188 @@ export interface operations {
                 };
             };
             /** @description The export exceeds the row limit (`export.too_many_rows`, details `rows` and `max_rows`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsEventIdPageStats: {
+        parameters: {
+            query?: {
+                /** @description First day, `YYYY-MM-DD`. Default 29 days before `to`. */
+                from?: string;
+                /** @description Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone. */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The statistics of the window. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageStatsResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID, or the window is wrong (`page_stats.invalid_date`, `page_stats.invalid_range`, `page_stats.range_too_long`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found, or not part of this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`page_stats.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsEventIdPageStatsCsv: {
+        parameters: {
+            query?: {
+                /** @description First day, `YYYY-MM-DD`. Default 29 days before `to`. */
+                from?: string;
+                /** @description Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone. */
+                to?: string;
+                /** @description Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The CSV attachment, `Content-Disposition: attachment;
+             *     filename="page-stats_<event slug or id>_<YYYY-MM-DD>.csv"`.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description A path parameter is not a UUID, or the window is wrong. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found, or not part of this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The export exceeds the row limit (`export.too_many_rows`). */
             413: {
                 headers: {
                     [name: string]: unknown;

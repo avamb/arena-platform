@@ -882,6 +882,19 @@ export const en = {
   "apiError.memberGone.next": "Reload the page to see the latest team.",
   "apiError.roleNotAllowed.title": "This role cannot be changed here.",
   "apiError.roleNotAllowed.next": "Only the platform team manages it. Write to support if it is needed.",
+  // 2-3
+  "pageStats.title": "Page statistics",
+  "pageStats.note": "A guide, not proof for an advertising account: a bot can look like a person, and a person can block the counter. The last 30 days.",
+  "pageStats.views": "Opened the page",
+  "pageStats.plays": "Pressed play on a video",
+  "pageStats.clicks": "Followed a partner link",
+  "pageStats.suspect": "{count} of them look like bots",
+  "pageStats.sources": "Where visitors came from",
+  "pageStats.direct": "Without a campaign",
+  "pageStats.col.source": "Source",
+  "pageStats.col.campaign": "Campaign",
+  "pageStats.col.views": "Page views",
+  "pageStats.csv": "Download the statistics CSV",
 } as const;
 
 export type MessageKey = keyof typeof en;

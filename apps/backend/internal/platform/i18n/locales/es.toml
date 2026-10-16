@@ -3616,3 +3616,6 @@ other = "← Volver a la ficha"
 
 ["bot.wz.warn_tier_not_in_payload"]
 other = "Las categorías que no están en la lista nueva quedaron cerradas. Las entradas vendidas siguen siendo válidas."
+
+["bot.ec.page_stats_line"]
+other = "Visitas a la página: {{.Views}} en {{.Days}} días{{if .Suspect}} (de ellas, {{.Suspect}} sospechosas){{end}}"
