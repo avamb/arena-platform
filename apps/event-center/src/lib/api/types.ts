@@ -61,3 +61,5 @@ export type BotInvitation = S["BotInvitation"];
 export type BotInvitationCreateResponse = S["BotInvitationCreateResponse"];
 export type BotInvitationResendResponse = S["BotInvitationResendResponse"];
 export type BotInvitationRevokeResponse = S["BotInvitationRevokeResponse"];
+// 5-3
+export type SessionEnvelope = S["SessionEnvelope"];

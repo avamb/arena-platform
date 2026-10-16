@@ -29,6 +29,7 @@ import type {
   PromoCodeEnvelope,
   PromoCodeListResponse,
   PromoRedemptionListResponse,
+  SessionEnvelope,
   SessionListResponse,
   SessionSummary,
   TicketTierListResponse,
@@ -432,5 +433,21 @@ export function removeMember(orgId: string, userId: string, membershipRole: stri
     route: API.removeMember,
     params: { org_id: orgId, user_id: userId },
     body: { role: membershipRole },
+  });
+}
+
+// 5-3: the sales end and doors-open time of a session. One PATCH names ONE
+// of the two (the body builders are in lib/saleTimes.ts). No journal row and
+// no letter: neither time is a buyer-visible change.
+export function updateSessionSaleTimes(
+  orgId: string,
+  eventId: string,
+  sessionId: string,
+  body: { sales_end_at: string } | { doors_open_at: string | null },
+): Promise<SessionEnvelope> {
+  return call<SessionEnvelope>({
+    route: API.sessionUpdate,
+    params: { org_id: orgId, event_id: eventId, id: sessionId },
+    body,
   });
 }

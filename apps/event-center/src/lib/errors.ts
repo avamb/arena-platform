@@ -117,7 +117,10 @@ export type ApiErrorStem =
   | "invitationClosed"
   | "memberGone"
   | "roleNotAllowed"
-  | "lastOwner";
+  | "lastOwner"
+  // 5-3
+  | "saleTimeInvalid"
+  | "doorsAfterStart";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -134,6 +137,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "apiKeyForbidden", "sellerHideOperatorOnly", "kybOperatorOnly", "legalNameRequired",
   // 4-5
   "resendTooSoon", "invitationChannel", "webInvitationOff", "invitationClosed", "memberGone", "roleNotAllowed", "lastOwner",
+  // 5-3
+  "saleTimeInvalid", "doorsAfterStart",
 ];
 
 /**
@@ -204,6 +209,10 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "bot.invalid_role": "invalid",
   "membership.empty_body": "invalid",
   "membership.invalid_role": "invalid",
+  // 5-3: the sales end and doors-open time
+  "session.invalid_sales_end_at": "saleTimeInvalid",
+  "session.invalid_doors_open_at": "saleTimeInvalid",
+  "session.doors_after_start": "doorsAfterStart",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",
