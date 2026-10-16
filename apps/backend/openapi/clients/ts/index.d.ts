@@ -7751,6 +7751,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/tickets/{ticket_id}/vip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set or clear the VIP mark of a ticket
+         * @description The organizer marks a ticket (bought or an invitation) as VIP, or takes
+         *     the mark off. The mark is private to the organization: it is not
+         *     printed on the PDF e-ticket and not written in any letter to the buyer.
+         *     Requires `ticket.update` (owner and manager). The call is idempotent:
+         *     repeating the stored value answers 200 with `changed` false and writes
+         *     no audit event. A change is audited as `v1.ticket.vip_set`.
+         */
+        patch: operations["patchV1OrganizationsOrgIdTicketsTicketIdVip"];
+        trace?: never;
+    };
     "/v1/admin/tickets/{id}/scans": {
         parameters: {
             query?: never;
@@ -11922,6 +11947,8 @@ export interface components {
              * @description When the ticket was scanned at the door (latest scan of its barcodes, any authority); null if never.
              */
             used_at: string | null;
+            /** @description The organizer's private VIP mark. It is never printed on the PDF e-ticket or written in a letter to the buyer. */
+            vip: boolean;
         };
         /** @description One audit-trail event recorded against an order. */
         OrderEventSummary: {
@@ -21262,6 +21289,8 @@ export interface components {
             status: string;
             /** @description True once the ticket has been scanned at the door. */
             used: boolean;
+            /** @description The organizer's private VIP mark of the ticket (the same flag as on a bought ticket). Never printed on the PDF or written in the guest's letter. */
+            vip: boolean;
         };
         /**
          * @description One complimentary issuance in the paged list: the issuance row with
@@ -21402,6 +21431,8 @@ export interface components {
             issued_by?: string;
             /** @description Internal note. */
             notes?: string;
+            /** @description Mark every ticket of the issuance with the organizer's private VIP flag (default false). The flag is never printed on the PDF or written in the guest's letter. */
+            vip?: boolean;
         };
         /** @description The issuance that was created, or the existing one on a replay. */
         ComplimentaryCreateResponse: {
@@ -50668,6 +50699,102 @@ export interface operations {
             };
             /** @description The ticket is not on review hold (ticket.not_on_review_hold), or money returned on its payment names no ticket and confirm_unattributed does not repeat that amount (ticket.review_hold_unattributed, with unattributed_amount and currency in the details). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patchV1OrganizationsOrgIdTicketsTicketIdVip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the ticket */
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description True to mark the ticket as VIP, false to take the mark off. */
+                    vip: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description The mark has the wanted value. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: uuid
+                         * @description UUIDv7 of the ticket.
+                         */
+                        ticket_id: string;
+                        /** @description The mark after the call. */
+                        vip: boolean;
+                        /** @description False when the ticket already had that value. */
+                        changed: boolean;
+                    };
+                };
+            };
+            /** @description The body is not a JSON object with a boolean `vip` (ticket.invalid_vip). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks ticket.update in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket not found in this organization (ticket.not_found). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
