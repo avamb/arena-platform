@@ -10,6 +10,7 @@
       cover: { type: 'String', attribute: 'cover' },
       sessions: { type: 'String', attribute: 'sessions' },
       frame: { type: 'String', attribute: 'frame' },
+      materials: { type: 'String', attribute: 'materials' },
     },
   }}
 />
@@ -60,6 +61,7 @@
   import GaTierCard from './components/GaTierCard.svelte';
   import GaAreaPopover from './components/GaAreaPopover.svelte';
   import OrderStatus from './components/OrderStatus.svelte';
+  import Materials from './components/Materials.svelte';
 
   interface Props {
     /** The public feed token identifying the event/catalogue. */
@@ -94,9 +96,15 @@
      * things. Anything else (or absent) keeps the frame, which is what a
      * standalone embed on someone else's site wants. */
     frame?: string;
+    /** 'hidden' drops the event's materials block (gallery, videos, map,
+     * "where else to buy", photo report). A host page that already shows
+     * the same material itself — the hosted tickets page does — sets it so
+     * the buyer does not see everything twice. Anything else (or absent)
+     * shows the block whenever the event has any material. */
+    materials?: string;
   }
 
-  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '' }: Props = $props();
+  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '' }: Props = $props();
 
   /**
    * Host element reference for CustomEvent dispatch (WID-S5).
@@ -114,6 +122,7 @@
   // keeps the cover, since a typo must not silently strip the artwork.
   const coverHidden = $derived(cover.trim().toLowerCase() === 'hidden');
   const frameHidden = $derived(frame.trim().toLowerCase() === 'hidden');
+  const materialsHidden = $derived(materials.trim().toLowerCase() === 'hidden');
 
   /**
    * Scope for the stored checkout token (see `checkoutTokenKey`).
@@ -1000,6 +1009,18 @@
             locale={normLocale}
             onOpen={openCartSheet}
             cta={frameHidden ? t.continue_to_payment : null}
+          />
+        {/if}
+
+        <!-- Event materials (task 2-2): gallery, videos, map, partner links,
+             photo report. Drawn only when the event has any. -->
+        {#if !materialsHidden && event.materials}
+          <Materials
+            materials={event.materials}
+            locale={normLocale}
+            apiBase={resolvedApiBase}
+            venueNames={event.venue_names ?? []}
+            rtl={dir === 'rtl'}
           />
         {/if}
 

@@ -272,8 +272,53 @@ export interface FeedSession {
   media_gallery: FeedSessionMediaItem[];
 }
 
+/** One picture of the event gallery or the photo report (task 1-2c). */
+export interface FeedMaterialPhoto {
+  media_id: string;
+  /** Signed address, absolute (host-relative only without media storage). */
+  url: string;
+  caption: string | null;
+  width: number | null;
+  height: number | null;
+}
+
+/** One video link. `embed_url` is set only for youtube, vimeo and rutube. */
+export interface FeedMaterialVideo {
+  provider: string;
+  video_id: string | null;
+  embed_url: string | null;
+  url: string;
+}
+
+/** A "where else to buy" link with the other seller's name. */
+export interface FeedMaterialPartnerLink {
+  url: string;
+  seller_name: string;
+}
+
+export interface FeedMaterialMapPoint {
+  latitude: number;
+  longitude: number;
+  label: string | null;
+}
+
+/**
+ * The event's page materials (spec 40 task 1-2c), the same block the hosted
+ * page gets. Every list may be empty; an older backend sends no block.
+ */
+export interface FeedMaterials {
+  gallery: FeedMaterialPhoto[];
+  videos: FeedMaterialVideo[];
+  partner_links: FeedMaterialPartnerLink[];
+  map_point: FeedMaterialMapPoint | null;
+  /** Empty until the event's last session has ended. */
+  report_photos: FeedMaterialPhoto[];
+}
+
 export interface FeedEvent {
   id: string;
+  /** Gallery, videos, map, partner links, photo report. Absent on older backends. */
+  materials?: FeedMaterials | null;
   /** Short operator-facing event number (Wave 4). */
   display_number: number;
   org_id: string;
