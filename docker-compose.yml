@@ -410,6 +410,8 @@ services:
     container_name: arena_venue_gen
     profiles: ["venue-gen"]
     restart: unless-stopped
+    # Second line of defence behind VENUE_GEN_JOB_MEMORY_MB (a per-job cap inside the container).
+    mem_limit: 3g
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=3)"]
       interval: 15s

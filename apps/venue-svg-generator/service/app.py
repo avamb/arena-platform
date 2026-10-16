@@ -49,6 +49,7 @@ def create_app(manager: JobManager | None = None, *, max_upload_bytes: int | Non
         ttl_seconds=_env_float("VENUE_GEN_JOB_TTL_S", 3600),
         timeout_seconds=_env_float("VENUE_GEN_JOB_TIMEOUT_S", 120),
         max_pending=int(_env_float("VENUE_GEN_MAX_QUEUE", 20)),
+        memory_limit_mb=int(_env_float("VENUE_GEN_JOB_MEMORY_MB", 2048)),
     )
 
     @asynccontextmanager

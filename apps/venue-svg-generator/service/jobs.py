@@ -41,10 +41,27 @@ class Job:
     error: dict[str, str] | None = None
 
 
-def _child_main(conn, runner: Runner, args: tuple) -> None:
+def _limit_memory(megabytes: int) -> None:
+    """Cap the child's address space (POSIX only; a no-op on Windows, where `resource` is absent).
+    A zip bomb or a huge sheet then ends in MemoryError in the child instead of the OOM killer
+    taking the whole service down."""
+    if megabytes <= 0:
+        return
+    try:
+        import resource
+        limit = megabytes * 1024 * 1024
+        resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+    except (ImportError, ValueError, OSError):
+        pass
+
+
+def _child_main(conn, runner: Runner, args: tuple, memory_limit_mb: int = 0) -> None:
     """Runs in the child process; sends exactly one JSON message back."""
+    _limit_memory(memory_limit_mb)
     try:
         payload = {"ok": True, "result": runner(*args)}
+    except MemoryError:
+        payload = {"ok": False, "error": {"code": "memory_limit", "message": "the workbook needs more memory than a job may use"}}
     except PipelineError as exc:
         payload = {"ok": False, "error": {"code": exc.code, "message": exc.message}}
     except Exception as exc:  # never forward the exception text: it may name host paths
@@ -60,8 +77,10 @@ class JobManager:
         ttl_seconds: float = 3600.0,
         timeout_seconds: float = 120.0,
         max_pending: int = 20,
+        memory_limit_mb: int = 2048,
         runner: Runner = run_pipeline,
     ) -> None:
+        self._memory_limit_mb = memory_limit_mb
         self._ttl = ttl_seconds
         self._timeout = timeout_seconds
         self._max_pending = max_pending
@@ -114,7 +133,7 @@ class JobManager:
             xlsx.write_bytes(data)
             ctx = multiprocessing.get_context("spawn")
             parent, child = ctx.Pipe(duplex=False)
-            proc = ctx.Process(target=_child_main, args=(child, self._runner, (str(xlsx), profile_id, target_profile, sha, size)), daemon=True)
+            proc = ctx.Process(target=_child_main, args=(child, self._runner, (str(xlsx), profile_id, target_profile, sha, size), self._memory_limit_mb), daemon=True)
             proc.start()
             child.close()  # so a child that dies without answering shows up as EOF
             try:

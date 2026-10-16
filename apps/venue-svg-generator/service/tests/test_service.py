@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import time
 import unittest
@@ -32,6 +33,16 @@ def wait_for(client: TestClient, job_id: str, timeout: float = 90.0) -> dict:
             return body
         time.sleep(0.2)
     raise AssertionError("job did not finish in time")
+
+
+def poll_until(condition, timeout: float = 30.0, interval: float = 0.1) -> bool:
+    """Wait for a condition by polling; a fixed sleep is a flaky guess on a loaded runner."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(interval)
+    return False
 
 
 def post(client: TestClient, data: bytes, profile: str = "synthetic-v1", filename: str = "plan.xlsx", **extra):
@@ -77,7 +88,11 @@ class ServiceTests(unittest.TestCase):
         self.assertNotIn("secret-client-name", text)
         self.assertNotIn("upload.xlsx", text)
         self.assertNotIn(tempfile.gettempdir(), text)
-        self.assertNotIn("path", body["report"]["source"])
+        # Decision G2a: the client's own workbook structure (sheet titles, merged ranges) is
+        # returned to the client, and the seat keys embed the sheet name; the file name and the
+        # host path are not. The key set is pinned so a new field has to be reviewed.
+        self.assertEqual(set(body["report"]["source"]), {"sha256", "workbook_sheets", "sheets"})
+        self.assertEqual(body["report"]["source"]["workbook_sheets"], ["Seating"])
         provenance = body["report"]["provenance"]
         self.assertEqual(len(provenance["source_sha256"]), 64)
         self.assertGreater(provenance["source_size_bytes"], 0)
@@ -205,6 +220,18 @@ class LimitTests(unittest.TestCase):
         finally:
             manager.shutdown()
 
+    @unittest.skipUnless(sys.platform.startswith("linux"), "RLIMIT_AS is enforced on Linux only")
+    def test_memory_limit_fails_the_job(self):
+        from service.tests.slow_runner import hungry_runner
+        manager = JobManager(timeout_seconds=60, memory_limit_mb=256, runner=hungry_runner)
+        try:
+            client = TestClient(create_app(manager))
+            body = wait_for(client, post(client, workbook_bytes()).json()["job_id"], timeout=60)
+            self.assertEqual(body["status"], "failed")
+            self.assertEqual(body["error"]["code"], "memory_limit")
+        finally:
+            manager.shutdown()
+
     def test_queue_is_bounded_and_one_job_runs_at_a_time(self):
         from service.tests.slow_runner import sleeping_runner
         manager = JobManager(timeout_seconds=3, max_pending=2, runner=sleeping_runner)
@@ -216,9 +243,9 @@ class LimitTests(unittest.TestCase):
             self.assertEqual((first.status_code, second.status_code), (202, 202))
             self.assertEqual(third.status_code, 503)
             self.assertEqual(third.json()["error"]["code"], "queue.full")
-            time.sleep(0.5)
-            statuses = sorted(client.get(f"/jobs/{r.json()['job_id']}").json()["status"] for r in (first, second))
-            self.assertEqual(statuses, ["queued", "running"])
+            ids = [r.json()["job_id"] for r in (first, second)]
+            self.assertTrue(poll_until(lambda: client.get(f"/jobs/{ids[0]}").json()["status"] == "running"))
+            self.assertEqual(client.get(f"/jobs/{ids[1]}").json()["status"], "queued")
         finally:
             manager.shutdown()
 
@@ -228,8 +255,7 @@ class LimitTests(unittest.TestCase):
             client = TestClient(create_app(manager))
             body = wait_for(client, post(client, workbook_bytes()).json()["job_id"])
             self.assertEqual(body["status"], "done")
-            time.sleep(0.8)
-            self.assertEqual(client.get(f"/jobs/{body['job_id']}").status_code, 404)
+            self.assertTrue(poll_until(lambda: client.get(f"/jobs/{body['job_id']}").status_code == 404, timeout=10))
         finally:
             manager.shutdown()
 
