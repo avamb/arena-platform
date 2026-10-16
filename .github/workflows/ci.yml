@@ -31,7 +31,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache: true
 
       - name: Run golangci-lint
@@ -78,7 +78,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache: true
 
       - name: Download dependencies
@@ -160,7 +160,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache: true
 
       - name: Download dependencies
@@ -212,7 +212,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache: true
 
       - name: Set up Node.js
@@ -544,7 +544,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache: true
 
       - name: Build Go binaries
@@ -799,7 +799,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache: true
 
       - name: Build Go binaries
