@@ -27,7 +27,10 @@ package main
 //	                     orders, tickets and the ledger back, so a repeated run
 //	                     starts clean (refunds cannot be undone otherwise);
 //	--refund-op inspect  prints, per order, {refunds, states, amounts,
-//	                     active_tickets, status, notify_buyer}.
+//	                     active_tickets, status, notify_buyer};
+//	--refund-op scan     marks the manager's ticket scanned at the entrance,
+//	                     the way a scan landing while the refund screen is
+//	                     open would (the refund.ticket_scanned case).
 //
 // Kept apart from main.go so the parallel tasks that extend the seed do not
 // collide with it.
@@ -306,7 +309,14 @@ func runRefundOp(op string) error {
 			out[id] = s
 		}
 		return printCancelOrderJSON(out)
+	case "scan":
+		// The manager's ticket is scanned at the entrance while the refund
+		// screen is open: the create call must refuse it (refund.ticket_scanned).
+		if _, err := pool.Exec(ctx, `UPDATE tickets SET used_at = now() WHERE order_id = $1`, refOrderManager); err != nil {
+			return fmt.Errorf("scan the manager's ticket: %w", err)
+		}
+		return printCancelOrderJSON(map[string]string{"ok": "scanned"})
 	default:
-		return fmt.Errorf("unknown --refund-op %q (reset, inspect)", op)
+		return fmt.Errorf("unknown --refund-op %q (reset, inspect, scan)", op)
 	}
 }

@@ -97,7 +97,7 @@ func run(args []string) error {
 	teamOp := fs.String("team-op", "", "4-5 twin helper: reset, age, expire or inspect (see team_fixture.go)")
 	teamEmail := fs.String("team-email", "", "the address --team-op age, expire or inspect works on")
 	orgDataOp := fs.String("org-data-op", "", "4-7 twin helper: reset, inspect or hide (see org_data_fixture.go)")
-	refundOp := fs.String("refund-op", "", "8-1 twin helper: reset or inspect (see refund_fixture.go)")
+	refundOp := fs.String("refund-op", "", "8-1 twin helper: reset, inspect or scan (see refund_fixture.go)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

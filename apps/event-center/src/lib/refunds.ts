@@ -281,3 +281,84 @@ export function scannedRefusal(err: unknown): ScannedRefusal | null {
   const notice = n === "queued" || n === "throttled" ? "notified" : n === "no_recipient" ? "nobody" : "silent";
   return { ticketId, notice };
 }
+
+// ─── an operation whose answer may be missing ────────────────────────
+
+/**
+ * A refund request that left the browser and has no final answer yet: its
+ * plan, its Idempotency-Key and the plan's fingerprint. It is written to the
+ * tab's sessionStorage (per organization and order) right before the request
+ * goes out, and removed once a final answer (the result or a definite
+ * refusal) arrives. After a reload the card finds it and offers "Check the
+ * refund" with the SAME key, so a lost answer never turns into a second
+ * refund under a new key.
+ *
+ * It holds no buyer data (tickets, amounts, the reason). A failing or missing
+ * storage only loses this convenience: the server still refuses a ticket
+ * whose refund is under way.
+ */
+export interface PendingRefund {
+  key: string;
+  fingerprint: string;
+  plan: RefundPlan;
+}
+
+/** The minimal storage this needs (sessionStorage in the browser, a map in tests). */
+export interface KeyValueStore {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+export function pendingRefundKey(orgId: string, orderId: string): string {
+  return `arena.ec.refund.pending.${orgId}.${orderId}`;
+}
+
+function browserSessionStore(): KeyValueStore | null {
+  try {
+    return typeof sessionStorage === "undefined" ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function savePendingRefund(
+  orgId: string,
+  orderId: string,
+  p: PendingRefund,
+  store: KeyValueStore | null = browserSessionStore(),
+): void {
+  try {
+    store?.setItem(pendingRefundKey(orgId, orderId), JSON.stringify(p));
+  } catch {
+    /* storage full or blocked: the in-memory state still holds the key */
+  }
+}
+
+/** The stored operation, or null. A record whose plan no longer matches its fingerprint is ignored. */
+export function loadPendingRefund(
+  orgId: string,
+  orderId: string,
+  store: KeyValueStore | null = browserSessionStore(),
+): PendingRefund | null {
+  try {
+    const raw = store?.getItem(pendingRefundKey(orgId, orderId));
+    if (raw === null || raw === undefined) return null;
+    const p = JSON.parse(raw) as Partial<PendingRefund> | null;
+    if (p === null || typeof p.key !== "string" || p.key === "" || typeof p.fingerprint !== "string" || p.plan === undefined) {
+      return null;
+    }
+    if (planFingerprint(p.plan) !== p.fingerprint) return null;
+    return p as PendingRefund;
+  } catch {
+    return null;
+  }
+}
+
+export function clearPendingRefund(orgId: string, orderId: string, store: KeyValueStore | null = browserSessionStore()): void {
+  try {
+    store?.removeItem(pendingRefundKey(orgId, orderId));
+  } catch {
+    /* nothing to do */
+  }
+}

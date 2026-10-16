@@ -5,7 +5,12 @@ import { translate } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import {
   canOfferRefund,
+  clearPendingRefund,
   emptyRefundDraft,
+  loadPendingRefund,
+  pendingRefundKey,
+  savePendingRefund,
+  type KeyValueStore,
   keyFor,
   newRefundKey,
   outcomeUnknown,
@@ -192,5 +197,72 @@ describe("the answer", () => {
     expect(scannedRefusal(e("no_recipient"))).toEqual({ ticketId: "t1", notice: "nobody" });
     expect(scannedRefusal(e(undefined))).toEqual({ ticketId: "t1", notice: "silent" });
     expect(scannedRefusal(new ApiError(409, "refund.in_progress", "x"))).toBeNull();
+  });
+});
+
+describe("an operation whose answer may be missing", () => {
+  function memoryStore(): KeyValueStore & { data: Map<string, string> } {
+    const data = new Map<string, string>();
+    return {
+      data,
+      getItem: (k) => data.get(k) ?? null,
+      setItem: (k, v) => void data.set(k, v),
+      removeItem: (k) => void data.delete(k),
+    };
+  }
+  const plan = () => {
+    const p = planRefund(draft({ selected: ["a"], partial: true, partText: "10" }), options(), t);
+    if (!p.ok) throw new Error("plan");
+    return p.value;
+  };
+
+  it("keeps the key and the plan per organization and order until a final answer", () => {
+    const store = memoryStore();
+    const p = plan();
+    const held = keyFor(null, p, () => "web-k1");
+    savePendingRefund("org1", "ord1", { ...held, plan: p }, store);
+    expect([...store.data.keys()]).toEqual([pendingRefundKey("org1", "ord1")]);
+
+    const back = loadPendingRefund("org1", "ord1", store);
+    expect(back?.key).toBe("web-k1");
+    // The restored plan sends exactly the same request, so the key replays it.
+    expect(back !== null && refundRequest(back.plan)).toEqual(refundRequest(p));
+    expect(back !== null && keyFor(back, back.plan, () => "web-other").key).toBe("web-k1");
+    // Another order or organization has nothing pending.
+    expect(loadPendingRefund("org1", "ord2", store)).toBeNull();
+    expect(loadPendingRefund("org2", "ord1", store)).toBeNull();
+
+    clearPendingRefund("org1", "ord1", store);
+    expect(loadPendingRefund("org1", "ord1", store)).toBeNull();
+  });
+
+  it("ignores a broken record and a plan that no longer matches its fingerprint", () => {
+    const store = memoryStore();
+    store.setItem(pendingRefundKey("o", "x"), "{not json");
+    expect(loadPendingRefund("o", "x", store)).toBeNull();
+    const p = plan();
+    store.setItem(pendingRefundKey("o", "x"), JSON.stringify({ key: "web-k", fingerprint: "something else", plan: p }));
+    expect(loadPendingRefund("o", "x", store)).toBeNull();
+    store.setItem(pendingRefundKey("o", "x"), JSON.stringify({ key: "", fingerprint: "f", plan: p }));
+    expect(loadPendingRefund("o", "x", store)).toBeNull();
+  });
+
+  it("survives a storage that throws or is missing", () => {
+    const broken: KeyValueStore = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("full");
+      },
+      removeItem: () => {
+        throw new Error("blocked");
+      },
+    };
+    const p = plan();
+    expect(() => savePendingRefund("o", "x", { ...keyFor(null, p), plan: p }, broken)).not.toThrow();
+    expect(loadPendingRefund("o", "x", broken)).toBeNull();
+    expect(() => clearPendingRefund("o", "x", broken)).not.toThrow();
+    expect(loadPendingRefund("o", "x", null)).toBeNull();
   });
 });

@@ -37,9 +37,11 @@ import {
   MAX_REFUND_REASON,
   REFUND_REASONS,
   canOfferRefund,
+  clearPendingRefund,
   emptyRefundDraft,
   inProgressTickets,
   keyFor,
+  loadPendingRefund,
   outcomeUnknown,
   partialAllowed,
   planRefund,
@@ -48,6 +50,7 @@ import {
   refundLineState,
   refundRequest,
   refundableTickets,
+  savePendingRefund,
   scannedRefusal,
   scannedTickets,
   selectAll,
@@ -107,6 +110,21 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
     if (open) heading.current?.focus();
   }, [open, step]);
 
+  // A request of this tab whose answer never came (a reload, a closed tab):
+  // the panel opens on "Check the refund" with the SAME key and plan.
+  const restorePending = (): boolean => {
+    const p = loadPendingRefund(orgId, orderId);
+    if (p === null) return false;
+    setPlan(p.plan);
+    setHeld({ key: p.key, fingerprint: p.fingerprint });
+    setUnknown(true);
+    return true;
+  };
+  useEffect(() => {
+    if (restorePending()) setOpen(true);
+    // Only when the card of another order is shown.
+  }, [orgId, orderId]);
+
   const number = orderNumber(systemId);
   const offer = canOfferRefund(status, canCreate);
   // The panel stays reachable while an answer is outstanding, even after
@@ -133,7 +151,7 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
     setResult(null);
     setFailure(null);
     setScanned(null);
-    if (!unknown) startOver();
+    if (!unknown && !restorePending()) startOver();
     void options.refetch();
   };
 
@@ -144,9 +162,22 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
 
   /** Sends the plan with its key, behind the password question. */
   const send = (p: RefundPlan, k: HeldKey) =>
-    withStepUp(orgId, (headers) => createOrderRefunds(orgId, orderId, refundRequest(p), k.key, headers), stepUp.ask);
+    withStepUp(
+      orgId,
+      (headers) => {
+        // Stored before the request leaves: a reload during the call still
+        // finds the key (cleared again once a final answer comes).
+        savePendingRefund(orgId, orderId, { key: k.key, fingerprint: k.fingerprint, plan: p });
+        return createOrderRefunds(orgId, orderId, refundRequest(p), k.key, headers);
+      },
+      stepUp.ask,
+    );
+
+  /** A final answer came: the stored operation is done with. */
+  const settled = () => clearPendingRefund(orgId, orderId);
 
   const finished = async (res: CreateOrderRefundsResponse) => {
+    settled();
     setResult(res);
     setUnknown(false);
     startOver();
@@ -159,7 +190,11 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
       setUnknown(true);
       return true;
     }
-    if (err instanceof ApiError) setUnknown(false); // a definite answer
+    if (err instanceof ApiError) {
+      // A definite answer: the operation is over, nothing is left to check.
+      setUnknown(false);
+      settled();
+    }
     const sc = scannedRefusal(err);
     if (sc !== null) {
       setScanned(sc);
@@ -206,6 +241,10 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
     } catch (err) {
       if (err instanceof StepUpCancelled) return;
       if (await refused(err)) return;
+      // Any other definite refusal (400, 403, …): refused() already cleared
+      // the stored key; startOver() below drops plan and key together, so the
+      // panel never shows "Check" without something to check.
+      settled();
       setUnknown(false);
       setFailure({ error: err });
       startOver();

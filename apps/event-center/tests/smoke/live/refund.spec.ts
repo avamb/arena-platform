@@ -55,7 +55,7 @@ interface OrderRows {
   notify_buyer: boolean[];
 }
 
-function seed(op: "reset" | "inspect"): Record<string, OrderRows> {
+function seed(op: "reset" | "inspect" | "scan"): Record<string, OrderRows> {
   const r = spawnSync(seedBinary(), ["--refund-op", op], { cwd: repoRoot, env: process.env, encoding: "utf8" });
   if (r.status !== 0) throw new Error(`arena-e2e-seed --refund-op ${op} failed: ${r.stderr}`);
   return JSON.parse(r.stdout.trim()) as Record<string, OrderRows>;
@@ -230,7 +230,7 @@ test.describe("refund an order (live)", () => {
     expect(rows(ORDER_OWNER).refunds).toBe(0);
   });
 
-  test("owner: a lost answer is checked with the same key and never refunds twice", async ({ page, request }) => {
+  test("owner: a lost answer survives a reload and is checked with the same key, never refunding twice", async ({ page, request }) => {
     await openCard(page, "org_admin", ORDER_OWNER);
     // The first create reaches arena-api, but its answer never reaches the page.
     let dropped = 0;
@@ -257,13 +257,56 @@ test.describe("refund an order (live)", () => {
     expect(rows(ORDER_OWNER)).toMatchObject({ refunds: 1, states: ["succeeded"] });
     await noA11yViolations(page);
 
+    // The page is reloaded: the tab kept the operation's key, so the card opens
+    // on "Check the refund" again instead of offering a new refund.
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByTestId("refund-unknown")).toBeVisible();
+    await expect(page.getByTestId("refund-pick")).toHaveCount(0);
+
     await page.getByTestId("refund-check").click();
+    // The step-up token lived in memory only: after a reload the password is asked again.
+    await confirmPassword(page, "org_admin");
     await expect(page.getByTestId("refund-result")).toBeVisible();
     await expect(page.getByTestId("refund-result")).toContainText("Nothing was refunded twice");
     await expect(page.getByTestId("refund-result-line")).toHaveAttribute("data-state", "succeeded");
     // One refund, one provider call: the check replayed the first operation.
     expect(rows(ORDER_OWNER)).toMatchObject({ refunds: 1, amounts: [2500], active_tickets: 2 });
     expect(await stripeCalls(request)).toHaveLength(1);
+
+    // The final answer cleared the stored key: another reload offers nothing to check.
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByTestId("refund-open")).toBeVisible();
+    await expect(page.getByTestId("refund-unknown")).toHaveCount(0);
+  });
+
+  test("manager: a ticket scanned while the screen is open is refused, and the owners are told", async ({ page, request }) => {
+    await openCard(page, "organizer", ORDER_MANAGER);
+    await page.getByTestId("refund-open").click();
+    await page.getByTestId("refund-ticket").check();
+    await page.getByTestId("refund-reason-buyer").check();
+    await page.getByTestId("refund-continue").click();
+    await expect(page.getByTestId("refund-final")).toBeVisible();
+
+    // The ticket is scanned at the entrance now, after the options were read.
+    seed("scan");
+    await page.getByTestId("refund-go").click();
+    await typeWord(page, "REFUND");
+    await confirmPassword(page, "organizer");
+
+    // The API refused it (refund.ticket_scanned): the text follows owners_notice.
+    const scanned = page.getByTestId("refund-scanned");
+    await expect(scanned).toBeVisible();
+    await expect(scanned).toContainText("already scanned at the entrance");
+    await expect(scanned).toContainText("owners got a notice");
+    await expect(page.getByTestId("confirm-word")).toHaveCount(0);
+    // The panel shows the latest options: nothing left that can be refunded.
+    await expect(page.getByTestId("refund-explain")).toHaveAttribute("data-entry", "scanned_all");
+    await noA11yViolations(page);
+
+    expect(rows(ORDER_MANAGER)).toMatchObject({ refunds: 0, active_tickets: 1, status: "paid" });
+    expect(await stripeCalls(request)).toEqual([]);
   });
 
   test("manager: the provider's refusal, then part of one ticket's amount", async ({ page, request }) => {
