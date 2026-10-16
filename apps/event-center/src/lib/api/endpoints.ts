@@ -14,6 +14,11 @@ import type {
   BotTeamResponse,
   EventListResponse,
   EventSummary,
+  GeoCitiesResponse,
+  GeoCountriesResponse,
+  GeoCountryCurrencyResponse,
+  GeoCountryTimezonesResponse,
+  ImportEventBundleDryRunResponse,
   MeResponse,
   OrderDetail,
   OrderLetter,
@@ -32,6 +37,7 @@ import type {
   SessionListResponse,
   SessionSummary,
   TicketTierListResponse,
+  VenueItem,
 } from "@/lib/api/types";
 
 export function fetchMe(): Promise<MeResponse> {
@@ -432,5 +438,46 @@ export function removeMember(orgId: string, userId: string, membershipRole: stri
     route: API.removeMember,
     params: { org_id: orgId, user_id: userId },
     body: { role: membershipRole },
+  });
+}
+
+// ─── 6-1a: the event wizard ──────────────────────────────────────────────────
+
+/** The organization's active venues (`venue.read`). */
+export function listVenues(orgId: string): Promise<{ venues: VenueItem[] }> {
+  return call<{ venues: VenueItem[] }>({ route: API.venues, params: { org_id: orgId } });
+}
+
+export function listCountries(lang?: string): Promise<GeoCountriesResponse> {
+  return call<GeoCountriesResponse>({ route: API.geoCountries, query: { lang } });
+}
+
+/** Cities of a country that start with `q`, and places of the GeoNames data as suggestions. */
+export function searchCities(iso2: string, q: string, lang?: string): Promise<GeoCitiesResponse> {
+  return call<GeoCitiesResponse>({ route: API.geoCities, query: { country: iso2, q, lang } });
+}
+
+/** The zones of a country. 404 `geo.country_not_found` for a country the data does not know. */
+export function countryTimezones(iso2: string): Promise<GeoCountryTimezonesResponse> {
+  return call<GeoCountryTimezonesResponse>({ route: API.geoTimezones, params: { iso2 } });
+}
+
+/** The currency of a country. 404 `geo.country_not_found` for a country the platform has no row for. */
+export function countryCurrency(iso2: string): Promise<GeoCountryCurrencyResponse> {
+  return call<GeoCountryCurrencyResponse>({ route: API.geoCurrency, params: { iso2 } });
+}
+
+/**
+ * Checks an event bundle with the import's own code and writes NOTHING
+ * (`?dry_run=true`, task 3-1). The answer lists every error with the JSON
+ * pointer of its field. It holds a transaction like an import, so a caller
+ * asks at most once a second (lib/wizard/validation.ts, createScheduler).
+ */
+export function checkEventBundle(orgId: string, bundle: unknown): Promise<ImportEventBundleDryRunResponse> {
+  return call<ImportEventBundleDryRunResponse>({
+    route: API.eventBundleCheck,
+    params: { org_id: orgId },
+    query: { dry_run: "true" },
+    body: bundle,
   });
 }
