@@ -737,3 +737,34 @@ fieldset legend {
   margin: 0;
   padding-inline-start: 1.25rem;
 }
+
+/* 6-1a: the event wizard. */
+.wizard {
+  max-width: 640px;
+}
+
+.wizard fieldset input,
+.wizard fieldset select,
+.wizard fieldset textarea {
+  width: 100%;
+}
+
+.suggestions {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.suggestions li + li {
+  border-top: 1px solid var(--border);
+}
+
+.suggestions .btn {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: start;
+}

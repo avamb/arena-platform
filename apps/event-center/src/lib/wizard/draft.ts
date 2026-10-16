@@ -172,6 +172,7 @@ function apply(d: WizardDraft, a: DraftAction): WizardDraft {
       const value = a.value.trim().toUpperCase();
       // A value read from the country never overwrites what the person typed.
       if (a.source === "auto" && d.currencySource === "typed" && d.currency !== "") return d;
+      if (value === d.currency && a.source === d.currencySource) return d;
       return { ...d, currency: value, currencySource: a.source };
     }
     case "reset":
