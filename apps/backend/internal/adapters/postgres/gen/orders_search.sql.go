@@ -190,7 +190,10 @@ SELECT oi.id AS item_id, oi.ordinal, oi.total AS price, oi.tier_id, tt.name AS t
        t.id AS ticket_id, t.status, t.holder_email, t.seat_sector, t.seat_row, t.seat_number,
        t.issued_at, t.cancelled_at, t.system_ticket_id,
        tc.payload AS barcode_str,
-       COALESCE(t.used_at, sc.scanned_at) AS used_at,
+       COALESCE(t.used_at,
+              (SELECT min(se.scanned_at) FROM scan_events se JOIN orders so ON so.id = oi.order_id
+               WHERE se.ticket_id = t.id AND se.result = 'admitted' AND se.org_id = so.org_id),
+              sc.scanned_at) AS used_at,
        dj.status AS delivery_status, dj.sent_at AS delivery_sent_at, dj.last_error AS delivery_error
 FROM   order_items oi
 JOIN   tickets t ON t.id = oi.ticket_id
