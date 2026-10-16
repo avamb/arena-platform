@@ -29,13 +29,13 @@ func composeStr(t *testing.T) string {
 
 // ---- Step 1: multi-stage build ---------------------------------------------
 
-// TestDockerfile106_MultiStageFromLines verifies two FROM lines: golang:1.24-alpine
+// TestDockerfile106_MultiStageFromLines verifies two FROM lines: golang:1.26.9-alpine
 // (builder) and gcr.io/distroless/static-debian12 (final).
 func TestDockerfile106_MultiStageFromLines(t *testing.T) {
 	content := dockerfileStr(t)
 
-	if !strings.Contains(content, "golang:1.24-alpine") {
-		t.Error("Dockerfile must have builder stage FROM golang:1.24-alpine")
+	if !strings.Contains(content, "golang:1.26.9-alpine") {
+		t.Error("Dockerfile must have builder stage FROM golang:1.26.9-alpine")
 	}
 	if !strings.Contains(content, "gcr.io/distroless/static-debian12") {
 		t.Error("Dockerfile must have final stage FROM gcr.io/distroless/static-debian12")
@@ -293,8 +293,8 @@ func TestDockerfileCompose106_FullVerification(t *testing.T) {
 
 	// Step 1: multi-stage FROM lines.
 	t.Run("Step1_MultiStageDockerfile", func(t *testing.T) {
-		if !strings.Contains(dfContent, "golang:1.24-alpine") {
-			t.Error("builder stage must be golang:1.24-alpine")
+		if !strings.Contains(dfContent, "golang:1.26.9-alpine") {
+			t.Error("builder stage must be golang:1.26.9-alpine")
 		}
 		if !strings.Contains(dfContent, "gcr.io/distroless/static-debian12") {
 			t.Error("final stage must be gcr.io/distroless/static-debian12")
