@@ -251,6 +251,11 @@ func decodeStrict(raw []byte, dst any) error {
 	return nil
 }
 
+// maxRuleAmountMinor bounds every number in rule params. It is a sanity
+// bound against a typo or an overflow (max_minor + seated_surcharge_minor),
+// not a price: no rate, threshold or cap comes anywhere near it.
+const maxRuleAmountMinor int64 = 1_000_000_000
+
 func requireAmounts(fields map[string]*int64) error {
 	for name, v := range fields {
 		if v == nil {
@@ -258,6 +263,9 @@ func requireAmounts(fields map[string]*int64) error {
 		}
 		if *v < 0 {
 			return fmt.Errorf("%s is negative (%d)", name, *v)
+		}
+		if *v > maxRuleAmountMinor {
+			return fmt.Errorf("%s %d is above the bound %d", name, *v, maxRuleAmountMinor)
 		}
 	}
 	return nil

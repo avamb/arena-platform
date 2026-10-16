@@ -242,11 +242,27 @@ func TestRate_ForeignSaleCurrency(t *testing.T) {
 	if c.Deferred != billing.DeferredFXRateMissing || c.AmountMinor != 0 || c.RuleType != billing.RulePercentOfPriceWithCap {
 		t.Errorf("CZK on EUR venue: %+v, want deferred fx_rate_missing", c)
 	}
-	// A low_price class on a foreign sale could not have been snapshotted.
+	// A low_price class on a CZK sale without a CZK threshold could not have
+	// been snapshotted.
 	ev := billing.Event{Kind: billing.KindTicketSold, OccurredAt: saleAt, Currency: "CZK", UnitPriceMinor: 500,
 		PricingClass: billing.PricingClassLowPrice}
 	if _, err := billing.Rate(terms, ev); !errors.Is(err, billing.ErrInconsistentEvent) {
-		t.Errorf("low_price on CZK: %v, want ErrInconsistentEvent", err)
+		t.Errorf("low_price on CZK without a CZK rule: %v, want ErrInconsistentEvent", err)
+	}
+	// With a CZK threshold the class is real, but the charge needs the
+	// exchange rate of the sale day: deferred like the venue percentage.
+	// Fixture numbers, not a policy rate.
+	czkRule := ruleRow(uuid.Nil, "low_price_formula", "standard", "ticket_sold", strp("CZK"),
+		`{"threshold_minor":25000,"strict_below":true,"pct_bp":400,"min_minor":10,"max_minor":35,"seated_surcharge_minor":20}`, 11)
+	withCZK := buildTerms(t, termsSpec{extra: []gen.PriceListRuleRow{czkRule}})
+	czkSale := sold(t, withCZK, "CZK", 12000, 0, false)
+	if czkSale.PricingClass != billing.PricingClassLowPrice {
+		t.Fatalf("CZK 120.00 class %s, want low_price", czkSale.PricingClass)
+	}
+	c = mustRate(t, withCZK, czkSale)
+	if c.Deferred != billing.DeferredFXRateMissing || c.AmountMinor != 0 || c.RuleType != billing.RuleLowPriceFormula ||
+		c.RuleID == nil || *c.RuleID != czkRule.ID {
+		t.Errorf("CZK low_price on EUR: %+v, want deferred fx_rate_missing by the CZK rule", c)
 	}
 }
 

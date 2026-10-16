@@ -262,6 +262,9 @@ func TestParseRule_RefusesBrokenRows(t *testing.T) {
 		{"low price without sale currency", ruleRow(plID, "low_price_formula", "standard", "ticket_sold", nil, seedLowPriceParams, 0)},
 		{"pack without surcharge", ruleRow(plID, "credit_pack", "standard", "ticket_sold", nil, `{}`, 0)},
 		{"per event without amount", ruleRow(plID, "fixed_per_event", "standard", "event_published", nil, `{}`, 0)},
+		{"max above the sanity bound", ruleRow(plID, "low_price_formula", "standard", "ticket_sold", eur, `{"threshold_minor":1000,"strict_below":true,"pct_bp":400,"min_minor":10,"max_minor":1000000001,"seated_surcharge_minor":20}`, 0)},
+		{"surcharge above the sanity bound", ruleRow(plID, "low_price_formula", "standard", "ticket_sold", eur, `{"threshold_minor":1000,"strict_below":true,"pct_bp":400,"min_minor":10,"max_minor":35,"seated_surcharge_minor":9223372036854775807}`, 0)},
+		{"fixed above the sanity bound", ruleRow(plID, "fixed_per_ticket", "standard", "ticket_sold", nil, `{"unseated_minor":59,"seated_minor":1000000001}`, 0)},
 		{"not implemented, not an object", ruleRow(plID, "subscription", "standard", "ticket_sold", nil, `null`, 0)},
 	} {
 		if _, err := billing.ParseRule(tc.row, "EUR"); !errors.Is(err, billing.ErrBadRule) {
@@ -300,6 +303,11 @@ func TestNewTerms_RefusesInconsistentRows(t *testing.T) {
 	if _, err := billing.NewTerms(saleAt, acc, terms, usd, rules, nil, nil); err == nil {
 		t.Error("price list in another currency accepted")
 	}
+	otherCode := terms
+	otherCode.PriceListCode = "venue-2026"
+	if _, err := billing.NewTerms(saleAt, acc, otherCode, pl, rules, nil, nil); err == nil {
+		t.Error("price list of another code than the terms name accepted")
+	}
 	odd := terms
 	odd.PlanKind = "festival"
 	if _, err := billing.NewTerms(saleAt, acc, odd, pl, rules, nil, nil); err == nil {
@@ -314,6 +322,16 @@ func TestNewTerms_RefusesInconsistentRows(t *testing.T) {
 	if _, err := billing.NewTerms(saleAt, acc, terms, pl, dup, nil, nil); !errors.Is(err, billing.ErrBadRule) ||
 		!strings.Contains(err.Error(), "both fixed_per_ticket") {
 		t.Errorf("two fixed_per_ticket rules: %v", err)
+	}
+	dupLow := append(append([]gen.PriceListRuleRow{}, rules...),
+		ruleRow(pl.ID, "low_price_formula", "standard", "ticket_sold", strp("EUR"), seedLowPriceParams, 99))
+	if _, err := billing.NewTerms(saleAt, acc, terms, pl, dupLow, nil, nil); !errors.Is(err, billing.ErrBadRule) {
+		t.Errorf("two EUR low_price rules: %v", err)
+	}
+	otherCur := append(append([]gen.PriceListRuleRow{}, rules...),
+		ruleRow(pl.ID, "low_price_formula", "standard", "ticket_sold", strp("CZK"), seedLowPriceParams, 99))
+	if _, err := billing.NewTerms(saleAt, acc, terms, pl, otherCur, nil, nil); err != nil {
+		t.Errorf("EUR and CZK low_price rules side by side: %v", err)
 	}
 	broken := append(append([]gen.PriceListRuleRow{}, rules...),
 		ruleRow(pl.ID, "fixed_per_ticket", "venue", "ticket_sold", nil, `{"unseated_minor":"x"}`, 99))
