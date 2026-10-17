@@ -241,6 +241,7 @@ export function SessionScreen() {
           )}
           {tiers.data !== undefined && canChangeTiers && openTier !== null && (
             <CategoryCard
+              key={openTier}
               orgId={orgId}
               eventId={eventId}
               sessionId={sessionId}

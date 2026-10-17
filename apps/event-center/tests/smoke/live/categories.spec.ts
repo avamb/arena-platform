@@ -141,6 +141,24 @@ test.beforeAll(() => {
 });
 
 test.describe("categories of a date (live, three roles)", () => {
+  test("switching categories discards the previous price confirmation without a write", async ({ page, request }) => {
+    const beforeStanding = await apiTier(request, STANDING);
+    const beforeBalcony = await apiTier(request, BALCONY);
+    await openSession(page, "org_admin");
+    await openCard(page, STANDING);
+    await page.getByTestId("price-change").click();
+    await page.getByTestId("price-input").fill("99");
+    await page.getByTestId("price-check").click();
+    await expect(page.getByTestId("price-confirm")).toBeVisible();
+    await openCard(page, BALCONY);
+    await expect(page.getByTestId("price-confirm")).toHaveCount(0);
+    await expect(page.getByTestId("category-notice")).toHaveCount(0);
+    await page.getByTestId("price-change").click();
+    await expect(page.getByTestId("price-input")).toHaveValue("40");
+    expect((await apiTier(request, STANDING)).price_amount).toBe(beforeStanding.price_amount);
+    expect((await apiTier(request, BALCONY)).current_price).toBe(beforeBalcony.current_price);
+  });
+
   test("owner: the list, close and open, price, the price window in force, nothing else changes", async ({ page, request }) => {
     const me = await orgMe(request, "org_admin");
     expect(me.permissions).toContain("tier.read");

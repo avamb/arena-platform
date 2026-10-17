@@ -1,5 +1,8 @@
 # Repository Conventions
 
+- Category editors must be keyed by tier ID when switching cards, so an unsaved price, confirmation, or success notice cannot carry over to another category. The live categories test covers switching before save.
+- DST fall-back conversion tests must assert the exact UTC instant, not only a wall-clock round trip: both occurrences round-trip, but the sales-time editor chooses the first (including half-hour transitions).
+
 Machine-maintained conventions file. Coding agents read this on every session
 and MUST keep it current: when you discover a build/test/CI convention the hard
 way, document it here so the next session doesn't repeat the mistake. Keep

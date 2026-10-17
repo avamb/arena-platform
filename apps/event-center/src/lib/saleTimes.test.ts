@@ -58,8 +58,13 @@ describe("the venue's wall clock", () => {
   it("takes the first of two when the clocks go back", () => {
     // Madrid, 2026-10-25: 03:00 goes back to 02:00, so 02:30 happens twice.
     const iso = wallToInstant("2026-10-25", "02:30", MADRID);
-    expect(iso).not.toBeNull();
+    expect(iso).toBe("2026-10-25T00:30:00Z");
     expect(instantToWall(iso as string, MADRID)).toEqual({ day: "2026-10-25", time: "02:30" });
+  });
+
+  it("takes the first occurrence in western zones and half-hour clock changes", () => {
+    expect(wallToInstant("2026-11-01", "01:30", "America/New_York")).toBe("2026-11-01T05:30:00Z");
+    expect(wallToInstant("2026-04-05", "01:45", "Australia/Lord_Howe")).toBe("2026-04-04T14:45:00Z");
   });
 
   it("refuses bad input and an unknown zone", () => {

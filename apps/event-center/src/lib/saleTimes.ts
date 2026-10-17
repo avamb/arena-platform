@@ -88,13 +88,17 @@ export function wallToInstant(day: string, time: string, timeZone: string): stri
   if (minutes === null || !isIsoDay(day) || !zoneOk(timeZone)) return null;
   const [y, mo, d] = day.split("-").map(Number);
   const guess = Date.UTC(y, mo - 1, d, 0, minutes);
-  let candidate = guess - zoneOffsetMinutes(guess, timeZone) * MS_MIN;
-  // Near a clock change the first offset can be the other side's: use the offset of the candidate.
-  const second = guess - zoneOffsetMinutes(candidate, timeZone) * MS_MIN;
-  if (second !== candidate) candidate = second;
-  const back = instantToWall(rfc3339(candidate), timeZone);
-  if (back === null || back.day !== day || back.time !== clockText(minutes)) return null;
-  return rfc3339(candidate);
+  // Inspect both sides of a clock change. Two instants may share this wall
+  // time when clocks go back: choose the first, including half-hour changes.
+  const dayMs = 24 * 60 * MS_MIN;
+  const offsets = new Set([-dayMs, 0, dayMs].map((delta) => zoneOffsetMinutes(guess + delta, timeZone)));
+  const matches = [...offsets]
+    .map((offset) => guess - offset * MS_MIN)
+    .filter((candidate) => {
+      const back = instantToWall(rfc3339(candidate), timeZone);
+      return back !== null && back.day === day && back.time === clockText(minutes);
+    });
+  return matches.length === 0 ? null : rfc3339(Math.min(...matches));
 }
 
 export type SaleTimeKind = "salesEnd" | "doors";
