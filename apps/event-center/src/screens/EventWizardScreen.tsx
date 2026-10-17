@@ -99,7 +99,7 @@ function useBundleCheck(orgId: string) {
 
 export function EventWizardScreen() {
   const { t } = useI18n();
-  const { access } = useOrg();
+  const { access, orgId } = useOrg();
   const gate = wizardGate(access.can);
   if (gate === "off") {
     return (
@@ -122,7 +122,9 @@ export function EventWizardScreen() {
       </section>
     );
   }
-  return <Wizard />;
+  // Cached organization access can keep this route mounted across a scope change.
+  // A new instance loads that organization's draft and retires old async handlers.
+  return <Wizard key={orgId} />;
 }
 
 /** The event-level errors of every date's answer, each once (the same error comes back for each date). */
@@ -388,7 +390,7 @@ function Wizard() {
         {t("wizard.draftNote")}
       </p>
 
-      <fieldset className="wizard-lock" disabled={saving} data-testid="wizard-sections">
+      <fieldset className="wizard-lock" disabled={saving || created} data-testid="wizard-sections">
         <WizardEventSection draft={draft} dispatch={dispatch} touch={touch} errorOf={errorOf} />
         <WizardPosterSection
           state={picker.state}

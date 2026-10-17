@@ -157,6 +157,13 @@ describe("checkPosterFile", () => {
     const png = blob(makePng(10, 10));
     expect(await checkPosterFile(png, { read: async () => Promise.reject(new Error("io")) })).toEqual({ ok: false, reason: "corrupt" });
   });
+
+  it("rejects a compact image declaring 64 megapixels before allocating a bitmap", async () => {
+    const decode = vi.fn(async () => ({ width: 8000, height: 8000 }));
+    const compact = blob(makeJpegShape(8000, 8000), "image/jpeg");
+    expect(await checkPosterFile(compact, { ...bytesDeps, decode })).toEqual({ ok: false, reason: "tooBig" });
+    expect(decode).not.toHaveBeenCalled();
+  });
 });
 
 describe("createPicker (preview lifecycle)", () => {

@@ -94,7 +94,8 @@ another organization's media (422 `event.invalid_poster_media_id`).
 **Rules.** JPEG and PNG only (WebP is NOT accepted: the server stores whatever
 `content_type` the client names and verifies nothing, so the web proves the type
 itself). The type is read from the first bytes, never from the name; the file must
-be structurally complete, decodable by the browser, at most 10000 px a side and at
+be structurally complete, decodable by the browser, at most 10000 px a side,
+25 megapixels in total (checked before decoding to bound bitmap memory), and at
 most **5 MiB** (`POSTER_MAX_BYTES`, the same cap as the poster reader; the server
 allows 32 MiB). SVG, PDF, empty, cut-off and damaged files are refused before
 anything is sent.

@@ -15,6 +15,8 @@
 export const POSTER_MAX_BYTES = 5 * 1024 * 1024;
 /** No side longer than this: a picture of 100 megapixels would freeze a phone while decoding. */
 export const POSTER_MAX_SIDE = 10_000;
+/** Limit decoded memory as well as file size: 25 MP is about 100 MB of RGBA pixels. */
+export const POSTER_MAX_PIXELS = 25_000_000;
 export const POSTER_TYPES = ["image/jpeg", "image/png"] as const;
 export type PosterType = (typeof POSTER_TYPES)[number];
 /** Value of the file input's `accept`. */
@@ -111,11 +113,16 @@ export async function checkPosterFile(file: Blob, deps: CheckDeps = browserCheck
   if (type === null) return { ok: false, reason: "notImage" };
   const shape = readPosterStructure(bytes, type);
   if (shape === null || shape.width < 1 || shape.height < 1) return { ok: false, reason: "corrupt" };
-  if (shape.width > POSTER_MAX_SIDE || shape.height > POSTER_MAX_SIDE) return { ok: false, reason: "tooBig" };
+  if (shape.width > POSTER_MAX_SIDE || shape.height > POSTER_MAX_SIDE || shape.width * shape.height > POSTER_MAX_PIXELS) {
+    return { ok: false, reason: "tooBig" };
+  }
   if (deps.decode !== undefined) {
     try {
       const real = await deps.decode(file);
       if (real.width < 1 || real.height < 1) return { ok: false, reason: "corrupt" };
+      if (real.width > POSTER_MAX_SIDE || real.height > POSTER_MAX_SIDE || real.width * real.height > POSTER_MAX_PIXELS) {
+        return { ok: false, reason: "tooBig" };
+      }
     } catch {
       return { ok: false, reason: "corrupt" };
     }

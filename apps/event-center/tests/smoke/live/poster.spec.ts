@@ -519,10 +519,14 @@ test.describe("an attachment that fails after a REAL creation", () => {
     expect(writes).toEqual({ upload: 1, attach: 1, create: 1 });
     // The form is closed for a second creation.
     await expect(page.getByTestId("wizard-create")).toBeDisabled();
+    // Edits at this point would not be saved: only poster attachment remains.
+    await expect(page.getByTestId("wizard-name")).toBeDisabled();
+    await expect(page.getByTestId("wizard-date-0-time")).toBeDisabled();
 
     // A reload keeps the explanation (the ids are in the draft, the file is not).
     await page.reload();
     await expect(page.getByTestId("wizard-attach-failed")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("wizard-name")).toBeDisabled();
     const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }));
     for (const bad of ["blob:", "data:image", "Bearer ", "sig="]) expect(stored).not.toContain(bad);
 
