@@ -320,7 +320,8 @@ export function isRowOn(row: PlanRow, choice: Choice | undefined): boolean {
 }
 
 export function venueBasis(d: WizardDraft): string {
-  return `${d.venue.mode}:${d.venue.existingId}`;
+  // Any manual venue edit invalidates an earlier choice to replace it.
+  return JSON.stringify(d.venue);
 }
 
 export function priceBasis(d: WizardDraft): string {

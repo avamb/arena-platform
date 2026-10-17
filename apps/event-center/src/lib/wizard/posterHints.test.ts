@@ -185,6 +185,14 @@ describe("the venue is offered, never invented", () => {
     const p = buildPlan(facts({ venueName: "Grand Theatre", city: "Madrid" }), ctx(d, [hall]));
     expect(rowKeys(p)).toEqual(["venueNew", "city"]);
   });
+  it("editing a new venue after choosing a candidate cancels that candidate choice", () => {
+    const d = edit(fresh(), { type: "venueMode", mode: "new" });
+    const f = facts({ venueName: "E2E Hall" });
+    const sel: Selection = { ...NO_SELECTION, venue: { id: hall.id, basis: venueBasis(d) } };
+    expect(buildActions(buildPlan(f, ctx(d, [hall])), sel, d).applied).toContain("venue");
+    const later = edit(d, { type: "venueNew", field: "newName", value: "My deliberately typed hall" });
+    expect(buildActions(buildPlan(f, ctx(later, [hall])), sel, later).applied).not.toContain("venue");
+  });
   it("an already chosen existing venue is not overwritten by a name hint", () => {
     const d = edit(fresh(), { type: "venueExisting", venue: hall });
     const p = buildPlan(facts({ venueName: "Grand Theatre" }), ctx(d, [hall]));

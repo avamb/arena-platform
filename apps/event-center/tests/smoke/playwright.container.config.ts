@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
  * The poster acceptance against the REAL production image: nginx with the real
  * Content-Security-Policy serves the built app, and the app talks to a REAL
  * arena-api (scripts/live-harness.mjs is started by hand, see
- * tests/README.md, "Posters under the real CSP"). Nothing is mocked.
+ * tests/README.md, "Posters under the real CSP"). Only the vision reader is scripted through the test-only backend build;
+ * uploads, authorization, event creation and attachment use the real API.
  *
  * EVENT_CENTER_BASE_URL is the container (for example http://127.0.0.1:8092);
  * the image must have been built with VITE_API_BASE_URL = the live API.
