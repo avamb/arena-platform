@@ -12,6 +12,7 @@ import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { Badge, DownloadButton, ErrorBox, Loading } from "@/components/ui";
 import { SalesFigures } from "@/components/SalesFigures";
+import { SessionSaleTimes } from "@/components/SessionSaleTimes";
 import { useOrg } from "@/screens/OrgLayout";
 
 function tierPrice(tier: TicketTierItem, locale: string, t: ReturnType<typeof useI18n>["t"]): string {
@@ -71,6 +72,7 @@ export function SessionScreen() {
   const canSales = access.can("order.read");
   const canSessions = access.can("session.read");
   const canTiers = access.can("tier.read");
+  const canUpdate = access.can("session.update"); // 5-3
 
   const summary = useQuery({
     queryKey: ["sessionSummary", orgId, sessionId],
@@ -197,6 +199,21 @@ export function SessionScreen() {
           {tiers.error !== null && <ErrorBox error={tiers.error} onRetry={() => void tiers.refetch()} />}
           {tiers.data !== undefined && <TiersTable tiers={tiers.data.tiers} />}
         </section>
+      )}
+
+      {/* 5-3 */}
+      {canUpdate && item !== undefined && (
+        <SessionSaleTimes
+          orgId={orgId}
+          eventId={eventId}
+          sessionId={sessionId}
+          startAt={item.start_at}
+          salesEndAt={item.sales_end_at}
+          doorsOpenAt={item.doors_open_at ?? null}
+          timezone={tz}
+          zoneUnloaded={summary.data === undefined}
+          readOnly={(head?.status ?? item.status) === "cancelled"}
+        />
       )}
     </article>
   );

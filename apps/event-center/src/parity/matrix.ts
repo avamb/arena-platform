@@ -303,6 +303,7 @@ export const PARITY: readonly ParityRow[] = [
     bot: "sessions_sale_times.go, `ses:se`, `ses:dr`",
     web: "R4",
     routes: [`PATCH ${O}/events/{event_id}/sessions/{id}`],
+    ready: { twin: "live/sale-times.spec.ts", smoke: "sale-times.mock.spec.ts" }, // 5-3
   },
   // ── Категории ───────────────────────────────────────────────────────
   {

@@ -64,3 +64,5 @@ export type BotInvitationRevokeResponse = S["BotInvitationRevokeResponse"];
 // 5-1: event status
 export type EventEnvelope = S["EventEnvelope"];
 export type EventDeleteImpact = S["EventDeleteImpact"];
+// 5-3
+export type SessionEnvelope = S["SessionEnvelope"];

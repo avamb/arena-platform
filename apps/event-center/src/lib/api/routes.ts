@@ -92,6 +92,8 @@ export const API = {
   eventStatus: { method: "POST", path: "/v1/organizations/{org_id}/events/{id}/status" },
   eventDeleteImpact: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/delete-impact" },
   eventDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{id}" },
+  // 5-3: the sales end and doors-open time of a session
+  sessionUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{id}" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;

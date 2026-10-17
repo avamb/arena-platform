@@ -99,6 +99,7 @@ func run(args []string) error {
 	orgDataOp := fs.String("org-data-op", "", "4-7 twin helper: reset, inspect or hide (see org_data_fixture.go)")
 	// 5-1
 	eventStatusOp := fs.String("event-status-op", "", "5-1 twin helper: reset or inspect (see event_status_fixture.go)")
+	saleTimesOp := fs.String("sale-times-op", "", "5-3 twin helper: reset or inspect (see sale_times_fixture.go)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -113,6 +114,9 @@ func run(args []string) error {
 	}
 	if *orgDataOp != "" {
 		return runOrgDataOp(*orgDataOp)
+	}
+	if *saleTimesOp != "" {
+		return runSaleTimesOp(*saleTimesOp)
 	}
 	if *invitationsOp != "" {
 		return runInvitationsOp(*invitationsOp, *invitationEmail)
@@ -255,7 +259,11 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	// 5-1: the status twin test's events (event_status_fixture.go).
-	return applyEventStatusFixture(ctx, tx)
+	if err := applyEventStatusFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 5-3: the date of the sales end and doors-open twin test (sale_times_fixture.go).
+	return applySaleTimesFixture(ctx, tx)
 }
 
 // Task 4-6 (the web promoters screens): ANOTHER organization with one

@@ -31,6 +31,7 @@ import type {
   PromoCodeEnvelope,
   PromoCodeListResponse,
   PromoRedemptionListResponse,
+  SessionEnvelope,
   SessionListResponse,
   SessionSummary,
   TicketTierListResponse,
@@ -456,4 +457,20 @@ export function fetchEventDeleteImpact(orgId: string, eventId: string): Promise<
 /** Deletes an event that sold nothing. 409 `event.has_paid_orders` otherwise. */
 export function deleteEvent(orgId: string, eventId: string): Promise<unknown> {
   return call<unknown>({ route: API.eventDelete, params: { org_id: orgId, id: eventId } });
+}
+
+// 5-3: the sales end and doors-open time of a session. One PATCH names ONE
+// of the two (the body builders are in lib/saleTimes.ts). No journal row and
+// no letter: neither time is a buyer-visible change.
+export function updateSessionSaleTimes(
+  orgId: string,
+  eventId: string,
+  sessionId: string,
+  body: { sales_end_at: string } | { doors_open_at: string | null },
+): Promise<SessionEnvelope> {
+  return call<SessionEnvelope>({
+    route: API.sessionUpdate,
+    params: { org_id: orgId, event_id: eventId, id: sessionId },
+    body,
+  });
 }

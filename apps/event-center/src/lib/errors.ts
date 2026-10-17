@@ -121,7 +121,10 @@ export type ApiErrorStem =
   // 5-1
   | "eventInvalidTransition"
   | "eventNeedsSession"
-  | "eventNeedsTier";
+  | "eventNeedsTier"
+  // 5-3
+  | "saleTimeInvalid"
+  | "doorsAfterStart";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -140,6 +143,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "resendTooSoon", "invitationChannel", "webInvitationOff", "invitationClosed", "memberGone", "roleNotAllowed", "lastOwner",
   // 5-1
   "eventInvalidTransition", "eventNeedsSession", "eventNeedsTier",
+  // 5-3
+  "saleTimeInvalid", "doorsAfterStart",
 ];
 
 /**
@@ -214,6 +219,10 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "event.invalid_transition": "eventInvalidTransition",
   "event.publish_requires_session": "eventNeedsSession",
   "event.publish_requires_priced_tier": "eventNeedsTier",
+  // 5-3: the sales end and doors-open time
+  "session.invalid_sales_end_at": "saleTimeInvalid",
+  "session.invalid_doors_open_at": "saleTimeInvalid",
+  "session.doors_after_start": "doorsAfterStart",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",
