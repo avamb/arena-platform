@@ -109,6 +109,14 @@ export const API = {
     method: "PUT",
     path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule",
   },
+  // 6-1a: the event wizard. The check (?dry_run=true) writes nothing; the
+  // geo reads are public and feed the venue form.
+  eventBundleCheck: { method: "POST", path: "/v1/organizations/{org_id}/imports/event-bundle" },
+  venues: { method: "GET", path: "/v1/organizations/{org_id}/venues" },
+  geoCountries: { method: "GET", path: "/v1/geo/countries" },
+  geoCities: { method: "GET", path: "/v1/geo/cities" },
+  geoTimezones: { method: "GET", path: "/v1/geo/countries/{iso2}/timezones" },
+  geoCurrency: { method: "GET", path: "/v1/geo/countries/{iso2}/currency" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;
@@ -122,7 +130,7 @@ export function buildPath(
   params: Record<string, string> = {},
   query: Record<string, string | number | undefined> = {},
 ): string {
-  const path = route.path.replace(/\{([a-z_]+)\}/g, (_match, name: string) => {
+  const path = route.path.replace(/\{([a-z0-9_]+)\}/g, (_match, name: string) => {
     const value = params[name];
     if (value === undefined || value.length === 0) {
       throw new Error(`buildPath: missing value for {${name}} in ${route.path}`);

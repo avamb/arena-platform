@@ -493,6 +493,34 @@ export const PARITY: readonly ParityRow[] = [
     routes: ["POST /v1/bot/invitations/accept"],
     note: "В вебе: письмо с установкой пароля ведёт на `/accept-invite`. Приглашение из «Команды» с каналом web — экран «Команда» (4-5).",
   },
+  // 6-1a
+  {
+    area: "Мероприятия",
+    fn: "Мастер: мероприятие и площадка",
+    bot: "wizard*.go, `wz:` (шаги названия, возраста, промоутера, площадки)",
+    web: "R2",
+    ready: { twin: "live/wizard-event-venue.spec.ts" },
+    routes: [
+      `POST ${O}/imports/event-bundle`,
+      `GET ${O}/venues`,
+      `GET ${O}/promoters`,
+      "GET /v1/geo/countries",
+      "GET /v1/geo/cities",
+      "GET /v1/geo/countries/{iso2}/timezones",
+      "GET /v1/geo/countries/{iso2}/currency",
+    ],
+    note: "6-1a: форма из двух разделов с проверкой на лету (`?dry_run=true`, не чаще раза в секунду, ошибки по `errors[].field`), черновик в браузере. Под флагом сборки `VITE_FEATURE_WIZARD=1`. Даты, билеты и сохранение — 6-1b и 6-1c.",
+  },
+  // 6-1b
+  {
+    area: "Мероприятия",
+    fn: "Мастер: даты и билеты",
+    bot: "wizard.go `BuildBundle`, wizard_dates.go, wizard_sale_times.go, wizard_date_tickets.go",
+    web: "R2",
+    ready: { twin: "live/wizard-dates-tickets.spec.ts" },
+    routes: [`POST ${O}/imports/event-bundle`],
+    note: "6-1b: сеансы (день, время, конец продаж, «вход с», места), у каждого свои билеты или «как у прошлой»: одна категория со ступенями цены, несколько сразу, несколько по очереди (этапы по дню и/или числу билетов). Проверка на лету по каждому сеансу. Пакет сравнивается с пакетом бота на общих golden-файлах (`eventbot/testdata/wizard_bundles`). Сохранение — 6-1c.",
+  },
 ];
 
 /** Every route of the matrix, without duplicates. */

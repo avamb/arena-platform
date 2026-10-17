@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect } from "react";
 import { Link, Outlet, useParams } from "@tanstack/react-router";
 import { organizationsOf, rememberOrg, useAuth, useMe, useOrgAccess, type OrgAccess } from "@/lib/auth";
 import { ApiError } from "@/lib/api/http";
+import { wizardEnabled } from "@/lib/features";
 import { useI18n } from "@/lib/i18n";
 import { ErrorBox, ErrorScope, Loading } from "@/components/ui";
 import { RequireSignIn } from "@/screens/RequireSignIn";
@@ -129,6 +130,17 @@ function OrgShell() {
             {access.can("org.update") && (
               <Link to="/o/$orgId/org-data" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
                 {t("nav.orgData")}
+              </Link>
+            )}
+            {/* 6-1a: only in a build with VITE_FEATURE_WIZARD=1, and only for who can import a bundle. */}
+            {wizardEnabled() && access.can("import.bil24_session") && (
+              <Link
+                to="/o/$orgId/events/new"
+                params={{ orgId }}
+                activeProps={{ "aria-current": "page", className: "active" }}
+                data-testid="nav-new-event"
+              >
+                {t("nav.newEvent")}
               </Link>
             )}
             {orgCount > 1 && <Link to="/orgs">{t("nav.switchOrg")}</Link>}

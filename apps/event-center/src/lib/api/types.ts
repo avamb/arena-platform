@@ -74,3 +74,14 @@ export type TierPriceWindowInput = S["TierPriceWindowInput"];
 export type TierPriceSchedule = S["TierPriceSchedule"];
 export type TierPriceScheduleEnvelope = S["TierPriceScheduleEnvelope"];
 export type PutTierPriceScheduleRequest = S["PutTierPriceScheduleRequest"];
+// 6-1a: the event wizard.
+export type VenueItem = S["VenueItem"];
+export type GeoCountryItem = S["GeoCountryItem"];
+export type GeoCountriesResponse = S["GeoCountriesResponse"];
+export type GeoCityItem = S["GeoCityItem"];
+export type GeoCitySuggestion = S["GeoCitySuggestion"];
+export type GeoCitiesResponse = S["GeoCitiesResponse"];
+export type GeoCountryTimezonesResponse = S["GeoCountryTimezonesResponse"];
+export type GeoCountryCurrencyResponse = S["GeoCountryCurrencyResponse"];
+export type ImportDryRunError = S["ImportDryRunError"];
+export type ImportEventBundleDryRunResponse = S["ImportEventBundleDryRunResponse"];
