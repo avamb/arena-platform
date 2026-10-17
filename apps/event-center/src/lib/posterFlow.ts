@@ -63,7 +63,7 @@ export interface PosterApi {
 
 export type UploadResult = { kind: "uploaded"; mediaId: string } | { kind: "failed"; failure: Failure };
 
-export async function uploadPoster(api: PosterApi, file: Blob, type: PosterType, signal?: AbortSignal): Promise<UploadResult> {
+export async function uploadPoster(api: Pick<PosterApi, "upload">, file: Blob, type: PosterType, signal?: AbortSignal): Promise<UploadResult> {
   try {
     const res = await api.upload(file, type, signal);
     const id = res?.media_object?.id;

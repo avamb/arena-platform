@@ -161,3 +161,59 @@ describe("JSON and download calls are unchanged", () => {
     expect(await file.blob.text()).toBe("a,b\n1,2\n");
   });
 });
+
+describe("poster reading through the shared transport", () => {
+  it("is ONE authenticated POST with the channel header on the path organization, never repeated after a failure", async () => {
+    await signedIn();
+    const seen = stubFetch(() => json(503, { error: { code: "media.poster_read_failed", message: "x" } }));
+    const { readPosterFacts } = await import("@/lib/api/endpoints");
+    await expect(readPosterFacts("org-1", "m-1")).rejects.toMatchObject({ status: 503, code: "media.poster_read_failed" });
+    expect(seen).toHaveLength(1);
+    expect(seen[0].path).toBe("/v1/organizations/org-1/media/m-1/poster-facts");
+    expect(seen[0].method).toBe("POST");
+    expect(seen[0].headers.Authorization).toBe("Bearer a-good");
+    expect(seen[0].headers["X-Client-Channel"]).toBe(CLIENT_CHANNEL);
+    expect(seen[0].body).toBeUndefined();
+  });
+  it("refreshes an expired session once, like every call (the first 401 cost nothing)", async () => {
+    await signedIn();
+    let n = 0;
+    const seen = stubFetch(() => {
+      n += 1;
+      return n === 1 ? json(401, { error: { code: "auth.expired", message: "x" } }) : json(200, { facts: { name: "A" } });
+    });
+    const { readPosterFacts } = await import("@/lib/api/endpoints");
+    await expect(readPosterFacts("org-1", "m-1")).resolves.toEqual({ facts: { name: "A" } });
+    expect(seen).toHaveLength(2);
+    expect(seen[1].headers.Authorization).toBe("Bearer a-new");
+  });
+  it("has its own bounded timeout, longer than the default 30 s and than the server's 45 s read", async () => {
+    const { POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS } = await import("@/lib/api/http");
+    expect(POSTER_READ_TIMEOUT_MS).toBeGreaterThan(45_000 + 10_000);
+    expect(POSTER_READ_TIMEOUT_MS).toBeLessThanOrEqual(UPLOAD_TIMEOUT_MS);
+  });
+  it("a timeout is reported as a timeout and is not retried by the transport", async () => {
+    vi.useFakeTimers();
+    try {
+      await signedIn();
+      let calls = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_u: string, init: RequestInit) => {
+          calls += 1;
+          return new Promise((_res, rej) => {
+            init.signal?.addEventListener("abort", () => rej(new Error("aborted")));
+          });
+        }),
+      );
+      const { readPosterFacts } = await import("@/lib/api/endpoints");
+      const p = readPosterFacts("org-1", "m-1");
+      const assertion = expect(p).rejects.toMatchObject({ code: "network.timeout" });
+      await vi.advanceTimersByTimeAsync(60_001);
+      await assertion;
+      expect(calls).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

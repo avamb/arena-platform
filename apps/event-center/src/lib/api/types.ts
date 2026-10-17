@@ -89,3 +89,5 @@ export type ImportEventBundleDryRunResponse = S["ImportEventBundleDryRunResponse
 export type ImportBil24SessionResponse = S["ImportBil24SessionResponse"];
 // 7-1: the event poster (upload, preview, attach).
 export type MediaObject = S["MediaObject"];
+// Poster-first creation: what the vision model read from an uploaded poster (hints only).
+export type PosterFactsResponse = S["PosterFactsResponse"];
