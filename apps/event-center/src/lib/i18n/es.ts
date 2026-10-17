@@ -1197,4 +1197,5 @@ export const es: Record<MessageKey, string> = {
   "wizard.date.closeCalendar": "Cerrar el calendario",
   "wizard.date.noDay": "Aún no hay día elegido",
   "wizard.err.timeRequired": "Escribe la hora de inicio, por ejemplo 19:00.",
+  "wizard.err.timeGap": "Esta hora no existe ese día en la zona horaria del recinto por el cambio de hora. Elige otra hora de inicio.",
 };

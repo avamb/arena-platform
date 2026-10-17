@@ -12,9 +12,12 @@
  * Pure: no React, no network.
  */
 import type { MessageKey } from "@/lib/i18n/en";
+import { isIsoDay } from "@/lib/dates";
+import { wallToInstant } from "@/lib/saleTimes";
 import { effectiveTickets, type DateEntry, type TicketsPart } from "@/lib/wizard/datesDraft";
 import type { WizardDraft } from "@/lib/wizard/draft";
-import { venueCapacity } from "@/lib/wizard/draft";
+import { venueCapacity, venueTimezone } from "@/lib/wizard/draft";
+import { isKnownZone } from "@/lib/wizard/zones";
 import { doorsOffset, parseCount, parsePriceMinor, parseTime, salesEndOffset } from "@/lib/wizard/parse";
 import type { CheckError } from "@/lib/wizard/validation";
 
@@ -140,6 +143,10 @@ export function dateClientErrors(draft: WizardDraft): ClientDateErrors {
     // The platform reads an empty start time as midnight, which nobody means: the wizard asks for it.
     if (!nonEmpty(date.time)) set("time", "wizard.err.timeRequired");
     else if (time === null) set("time", "wizard.err.timeShape");
+    else if (isIsoDay(date.day) && isKnownZone(venueTimezone(draft.venue)) && wallToInstant(date.day, time, venueTimezone(draft.venue)) === null) {
+      // A syntactically valid clock can be skipped by DST; never silently move the event.
+      set("time", "wizard.err.timeGap");
+    }
     if (nonEmpty(date.endTime) && parseTime(date.endTime) === null) set("endTime", "wizard.err.timeShape");
     if (nonEmpty(date.salesEnd)) {
       const typed = parseTime(date.salesEnd);

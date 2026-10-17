@@ -1197,4 +1197,5 @@ export const ru: Record<MessageKey, string> = {
   "wizard.date.closeCalendar": "Закрыть календарь",
   "wizard.date.noDay": "День ещё не выбран",
   "wizard.err.timeRequired": "Введите время начала, например 19:00.",
+  "wizard.err.timeGap": "В этот день такого времени нет в часовом поясе площадки из-за перевода часов. Выберите другое время начала.",
 };

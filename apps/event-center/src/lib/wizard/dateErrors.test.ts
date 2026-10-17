@@ -76,6 +76,16 @@ describe("dateClientErrors", () => {
     expect([...doors.keys()]).toEqual(["d1.doors"]);
   });
 
+  it("rejects a start in the venue's skipped DST hour without rejecting nearby real times", () => {
+    const onDay = (time: string) => filled(
+      { type: "dateDay", key: "d1", value: "2027-03-28" },
+      { type: "dateField", key: "d1", field: "time", value: time },
+    );
+    expect(dateClientErrors(onDay("02:30")).has("d1.time")).toBe(true);
+    expect(dateClientErrors(onDay("01:30")).has("d1.time")).toBe(false);
+    expect(dateClientErrors(onDay("03:30")).has("d1.time")).toBe(false);
+  });
+
   it("needs the places of the date when the venue has no seat count", () => {
     const d = draftOf({ type: "venueMode", mode: "existing" });
     expect(dateClientErrors(d).get("d1.capacity")).toBe("wizard.err.placesRequired");

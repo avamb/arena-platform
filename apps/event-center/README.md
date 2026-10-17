@@ -48,6 +48,19 @@ off. The flag is inlined at build time, like `VITE_API_BASE_URL`. The screen als
 the `import.bil24_session` permission (owner and managers), which the import route
 itself demands.
 
+This release saves one general-admission session on an existing venue. The new
+event and session stay in draft, off sale. Multiple dates and a new venue can
+be explored in the form but cannot be saved in this release; the Create button
+explains the restriction. Assigned seating and editing an existing event's
+main details are not part of this release.
+
+The live acceptance scenario is `tests/smoke/live/create-event.spec.ts` (run
+`npm --prefix apps/event-center run test:e2e:live` with a local scratch database
+as described in `tests/README.md`). It covers persistence, exact prices and
+capacity, an answer lost after the write, retry with the same key, double
+clicks, and authorization across roles and organizations. Unit tests also
+reject a start in the venue's skipped daylight-saving hour.
+
 Password letters of organizers link here (`/reset-password`, `/accept-invite`) once
 arena-api and arena-worker carry `EVENT_CENTER_PUBLIC_URL`; platform users keep
 the admin-web link (`APP_PUBLIC_URL`).

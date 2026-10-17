@@ -1197,6 +1197,7 @@ export const en = {
   "wizard.date.closeCalendar": "Close the calendar",
   "wizard.date.noDay": "No day chosen yet",
   "wizard.err.timeRequired": "Type the start time, for example 19:00.",
+  "wizard.err.timeGap": "This time does not exist on that date in the venue's time zone because the clocks change. Choose another start time.",
 } as const;
 
 export type MessageKey = keyof typeof en;
