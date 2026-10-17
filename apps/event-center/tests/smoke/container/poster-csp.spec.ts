@@ -8,6 +8,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { liveEnv, person, signInAs } from "../live/liveEnv";
+import { scriptFacts } from "../live/posterHelpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -92,6 +93,18 @@ test("a chosen file is previewed and a created event shows its poster, with no p
   // The preview is a blob address and it is really drawn under the real policy.
   expect(await preview.getAttribute("src")).toMatch(/^blob:/);
   await expect.poll(() => preview.evaluate((i) => (i as HTMLImageElement).complete && (i as HTMLImageElement).naturalWidth)).toBe(480);
+
+  // Poster first: the picture is uploaded at once. The review of the hints (scripted model, real route)
+  // is drawn under the same policy, and filling it in is explicit.
+  await expect(page.getByTestId("wizard-poster-ok")).toBeVisible({ timeout: 20_000 });
+  scriptFacts({ name: "Hint under the real policy", age: "12+" });
+  await page.getByTestId("wizard-poster-read-button").click();
+  await expect(page.getByTestId("poster-review")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("wizard-age")).toHaveValue("");
+  await page.getByTestId("poster-review-row-name").uncheck();
+  await page.getByTestId("poster-review-apply").click();
+  await expect(page.getByTestId("wizard-age")).toHaveValue("12+");
+  await expect(page.getByTestId("wizard-name")).toHaveValue(name);
 
   await page.getByTestId("wizard-create").click();
   await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events/[0-9a-f-]{36}$`), { timeout: 30_000 });

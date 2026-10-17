@@ -21,6 +21,11 @@
  *   JWT_SIGNING_SECRET      default: a fixed test value
  *   MEDIA_BACKEND, MEDIA_LOCAL_ROOT, MEDIA_SIGNING_SECRET
  *                           poster storage; default: local, under .live/media
+ *   E2E_POSTER_SCRIPT, E2E_POSTER_CALLS
+ *                           the scripted poster reader of the test-only arena-api
+ *                           build (-tags e2eposter): what the "vision model" answers
+ *                           on the next read, and a log of every read. Default:
+ *                           under .live/. No real model key is ever used here.
  *
  * The web event center must be started with VITE_API_BASE_URL pointing at
  * the arena-api port, or it throws on boot (AGENTS.md).
@@ -78,7 +83,7 @@ if (!process.env.DATABASE_URL) die("DATABASE_URL is required (a database migrate
 rmSync(envFile, { force: true });
 
 /** A binary of the backend: the prebuilt one from the environment, else built with go. */
-function backendBinary(envName, pkg, outName) {
+function backendBinary(envName, pkg, outName, goArgs = []) {
   const given = process.env[envName];
   if (given) {
     if (!existsSync(given)) die(`${envName}=${given} does not exist.`);
@@ -88,7 +93,7 @@ function backendBinary(envName, pkg, outName) {
   const out = join(liveDir, outName + exe);
   log(`building ${pkg}`);
   const goCmd = process.platform === "win32" ? "go.exe" : "go";
-  const r = spawnSync(goCmd, ["build", "-o", out, pkg], { cwd: repoRoot, stdio: "inherit" });
+  const r = spawnSync(goCmd, ["build", ...goArgs, "-o", out, pkg], { cwd: repoRoot, stdio: "inherit" });
   if (r.status !== 0) die(`go build ${pkg} failed (go must be on PATH).`);
   return out;
 }
@@ -125,9 +130,17 @@ if (seeded.status !== 0) die(`arena-e2e-seed failed:\n${seeded.stderr}`);
 const fixture = JSON.parse(seeded.stdout);
 
 // 2. The real arena-api.
-const apiBin = backendBinary("ARENA_API_BIN", "./apps/backend/cmd/arena-api", "arena-api");
+// Built with the test-only tag `e2eposter`: the vision model is replaced by a scripted reader
+// (apps/backend/cmd/arena-api/poster_reader_e2e.go); everything around it is the real route.
+// A prebuilt ARENA_API_BIN must be built the same way for the poster-first specs.
+const apiBin = backendBinary("ARENA_API_BIN", "./apps/backend/cmd/arena-api", "arena-api", ["-tags", "e2eposter"]);
 const mediaRoot = join(liveDir, "media");
 mkdirSync(mediaRoot, { recursive: true });
+const posterScript = process.env.E2E_POSTER_SCRIPT ?? join(liveDir, "poster-script.json");
+const posterCalls = process.env.E2E_POSTER_CALLS ?? join(liveDir, "poster-calls.log");
+// Start without a script (the reader then answers "not configured") and with an empty call log.
+rmSync(posterScript, { force: true });
+rmSync(posterCalls, { force: true });
 const apiEnv = {
   ...process.env,
   APP_ENV: "development",
@@ -145,6 +158,8 @@ const apiEnv = {
   MEDIA_LOCAL_ROOT: process.env.MEDIA_LOCAL_ROOT ?? mediaRoot,
   MEDIA_SIGNING_SECRET: process.env.MEDIA_SIGNING_SECRET ?? "event-center-live-harness-media-secret-32-bytes",
   API_PUBLIC_URL: apiBase,
+  E2E_POSTER_SCRIPT: posterScript,
+  E2E_POSTER_CALLS: posterCalls,
 };
 log(`starting arena-api on ${apiBase}`);
 const api = spawn(apiBin, [], { cwd: repoRoot, env: apiEnv, stdio: ["ignore", "inherit", "inherit"] });
@@ -199,6 +214,8 @@ writeFileSync(
       event_name: fixture.event_name,
       session_id: fixture.session_id,
       foreign_media_id: fixture.foreign_media_id,
+      poster_script: posterScript,
+      poster_calls: posterCalls,
       people,
     },
     null,
