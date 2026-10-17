@@ -271,7 +271,11 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	// 5-4: the categories twin test's date (categories_fixture.go).
-	return applyCategoriesFixture(ctx, tx)
+	if err := applyCategoriesFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 6-1a: a promoter and a seat count for the wizard's twin test.
+	return applyWizardFixture(ctx, tx)
 }
 
 // Task 4-6 (the web promoters screens): ANOTHER organization with one
