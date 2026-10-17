@@ -5,10 +5,14 @@
  * DOM. The draft holds what the person typed in the sections "Event",
  * "Venue", "Dates" and "Tickets" (the last two are datesDraft.ts, 6-1b).
  * Saving joins in 6-1c. A new section bumps DRAFT_VERSION, and an older
- * stored draft is then dropped, never half read.
+ * stored draft is then dropped, never half read, EXCEPT a version-2 draft
+ * (no poster yet), which is read whole and gets an empty poster (7-1): the
+ * poster field adds nothing a person typed, so no work is thrown away.
  *
  * The draft lives in this browser only (localStorage, one per organization).
- * It holds an event name, a description and a venue: no personal data.
+ * It holds an event name, a description and a venue: no personal data. The
+ * poster part holds two stable ids at most (the uploaded media object and the
+ * created event): never the file, a blob address, a signed link or a token.
  */
 import { applyDateAction, emptyDate, isBlankDate, isDateAction, parseDates, type DateAction, type DateEntry } from "@/lib/wizard/datesDraft";
 
@@ -26,7 +30,9 @@ export const MAX_DESCRIPTION_RUNES = 4000;
 /** The largest hall the wizard accepts, as the bot's `maxCount`. */
 export const MAX_CAPACITY = 1_000_000;
 
-export const DRAFT_VERSION = 2;
+export const DRAFT_VERSION = 3;
+/** The oldest stored version that is still read (and upgraded) instead of dropped. */
+export const OLDEST_READABLE_DRAFT_VERSION = 2;
 
 export type VenueMode = "" | "existing" | "new";
 
@@ -60,6 +66,26 @@ export interface VenueSection {
   capacity: string;
 }
 
+/**
+ * What the poster of this draft has reached. The chosen FILE lives in memory
+ * only; these ids are what survives a reload.
+ *  - `mediaId`: the picture is uploaded (not yet the poster of anything);
+ *  - `eventId`: the event exists (the draft's own key made it); the poster may
+ *    still be waiting to be attached.
+ */
+export interface PosterRef {
+  mediaId: string;
+  eventId: string;
+}
+
+export function emptyPoster(): PosterRef {
+  return { mediaId: "", eventId: "" };
+}
+
+export function hasPosterRefs(d: WizardDraft): boolean {
+  return d.poster.mediaId !== "" || d.poster.eventId !== "";
+}
+
 export interface WizardDraft {
   version: typeof DRAFT_VERSION;
   /** Names the draft in the idempotency key of the later save (6-1c). */
@@ -72,6 +98,7 @@ export interface WizardDraft {
   currency: string;
   /** Where the currency came from: the country (auto), or typed by the person. */
   currencySource: "auto" | "typed";
+  poster: PosterRef;
   updatedAt: string;
 }
 
@@ -108,6 +135,7 @@ export function newDraft(id: string, now: Date = new Date(), defaultName = ""): 
     dates: [emptyDate("d1", defaultName)],
     currency: "",
     currencySource: "auto",
+    poster: emptyPoster(),
     updatedAt: now.toISOString(),
   };
 }
@@ -131,6 +159,9 @@ export type DraftAction =
   | { type: "country"; iso2: string }
   | { type: "timezone"; value: string }
   | { type: "currency"; value: string; source: "auto" | "typed" }
+  | { type: "posterUploaded"; mediaId: string }
+  | { type: "posterCreated"; eventId: string }
+  | { type: "posterCleared" }
   | DateAction
   | { type: "reset"; id: string; defaultName: string };
 
@@ -186,6 +217,13 @@ function apply(d: WizardDraft, a: DraftAction): WizardDraft {
       if (value === d.currency && a.source === d.currencySource) return d;
       return { ...d, currency: value, currencySource: a.source };
     }
+    case "posterUploaded":
+      return d.poster.mediaId === a.mediaId ? d : { ...d, poster: { ...d.poster, mediaId: a.mediaId } };
+    case "posterCreated":
+      return d.poster.eventId === a.eventId ? d : { ...d, poster: { ...d.poster, eventId: a.eventId } };
+    case "posterCleared":
+      // Another picture (or none) replaces the uploaded one; an existing event stays what it is.
+      return d.poster.mediaId === "" ? d : { ...d, poster: { ...d.poster, mediaId: "" } };
     case "reset":
       return newDraft(a.id, new Date(), a.defaultName);
     default:
@@ -270,11 +308,28 @@ export function saveDraft(
 ): void {
   if (storage === null) return;
   try {
-    if (isBlank(draft)) storage.removeItem(draftStorageKey(orgId));
+    if (isBlank(draft) && !hasPosterRefs(draft)) storage.removeItem(draftStorageKey(orgId));
     else storage.setItem(draftStorageKey(orgId), JSON.stringify(draft));
   } catch {
     // The draft then lives for this visit only.
   }
+}
+
+/**
+ * Records poster progress in the STORED draft `draftId` (an upload or a save
+ * that finishes after the screen is gone must still not be lost). Another
+ * draft of the same organization (another id) is never touched.
+ */
+export function recordPosterProgress(
+  orgId: string,
+  draftId: string,
+  patch: Partial<PosterRef>,
+  storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null = safeStorage(),
+): void {
+  if (storage === null) return;
+  const stored = loadDraft(orgId, storage);
+  if (stored === null || stored.id !== draftId) return;
+  saveDraft(orgId, { ...stored, poster: { ...stored.poster, ...patch } }, storage);
 }
 
 export function clearDraft(orgId: string, storage: Pick<Storage, "removeItem"> | null = safeStorage()): void {
@@ -318,7 +373,7 @@ function str(v: unknown): string | null {
 export function parseDraft(raw: unknown): WizardDraft | null {
   if (raw === null || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
-  if (o.version !== DRAFT_VERSION) return null;
+  if (typeof o.version !== "number" || o.version < OLDEST_READABLE_DRAFT_VERSION || o.version > DRAFT_VERSION) return null;
   const id = str(o.id);
   const updatedAt = str(o.updatedAt);
   const currency = str(o.currency);
@@ -361,6 +416,16 @@ export function parseDraft(raw: unknown): WizardDraft | null {
   if (existingCapacity !== null && typeof existingCapacity !== "number") return null;
   const dates = parseDates(o.dates);
   if (dates === null) return null;
+  // A version-2 draft has no poster; a newer one must carry two strings.
+  let poster = emptyPoster();
+  if (o.version === DRAFT_VERSION) {
+    const p = o.poster as Record<string, unknown> | null | undefined;
+    if (p === null || p === undefined || typeof p !== "object") return null;
+    const mediaId = str(p.mediaId);
+    const eventId = str(p.eventId);
+    if (mediaId === null || eventId === null) return null;
+    poster = { mediaId, eventId };
+  }
   return {
     version: DRAFT_VERSION,
     id,
@@ -380,6 +445,7 @@ export function parseDraft(raw: unknown): WizardDraft | null {
     dates,
     currency,
     currencySource: source,
+    poster,
     updatedAt,
   };
 }

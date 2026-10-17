@@ -788,3 +788,20 @@ fieldset legend {
 .wizard-day {
   margin-block: 0.5rem;
 }
+
+/* 7-1: the poster. The picture keeps its own proportions (height:auto from the
+   width/height attributes) and never grows past the screen. */
+.poster-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+  margin-block: 0.75rem;
+  border-radius: var(--radius);
+  background: var(--neutral-bg);
+}
+
+.poster-picker .actions {
+  margin-block: 0.5rem;
+}

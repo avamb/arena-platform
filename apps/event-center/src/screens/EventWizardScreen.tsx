@@ -16,6 +16,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { checkEventBundle, createEventFromBundle } from "@/lib/api/endpoints";
+import { posterApi } from "@/components/EventPoster";
+import { usePosterPicker } from "@/components/PosterPicker";
+import { WizardPosterSection } from "@/components/WizardPosterSection";
+import { attachPoster, createWithPoster, type Failure } from "@/lib/posterFlow";
+import { posterCapabilities } from "@/lib/posters";
 import { wizardGate } from "@/lib/features";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
@@ -30,6 +35,7 @@ import {
   isBlank,
   loadDraft,
   newDraft,
+  recordPosterProgress,
   reduceDraft,
   saveDraft,
   type DraftAction,
@@ -60,6 +66,11 @@ type SaveView =
   | { phase: "idle" }
   | { phase: "saving" }
   | { phase: "saved" }
+  /** The poster could not be uploaded, so NO event was created. */
+  | { phase: "posterUploadFailed"; failure: Failure }
+  /** The event EXISTS; only its poster is not attached. */
+  | { phase: "attachFailed"; failure: Failure | null }
+  | { phase: "attachRetrying" }
   | { phase: "failed"; outcome: Exclude<SaveOutcome, { kind: "saved" }>; fields: CheckError[] };
 
 const IDLE: SchedulerState<MultiAnswer> = { status: "idle", last: null, error: null };
@@ -134,8 +145,8 @@ function mergeEventErrors(splits: readonly SplitErrors[]): SplitErrors {
 }
 
 function Wizard() {
-  const { t } = useI18n();
-  const { orgId } = useOrg();
+  const { t, locale } = useI18n();
+  const { orgId, access } = useOrg();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const saver = useMemo(() => createSaver((bundle) => createEventFromBundle(orgId, bundle)), [orgId]);
@@ -145,6 +156,17 @@ function Wizard() {
   const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
 
   const dispatch = useCallback((action: DraftAction) => setDraft((d) => reduceDraft(d, action)), []);
+  // One picker per draft: another draft (or organization) revokes the preview and drops a slow check.
+  const picker = usePosterPicker(`${orgId}:${draft.id}`);
+  const posterCan = posterCapabilities(access.can);
+  const posterBusyRef = useRef(false);
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
   const touch = useCallback((field: string) => setTouched((s) => (s.has(field) ? s : new Set(s).add(field))), []);
   useEffect(() => saveDraft(orgId, draft), [orgId, draft]);
 
@@ -233,29 +255,71 @@ function Wizard() {
   const dateErrors = { errorOf: dateErrorOf, generalOf, touch };
 
   const blockers = saveBlockers(draft);
+  const posterBusy = saveView.phase === "saving" && picker.state.phase === "ready" && draft.poster.mediaId === "";
   const checkSettled = !blank && fresh && state.status === "idle" && state.error === null;
-  const saving = saveView.phase === "saving" || saveView.phase === "saved";
-  const canCreate = checkSettled && nothingWrong && blockers.length === 0 && !saving;
+  const saving = saveView.phase === "saving" || saveView.phase === "saved" || saveView.phase === "attachRetrying";
+  // The event already exists (its poster is what is left): the form is closed, only the attach panel works.
+  const created = draft.poster.eventId !== "";
+  // A picture that is still being checked, or was refused, must be settled first: it would be silently left out.
+  const posterUnsettled = picker.state.phase === "checking" || picker.state.phase === "rejected";
+  const canCreate = checkSettled && nothingWrong && blockers.length === 0 && !saving && !created && !posterUnsettled;
   let createHint: string | null = null;
   if (blockers[0] === "oneDate") createHint = t("wizard.create.hint.oneDate");
   else if (blockers[0] === "existingVenue") createHint = t("wizard.create.hint.existingVenue");
   else if (!checkSettled) createHint = t("wizard.create.hint.checking");
   else if (!nothingWrong) createHint = t("wizard.create.hint.invalid");
+  else if (posterUnsettled) createHint = t("wizard.create.hint.poster");
 
   const onCreate = async () => {
-    // A double click, or a click while the answer is awaited, never makes a second POST.
-    if (!canCreate || saver.inFlight()) return;
+    // A double click, or a click while the answer is awaited, never makes a second POST or upload.
+    if (!canCreate || saver.inFlight() || posterBusyRef.current) return;
+    posterBusyRef.current = true;
     const sent = draft;
+    const chosen = picker.state.phase === "ready" ? picker.state : null;
     setSaveView({ phase: "saving" });
-    const outcome = await saver.save(sent, orgId);
-    if (outcome.kind === "saved") {
+    const progress = (patch: { mediaId?: string; eventId?: string }) => {
+      // Stored at once and under the draft own id: a screen that is gone must not lose an id.
+      recordPosterProgress(orgId, sent.id, patch);
+      if (!aliveRef.current) return;
+      if (patch.mediaId !== undefined) dispatch({ type: "posterUploaded", mediaId: patch.mediaId });
+      if (patch.eventId !== undefined) dispatch({ type: "posterCreated", eventId: patch.eventId });
+    };
+    const result = await createWithPoster(posterApi(orgId, locale), {
+      file: posterCan.canChange && chosen !== null ? chosen.file : null,
+      type: posterCan.canChange && chosen !== null ? chosen.info.type : null,
+      mediaId: sent.poster.mediaId,
+      eventId: sent.poster.eventId,
+      save: () => saver.save(sent, orgId),
+      onProgress: progress,
+    });
+    posterBusyRef.current = false;
+    if (!aliveRef.current) {
+      if (result.kind === "done") clearDraftIfSaved(orgId, sent.id);
+      if (result.kind !== "upload_failed" && result.kind !== "save_failed") {
+        void queryClient.invalidateQueries({ queryKey: ["events", orgId] });
+      }
+      return;
+    }
+    if (result.kind === "done") {
       setSaveView({ phase: "saved" });
       clearDraftIfSaved(orgId, sent.id);
       await queryClient.invalidateQueries({ queryKey: ["events", orgId] });
-      void navigate({ to: "/o/$orgId/events/$eventId", params: { orgId, eventId: outcome.eventId } });
+      void navigate({ to: "/o/$orgId/events/$eventId", params: { orgId, eventId: result.eventId } });
       return;
     }
-    // The draft stays whole. A refusal is explained field by field with the platform's own check.
+    if (result.kind === "upload_failed") {
+      // Nothing was created. The draft stays whole.
+      setSaveView({ phase: "posterUploadFailed", failure: result.failure });
+      return;
+    }
+    if (result.kind === "attach_failed") {
+      // The event exists: the list must know it, and nothing here may create another.
+      setSaveView({ phase: "attachFailed", failure: result.failure });
+      void queryClient.invalidateQueries({ queryKey: ["events", orgId] });
+      return;
+    }
+    const outcome = result.outcome;
+    // The draft stays whole. A refusal is explained field by field with the platform own check.
     let fields: CheckError[] = [];
     if (outcome.kind === "rejected") {
       try {
@@ -265,10 +329,52 @@ function Wizard() {
         fields = [];
       }
     }
-    setSaveView({ phase: "failed", outcome, fields });
+    if (aliveRef.current) setSaveView({ phase: "failed", outcome, fields });
+  };
+
+  /** Retries ONLY the attachment of the stored picture to the created event: no upload, no bundle. */
+  const onRetryAttach = async () => {
+    if (!created || posterBusyRef.current || draft.poster.mediaId === "") return;
+    posterBusyRef.current = true;
+    const sent = draft;
+    setSaveView({ phase: "attachRetrying" });
+    const res = await attachPoster(posterApi(orgId, locale), sent.poster.eventId, sent.poster.mediaId);
+    posterBusyRef.current = false;
+    if (!aliveRef.current) {
+      if (res.kind === "attached") clearDraftIfSaved(orgId, sent.id);
+      return;
+    }
+    if (res.kind === "attached") {
+      clearDraftIfSaved(orgId, sent.id);
+      await queryClient.invalidateQueries({ queryKey: ["events", orgId] });
+      void navigate({ to: "/o/$orgId/events/$eventId", params: { orgId, eventId: sent.poster.eventId } });
+      return;
+    }
+    setSaveView({ phase: "attachFailed", failure: res.failure });
+  };
+
+  const onOpenCreated = () => {
+    const eventId = draft.poster.eventId;
+    clearDraftIfSaved(orgId, draft.id);
+    void navigate({ to: "/o/$orgId/events/$eventId", params: { orgId, eventId } });
+  };
+
+  const choosePoster = (file: File) => {
+    if (posterBusyRef.current) return;
+    // The uploaded picture belonged to the file that was chosen before: a new choice replaces it.
+    dispatch({ type: "posterCleared" });
+    if (saveView.phase === "posterUploadFailed") setSaveView({ phase: "idle" });
+    picker.select(file);
+  };
+  const clearPoster = () => {
+    if (posterBusyRef.current) return;
+    dispatch({ type: "posterCleared" });
+    if (saveView.phase === "posterUploadFailed") setSaveView({ phase: "idle" });
+    picker.clear();
   };
 
   const onClear = () => {
+    if (posterBusyRef.current) return;
     clearDraft(orgId);
     setDraft(newDraft(makeId(), new Date(), defaultName));
     setTouched(new Set());
@@ -284,6 +390,14 @@ function Wizard() {
 
       <fieldset className="wizard-lock" disabled={saving} data-testid="wizard-sections">
         <WizardEventSection draft={draft} dispatch={dispatch} touch={touch} errorOf={errorOf} />
+        <WizardPosterSection
+          state={picker.state}
+          onSelect={choosePoster}
+          onClear={clearPoster}
+          uploadedBefore={draft.poster.mediaId !== ""}
+          canChange={posterCan.canChange}
+          busy={saving || created}
+        />
         <WizardVenueSection draft={draft} dispatch={dispatch} touch={touch} errorOf={errorOf} />
         <WizardDatesSection draft={draft} dispatch={dispatch} errors={dateErrors} defaultCategoryName={defaultName} />
       </fieldset>
@@ -326,6 +440,46 @@ function Wizard() {
       )}
 
       {saveView.phase === "failed" && <SaveFailure view={saveView} orgId={orgId} t={t} />}
+      {saveView.phase === "posterUploadFailed" && (
+        <div className="notice notice-bad" role="alert" data-testid="wizard-poster-upload-failed" data-kind={saveView.failure.kind}>
+          <p>{t(saveView.failure.kind === "rejected" ? "wizard.create.uploadRejected" : "wizard.create.uploadFailed")}</p>
+        </div>
+      )}
+      {created && saveView.phase !== "saving" && saveView.phase !== "saved" && (
+        <div
+          className="notice notice-bad"
+          role="alert"
+          data-testid="wizard-attach-failed"
+          data-kind={saveView.phase === "attachFailed" && saveView.failure !== null ? saveView.failure.kind : "stored"}
+        >
+          <p>{t("wizard.attach.title")}</p>
+          <p>{t("wizard.attach.body")}</p>
+          {saveView.phase === "attachFailed" && saveView.failure?.kind === "unknown" && <p>{t("poster.fail.attachUnknown")}</p>}
+          {saveView.phase === "attachFailed" && saveView.failure?.kind === "rejected" && <p>{t("poster.fail.attachRejected")}</p>}
+          {saveView.phase === "attachFailed" && saveView.failure?.kind === "denied" && <p>{t("poster.fail.denied")}</p>}
+          <div className="actions">
+            {draft.poster.mediaId !== "" &&
+              !(saveView.phase === "attachFailed" && (saveView.failure?.kind === "rejected" || saveView.failure?.kind === "denied")) && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => void onRetryAttach()}
+                  disabled={saveView.phase === "attachRetrying"}
+                  aria-busy={saveView.phase === "attachRetrying"}
+                  data-testid="wizard-attach-retry"
+                >
+                  {saveView.phase === "attachRetrying" ? t("wizard.create.attaching") : t("poster.attach.retry")}
+                </button>
+              )}
+            <button type="button" className="btn" onClick={onOpenCreated} data-testid="wizard-attach-open">
+              {t("wizard.attach.open")}
+            </button>
+            <button type="button" className="btn" onClick={onClear} disabled={saveView.phase === "attachRetrying"} data-testid="wizard-attach-fresh">
+              {t("wizard.attach.fresh")}
+            </button>
+          </div>
+        </div>
+      )}
 
       <p className="field-hint" data-testid="wizard-create-note">
         {t("wizard.create.note")}
@@ -340,7 +494,7 @@ function Wizard() {
           data-testid="wizard-create"
         >
           {saving
-            ? t("wizard.create.saving")
+            ? t(posterBusy ? "wizard.create.uploading" : "wizard.create.saving")
             : saveView.phase === "failed" && saveView.outcome.kind === "unknown"
               ? t("wizard.create.retry")
               : t("wizard.create.button")}
