@@ -72,8 +72,8 @@ running container; CI also runs the smoke against the built image, so the CSP is
 
 ## Event posters (task 7-1)
 
-An organizer can choose a poster in the creation wizard and upload or replace
-it on the event card. The code is `src/lib/posters.ts` (rules, preview),
+An organizer uploads a poster as the first step of the creation wizard (or continues
+without one on purpose) and can upload or replace it on the event card. The code is `src/lib/posters.ts` (rules, preview),
 `src/lib/posterFlow.ts` (upload and attach), `src/lib/posterImage.ts` (showing
 the stored poster) and the components `PosterPicker`, `WizardPosterSection` and
 `EventPoster`.
@@ -117,6 +117,65 @@ built for (`VITE_API_BASE_URL`); a storage that signs addresses on its own origi
 policy. Supporting it needs that origin in `connect-src` of
 `security-headers.conf.template`, decided per deployment. (3) The chosen file
 lives in memory; after a reload only an already uploaded id survives.
+
+### Poster first: upload, review the hints, apply on purpose
+
+The wizard's first block is **Poster** (never "optional"). It says "Upload a poster —
+we will offer to fill in the event details" and offers two explicit ways on: upload a
+poster, or **Continue without a poster** (a conscious choice; a reminder says the poster
+can be uploaded later in the event card). "Create event" stays disabled until one is
+chosen. There is no hard poster requirement for publishing or selling: skipping is an
+accepted decision. A person who may not upload posters (`media.write` + `event.update`)
+is never asked.
+
+- **Draft v4** (`src/lib/wizard/draft.ts`) stores `posterDecision` (`""`, `"poster"`,
+  `"skipped"`) next to the two stable ids. A v3 draft with a media/event id is read as
+  `"poster"` (its picture is not uploaded again); a v2 draft and a v3 draft without a
+  picture keep every typed field and are asked once. `"poster"` with no id left asks
+  again. Removing or changing the picture goes back to "not decided", never to "skipped".
+- **One upload, reused.** The picture is uploaded as soon as it passes the local checks
+  (`src/lib/posterIntake.ts`, `useWizardPoster`). The returned media id is saved in the
+  draft, used for reading, and attached by "Create event" (`createWithPoster` skips the
+  upload when the draft holds the id). Upload failure is its own message with "Upload
+  again"; the file stays in the picker and the form is kept.
+- **Reading is explicit and paid** (`POST /v1/organizations/{org}/media/{media}/poster-facts`,
+  `event.update`; the model key lives on arena-api only). The person is told that the
+  picture (nothing else from the form) goes to an automatic text recognition service
+  *before* the button. The call has its own 60 s timeout (`POSTER_READ_TIMEOUT_MS`;
+  the server allows 45 s + 10 s), one request per press (a double click is one request),
+  and is **never repeated by itself**: not on render, reload, failure or timeout. "Read
+  again" is a separate explicit press, offered only where a retry can help (service
+  failure, no answer); not configured, daily limit, no permission, missing or unsupported
+  picture say so plainly and leave "Continue by hand". The uploaded picture is never lost.
+- **Hints, not values** (`src/lib/wizard/posterHints.ts`). The answer is untrusted: only a
+  real day, an `HH:MM` time, a known age rating, a whole-number price and plain text are
+  kept (shown as text, never HTML). The review lists what the poster says against the
+  current form: empty fields are ticked, typed text is **not** (ticking it is the
+  confirmation to replace it, and typing after the review appeared cancels the tick).
+  "Fill in the selected" is the only thing that changes the form.
+  - Venue: never created or chosen from a name. Matching venues of the organization are
+    offered as radio buttons (none preselected); only when none matches, the name is a
+    hint for a *new* venue form and the city is shown as a hint until a country is chosen.
+  - Date and time: the reader returns one date; it goes to the **first** date, other
+    dates stay as typed. The time is the venue's local time (the wizard converts it).
+  - Price: only into an untouched single-category setup (a typed price is an explicit
+    replacement; several categories, steps or other modes are not touched), only with a
+    known currency (the form's, or the poster's when the form has none and the person
+    chose the price). A different currency, or no currency anywhere, is explained and not
+    applied. Capacity, sale times and open/closed state are never set from a poster.
+- **Isolation.** The intake is created per organization *and* draft: leaving, removing,
+  skipping or choosing another picture starts a new generation and aborts the request, so
+  a late answer cannot touch the new state. Keyed `Wizard` (#192) keeps organizations apart.
+- **Existing events.** Replacing the poster on the event card does not read it and does not
+  touch event data (`live/poster-first.spec.ts`).
+
+**Tests and honest labels.** Unit: `posterHints`, `posterIntake`, `draft.posterDecision`,
+`posterFlow`, `http.multipart` (transport, timeout, refresh). Live: `live/poster-first.spec.ts`
+against a real arena-api built with the **test-only** tag `e2eposter`
+(`apps/backend/cmd/arena-api/poster_reader_e2e.go`): only the vision model is scripted
+(`E2E_POSTER_SCRIPT`, `E2E_POSTER_CALLS`, see `scripts/live-harness.mjs`); the poster-facts
+route, upload, creation and attach are real. A normal build injects nothing, and no model
+key exists in the harness. **No real poster has been read by a real model in these tests.**
 
 **Content-Security-Policy.** The one change is `blob:` in `img-src` (previews and
 the shown poster are blob addresses made in the page). `script-src`, `frame-*`,
