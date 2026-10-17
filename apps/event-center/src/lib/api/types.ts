@@ -87,3 +87,5 @@ export type ImportDryRunError = S["ImportDryRunError"];
 export type ImportEventBundleDryRunResponse = S["ImportEventBundleDryRunResponse"];
 // 6-1c: the answer of a real (not dry-run) event-bundle import.
 export type ImportBil24SessionResponse = S["ImportBil24SessionResponse"];
+// 7-1: the event poster (upload, preview, attach).
+export type MediaObject = S["MediaObject"];

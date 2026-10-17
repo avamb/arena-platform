@@ -143,3 +143,24 @@ users cannot play these parts.
 Job `event-center-live` of `.github/workflows/ci.yml`: Postgres service,
 `arena-migrate up`, prebuilt `arena-api` and `arena-e2e-seed`, then the same
 `test:e2e:live`. The mock smoke stays in `event-center-build`.
+
+## Posters under the real CSP (task 7-1)
+
+`tests/smoke/live/poster.spec.ts` (live twin, real API with a LOCAL media storage:
+`live-harness.mjs` sets `MEDIA_BACKEND=local`, `MEDIA_LOCAL_ROOT=.live/media`,
+`API_PUBLIC_URL` unless you name your own) covers creation with a poster, bad files,
+replacement, the three roles, foreign media and the attach-after-creation failure.
+`arena-e2e-seed` adds one media row of the OTHER organization (`foreign_media_id`).
+
+`tests/smoke/container/poster-csp.spec.ts` runs against the PRODUCTION image, which
+the dev server cannot prove (nginx adds the policy):
+
+1. start the live harness by hand with the container origin as the UI port, so CORS
+   allows it: `ARENA_LIVE_UI_PORT=8092 node scripts/live-harness.mjs` (same
+   `DATABASE_URL` rules as above);
+2. build the image for that API:
+   `docker build --build-arg VITE_API_BASE_URL=http://127.0.0.1:18086 -t arena-event-center:poster-live -f apps/event-center/Dockerfile .`
+   and run it: `docker run -d -p 8092:8080 arena-event-center:poster-live`;
+3. `EVENT_CENTER_BASE_URL=http://127.0.0.1:8092 npm --prefix apps/event-center run test:e2e:container`.
+
+The mock smoke ignores `container/**` and the live config ignores it too.

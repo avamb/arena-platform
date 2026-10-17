@@ -26,6 +26,8 @@ export interface LiveEnv {
   event_id: string;
   event_name: string;
   session_id: string;
+  /** A poster (media object) of ANOTHER organization, seeded by poster_fixture.go. */
+  foreign_media_id: string;
   people: Person[];
 }
 

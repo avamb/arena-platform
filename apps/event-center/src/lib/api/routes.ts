@@ -92,6 +92,12 @@ export const API = {
   eventStatus: { method: "POST", path: "/v1/organizations/{org_id}/events/{id}/status" },
   eventDeleteImpact: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/delete-impact" },
   eventDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{id}" },
+  // 7-1: the poster. The picture is uploaded once (multipart), then the event
+  // points at it with ONE PATCH of `poster_media_id`; GET gives a short-lived
+  // signed address of the bytes.
+  mediaUpload: { method: "POST", path: "/v1/media" },
+  mediaGet: { method: "GET", path: "/v1/media/{id}" },
+  eventUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{id}" },
   // 5-3: the sales end and doors-open time of a session
   sessionUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{id}" },
   // 5-4: a date's categories. PATCH changes ONE thing of a category (open,

@@ -16,6 +16,7 @@ for path in / /o/any/events /index.html "/reset-password?token=check" "/accept-i
   headers="$(curl -fsSI "$base$path")"
   for want in \
     "content-security-policy: default-src 'none'" \
+    "img-src 'self' data: blob:;" \
     "frame-ancestors 'none'" \
     "x-frame-options: deny" \
     "x-content-type-options: nosniff" \

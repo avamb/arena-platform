@@ -3,7 +3,7 @@
  * from the API table (routes.ts), which the parity test checks against
  * openapi.yaml.
  */
-import { call, download, type DownloadedFile } from "@/lib/api/http";
+import { UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type {
   ComplimentaryListResponse,
@@ -14,6 +14,7 @@ import type {
   BotTeamResponse,
   EventDeleteImpact,
   EventEnvelope,
+  MediaObject,
   EventListResponse,
   EventSummary,
   GeoCitiesResponse,
@@ -577,5 +578,52 @@ export function createEventFromBundle(orgId: string, bundle: unknown): Promise<I
     route: API.eventBundleCheck,
     params: { org_id: orgId },
     body: bundle,
+  });
+}
+
+// ─── 7-1: the poster of an event ─────────────────────────────────────────────
+
+/**
+ * Uploads a picture as an event poster of the organization (`media.write`).
+ * Multipart, one `file` part, `owner_type=event_poster`, `org_id` and the
+ * `content_type` the web itself proved from the bytes. The answer is NOT flat:
+ * `{ media_object }`. The file is named `poster.jpg|png`, never with the
+ * person's own file name.
+ */
+export function uploadPosterMedia(
+  orgId: string,
+  file: Blob,
+  contentType: string,
+  signal?: AbortSignal,
+): Promise<{ media_object: MediaObject }> {
+  const form = new FormData();
+  form.append("owner_type", "event_poster");
+  form.append("org_id", orgId);
+  form.append("content_type", contentType);
+  form.append("file", file, contentType === "image/png" ? "poster.png" : "poster.jpg");
+  return call<{ media_object: MediaObject }>({ route: API.mediaUpload, form, signal, timeoutMs: UPLOAD_TIMEOUT_MS });
+}
+
+/** A media object with a signed address valid for about seven minutes (`media.read`). */
+export function fetchMediaObject(mediaId: string, signal?: AbortSignal): Promise<{ media_object: MediaObject }> {
+  return call<{ media_object: MediaObject }>({ route: API.mediaGet, params: { id: mediaId }, signal });
+}
+
+/**
+ * Makes an uploaded picture the event's poster: ONE field of the PATCH
+ * (`event.update`). `clear_session_overrides` is never sent: a date that has
+ * its own poster keeps it.
+ */
+export function attachEventPoster(
+  orgId: string,
+  eventId: string,
+  mediaId: string,
+  signal?: AbortSignal,
+): Promise<EventEnvelope> {
+  return call<EventEnvelope>({
+    route: API.eventUpdate,
+    params: { org_id: orgId, id: eventId },
+    body: { poster_media_id: mediaId },
+    signal,
   });
 }
