@@ -97,8 +97,13 @@ func run(args []string) error {
 	teamOp := fs.String("team-op", "", "4-5 twin helper: reset, age, expire or inspect (see team_fixture.go)")
 	teamEmail := fs.String("team-email", "", "the address --team-op age, expire or inspect works on")
 	orgDataOp := fs.String("org-data-op", "", "4-7 twin helper: reset, inspect or hide (see org_data_fixture.go)")
+	// 5-1
+	eventStatusOp := fs.String("event-status-op", "", "5-1 twin helper: reset or inspect (see event_status_fixture.go)")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *eventStatusOp != "" {
+		return runEventStatusOp(*eventStatusOp)
 	}
 	if *teamOp != "" {
 		return runTeamOp(*teamOp, *teamEmail)
@@ -246,7 +251,11 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applyForeignPromoter(ctx, tx); err != nil {
 		return err
 	}
-	return applyInvitationsFixture(ctx, tx)
+	if err := applyInvitationsFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 5-1: the status twin test's events (event_status_fixture.go).
+	return applyEventStatusFixture(ctx, tx)
 }
 
 // Task 4-6 (the web promoters screens): ANOTHER organization with one

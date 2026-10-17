@@ -88,6 +88,10 @@ export const API = {
   revokeInvitation: { method: "DELETE", path: "/v1/organizations/{org_id}/bot-invitations/{id}" },
   resendInvitation: { method: "POST", path: "/v1/organizations/{org_id}/bot-invitations/{id}/resend" },
   removeMember: { method: "DELETE", path: "/v1/organizations/{org_id}/members/{user_id}" },
+  // 5-1: publish, take off sale, archive and delete an event.
+  eventStatus: { method: "POST", path: "/v1/organizations/{org_id}/events/{id}/status" },
+  eventDeleteImpact: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/delete-impact" },
+  eventDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{id}" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;
