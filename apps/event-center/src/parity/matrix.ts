@@ -224,6 +224,16 @@ export const PARITY: readonly ParityRow[] = [
   },
   {
     area: "Мероприятия",
+    fn: "Афиша: загрузка, просмотр и замена",
+    bot: "wizard_bot.go (UploadPoster), arena_client_refs.go",
+    web: "R4",
+    // 7-1
+    ready: { twin: "live/poster.spec.ts" },
+    routes: ["POST /v1/media", "GET /v1/media/{id}", `PATCH ${O}/events/{id}`],
+    note: "7-1: необязательная афиша в мастере (загрузка, затем черновик, затем привязка) и кнопка «Загрузить / Заменить афишу» на карточке. Загрузка и привязка — два отдельных шага: сбой привязки не создаёт второе мероприятие и не удаляет файл. Права: просмотр `media.read`, изменение `media.write` и `event.update`. Чтение афиши моделью не входит.",
+  },
+  {
+    area: "Мероприятия",
     fn: "Публикация, снятие с продажи, архив",
     bot: "evstatus.go, `ec:ev:`",
     web: "R4",

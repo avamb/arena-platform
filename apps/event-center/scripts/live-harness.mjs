@@ -19,6 +19,8 @@
  *   ARENA_API_BIN           a prebuilt arena-api (CI); else built with go
  *   ARENA_E2E_SEED_BIN      a prebuilt arena-e2e-seed (CI); else built with go
  *   JWT_SIGNING_SECRET      default: a fixed test value
+ *   MEDIA_BACKEND, MEDIA_LOCAL_ROOT, MEDIA_SIGNING_SECRET
+ *                           poster storage; default: local, under .live/media
  *
  * The web event center must be started with VITE_API_BASE_URL pointing at
  * the arena-api port, or it throws on boot (AGENTS.md).
@@ -124,6 +126,8 @@ const fixture = JSON.parse(seeded.stdout);
 
 // 2. The real arena-api.
 const apiBin = backendBinary("ARENA_API_BIN", "./apps/backend/cmd/arena-api", "arena-api");
+const mediaRoot = join(liveDir, "media");
+mkdirSync(mediaRoot, { recursive: true });
 const apiEnv = {
   ...process.env,
   APP_ENV: "development",
@@ -134,6 +138,13 @@ const apiEnv = {
   EVENT_CENTER_PUBLIC_URL: `http://127.0.0.1:${uiPort}`,
   // The hosted sales site: promoter cards show "<this>/<slug>" (task 4-6).
   PUBLIC_TICKETS_BASE_URL: process.env.PUBLIC_TICKETS_BASE_URL ?? "https://tickets.e2e.test",
+  // Posters (task 7-1): uploads need a storage. A LOCAL one under the git-ignored
+  // .live directory unless the caller names its own; never a production path.
+  // API_PUBLIC_URL makes the signed poster address absolute, on the API origin.
+  MEDIA_BACKEND: process.env.MEDIA_BACKEND ?? "local",
+  MEDIA_LOCAL_ROOT: process.env.MEDIA_LOCAL_ROOT ?? mediaRoot,
+  MEDIA_SIGNING_SECRET: process.env.MEDIA_SIGNING_SECRET ?? "event-center-live-harness-media-secret-32-bytes",
+  API_PUBLIC_URL: apiBase,
 };
 log(`starting arena-api on ${apiBase}`);
 const api = spawn(apiBin, [], { cwd: repoRoot, env: apiEnv, stdio: ["ignore", "inherit", "inherit"] });
@@ -187,6 +198,7 @@ writeFileSync(
       event_id: fixture.event_id,
       event_name: fixture.event_name,
       session_id: fixture.session_id,
+      foreign_media_id: fixture.foreign_media_id,
       people,
     },
     null,

@@ -78,6 +78,8 @@ type output struct {
 	SessionID string   `json:"session_id"`
 	TierID    string   `json:"tier_id"`
 	People    []person `json:"people"`
+	// ForeignMediaID is a poster of the OTHER organization (poster_fixture.go, task 7-1).
+	ForeignMediaID string `json:"foreign_media_id"`
 }
 
 func main() {
@@ -151,7 +153,7 @@ func run(args []string) error {
 		return fmt.Errorf("commit: %w", err)
 	}
 
-	doc := output{OrgID: orgID, OrgName: orgName, EventID: eventID, EventName: eventName, SessionID: sessionID, TierID: tierID, People: people()}
+	doc := output{OrgID: orgID, OrgName: orgName, EventID: eventID, EventName: eventName, SessionID: sessionID, TierID: tierID, People: people(), ForeignMediaID: foreignMediaID}
 	for i := range doc.People {
 		doc.People[i].Password = seedPassword
 	}
@@ -275,7 +277,11 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	// 6-1a: a promoter and a seat count for the wizard's twin test.
-	return applyWizardFixture(ctx, tx)
+	if err := applyWizardFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 7-1: a poster of the other organization (poster_fixture.go).
+	return applyForeignPoster(ctx, tx)
 }
 
 // Task 4-6 (the web promoters screens): ANOTHER organization with one
