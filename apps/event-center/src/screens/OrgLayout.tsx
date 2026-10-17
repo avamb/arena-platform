@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect } from "react";
 import { Link, Outlet, useParams } from "@tanstack/react-router";
 import { organizationsOf, rememberOrg, useAuth, useMe, useOrgAccess, type OrgAccess } from "@/lib/auth";
 import { ApiError } from "@/lib/api/http";
-import { wizardEnabled } from "@/lib/features";
+import { wizardGate } from "@/lib/features";
 import { useI18n } from "@/lib/i18n";
 import { ErrorBox, ErrorScope, Loading } from "@/components/ui";
 import { RequireSignIn } from "@/screens/RequireSignIn";
@@ -133,7 +133,7 @@ function OrgShell() {
               </Link>
             )}
             {/* 6-1a: only in a build with VITE_FEATURE_WIZARD=1, and only for who can import a bundle. */}
-            {wizardEnabled() && access.can("import.bil24_session") && (
+            {wizardGate(access.can) === "ok" && (
               <Link
                 to="/o/$orgId/events/new"
                 params={{ orgId }}

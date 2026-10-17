@@ -286,6 +286,22 @@ export function clearDraft(orgId: string, storage: Pick<Storage, "removeItem"> |
   }
 }
 
+/**
+ * Removes the stored draft only when it is the draft that was saved. A newer
+ * draft of another tab (another id) is somebody else's work and stays.
+ */
+export function clearDraftIfSaved(
+  orgId: string,
+  savedId: string,
+  storage: Pick<Storage, "getItem" | "removeItem"> | null = safeStorage(),
+): boolean {
+  if (storage === null) return false;
+  const stored = loadDraft(orgId, storage);
+  if (stored === null || stored.id !== savedId) return false;
+  clearDraft(orgId, storage);
+  return true;
+}
+
 function safeStorage(): Storage | null {
   try {
     return typeof localStorage === "undefined" ? null : localStorage;

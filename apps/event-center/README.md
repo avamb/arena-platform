@@ -40,10 +40,13 @@ health check `GET /health`. Add the app's origin to `CORS_ALLOWED_ORIGINS` of ar
 Production: `https://events.arenasoldout.com`; the step-by-step checklist is
 `docs/ops/event_center_rollout_ru.md`, and `scripts/check-live.ps1` checks the live site.
 
-Build flag `VITE_FEATURE_WIZARD`: `1` shows "+ Event" and the event wizard
-(sections Event and Venue, task 6-1a). It is OFF by default, so production builds
-leave it out; set it as a build argument of the staging application. The flag is
-inlined at build time, like `VITE_API_BASE_URL`.
+Build flag `VITE_FEATURE_WIZARD`: `1` shows "Create event" (the events list, the menu)
+and the event wizard that creates a DRAFT general-admission event (task 6-1c).
+The release image builds with `1` (the Dockerfile default). Rollback: rebuild with the
+build argument `VITE_FEATURE_WIZARD=0`; a bare `vite` run without the variable keeps it
+off. The flag is inlined at build time, like `VITE_API_BASE_URL`. The screen also needs
+the `import.bil24_session` permission (owner and managers), which the import route
+itself demands.
 
 Password letters of organizers link here (`/reset-password`, `/accept-invite`) once
 arena-api and arena-worker carry `EVENT_CENTER_PUBLIC_URL`; platform users keep

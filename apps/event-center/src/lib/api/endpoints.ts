@@ -20,6 +20,7 @@ import type {
   GeoCountriesResponse,
   GeoCountryCurrencyResponse,
   GeoCountryTimezonesResponse,
+  ImportBil24SessionResponse,
   ImportEventBundleDryRunResponse,
   MeResponse,
   OrderDetail,
@@ -521,6 +522,9 @@ export function putTierSchedule(ref: TierRef, windows: TierPriceWindowInput[]): 
     route: API.tierSchedulePut,
     params: tierParams(ref),
     body: { windows },
+  });
+}
+
 // ─── 6-1a: the event wizard ──────────────────────────────────────────────────
 
 /** The organization's active venues (`venue.read`). */
@@ -558,6 +562,20 @@ export function checkEventBundle(orgId: string, bundle: unknown): Promise<Import
     route: API.eventBundleCheck,
     params: { org_id: orgId },
     query: { dry_run: "true" },
+    body: bundle,
+  });
+}
+
+/**
+ * Creates the event: the SAME route as the check, without `dry_run`. The
+ * bundle's `externalRef` is the idempotency key (a repeat edits the session it
+ * made, 200 `created: false`), and `publish: false` keeps the event a draft.
+ * Never retried by the client on its own (lib/wizard/save.ts decides).
+ */
+export function createEventFromBundle(orgId: string, bundle: unknown): Promise<ImportBil24SessionResponse> {
+  return call<ImportBil24SessionResponse>({
+    route: API.eventBundleCheck,
+    params: { org_id: orgId },
     body: bundle,
   });
 }

@@ -85,3 +85,5 @@ export type GeoCountryTimezonesResponse = S["GeoCountryTimezonesResponse"];
 export type GeoCountryCurrencyResponse = S["GeoCountryCurrencyResponse"];
 export type ImportDryRunError = S["ImportDryRunError"];
 export type ImportEventBundleDryRunResponse = S["ImportEventBundleDryRunResponse"];
+// 6-1c: the answer of a real (not dry-run) event-bundle import.
+export type ImportBil24SessionResponse = S["ImportBil24SessionResponse"];

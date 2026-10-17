@@ -3,24 +3,30 @@
  * 6-1a and 6-1b, spec 40 5.6, plan stage 6). A FORM, not a dialog: the
  * sections stand on one page and the platform checks them while the person
  * types, with the same code the import runs (`?dry_run=true`), once per date
- * (the import takes one date per request). Saving is 6-1c.
+ * (the import takes one date per request).
  *
- * Behind the build flag VITE_FEATURE_WIZARD=1. The draft lives in this
- * browser (lib/wizard/draft.ts). Nothing is written to arena: the check only
- * reads, and the check is rate limited (lib/wizard/validation.ts).
+ * "Create event" (6-1c) is the ONLY write: one explicit POST of the checked
+ * bundle, a DRAFT event that is not on sale (lib/wizard/save.ts). Release
+ * gating: the build flag VITE_FEATURE_WIZARD (on in the release image, "0"
+ * switches it off) and the `import.bil24_session` permission the import route
+ * itself demands. The draft lives in this browser (lib/wizard/draft.ts) and is
+ * removed only after the server confirmed the save.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { checkEventBundle } from "@/lib/api/endpoints";
-import { wizardEnabled } from "@/lib/features";
+import { useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { checkEventBundle, createEventFromBundle } from "@/lib/api/endpoints";
+import { wizardGate } from "@/lib/features";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
-import { buildBundles } from "@/lib/wizard/bundle";
+import { buildBundle, buildBundles } from "@/lib/wizard/bundle";
 import { createCheckRunner, type MultiAnswer } from "@/lib/wizard/checkRunner";
 import { clientErrors } from "@/lib/wizard/clientErrors";
 import { dateClientErrors, dateFieldKey, mapDateErrors, type DateErrors } from "@/lib/wizard/dateErrors";
 import { effectiveTickets } from "@/lib/wizard/datesDraft";
 import {
   clearDraft,
+  clearDraftIfSaved,
   isBlank,
   loadDraft,
   newDraft,
@@ -31,6 +37,7 @@ import {
 } from "@/lib/wizard/draft";
 import { makeId } from "@/lib/wizard/ids";
 import { checkErrorKey, checkWarningKey } from "@/lib/wizard/messages";
+import { createSaver, saveBlockers, type SaveOutcome } from "@/lib/wizard/save";
 import {
   createScheduler,
   failingFields,
@@ -47,6 +54,13 @@ import { WizardDatesSection } from "@/components/WizardDatesSection";
 import { WizardEventSection } from "@/components/WizardEventSection";
 import { WizardVenueSection } from "@/components/WizardVenueSection";
 import { useOrg } from "@/screens/OrgLayout";
+
+/** What the Create button shows after a press. */
+type SaveView =
+  | { phase: "idle" }
+  | { phase: "saving" }
+  | { phase: "saved" }
+  | { phase: "failed"; outcome: Exclude<SaveOutcome, { kind: "saved" }>; fields: CheckError[] };
 
 const IDLE: SchedulerState<MultiAnswer> = { status: "idle", last: null, error: null };
 
@@ -75,7 +89,8 @@ function useBundleCheck(orgId: string) {
 export function EventWizardScreen() {
   const { t } = useI18n();
   const { access } = useOrg();
-  if (!wizardEnabled()) {
+  const gate = wizardGate(access.can);
+  if (gate === "off") {
     return (
       <section aria-labelledby="wizard-title">
         <h1 id="wizard-title">{t("wizard.title")}</h1>
@@ -85,7 +100,7 @@ export function EventWizardScreen() {
       </section>
     );
   }
-  if (!access.can("import.bil24_session")) {
+  if (gate === "noAccess") {
     return (
       <section aria-labelledby="wizard-title">
         <h1 id="wizard-title">{t("wizard.title")}</h1>
@@ -121,6 +136,10 @@ function mergeEventErrors(splits: readonly SplitErrors[]): SplitErrors {
 function Wizard() {
   const { t } = useI18n();
   const { orgId } = useOrg();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const saver = useMemo(() => createSaver((bundle) => createEventFromBundle(orgId, bundle)), [orgId]);
+  const [saveView, setSaveView] = useState<SaveView>({ phase: "idle" });
   const defaultName = t("wizard.cat.defaultName");
   const [draft, setDraft] = useState<WizardDraft>(() => loadDraft(orgId) ?? newDraft(makeId(), new Date(), defaultName));
   const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
@@ -213,6 +232,42 @@ function Wizard() {
 
   const dateErrors = { errorOf: dateErrorOf, generalOf, touch };
 
+  const blockers = saveBlockers(draft);
+  const checkSettled = !blank && fresh && state.status === "idle" && state.error === null;
+  const saving = saveView.phase === "saving" || saveView.phase === "saved";
+  const canCreate = checkSettled && nothingWrong && blockers.length === 0 && !saving;
+  let createHint: string | null = null;
+  if (blockers[0] === "oneDate") createHint = t("wizard.create.hint.oneDate");
+  else if (blockers[0] === "existingVenue") createHint = t("wizard.create.hint.existingVenue");
+  else if (!checkSettled) createHint = t("wizard.create.hint.checking");
+  else if (!nothingWrong) createHint = t("wizard.create.hint.invalid");
+
+  const onCreate = async () => {
+    // A double click, or a click while the answer is awaited, never makes a second POST.
+    if (!canCreate || saver.inFlight()) return;
+    const sent = draft;
+    setSaveView({ phase: "saving" });
+    const outcome = await saver.save(sent, orgId);
+    if (outcome.kind === "saved") {
+      setSaveView({ phase: "saved" });
+      clearDraftIfSaved(orgId, sent.id);
+      await queryClient.invalidateQueries({ queryKey: ["events", orgId] });
+      void navigate({ to: "/o/$orgId/events/$eventId", params: { orgId, eventId: outcome.eventId } });
+      return;
+    }
+    // The draft stays whole. A refusal is explained field by field with the platform's own check.
+    let fields: CheckError[] = [];
+    if (outcome.kind === "rejected") {
+      try {
+        const again = (await checkEventBundle(orgId, buildBundle(sent, { orgId }, 0))) as CheckAnswer;
+        fields = again.errors;
+      } catch {
+        fields = [];
+      }
+    }
+    setSaveView({ phase: "failed", outcome, fields });
+  };
+
   const onClear = () => {
     clearDraft(orgId);
     setDraft(newDraft(makeId(), new Date(), defaultName));
@@ -227,9 +282,11 @@ function Wizard() {
         {t("wizard.draftNote")}
       </p>
 
-      <WizardEventSection draft={draft} dispatch={dispatch} touch={touch} errorOf={errorOf} />
-      <WizardVenueSection draft={draft} dispatch={dispatch} touch={touch} errorOf={errorOf} />
-      <WizardDatesSection draft={draft} dispatch={dispatch} errors={dateErrors} defaultCategoryName={defaultName} />
+      <fieldset className="wizard-lock" disabled={saving} data-testid="wizard-sections">
+        <WizardEventSection draft={draft} dispatch={dispatch} touch={touch} errorOf={errorOf} />
+        <WizardVenueSection draft={draft} dispatch={dispatch} touch={touch} errorOf={errorOf} />
+        <WizardDatesSection draft={draft} dispatch={dispatch} errors={dateErrors} defaultCategoryName={defaultName} />
+      </fieldset>
 
       <div
         className={status.tone === "bad" ? "notice notice-bad" : status.tone === "ok" ? "notice notice-ok" : "notice"}
@@ -268,11 +325,35 @@ function Wizard() {
         </div>
       )}
 
+      {saveView.phase === "failed" && <SaveFailure view={saveView} orgId={orgId} t={t} />}
+
+      <p className="field-hint" data-testid="wizard-create-note">
+        {t("wizard.create.note")}
+      </p>
       <div className="actions">
-        <button type="button" className="btn" onClick={onClear} disabled={blank} data-testid="wizard-clear">
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => void onCreate()}
+          disabled={!canCreate}
+          aria-describedby={createHint === null ? undefined : "wizard-create-hint"}
+          data-testid="wizard-create"
+        >
+          {saving
+            ? t("wizard.create.saving")
+            : saveView.phase === "failed" && saveView.outcome.kind === "unknown"
+              ? t("wizard.create.retry")
+              : t("wizard.create.button")}
+        </button>
+        <button type="button" className="btn" onClick={onClear} disabled={blank || saving} data-testid="wizard-clear">
           {t("wizard.clear")}
         </button>
       </div>
+      {createHint !== null && (
+        <p className="field-hint" id="wizard-create-hint" data-testid="wizard-create-hint">
+          {createHint}
+        </p>
+      )}
     </section>
   );
 }
@@ -281,4 +362,50 @@ function Wizard() {
 function textOfError(e: CheckError, t: (key: MessageKey) => string): string {
   const key = checkErrorKey(e.code);
   return key === null ? e.message : t(key);
+}
+
+function SaveFailure({
+  view,
+  orgId,
+  t,
+}: {
+  view: Extract<SaveView, { phase: "failed" }>;
+  orgId: string;
+  t: (key: MessageKey, params?: Record<string, string | number>) => string;
+}) {
+  const o = view.outcome;
+  if (o.kind === "unknown") {
+    return (
+      <div className="notice notice-bad" role="alert" data-testid="wizard-save-unknown">
+        <p>{t("wizard.create.unknown.title")}</p>
+        <p>{t("wizard.create.unknown.body")}</p>
+        <Link to="/o/$orgId/events" params={{ orgId }} data-testid="wizard-save-open-list">
+          {t("wizard.create.openList")}
+        </Link>
+      </div>
+    );
+  }
+  if (o.kind === "denied") {
+    return (
+      <div className="notice notice-bad" role="alert" data-testid="wizard-save-denied">
+        <p>{t("wizard.create.denied")}</p>
+      </div>
+    );
+  }
+  const key = checkErrorKey(o.code);
+  return (
+    <div className="notice notice-bad" role="alert" data-testid="wizard-save-rejected">
+      <p>{t("wizard.create.rejected.title")}</p>
+      <p>{key === null ? o.message : t(key)}</p>
+      {view.fields.length > 0 && (
+        <ul>
+          {view.fields.map((e) => (
+            <li key={`${e.code}|${e.field}`}>{textOfError(e, t)}</li>
+          ))}
+        </ul>
+      )}
+      <p className="field-hint">{t("wizard.create.rejected.fix")}</p>
+      {o.requestId !== undefined && <p className="field-hint">{t("wizard.create.requestId", { id: o.requestId })}</p>}
+    </div>
+  );
 }
