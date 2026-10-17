@@ -197,7 +197,7 @@ func sweepRows() []sweepRow {
 			body: func(id sweepIDs) string {
 				return fmt.Sprintf(`{"seating_plan_version_id":%q,"admission_mode":"general_admission","category_tier_map":{},"auto_create_tiers":true}`, id.PlanVersion)
 			}},
-		{hole: "H8", name: "seat block", route: "PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/seats", perm: "event_session.assign_seating_plan",
+		{hole: "H8", name: "seat block", route: "PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/seats", perm: "session.seats.manage",
 			path: func(id sweepIDs) string { return sessionBase(id, id.Event, id.Session3) + "/seats" },
 			body: func(_ sweepIDs) string { return `{"action":"block","seat_keys":["S|A|1","S|A|2"]}` }},
 	}

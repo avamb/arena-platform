@@ -2014,8 +2014,8 @@ export interface paths {
          *     seat-key list, per-outcome counts, and the actor.
          *
          *     Requires JWT authentication and the
-         *     `event_session.assign_seating_plan` permission (same
-         *     operational role used for SEAT-B2 binding).
+         *     `session.seats.manage` permission (migration 0157, separate
+         *     from binding a plan).
          */
         patch: operations["patchSessionSeats"];
         trace?: never;
@@ -3575,7 +3575,7 @@ export interface paths {
         /**
          * Admin-only per-seat inventory (AB-39)
          * @description Returns per-seat rows with `tier_id` for the admin seat table.
-         *     Requires JWT + `event_session.assign_seating_plan`. Tenant is
+         *     Requires JWT + `session.seats.manage`. Tenant is
          *     resolved from the session's owning organization.
          */
         get: operations["listSessionSeatsAdmin"];
@@ -3620,7 +3620,7 @@ export interface paths {
          *       * Unknown seat_keys are reported in `unknown_seat_keys` — they
          *         do NOT fail the request.
          *
-         *     Requires JWT + `event_session.assign_seating_plan`. Tenant is
+         *     Requires JWT + `session.seats.manage`. Tenant is
          *     resolved from the session's owning organization.
          */
         patch: operations["patchSessionSeatsCategory"];
@@ -30624,7 +30624,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold event_session.assign_seating_plan */
+            /** @description Actor does not hold session.seats.manage */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -37247,7 +37247,7 @@ export interface operations {
                 };
             };
             /**
-             * @description Caller lacks `event_session.assign_seating_plan` or is not a
+             * @description Caller lacks `session.seats.manage` or is not a
              *     member of the session's owning organization
              *     (`org.access_denied`).
              */

@@ -88,6 +88,10 @@ func TestManagerPermissions0129_OrganizerPassesEveryEventCenterGate(t *testing.T
 		{"event.publish", http.MethodPost, orgPath + "/events/" + random + "/status", `{"status":"published"}`},
 		{"event.delete", http.MethodDelete, orgPath + "/events/" + random, ""},
 		{"event.delete", http.MethodGet, orgPath + "/events/" + random + "/delete-impact", ""},
+		// S1f (migration 0157): the seat routes have their own permission.
+		{"session.seats.manage", http.MethodPatch, orgPath + "/events/" + random + "/sessions/" + random + "/seats", `{"action":"block","seat_keys":["S|A|1"]}`},
+		{"session.seats.manage", http.MethodPatch, "/v1/event-sessions/" + random + "/seats/category", `{"seat_keys":["S|A|1"],"tier_id":"` + random + `"}`},
+		{"session.seats.manage", http.MethodGet, "/v1/event-sessions/" + random + "/seats/admin", ""},
 	}
 
 	for _, g := range gates {
