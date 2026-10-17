@@ -164,3 +164,14 @@ the dev server cannot prove (nginx adds the policy):
 3. `EVENT_CENTER_BASE_URL=http://127.0.0.1:8092 npm --prefix apps/event-center run test:e2e:container`.
 
 The mock smoke ignores `container/**` and the live config ignores it too.
+
+### Poster first (live)
+
+`tests/smoke/live/poster-first.spec.ts` needs an `arena-api` built with the TEST-ONLY tag
+`e2eposter` (`go build -tags e2eposter ./apps/backend/cmd/arena-api`; the harness does it
+by itself when `ARENA_API_BIN` is not set, CI builds it that way). The tag injects a scripted
+poster reader through `Options.PosterReader`: it replaces only the vision model; the
+poster-facts route (auth, org access, `event.update`, media lookup, quota, bytes) is real.
+`E2E_POSTER_SCRIPT` (default `.live/poster-script.json`) says what the next read answers,
+`E2E_POSTER_CALLS` logs every read that reached the model boundary. A normal build has no
+reader unless `POSTER_LLM_API_KEY` is set, and this harness never sets it.

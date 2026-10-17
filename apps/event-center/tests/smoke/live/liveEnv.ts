@@ -28,6 +28,10 @@ export interface LiveEnv {
   session_id: string;
   /** A poster (media object) of ANOTHER organization, seeded by poster_fixture.go. */
   foreign_media_id: string;
+  /** Test-only: the file that scripts what the scripted poster reader answers (see live-harness.mjs). */
+  poster_script: string;
+  /** Test-only: one JSON line per read the scripted reader served. */
+  poster_calls: string;
   people: Person[];
 }
 

@@ -6,13 +6,16 @@
  * "Venue", "Dates" and "Tickets" (the last two are datesDraft.ts, 6-1b).
  * Saving joins in 6-1c. A new section bumps DRAFT_VERSION, and an older
  * stored draft is then dropped, never half read, EXCEPT a version-2 draft
- * (no poster yet), which is read whole and gets an empty poster (7-1): the
- * poster field adds nothing a person typed, so no work is thrown away.
+ * (no poster yet), which is read whole and gets an empty poster (7-1), and a
+ * version-3 draft (poster ids, no poster decision), which is read whole and gets
+ * the decision its ids imply: neither adds anything a person typed, so no work
+ * is thrown away and no uploaded picture has to be uploaded again.
  *
  * The draft lives in this browser only (localStorage, one per organization).
  * It holds an event name, a description and a venue: no personal data. The
  * poster part holds two stable ids at most (the uploaded media object and the
- * created event): never the file, a blob address, a signed link or a token.
+ * created event) and the person's decision (poster or "continue without"):
+ * never the file, a blob address, a signed link, a token or anything a model read.
  */
 import { applyDateAction, emptyDate, isBlankDate, isDateAction, parseDates, type DateAction, type DateEntry } from "@/lib/wizard/datesDraft";
 
@@ -30,7 +33,7 @@ export const MAX_DESCRIPTION_RUNES = 4000;
 /** The largest hall the wizard accepts, as the bot's `maxCount`. */
 export const MAX_CAPACITY = 1_000_000;
 
-export const DRAFT_VERSION = 3;
+export const DRAFT_VERSION = 4;
 /** The oldest stored version that is still read (and upgraded) instead of dropped. */
 export const OLDEST_READABLE_DRAFT_VERSION = 2;
 
@@ -82,8 +85,20 @@ export function emptyPoster(): PosterRef {
   return { mediaId: "", eventId: "" };
 }
 
+/**
+ * The first step of the wizard is the poster. "" = the person has not decided
+ * yet; "poster" = a picture is uploaded (its id is `poster.mediaId`);
+ * "skipped" = the person chose "Continue without a poster" on purpose.
+ */
+export type PosterDecision = "" | "poster" | "skipped";
+
+export function isPosterDecision(v: unknown): v is PosterDecision {
+  return v === "" || v === "poster" || v === "skipped";
+}
+
+/** True when the poster part holds something worth keeping: an id or a decision. */
 export function hasPosterRefs(d: WizardDraft): boolean {
-  return d.poster.mediaId !== "" || d.poster.eventId !== "";
+  return d.poster.mediaId !== "" || d.poster.eventId !== "" || d.posterDecision !== "";
 }
 
 export interface WizardDraft {
@@ -99,6 +114,7 @@ export interface WizardDraft {
   /** Where the currency came from: the country (auto), or typed by the person. */
   currencySource: "auto" | "typed";
   poster: PosterRef;
+  posterDecision: PosterDecision;
   updatedAt: string;
 }
 
@@ -136,6 +152,7 @@ export function newDraft(id: string, now: Date = new Date(), defaultName = ""): 
     currency: "",
     currencySource: "auto",
     poster: emptyPoster(),
+    posterDecision: "",
     updatedAt: now.toISOString(),
   };
 }
@@ -162,6 +179,7 @@ export type DraftAction =
   | { type: "posterUploaded"; mediaId: string }
   | { type: "posterCreated"; eventId: string }
   | { type: "posterCleared" }
+  | { type: "posterSkipped" }
   | DateAction
   | { type: "reset"; id: string; defaultName: string };
 
@@ -218,12 +236,19 @@ function apply(d: WizardDraft, a: DraftAction): WizardDraft {
       return { ...d, currency: value, currencySource: a.source };
     }
     case "posterUploaded":
-      return d.poster.mediaId === a.mediaId ? d : { ...d, poster: { ...d.poster, mediaId: a.mediaId } };
+      // An uploaded picture IS the decision: the person chose to give a poster.
+      return d.poster.mediaId === a.mediaId && d.posterDecision === "poster"
+        ? d
+        : { ...d, poster: { ...d.poster, mediaId: a.mediaId }, posterDecision: "poster" };
     case "posterCreated":
       return d.poster.eventId === a.eventId ? d : { ...d, poster: { ...d.poster, eventId: a.eventId } };
     case "posterCleared":
       // Another picture (or none) replaces the uploaded one; an existing event stays what it is.
-      return d.poster.mediaId === "" ? d : { ...d, poster: { ...d.poster, mediaId: "" } };
+      // The decision goes back to "not decided": removing the poster is not choosing to go without.
+      return d.poster.mediaId === "" && d.posterDecision === "" ? d : { ...d, poster: { ...d.poster, mediaId: "" }, posterDecision: "" };
+    case "posterSkipped":
+      // A conscious "Continue without a poster". An uploaded picture is dropped from the draft (it stays unattached in storage).
+      return d.posterDecision === "skipped" && d.poster.mediaId === "" ? d : { ...d, poster: { ...d.poster, mediaId: "" }, posterDecision: "skipped" };
     case "reset":
       return newDraft(a.id, new Date(), a.defaultName);
     default:
@@ -418,13 +443,23 @@ export function parseDraft(raw: unknown): WizardDraft | null {
   if (dates === null) return null;
   // A version-2 draft has no poster; a newer one must carry two strings.
   let poster = emptyPoster();
-  if (o.version === DRAFT_VERSION) {
+  if (o.version >= 3) {
     const p = o.poster as Record<string, unknown> | null | undefined;
     if (p === null || p === undefined || typeof p !== "object") return null;
     const mediaId = str(p.mediaId);
     const eventId = str(p.eventId);
     if (mediaId === null || eventId === null) return null;
     poster = { mediaId, eventId };
+  }
+  // Version 4 stores the decision. Older drafts get what their ids imply: a draft that already
+  // holds a picture (or an event made with one) has chosen a poster; one without is asked once.
+  const hasRefs = poster.mediaId !== "" || poster.eventId !== "";
+  let posterDecision: PosterDecision = hasRefs ? "poster" : "";
+  if (o.version >= 4) {
+    if (!isPosterDecision(o.posterDecision)) return null;
+    // A stored picture beats a stale "skipped" or "" (the newer fact); "poster" with no picture left
+    // (a reload cannot restore the file) asks again instead of claiming one.
+    posterDecision = hasRefs ? "poster" : o.posterDecision === "skipped" ? "skipped" : "";
   }
   return {
     version: DRAFT_VERSION,
@@ -446,6 +481,7 @@ export function parseDraft(raw: unknown): WizardDraft | null {
     currency,
     currencySource: source,
     poster,
+    posterDecision,
     updatedAt,
   };
 }

@@ -2,6 +2,7 @@
 
 - Category editors must be keyed by tier ID when switching cards, so an unsaved price, confirmation, or success notice cannot carry over to another category. The live categories test covers switching before save.
 - DST fall-back conversion tests must assert the exact UTC instant, not only a wall-clock round trip: both occurrences round-trip, but the sales-time editor chooses the first (including half-hour transitions).
+- Event Center poster-first live specs (`apps/event-center/tests/smoke/live/poster-first.spec.ts`) need `arena-api` built with the TEST-ONLY tag `-tags e2eposter` (scripted vision model via `Options.PosterReader`, `cmd/arena-api/poster_reader_e2e.go`); a prebuilt `ARENA_API_BIN` built without it makes those specs fail with "reader not configured". A normal build injects no reader. A poster hint is never applied by the response: the wizard applies only what the person ticked, and typed text is replaced only by an explicit tick.
 
 Machine-maintained conventions file. Coding agents read this on every session
 and MUST keep it current: when you discover a build/test/CI convention the hard

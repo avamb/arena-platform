@@ -22,6 +22,12 @@ import type { AuthLoginResponse, AuthRefreshResponse } from "@/lib/api/types";
 const TIMEOUT_MS = 30_000;
 /** A poster of a few megabytes over a slow phone connection needs more than 30 s. */
 export const UPLOAD_TIMEOUT_MS = 120_000;
+/**
+ * Reading a poster with the vision model: the server allows the model 45 s and
+ * 10 s more to write the answer, so the browser waits a little longer than that
+ * (and never repeats the paid request by itself).
+ */
+export const POSTER_READ_TIMEOUT_MS = 60_000;
 export const CLIENT_CHANNEL = "event_center_web";
 
 export class ApiError extends Error {

@@ -191,6 +191,27 @@ describe("createWithPoster (upload -> draft -> attach)", () => {
     expect(a.attach).toHaveBeenCalledTimes(1);
   });
 
+  it("poster first: the picture uploaded EARLY is reused by Create even while its file is still in memory (no second upload)", async () => {
+    const a = api();
+    const { a: x, progress } = args({ file, type: "image/png", mediaId: MEDIA });
+    expect(await createWithPoster(a, x)).toEqual({ kind: "done", eventId: EVENT, poster: "attached" });
+    expect(a.upload).not.toHaveBeenCalled();
+    expect(a.attach).toHaveBeenCalledTimes(1);
+    expect(a.attach).toHaveBeenCalledWith(EVENT, MEDIA, undefined);
+    // The stable media id is not re-announced as a new upload; only the created event id is stored.
+    expect(progress).toEqual([{ eventId: EVENT }]);
+  });
+
+  it("poster first: an attach that failed after an early upload retries the attach only, with the same ids", async () => {
+    const a = api({ attach: vi.fn().mockRejectedValueOnce(new ApiError(503, "x", "x")).mockImplementation(async (e: string, m: string) => envelope(e, m)), readPosterId: vi.fn(async () => null) });
+    const first = args({ file, type: "image/png", mediaId: MEDIA });
+    expect(await createWithPoster(a, first.a)).toMatchObject({ kind: "attach_failed", eventId: EVENT, mediaId: MEDIA });
+    const retry = await attachPoster(a, EVENT, MEDIA);
+    expect(retry).toEqual({ kind: "attached" });
+    expect(a.upload).not.toHaveBeenCalled();
+    expect(first.a.save).toHaveBeenCalledTimes(1);
+  });
+
   it("an uploaded picture of a stored draft is reused after a reload (no file in memory)", async () => {
     const a = api();
     const { a: x } = args({ file: null, type: null, mediaId: MEDIA });

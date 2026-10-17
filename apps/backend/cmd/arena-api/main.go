@@ -241,6 +241,9 @@ func run() error {
 	}
 
 	srv := httpserver.New(httpserver.Options{
+		// PosterReader is nil in every normal build (the Anthropic reader is then built from
+		// POSTER_LLM_API_KEY); only the e2eposter build tag injects a deterministic reader.
+		PosterReader:                injectedPosterReader(),
 		GatewayBundle:               gatewayBundle,
 		Config:                      cfg,
 		Logger:                      logger,

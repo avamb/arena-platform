@@ -37,8 +37,19 @@ export async function pickDay(page: Page, testId: string, quick: "today" | "tomo
   await expect(box.getByTestId(`${testId}-value`)).not.toHaveAttribute("data-value", "");
 }
 
+/**
+ * The first step of the wizard is the poster: a draft cannot be created before the person
+ * uploads one or CONSCIOUSLY continues without. Specs that are not about posters make that choice
+ * here, through the real button, and see the reminder (it is not skipped by a test-only flag).
+ */
+export async function skipPoster(page: Page) {
+  await page.getByTestId("wizard-poster-skip").click();
+  await expect(page.getByTestId("wizard-poster-skipped")).toContainText("No poster added");
+}
+
 /** Event name, the venue "E2E Hall" and EUR: what every complete draft needs besides dates. */
-export async function fillEventAndVenue(page: Page, name: string) {
+export async function fillEventAndVenue(page: Page, name: string, opts: { poster?: "skip" | "leave" } = {}) {
+  if ((opts.poster ?? "skip") === "skip" && (await page.getByTestId("wizard-poster-skip").count()) > 0) await skipPoster(page);
   await page.getByTestId("wizard-name").fill(name);
   await page.getByTestId("wizard-venue-mode-existing").check();
   await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });

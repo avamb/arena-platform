@@ -226,6 +226,15 @@ export function posterCapabilities(can: (permission: string) => boolean): Poster
 }
 
 /**
+ * Poster first: may a draft be created as far as the poster step is concerned? The person must
+ * have uploaded a poster ("poster") or chosen "Continue without a poster" ("skipped"). Someone who
+ * may not upload posters cannot do either, so the step never blocks them (they create without one).
+ */
+export function posterStepSettled(can: PosterCapabilities, decision: "" | "poster" | "skipped"): boolean {
+  return !can.canChange || decision !== "";
+}
+
+/**
  * The signed address of a picture is used only when it points at the API the
  * page already trusts (`connect-src`), never at an address the answer made up.
  * A storage with its own origin (S3) is therefore refused, not guessed at: see README.

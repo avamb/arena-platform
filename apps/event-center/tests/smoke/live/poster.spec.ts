@@ -170,7 +170,7 @@ async function openWizardAs(page: Page, role: Role = "org_admin") {
 }
 
 async function fillWizard(page: Page, name: string) {
-  await fillEventAndVenue(page, name);
+  await fillEventAndVenue(page, name, { poster: "leave" });
   await fillFirstDate(page);
   await expect(page.getByTestId("wizard-status")).toContainText("Everything you filled in is correct", { timeout: 25_000 });
 }
@@ -213,8 +213,10 @@ test.describe("create a draft GA event with a poster", () => {
     expect(Math.abs(box.width / box.height - 600 / 900)).toBeLessThan(0.02);
     expect(box.width).toBeLessThanOrEqual(375);
     await noA11yViolations(page);
-    // Choosing sends NOTHING: the picture travels when the event is created.
-    expect(writes.upload).toBe(0);
+    // Poster first: the picture is uploaded as soon as it is chosen (ONE upload, reused by Create),
+    // but choosing creates no event and attaches nothing.
+    await expect(page.getByTestId("wizard-poster-ok")).toBeVisible({ timeout: 20_000 });
+    expect(writes).toEqual({ upload: 1, attach: 0, create: 0 });
     // Nothing of the file is stored in the browser.
     const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }));
     for (const bad of ["blob:", "data:image", "my private holiday", "Bearer "]) expect(stored).not.toContain(bad);
@@ -306,8 +308,10 @@ test.describe("create a draft GA event with a poster", () => {
     await input.setInputFiles(file(good));
     await expect(page.getByTestId("wizard-poster-picker-preview")).toBeVisible();
     await expect(rejected).toHaveCount(0);
+    // Refused files were never sent; only the good one is uploaded (once, at once), and nothing is attached or created.
+    await expect(page.getByTestId("wizard-poster-ok")).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId("wizard-create")).toBeEnabled();
-    expect(writes).toEqual({ upload: 0, attach: 0, create: 0 });
+    expect(writes).toEqual({ upload: 1, attach: 0, create: 0 });
   });
 
   test("the server itself takes the media of this organization only: foreign media is refused as a poster", async ({ request }) => {

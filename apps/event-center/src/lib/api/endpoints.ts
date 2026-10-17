@@ -3,7 +3,7 @@
  * from the API table (routes.ts), which the parity test checks against
  * openapi.yaml.
  */
-import { UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
+import { POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type {
   ComplimentaryListResponse,
@@ -15,6 +15,7 @@ import type {
   EventDeleteImpact,
   EventEnvelope,
   MediaObject,
+  PosterFactsResponse,
   EventListResponse,
   EventSummary,
   GeoCitiesResponse,
@@ -602,6 +603,21 @@ export function uploadPosterMedia(
   form.append("content_type", contentType);
   form.append("file", file, contentType === "image/png" ? "poster.png" : "poster.jpg");
   return call<{ media_object: MediaObject }>({ route: API.mediaUpload, form, signal, timeoutMs: UPLOAD_TIMEOUT_MS });
+}
+
+/**
+ * Asks the server to read the uploaded poster (`event.update` in this organization).
+ * ONE request on its own long timeout: the caller never repeats it by itself, because
+ * an answer that is lost may still have used one of the organization's daily readings.
+ * Nothing is stored by the server; the answer is only a set of hints.
+ */
+export function readPosterFacts(orgId: string, mediaId: string, signal?: AbortSignal): Promise<PosterFactsResponse> {
+  return call<PosterFactsResponse>({
+    route: API.posterFacts,
+    params: { org_id: orgId, media_id: mediaId },
+    signal,
+    timeoutMs: POSTER_READ_TIMEOUT_MS,
+  });
 }
 
 /** A media object with a signed address valid for about seven minutes (`media.read`). */

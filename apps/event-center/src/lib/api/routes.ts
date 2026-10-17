@@ -97,6 +97,9 @@ export const API = {
   // signed address of the bytes.
   mediaUpload: { method: "POST", path: "/v1/media" },
   mediaGet: { method: "GET", path: "/v1/media/{id}" },
+  // Poster-first creation: reads the uploaded poster with the vision model on the
+  // server (the model key never reaches the browser). Costs a daily slot of the organization.
+  posterFacts: { method: "POST", path: "/v1/organizations/{org_id}/media/{media_id}/poster-facts" },
   eventUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{id}" },
   // 5-3: the sales end and doors-open time of a session
   sessionUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{id}" },

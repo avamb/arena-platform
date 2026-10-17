@@ -11,7 +11,7 @@
  */
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { liveEnv, noA11yViolations, person, signInAs, type Role } from "./liveEnv";
-import { pickDay } from "./wizardHelpers";
+import { skipPoster, pickDay } from "./wizardHelpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -65,6 +65,8 @@ async function openFromList(page: Page) {
 }
 
 async function fillForm(page: Page, name: string) {
+  // Poster first: this spec is about creation, so it makes the conscious choice to go without a poster.
+  await skipPoster(page);
   await page.getByTestId("wizard-name").fill(name);
   await page.getByTestId("wizard-description").fill("A twin-test show");
   await page.getByTestId("wizard-venue-mode-existing").check();

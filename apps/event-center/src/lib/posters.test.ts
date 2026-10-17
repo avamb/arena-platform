@@ -6,6 +6,7 @@ import {
   checkPosterFile,
   createPicker,
   posterCapabilities,
+  posterStepSettled,
   readPosterStructure,
   sniffPosterType,
   trustedMediaUrl,
@@ -270,5 +271,20 @@ describe("trustedMediaUrl", () => {
     // A host-relative address means "on the API itself"; a protocol-relative one names another host.
     expect(trustedMediaUrl("/v1/media-files/abc?expires=1", api)?.origin).toBe(api);
     expect(trustedMediaUrl("//evil.example/v1/media-files/abc", api)).toBeNull();
+  });
+});
+
+describe("posterStepSettled (poster first)", () => {
+  const may = posterCapabilities((p) => ["media.write", "event.update"].includes(p));
+  const mayNot = posterCapabilities((p) => p === "media.read");
+  const noPatch = posterCapabilities((p) => p === "media.write");
+  it("a person who may upload must decide: upload or continue without", () => {
+    expect(posterStepSettled(may, "")).toBe(false);
+    expect(posterStepSettled(may, "poster")).toBe(true);
+    expect(posterStepSettled(may, "skipped")).toBe(true);
+  });
+  it("a person who may not upload (no media.write, or no event.update) is never blocked", () => {
+    expect(posterStepSettled(mayNot, "")).toBe(true);
+    expect(posterStepSettled(noPatch, "")).toBe(true);
   });
 });

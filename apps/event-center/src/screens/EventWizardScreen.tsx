@@ -18,9 +18,10 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { checkEventBundle, createEventFromBundle } from "@/lib/api/endpoints";
 import { posterApi } from "@/components/EventPoster";
 import { usePosterPicker } from "@/components/PosterPicker";
+import { useWizardPoster } from "@/components/useWizardPoster";
 import { WizardPosterSection } from "@/components/WizardPosterSection";
 import { attachPoster, createWithPoster, type Failure } from "@/lib/posterFlow";
-import { posterCapabilities } from "@/lib/posters";
+import { posterCapabilities, posterStepSettled } from "@/lib/posters";
 import { wizardGate } from "@/lib/features";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
@@ -32,6 +33,7 @@ import { effectiveTickets } from "@/lib/wizard/datesDraft";
 import {
   clearDraft,
   clearDraftIfSaved,
+  hasPosterRefs,
   isBlank,
   loadDraft,
   newDraft,
@@ -256,6 +258,15 @@ function Wizard() {
 
   const dateErrors = { errorOf: dateErrorOf, generalOf, touch };
 
+  const poster = useWizardPoster({
+    orgId,
+    draftId: draft.id,
+    mediaId: draft.poster.mediaId,
+    canChange: posterCan.canChange,
+    picker,
+    dispatch,
+    locked: saveView.phase === "saving" || saveView.phase === "saved" || saveView.phase === "attachRetrying" || draft.poster.eventId !== "",
+  });
   const blockers = saveBlockers(draft);
   const posterBusy = saveView.phase === "saving" && picker.state.phase === "ready" && draft.poster.mediaId === "";
   const checkSettled = !blank && fresh && state.status === "idle" && state.error === null;
@@ -264,13 +275,19 @@ function Wizard() {
   const created = draft.poster.eventId !== "";
   // A picture that is still being checked, or was refused, must be settled first: it would be silently left out.
   const posterUnsettled = picker.state.phase === "checking" || picker.state.phase === "rejected";
-  const canCreate = checkSettled && nothingWrong && blockers.length === 0 && !saving && !created && !posterUnsettled;
+  // Poster first: the person chose a poster or "Continue without a poster" (a person who may not upload is never asked).
+  const posterUploading = poster.view.upload.phase === "uploading";
+  const posterDecided = posterStepSettled(posterCan, draft.posterDecision);
+  const canCreate =
+    checkSettled && nothingWrong && blockers.length === 0 && !saving && !created && !posterUnsettled && posterDecided && !posterUploading;
   let createHint: string | null = null;
   if (blockers[0] === "oneDate") createHint = t("wizard.create.hint.oneDate");
   else if (blockers[0] === "existingVenue") createHint = t("wizard.create.hint.existingVenue");
   else if (!checkSettled) createHint = t("wizard.create.hint.checking");
   else if (!nothingWrong) createHint = t("wizard.create.hint.invalid");
   else if (posterUnsettled) createHint = t("wizard.create.hint.poster");
+  else if (posterUploading) createHint = t("wizard.create.hint.posterUploading");
+  else if (!posterDecided) createHint = t("wizard.create.hint.posterDecision");
 
   const onCreate = async () => {
     // A double click, or a click while the answer is awaited, never makes a second POST or upload.
@@ -361,20 +378,6 @@ function Wizard() {
     void navigate({ to: "/o/$orgId/events/$eventId", params: { orgId, eventId } });
   };
 
-  const choosePoster = (file: File) => {
-    if (posterBusyRef.current) return;
-    // The uploaded picture belonged to the file that was chosen before: a new choice replaces it.
-    dispatch({ type: "posterCleared" });
-    if (saveView.phase === "posterUploadFailed") setSaveView({ phase: "idle" });
-    picker.select(file);
-  };
-  const clearPoster = () => {
-    if (posterBusyRef.current) return;
-    dispatch({ type: "posterCleared" });
-    if (saveView.phase === "posterUploadFailed") setSaveView({ phase: "idle" });
-    picker.clear();
-  };
-
   const onClear = () => {
     if (posterBusyRef.current) return;
     clearDraft(orgId);
@@ -391,15 +394,19 @@ function Wizard() {
       </p>
 
       <fieldset className="wizard-lock" disabled={saving || created} data-testid="wizard-sections">
-        <WizardEventSection draft={draft} dispatch={dispatch} touch={touch} errorOf={errorOf} />
         <WizardPosterSection
           state={picker.state}
-          onSelect={choosePoster}
-          onClear={clearPoster}
-          uploadedBefore={draft.poster.mediaId !== ""}
+          poster={poster}
+          decision={draft.posterDecision}
+          mediaId={draft.poster.mediaId}
           canChange={posterCan.canChange}
+          canView={posterCan.canView}
           busy={saving || created}
+          draft={draft}
+          dispatch={dispatch}
+          defaultCategoryName={defaultName}
         />
+        <WizardEventSection draft={draft} dispatch={dispatch} touch={touch} errorOf={errorOf} />
         <WizardVenueSection draft={draft} dispatch={dispatch} touch={touch} errorOf={errorOf} />
         <WizardDatesSection draft={draft} dispatch={dispatch} errors={dateErrors} defaultCategoryName={defaultName} />
       </fieldset>
@@ -501,7 +508,7 @@ function Wizard() {
               ? t("wizard.create.retry")
               : t("wizard.create.button")}
         </button>
-        <button type="button" className="btn" onClick={onClear} disabled={blank || saving} data-testid="wizard-clear">
+        <button type="button" className="btn" onClick={onClear} disabled={(blank && !hasPosterRefs(draft)) || saving} data-testid="wizard-clear">
           {t("wizard.clear")}
         </button>
       </div>
