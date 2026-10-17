@@ -69,3 +69,55 @@ nginx sends a strict Content-Security-Policy and the other security headers from
 `security-headers.conf.template`, included in EVERY location (a location with its own
 `add_header` drops the server-level ones). `scripts/check-headers.sh` asserts them on a
 running container; CI also runs the smoke against the built image, so the CSP is tested.
+
+## Event posters (task 7-1)
+
+An organizer can choose a poster in the creation wizard and upload or replace
+it on the event card. The code is `src/lib/posters.ts` (rules, preview),
+`src/lib/posterFlow.ts` (upload and attach), `src/lib/posterImage.ts` (showing
+the stored poster) and the components `PosterPicker`, `WizardPosterSection` and
+`EventPoster`.
+
+**Contract used (no new endpoint, no backend change):**
+
+| Step | Call | Permission |
+|------|------|------------|
+| Upload | `POST /v1/media` multipart: `file`, `owner_type=event_poster`, `org_id`, `content_type`; answer is `{ media_object: { id, ... } }` (not flat) | `media.write` |
+| Attach | `PATCH /v1/organizations/{org}/events/{id}` with `{ "poster_media_id": "<id>" }` only. `clear_session_overrides` is NEVER sent, so a date with its own poster keeps it | `event.update` |
+| Read the id | `poster_media_id` of the event list item the card already has | `event.read` |
+| Show | `GET /v1/media/{id}` gives a signed address (about 7 minutes); the bytes are fetched into a blob at once and the blob address is revoked on leaving | `media.read` |
+
+The buttons need `media.write` AND `event.update`; without them the card shows the
+poster read-only. The agent holds `media.read` only. An organization cannot attach
+another organization's media (422 `event.invalid_poster_media_id`).
+
+**Rules.** JPEG and PNG only (WebP is NOT accepted: the server stores whatever
+`content_type` the client names and verifies nothing, so the web proves the type
+itself). The type is read from the first bytes, never from the name; the file must
+be structurally complete, decodable by the browser, at most 10000 px a side and at
+most **5 MiB** (`POSTER_MAX_BYTES`, the same cap as the poster reader; the server
+allows 32 MiB). SVG, PDF, empty, cut-off and damaged files are refused before
+anything is sent.
+
+**Upload and attachment are separate.** The wizard uploads once, creates the draft
+with the draft's own stable key (`publish: false`, off sale), then attaches. If the
+attachment fails the event exists: the draft keeps the media id and the event id
+(never the file, a blob address or a signed link), the screen says so and offers
+"set the poster again" (the PATCH only) or "open the event card". A lost answer is
+checked by reading the event back before anything is called failed or saved.
+Replacing a poster keeps the old one until the new id is confirmed on the event.
+
+**Known limits.** (1) A picture that was uploaded but never attached, and a poster
+that was replaced, stay in storage: this release has no cleanup and never deletes
+media (it may be shared; the server's `media-gc` only removes soft-deleted rows).
+(2) The signed address is used only when it points at the API origin the app is
+built for (`VITE_API_BASE_URL`); a storage that signs addresses on its own origin
+(S3) is refused with a "try again" message instead of adding an origin to the
+policy. Supporting it needs that origin in `connect-src` of
+`security-headers.conf.template`, decided per deployment. (3) The chosen file
+lives in memory; after a reload only an already uploaded id survives.
+
+**Content-Security-Policy.** The one change is `blob:` in `img-src` (previews and
+the shown poster are blob addresses made in the page). `script-src`, `frame-*`,
+`object-src` and `connect-src` are unchanged. `tests/smoke/container/poster-csp.spec.ts`
+proves it against the real nginx image (see `tests/README.md`).
