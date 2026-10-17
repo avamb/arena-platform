@@ -66,3 +66,11 @@ export type EventEnvelope = S["EventEnvelope"];
 export type EventDeleteImpact = S["EventDeleteImpact"];
 // 5-3
 export type SessionEnvelope = S["SessionEnvelope"];
+// 5-4: a date's categories (open, price, sale window, quantity).
+export type TicketTierEnvelope = S["TicketTierEnvelope"];
+export type UpdateTicketTierRequest = S["UpdateTicketTierRequest"];
+export type TierPriceWindow = S["TierPriceWindow"];
+export type TierPriceWindowInput = S["TierPriceWindowInput"];
+export type TierPriceSchedule = S["TierPriceSchedule"];
+export type TierPriceScheduleEnvelope = S["TierPriceScheduleEnvelope"];
+export type PutTierPriceScheduleRequest = S["PutTierPriceScheduleRequest"];
