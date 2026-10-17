@@ -97,8 +97,18 @@ func run(args []string) error {
 	teamOp := fs.String("team-op", "", "4-5 twin helper: reset, age, expire or inspect (see team_fixture.go)")
 	teamEmail := fs.String("team-email", "", "the address --team-op age, expire or inspect works on")
 	orgDataOp := fs.String("org-data-op", "", "4-7 twin helper: reset, inspect or hide (see org_data_fixture.go)")
+	// Independent live fixtures for the three release features.
+	eventStatusOp := fs.String("event-status-op", "", "5-1 twin helper: reset or inspect")
+	saleTimesOp := fs.String("sale-times-op", "", "5-3 twin helper: reset or inspect")
+	categoriesOp := fs.String("categories-op", "", "5-4 twin helper: reset or inspect")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *eventStatusOp != "" {
+		return runEventStatusOp(*eventStatusOp)
+	}
+	if *categoriesOp != "" {
+		return runCategoriesOp(*categoriesOp)
 	}
 	if *teamOp != "" {
 		return runTeamOp(*teamOp, *teamEmail)
@@ -108,6 +118,9 @@ func run(args []string) error {
 	}
 	if *orgDataOp != "" {
 		return runOrgDataOp(*orgDataOp)
+	}
+	if *saleTimesOp != "" {
+		return runSaleTimesOp(*saleTimesOp)
 	}
 	if *invitationsOp != "" {
 		return runInvitationsOp(*invitationsOp, *invitationEmail)
@@ -246,7 +259,19 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applyForeignPromoter(ctx, tx); err != nil {
 		return err
 	}
-	return applyInvitationsFixture(ctx, tx)
+	if err := applyInvitationsFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 5-1: the status twin test's events (event_status_fixture.go).
+	if err := applyEventStatusFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 5-3: the date of the sales end and doors-open twin test (sale_times_fixture.go).
+	if err := applySaleTimesFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 5-4: the categories twin test's date (categories_fixture.go).
+	return applyCategoriesFixture(ctx, tx)
 }
 
 // Task 4-6 (the web promoters screens): ANOTHER organization with one

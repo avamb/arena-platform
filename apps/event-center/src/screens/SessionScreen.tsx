@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -11,7 +12,9 @@ import type { TicketTierItem } from "@/lib/api/types";
 import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { Badge, DownloadButton, ErrorBox, Loading } from "@/components/ui";
+import { CategoryCard } from "@/components/CategoryCard";
 import { SalesFigures } from "@/components/SalesFigures";
+import { SessionSaleTimes } from "@/components/SessionSaleTimes";
 import { useOrg } from "@/screens/OrgLayout";
 
 function tierPrice(tier: TicketTierItem, locale: string, t: ReturnType<typeof useI18n>["t"]): string {
@@ -20,7 +23,17 @@ function tierPrice(tier: TicketTierItem, locale: string, t: ReturnType<typeof us
   return formatMoney(tier.current_price ?? tier.price_amount, tier.currency, locale);
 }
 
-function TiersTable({ tiers }: { tiers: readonly TicketTierItem[] }) {
+function TiersTable({
+  tiers,
+  selectedId,
+  onManage,
+}: {
+  tiers: readonly TicketTierItem[];
+  /** The category whose card is open (5-4). */
+  selectedId?: string | null;
+  /** Present only for a person who may change categories: adds the button column. */
+  onManage?: (id: string) => void;
+}) {
   const { t, locale } = useI18n();
   const n = (v: number | null | undefined) => (v === null || v === undefined ? "—" : formatNumber(v, locale));
   return (
@@ -35,13 +48,14 @@ function TiersTable({ tiers }: { tiers: readonly TicketTierItem[] }) {
             <th scope="col">{t("col.held")}</th>
             <th scope="col">{t("col.free")}</th>
             <th scope="col">{t("col.status")}</th>
+            {onManage !== undefined && <th scope="col">{t("categories.col.actions")}</th>}
           </tr>
         </thead>
         <tbody>
           {[...tiers]
             .sort((a, b) => a.sort_order - b.sort_order)
             .map((tier) => (
-              <tr key={tier.id}>
+              <tr key={tier.id} data-testid="tier-row" data-tier-name={tier.name}>
                 <th scope="row" data-label={t("col.category")}>
                   {tier.name}
                 </th>
@@ -56,6 +70,20 @@ function TiersTable({ tiers }: { tiers: readonly TicketTierItem[] }) {
                     <Badge tone="ok">{t("tier.open")}</Badge>
                   )}
                 </td>
+                {onManage !== undefined && (
+                  <td data-label={t("categories.col.actions")}>
+                    <button
+                      type="button"
+                      className="btn"
+                      aria-pressed={selectedId === tier.id}
+                      aria-label={t("categories.manageOne", { name: tier.name })}
+                      onClick={() => onManage(tier.id)}
+                      data-testid="tier-manage"
+                    >
+                      {t("categories.manage")}
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
         </tbody>
@@ -71,6 +99,10 @@ export function SessionScreen() {
   const canSales = access.can("order.read");
   const canSessions = access.can("session.read");
   const canTiers = access.can("tier.read");
+  const canUpdate = access.can("session.update"); // 5-3
+  // 5-4: a person who may change categories gets a card per category.
+  const canChangeTiers = access.can("tier.update");
+  const [openTier, setOpenTier] = useState<string | null>(null);
 
   const summary = useQuery({
     queryKey: ["sessionSummary", orgId, sessionId],
@@ -195,8 +227,47 @@ export function SessionScreen() {
           <h2 id="session-tiers">{t("event.categories")}</h2>
           {tiers.isLoading && <Loading />}
           {tiers.error !== null && <ErrorBox error={tiers.error} onRetry={() => void tiers.refetch()} />}
-          {tiers.data !== undefined && <TiersTable tiers={tiers.data.tiers} />}
+          {tiers.data !== undefined && (
+            <TiersTable
+              tiers={tiers.data.tiers}
+              selectedId={openTier}
+              onManage={canChangeTiers ? (id) => setOpenTier(id) : undefined}
+            />
+          )}
+          {tiers.data !== undefined && !canChangeTiers && (
+            <p className="notice" data-testid="categories-read-only">
+              {t("categories.readOnly")}
+            </p>
+          )}
+          {tiers.data !== undefined && canChangeTiers && openTier !== null && (
+            <CategoryCard
+              key={openTier}
+              orgId={orgId}
+              eventId={eventId}
+              sessionId={sessionId}
+              tierId={openTier}
+              tiers={tiers.data.tiers}
+              timezone={tz}
+              salesEndAt={item?.sales_end_at ?? null}
+              onClose={() => setOpenTier(null)}
+            />
+          )}
         </section>
+      )}
+
+      {/* 5-3 */}
+      {canUpdate && item !== undefined && (
+        <SessionSaleTimes
+          orgId={orgId}
+          eventId={eventId}
+          sessionId={sessionId}
+          startAt={item.start_at}
+          salesEndAt={item.sales_end_at}
+          doorsOpenAt={item.doors_open_at ?? null}
+          timezone={tz}
+          zoneUnloaded={summary.data === undefined}
+          readOnly={(head?.status ?? item.status) === "cancelled"}
+        />
       )}
     </article>
   );

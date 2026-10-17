@@ -88,6 +88,27 @@ export const API = {
   revokeInvitation: { method: "DELETE", path: "/v1/organizations/{org_id}/bot-invitations/{id}" },
   resendInvitation: { method: "POST", path: "/v1/organizations/{org_id}/bot-invitations/{id}/resend" },
   removeMember: { method: "DELETE", path: "/v1/organizations/{org_id}/members/{user_id}" },
+  // 5-1: publish, take off sale, archive and delete an event.
+  eventStatus: { method: "POST", path: "/v1/organizations/{org_id}/events/{id}/status" },
+  eventDeleteImpact: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/delete-impact" },
+  eventDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{id}" },
+  // 5-3: the sales end and doors-open time of a session
+  sessionUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{id}" },
+  // 5-4: a date's categories. PATCH changes ONE thing of a category (open,
+  // base price, sale window, quantity). The price schedule is read and put
+  // back whole when the window in force now is the price being changed.
+  tierUpdate: {
+    method: "PATCH",
+    path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}",
+  },
+  tierSchedule: {
+    method: "GET",
+    path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule",
+  },
+  tierSchedulePut: {
+    method: "PUT",
+    path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule",
+  },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;

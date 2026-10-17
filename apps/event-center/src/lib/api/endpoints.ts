@@ -12,6 +12,8 @@ import type {
   BotInvitationResendResponse,
   BotInvitationRevokeResponse,
   BotTeamResponse,
+  EventDeleteImpact,
+  EventEnvelope,
   EventListResponse,
   EventSummary,
   MeResponse,
@@ -29,9 +31,14 @@ import type {
   PromoCodeEnvelope,
   PromoCodeListResponse,
   PromoRedemptionListResponse,
+  SessionEnvelope,
   SessionListResponse,
   SessionSummary,
+  TicketTierEnvelope,
   TicketTierListResponse,
+  TierPriceScheduleEnvelope,
+  TierPriceWindowInput,
+  UpdateTicketTierRequest,
 } from "@/lib/api/types";
 
 export function fetchMe(): Promise<MeResponse> {
@@ -432,5 +439,81 @@ export function removeMember(orgId: string, userId: string, membershipRole: stri
     route: API.removeMember,
     params: { org_id: orgId, user_id: userId },
     body: { role: membershipRole },
+  });
+}
+
+// ─── 5-1: the status of an event ─────────────────────────────────────────────
+
+/**
+ * Moves an event along its lifecycle (`event.publish`). Re-applying the same
+ * status is a silent 200. 422: `event.invalid_transition`,
+ * `event.publish_requires_session`, `event.publish_requires_priced_tier`.
+ */
+export function updateEventStatus(orgId: string, eventId: string, status: string): Promise<EventEnvelope> {
+  return call<EventEnvelope>({ route: API.eventStatus, params: { org_id: orgId, id: eventId }, body: { status } });
+}
+
+/** The dry run of a delete: what it would touch and whether it is allowed. Writes nothing. */
+export function fetchEventDeleteImpact(orgId: string, eventId: string): Promise<EventDeleteImpact> {
+  return call<EventDeleteImpact>({ route: API.eventDeleteImpact, params: { org_id: orgId, event_id: eventId } });
+}
+
+/** Deletes an event that sold nothing. 409 `event.has_paid_orders` otherwise. */
+export function deleteEvent(orgId: string, eventId: string): Promise<unknown> {
+  return call<unknown>({ route: API.eventDelete, params: { org_id: orgId, id: eventId } });
+}
+
+// 5-3: the sales end and doors-open time of a session. One PATCH names ONE
+// of the two (the body builders are in lib/saleTimes.ts). No journal row and
+// no letter: neither time is a buyer-visible change.
+export function updateSessionSaleTimes(
+  orgId: string,
+  eventId: string,
+  sessionId: string,
+  body: { sales_end_at: string } | { doors_open_at: string | null },
+): Promise<SessionEnvelope> {
+  return call<SessionEnvelope>({
+    route: API.sessionUpdate,
+    params: { org_id: orgId, event_id: eventId, id: sessionId },
+    body,
+  });
+}
+
+// ─── 5-4: a date's categories ────────────────────────────────────────────────
+
+export interface TierRef {
+  orgId: string;
+  eventId: string;
+  sessionId: string;
+  tierId: string;
+}
+
+const tierParams = (r: TierRef) => ({
+  org_id: r.orgId,
+  event_id: r.eventId,
+  session_id: r.sessionId,
+  id: r.tierId,
+});
+
+/**
+ * Changes ONE thing of a category. The body is exactly the keys to change:
+ * an absent key keeps the stored value, an explicit null clears a sale-window
+ * edge (UpdateTicketTierRequest is tri-state for those two).
+ */
+export function updateTier(ref: TierRef, body: UpdateTicketTierRequest): Promise<TicketTierEnvelope> {
+  return call<TicketTierEnvelope>({ route: API.tierUpdate, params: tierParams(ref), body });
+}
+
+/** The category's price windows, to find the one in force now. */
+export function fetchTierSchedule(ref: TierRef): Promise<TierPriceScheduleEnvelope> {
+  return call<TierPriceScheduleEnvelope>({ route: API.tierSchedule, params: tierParams(ref) });
+}
+
+/** Replaces the whole schedule. Send every window back, the changed one included. */
+export function putTierSchedule(ref: TierRef, windows: TierPriceWindowInput[]): Promise<TierPriceScheduleEnvelope> {
+  return call<TierPriceScheduleEnvelope>({
+    route: API.tierSchedulePut,
+    params: tierParams(ref),
+    body: { windows },
   });
 }

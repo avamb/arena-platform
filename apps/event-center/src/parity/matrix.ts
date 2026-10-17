@@ -227,14 +227,20 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Публикация, снятие с продажи, архив",
     bot: "evstatus.go, `ec:ev:`",
     web: "R4",
+    // 5-1
+    ready: { twin: "live/event-status.spec.ts", smoke: "event-status.mock.spec.ts" },
     routes: ["GET /v1/events/{id}", `POST ${O}/events/{id}/status`],
+    note: "5-1: блок «Статус» на карточке. Кнопки идут из таблицы переходов сервера (её копию сверяет тест с Go-файлом) и из прав `event.publish` / `event.delete`. «Снять с продажи» и «В архив» — одно подтверждение с текстом «проданные билеты остаются действительными».",
   },
   {
     area: "Мероприятия",
     fn: "Удаление мероприятия",
     bot: "evstatus.go, `ec:ev:…:del` (слово)",
     web: "R4",
+    // 5-1
+    ready: { twin: "live/event-status.spec.ts", smoke: "event-status.mock.spec.ts" },
     routes: [`GET ${O}/events/{event_id}/delete-impact`, `DELETE ${O}/events/{id}`],
+    note: "5-1: сначала пробный расчёт (`delete-impact`). Если что-то продано, показаны цифры и предложен архив. Иначе нужно набрать слово удаления.",
   },
   {
     area: "Мероприятия",
@@ -297,6 +303,7 @@ export const PARITY: readonly ParityRow[] = [
     bot: "sessions_sale_times.go, `ses:se`, `ses:dr`",
     web: "R4",
     routes: [`PATCH ${O}/events/{event_id}/sessions/{id}`],
+    ready: { twin: "live/sale-times.spec.ts", smoke: "sale-times.mock.spec.ts" }, // 5-3
   },
   // ── Категории ───────────────────────────────────────────────────────
   {
@@ -312,6 +319,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Открыть или закрыть продажи категории",
     bot: "categories.go, `ct:op`, `ct:cl`",
     web: "R4",
+    // 5-4
+    ready: { twin: "live/categories.spec.ts" },
     routes: [`PATCH ${O}/events/{event_id}/sessions/{session_id}/tiers/{id}`],
   },
   {
@@ -319,6 +328,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Цена, окно продаж, количество",
     bot: "categories.go, `ct:pr`, `ct:wn`, `ct:qt`",
     web: "R4",
+    // 5-4
+    ready: { twin: "live/categories.spec.ts" },
     routes: [
       `PATCH ${O}/events/{event_id}/sessions/{session_id}/tiers/{id}`,
       `GET ${O}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule`,
