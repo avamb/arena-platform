@@ -82,7 +82,15 @@ names a non-local host or the database `arena`.
    The first run takes about two minutes for the Go builds. Set
    `ARENA_API_BIN` and `ARENA_E2E_SEED_BIN` to prebuilt binaries to skip them (CI
    does). The ports are `ARENA_LIVE_API_PORT`, `ARENA_LIVE_READY_PORT`,
-   `ARENA_LIVE_UI_PORT`.
+   `ARENA_LIVE_UI_PORT` and `ARENA_LIVE_STRIPE_PORT` (18088).
+
+   The harness also runs a small Stripe stub (task 8-1) and points arena-api
+   at it with `STRIPE_API_BASE_URL`, so the refund twin
+   (`live/refund.spec.ts`) drives the REAL refund engine without reaching
+   Stripe. The stub answers the same `Idempotency-Key` with the first refund,
+   declines an amount of 7.77, and lists the calls it got at `GET /__calls`
+   (`POST /__reset` forgets them); `.live-env.json` names it as
+   `stripe_stub_url`.
 
 4. Drop the database when you are done:
 

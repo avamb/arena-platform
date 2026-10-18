@@ -7,6 +7,8 @@ import { POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type Downloa
 import { API } from "@/lib/api/routes";
 import type {
   ComplimentaryListResponse,
+  CreateOrderRefundsRequest,
+  CreateOrderRefundsResponse,
   CreatePromoCodeRequest,
   BotInvitationCreateResponse,
   BotInvitationResendResponse,
@@ -29,6 +31,7 @@ import type {
   OrderDetail,
   OrderLetter,
   OrderListResponse,
+  OrderRefundOptions,
   OrderResendTicketsResponse,
   OrderSummary,
   OrganizationItem,
@@ -274,6 +277,41 @@ export function resendOrderTickets(orgId: string, orderId: string, email?: strin
  */
 export function cancelOrder(orgId: string, orderId: string, headers: Record<string, string>): Promise<OrderSummary> {
   return call<OrderSummary>({ route: API.cancelOrder, params: { org_id: orgId, id: orderId }, body: {}, headers });
+}
+
+// ─── 8-1: refunds of an order ─────────────────────────────────────────────────
+
+/** What can be refunded on an order and how (`refund.read`). Changes nothing. */
+export function fetchRefundOptions(orgId: string, orderId: string): Promise<OrderRefundOptions> {
+  return call<OrderRefundOptions>({ route: API.refundOptions, params: { org_id: orgId, order_id: orderId } });
+}
+
+/**
+ * The server gives a refund up to two minutes for the provider's answer
+ * (refundWorkBudget); the web waits a little longer before it calls the
+ * outcome unknown and offers to check with the same key.
+ */
+export const REFUND_CREATE_TIMEOUT_MS = 130_000;
+
+/**
+ * Records one refund operation (202). `key` is the operation's Idempotency-Key:
+ * the same key with the same body answers the first operation and writes
+ * nothing. `headers` carries the step-up token (`withStepUp`).
+ */
+export function createOrderRefunds(
+  orgId: string,
+  orderId: string,
+  body: CreateOrderRefundsRequest,
+  key: string,
+  headers: Record<string, string>,
+): Promise<CreateOrderRefundsResponse> {
+  return call<CreateOrderRefundsResponse>({
+    route: API.refundCreate,
+    params: { org_id: orgId, order_id: orderId },
+    body,
+    headers: { ...headers, "Idempotency-Key": key },
+    timeoutMs: REFUND_CREATE_TIMEOUT_MS,
+  });
 }
 
 // ─── 4-7: the owner's "Organization data" ────────────────────────────────────

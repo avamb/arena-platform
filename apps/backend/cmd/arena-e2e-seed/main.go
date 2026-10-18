@@ -105,6 +105,7 @@ func run(args []string) error {
 	eventStatusOp := fs.String("event-status-op", "", "5-1 twin helper: reset or inspect")
 	saleTimesOp := fs.String("sale-times-op", "", "5-3 twin helper: reset or inspect")
 	categoriesOp := fs.String("categories-op", "", "5-4 twin helper: reset or inspect")
+	refundOp := fs.String("refund-op", "", "8-1 twin helper: reset, inspect or scan (see refund_fixture.go)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -122,6 +123,9 @@ func run(args []string) error {
 	}
 	if *cancelOp != "" {
 		return runCancelOrderOp(*cancelOp, *cancelOrder)
+	}
+	if *refundOp != "" {
+		return runRefundOp(*refundOp)
 	}
 	if *orgDataOp != "" {
 		return runOrgDataOp(*orgDataOp)
@@ -287,6 +291,10 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	}
 	// 5-2: the session-change twin test's own event and sessions.
 	if err := applySessionChangeFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 8-1: the refund twin test's event and paid orders (refund_fixture.go).
+	if err := applyRefundFixture(ctx, tx); err != nil {
 		return err
 	}
 	// 7-1: a poster of the other organization (poster_fixture.go).

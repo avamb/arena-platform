@@ -31,6 +31,12 @@ export type OrderTicketSummary = S["OrderTicketSummary"];
 export type OrderDeliveryEntry = S["OrderDeliveryEntry"];
 export type OrderLetter = S["OrderLetter"];
 export type OrderRefundLetter = S["OrderRefundLetter"];
+// 8-1: refunds of an order.
+export type OrderRefundOptions = S["OrderRefundOptions"];
+export type OrderRefundTicketOption = S["OrderRefundTicketOption"];
+export type OrderRefundItem = S["OrderRefundItem"];
+export type CreateOrderRefundsRequest = S["CreateOrderRefundsRequest"];
+export type CreateOrderRefundsResponse = S["CreateOrderRefundsResponse"];
 export type OrderResendTicketsResponse = S["OrderResendTicketsResponse"];
 export type ComplimentaryListItem = S["ComplimentaryListItem"];
 export type ComplimentaryListResponse = S["ComplimentaryListResponse"];
