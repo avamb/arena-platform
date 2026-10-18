@@ -61,12 +61,11 @@ func (h *Handler) applyEventStatus(w http.ResponseWriter, r *http.Request, curre
 	}
 	var scheduledSessions int64
 	if to == "published" && len(publishSessions) > 0 {
-		tag, err := tx.Exec(ctx, `UPDATE sessions SET status='scheduled', updated_at=now()
-		 WHERE event_id=$1 AND id=ANY($2::uuid[]) AND status='draft' AND deleted_at IS NULL`, current.ID, publishSessions)
+		var err error
+		scheduledSessions, err = h.schedulePublishedSessions(ctx, tx, current.ID, publishSessions)
 		if err != nil {
 			return fail(err, "event.schedule_sessions_failed", "failed to schedule event sessions")
 		}
-		scheduledSessions = tag.RowsAffected()
 	}
 	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(ctx)

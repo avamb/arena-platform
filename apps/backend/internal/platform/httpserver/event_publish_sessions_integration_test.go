@@ -62,6 +62,10 @@ func TestEventStatusHTTP_PublishSchedulesDraftSessions(t *testing.T) {
 	if f.status(eventID) != "published" || !f.feedHas(eventID) {
 		t.Error("published event must remain visible in its existing feed")
 	}
+	var changes int
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM session_changes WHERE event_id=$1`, eventID).Scan(&changes); err != nil || changes != 0 {
+		t.Fatalf("draft scheduling must not send move/cancel notices: count=%d err=%v", changes, err)
+	}
 	var scheduled int
 	if err := f.pool.QueryRow(context.Background(), `SELECT (metadata->>'scheduled_sessions')::int FROM audit_events WHERE action='v1.event.status_update' AND resource_id=$1`, eventID.String()).Scan(&scheduled); err != nil || scheduled != 2 {
 		t.Fatalf("publication audit must record two scheduled dates: count=%d err=%v", scheduled, err)
