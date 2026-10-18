@@ -6989,6 +6989,12 @@ type HostedPageEvent struct {
 	// the same way as `EventItem.venue_names`). Empty when the event
 	// has no sessions yet.
 	VenueNames []string `json:"venue_names"`
+
+	// Venues The venues of the event's visible sessions with their own postal
+	// address and the session starts held there (never the seller's
+	// address). Empty when the event has no visible session. Absent on
+	// older backends and in the promoter page's event list.
+	Venues *[]PublicEventVenue `json:"venues,omitempty"`
 }
 
 // HostedPageOrg Public-safe organization branding slice returned by
@@ -11548,6 +11554,38 @@ type PublicEventMaterials struct {
 
 	// Videos Video links in display order (at most 4).
 	Videos []PublicMaterialVideo `json:"videos"`
+}
+
+// PublicEventVenue A place an event is held at, for the sales page "where it takes
+// place" block: the VENUE's own name and postal address (never the
+// seller's legal address) and the start times of the event's visible
+// (scheduled or completed) sessions held there. A field the organizer
+// did not fill is null; nothing is guessed. No contact data is public.
+type PublicEventVenue struct {
+	// Address Street address lines (`address_line1`, `address_line2` joined by
+	// a comma; the legacy free-form `address` when no structured line
+	// is set), or null.
+	Address *string `json:"address"`
+
+	// City English name of the venue's city from the geo reference data, or
+	// null when the venue has no city or the city has no English name.
+	City *string `json:"city"`
+
+	// Country Country of the venue as stored (ISO 3166-1 alpha-2), or null.
+	Country *string `json:"country"`
+
+	// Name Venue name.
+	Name string `json:"name"`
+
+	// PostalCode Postal code of the venue, or null.
+	PostalCode *string `json:"postal_code"`
+
+	// SessionStarts Start times (RFC 3339 UTC, earliest first, at most 60) of the
+	// event's sessions held at this venue.
+	SessionStarts []time.Time `json:"session_starts"`
+
+	// Timezone IANA time zone of the venue, or null.
+	Timezone *string `json:"timezone"`
 }
 
 // PublicFeedCheckoutQuoteRequest The cart to price, in the shape of `PublicFeedCheckoutStartRequest`

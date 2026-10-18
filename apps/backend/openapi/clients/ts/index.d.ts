@@ -14401,6 +14401,13 @@ export interface components {
              */
             venue_names: string[];
             /**
+             * @description The venues of the event's visible sessions with their own postal
+             *     address and the session starts held there (never the seller's
+             *     address). Empty when the event has no visible session. Absent on
+             *     older backends and in the promoter page's event list.
+             */
+            venues?: components["schemas"]["PublicEventVenue"][];
+            /**
              * Format: date-time
              * @description Earliest session start (trigger-maintained cache), or null.
              * @example 2026-08-15T18:00:00Z
@@ -14843,6 +14850,56 @@ export interface components {
             longitude: number;
             /** @description Optional text shown with the point. */
             label: string | null;
+        };
+        /**
+         * @description A place an event is held at, for the sales page "where it takes
+         *     place" block: the VENUE's own name and postal address (never the
+         *     seller's legal address) and the start times of the event's visible
+         *     (scheduled or completed) sessions held there. A field the organizer
+         *     did not fill is null; nothing is guessed. No contact data is public.
+         */
+        PublicEventVenue: {
+            /**
+             * @description Venue name.
+             * @example Forum Karlin
+             */
+            name: string;
+            /**
+             * @description Country of the venue as stored (ISO 3166-1 alpha-2), or null.
+             * @example CZ
+             */
+            country: string | null;
+            /**
+             * @description English name of the venue's city from the geo reference data, or
+             *     null when the venue has no city or the city has no English name.
+             * @example Prague
+             */
+            city: string | null;
+            /**
+             * @description Street address lines (`address_line1`, `address_line2` joined by
+             *     a comma; the legacy free-form `address` when no structured line
+             *     is set), or null.
+             * @example Pernerova 51
+             */
+            address: string | null;
+            /**
+             * @description Postal code of the venue, or null.
+             * @example 18600
+             */
+            postal_code: string | null;
+            /**
+             * @description IANA time zone of the venue, or null.
+             * @example Europe/Prague
+             */
+            timezone: string | null;
+            /**
+             * @description Start times (RFC 3339 UTC, earliest first, at most 60) of the
+             *     event's sessions held at this venue.
+             * @example [
+             *       "2026-08-15T18:00:00Z"
+             *     ]
+             */
+            session_starts: string[];
         };
         /**
          * @description The materials of an event's page (task 1-2c), the same block on the
@@ -43976,6 +44033,12 @@ export interface operations {
                          *     is the same as on the hosted page.
                          */
                         event: components["schemas"]["EventItem"] & {
+                            /**
+                             * @description The venues of the event's visible sessions with their
+                             *     own postal address and the start times of the sessions
+                             *     held there (`PublicEventVenue`); `[]` when none.
+                             */
+                            venues: components["schemas"]["PublicEventVenue"][];
                             /** @description The event's page materials; every list is `[]` when empty. */
                             materials: components["schemas"]["PublicEventMaterials"];
                         };
