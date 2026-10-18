@@ -183,3 +183,37 @@ poster-facts route (auth, org access, `event.update`, media lookup, quota, bytes
 `E2E_POSTER_SCRIPT` (default `.live/poster-script.json`) says what the next read answers,
 `E2E_POSTER_CALLS` logs every read that reached the model boundary. A normal build has no
 reader unless `POSTER_LLM_API_KEY` is set, and this harness never sets it.
+
+### Session change and refunds: resilience specs and release gates
+
+`live/session-change-resilience.spec.ts` and `live/refund-resilience.spec.ts` add to the two
+twin specs (`session-change.spec.ts`, `refund.spec.ts`): a failed write keeps what was typed and
+a retry writes once, a lost answer after the server wrote does not duplicate the change, the
+letter or the session, a double press is one request, the contact form can be retried, a time is
+read in the VENUE's zone (the browser runs in New York) with the first occurrence of an hour that
+happens twice, a client-side move to another organization or order drops the open panel and an
+answer in flight, a 5xx after the provider was called is UNKNOWN and the check repeats the same
+body with the same `Idempotency-Key` (one Stripe-stub call), and a part of a price is exact in
+minor units. Failures are made by `page.route` stand-ins that answer WITHOUT reaching the server;
+a "lost answer" forwards the request and drops only the answer. Both suites need the harness
+(real API + local Stripe stub, `-tags e2eposter` build) and never reach Stripe.
+
+What the local harness does NOT prove, and so stays a release gate:
+
+- **Real delivery of the session-change letter.** The harness runs no worker: a letter is a
+  queued `session.change_email` job. A separate run (real `arena-api` + real `arena-worker`,
+  `EMAIL_MODE=smtp` to a LOCAL SMTP catcher on 127.0.0.1, a synthetic `.test` buyer) showed the
+  jobs delivered with the right Reply-To, the move letter carrying the new PDF and the cancel
+  letter none, `session_change_notices` `sent`, orders still paid, no refund rows. That proves
+  the worker and the SMTP protocol path, NOT a real mail provider: SPF/DKIM, the provider's
+  acceptance and a real inbox need one controlled send through the production sender with an
+  address of the owner's own.
+- **Real Stripe.** Every refund call goes to the stub. Acceptance with Stripe TEST mode is done
+  by the owner (a TEST secret key set by the owner in a throw-away environment, never in this
+  repository): start arena-api with `STRIPE_API_BASE_URL` unset and the TEST key configured for
+  the fixture organization, pay one order with a Stripe test card (4242 4242 4242 4242), then on
+  the order card: (1) refund one ticket (word, password) and check in the Stripe TEST dashboard
+  one refund with the amount in minor units and the `Idempotency-Key` the browser sent;
+  (2) cut the answer (browser offline right after pressing) and press "Check the refund": the
+  dashboard still shows ONE refund; (3) a part of the price; (4) a ticket scanned meanwhile is
+  refused. Never a live key, never a real card.
