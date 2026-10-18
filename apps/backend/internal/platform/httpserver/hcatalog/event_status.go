@@ -29,10 +29,12 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
-// applyEventStatus writes the new status and its audit row in one transaction.
+// applyEventStatus writes the event, its validated draft sessions and audit
+// row in one transaction. Publishing schedules only the dates inspected by
+// the publish gate; a date added later or cancelled concurrently stays as is.
 // The caller tells the sites afterwards. It answers the error itself and
 // reports false.
-func (h *Handler) applyEventStatus(w http.ResponseWriter, r *http.Request, current gen.EventRow, orgID uuid.UUID, to string) (gen.EventRow, bool) {
+func (h *Handler) applyEventStatus(w http.ResponseWriter, r *http.Request, current gen.EventRow, orgID uuid.UUID, to string, publishSessions []uuid.UUID) (gen.EventRow, bool) {
 	ctx := r.Context()
 	fail := func(err error, code, msg string) (gen.EventRow, bool) {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -57,6 +59,15 @@ func (h *Handler) applyEventStatus(w http.ResponseWriter, r *http.Request, curre
 	if err != nil {
 		return fail(err, "event.update_status_failed", "failed to update event status")
 	}
+	var scheduledSessions int64
+	if to == "published" && len(publishSessions) > 0 {
+		tag, err := tx.Exec(ctx, `UPDATE sessions SET status='scheduled', updated_at=now()
+		 WHERE event_id=$1 AND id=ANY($2::uuid[]) AND status='draft' AND deleted_at IS NULL`, current.ID, publishSessions)
+		if err != nil {
+			return fail(err, "event.schedule_sessions_failed", "failed to schedule event sessions")
+		}
+		scheduledSessions = tag.RowsAffected()
+	}
 	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(ctx)
 		ev := audit.Event{
@@ -70,10 +81,11 @@ func (h *Handler) applyEventStatus(w http.ResponseWriter, r *http.Request, curre
 			TraceID:      logging.TraceID(ctx),
 			IP:           httputil.ExtractClientIP(r),
 			Metadata: map[string]any{
-				"event_name":  updated.Name,
-				"org_id":      orgID.String(),
-				"from_status": current.Status,
-				"to_status":   to,
+				"event_name":         updated.Name,
+				"org_id":             orgID.String(),
+				"from_status":        current.Status,
+				"to_status":          to,
+				"scheduled_sessions": scheduledSessions,
 			},
 		}
 		if err := h.audit.WriteTx(ctx, tx, ev); err != nil {

@@ -2683,7 +2683,10 @@ export interface paths {
          *     may also go back to `draft`: that is "take off sale". The event leaves
          *     every public surface and the sites are told, while its sessions, orders
          *     and sold tickets stay exactly as they are, and publishing it again
-         *     restores the channels it was sold in. Every real transition is written
+         *     restores the channels it was sold in. Publishing also schedules the
+         *     non-deleted draft sessions inspected by the publish gate, in the same
+         *     transaction as the event and its audit row. Scheduled, cancelled and
+         *     completed sessions are left unchanged. Every real transition is written
          *     to the audit log (`v1.event.status_update`, with `from_status` and
          *     `to_status`). Re-applying the same status is a no-op (HTTP 200).
          *     Owner-gated: org_id in the path must match the event's owning
