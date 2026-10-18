@@ -71,6 +71,9 @@ export function OrderScreen() {
 
       <CancelOrder orgId={orgId} orderId={o.id} systemId={o.system_id} status={o.status} canWrite={access.can("order.write")} />
       <RefundOrder
+        // Another organization or order is another refund: its ticked tickets, its reason, its
+        // Idempotency-Key and an answer in flight must never be reused for this one.
+        key={`${orgId}:${o.id}`}
         orgId={orgId}
         orderId={o.id}
         systemId={o.system_id}

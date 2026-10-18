@@ -21,6 +21,7 @@ import {
   withSuggested,
   zonedToInstant,
 } from "@/lib/sessionChange";
+import { wallToInstant } from "@/lib/saleTimes";
 
 const can = (...perms: string[]) => (p: string) => perms.includes(p);
 const t = (key: Parameters<typeof translate>[1], params?: Parameters<typeof translate>[2]) => translate("en", key, params);
@@ -73,6 +74,22 @@ describe("wall clock and instant", () => {
   it("reads an hour that happens twice as its first occurrence", () => {
     // 2027-10-31 02:30 happens twice in Madrid (the first one is still summer time).
     expect(zonedToInstant("2027-10-31", "02:30", "Europe/Madrid")).toBe("2027-10-31T00:30:00Z");
+  });
+  it("reads the first occurrence at the exact UTC instant, also across a half-hour change", () => {
+    // New York 2027-11-07 01:30 happens twice; the first one is still summer time (UTC-4).
+    expect(zonedToInstant("2027-11-07", "01:30", "America/New_York")).toBe("2027-11-07T05:30:00Z");
+    // Lord Howe goes back by 30 minutes on 2027-04-04: 01:45 happens twice, the first one at UTC+11.
+    expect(zonedToInstant("2027-04-04", "01:45", "Australia/Lord_Howe")).toBe("2027-04-03T14:45:00Z");
+    // ... and a time that does not exist in its spring gap (Lord Howe, 2027-10-03, 02:00 -> 02:30).
+    expect(zonedToInstant("2027-10-03", "02:15", "Australia/Lord_Howe")).toBeNull();
+  });
+  it("agrees with the sales-time editor on every case, ambiguous or missing hours included", () => {
+    const zones = ["Europe/Madrid", "America/New_York", "Asia/Jerusalem", "Australia/Lord_Howe", "UTC"];
+    const days = ["2027-03-28", "2027-10-31", "2027-11-07", "2027-04-04", "2027-10-03", "2027-07-17", "2027-12-31"];
+    const times = ["00:00", "00:30", "01:30", "01:45", "02:15", "02:30", "03:00", "12:00", "23:59"];
+    for (const z of zones) for (const d of days) for (const tm of times) {
+      expect(zonedToInstant(d, tm, z), `${z} ${d} ${tm}`).toBe(wallToInstant(d, tm, z));
+    }
   });
   it("refuses malformed input and an unknown zone", () => {
     expect(zonedToInstant("2027-13-01", "20:30", "Europe/Madrid")).toBeNull();

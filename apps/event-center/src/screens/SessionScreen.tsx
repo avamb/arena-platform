@@ -188,6 +188,10 @@ export function SessionScreen() {
 
       {startAt !== null && (
         <SessionChange
+          // Another organization, event or session is another card: an open panel, a typed
+          // message, a dry run in flight and its answer never carry over (client-side navigation
+          // between two such pages keeps this component mounted otherwise).
+          key={`${orgId}:${eventId}:${sessionId}`}
           orgId={orgId}
           eventId={eventId}
           sessionId={sessionId}
