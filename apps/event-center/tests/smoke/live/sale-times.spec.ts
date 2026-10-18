@@ -63,6 +63,18 @@ function wallClock(iso: string): string {
   return new Intl.DateTimeFormat("en-GB", { timeZone: ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
 }
 
+/** Calendar day of an instant on the venue's wall clock. */
+function wallDay(iso: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(iso));
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
 const auth = (role: Role) => ({ Authorization: `Bearer ${person(env, role).access_token}` });
 const base = `${env.api_base_url}/v1/organizations/${env.org_id}`;
 const sessionUrl = `${base}/events/${EVENT_ID}/sessions/${SESSION_ID}`;
@@ -113,6 +125,11 @@ test.describe("sales end and doors (live, three roles)", () => {
     // Doors: a typed clock time on the venue's clock, 90 minutes before the start.
     await page.getByTestId("doors-change").click();
     await page.getByTestId("doors-time").fill(wallClock(shift(start, -90)));
+    // The fixture starts at midnight. The intended 90-minutes-before value is
+    // therefore on the previous calendar day; the editor requires that choice
+    // explicitly rather than guessing from a clock value alone.
+    await page.getByTestId("doors-another-day").click();
+    await page.getByTestId(`date-day-${wallDay(shift(start, -90))}`).click();
     await page.getByTestId("doors-save").click();
     await expect(page.getByTestId("doors-done")).toHaveText("Saved.");
     expect(rows().doors_open_at).toBe(shift(start, -90));
@@ -121,6 +138,10 @@ test.describe("sales end and doors (live, three roles)", () => {
     // Doors after the start: told in words, no call is sent, the row keeps its value.
     const before = patches.length;
     await page.getByTestId("doors-change").click();
+    // Reopen inherits the previously saved day (the day before the session).
+    // Switch back to the session day so this becomes an actual after-start
+    // value instead of a valid time on the preceding day.
+    await page.getByTestId("doors-same-day").click();
     await page.getByTestId("doors-time").fill(wallClock(shift(start, 60)));
     await page.getByTestId("doors-save").click();
     await expect(page.getByTestId("doors-problem")).toContainText("Doors cannot open after the session starts");
