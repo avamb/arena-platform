@@ -15,6 +15,7 @@ import { Badge, DownloadButton, ErrorBox, Loading } from "@/components/ui";
 import { CategoryCard } from "@/components/CategoryCard";
 import { SalesFigures } from "@/components/SalesFigures";
 import { SessionSaleTimes } from "@/components/SessionSaleTimes";
+import { SessionChange } from "@/components/SessionChange";
 import { useOrg } from "@/screens/OrgLayout";
 
 function tierPrice(tier: TicketTierItem, locale: string, t: ReturnType<typeof useI18n>["t"]): string {
@@ -184,6 +185,18 @@ export function SessionScreen() {
           />
         )}
       </div>
+
+      {startAt !== null && (
+        <SessionChange
+          orgId={orgId}
+          eventId={eventId}
+          sessionId={sessionId}
+          status={head?.status ?? item?.status}
+          startAt={startAt}
+          venueId={item?.venue_id ?? null}
+          timezone={tz}
+        />
+      )}
 
       {summary.data !== undefined && (
         <section aria-labelledby="session-summary">

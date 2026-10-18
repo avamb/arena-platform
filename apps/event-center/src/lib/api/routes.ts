@@ -126,6 +126,10 @@ export const API = {
   geoCities: { method: "GET", path: "/v1/geo/cities" },
   geoTimezones: { method: "GET", path: "/v1/geo/countries/{iso2}/timezones" },
   geoCurrency: { method: "GET", path: "/v1/geo/countries/{iso2}/currency" },
+  // 5-2: move or cancel a session. The dry run first, then ONE PATCH of the
+  // existing session (a cancellation is status "cancelled", never a delete).
+  sessionChangeImpact: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/change-impact" },
+  eventContact: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/contact" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;
