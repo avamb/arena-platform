@@ -1386,6 +1386,7 @@ export const ru: Record<MessageKey, string> = {
   "sessionChange.intro": "Покупатели, у которых уже есть билеты, получат письмо об изменении. Сколько их, вы увидите до сохранения.",
   "sessionChange.close": "Закрыть",
   "sessionChange.letters": "Писем покупателям в очереди: {count}.",
+  "sessionChange.lettersUnknown": "Количество уведомлений в очереди не подтверждено. Проверьте статус писем в заказах.",
   "sessionChange.move.button": "Перенести сеанс",
   "sessionChange.move.title": "Перенос сеанса",
   "sessionChange.move.now": "Сейчас: {time}",

@@ -44,7 +44,7 @@ import {
 import { useOrg } from "@/screens/OrgLayout";
 
 export interface SessionCancelDone {
-  queued: number;
+  queued: number | null;
 }
 
 export interface SessionCancelPanelProps {
@@ -90,7 +90,7 @@ export function SessionCancelPanel({ orgId, eventId, sessionId, startAt, timezon
       const answer = await patchSession(orgId, eventId, sessionId, cancelBody(noticeToSend(known, text)));
       await queryClient.invalidateQueries();
       setWordOpen(false);
-      onDone({ queued: answer.change?.queued ?? 0 });
+      onDone({ queued: answer.change?.queued ?? null });
     } catch (error) {
       // What the dry run said is no longer true: show the new answer.
       if (error instanceof ApiError && (error.code === "organization.contact_missing" || error.code === "session.change_site_unsupported")) {

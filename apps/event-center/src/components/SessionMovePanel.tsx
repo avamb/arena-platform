@@ -45,7 +45,7 @@ import { useOrg } from "@/screens/OrgLayout";
 
 export interface SessionMoveDone {
   startAt: string;
-  queued: number;
+  queued: number | null;
 }
 
 export interface SessionMovePanelProps {
@@ -120,7 +120,7 @@ export function SessionMovePanel({ orgId, eventId, sessionId, startAt, venueId, 
       const text = impact === null && !message.touched ? known.default_message : message.text;
       const answer = await patchSession(orgId, eventId, sessionId, moveBody(proposal, noticeToSend(known, text)));
       await queryClient.invalidateQueries();
-      onDone({ startAt: answer.session.start_at, queued: answer.change?.queued ?? 0 });
+      onDone({ startAt: answer.session.start_at, queued: answer.change?.queued ?? null });
     } catch (error) {
       // The state changed under the person (a contact removed, a site order
       // arrived): ask the dry run again so the screen says what is true now.

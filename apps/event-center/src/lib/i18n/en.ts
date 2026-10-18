@@ -1386,6 +1386,7 @@ export const en = {
   "sessionChange.intro": "Buyers who already have tickets get an e-mail about the change. You see how many before you save.",
   "sessionChange.close": "Close",
   "sessionChange.letters": "Letters to buyers queued: {count}.",
+  "sessionChange.lettersUnknown": "The number of queued notifications is not confirmed. Check the email status on the orders.",
   "sessionChange.move.button": "Move the session",
   "sessionChange.move.title": "Move the session",
   "sessionChange.move.now": "Now: {time}",

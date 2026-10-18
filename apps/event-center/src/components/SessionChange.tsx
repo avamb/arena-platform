@@ -24,7 +24,7 @@ export interface SessionChangeProps {
 }
 
 type Panel = "move" | "cancel" | null;
-type Outcome = { kind: "move"; startAt: string; queued: number } | { kind: "cancel"; queued: number } | null;
+type Outcome = { kind: "move"; startAt: string; queued: number | null } | { kind: "cancel"; queued: number | null } | null;
 
 export function SessionChange({ orgId, eventId, sessionId, status, startAt, venueId, timezone }: SessionChangeProps) {
   const { t, locale } = useI18n();
@@ -44,7 +44,7 @@ export function SessionChange({ orgId, eventId, sessionId, status, startAt, venu
           {outcome.kind === "move"
             ? t("sessionChange.move.done", { time: formatDateTime(outcome.startAt, timezone, locale) })
             : t("sessionChange.cancel.done")}{" "}
-          {t("sessionChange.letters", { count: outcome.queued })}
+          {outcome.queued === null ? t("sessionChange.lettersUnknown") : t("sessionChange.letters", { count: outcome.queued })}
         </p>
       )}
 

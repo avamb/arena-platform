@@ -1386,6 +1386,7 @@ export const es: Record<MessageKey, string> = {
   "sessionChange.intro": "Los compradores que ya tienen entradas reciben un correo sobre el cambio. Verás cuántos son antes de guardar.",
   "sessionChange.close": "Cerrar",
   "sessionChange.letters": "Cartas a los compradores en cola: {count}.",
+  "sessionChange.lettersUnknown": "No se ha confirmado el número de avisos en cola. Comprueba el estado de los correos en los pedidos.",
   "sessionChange.move.button": "Mover la sesión",
   "sessionChange.move.title": "Mover la sesión",
   "sessionChange.move.now": "Ahora: {time}",

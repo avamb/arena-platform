@@ -218,7 +218,6 @@ What the local harness does NOT prove, and so stays a release gate:
   dashboard still shows ONE refund; (3) a part of the price; (4) a ticket scanned meanwhile is
   refused. Never a live key, never a real card.
 
-Known limitation (pinned by the "lost answer" spec): when the answer of a session move is lost
-after the server wrote, pressing again is safe (the same PATCH is answered as "nothing to change":
-one session, one journal row, one letter) but the screen then says "Letters to buyers queued: 0",
-although the first write queued one.
+The lost-answer regression verifies that a safe retry neither duplicates the change nor the
+notification. If the response does not confirm a notification count, the UI displays an
+unconfirmed-count notice instead of inventing zero; the existing queued letter remains intact.

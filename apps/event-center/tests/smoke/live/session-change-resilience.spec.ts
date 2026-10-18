@@ -184,10 +184,10 @@ test.describe("session change: failed and repeated writes (live)", () => {
 
     // The person tries again with the same request.
     await page.getByTestId("dry-run-confirm").click();
-    // The server answers the same PATCH as "nothing to change", so the screen says the session is moved to
-    // the new time. KNOWN LIMITATION: it then also says "Letters to buyers queued: 0", although the first
-    // (lost) write queued one; the letter itself is not lost or doubled (asserted below).
+    // A no-op retry confirms the saved time but cannot confirm the first attempt's notification count.
     await expect(page.getByTestId("session-change-done")).toContainText("22 Jun 2090");
+    await expect(page.getByTestId("session-change-done")).toContainText("The number of queued notifications is not confirmed");
+    await expect(page.getByTestId("session-change-done")).not.toContainText("Letters to buyers queued: 0");
     expect(writes).toHaveLength(2);
     // Whatever the second answer was, nothing was doubled: one session, one journal row, one letter, one paid order.
     expect(rows(S_MOVE)).toMatchObject({ start_at: "2090-06-22T17:00:00Z", changes: 1, notices: 1, queued_letters: 1, paid_orders: 1 });
