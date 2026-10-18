@@ -3,10 +3,12 @@
  * from the API table (routes.ts), which the parity test checks against
  * openapi.yaml.
  */
-import { POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
+import { ApiError, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type {
   ComplimentaryListResponse,
+  CreateOrderRefundsRequest,
+  CreateOrderRefundsResponse,
   CreatePromoCodeRequest,
   BotInvitationCreateResponse,
   BotInvitationResendResponse,
@@ -16,6 +18,7 @@ import type {
   EventEnvelope,
   MediaObject,
   PosterFactsResponse,
+  EventContactResponse,
   EventListResponse,
   EventSummary,
   GeoCitiesResponse,
@@ -28,6 +31,7 @@ import type {
   OrderDetail,
   OrderLetter,
   OrderListResponse,
+  OrderRefundOptions,
   OrderResendTicketsResponse,
   OrderSummary,
   OrganizationItem,
@@ -39,6 +43,7 @@ import type {
   PromoCodeEnvelope,
   PromoCodeListResponse,
   PromoRedemptionListResponse,
+  SessionChangeImpact,
   SessionEnvelope,
   SessionListResponse,
   SessionSummary,
@@ -49,6 +54,7 @@ import type {
   UpdateTicketTierRequest,
   VenueItem,
 } from "@/lib/api/types";
+import type { SessionPatchBody } from "@/lib/sessionChange";
 
 export function fetchMe(): Promise<MeResponse> {
   return call<MeResponse>({ route: API.me });
@@ -271,6 +277,54 @@ export function resendOrderTickets(orgId: string, orderId: string, email?: strin
  */
 export function cancelOrder(orgId: string, orderId: string, headers: Record<string, string>): Promise<OrderSummary> {
   return call<OrderSummary>({ route: API.cancelOrder, params: { org_id: orgId, id: orderId }, body: {}, headers });
+}
+
+// ─── 8-1: refunds of an order ─────────────────────────────────────────────────
+
+/** What can be refunded on an order and how (`refund.read`). Changes nothing. */
+export function fetchRefundOptions(orgId: string, orderId: string): Promise<OrderRefundOptions> {
+  return call<OrderRefundOptions>({ route: API.refundOptions, params: { org_id: orgId, order_id: orderId } });
+}
+
+/**
+ * The server gives a refund up to two minutes for the provider's answer
+ * (refundWorkBudget); the web waits a little longer before it calls the
+ * outcome unknown and offers to check with the same key.
+ */
+export const REFUND_CREATE_TIMEOUT_MS = 130_000;
+
+/**
+ * Records one refund operation (202). `key` is the operation's Idempotency-Key:
+ * the same key with the same body answers the first operation and writes
+ * nothing. `headers` carries the step-up token (`withStepUp`).
+ */
+export async function createOrderRefunds(
+  orgId: string,
+  orderId: string,
+  body: CreateOrderRefundsRequest,
+  key: string,
+  headers: Record<string, string>,
+): Promise<CreateOrderRefundsResponse> {
+  const answer = await call<CreateOrderRefundsResponse>({
+    route: API.refundCreate,
+    params: { org_id: orgId, order_id: orderId },
+    body,
+    headers: { ...headers, "Idempotency-Key": key },
+    timeoutMs: REFUND_CREATE_TIMEOUT_MS,
+  });
+  // An HTTP success alone does not prove which refund operation was recorded.
+  // Keep the idempotency key if a proxy corrupts or truncates the response.
+  if (
+    answer === null || typeof answer !== "object" || answer.order_id !== orderId ||
+    typeof answer.batch_id !== "string" || answer.batch_id === "" || typeof answer.replayed !== "boolean" ||
+    !Array.isArray(answer.refunds) || answer.refunds.length === 0 ||
+    !answer.refunds.every((item) => item !== null && typeof item === "object" &&
+      typeof item.id === "string" && item.id !== "" && typeof item.state === "string" &&
+      typeof item.currency === "string" && Number.isSafeInteger(item.amount) && item.amount >= 0)
+  ) {
+    throw new ApiError(200, "refund.unconfirmed_response", "The refund response could not be verified.");
+  }
+  return answer;
 }
 
 // ─── 4-7: the owner's "Organization data" ────────────────────────────────────
@@ -642,4 +696,33 @@ export function attachEventPoster(
     body: { poster_media_id: mediaId },
     signal,
   });
+}
+
+// ─── 5-2: move or cancel a session ───────────────────────────────────────────
+
+/** The dry run of a move or a cancellation. Writes nothing. See impactQuery(). */
+export function fetchChangeImpact(
+  orgId: string,
+  sessionId: string,
+  query: Record<string, string>,
+): Promise<SessionChangeImpact> {
+  return call<SessionChangeImpact>({
+    route: API.sessionChangeImpact,
+    params: { org_id: orgId, session_id: sessionId },
+    query,
+  });
+}
+
+/** The ONE write of a move or a cancellation: a PATCH of the existing session. */
+export function patchSession(orgId: string, eventId: string, sessionId: string, body: SessionPatchBody): Promise<SessionEnvelope> {
+  return call<SessionEnvelope>({ route: API.sessionUpdate, params: { org_id: orgId, event_id: eventId, id: sessionId }, body });
+}
+
+/** The e-mail buyers answer to when a session changes (the event's promoter, else the organization). */
+export function setEventContact(
+  orgId: string,
+  eventId: string,
+  input: { email: string; phone: string | null; phone_hidden: boolean },
+): Promise<EventContactResponse> {
+  return call<EventContactResponse>({ route: API.eventContact, params: { org_id: orgId, event_id: eventId }, body: input });
 }

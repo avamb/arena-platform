@@ -83,6 +83,8 @@ export type ApiErrorStem =
   | "refundNotSupported"
   | "refundNotRetryable"
   | "refundKeyReused"
+  | "refundNothing"
+  | "refundUnavailable"
   | "tierNotOnSale"
   | "tierSoldOut"
   | "tierSeated"
@@ -135,7 +137,7 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "network", "unauthorized", "forbidden", "stepUpRequired", "stepUpWrong", "notFound", "conflict", "invalid",
   "tooMany", "slow", "server", "generic", "sellerSiteOrder", "sessionChangeSite", "contactMissing",
   "changeMessageTooLong", "refundScanned", "refundInProgress", "refundNotRefundable", "refundNotSupported",
-  "refundNotRetryable", "refundKeyReused", "tierNotOnSale", "tierSoldOut", "tierSeated", "tierBelowUsed",
+  "refundNotRetryable", "refundKeyReused", "refundNothing", "refundUnavailable", "tierNotOnSale", "tierSoldOut", "tierSeated", "tierBelowUsed",
   "tierSaleWindow", "promoNotApplicable", "promoMinimum", "promoExhausted", "promoPerCustomer",
   "promoRateLimited", "promoDuplicate", "eventHasPaidOrders", "invitationTooMany", "invitationRecipient",
   "invitationAlreadyRevoked", "invitationScanned",
@@ -172,6 +174,9 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "refund.not_retryable": "refundNotRetryable",
   "refund.already_replaced": "refundNotRetryable",
   "refund.idempotency_key_reused": "refundKeyReused",
+  "refund.nothing_to_refund": "refundNothing",
+  "refund.amount_exceeds_refundable": "refundNothing",
+  "refund.engine_unavailable": "refundUnavailable",
   "tier.not_on_sale": "tierNotOnSale",
   "tier.sold_out": "tierSoldOut",
   "tier.seated_category": "tierSeated",

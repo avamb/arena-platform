@@ -32,6 +32,8 @@ export interface LiveEnv {
   poster_script: string;
   /** Test-only: one JSON line per read the scripted reader served. */
   poster_calls: string;
+  /** The harness's Stripe stub (task 8-1): GET /__calls, POST /__reset. */
+  stripe_stub_url: string;
   people: Person[];
 }
 

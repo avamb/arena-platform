@@ -31,6 +31,12 @@ export type OrderTicketSummary = S["OrderTicketSummary"];
 export type OrderDeliveryEntry = S["OrderDeliveryEntry"];
 export type OrderLetter = S["OrderLetter"];
 export type OrderRefundLetter = S["OrderRefundLetter"];
+// 8-1: refunds of an order.
+export type OrderRefundOptions = S["OrderRefundOptions"];
+export type OrderRefundTicketOption = S["OrderRefundTicketOption"];
+export type OrderRefundItem = S["OrderRefundItem"];
+export type CreateOrderRefundsRequest = S["CreateOrderRefundsRequest"];
+export type CreateOrderRefundsResponse = S["CreateOrderRefundsResponse"];
 export type OrderResendTicketsResponse = S["OrderResendTicketsResponse"];
 export type ComplimentaryListItem = S["ComplimentaryListItem"];
 export type ComplimentaryListResponse = S["ComplimentaryListResponse"];
@@ -91,3 +97,8 @@ export type ImportBil24SessionResponse = S["ImportBil24SessionResponse"];
 export type MediaObject = S["MediaObject"];
 // Poster-first creation: what the vision model read from an uploaded poster (hints only).
 export type PosterFactsResponse = S["PosterFactsResponse"];
+// 5-2: move or cancel a session, the organizer contact, the venues list.
+export type SessionChangeImpact = S["SessionChangeImpact"];
+export type SessionChangeSummary = S["SessionChangeSummary"];
+export type OrganizerContact = S["OrganizerContact"];
+export type EventContactResponse = S["EventContactResponse"];

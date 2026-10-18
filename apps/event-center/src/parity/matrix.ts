@@ -301,21 +301,31 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Перенос сеанса",
     bot: "sessions_dialog.go, `ses:mv`, `ses:go`",
     web: "R4",
-    routes: [`GET ${O}/sessions/{session_id}/change-impact`, `PATCH ${O}/events/{event_id}/sessions/{id}`],
+    ready: { twin: "live/session-change.spec.ts" },
+    routes: [
+      `GET ${O}/sessions/{session_id}/change-impact`,
+      `PATCH ${O}/events/{event_id}/sessions/{id}`,
+      `GET ${O}/venues`,
+    ],
+    note: "Сначала сухой прогон, потом одно нажатие. Заказы сайта-партнёра блокируют перенос, текст честный.",
   },
   {
     area: "Сеансы",
     fn: "Отмена сеанса",
     bot: "sessions_dialog.go, `ses:cx`, `ses:cxall` (слово)",
     web: "R4",
+    ready: { twin: "live/session-change.spec.ts" },
     routes: [`GET ${O}/sessions/{session_id}/change-impact`, `PATCH ${O}/events/{event_id}/sessions/{id}`],
+    note: "Только со словом сеанса. Письма уходят, деньги не возвращаются, заказы остаются оплаченными.",
   },
   {
     area: "Сеансы",
     fn: "Контакт организатора для писем",
     bot: "sessions_dialog.go (`sesSaveContact`)",
     web: "R4",
+    ready: { twin: "live/session-change.spec.ts" },
     routes: [`PUT ${O}/events/{event_id}/contact`],
+    note: "Форма e-mail появляется внутри переноса или отмены, когда сухой прогон говорит contact_missing.",
   },
   {
     area: "Сеансы",
@@ -400,7 +410,10 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Возврат по заказу",
     bot: "refund_dialog.go, `or:f:` (слово и кнопка)",
     web: "R5",
+    // 8-1
+    ready: { twin: "live/refund.spec.ts" },
     routes: [`GET ${O}/orders/{order_id}/refund-options`, `POST ${O}/orders/{order_id}/refunds`],
+    note: "Кнопка на карточке оплаченного заказа (`refund.create`). Ветка по `route` сервера: сайт продавца, провайдер без возвратов и заказ без оплаты только объясняются. Билеты не отмечены сначала, часть суммы — для одного билета, причина обязательна, флажок письма; последняя проверка, слово ВЕРНУТЬ и пароль ещё раз (раздел 4.6). Один `Idempotency-Key` на операцию: потерянный ответ проверяется тем же ключом, деньги дважды не уходят.",
   },
   {
     area: "Возвраты",

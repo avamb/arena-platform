@@ -98,11 +98,14 @@ func run(args []string) error {
 	invitationEmail := fs.String("invitation-email", "", "the guest --invitations-op deliver or fail works on")
 	teamOp := fs.String("team-op", "", "4-5 twin helper: reset, age, expire or inspect (see team_fixture.go)")
 	teamEmail := fs.String("team-email", "", "the address --team-op age, expire or inspect works on")
+	sessionChangeOp := fs.String("session-change-op", "", "5-2 twin helper: reset or inspect (see session_change_fixture.go)")
+	sessionChangeSession := fs.String("session-id", "", "the session --session-change-op inspect reads")
 	orgDataOp := fs.String("org-data-op", "", "4-7 twin helper: reset, inspect or hide (see org_data_fixture.go)")
 	// Independent live fixtures for the three release features.
 	eventStatusOp := fs.String("event-status-op", "", "5-1 twin helper: reset or inspect")
 	saleTimesOp := fs.String("sale-times-op", "", "5-3 twin helper: reset or inspect")
 	categoriesOp := fs.String("categories-op", "", "5-4 twin helper: reset or inspect")
+	refundOp := fs.String("refund-op", "", "8-1 twin helper: reset, inspect or scan (see refund_fixture.go)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -112,11 +115,17 @@ func run(args []string) error {
 	if *categoriesOp != "" {
 		return runCategoriesOp(*categoriesOp)
 	}
+	if *sessionChangeOp != "" {
+		return runSessionChangeOp(*sessionChangeOp, *sessionChangeSession)
+	}
 	if *teamOp != "" {
 		return runTeamOp(*teamOp, *teamEmail)
 	}
 	if *cancelOp != "" {
 		return runCancelOrderOp(*cancelOp, *cancelOrder)
+	}
+	if *refundOp != "" {
+		return runRefundOp(*refundOp)
 	}
 	if *orgDataOp != "" {
 		return runOrgDataOp(*orgDataOp)
@@ -278,6 +287,14 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	}
 	// 6-1a: a promoter and a seat count for the wizard's twin test.
 	if err := applyWizardFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 5-2: the session-change twin test's own event and sessions.
+	if err := applySessionChangeFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 8-1: the refund twin test's event and paid orders (refund_fixture.go).
+	if err := applyRefundFixture(ctx, tx); err != nil {
 		return err
 	}
 	// 7-1: a poster of the other organization (poster_fixture.go).
