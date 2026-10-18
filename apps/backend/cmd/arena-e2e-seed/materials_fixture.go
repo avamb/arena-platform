@@ -16,7 +16,7 @@ import (
 const (
 	materialsChannelID  = "fe0000e2-0000-7000-8000-0000000000e1"
 	materialsFeedID     = "fe0000e2-0000-7000-8000-0000000000e2"
-	materialsFeedToken  = "e2e-materials-feed-token"
+	materialsFeedToken  = "e2e-materials-feed-token" // #nosec G101 -- Public synthetic token of the local E2E fixture, not a production credential.
 	materialsEventSlug  = "e2e-materials-event"
 	materialsChannelNam = "E2E Materials Page"
 )
