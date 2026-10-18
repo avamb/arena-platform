@@ -3,7 +3,7 @@
  * from the API table (routes.ts), which the parity test checks against
  * openapi.yaml.
  */
-import { POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
+import { ApiError, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type {
   ComplimentaryListResponse,
@@ -298,20 +298,33 @@ export const REFUND_CREATE_TIMEOUT_MS = 130_000;
  * the same key with the same body answers the first operation and writes
  * nothing. `headers` carries the step-up token (`withStepUp`).
  */
-export function createOrderRefunds(
+export async function createOrderRefunds(
   orgId: string,
   orderId: string,
   body: CreateOrderRefundsRequest,
   key: string,
   headers: Record<string, string>,
 ): Promise<CreateOrderRefundsResponse> {
-  return call<CreateOrderRefundsResponse>({
+  const answer = await call<CreateOrderRefundsResponse>({
     route: API.refundCreate,
     params: { org_id: orgId, order_id: orderId },
     body,
     headers: { ...headers, "Idempotency-Key": key },
     timeoutMs: REFUND_CREATE_TIMEOUT_MS,
   });
+  // An HTTP success alone does not prove which refund operation was recorded.
+  // Keep the idempotency key if a proxy corrupts or truncates the response.
+  if (
+    answer === null || typeof answer !== "object" || answer.order_id !== orderId ||
+    typeof answer.batch_id !== "string" || answer.batch_id === "" || typeof answer.replayed !== "boolean" ||
+    !Array.isArray(answer.refunds) || answer.refunds.length === 0 ||
+    !answer.refunds.every((item) => item !== null && typeof item === "object" &&
+      typeof item.id === "string" && item.id !== "" && typeof item.state === "string" &&
+      typeof item.currency === "string" && Number.isSafeInteger(item.amount) && item.amount >= 0)
+  ) {
+    throw new ApiError(200, "refund.unconfirmed_response", "The refund response could not be verified.");
+  }
+  return answer;
 }
 
 // ─── 4-7: the owner's "Organization data" ────────────────────────────────────

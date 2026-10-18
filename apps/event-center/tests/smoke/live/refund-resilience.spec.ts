@@ -104,7 +104,8 @@ test.beforeEach(async ({ request }) => {
 });
 
 test.describe("refund: unknown outcomes, double presses and exact amounts (live)", () => {
-  test("a 5xx after the provider was called is UNKNOWN: the check repeats the same request with the same key, one provider call", async ({ page, request }) => {
+  for (const reply of ["gateway", "invalid_json", "missing_fields", "wrong_order"] as const) {
+  test(`an unverified ${reply} answer is UNKNOWN: same key, one provider call`, async ({ page, request }) => {
     await openCard(page, "org_admin", ORDER_OWNER);
     const sent: { key: string | null; body: string | null }[] = [];
     let first = true;
@@ -114,11 +115,14 @@ test.describe("refund: unknown outcomes, double presses and exact amounts (live)
       sent.push({ key: await req.headerValue("idempotency-key"), body: req.postData() });
       if (first) {
         first = false;
-        await route.fetch(); // the server DID refund
+        const answer = await route.fetch(); // the server DID refund
         return route.fulfill({
-          status: 502,
+          status: reply === "gateway" ? 502 : 200,
           contentType: "application/json",
-          body: JSON.stringify({ error: { code: "internal.bad_gateway", message: "bad gateway", request_id: "e2e" } }),
+          body: reply === "gateway" ? JSON.stringify({ error: { code: "internal.bad_gateway", message: "bad gateway", request_id: "e2e" } })
+            : reply === "invalid_json" ? "{broken"
+            : reply === "missing_fields" ? "{}"
+            : JSON.stringify({ ...(await answer.json()), order_id: "00000000-0000-7000-8000-000000000999" }),
         });
       }
       return route.fallback();
@@ -148,6 +152,8 @@ test.describe("refund: unknown outcomes, double presses and exact amounts (live)
     expect(calls[0].key.length).toBeGreaterThan(0);
     expect(rows(ORDER_OWNER)).toMatchObject({ refunds: 1, states: ["succeeded"], active_tickets: 2, status: "partially_refunded" });
   });
+
+  }
 
   test("a double press on the password button is ONE refund request and ONE provider call", async ({ page, request }) => {
     await openCard(page, "org_admin", ORDER_OWNER);

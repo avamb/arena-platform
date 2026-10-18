@@ -262,7 +262,7 @@ export function allSucceeded(res: CreateOrderRefundsResponse): boolean {
  */
 export function outcomeUnknown(err: unknown): boolean {
   if (!(err instanceof ApiError)) return false;
-  if (err.status === 0) return true;
+  if (err.status === 0 || (err.status >= 200 && err.status < 300)) return true;
   if (err.code === "refund.engine_unavailable") return false; // refused before anything was written
   return err.status >= 500;
 }

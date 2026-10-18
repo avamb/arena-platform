@@ -184,6 +184,8 @@ describe("the answer", () => {
   });
   it("calls a lost answer unknown, never a refusal", () => {
     expect(outcomeUnknown(new ApiError(0, "network.timeout", "x"))).toBe(true);
+    expect(outcomeUnknown(new ApiError(200, "http.invalid_json", "x"))).toBe(true);
+    expect(outcomeUnknown(new ApiError(200, "refund.unconfirmed_response", "x"))).toBe(true);
     expect(outcomeUnknown(new ApiError(524, "http.524", "x"))).toBe(true);
     expect(outcomeUnknown(new ApiError(500, "refund.create_failed", "x"))).toBe(true);
     expect(outcomeUnknown(new ApiError(503, "refund.engine_unavailable", "x"))).toBe(false);
