@@ -65,6 +65,7 @@ export function EventStatusBlock({ orgId, eventId, eventName, status, canPublish
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ["events", orgId] }),
       queryClient.invalidateQueries({ queryKey: ["eventSummary", orgId, eventId] }),
+      queryClient.invalidateQueries({ queryKey: ["sessions", orgId, eventId] }),
     ]);
 
   /** One move along the lifecycle. A failure reloads the card (the status may have changed) and is thrown on. */

@@ -251,6 +251,7 @@ func evDetail(m map[string]any, key string) float64 {
 func TestEventStatusHTTP_Lifecycle_AuditedAndSalesUntouched(t *testing.T) {
 	f := newEvStatusFixture(t)
 	eventID, sessionID := f.event("draft")
+	f.exec(`UPDATE sessions SET status='draft' WHERE id=$1`, sessionID)
 	f.sell(eventID, sessionID, "paid", true)
 	post := func(to string) (int, map[string]any) {
 		return f.do(f.key, http.MethodPost, f.base(eventID)+"/status", `{"status":"`+to+`"}`)

@@ -4,7 +4,8 @@
  * "Create event" and the platform stores a DRAFT event with one draft session
  * and exact categories; the list and the card show it. The API itself refuses
  * the agent, a foreign organization, a foreign venue and a request without a
- * token. Nothing here sells, publishes or sends anything.
+ * token. It also publishes one created draft and verifies its session becomes
+ * scheduled, then takes it off sale again. No payment or letter is sent.
  *
  * Serial: the scenarios share one organization. Every created event has a
  * unique name (`nonce`), and the checks count events BY NAME.
@@ -147,6 +148,19 @@ test.describe("create a draft GA event", () => {
 
     // The card shows the categories; the organization list shows the event.
     await expect(page.getByText("Standard").first()).toBeVisible();
+
+    // Publication must activate the actual wizard-created draft date, not
+    // merely change the event label while invitations still refuse its date.
+    await page.getByTestId("event-status-publish").click();
+    await expect(page.getByTestId("event-status-current")).toContainText("Published");
+    const published = await request.get(`${base}/events/${eventId}/sessions`, { headers: auth("org_admin") });
+    expect(((await published.json()) as { sessions: { status: string }[] }).sessions.map((s) => s.status)).toEqual(["scheduled"]);
+    await page.goto(`/o/${env.org_id}/invitations`);
+    await page.getByTestId("invite-event").selectOption(eventId);
+    await expect(page.getByTestId("invite-session")).toBeVisible();
+    // Restore only this generated event so the existing draft cleanup owns it.
+    const off = await request.post(`${base}/events/${eventId}/status`, { headers: auth("org_admin"), data: { status: "draft" } });
+    expect(off.status()).toBe(200);
     await page.goto(`/o/${env.org_id}/events`);
     await expect(page.getByText(name).first()).toBeVisible();
   });

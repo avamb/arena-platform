@@ -43,6 +43,8 @@ entries short and factual.
 
 ## Tests
 
+- Event publication regressions must include a wizard-created `draft` session. The `evStatusFixture.event` helper defaults to `scheduled` and otherwise masks publication leaving dates in draft. Publishing schedules only validated active draft dates atomically with the event and audit; a repeated status request stays a no-op.
+
 - Tests that need live services (PostgreSQL etc.) MUST go behind the
   `integration` build tag - the repo convention. An untagged live-DB test
   silently skips locally (no DATABASE_URL) but FAILS in the CI Unit job, where

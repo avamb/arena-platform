@@ -100,6 +100,13 @@ most **5 MiB** (`POSTER_MAX_BYTES`, the same cap as the poster reader; the serve
 allows 32 MiB). SVG, PDF, empty, cut-off and damaged files are refused before
 anything is sent.
 
+**Publishing a wizard draft.** The event and its prepared draft dates become
+`published` and `scheduled` together, in the same server transaction as the audit
+row. Cancelled, completed and deleted dates are never revived. A repeated publish
+is a no-op; an event already published before this fix needs an explicit take-off-sale
+and publish cycle to schedule its prepared drafts. There is no automatic data repair
+or new channel assignment. Existing sold tickets remain valid while off sale.
+
 **Upload and attachment are separate.** The wizard uploads once, creates the draft
 with the draft's own stable key (`publish: false`, off sale), then attaches. If the
 attachment fails the event exists: the draft keeps the media id and the event id
