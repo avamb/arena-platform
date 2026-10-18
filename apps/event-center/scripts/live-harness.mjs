@@ -226,7 +226,12 @@ const apiEnv = {
   JWT_SIGNING_SECRET: process.env.JWT_SIGNING_SECRET ?? "event-center-live-harness-jwt-secret-32-bytes",
   HTTP_LISTEN_ADDR: `127.0.0.1:${apiPort}`,
   // The vite dev server is another origin than the API: the browser needs CORS.
-  CORS_ALLOWED_ORIGINS: `http://127.0.0.1:${uiPort},http://localhost:${uiPort}`,
+  CORS_ALLOWED_ORIGINS: [
+    `http://127.0.0.1:${uiPort}`, `http://localhost:${uiPort}`,
+    ...(process.env.ARENA_LIVE_PUBLIC_UI_PORT
+      ? [`http://127.0.0.1:${Number(process.env.ARENA_LIVE_PUBLIC_UI_PORT)}`]
+      : []),
+  ].join(","),
   EVENT_CENTER_PUBLIC_URL: `http://127.0.0.1:${uiPort}`,
   // The hosted sales site: promoter cards show "<this>/<slug>" (task 4-6).
   PUBLIC_TICKETS_BASE_URL: process.env.PUBLIC_TICKETS_BASE_URL ?? "https://tickets.e2e.test",

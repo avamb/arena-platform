@@ -6925,6 +6925,15 @@ components:
           items:
             type: string
           example: ["Forum Karlin"]
+        venues:
+          type: array
+          description: |
+            The venues of the event's visible sessions with their own postal
+            address and the session starts held there (never the seller's
+            address). Empty when the event has no visible session. Absent on
+            older backends and in the promoter page's event list.
+          items:
+            $ref: "#/components/schemas/PublicEventVenue"
         first_session_at:
           type: [string, "null"]
           format: date-time
@@ -7435,6 +7444,56 @@ components:
         label:
           type: [string, "null"]
           description: Optional text shown with the point.
+
+    PublicEventVenue:
+      type: object
+      required: [name, country, city, address, postal_code, timezone, session_starts]
+      description: |
+        A place an event is held at, for the sales page "where it takes
+        place" block: the VENUE's own name and postal address (never the
+        seller's legal address) and the start times of the event's visible
+        (scheduled or completed) sessions held there. A field the organizer
+        did not fill is null; nothing is guessed. No contact data is public.
+      properties:
+        name:
+          type: string
+          description: Venue name.
+          example: "Forum Karlin"
+        country:
+          type: [string, "null"]
+          description: Country of the venue as stored (ISO 3166-1 alpha-2), or null.
+          example: "CZ"
+        city:
+          type: [string, "null"]
+          description: |
+            English name of the venue's city from the geo reference data, or
+            null when the venue has no city or the city has no English name.
+          example: "Prague"
+        address:
+          type: [string, "null"]
+          description: |
+            Street address lines (`address_line1`, `address_line2` joined by
+            a comma; the legacy free-form `address` when no structured line
+            is set), or null.
+          example: "Pernerova 51"
+        postal_code:
+          type: [string, "null"]
+          description: Postal code of the venue, or null.
+          example: "18600"
+        timezone:
+          type: [string, "null"]
+          description: IANA time zone of the venue, or null.
+          example: "Europe/Prague"
+        session_starts:
+          type: array
+          maxItems: 60
+          items:
+            type: string
+            format: date-time
+          description: |
+            Start times (RFC 3339 UTC, earliest first, at most 60) of the
+            event's sessions held at this venue.
+          example: ["2026-08-15T18:00:00Z"]
 
     PublicEventMaterials:
       type: object
@@ -38250,9 +38309,17 @@ paths:
                     allOf:
                       - $ref: "#/components/schemas/EventItem"
                       - type: object
-                        required: [materials]
+                        required: [materials, venues]
                         description: Fields added to the event on this route.
                         properties:
+                          venues:
+                            type: array
+                            description: |
+                              The venues of the event's visible sessions with their
+                              own postal address and the start times of the sessions
+                              held there (`PublicEventVenue`); `[]` when none.
+                            items:
+                              $ref: "#/components/schemas/PublicEventVenue"
                           materials:
                             description: The event's page materials; every list is `[]` when empty.
                             allOf:

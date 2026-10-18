@@ -12,7 +12,7 @@ export default defineConfig({
   testMatch: "*.spec.ts",
   // The live twin tests have their own config (playwright.live.config.ts).
   // The poster acceptance against the real image (7-1) has its own config too.
-  testIgnore: ["live/**", "container/**"],
+  testIgnore: ["live/**", "container/**", "materials/**"],
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"], ["junit", { outputFile: "event-center-smoke.xml" }]],

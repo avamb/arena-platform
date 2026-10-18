@@ -56,8 +56,14 @@ async function fillManualBasics(page: Page, name: string) {
   await page.getByTestId("wizard-venue-mode-existing").check();
   await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
   await page.getByTestId("wizard-currency").fill("EUR");
+  // Commit the text-field blur before opening the calendar. On a touch
+  // viewport validation can move the toggle between pointer down and up.
+  await page.getByTestId("wizard-currency").blur();
   const box = page.getByTestId("wizard-date-0-day");
-  await box.getByTestId("wizard-date-0-day-toggle").click();
+  const toggle = box.getByTestId("wizard-date-0-day-toggle");
+  await toggle.focus();
+  await toggle.press("Enter");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await box.getByTestId("date-quick-week").click();
   await page.getByTestId("wizard-date-0-time").fill("19:00");
   await page.getByTestId("wizard-cat-0-0-price").fill("18,90");

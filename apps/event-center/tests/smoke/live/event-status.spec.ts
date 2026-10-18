@@ -181,19 +181,19 @@ test.describe("event status (live)", () => {
     await expect(page.getByTestId("confirm-word")).toContainText("Delete this event?");
     await page.getByTestId("confirm-word-submit").click();
     await expect(page.getByTestId("confirm-word")).toContainText("Nothing is typed yet");
-    await page.getByRole("textbox").fill("remove");
+    await page.getByTestId("confirm-word").getByRole("textbox").fill("remove");
     await page.getByTestId("confirm-word-submit").click();
     await expect(page.getByTestId("confirm-word")).toContainText("does not match");
     expect(writes, "no DELETE before the right word").toEqual([]);
     expect(rows()[DELETE]).toEqual({ status: "published", deleted: false });
 
     // The word of the event is not the word of an order.
-    await page.getByRole("textbox").fill("CANCEL ORDER");
+    await page.getByTestId("confirm-word").getByRole("textbox").fill("CANCEL ORDER");
     await page.getByTestId("confirm-word-submit").click();
     await expect(page.getByTestId("confirm-word")).toContainText("does not match");
     expect(writes).toEqual([]);
 
-    await page.getByRole("textbox").fill("delete");
+    await page.getByTestId("confirm-word").getByRole("textbox").fill("delete");
     await page.getByTestId("confirm-word-submit").click();
     await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events$`));
     expect(writes).toEqual([`DELETE /v1/organizations/${env.org_id}/events/${event.id}`]);
