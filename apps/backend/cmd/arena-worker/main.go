@@ -50,6 +50,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/backfill"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/bil24wire"
 	billingcollect "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/collect"
+	billingrate "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/rate"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/contactform"
@@ -314,6 +315,9 @@ func run() error {
 		} else {
 			logger.Info("billing collect job scheduled at startup", "since", cfg.BillingCollectSince.Format(time.RFC3339))
 		}
+		if err := billingrate.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+			logger.Warn("could not schedule initial billing rate job", "error", err.Error())
+		}
 	}
 	scheduleJobRetention(rootCtx, pool.Pool, logger)
 	if err := tierchain.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
@@ -530,6 +534,17 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		Scheduler: reservationexpiry.NewPGScheduler(pool),
 	}))
 
+	// billing.rate turns the collected events into charges; like collect it is
+	// off (no Rater, nothing seeded) until the date X is named.
+	var billingRater *billingrate.Rater
+	if !cfg.BillingCollectSince.IsZero() {
+		billingRater = billingrate.New(pool, billingrate.Options{Since: cfg.BillingCollectSince, Logger: logger})
+	}
+	reg.Register(billingrate.JobType, billingrate.NewHandler(billingrate.HandlerOptions{
+		Rater:     billingRater,
+		Scheduler: billingrate.NewPGScheduler(pool),
+		Logger:    logger,
+	}))
 	reg.Register(billingcollect.JobType, billingcollect.NewHandler(billingcollect.HandlerOptions{
 		Collector: billingcollect.New(gen.New(pool), billingcollect.Options{Since: cfg.BillingCollectSince, Logger: logger}),
 		Scheduler: billingcollect.NewPGScheduler(pool),
