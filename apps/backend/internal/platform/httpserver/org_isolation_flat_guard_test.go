@@ -135,7 +135,7 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/onboarding/confirm", flatPublic, "applicant access token"},
 	{"POST", "/v1/onboarding/resume", flatPublic, "applicant access token"},
 	{"PUT", "/v1/onboarding/applications/{id}/answers", flatPublic, "applicant access token"},
-	{"GET", "/v1/billing/tariffs/active", flatPublic, "published tariff"},
+	{"GET", "/v1/billing/tariffs/active", flatRowGuard, "the platform default tariff when org_id is absent; with ?org_id= (it may be an individual rate) hbilling.RowOrgAccess"},
 
 	// ── provider callbacks ──────────────────────────────────────────────────
 	{"POST", "/v1/payment-intents/webhook", flatPublic, "provider signature"},

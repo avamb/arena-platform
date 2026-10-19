@@ -202,18 +202,29 @@ func (h *Handler) HandleGetActiveTariff(w http.ResponseWriter, r *http.Request) 
 		orgID = id
 	}
 
-	row, err := h.billingQueries.GetActiveTariff(r.Context(), orgID, time.Now().UTC())
+	// An organization's effective rate may be an individual one, so asking
+	// for an organization needs access to it (the route's own 404 otherwise).
+	// Without org_id the answer is the platform default, open to every
+	// billing.read holder as before.
+	if orgID != uuid.Nil && !h.rowOrgAllowed(w, r, orgID, false, "billing.not_found", "no active tariff configured") {
+		return
+	}
+
+	// B1-4: the answer is the effective rate of the organization's billing
+	// account (tariff_compat.go); the legacy tariffs row is only the
+	// fallback for an organization without one.
+	resp, found, err := effectiveTariff(r.Context(), h.billingQueries, orgID, time.Now().UTC())
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("billing.not_found", "no active tariff configured", r))
-			return
-		}
 		h.logger.Error("billing: get active tariff failed", slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "failed to fetch active tariff", r))
 		return
 	}
+	if !found {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("billing.not_found", "no active tariff configured", r))
+		return
+	}
 
-	httputil.WriteJSON(w, http.StatusOK, TariffToResponse(row))
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
