@@ -138,10 +138,8 @@ test.describe("sales end and doors (live, three roles)", () => {
     // Doors after the start: told in words, no call is sent, the row keeps its value.
     const before = patches.length;
     await page.getByTestId("doors-change").click();
-    // Reopen inherits the previously saved day (the day before the session).
-    // Switch back to the session day so this becomes an actual after-start
-    // value instead of a valid time on the preceding day.
-    await page.getByTestId("doors-same-day").click();
+    // Opening an existing value starts on the session day. A time after the
+    // start is therefore rejected locally before the PATCH is sent.
     await page.getByTestId("doors-time").fill(wallClock(shift(start, 60)));
     await page.getByTestId("doors-save").click();
     await expect(page.getByTestId("doors-problem")).toContainText("Doors cannot open after the session starts");
