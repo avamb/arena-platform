@@ -3616,3 +3616,237 @@ other = "← Volver a la ficha"
 
 ["bot.wz.warn_tier_not_in_payload"]
 other = "Las categorías que no están en la lista nueva quedaron cerradas. Las entradas vendidas siguen siendo válidas."
+
+["bot.mt.btn"]
+other = "🖼 Materiales"
+
+["bot.mt.menu"]
+other = "🖼 <b>Materiales</b> · {{.Event}}\n\nEsto es lo que ven los compradores en la página del evento: fotos, vídeos, un mapa y enlaces a otros vendedores. Elige una parte."
+
+["bot.mt.readonly"]
+other = "Puedes ver los materiales. Solo el propietario y el gestor pueden cambiarlos."
+
+["bot.mt.gone_dialog"]
+other = "Esta pantalla ya no está al día. Abre el evento y pulsa Materiales otra vez."
+
+["bot.mt.menu_btn"]
+other = "Materiales"
+
+["bot.mt.sec_g"]
+other = "📷 Fotos {{.N}}/{{.Max}}"
+
+["bot.mt.sec_v"]
+other = "🎬 Vídeos {{.N}}/{{.Max}}"
+
+["bot.mt.sec_p"]
+other = "🛒 Dónde más comprar {{.N}}/{{.Max}}"
+
+["bot.mt.sec_m"]
+other = "📍 Mapa: {{.State}}"
+
+["bot.mt.sec_r"]
+other = "📸 Reportaje fotográfico {{.N}}/{{.Max}}"
+
+["bot.mt.state_set"]
+other = "puesto"
+
+["bot.mt.state_unset"]
+other = "sin poner"
+
+["bot.mt.list_g"]
+other = "📷 <b>Fotos</b> · {{.Event}}\n{{.N}} de {{.Max}}"
+
+["bot.mt.list_v"]
+other = "🎬 <b>Vídeos</b> · {{.Event}}\n{{.N}} de {{.Max}}"
+
+["bot.mt.list_p"]
+other = "🛒 <b>Dónde más comprar</b> · {{.Event}}\n{{.N}} de {{.Max}}"
+
+["bot.mt.list_r"]
+other = "📸 <b>Reportaje fotográfico</b> · {{.Event}}\n{{.N}} de {{.Max}}"
+
+["bot.mt.empty_g"]
+other = "Todavía no hay fotos."
+
+["bot.mt.empty_v"]
+other = "Todavía no hay vídeos."
+
+["bot.mt.empty_p"]
+other = "Todavía no hay enlaces."
+
+["bot.mt.empty_r"]
+other = "Todavía no hay fotos en el reportaje."
+
+["bot.mt.hint_g"]
+other = "Las fotos salen en la página del evento en este orden."
+
+["bot.mt.hint_v"]
+other = "Los vídeos salen en la página del evento en este orden. Los enlaces de YouTube, Vimeo y Rutube se reproducen en la página."
+
+["bot.mt.hint_p"]
+other = "Los compradores ven estos enlaces como otros sitios donde comprar la entrada, con el nombre del vendedor."
+
+["bot.mt.hint_m"]
+other = "La página muestra el punto en un mapa."
+
+["bot.mt.hint_r"]
+other = "Los compradores ven el reportaje fotográfico después de la fecha del evento."
+
+["bot.mt.pick_hint"]
+other = "Pulsa un número para abrir una entrada."
+
+["bot.mt.no_caption"]
+other = "sin pie de foto"
+
+["bot.mt.add_btn"]
+other = "➕ Añadir"
+
+["bot.mt.ask_g"]
+other = "Envía una foto. Puedes escribir el pie de foto en el mismo mensaje. Acepto JPEG y PNG."
+
+["bot.mt.ask_r"]
+other = "Envía una foto del evento. Puedes escribir el pie de foto en el mismo mensaje. Acepto JPEG y PNG."
+
+["bot.mt.ask_more_g"]
+other = "Envía la siguiente foto o pulsa Listo."
+
+["bot.mt.ask_more_r"]
+other = "Envía la siguiente foto o pulsa Listo."
+
+["bot.mt.ask_v"]
+other = "Envía el enlace del vídeo, por ejemplo https://youtu.be/abc. Los enlaces de YouTube, Vimeo y Rutube se reproducen en la página. Cualquier otro enlace https se muestra como enlace."
+
+["bot.mt.ask_p"]
+other = "Envía el enlace de la página donde los compradores pueden sacar la entrada, por ejemplo https://ticketportal.cz/event/123. El vendedor se llama como el sitio. Después puedes cambiar el nombre."
+
+["bot.mt.ask_m"]
+other = "Envía el punto como latitud y longitud, por ejemplo 50.0755, 14.4378. También puedes enviar una ubicación de Telegram (el clip y luego Ubicación)."
+
+["bot.mt.ask_caption"]
+other = "Envía el pie de foto. Usa hasta 200 caracteres."
+
+["bot.mt.ask_seller"]
+other = "Envía el nombre del vendedor. Usa hasta 120 caracteres."
+
+["bot.mt.card_photo_g"]
+other = "📷 <b>Foto {{.N}} de {{.Total}}</b>\nPie de foto: {{.Caption}}"
+
+["bot.mt.card_photo_r"]
+other = "📸 <b>Foto del reportaje {{.N}} de {{.Total}}</b>\nPie de foto: {{.Caption}}"
+
+["bot.mt.card_video"]
+other = "🎬 <b>Vídeo {{.N}} de {{.Total}}</b>\n{{.Url}}\nTipo: {{.Provider}}"
+
+["bot.mt.card_partner"]
+other = "🛒 <b>Enlace {{.N}} de {{.Total}}</b>\n{{.Url}}\nVendedor: {{.Seller}}"
+
+["bot.mt.up_btn"]
+other = "⬆ Subir"
+
+["bot.mt.down_btn"]
+other = "⬇ Bajar"
+
+["bot.mt.caption_btn"]
+other = "✏ Pie de foto"
+
+["bot.mt.caption_clear_btn"]
+other = "Quitar pie de foto"
+
+["bot.mt.seller_btn"]
+other = "✏ Vendedor"
+
+["bot.mt.delete_btn"]
+other = "🗑 Eliminar"
+
+["bot.mt.delete_yes_btn"]
+other = "Sí, eliminar"
+
+["bot.mt.cancel_btn"]
+other = "Cancelar"
+
+["bot.mt.done_btn"]
+other = "✔ Listo"
+
+["bot.mt.del_ask_g"]
+other = "¿Eliminar esta foto de la página del evento?"
+
+["bot.mt.del_ask_v"]
+other = "¿Eliminar este vídeo de la página del evento?"
+
+["bot.mt.del_ask_p"]
+other = "¿Eliminar este enlace de la página del evento?"
+
+["bot.mt.del_ask_m"]
+other = "¿Eliminar el punto de la página del evento?"
+
+["bot.mt.del_ask_r"]
+other = "¿Eliminar esta foto del reportaje fotográfico?"
+
+["bot.mt.map_none"]
+other = "📍 <b>Mapa</b> · {{.Event}}\n\nTodavía no hay punto, así que la página no muestra mapa."
+
+["bot.mt.map_card"]
+other = "📍 <b>Mapa</b> · {{.Event}}\n\nLatitud {{.Lat}}, longitud {{.Lon}}\n{{.Link}}"
+
+["bot.mt.map_set_btn"]
+other = "📍 Poner el punto"
+
+["bot.mt.map_change_btn"]
+other = "📍 Cambiar el punto"
+
+["bot.mt.added"]
+other = "Añadido."
+
+["bot.mt.added_more"]
+other = "Añadido. {{.N}} de {{.Max}}."
+
+["bot.mt.saved"]
+other = "Guardado."
+
+["bot.mt.moved"]
+other = "Movido."
+
+["bot.mt.deleted"]
+other = "Eliminado."
+
+["bot.mt.err_full"]
+other = "Esta parte está llena. Puedes tener {{.Max}} como máximo. Elimina una primero y luego añade la nueva."
+
+["bot.mt.err_photo_failed"]
+other = "No pude aceptar esta foto. Envíala otra vez o envía otra."
+
+["bot.mt.err_photo_big"]
+other = "La imagen es demasiado grande. Envía una de menos de 10 MB."
+
+["bot.mt.err_photo_type"]
+other = "Solo acepto imágenes JPEG y PNG. Envía la imagen como foto o como archivo."
+
+["bot.mt.err_need_photo"]
+other = "Ahora espero una foto. Envíala o pulsa Cancelar."
+
+["bot.mt.err_need_text"]
+other = "Ahora espero un texto. Envíalo o pulsa Cancelar."
+
+["bot.mt.err_caption"]
+other = "El pie de foto debe ser una línea de hasta 200 caracteres."
+
+["bot.mt.err_video_url"]
+other = "No puedo usar este enlace de vídeo. Envía un enlace https completo, por ejemplo https://youtu.be/abc."
+
+["bot.mt.err_partner_url"]
+other = "No puedo usar este enlace. Envía un enlace https completo, por ejemplo https://ticketportal.cz/event/123."
+
+["bot.mt.err_seller"]
+other = "El nombre debe tener de 1 a 120 caracteres."
+
+["bot.mt.err_map"]
+other = "No pude leer el punto. Envía latitud y longitud, por ejemplo 50.0755, 14.4378."
+
+["bot.mt.err_duplicate"]
+other = "Esta foto ya está en la lista."
+
+["bot.mt.err_gone"]
+other = "Esta entrada ya no está en la lista. Aquí tienes la lista ahora."
+
+["bot.mt.err_changed"]
+other = "La lista cambió mientras trabajabas. Revísala e inténtalo de nuevo."
