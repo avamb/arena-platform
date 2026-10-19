@@ -79,6 +79,9 @@ export const API = {
   sellerProfileUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/seller-profile" },
   sellerDisplayUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/channels/{channel_id}/seller-display" },
   paymentConfigs: { method: "GET", path: "/v1/organizations/{org_id}/payment-configs" },
+  // B2-7: what the platform charged the organization (read-only, preliminary).
+  billingCharges: { method: "GET", path: "/v1/organizations/{org_id}/billing/charges" },
+  billingEventSummary: { method: "GET", path: "/v1/organizations/{org_id}/billing/events/{event_id}/summary" },
   // 4-4: invitations (free tickets for named guests).
   complimentaryList: { method: "GET", path: "/v1/organizations/{org_id}/complimentary" },
   complimentaryIssue: { method: "POST", path: "/v1/organizations/{org_id}/complimentary" },

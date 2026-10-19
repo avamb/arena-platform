@@ -127,6 +127,11 @@ function OrgShell() {
                 {t("nav.team")}
               </Link>
             )}
+            {access.can("billing.read") && (
+              <Link to="/o/$orgId/billing" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-billing">
+                {t("nav.billing")}
+              </Link>
+            )}
             {access.can("org.update") && (
               <Link to="/o/$orgId/org-data" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
                 {t("nav.orgData")}

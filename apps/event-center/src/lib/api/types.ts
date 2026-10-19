@@ -102,3 +102,10 @@ export type SessionChangeImpact = S["SessionChangeImpact"];
 export type SessionChangeSummary = S["SessionChangeSummary"];
 export type OrganizerContact = S["OrganizerContact"];
 export type EventContactResponse = S["EventContactResponse"];
+// B2-7: the platform's charges to the organization (read-only).
+export type BillingChargeList = S["BillingChargeList"];
+export type BillingChargeItem = S["BillingChargeItem"];
+export type BillingChargeTotal = S["BillingChargeTotal"];
+export type BillingChargeRuleLine = S["BillingChargeRuleLine"];
+export type BillingChargeSessionLine = S["BillingChargeSessionLine"];
+export type BillingEventSummary = S["BillingEventSummary"];
