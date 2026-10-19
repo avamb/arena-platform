@@ -201,7 +201,10 @@ COMMENT ON TABLE billing_job_cursors IS
 -- Each scans one day window of a sales table. Without them the planner reads
 -- orders and order_items end to end for every pass (EXPLAIN in the PR).
 CREATE INDEX orders_paid_at_idx ON orders (paid_at) WHERE paid_at IS NOT NULL;
-CREATE INDEX refunds_settled_at_idx ON refunds (settled_at) WHERE settled_at IS NOT NULL;
+-- The business time of a refund is COALESCE(succeeded_at, created_at): stable once
+-- the refund succeeded (settled_at is stamped later by the repair pass and
+-- would make the time depend on when a pass looked).
+CREATE INDEX refunds_succeeded_time_idx ON refunds ((COALESCE(succeeded_at, created_at))) WHERE state = 'succeeded';
 CREATE INDEX tickets_cancelled_at_idx ON tickets (cancelled_at) WHERE cancelled_at IS NOT NULL;
 CREATE INDEX tickets_complimentary_issued_at_idx ON tickets (issued_at) WHERE complimentary_issuance_id IS NOT NULL;
 CREATE INDEX event_publications_published_at_idx ON event_publications (published_at);
@@ -214,7 +217,7 @@ DROP INDEX IF EXISTS session_changes_cancelled_created_idx;
 DROP INDEX IF EXISTS event_publications_published_at_idx;
 DROP INDEX IF EXISTS tickets_complimentary_issued_at_idx;
 DROP INDEX IF EXISTS tickets_cancelled_at_idx;
-DROP INDEX IF EXISTS refunds_settled_at_idx;
+DROP INDEX IF EXISTS refunds_succeeded_time_idx;
 DROP INDEX IF EXISTS orders_paid_at_idx;
 
 DROP TABLE IF EXISTS billing_job_cursors;
