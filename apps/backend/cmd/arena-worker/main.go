@@ -49,6 +49,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/backfill"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/bil24wire"
+	billingaccel "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/accel"
 	billingcollect "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/collect"
 	billingrate "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/rate"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
@@ -205,11 +206,28 @@ func run() error {
 	// can neither delay nor re-trigger the webhooks (internal/platform/salesnotify).
 	salesNotifier := buildSalesNotifier(pool.Pool, cfg, logger)
 	go salesNotifier.Run(rootCtx)
+	// Billing: the collector and the rater are built once and shared by the two
+	// scheduled jobs (registered below) and the outbox accelerator, which only
+	// asks for an extra pass and never fails (internal/platform/billing/accel).
+	// All three stay off until the owner names the date X.
+	billingCollector, billingRater := buildBilling(pool.Pool, cfg, logger)
+	var billingAccel *billingaccel.Accelerator
+	if billingRater != nil {
+		billingAccel = billingaccel.New(func(ctx context.Context) error {
+			if _, err := billingCollector.Run(ctx); err != nil {
+				return err
+			}
+			_, err := billingRater.Run(ctx)
+			return err
+		}, 0, logger)
+		go billingAccel.Run(rootCtx)
+	}
 	outboxDispatcher := &multiDispatcher{dispatchers: outboxLegs(
 		salesNotifier,
 		baseOutboxDispatcher,
 		macsDispatcher,
 		bil24WPDispatcher,
+		billingAccelLeg(billingAccel),
 	)}
 	outboxStore := outbox.NewPGOutboxEventStore(pool.Pool)
 	outboxEventsDisp, outboxDispErr := outbox.NewOutboxEventsDispatcher(outbox.OutboxEventsDispatcherOptions{
@@ -536,17 +554,14 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 
 	// billing.rate turns the collected events into charges; like collect it is
 	// off (no Rater, nothing seeded) until the date X is named.
-	var billingRater *billingrate.Rater
-	if !cfg.BillingCollectSince.IsZero() {
-		billingRater = billingrate.New(pool, billingrate.Options{Since: cfg.BillingCollectSince, Logger: logger})
-	}
+	billingCollector, billingRater := buildBilling(pool, cfg, logger)
 	reg.Register(billingrate.JobType, billingrate.NewHandler(billingrate.HandlerOptions{
 		Rater:     billingRater,
 		Scheduler: billingrate.NewPGScheduler(pool),
 		Logger:    logger,
 	}))
 	reg.Register(billingcollect.JobType, billingcollect.NewHandler(billingcollect.HandlerOptions{
-		Collector: billingcollect.New(gen.New(pool), billingcollect.Options{Since: cfg.BillingCollectSince, Logger: logger}),
+		Collector: billingCollector,
 		Scheduler: billingcollect.NewPGScheduler(pool),
 		Logger:    logger,
 	}))
@@ -984,6 +999,20 @@ func coalesce(values ...string) string {
 // DisabledDispatcher would answer every event with ErrDispatchDisabled, the
 // row would stay unprocessed and be claimed again, and MACS and the selling
 // sites after it would never receive anything.
+// buildBilling makes the collect and rate workers. The rater is nil, and the
+// collector disabled, until the owner names the date X.
+func buildBilling(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) (*billingcollect.Collector, *billingrate.Rater) {
+	collector := billingcollect.New(gen.New(pool), billingcollect.Options{Since: cfg.BillingCollectSince, Logger: logger})
+	if cfg.BillingCollectSince.IsZero() {
+		return collector, nil
+	}
+	return collector, billingrate.New(pool, billingrate.Options{Since: cfg.BillingCollectSince, Logger: logger})
+}
+
+// billingAccelLeg turns a possibly nil accelerator into a leg; a nil one is
+// an inert no-op (Dispatch on a nil *Accelerator answers nil).
+func billingAccelLeg(a *billingaccel.Accelerator) outbox.Dispatcher { return a }
+
 func outboxLegs(legs ...outbox.Dispatcher) []outbox.Dispatcher {
 	out := make([]outbox.Dispatcher, 0, len(legs))
 	for _, d := range legs {
