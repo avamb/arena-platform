@@ -279,6 +279,7 @@ func run() error {
 	registerContactFormHandler(registry, pool.Pool, cfg, salesNotifier, opsNotifier, logger)
 	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
+	registerBillingReconcileHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 	registerJobRetentionHandler(registry, pool.Pool, logger)
 
 	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
@@ -337,6 +338,7 @@ func run() error {
 			logger.Warn("could not schedule initial billing rate job", "error", err.Error())
 		}
 	}
+	scheduleBillingReconcile(rootCtx, pool.Pool, cfg, logger)
 	scheduleJobRetention(rootCtx, pool.Pool, logger)
 	if err := tierchain.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the next category opens a little later than announced.
