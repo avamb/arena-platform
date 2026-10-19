@@ -3268,7 +3268,7 @@ type BillingAdminAccountList struct {
 
 // BillingCloseRateOverrideRequest Body of POST /v1/admin/billing/rate-overrides/{id}/close.
 type BillingCloseRateOverrideRequest struct {
-	// EffectiveTo New end of the rate. It must be in the future, after the start and not after the start of the organization's next rate.
+	// EffectiveTo New end of the rate. It must be in the future, after the start of the rate and earlier than the rate's current end when it has one (closing never extends a period).
 	EffectiveTo time.Time `json:"effective_to"`
 }
 

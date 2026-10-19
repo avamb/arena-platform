@@ -1616,7 +1616,7 @@ export interface paths {
         put?: never;
         /**
          * Admin - close an individual rate
-         * @description Sets the end of an individual rate. The end is in the future. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
+         * @description Sets the end of an individual rate. The end is in the future and earlier than the current end, so a closed period is only ever shortened. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
          */
         post: operations["postV1AdminBillingRateOverrideClose"];
         delete?: never;
@@ -24696,7 +24696,7 @@ export interface components {
         BillingCloseRateOverrideRequest: {
             /**
              * Format: date-time
-             * @description New end of the rate. It must be in the future, after the start and not after the start of the organization's next rate.
+             * @description New end of the rate. It must be in the future, after the start of the rate and earlier than the rate's current end when it has one (closing never extends a period).
              */
             effective_to: string;
         };
@@ -29513,7 +29513,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The rate has already ended, or the end passes the start of the next rate */
+            /** @description The rate has already ended, or the end passes the start of the organization's next rate */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -29522,7 +29522,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The end is not in the future or not after the start */
+            /** @description The end is not in the future, not after the start, or would extend the current end */
             422: {
                 headers: {
                     [name: string]: unknown;

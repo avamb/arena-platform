@@ -19018,7 +19018,7 @@ components:
         effective_to:
           type: string
           format: date-time
-          description: New end of the rate. It must be in the future, after the start and not after the start of the organization's next rate.
+          description: New end of the rate. It must be in the future, after the start of the rate and earlier than the rate's current end when it has one (closing never extends a period).
 
     BillingAccountTerms:
       type: object
@@ -23415,7 +23415,7 @@ paths:
     post:
       operationId: postV1AdminBillingRateOverrideClose
       summary: Admin - close an individual rate
-      description: "Sets the end of an individual rate. The end is in the future. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row."
+      description: "Sets the end of an individual rate. The end is in the future and earlier than the current end, so a closed period is only ever shortened. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row."
       tags: [v1, admin, billing]
       security: [{bearerAuth: []}]
       parameters:
@@ -23467,13 +23467,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
-          description: "The rate has already ended, or the end passes the start of the next rate"
+          description: "The rate has already ended, or the end passes the start of the organization's next rate"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "422":
-          description: "The end is not in the future or not after the start"
+          description: "The end is not in the future, not after the start, or would extend the current end"
           content:
             application/json:
               schema:
