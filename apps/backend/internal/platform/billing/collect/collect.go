@@ -162,17 +162,27 @@ func (c *Collector) Run(ctx context.Context) ([]SourceResult, error) {
 	if !c.Enabled() {
 		return nil, nil
 	}
+	if c.opts.Since.Before(billing.InitialTermsEffectiveFrom) {
+		return nil, fmt.Errorf("billing collect: the date X %s is before the first account terms %s, "+
+			"events there could not be classified", c.opts.Since.Format(time.RFC3339), billing.InitialTermsEffectiveFrom.Format(time.RFC3339))
+	}
 	runStart := c.opts.Now().UTC()
 	cache := newRunCache()
 	var results []SourceResult
+	var errs []error
+	// One failing source does not stop the others: a row nobody can write
+	// must not freeze refunds, cancellations and publications behind it.
 	for _, src := range c.sources() {
 		res, err := c.runSource(ctx, src, runStart, cache)
 		results = append(results, res)
 		if err != nil {
-			return results, fmt.Errorf("billing collect %s: %w", src.name, err)
+			errs = append(errs, fmt.Errorf("billing collect %s: %w", src.name, err))
+			if ctx.Err() != nil {
+				break
+			}
 		}
 	}
-	return results, nil
+	return results, errors.Join(errs...)
 }
 
 func (c *Collector) runSource(ctx context.Context, src source, runStart time.Time, cache *runCache) (SourceResult, error) {
@@ -198,6 +208,28 @@ func (c *Collector) runSource(ctx context.Context, src source, runStart time.Tim
 
 	afterAt, afterID := start, uuid.Nil
 	var lastAt time.Time
+	horizon := runStart.Add(-c.opts.Overlap)
+	// save moves the cursor to at, never past the overlap horizon (a row that
+	// committed late must stay readable) and never backwards.
+	save := func(at time.Time) error {
+		if at.After(horizon) {
+			at = horizon
+		}
+		if hadCursor && !at.After(cur.CursorAt) {
+			return nil
+		}
+		if !hadCursor && !at.After(start) {
+			// nothing to remember yet, but the first pass leaves a mark so the
+			// next one is labelled "collect"
+			at = start
+		}
+		if err := c.store.UpsertBillingJobCursor(ctx, key, at); err != nil {
+			return fmt.Errorf("store cursor: %w", err)
+		}
+		hadCursor = true
+		cur.CursorAt = at
+		return nil
+	}
 	for batch := 0; batch < maxBatchesPerSource; batch++ {
 		page, err := src.list(ctx, afterAt, afterID, c.opts.BatchSize)
 		if err != nil {
@@ -206,13 +238,29 @@ func (c *Collector) runSource(ctx context.Context, src source, runStart time.Tim
 		for _, cand := range page {
 			inserted, err := c.write(ctx, cand, label, cache)
 			if err != nil {
+				// What earlier pages and rows achieved is kept: the cursor
+				// moves to the last page that was written completely.
+				if lastAt.After(start) {
+					if serr := save(lastAt); serr != nil {
+						return res, errors.Join(serr, fmt.Errorf("event %s %s: %w", cand.Kind, cand.SubjectID, err))
+					}
+				}
 				return res, fmt.Errorf("event %s %s: %w", cand.Kind, cand.SubjectID, err)
 			}
 			res.Seen++
 			if inserted {
 				res.Inserted++
 			}
-			afterAt, afterID, lastAt = cand.OccurredAt, cand.SubjectID, cand.OccurredAt
+			afterAt, afterID = cand.OccurredAt, cand.SubjectID
+		}
+		if len(page) > 0 {
+			// the page was written completely: remember it
+			lastAt = page[len(page)-1].OccurredAt
+			if len(page) == int(c.opts.BatchSize) {
+				if err := save(lastAt); err != nil {
+					return res, err
+				}
+			}
 		}
 		if len(page) < int(c.opts.BatchSize) {
 			res.Drained = true
@@ -220,18 +268,16 @@ func (c *Collector) runSource(ctx context.Context, src source, runStart time.Tim
 		}
 	}
 
-	next := start
 	if res.Drained {
-		if t := runStart.Add(-c.opts.Overlap); t.After(next) {
-			next = t
+		if err := save(horizon); err != nil {
+			return res, err
 		}
-	} else if lastAt.After(next) {
-		next = lastAt
-	}
-	if !hadCursor || next.After(cur.CursorAt) {
-		if err := c.store.UpsertBillingJobCursor(ctx, key, next); err != nil {
-			return res, fmt.Errorf("store cursor: %w", err)
-		}
+	} else if !lastAt.After(start) {
+		// More than batch x pages rows share one instant: the cursor cannot
+		// move without skipping some of them. Say so loudly; the next pass
+		// reads the same rows again (the writes are idempotent).
+		c.opts.Logger.Warn("billing collect: cursor did not advance, too many rows at one instant",
+			"source", src.name, "at", start.Format(time.RFC3339Nano))
 	}
 	return res, nil
 }

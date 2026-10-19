@@ -97,7 +97,7 @@ func (q *Queries) ListCollectOrderItems(ctx context.Context, afterAt time.Time, 
 
 const listCollectRefunds = `-- name: ListCollectRefunds :many
 SELECT 'ticket_refunded'::text AS kind,
-       r.id AS subject_id, COALESCE(r.settled_at, r.succeeded_at) AS occurred_at, r.org_id,
+       r.id AS subject_id, COALESCE(r.succeeded_at, r.created_at) AS occurred_at, r.org_id,
        COALESCE(o.event_id, ts.event_id) AS event_id, COALESCE(o.session_id, t.session_id) AS session_id,
        r.order_id, COALESCE(r.ticket_id, r.cancelled_ticket_id) AS ticket_id,
        NULL::boolean AS seated,
@@ -112,14 +112,15 @@ LEFT   JOIN sessions ts ON ts.id = t.session_id
 LEFT   JOIN sessions s ON s.id = COALESCE(o.session_id, t.session_id)
 LEFT   JOIN venues v ON v.id = s.venue_id
 WHERE  r.state = 'succeeded'
-  AND  (r.settled_at >= $1 OR (r.settled_at IS NULL AND r.succeeded_at >= $1))
-  AND  (COALESCE(r.settled_at, r.succeeded_at), r.id) > ($1, $2)
-ORDER BY COALESCE(r.settled_at, r.succeeded_at), r.id
+  AND  COALESCE(r.succeeded_at, r.created_at) >= $1
+  AND  (COALESCE(r.succeeded_at, r.created_at), r.id) > ($1, $2)
+ORDER BY COALESCE(r.succeeded_at, r.created_at), r.id
 LIMIT  $3`
 
 // ListCollectRefunds returns succeeded refunds, a page after (afterAt,
-// afterID). occurred_at is refunds.settled_at, falling back to succeeded_at
-// for a row settled before settled_at existed.
+// afterID). occurred_at is COALESCE(succeeded_at, created_at): it never
+// changes once the refund succeeded. settled_at is NOT used, because the
+// repair pass stamps it later, so the time would depend on when a pass looked.
 func (q *Queries) ListCollectRefunds(ctx context.Context, afterAt time.Time, afterID uuid.UUID, limit int32) ([]CollectCandidate, error) {
 	return q.collectPage(ctx, listCollectRefunds, afterAt, afterID, limit)
 }
@@ -138,15 +139,20 @@ JOIN   events e ON e.id = s.event_id
 LEFT   JOIN venues v ON v.id = s.venue_id
 WHERE  t.status IN ('cancelled', 'revoked')
   AND  t.cancelled_at IS NOT NULL
-  AND  t.refund_id IS NULL
+  AND  NOT EXISTS (SELECT 1 FROM refunds r
+                   WHERE  r.state = 'succeeded' AND r.cancel_ticket
+                     AND  t.id IN (r.ticket_id, r.cancelled_ticket_id))
   AND  t.cancelled_at >= $1
   AND  (t.cancelled_at, t.id) > ($1, $2)
 ORDER BY t.cancelled_at, t.id
 LIMIT  $3`
 
 // ListCollectCancelledTickets returns cancelled or revoked tickets that no
-// refund cancelled (a refund that cancels its ticket is one ticket_refunded
-// event, not two facts), a page after (afterAt, afterID).
+// SUCCEEDED refund cancelled (a refund that cancels its ticket is one
+// ticket_refunded event, not two facts). A refund that failed, was rejected or
+// is still pending does not hide its ticket: the cancellation is then a fact
+// of its own. tickets.refund_id is not used, it points at refunds in any state
+// and is linked best effort. A page after (afterAt, afterID).
 func (q *Queries) ListCollectCancelledTickets(ctx context.Context, afterAt time.Time, afterID uuid.UUID, limit int32) ([]CollectCandidate, error) {
 	return q.collectPage(ctx, listCollectCancelledTickets, afterAt, afterID, limit)
 }
