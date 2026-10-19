@@ -11,6 +11,7 @@ package rate_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"sync"
 	"testing"
@@ -29,8 +30,8 @@ type scopedLister struct {
 	org uuid.UUID
 }
 
-func (s scopedLister) ListUnratedBillableEventsSince(ctx context.Context, since time.Time, limit int32) ([]gen.BillableEventRow, error) {
-	rows, err := s.Queries.ListUnratedBillableEventsSince(ctx, since, 100000)
+func (s scopedLister) ListUnratedBillableEventsAfter(ctx context.Context, at time.Time, id uuid.UUID, limit int32) ([]gen.BillableEventRow, error) {
+	rows, err := s.Queries.ListUnratedBillableEventsAfter(ctx, at, id, 100000)
 	var out []gen.BillableEventRow
 	for _, r := range rows {
 		if r.OrgID == s.org && int32(len(out)) < limit {
@@ -44,11 +45,21 @@ type countingSettler struct {
 	mu        sync.Mutex
 	settled   int
 	reversals int
+	fail      bool
+}
+
+func (c *countingSettler) counts() (settled, reversals int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.settled, c.reversals
 }
 
 func (c *countingSettler) Settle(context.Context, *gen.Queries, gen.BillableEventRow, gen.ChargeRow) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.fail {
+		return errors.New("settler down")
+	}
 	c.settled++
 	return nil
 }
@@ -56,6 +67,9 @@ func (c *countingSettler) Settle(context.Context, *gen.Queries, gen.BillableEven
 func (c *countingSettler) SettleReversal(context.Context, *gen.Queries, gen.BillableEventRow, gen.ChargeRow, gen.ChargeRow) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.fail {
+		return errors.New("settler down")
+	}
 	c.reversals++
 	return nil
 }
@@ -227,8 +241,8 @@ func TestRate_ChargesEveryKindOnceAtTheEventDate(t *testing.T) {
 	if r := f.charge(free); r.Reason == nil || *r.Reason != billing.ReasonFree {
 		t.Errorf("free reason = %v, want free", r.Reason)
 	}
-	if settler.settled != 3 {
-		t.Errorf("Settle called %d times, want once per positive charge (3)", settler.settled)
+	if settled, _ := settler.counts(); settled != 3 {
+		t.Errorf("Settle called %d times, want once per positive charge (3)", settled)
 	}
 
 	if res := run(t, r); res.Rated != 0 {
@@ -339,8 +353,8 @@ func TestRate_SessionCancellationReversesExactly(t *testing.T) {
 	if res.Rated != 5 || res.Reversed != 2 {
 		t.Fatalf("pass = %+v, want 5 rated and 2 reversed", res)
 	}
-	if settler.reversals != 2 {
-		t.Errorf("SettleReversal called %d times, want 2", settler.reversals)
+	if _, reversals := settler.counts(); reversals != 2 {
+		t.Errorf("SettleReversal called %d times, want 2", reversals)
 	}
 	var net int64
 	if err := f.pool.QueryRow(context.Background(), `
