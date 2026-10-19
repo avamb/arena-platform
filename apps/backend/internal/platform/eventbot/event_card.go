@@ -157,6 +157,8 @@ func (b *Bot) showEventCard(ctx context.Context, chatID int64, editMsgID *int, f
 			rows = append(rows, row)
 		}
 	}
+	// Photos, videos, map, links and the photo report of the page (task 7-3).
+	rows = append(rows, b.materialsEventRow(loc, eventID))
 	// Publish, take off sale, archive, delete: what the status allows (EC-10).
 	rows = append(rows, b.eventStatusRows(loc, id, string(event.Status), eventID)...)
 	if canInvite(id) {
