@@ -342,6 +342,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `OUTBOX_POLL_INTERVAL`, `WORKER_POLL_INTERVAL`, `WORKER_METRICS_ADDR`, `SENDER_VERIFICATION_POLL_INTERVAL` | — | ● | — | — |
 | `OPS_TELEGRAM_BOT_TOKEN`, `OPS_TELEGRAM_CHAT_ID`, `OPS_ALERT_ENV_LABEL`, `OPS_WATCHDOG_HEARTBEAT_HOUR_UTC` | — | ● | — | — |
 | `SALES_TELEGRAM_BOT_TOKEN` | — | ● | — | — |
+| `BILLING_COLLECT_SINCE` (RFC 3339, empty = billing collection off; the owner names the date X) | — | ● | — | — |
 | `EVENTS_TELEGRAM_BOT_TOKEN` | — | — | ✅ | — |
 | `BOT_ARENA_API_URL`, `BOT_METRICS_ADDR`, `BOT_SELF_ONBOARDING_ENABLED`, `BOT_ONBOARDING_SITE_BUTTON` | — | — | ● | — |
 | `POSTER_LLM_API_KEY` (secret), `POSTER_LLM_MODEL` | ● | — | — | — |
