@@ -45,7 +45,7 @@ const (
 	// DefaultBatchSize is the page size of the unrated-events query.
 	DefaultBatchSize = 500
 	// maxPages bounds how many pages one pass reads.
-	maxPages = 10
+	maxPages = 40
 
 	// ReasonSessionCancelled labels a reversal charge and its journal entry.
 	ReasonSessionCancelled = "session_cancelled"
@@ -54,7 +54,10 @@ const (
 // Settler is what block B3 plugs in: it spends credits against a new charge
 // and gives them back for a reversal. B2 ships NopSettler, which does nothing.
 // Both methods run inside the transaction that writes the charge, on queries
-// bound to it, so a failure rolls the charge back with it.
+// bound to it, so a failure rolls the charge back with it. The transaction
+// already holds the advisory lock of the event's session: an implementation
+// that takes more locks (on credit lots) must take them AFTER it, never
+// before, so the order stays session, then lots.
 type Settler interface {
 	// Settle is called after a DIRECT charge with a positive amount.
 	Settle(ctx context.Context, q *gen.Queries, ev gen.BillableEventRow, charge gen.ChargeRow) error
@@ -76,9 +79,10 @@ func (NopSettler) SettleReversal(context.Context, *gen.Queries, gen.BillableEven
 	return nil
 }
 
-// Lister reads the events waiting for a charge. *gen.Queries satisfies it.
+// Lister reads the events waiting for a charge, a keyset page after
+// (afterAt, afterID). *gen.Queries satisfies it.
 type Lister interface {
-	ListUnratedBillableEventsSince(ctx context.Context, since time.Time, limit int32) ([]gen.BillableEventRow, error)
+	ListUnratedBillableEventsAfter(ctx context.Context, afterAt time.Time, afterID uuid.UUID, limit int32) ([]gen.BillableEventRow, error)
 }
 
 // Beginner opens the transaction one event is rated in. *pgxpool.Pool
@@ -145,21 +149,14 @@ func (r *Rater) Run(ctx context.Context) (Result, error) {
 	if since.IsZero() {
 		since = billing.InitialTermsEffectiveFrom
 	}
-	seen := map[uuid.UUID]bool{}
+	afterAt, afterID := since, uuid.Nil
 	for page := 0; page < maxPages; page++ {
-		events, err := r.list.ListUnratedBillableEventsSince(ctx, since, r.opts.BatchSize)
+		events, err := r.list.ListUnratedBillableEventsAfter(ctx, afterAt, afterID, r.opts.BatchSize)
 		if err != nil {
 			return res, fmt.Errorf("billing rate: list unrated events: %w", err)
 		}
-		fresh := 0
-		var last time.Time
 		for _, ev := range events {
-			last = ev.OccurredAt
-			if seen[ev.ID] {
-				continue
-			}
-			seen[ev.ID] = true
-			fresh++
+			afterAt, afterID = ev.OccurredAt, ev.ID
 			out, err := r.rateOne(ctx, ev)
 			if err != nil {
 				return res, fmt.Errorf("billing rate: event %s %s: %w", ev.Kind, ev.ID, err)
@@ -173,12 +170,9 @@ func (r *Rater) Run(ctx context.Context) (Result, error) {
 				}
 			}
 		}
-		// A short page, or a page of events already seen (every one of them
-		// skipped), ends the pass; otherwise continue from where it stopped.
-		if len(events) < int(r.opts.BatchSize) || fresh == 0 {
+		if len(events) < int(r.opts.BatchSize) {
 			break
 		}
-		since = last
 	}
 	return res, nil
 }
@@ -192,12 +186,56 @@ type outcome struct {
 func dataError(err error) bool {
 	for _, target := range []error{
 		billing.ErrNoTerms, billing.ErrNoPriceList, billing.ErrBadRule,
-		billing.ErrInconsistentEvent, billing.ErrNoRule, billing.ErrUnknownEventKind,
+		billing.ErrBadTerms, billing.ErrInconsistentEvent, billing.ErrNoRule, billing.ErrUnknownEventKind,
 		billing.ErrRuleNotImplemented,
 	} {
 		if errors.Is(err, target) {
 			return true
 		}
+	}
+	return false
+}
+
+// price turns an event into a charge. skip is non-empty when the event cannot
+// be rated now. A journal-only event (a refund, a cancelled ticket, a session
+// cancellation) costs nothing whatever the terms say, so unusable terms do
+// not stop it: otherwise a cancellation could never reverse the sales it
+// cancels.
+func (r *Rater) price(ctx context.Context, q *gen.Queries, ev gen.BillableEventRow) (billing.Charge, string, error) {
+	terms, err := billing.TermsAt(ctx, q, ev.AccountID, ev.OccurredAt)
+	if err != nil {
+		if !dataError(err) {
+			return billing.Charge{}, "", err
+		}
+		if journalOnly(ev.Kind) {
+			acc, aerr := q.GetBillingAccountByID(ctx, ev.AccountID)
+			if aerr != nil {
+				return billing.Charge{}, "", aerr
+			}
+			return billing.Charge{Currency: acc.Currency, Reason: billing.ReasonJournalOnly, Inputs: map[string]int64{}}, "", nil
+		}
+		return billing.Charge{}, err.Error(), nil
+	}
+	charge, err := billing.Rate(terms, toEngineEvent(ev))
+	if err != nil {
+		if dataError(err) {
+			return billing.Charge{}, err.Error(), nil
+		}
+		return billing.Charge{}, "", err
+	}
+	if charge.Deferred != "" {
+		return billing.Charge{}, "deferred: " + charge.Deferred, nil
+	}
+	if charge.AmountMinor < 0 {
+		return billing.Charge{}, fmt.Sprintf("the engine computed a negative charge (%d): the rule data is wrong", charge.AmountMinor), nil
+	}
+	return charge, "", nil
+}
+
+func journalOnly(kind string) bool {
+	switch billing.EventKind(kind) {
+	case billing.KindTicketRefunded, billing.KindTicketCancelled, billing.KindSessionCancelled:
+		return true
 	}
 	return false
 }
@@ -234,7 +272,7 @@ func (r *Rater) rateOne(ctx context.Context, ev gen.BillableEventRow) (out outco
 		if ev.SessionID == nil {
 			return outcome{skip: "a session_cancelled event without a session"}, nil
 		}
-		waiting, err := q.CountUnratedBillableEventsForSession(ctx, *ev.SessionID, string(billing.KindTicketSold))
+		waiting, err := q.CountUnratedBillableEventsForSessionUntil(ctx, *ev.SessionID, string(billing.KindTicketSold), ev.OccurredAt)
 		if err != nil {
 			return out, err
 		}
@@ -243,22 +281,12 @@ func (r *Rater) rateOne(ctx context.Context, ev gen.BillableEventRow) (out outco
 		}
 	}
 
-	terms, err := billing.TermsAt(ctx, q, ev.AccountID, ev.OccurredAt)
+	charge, skip, err := r.price(ctx, q, ev)
 	if err != nil {
-		if dataError(err) {
-			return outcome{skip: err.Error()}, nil
-		}
 		return out, err
 	}
-	charge, err := billing.Rate(terms, toEngineEvent(ev))
-	if err != nil {
-		if dataError(err) {
-			return outcome{skip: err.Error()}, nil
-		}
-		return out, err
-	}
-	if charge.Deferred != "" {
-		return outcome{skip: "deferred: " + charge.Deferred}, nil
+	if skip != "" {
+		return outcome{skip: skip}, nil
 	}
 
 	row, err := q.InsertCharge(ctx, chargeParams(ev, charge))
@@ -297,7 +325,7 @@ func (r *Rater) rateOne(ctx context.Context, ev gen.BillableEventRow) (out outco
 // session's ticket_sold events that has none. A charge of zero (a free ticket)
 // has nothing to take back and is left alone.
 func (r *Rater) reverseSession(ctx context.Context, q *gen.Queries, cause gen.BillableEventRow) (int, error) {
-	charges, err := q.ListReversibleChargesForSession(ctx, *cause.SessionID)
+	charges, err := q.ListReversibleChargesForSessionUntil(ctx, *cause.SessionID, cause.OccurredAt)
 	if err != nil {
 		return 0, err
 	}
@@ -411,19 +439,19 @@ func toEngineEvent(ev gen.BillableEventRow) billing.Event {
 
 func chargeParams(ev gen.BillableEventRow, c billing.Charge) gen.InsertChargeParams {
 	inputs, _ := json.Marshal(c.Inputs) // a map of int64 cannot fail
-	pl := c.PriceListID
-	ver := c.PriceListVersion
 	p := gen.InsertChargeParams{
-		BillableEventID:  ev.ID,
-		AccountID:        ev.AccountID,
-		Currency:         c.Currency,
-		AmountMinor:      c.AmountMinor,
-		RuleType:         ruleTypeOrNone(c.RuleType),
-		RuleID:           c.RuleID,
-		PriceListID:      &pl,
-		PriceListVersion: &ver,
-		OverrideID:       c.OverrideID,
-		Inputs:           inputs,
+		BillableEventID: ev.ID,
+		AccountID:       ev.AccountID,
+		Currency:        c.Currency,
+		AmountMinor:     c.AmountMinor,
+		RuleType:        ruleTypeOrNone(c.RuleType),
+		RuleID:          c.RuleID,
+		OverrideID:      c.OverrideID,
+		Inputs:          inputs,
+	}
+	if c.PriceListID != uuid.Nil {
+		pl, ver := c.PriceListID, c.PriceListVersion
+		p.PriceListID, p.PriceListVersion = &pl, &ver
 	}
 	if c.Reason != "" {
 		reason := c.Reason

@@ -24,6 +24,11 @@ var (
 	// ErrNoPriceList: no unrevoked version of the account's price list in its
 	// currency is in force at the date.
 	ErrNoPriceList = errors.New("billing: no price list version in force")
+	// ErrBadTerms: the rows that make up an account's conditions contradict
+	// each other (a price list in another currency or under another code, an
+	// unknown plan kind, an individual rate of another account). Rating cannot
+	// go on with them; it is a data defect, never a transient failure.
+	ErrBadTerms = errors.New("billing: inconsistent account terms")
 )
 
 // TermsQueries is the narrow read set TermsAt needs. *gen.Queries and
@@ -119,26 +124,26 @@ func NewTerms(at time.Time, acc gen.BillingAccountRow, terms gen.BillingAccountT
 	ruleRows []gen.PriceListRuleRow, packs []gen.PriceListPackRow, override *gen.OrgRateOverrideRow,
 ) (Terms, error) {
 	if pl.Currency != acc.Currency {
-		return Terms{}, fmt.Errorf("billing: price list %s is in %s, account %s in %s", pl.ID, pl.Currency, acc.ID, acc.Currency)
+		return Terms{}, fmt.Errorf("%w: price list %s is in %s, account %s in %s", ErrBadTerms, pl.ID, pl.Currency, acc.ID, acc.Currency)
 	}
 	if pl.Code != terms.PriceListCode {
-		return Terms{}, fmt.Errorf("billing: price list %s is %q, terms %s name %q", pl.ID, pl.Code, terms.ID, terms.PriceListCode)
+		return Terms{}, fmt.Errorf("%w: price list %s is %q, terms %s name %q", ErrBadTerms, pl.ID, pl.Code, terms.ID, terms.PriceListCode)
 	}
 	if terms.AccountID != acc.ID {
-		return Terms{}, fmt.Errorf("billing: terms %s belong to account %s, not %s", terms.ID, terms.AccountID, acc.ID)
+		return Terms{}, fmt.Errorf("%w: terms %s belong to account %s, not %s", ErrBadTerms, terms.ID, terms.AccountID, acc.ID)
 	}
 	if terms.PlanKind != PlanStandard && terms.PlanKind != PlanVenue {
-		return Terms{}, fmt.Errorf("billing: account %s has unknown plan kind %q", acc.ID, terms.PlanKind)
+		return Terms{}, fmt.Errorf("%w: account %s has unknown plan kind %q", ErrBadTerms, acc.ID, terms.PlanKind)
 	}
 	if override != nil && (override.Currency != acc.Currency || override.OrgID != acc.OrgID) {
-		return Terms{}, fmt.Errorf("billing: individual rate %s does not belong to account %s", override.ID, acc.ID)
+		return Terms{}, fmt.Errorf("%w: individual rate %s does not belong to account %s", ErrBadTerms, override.ID, acc.ID)
 	}
 	type ruleKey struct{ line, kind, saleCurrency string }
 	seen := map[ruleKey]map[RuleType]uuid.UUID{}
 	rules := make([]Rule, 0, len(ruleRows))
 	for _, row := range ruleRows {
 		if row.PriceListID != pl.ID {
-			return Terms{}, fmt.Errorf("billing: rule %s belongs to price list %s, not %s", row.ID, row.PriceListID, pl.ID)
+			return Terms{}, fmt.Errorf("%w: rule %s belongs to price list %s, not %s", ErrBadTerms, row.ID, row.PriceListID, pl.ID)
 		}
 		r, err := ParseRule(row, pl.Currency)
 		if err != nil {
