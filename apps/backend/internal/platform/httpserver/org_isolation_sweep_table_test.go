@@ -230,6 +230,11 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers":                    "tiers",
 	"PUT /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule": "tiers",
 
+	// hbilling.ChargesHandler (task B2-6): eventInOrg compares events.org_id with the
+	// path organization (404 billing.event_not_found otherwise) and every charge query
+	// filters billable_events.org_id; billing_charges_integration_test.go drives a foreign event.
+	"GET /v1/organizations/{org_id}/billing/events/{event_id}/summary": "billing charges",
+
 	// hcatalog event gallery and videos (task 1-2a, event_materials.go):
 	// materialsPrep runs requireEventInOrg first and every query is scoped by
 	// (id, event_id). event_materials_integration_test.go drives a foreign event.

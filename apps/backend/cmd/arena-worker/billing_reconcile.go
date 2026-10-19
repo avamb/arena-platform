@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	billingreconcile "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/reconcile"
+	billingusage "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/usage"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/clock"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
@@ -39,6 +40,18 @@ func registerBillingReconcileHandler(reg *worker.Registry, pool *pgxpool.Pool, c
 		Scheduler:  billingreconcile.NewPGScheduler(pool),
 		Logger:     logger,
 	}))
+
+	// billing.usage_projection keeps the legacy usage_records table equal to
+	// the billing events (task B2-6). Same switch: the date X.
+	var proj *billingusage.Projector
+	if !cfg.BillingCollectSince.IsZero() {
+		proj = billingusage.New(pool, billingusage.Options{})
+	}
+	reg.Register(billingusage.JobType, billingusage.NewHandler(billingusage.HandlerOptions{
+		Projector: proj,
+		Scheduler: billingusage.NewPGScheduler(pool),
+		Logger:    logger,
+	}))
 }
 
 // scheduleBillingReconcile seeds the first reconcile at start-up. Non-fatal:
@@ -49,5 +62,8 @@ func scheduleBillingReconcile(ctx context.Context, pool *pgxpool.Pool, cfg *conf
 	}
 	if err := billingreconcile.ScheduleInitialJob(ctx, pool); err != nil {
 		logger.Warn("could not schedule initial billing reconcile job", "error", err.Error())
+	}
+	if err := billingusage.ScheduleInitialJob(ctx, pool); err != nil {
+		logger.Warn("could not schedule initial billing usage projection job", "error", err.Error())
 	}
 }

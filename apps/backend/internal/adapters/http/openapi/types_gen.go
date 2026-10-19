@@ -3266,6 +3266,138 @@ type BillingAdminAccountList struct {
 	Items []BillingAdminAccount `json:"items"`
 }
 
+// BillingChargeItem One charge. A reversal has reversal_of set and a negative amount, and carries the time of the event it reverses.
+type BillingChargeItem struct {
+	// AmountMinor The charge in minor units of currency. Zero for a free or journal-only event, negative for a reversal.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// BillableEventId Id of the billing event the charge rates.
+	BillableEventId openapi_types.UUID `json:"billable_event_id"`
+
+	// Currency Currency of amount_minor, the currency of the billing account.
+	Currency string `json:"currency"`
+
+	// EventId The event the charge belongs to, when it has one.
+	EventId *openapi_types.UUID `json:"event_id"`
+
+	// Id Id of the charge.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Kind of the billing event: ticket_sold, ticket_refunded, ticket_cancelled, session_cancelled, event_published or ticket_complimentary.
+	Kind string `json:"kind"`
+
+	// OccurredAt When the event happened.
+	OccurredAt time.Time `json:"occurred_at"`
+
+	// OrderId The order of a sale, when there is one.
+	OrderId *openapi_types.UUID `json:"order_id"`
+
+	// PriceListVersion Version of the price list in force at the event time.
+	PriceListVersion *int32 `json:"price_list_version"`
+
+	// PricingClass standard or low_price, for a sale.
+	PricingClass *string `json:"pricing_class"`
+
+	// RatedAt When the charge was made.
+	RatedAt time.Time `json:"rated_at"`
+
+	// Reason Why the amount is zero or reduced, when it is.
+	Reason *string `json:"reason"`
+
+	// ReversalOf Set when this row reverses another charge.
+	ReversalOf *openapi_types.UUID `json:"reversal_of"`
+
+	// RuleType The rule that rated the event (none when no rule applied).
+	RuleType string `json:"rule_type"`
+
+	// SaleCurrency Currency the ticket was sold in.
+	SaleCurrency *string `json:"sale_currency"`
+
+	// Seated Whether the sold place was a numbered seat.
+	Seated *bool `json:"seated"`
+
+	// SessionId The session the charge belongs to, when it has one.
+	SessionId *openapi_types.UUID `json:"session_id"`
+
+	// UnitPriceMinor Face price of the ticket in minor units of sale_currency.
+	UnitPriceMinor *int64 `json:"unit_price_minor"`
+}
+
+// BillingChargeList A page of charges with the sums over the whole filter.
+type BillingChargeList struct {
+	// Items The charges of this page, newest event first.
+	Items []BillingChargeItem `json:"items"`
+
+	// NextCursor Pass it as cursor to get the next page. Null on the last page.
+	NextCursor *string `json:"next_cursor"`
+
+	// Preliminary Always true while invoices are not issued. The numbers are what has been charged so far.
+	Preliminary bool `json:"preliminary"`
+
+	// Totals Sums per currency over the whole filter, not only this page.
+	Totals []BillingChargeTotal `json:"totals"`
+}
+
+// BillingChargeRuleLine The net charge of one rule in one currency, a line of the future invoice.
+type BillingChargeRuleLine struct {
+	// Count Number of direct charges.
+	Count int64 `json:"count"`
+
+	// Currency Currency of net_minor.
+	Currency string `json:"currency"`
+
+	// NetMinor Direct charges plus reversals of this rule, in minor units.
+	NetMinor int64 `json:"net_minor"`
+
+	// Reason Why the amount is zero or reduced, when it is.
+	Reason *string `json:"reason"`
+
+	// RuleType The rule that rated the events.
+	RuleType string `json:"rule_type"`
+}
+
+// BillingChargeSessionLine The charge summary of one session of an event in one currency.
+type BillingChargeSessionLine struct {
+	// ChargedMinor Sum of the direct charges in minor units.
+	ChargedMinor int64 `json:"charged_minor"`
+
+	// Count Number of direct charges.
+	Count int64 `json:"count"`
+
+	// Currency Currency of the sums.
+	Currency string `json:"currency"`
+
+	// NetMinor charged_minor plus reversed_minor.
+	NetMinor int64 `json:"net_minor"`
+
+	// ReversedMinor Sum of the reversals in minor units, zero or negative.
+	ReversedMinor int64 `json:"reversed_minor"`
+
+	// SessionId The session. Null for charges that belong to the event as a whole.
+	SessionId *openapi_types.UUID `json:"session_id"`
+
+	// SessionStartAt Start of the session. Null when it has none.
+	SessionStartAt *time.Time `json:"session_start_at"`
+}
+
+// BillingChargeTotal The sum of charges in one currency. Sums are never added across currencies.
+type BillingChargeTotal struct {
+	// ChargedMinor Sum of the direct charges in minor units.
+	ChargedMinor int64 `json:"charged_minor"`
+
+	// Count Number of direct charges.
+	Count int64 `json:"count"`
+
+	// Currency Currency of the sums.
+	Currency string `json:"currency"`
+
+	// NetMinor charged_minor plus reversed_minor.
+	NetMinor int64 `json:"net_minor"`
+
+	// ReversedMinor Sum of the reversals in minor units, zero or negative.
+	ReversedMinor int64 `json:"reversed_minor"`
+}
+
 // BillingCloseRateOverrideRequest Body of POST /v1/admin/billing/rate-overrides/{id}/close.
 type BillingCloseRateOverrideRequest struct {
 	// EffectiveTo New end of the rate. It must be in the future, after the start and not after the start of the organization's next rate.
@@ -3351,6 +3483,27 @@ type BillingCreateRateOverrideRequest struct {
 
 	// UnseatedMinor Rate of a ticket without a seat, in minor units.
 	UnseatedMinor int64 `json:"unseated_minor"`
+}
+
+// BillingEventSummary What the platform charged for one event of the organization.
+type BillingEventSummary struct {
+	// ByRule The net charge per rule and currency.
+	ByRule []BillingChargeRuleLine `json:"by_rule"`
+
+	// BySession The summary per session and currency, earliest session first.
+	BySession []BillingChargeSessionLine `json:"by_session"`
+
+	// EventId The event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// EventsByKind The number of billing events of this event by kind.
+	EventsByKind map[string]int64 `json:"events_by_kind"`
+
+	// Preliminary Always true while invoices are not issued.
+	Preliminary bool `json:"preliminary"`
+
+	// Totals Sums per currency.
+	Totals []BillingChargeTotal `json:"totals"`
 }
 
 // BillingPriceListDetail defines model for BillingPriceListDetail.
@@ -16359,6 +16512,24 @@ type CreateOrganizationApiKeyParams struct {
 type RevokeOrganizationApiKeyParams struct {
 	// XAdminReason Human-readable business reason for the admin write (audit trail).
 	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ListOrgBillingChargesParams defines parameters for ListOrgBillingCharges.
+type ListOrgBillingChargesParams struct {
+	// From Inclusive start of the event time, an RFC 3339 time or a YYYY-MM-DD date.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Exclusive end of the event time, an RFC 3339 time or a YYYY-MM-DD date. It must be after from.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+
+	// EventId Only the charges of this event of the organization. An event of another organization is 404.
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
+
+	// Limit Page size, 1 to 200. Default 50.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The next_cursor of the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // GetOrgBillingUsageParams defines parameters for GetOrgBillingUsage.
