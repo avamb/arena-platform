@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math/rand"
 	"regexp"
+	"slices"
 	"testing"
 )
 
@@ -64,7 +65,10 @@ func TestPaymentReference_FormatAndFinding(t *testing.T) {
 			t.Fatalf("reference %q has the wrong shape", ref)
 		}
 		seen[ref] = true
-		if got := FindReferences("Invoice ARENA-2026-000017 / " + ref + " thanks"); len(got) != 1 || got[0] != ref {
+		// A reference whose body starts with ARN (ARN-ARNW-KZAK) also yields
+		// the overlapping candidate ARN-WKZA-K...; every candidate is checked
+		// against the invoices, so only the real one must come first.
+		if got := FindReferences("Invoice ARENA-2026-000017 / " + ref + " thanks"); len(got) == 0 || got[0] != ref {
 			t.Fatalf("FindReferences missed %q: %v", ref, got)
 		}
 	}
@@ -79,6 +83,10 @@ func TestPaymentReference_FormatAndFinding(t *testing.T) {
 		if got := FindReferences(text); len(got) != 1 || got[0] != want {
 			t.Errorf("FindReferences(%q) = %v, want [%s]", text, got, want)
 		}
+	}
+	// "ARN" typed twice: the real reference must still be among the candidates.
+	if got := FindReferences("ref ARN ARN-7KQM-X2TB"); !slices.Contains(got, "ARN-7KQM-X2TB") {
+		t.Errorf("FindReferences missed the reference after a doubled prefix: %v", got)
 	}
 	if got := FindReferences("no code here, ARN-0000-1111 has banned letters"); len(got) != 0 {
 		t.Errorf("found %v in a text without a valid reference", got)

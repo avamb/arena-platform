@@ -144,6 +144,7 @@ type acctEnv struct {
 	orgA, orgB    uuid.UUID
 	ownerA, mgrA  string
 	ownerB, super string
+	superID       uuid.UUID
 	accA          gen.BillingAccountRow
 }
 
@@ -164,7 +165,7 @@ func newAcctEnv(t *testing.T) *acctEnv {
 	e.member(t, mgrA, e.orgA, "organizer")
 	e.member(t, ownerB, e.orgB, "org_admin")
 	e.ownerA, e.mgrA, e.ownerB = e.token(t, ownerA), e.token(t, mgrA), e.token(t, ownerB)
-	_, e.super = e.superadmin(t)
+	e.superID, e.super = e.superadmin(t)
 	acc, err := billing.EnsureAccount(context.Background(), e.q, e.orgA, "ES")
 	if err != nil {
 		t.Fatalf("EnsureAccount: %v", err)
@@ -638,5 +639,116 @@ func TestBillingAccounts_ServiceFeeQuoteIsTheTicketRate(t *testing.T) {
 	}
 	if code, _ := e.req(t, http.MethodGet, base+"?currency=EUR&price_minor=2000", e.mgrA, nil, ""); code != http.StatusForbidden {
 		t.Fatalf("manager: %d", code)
+	}
+}
+
+// invoiceAdminAuditRoutes are the write routes of the invoice, payment-fee
+// and bank screens. TestBillingAdmin_EveryWriteIsAudited leaves them to
+// TestBillingAccounts_EveryInvoiceAdminWriteIsAudited, which needs this
+// file's environment (a billing account, packs, the Stripe stub) and checks
+// the same thing: one audit row, by the operator, with the reason.
+var invoiceAdminAuditRoutes = map[string]bool{
+	"POST /v1/admin/billing/accounts/{account_id}/invoices":            true,
+	"POST /v1/admin/billing/invoices/{invoice_id}/issue":               true,
+	"POST /v1/admin/billing/invoices/{invoice_id}/mark-paid":           true,
+	"POST /v1/admin/billing/invoices/{invoice_id}/void":                true,
+	"POST /v1/admin/billing/payment-fees":                              true,
+	"POST /v1/admin/billing/bank-transactions":                         true,
+	"POST /v1/admin/billing/bank-transactions/{transaction_id}/match":  true,
+	"POST /v1/admin/billing/bank-transactions/{transaction_id}/ignore": true,
+}
+
+func TestBillingAccounts_EveryInvoiceAdminWriteIsAudited(t *testing.T) {
+	e := newAcctEnv(t)
+	ctx := context.Background()
+	covered := map[string]bool{}
+	call := func(route, method, path, body string, want int, resource func(map[string]any) string) map[string]any {
+		t.Helper()
+		reason := "b4 audit " + uuid.NewString()[:8]
+		code, out := e.req(t, method, path, e.super, map[string]string{"X-Admin-Reason": reason}, body)
+		if code != want {
+			t.Fatalf("%s: %d %v", route, code, out["_raw"])
+		}
+		action := billingAdminWriteRoutes[route]
+		res := resource(out)
+		var n int
+		var actor, gotReason string
+		rows, err := e.srv.pgxPool.Query(ctx,
+			`SELECT COALESCE(actor_id::text, ''), COALESCE(metadata->>'reason', '') FROM audit_events WHERE action = $1 AND resource_id = $2`,
+			action, res)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for rows.Next() {
+			if err := rows.Scan(&actor, &gotReason); err != nil {
+				t.Fatal(err)
+			}
+			if gotReason == reason {
+				n++
+			}
+		}
+		rows.Close()
+		if n != 1 || actor != e.superID.String() {
+			t.Errorf("%s: %d audit rows with the reason (action %s, resource %s), actor %q; want 1, actor %s", route, n, action, res, actor, e.superID)
+		}
+		covered[route] = true
+		return out
+	}
+	field := func(k string) func(map[string]any) string { return func(m map[string]any) string { return str(m[k]) } }
+
+	// A usage invoice: generate, issue for a bank transfer, mark paid by hand.
+	e.usageCharge(t, 5, 59)
+	gen1 := call("POST /v1/admin/billing/accounts/{account_id}/invoices", http.MethodPost,
+		"/v1/admin/billing/accounts/"+e.accA.ID.String()+"/invoices", `{"period":"2026-09"}`, http.StatusCreated,
+		func(m map[string]any) string { return str(m["invoice"].(map[string]any)["id"]) })
+	invID := str(gen1["invoice"].(map[string]any)["id"])
+	issued := call("POST /v1/admin/billing/invoices/{invoice_id}/issue", http.MethodPost,
+		"/v1/admin/billing/invoices/"+invID+"/issue", `{"payment_method":"bank_transfer"}`, http.StatusOK, field("id"))
+	paidAt := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339)
+	call("POST /v1/admin/billing/invoices/{invoice_id}/mark-paid", http.MethodPost,
+		"/v1/admin/billing/invoices/"+invID+"/mark-paid",
+		fmt.Sprintf(`{"amount_minor":%d,"paid_at":%q,"reference":"statement line 7"}`, num(issued["total_minor"]), paidAt),
+		http.StatusOK, field("id"))
+
+	// A pack ordered for a transfer and then voided.
+	p := e.pack(t, 1)
+	_, toVoid := e.order(t, e.ownerA, str(p["id"]), "bank_transfer", "audit-void-"+uuid.NewString())
+	call("POST /v1/admin/billing/invoices/{invoice_id}/void", http.MethodPost,
+		"/v1/admin/billing/invoices/"+str(toVoid["id"])+"/void", `{"reason":"ordered by mistake"}`, http.StatusOK, field("id"))
+
+	// A card fee version of the ISO test currency, after the latest one.
+	var latest *time.Time
+	if err := e.srv.pgxPool.QueryRow(ctx, `SELECT max(effective_from) FROM billing_payment_fees WHERE method = 'stripe_card' AND currency = 'XTS'`).Scan(&latest); err != nil {
+		t.Fatal(err)
+	}
+	from := time.Now().UTC().Add(48 * time.Hour).Truncate(time.Second)
+	if latest != nil && !from.After(*latest) {
+		from = latest.UTC().Add(24 * time.Hour).Truncate(time.Second)
+	}
+	call("POST /v1/admin/billing/payment-fees", http.MethodPost, "/v1/admin/billing/payment-fees",
+		fmt.Sprintf(`{"method":"stripe_card","currency":"XTS","pct_bp":150,"fixed_minor":25,"effective_from":%q}`, from.Format(time.RFC3339)),
+		http.StatusCreated, field("id"))
+
+	// Two statement lines without a reference: one is matched by hand, one ignored.
+	_, toMatch := e.order(t, e.ownerA, str(p["id"]), "bank_transfer", "audit-match-"+uuid.NewString())
+	lineID := func(m map[string]any) string { return str(m["items"].([]any)[0].(map[string]any)["transaction_id"]) }
+	imp := call("POST /v1/admin/billing/bank-transactions", http.MethodPost, "/v1/admin/billing/bank-transactions",
+		transferBody("audit-"+uuid.NewString(), "membership", "EUR", num(toMatch["total_minor"])), http.StatusOK, lineID)
+	call("POST /v1/admin/billing/bank-transactions/{transaction_id}/match", http.MethodPost,
+		"/v1/admin/billing/bank-transactions/"+lineID(imp)+"/match", `{"invoice_id":"`+str(toMatch["id"])+`"}`,
+		http.StatusOK, func(map[string]any) string { return lineID(imp) })
+	_, imp2 := e.req(t, http.MethodPost, "/v1/admin/billing/bank-transactions", e.super,
+		map[string]string{"X-Admin-Reason": "second line"}, transferBody("audit-"+uuid.NewString(), "refund from a supplier", "EUR", 4200))
+	call("POST /v1/admin/billing/bank-transactions/{transaction_id}/ignore", http.MethodPost,
+		"/v1/admin/billing/bank-transactions/"+lineID(imp2)+"/ignore", `{"reason":"not ours"}`,
+		http.StatusOK, func(map[string]any) string { return lineID(imp2) })
+
+	for route := range invoiceAdminAuditRoutes {
+		if !covered[route] {
+			t.Errorf("the invoice audit test does not exercise %s", route)
+		}
+	}
+	if _, err := e.srv.pgxPool.Exec(ctx, `DELETE FROM billing_bank_transactions WHERE provider = 'manual' AND external_id LIKE 'audit-%'`); err != nil {
+		t.Logf("cleanup bank lines: %v", err)
 	}
 }

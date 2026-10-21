@@ -19296,7 +19296,7 @@ components:
 
     BillingAccountTerms:
       type: object
-      required: [id, effective_from, price_list_code, plan_kind, billing_cycle, shortfall_policy, issuer_id, invoice_delay_days, due_days, locked, created_by, reason, created_at]
+      required: [id, effective_from, price_list_code, plan_kind, billing_cycle, shortfall_policy, issuer_id, invoice_delay_days, due_days, fee_mode, locked, created_by, reason, created_at]
       description: One dated row of the conditions of a billing account. The terms of an event are the last row that started before the event.
       properties:
         id:
@@ -19334,6 +19334,9 @@ components:
           type: [integer, "null"]
           format: int32
           description: Days to pay an invoice.
+        fee_mode:
+          type: string
+          description: Who pays the platform commission on a sold ticket, organizer_pays (the organizer is billed) or buyer_pays (the buyer pays it as the service charge).
         locked:
           type: boolean
           description: Whether only a superadmin may change the row.
@@ -19449,6 +19452,9 @@ components:
           type: [integer, "null"]
           format: int32
           description: Days to pay an invoice.
+        fee_mode:
+          type: string
+          description: Who pays the platform commission on a sold ticket, organizer_pays (default) or buyer_pays. Any other value is 422 billing.invalid_terms.
 
     BillingCurrentRate:
       type: object

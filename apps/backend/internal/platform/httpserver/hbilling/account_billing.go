@@ -588,7 +588,8 @@ func EnsureCardPayment(ctx context.Context, pool *pgxpool.Pool, stripe PlatformS
 	q := gen.New(pool)
 	customer, err := q.GetStripeCustomerIDByAccount(ctx, *inv.AccountID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		customer, err = stripe.CreateOrUpdateCustomer(ctx, "", "", "cust-acc-"+inv.AccountID.String())
+		email, name := payerContact(ctx, q, *inv.AccountID)
+		customer, err = stripe.CreateOrUpdateCustomer(ctx, email, name, "cust-acc-"+inv.AccountID.String())
 		if err != nil {
 			return inv, fmt.Errorf("stripe customer: %w", err)
 		}
@@ -717,4 +718,22 @@ func invoiceJSON(inv invoicing.Invoice) map[string]any {
 		"paid_amount_minor": inv.PaidAmountMinor, "paid_via": inv.PaidVia, "voided_at": timeJSON(inv.VoidedAt),
 		"payment_url": inv.HostedPaymentURL, "pack_id": uuidJSON(inv.PackID), "lines": lines,
 	}
+}
+
+// payerContact reads the e-mail and legal name the organizer gave for its
+// invoices (PUT .../billing/payer), "" when none: the Stripe customer then
+// carries no contact and Stripe asks for it on its page.
+func payerContact(ctx context.Context, q *gen.Queries, accountID uuid.UUID) (email, name string) {
+	acc, err := q.GetBillingAccountByID(ctx, accountID)
+	if err != nil || len(acc.Payer) == 0 {
+		return "", ""
+	}
+	var p struct {
+		Email     string `json:"email"`
+		LegalName string `json:"legal_name"`
+	}
+	if json.Unmarshal(acc.Payer, &p) != nil {
+		return "", ""
+	}
+	return p.Email, p.LegalName
 }

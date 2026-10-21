@@ -25461,6 +25461,8 @@ export interface components {
              * @description Days to pay an invoice.
              */
             due_days: number | null;
+            /** @description Who pays the platform commission on a sold ticket, organizer_pays (the organizer is billed) or buyer_pays (the buyer pays it as the service charge). */
+            fee_mode: string;
             /** @description Whether only a superadmin may change the row. */
             locked: boolean;
             /** @description Id of the operator who created the row, or migration. */
@@ -25560,6 +25562,8 @@ export interface components {
              * @description Days to pay an invoice.
              */
             due_days?: number | null;
+            /** @description Who pays the platform commission on a sold ticket, organizer_pays (default) or buyer_pays. Any other value is 422 billing.invalid_terms. */
+            fee_mode?: string;
         };
         /** @description The per-ticket rate of the purchased lot that pays next. */
         BillingCurrentRate: {

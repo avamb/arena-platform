@@ -3337,6 +3337,9 @@ type BillingAccountTerms struct {
 	// EffectiveFrom First moment the terms apply.
 	EffectiveFrom time.Time `json:"effective_from"`
 
+	// FeeMode Who pays the platform commission on a sold ticket, organizer_pays (the organizer is billed) or buyer_pays (the buyer pays it as the service charge).
+	FeeMode string `json:"fee_mode"`
+
 	// Id Id of the terms row.
 	Id openapi_types.UUID `json:"id"`
 
@@ -3699,6 +3702,9 @@ type BillingCreateAccountTermsRequest struct {
 
 	// EffectiveFrom Start of the terms. It must be in the future and after the start of every earlier terms row.
 	EffectiveFrom time.Time `json:"effective_from"`
+
+	// FeeMode Who pays the platform commission on a sold ticket, organizer_pays (default) or buyer_pays. Any other value is 422 billing.invalid_terms.
+	FeeMode *string `json:"fee_mode,omitempty"`
 
 	// InvoiceDelayDays Days after the last session before a per-event invoice is made.
 	InvoiceDelayDays *int32 `json:"invoice_delay_days"`
