@@ -130,7 +130,16 @@ export type ApiErrorStem =
   // 5-4
   | "tierPriceInvalid"
   | "tierCapacityInvalid"
-  | "tierPriceWindows";
+  | "tierPriceWindows"
+  // B3-3/B4: billing
+  | "billingCardUnavailable"
+  | "billingKeyReused"
+  | "billingPackGone"
+  | "billingNoAccount"
+  | "billingNotCardPayable"
+  | "billingPayerInvalid"
+  | "billingTerms"
+  | "billingFxMissing";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -153,6 +162,9 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "saleTimeInvalid", "doorsAfterStart",
   // 5-4
   "tierPriceInvalid", "tierCapacityInvalid", "tierPriceWindows",
+  // B3-3/B4
+  "billingCardUnavailable", "billingKeyReused", "billingPackGone", "billingNoAccount", "billingNotCardPayable",
+  "billingPayerInvalid", "billingTerms", "billingFxMissing",
 ];
 
 /**
@@ -246,6 +258,20 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "tier.schedule_requires_fixed_mode": "tierPriceWindows",
   "tier.invalid_sale_window_start": "tierSaleWindow",
   "tier.invalid_sale_window_end": "tierSaleWindow",
+  // B3-3/B4: billing account routes
+  "billing.card_payment_unavailable": "billingCardUnavailable",
+  "billing.idempotency_key_reused": "billingKeyReused",
+  "billing.idempotency_key_required": "invalid",
+  "billing.pack_not_found": "billingPackGone",
+  "billing.invoice_not_found": "notFound",
+  "billing.invoice_not_card_payable": "billingNotCardPayable",
+  "billing.invalid_payer": "billingPayerInvalid",
+  "billing.account_not_found": "billingNoAccount",
+  "billing.terms_unavailable": "billingTerms",
+  "billing.quote_unavailable": "billingTerms",
+  "billing.fx_rate_missing": "billingFxMissing",
+  "billing.invalid_payment_method": "invalid",
+  "billing.bad_request": "invalid",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",
