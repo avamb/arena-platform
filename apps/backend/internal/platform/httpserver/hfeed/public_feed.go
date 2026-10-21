@@ -184,6 +184,15 @@ type publicFeedTierResponse struct {
 	// null when the category owns no place at all (a ledger-only session),
 	// in which case the widget falls back to Capacity as before.
 	Available *int `json:"available"`
+	// ServiceChargeMinor / SeatedServiceChargeMinor are the platform's
+	// commission per ticket of this category at CurrentPrice, for a general
+	// admission ticket and for an assigned seat, when the organizer's billing
+	// terms make the buyer pay it (fee_mode buyer_pays); 0 otherwise. The
+	// checkout adds it to the service charge on top of service_fee_percent,
+	// so the widget's cart sheet can show the total before the payment page
+	// does. checkout/quote stays the authority on the amount.
+	ServiceChargeMinor       int64 `json:"service_charge_minor"`
+	SeatedServiceChargeMinor int64 `json:"seated_service_charge_minor"`
 }
 
 func publicFeedTierFromRow(t gen.TicketTierRow) publicFeedTierResponse {
@@ -852,6 +861,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 							placeStats = nil
 						}
 						now := time.Now().UTC()
+						buyerCharge := h.feedBuyerCharge(ctx, event.OrgID, sess.ID, now)
 						for _, tier := range tiers {
 							tr := publicFeedTierFromRow(tier)
 							if eff, ok := effPrices[tier.ID]; ok {
@@ -861,6 +871,8 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 									tr.NextPriceChangeAt = &s
 								}
 							}
+							tr.ServiceChargeMinor = buyerCharge.PerTicket(tr.Currency, tr.CurrentPrice, false)
+							tr.SeatedServiceChargeMinor = buyerCharge.PerTicket(tr.Currency, tr.CurrentPrice, true)
 							tr.Available = publicFeedTierAvailable(hcheckout.CapSaleWindow(tier, salesEndOf(sess)), placeStats, now)
 							sessResp.Tiers = append(sessResp.Tiers, tr)
 						}

@@ -565,7 +565,14 @@ func (h *Handler) checkKDPQuote(ctx context.Context, w http.ResponseWriter, req 
 	}
 
 	feePercent := cartFeePercent(pc.cc.channel)
-	charge := feeChargeMinor(snap.sum-disc.total, feePercent)
+	// A category quote has no seats: the buyer commission is the
+	// general-admission rate (the picker quotes GA categories).
+	commission, ok := h.snapCommission(ctx, pc.cc.orgID, snap, snap.sum-disc.total)
+	if !ok {
+		h.writeCartTransient(w, req, pc.cc)
+		return
+	}
+	charge := cartChargeMinor(snap.sum-disc.total, feePercent, commission)
 	resp := bil24OK(req.Command, map[string]any{
 		"promoCode":      code,
 		"promoApplied":   v.errCode == "" && disc.total > 0,

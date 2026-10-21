@@ -97,7 +97,7 @@ func UpdateOrderFromCheckout(ctx context.Context, q UpdateStore, in UpdateInput)
 	if err := q.DeleteOrderItemsByOrder(ctx, order.ID); err != nil {
 		return CreateResult{}, fmt.Errorf("ordering: clear order items: %w", err)
 	}
-	items, err := writeOrderItems(ctx, q, order.ID, units, discount, charge)
+	items, err := writeOrderItems(ctx, q, order.ID, units, subtotal, discount, charge, *cs.Currency, in.UnitServiceCharge)
 	if err != nil {
 		return CreateResult{}, err
 	}

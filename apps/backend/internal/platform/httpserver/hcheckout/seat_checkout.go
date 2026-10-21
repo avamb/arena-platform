@@ -154,6 +154,7 @@ func buildSeatedPricingLines(seats []gen.SessionSeatRow, tierPrice map[string]in
 	type key struct {
 		tierID    string
 		unitPrice int64
+		seated    bool
 	}
 	agg := make(map[key]int32, len(seats))
 	for _, s := range seats {
@@ -162,7 +163,7 @@ func buildSeatedPricingLines(seats []gen.SessionSeatRow, tierPrice map[string]in
 			tid = s.TierID.String()
 		}
 		unit := tierPrice[tid] // 0 for missing (free) tiers
-		k := key{tierID: tid, unitPrice: unit}
+		k := key{tierID: tid, unitPrice: unit, seated: s.Kind == "seat"}
 		agg[k]++
 	}
 
@@ -172,13 +173,17 @@ func buildSeatedPricingLines(seats []gen.SessionSeatRow, tierPrice map[string]in
 			TierID:    k.tierID,
 			Quantity:  qty,
 			UnitPrice: k.unitPrice,
+			Seated:    k.seated,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].TierID != out[j].TierID {
 			return out[i].TierID < out[j].TierID
 		}
-		return out[i].UnitPrice < out[j].UnitPrice
+		if out[i].UnitPrice != out[j].UnitPrice {
+			return out[i].UnitPrice < out[j].UnitPrice
+		}
+		return !out[i].Seated && out[j].Seated
 	})
 	return out
 }

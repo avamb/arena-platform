@@ -114,9 +114,6 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		))
 		return
 	}
-	// Reprice with the channel's own service charge (see channelPricingRules),
-	// read here on the pool, before the transaction below.
-	pricingRules := h.channelPricingRules(ctx, cs.OrgID, cs.ChannelID)
 
 	// ── 3. Guard: non-recoverable terminal states ─────────────────────────────
 	switch cs.State {
@@ -148,6 +145,15 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"checkout.reservation_failed", "We could not load your hold. Try again in a minute.", r,
 		))
+		return
+	}
+
+	// Reprice with the channel's own service charge plus a buyer_pays
+	// organizer's commission (cartPricingRules), read here on the pool, before
+	// the transaction below.
+	pricingRules, pricingOK := h.cartPricingRules(ctx, cs.OrgID, cs.ChannelID, origRes.SessionID)
+	if !pricingOK {
+		writePricingUnavailable(w, r)
 		return
 	}
 

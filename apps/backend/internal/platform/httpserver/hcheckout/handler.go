@@ -51,6 +51,17 @@ type PricingRules struct {
 	// TaxRate is the applicable sales/VAT tax in basis points.
 	// Applied to (subtotal - discount). 0 = tax-exempt.
 	TaxRate int64
+
+	// BuyerCharge is the platform's commission the buyer pays per ticket when
+	// the organizer's billing terms say fee_mode buyer_pays
+	// (billing.BuyerCharge.PerTicket): the amount for ONE ticket of a line,
+	// given the cart currency, the line's unit price before the promo code and
+	// whether the ticket is an assigned seat. nil = no commission (the default
+	// and organizer_pays). It is added ON TOP of PlatformFeeRate, which stays
+	// the channel's (the organizer's) own percentage, and never enters the
+	// percentage's base: there is no fee on the fee. A cart whose amount after
+	// the promo code is 0 pays no commission, so a free checkout stays free.
+	BuyerCharge func(currency string, unitPrice int64, seated bool) int64
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,16 +83,20 @@ type PricingRules struct {
 // UnitPrice / Quantity fields are populated with the weighted-average unit
 // price and total quantity so single-tier callers keep the same shape.
 type PricingBreakdown struct {
-	UnitPrice   int64             `json:"unit_price"`   // price per single ticket (weighted avg on multi-line)
-	Quantity    int32             `json:"quantity"`     // number of tickets (sum across lines)
-	Subtotal    int64             `json:"subtotal"`     // Σ (line.UnitPrice × line.Quantity)
-	Discount    int64             `json:"discount"`     // promo discount (≥ 0, ≤ Subtotal)
-	PlatformFee int64             `json:"platform_fee"` // platform service charge
-	ProviderFee int64             `json:"provider_fee"` // payment-provider processing fee
-	Tax         int64             `json:"tax"`          // sales / VAT tax
-	Total       int64             `json:"total"`        // all-in amount the customer pays
-	Currency    string            `json:"currency"`     // ISO 4217 currency code
-	Lines       []PricingLineItem `json:"lines,omitempty"`
+	UnitPrice   int64 `json:"unit_price"`   // price per single ticket (weighted avg on multi-line)
+	Quantity    int32 `json:"quantity"`     // number of tickets (sum across lines)
+	Subtotal    int64 `json:"subtotal"`     // Σ (line.UnitPrice × line.Quantity)
+	Discount    int64 `json:"discount"`     // promo discount (≥ 0, ≤ Subtotal)
+	PlatformFee int64 `json:"platform_fee"` // service charge: channel percentage + PlatformCommission
+	// PlatformCommission is the part of PlatformFee that is the platform's
+	// commission paid by the buyer (fee_mode buyer_pays, PricingRules.
+	// BuyerCharge); 0 otherwise. Informational: PlatformFee already includes it.
+	PlatformCommission int64             `json:"platform_commission"`
+	ProviderFee        int64             `json:"provider_fee"` // payment-provider processing fee
+	Tax                int64             `json:"tax"`          // sales / VAT tax
+	Total              int64             `json:"total"`        // all-in amount the customer pays
+	Currency           string            `json:"currency"`     // ISO 4217 currency code
+	Lines              []PricingLineItem `json:"lines,omitempty"`
 }
 
 // PricingLineItem is one row of a multi-line pricing breakdown. Every seated
@@ -105,6 +120,10 @@ type PricingLineInput struct {
 	TierID    string
 	Quantity  int32
 	UnitPrice int64
+	// Seated marks a line of assigned seats (session_seats.kind 'seat'), which
+	// the buyer's commission may rate differently from a general-admission
+	// ticket. Read only by PricingRules.BuyerCharge.
+	Seated bool
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -209,7 +228,8 @@ func ComputePricingLines(lines []PricingLineInput, discount int64, currency stri
 	}
 
 	discounted := subtotal - discount
-	platformFee := discounted * rules.PlatformFeeRate / 10_000
+	commission := LinesCommission(lines, discounted, currency, rules)
+	platformFee := discounted*rules.PlatformFeeRate/10_000 + commission
 	providerFee := discounted * rules.ProviderFeeRate / 10_000
 	tax := discounted * rules.TaxRate / 10_000
 	total := discounted + platformFee + providerFee + tax
@@ -233,7 +253,31 @@ func ComputePricingLines(lines []PricingLineInput, discount int64, currency stri
 		Total:       total,
 		Currency:    currency,
 		Lines:       out,
+
+		PlatformCommission: commission,
 	}
+}
+
+// LinesCommission is the buyer's commission on a priced cart: the sum over
+// its lines of quantity × rules.BuyerCharge(currency, unit price, seated).
+// It is 0 without a BuyerCharge hook and for a cart whose amount after the
+// promo code (discounted) is 0. ComputePricingLines adds it to the platform
+// fee; the Bil24 gateway, which re-states the percentage with its own
+// rounding, keeps it as is (applyGatewayCharge).
+func LinesCommission(lines []PricingLineInput, discounted int64, currency string, rules PricingRules) int64 {
+	if rules.BuyerCharge == nil || discounted <= 0 {
+		return 0
+	}
+	var sum int64
+	for _, l := range lines {
+		if l.Quantity <= 0 {
+			continue
+		}
+		if c := rules.BuyerCharge(currency, l.UnitPrice, l.Seated); c > 0 {
+			sum += c * int64(l.Quantity)
+		}
+	}
+	return sum
 }
 
 // Handler holds the shared dependencies for all checkout HTTP handlers.

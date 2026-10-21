@@ -63,6 +63,9 @@ import (
 type orderUnit struct {
 	tierID uuid.UUID
 	price  int64
+	// seated is session_seats.kind = 'seat' (a buyer_pays commission may
+	// rate an assigned seat differently); false for a GA unit.
+	seated bool
 }
 
 // handleBil24CreateOrderExtSession is the wired CREATE_ORDER_EXT. The stub in
@@ -191,11 +194,16 @@ func (h *Handler) handleBil24CreateOrderExtSession(w http.ResponseWriter, r *htt
 		}
 	}
 
+	// A buyer_pays organizer's commission joins the channel percentage
+	// (buyer_charge.go); the order then carries it per ticket.
+	bc, ok := h.buyerChargeFor(ctx, cc.orgID, cc.sessionID)
+	if !ok {
+		h.orderTransient(w, req, cc, "buyer commission lookup failed", errBuyerChargeUnavailable)
+		return
+	}
 	bd := hcheckout.ComputePricingLines(
 		orderPricingLines(units), discount, currency,
-		// PlatformFeeRate is in basis points, fee_percent is a percentage:
-		// percent × 100 = bp (percentScale, not a money conversion).
-		hcheckout.PricingRules{PlatformFeeRate: int64(cartFeePercent(cc.channel) * percentScale)},
+		gatewayPricingRules(cartFeePercent(cc.channel), bc),
 	)
 	// ComputePricingLines FLOORS the basis-point fee (`discounted * rate /
 	// 10_000`), which is the platform-wide rule for the REST/widget checkout.
@@ -211,7 +219,7 @@ func (h *Handler) handleBil24CreateOrderExtSession(w http.ResponseWriter, r *htt
 		bd = complimentaryBreakdown(bd)
 	}
 
-	h.orderPersist(ctx, w, req, cc, sess, res, units, bd, promoCodeID)
+	h.orderPersist(ctx, w, req, cc, sess, res, units, bd, promoCodeID, bc.Func())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -538,7 +546,7 @@ func expandOrderUnits(items []gen.ReservationGAItemRow, seats []gen.SessionSeatR
 		if !ok {
 			price = pricing.price[*s.TierID]
 		}
-		units = append(units, orderUnit{tierID: *s.TierID, price: price})
+		units = append(units, orderUnit{tierID: *s.TierID, price: price, seated: s.Kind == "seat"})
 	}
 	return units
 }
@@ -547,13 +555,14 @@ func expandOrderUnits(items []gen.ReservationGAItemRow, seats []gen.SessionSeatR
 // ComputePricingLines produces a stable, per-tier breakdown.
 func orderPricingLines(units []orderUnit) []hcheckout.PricingLineInput {
 	type key struct {
-		tier  uuid.UUID
-		price int64
+		tier   uuid.UUID
+		price  int64
+		seated bool
 	}
 	order := make([]key, 0, 4)
 	qty := make(map[key]int32, 4)
 	for _, u := range units {
-		k := key{u.tierID, u.price}
+		k := key{u.tierID, u.price, u.seated}
 		if _, seen := qty[k]; !seen {
 			order = append(order, k)
 		}
@@ -562,7 +571,7 @@ func orderPricingLines(units []orderUnit) []hcheckout.PricingLineInput {
 	out := make([]hcheckout.PricingLineInput, 0, len(order))
 	for _, k := range order {
 		out = append(out, hcheckout.PricingLineInput{
-			TierID: k.tier.String(), Quantity: qty[k], UnitPrice: k.price,
+			TierID: k.tier.String(), Quantity: qty[k], UnitPrice: k.price, Seated: k.seated,
 		})
 	}
 	return out
@@ -642,6 +651,7 @@ func (h *Handler) orderPersist(
 	units []orderUnit,
 	bd hcheckout.PricingBreakdown,
 	promoCodeID *uuid.UUID,
+	unitServiceCharge func(currency string, unitPrice int64, seated bool) int64,
 ) {
 	tx, err := h.orderDeps.Pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -721,6 +731,8 @@ func (h *Handler) orderPersist(
 		BuyerPhone:        optionalString(req.Phone),
 		TierUnitPrices:    orderTierPrices(units),
 		ClientReported:    orderClientReported(req),
+		// A buyer_pays commission rides each ticket's charge in full.
+		UnitServiceCharge: unitServiceCharge,
 	}
 
 	order, err := h.orderWriteAggregate(ctx, txq, in, customerID, cc, res)
@@ -818,6 +830,7 @@ var errOrderKindChanged = errors.New("hbil24: order cannot switch between paid a
 func complimentaryBreakdown(bd hcheckout.PricingBreakdown) hcheckout.PricingBreakdown {
 	bd.Discount = bd.Subtotal
 	bd.PlatformFee = 0
+	bd.PlatformCommission = 0
 	bd.ProviderFee = 0
 	bd.Tax = 0
 	bd.Total = 0

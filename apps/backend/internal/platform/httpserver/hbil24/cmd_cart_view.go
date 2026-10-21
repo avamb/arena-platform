@@ -319,6 +319,9 @@ type cartLine struct {
 	// sessionID is the PLATFORM event session of this unit — the scope a
 	// session-bound promo code is checked against (migration 0108).
 	sessionID uuid.UUID
+	// seated is session_seats.kind = 'seat': the buyer commission of a
+	// buyer_pays organizer may rate an assigned seat differently.
+	seated bool
 }
 
 // cartSnapshot is the whole cart of one gateway session, read once and shared
@@ -441,6 +444,7 @@ func (h *Handler) collectCart(ctx context.Context, cc cartCtx) (cartSnapshot, er
 				price:           price,
 				tierID:          tierID,
 				sessionID:       res.SessionID,
+				seated:          s.Kind == "seat",
 			})
 		}
 
@@ -483,7 +487,12 @@ func (h *Handler) writeCartResponse(ctx context.Context, w http.ResponseWriter, 
 	// totalSum = sum - discount + charge. The whole computation runs in minor
 	// units (spec 20 §2.2) and is converted to the wire's major units once.
 	var discount int64
-	charge := feeChargeMinor(sum-discount, cartFeePercent(cc.channel))
+	commission, ok := h.snapCommission(ctx, cc.orgID, snap, sum-discount)
+	if !ok {
+		h.writeCartTransient(w, req, cc)
+		return
+	}
+	charge := cartChargeMinor(sum-discount, cartFeePercent(cc.channel), commission)
 	totalSum := sum - discount + charge
 
 	extra := map[string]any{
@@ -538,7 +547,9 @@ func feeChargeMinor(netMinor int64, feePercent float64) int64 {
 // (documented on CheckoutPricing.platform_fee in openapi.yaml), while this is
 // a gateway-local convention that spec 20 §5 pins by example.
 func applyGatewayCharge(bd hcheckout.PricingBreakdown, feePercent float64) hcheckout.PricingBreakdown {
-	bd.PlatformFee = feeChargeMinor(bd.Subtotal-bd.Discount, feePercent)
+	// The buyer commission (PlatformCommission) is whole minor units per
+	// ticket: it survives the re-statement unchanged.
+	bd.PlatformFee = cartChargeMinor(bd.Subtotal-bd.Discount, feePercent, bd.PlatformCommission)
 	bd.Total = bd.Subtotal - bd.Discount + bd.PlatformFee + bd.ProviderFee + bd.Tax
 	return bd
 }

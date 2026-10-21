@@ -165,7 +165,11 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		))
 		return
 	}
-	pricingRules := h.channelPricingRules(ctx, checkCtx.OrgID, checkCtx.SalesChannelID)
+	pricingRules, ok := h.cartPricingRules(ctx, checkCtx.OrgID, checkCtx.SalesChannelID, sessionID)
+	if !ok {
+		writePricingUnavailable(w, r)
+		return
+	}
 
 	// ── GA lines: the SAME resolution checkout/start uses ──────────────────────
 	pricedGA, priceErr := h.priceGAItems(ctx, sessionID, req.GaItems, parsedGATierIDs)

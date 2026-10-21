@@ -191,7 +191,7 @@ func rateTicketSold(terms Terms, ev Event, c Charge) (Charge, error) {
 		return c, nil
 	}
 	if terms.FeeMode() == FeeModeBuyerPays {
-		return rateBuyerPays(terms, ev, net, c)
+		return rateBuyerPays(terms, ev, c)
 	}
 	return rateTicketAtList(terms, ev, net, c)
 }
@@ -222,19 +222,28 @@ func StandardTicketCharge(terms Terms, ev Event) (Charge, error) {
 	return rateTicketAtList(terms, ev, net, c)
 }
 
-// rateBuyerPays charges what the buyer paid as the service charge on this
-// ticket: in this mode the service charge IS the platform's commission and
-// the organizer keeps the ticket price. The rate the price list (or the
-// individual rate) would have charged is kept in inputs as standard_minor, so
-// a report can show a service charge set below the platform's rate. A
-// service charge in another currency than the account's waits for an
-// exchange rate (fx_rate_missing), like every other cross-currency amount.
-func rateBuyerPays(terms Terms, ev Event, net int64, c Charge) (Charge, error) {
-	std, err := rateTicketAtList(terms, ev, net, Charge{
+// rateBuyerPays charges the platform's commission the buyer paid inside the
+// service charge on this ticket: the organizer keeps the ticket price. The
+// checkout adds the commission (BuyerCharge.PerTicket, the rate of the ticket
+// at its price BEFORE the promo code) ON TOP of the channel's own fee_percent,
+// which stays the organizer's, and the order puts each ticket's commission in
+// full into order_items.charge before spreading the percentage. So the
+// charge is min(service charge, standard_minor): the platform never takes the
+// organizer's percentage, and a service charge below the rate (a sale priced
+// without the commission) is charged as paid, the gap visible through
+// standard_minor. When the rate cannot be computed the service charge is
+// charged as paid. A service charge in another currency than the account's
+// waits for an exchange rate (fx_rate_missing), like every other
+// cross-currency amount.
+func rateBuyerPays(terms Terms, ev Event, c Charge) (Charge, error) {
+	listEv := ev
+	listEv.DiscountMinor = 0
+	std, err := rateTicketAtList(terms, listEv, ev.UnitPriceMinor, Charge{
 		Currency: c.Currency, PriceListID: c.PriceListID, PriceListVersion: c.PriceListVersion,
 		Inputs: map[string]int64{},
 	})
-	if err == nil && std.Deferred == "" {
+	stdKnown := err == nil && std.Deferred == ""
+	if stdKnown {
 		c.Inputs["standard_minor"] = std.AmountMinor
 	}
 	c.RuleType = RuleBuyerServiceCharge
@@ -244,6 +253,9 @@ func rateBuyerPays(terms Terms, ev Event, net int64, c Charge) (Charge, error) {
 		return c, nil
 	}
 	c.AmountMinor = ev.ServiceChargeMinor
+	if stdKnown && std.AmountMinor < c.AmountMinor {
+		c.AmountMinor = std.AmountMinor
+	}
 	return c, nil
 }
 
