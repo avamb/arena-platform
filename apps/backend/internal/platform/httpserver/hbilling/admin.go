@@ -62,6 +62,10 @@ type AdminHandler struct {
 	audit   audit.Writer
 	logger  *slog.Logger
 	now     func() time.Time
+	// stripe is the platform Stripe account (admin_invoices.go); nil when
+	// BILLING_STRIPE_SECRET_KEY is not set.
+	stripe        PlatformStripe
+	returnBaseURL string
 }
 
 // NewAdmin builds the handler. A nil pool makes every route answer 503.
