@@ -8,10 +8,11 @@
  * day, so the UTC date is the one the organizer chose, whatever the zone.
  */
 import type { PromoCodeItem } from "@/lib/api/types";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import type { Locale, Params } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import { isClubCode, promoCurrencyOf } from "@/lib/promo";
+import { promoZone } from "@/lib/promoScope";
 
 type T = (key: MessageKey, params?: Params) => string;
 
@@ -33,10 +34,26 @@ export function promoLimitsText(item: PromoCodeItem, t: T): string {
   return parts.length === 0 ? t("promo.limit.none") : parts.join(", ");
 }
 
+/** A code made by the wizard or the bot ends at 23:59:59 UTC of the day the organizer chose. */
+function endsAtUtcDayEnd(iso: string): boolean {
+  return iso.slice(11, 19) === "23:59:59";
+}
+
+/**
+ * The code's dates. A day the organizer chose is a UTC calendar day. Any other
+ * instant (for example "extended to the end of sales") is shown in the zone
+ * of the venues the code is bound to, with the time, so it reads like the
+ * sales end next to it.
+ */
+function validDate(iso: string, item: PromoCodeItem, locale: Locale): string {
+  if (item.sessions.length === 0 || endsAtUtcDayEnd(iso)) return formatDate(iso, "UTC", locale);
+  return formatDateTime(iso, promoZone(item), locale);
+}
+
 export function promoValidText(item: PromoCodeItem, t: T, locale: Locale): string {
   const parts: string[] = [];
-  if (item.valid_from !== null) parts.push(t("promo.valid.from", { date: formatDate(item.valid_from, "UTC", locale) }));
-  if (item.valid_until !== null) parts.push(t("promo.valid.until", { date: formatDate(item.valid_until, "UTC", locale) }));
+  if (item.valid_from !== null) parts.push(t("promo.valid.from", { date: validDate(item.valid_from, item, locale) }));
+  if (item.valid_until !== null) parts.push(t("promo.valid.until", { date: validDate(item.valid_until, item, locale) }));
   return parts.length === 0 ? t("promo.valid.none") : parts.join(" ");
 }
 

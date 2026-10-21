@@ -8,21 +8,22 @@
  * here only: the API cannot clear them afterwards.
  */
 import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createPromoCode, listPromoCodes, listSessions } from "@/lib/api/endpoints";
+import { createPromoCode, fetchPromoCode, listPromoCodes, listSessions } from "@/lib/api/endpoints";
 import { filterEvents } from "@/lib/events";
 import { formatMoney } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
-import { buildCreateRequest, dropOtherCurrencySessions, parseAmountMinor, readPromoForm, type PromoDraft, type PromoFieldErrors, type PromoFormRaw } from "@/lib/promo";
+import { buildCreateRequest, currencyDigits, dropOtherCurrencySessions, parseAmountMinor, readPromoForm, type PromoDraft, type PromoFieldErrors, type PromoFormRaw } from "@/lib/promo";
 import { DateField } from "@/components/DateField";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { PromoSessionPicker } from "@/components/PromoSessionPicker";
 import { useOrg } from "@/screens/OrgLayout";
 import { useEventsList } from "@/screens/EventsScreen";
 import { NoPromoAccess } from "@/screens/PromoNoAccess";
-import { promoDiscountText, promoLimitsText, promoSessionsText } from "@/lib/promoView";
+import { promoDiscountText, promoLimitsText, promoSessionsText, promoValidText } from "@/lib/promoView";
+import { copySeed, eventNames } from "@/lib/promoScope";
 import type { PromoCodeItem } from "@/lib/api/types";
 
 const START: PromoFormRaw = { code: "", type: "percent", value: "", currency: "", all: true, total: "", per: "", until: null, status: "active" };
@@ -49,6 +50,20 @@ function CreateForm() {
   const [droppedNote, setDroppedNote] = useState<{ count: number; fixed: string } | null>(null);
   const [errors, setErrors] = useState<PromoFieldErrors>({});
   const [draft, setDraft] = useState<PromoDraft | null>(null); // set = the check screen
+  // A copy starts from another code's discount and limits, never its sessions or last day: the person
+  // must choose both again and tick that they did (the way one code ended up on the wrong event).
+  const { copyFrom } = useSearch({ from: "/o/$orgId/promo/new" });
+  const original = useQuery({ queryKey: ["promoCode", orgId, copyFrom], queryFn: () => fetchPromoCode(orgId, copyFrom ?? ""), enabled: copyFrom !== undefined });
+  const [seeded, setSeeded] = useState(false);
+  const [copyConfirmed, setCopyConfirmed] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+  useEffect(() => {
+    if (seeded || original.data === undefined) return;
+    const o = original.data.promo_code;
+    const seed = copySeed(o, currencyDigits(o.currency ?? ""));
+    setRaw({ ...START, ...seed, all: false, until: null });
+    setSeeded(true);
+  }, [seeded, original.data]);
 
   const names = useQuery({ queryKey: ["promoCodes", orgId], queryFn: () => listPromoCodes(orgId) });
   const existing = useMemo(() => (names.data?.promo_codes ?? []).map((c) => c.code), [names.data]);
@@ -92,6 +107,11 @@ function CreateForm() {
     e.preventDefault();
     const read = readPromoForm(raw, sessionIds, existing, sessionCurrencies);
     setErrors(read.errors);
+    setCopyError(false);
+    if (copyFrom !== undefined && !copyConfirmed) {
+      setCopyError(true);
+      return;
+    }
     create.reset();
     if (read.draft !== null) setDraft(read.draft);
   };
@@ -171,7 +191,18 @@ function CreateForm() {
           {t("promo.back")}
         </Link>
       </p>
-      <h1 id="promo-create-title">{t("promo.create.title")}</h1>
+      <h1 id="promo-create-title">{original.data !== undefined ? t("promo.copy.title", { code: original.data.promo_code.code }) : t("promo.create.title")}</h1>
+      {original.data !== undefined && (
+        <div className="notice" data-testid="promo-copy-note">
+          <p>{t("promo.copy.note")}</p>
+          <p className="muted">
+            {t("promo.copy.was", {
+              scope: original.data.promo_code.sessions.length === 0 ? t("promo.sessions.all") : eventNames(original.data.promo_code).join(", "),
+              until: promoValidText({ ...original.data.promo_code, valid_from: null }, t, locale),
+            })}
+          </p>
+        </div>
+      )}
       <form onSubmit={onReview} noValidate data-testid="promo-form">
         <label htmlFor={`${ids}-code`}>{t("promo.f.code")}</label>
         <input
@@ -336,6 +367,19 @@ function CreateForm() {
           ))}
         </fieldset>
 
+        {copyFrom !== undefined && (
+          <>
+            <label className="check">
+              <input type="checkbox" checked={copyConfirmed} onChange={(e) => setCopyConfirmed(e.target.checked)} data-testid="promo-copy-confirm" />
+              <span>{t("promo.copy.confirm")}</span>
+            </label>
+            {copyError && (
+              <p className="field-error" role="alert" data-testid="promo-copy-error">
+                {t("promo.err.copyConfirm")}
+              </p>
+            )}
+          </>
+        )}
         <div className="actions">
           <button type="submit" className="btn btn-primary" data-testid="promo-review">
             {t("promo.review")}
