@@ -21,7 +21,7 @@ func TestCartChargeMinor_CommissionJoinsTheRoundedPercentage(t *testing.T) {
 		t.Errorf("no fee, no commission: %d", got)
 	}
 
-	commission := func(currency string, price int64, seated bool) int64 {
+	commission := func(_ string, price int64, _ bool) int64 {
 		if price <= 0 {
 			return 0
 		}
