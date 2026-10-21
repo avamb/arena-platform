@@ -75,6 +75,9 @@ other = "סכום ההזמנה נמוך מהמינימום של קוד ההטב�
 ["bil24.promo_wrong_session"]
 other = "קוד ההטבה הזה לא תקף לאירוע הזה."
 
+["bil24.promo_wrong_session_hint"]
+other = "קוד ההטבה הזה תקף עבור: {{.events}}. בחרו כרטיסים לאירוע הזה כדי להשתמש בו."
+
 ["bil24.promo_currency_mismatch"]
 other = "קוד ההטבה הזה מיועד למטבע אחר."
 

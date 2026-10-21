@@ -84,6 +84,9 @@ other = "The order total is below the minimum for this promo code. Add tickets t
 ["bil24.promo_wrong_session"]
 other = "This promo code does not work for this event."
 
+["bil24.promo_wrong_session_hint"]
+other = "This promo code works on: {{.events}}. Choose tickets for that event to use it."
+
 ["bil24.promo_currency_mismatch"]
 other = "This promo code is for another currency."
 

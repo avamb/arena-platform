@@ -281,7 +281,7 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		discount, _, errCode = h.applyPromoDiscount(ctx, h.promoQueries, promoRow,
 			hcheckout.TierLinesForSession(lines, sessionID.String(), currency), "")
 		if errCode != "" {
-			h.refusePromo(w, r, promoAttempt, errCode)
+			h.refusePromoFor(w, r, promoAttempt, errCode, promoRow)
 			return
 		}
 		// A code that fits but takes nothing off (free tickets, an eligible

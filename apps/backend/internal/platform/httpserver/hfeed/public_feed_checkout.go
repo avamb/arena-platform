@@ -518,7 +518,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		var promoErrCode string
 		gaDiscount, gaPromoCodeID, promoErrCode = h.applyPromoDiscount(ctx, h.promoQueries, promoRow, gaPromoLines, req.HolderEmail)
 		if promoErrCode != "" {
-			h.refusePromo(w, r, promoAttempt, promoErrCode)
+			h.refusePromoFor(w, r, promoAttempt, promoErrCode, promoRow)
 			return
 		}
 	}
@@ -785,7 +785,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			// Same neutral verdicts as the quote and the general-admission
 			// branch, and the refusal is counted against the refused-code
 			// budget. The deferred rollback releases the holds.
-			h.refusePromo(w, r, promoAttempt, promoErrCode)
+			h.refusePromoFor(w, r, promoAttempt, promoErrCode, promoRow)
 			return
 		}
 

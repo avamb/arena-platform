@@ -11761,6 +11761,12 @@ type PromoCodeItem struct {
 	// OrgId Organization that owns the promo code.
 	OrgId openapi_types.UUID `json:"org_id"`
 
+	// Sessions The sessions the code is bound to (`applies_to_session_ids`), with
+	// the event name, the start, the end of sales and the venue's time
+	// zone, oldest first. Empty when the code applies to every session
+	// of the organization.
+	Sessions []PromoCodeScopeSession `json:"sessions"`
+
 	// Status Lifecycle status. `paused` codes return 422
 	// `promo.not_active` from `promo-validate`. Defaults to
 	// `active` on create when omitted.
@@ -11781,6 +11787,13 @@ type PromoCodeItem struct {
 	// bound. Validation returns 422 `promo.expired` for requests
 	// after this instant.
 	ValidUntil *time.Time `json:"valid_until"`
+
+	// Warnings Non-blocking findings about the code's scope and validity window,
+	// recomputed on every read, create and update: the window ends
+	// before sales of a bound session end, starts after sales have
+	// begun, or a bound session is cancelled or already past. Empty
+	// when nothing looks wrong.
+	Warnings []PromoCodeWarning `json:"warnings"`
 }
 
 // PromoCodeItemDiscountType Either `percent` (1-100) or `fixed_amount`. Other values are
@@ -11798,6 +11811,50 @@ type PromoCodeItemStatus string
 type PromoCodeListResponse struct {
 	// PromoCodes All promo codes owned by the organization.
 	PromoCodes []PromoCodeItem `json:"promo_codes"`
+}
+
+// PromoCodeScopeSession One session a promo code is bound to, as the organizer reads it.
+type PromoCodeScopeSession struct {
+	// EventId The event the session belongs to.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// EventName Name of that event.
+	EventName string `json:"event_name"`
+
+	// SalesEndAt The last moment tickets of the session are sold (UTC).
+	SalesEndAt time.Time `json:"sales_end_at"`
+
+	// SalesStartAt Earliest sale-window start of the session's open categories; `null` when none has one.
+	SalesStartAt *time.Time `json:"sales_start_at"`
+
+	// SessionId The session.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// StartAt When the session starts (UTC).
+	StartAt time.Time `json:"start_at"`
+
+	// Status Session status; a deleted session reads `cancelled`.
+	Status string `json:"status"`
+
+	// Timezone IANA time zone of the session's venue, for showing the two times above.
+	Timezone string `json:"timezone"`
+}
+
+// PromoCodeWarning One non-blocking finding about a promo code.
+type PromoCodeWarning struct {
+	// Code One of `promo.warning.valid_until_before_sales_end`,
+	// `promo.warning.valid_from_after_sales_start`,
+	// `promo.warning.session_cancelled`, `promo.warning.session_past`.
+	Code string `json:"code"`
+
+	// EventName Name of that session's event.
+	EventName string `json:"event_name"`
+
+	// SessionId The bound session the finding is about.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// StartAt Start of that session (UTC).
+	StartAt time.Time `json:"start_at"`
 }
 
 // PromoRedemptionItem One redemption of a promo code, joined to the order it paid for.

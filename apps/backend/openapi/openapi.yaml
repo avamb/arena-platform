@@ -10903,6 +10903,8 @@ components:
         - status
         - created_at
         - updated_at
+        - sessions
+        - warnings
       properties:
         id:
           type: string
@@ -10975,6 +10977,25 @@ components:
           type: [string, "null"]
           format: date-time
           description: When the code was last redeemed; `null` when never.
+        sessions:
+          type: array
+          description: |
+            The sessions the code is bound to (`applies_to_session_ids`), with
+            the event name, the start, the end of sales and the venue's time
+            zone, oldest first. Empty when the code applies to every session
+            of the organization.
+          items:
+            $ref: "#/components/schemas/PromoCodeScopeSession"
+        warnings:
+          type: array
+          description: |
+            Non-blocking findings about the code's scope and validity window,
+            recomputed on every read, create and update: the window ends
+            before sales of a bound session end, starts after sales have
+            begun, or a bound session is cancelled or already past. Empty
+            when nothing looks wrong.
+          items:
+            $ref: "#/components/schemas/PromoCodeWarning"
         max_uses:
           type: [integer, "null"]
           format: int32
@@ -11040,6 +11061,64 @@ components:
         promo_code:
           description: The promo-code row.
           $ref: "#/components/schemas/PromoCodeItem"
+
+    PromoCodeScopeSession:
+      type: object
+      required: [session_id, event_id, event_name, start_at, sales_end_at, timezone, status, sales_start_at]
+      description: One session a promo code is bound to, as the organizer reads it.
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: The session.
+        event_id:
+          type: string
+          format: uuid
+          description: The event the session belongs to.
+        event_name:
+          type: string
+          description: Name of that event.
+        start_at:
+          type: string
+          format: date-time
+          description: When the session starts (UTC).
+        sales_end_at:
+          type: string
+          format: date-time
+          description: The last moment tickets of the session are sold (UTC).
+        timezone:
+          type: string
+          description: IANA time zone of the session's venue, for showing the two times above.
+        status:
+          type: string
+          description: Session status; a deleted session reads `cancelled`.
+        sales_start_at:
+          type: [string, "null"]
+          format: date-time
+          description: Earliest sale-window start of the session's open categories; `null` when none has one.
+
+    PromoCodeWarning:
+      type: object
+      required: [code, session_id, event_name, start_at]
+      description: One non-blocking finding about a promo code.
+      properties:
+        code:
+          type: string
+          description: |
+            One of `promo.warning.valid_until_before_sales_end`,
+            `promo.warning.valid_from_after_sales_start`,
+            `promo.warning.session_cancelled`, `promo.warning.session_past`.
+        session_id:
+          type: string
+          format: uuid
+          description: The bound session the finding is about.
+        event_name:
+          type: string
+          description: Name of that session's event.
+        start_at:
+          type: string
+          format: date-time
+          description: Start of that session (UTC).
 
     PromoCodeListResponse:
       type: object
