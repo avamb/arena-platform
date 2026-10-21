@@ -198,9 +198,9 @@ func rateTicketSold(terms Terms, ev Event, c Charge) (Charge, error) {
 
 // StandardTicketCharge is what one sold ticket of ev costs the organizer at
 // the price list (or the individual rate), whatever the fee mode. In
-// fee_mode buyer_pays it is the service charge per ticket that covers the
-// platform: the organizer sets that service charge on the sale so the buyer
-// pays it and the organizer keeps the ticket price. ev.Kind is ignored (a
+// fee_mode buyer_pays it is the commission per ticket the checkout adds to
+// the buyer's service charge (BuyerCharge.PerTicket), so the organizer keeps
+// the ticket price. ev.Kind is ignored (a
 // sold ticket is assumed); ev.OccurredAt must equal terms.At.
 func StandardTicketCharge(terms Terms, ev Event) (Charge, error) {
 	ev.Kind = KindTicketSold

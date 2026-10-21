@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { removeCartLine, cartTotal, cartServiceFee, cartItemCount, countdownSeconds, isTwoMinWarning, formatCountdown } from '../lib/cart.js';
+  import { removeCartLine, cartTotal, cartServiceFee, cartBuyerCommission, cartItemCount, countdownSeconds, isTwoMinWarning, formatCountdown } from '../lib/cart.js';
   import { getCheckoutI18n, interpolate, payButtonLabel, shouldShowWithdrawalNotice } from '../lib/checkout.js';
   import { sheetAmounts, formatAmount, formatDiscount } from '../lib/promo.js';
   import type { PromoQuote } from '../lib/promo.js';
@@ -20,6 +20,12 @@
      * buyer sees on the sheet what the payment page will ask for.
      */
     serviceFeePercent?: string | null;
+    /**
+     * The session's categories: their `service_charge_minor` is the
+     * platform's commission a buyer_pays organizer adds per ticket. It joins
+     * the channel percentage in the one "Service fee" line.
+     */
+    tiers?: import('../types.js').Tier[] | null;
     /**
      * The session's `show_withdrawal_notice`: print the "no right of
      * withdrawal" notice above the pay button.
@@ -79,7 +85,7 @@
     onCheckout: (values: BuyerFormValues) => void;
   }
   const {
-    cart, buyerFields, locale = 'en', serviceFeePercent = null, showWithdrawalNotice = false, consent = null, submitting = false, submitError = null,
+    cart, buyerFields, locale = 'en', serviceFeePercent = null, tiers = null, showWithdrawalNotice = false, consent = null, submitting = false, submitError = null,
     promoCode = null, promoQuote = null, cartKey = '', promoAvailable = false, promoExpanded = false, promoBusy = false, promoError = null, promoNote = null,
     onApplyPromo, onRemovePromo, onContinue,
     conflictKeys, onContinueWithoutConflicts,
@@ -90,7 +96,9 @@
   const p = $derived(getPromoStrings(locale));
   const count = $derived(cartItemCount(cart.lines));
   const total = $derived(cartTotal(cart.lines));
-  const localFee = $derived(cartServiceFee(total.amount, serviceFeePercent));
+  // One "Service fee" line: the channel percentage plus a buyer_pays
+  // organizer's platform commission, the sum the payment page charges.
+  const localFee = $derived(cartServiceFee(total.amount, serviceFeePercent) + cartBuyerCommission(cart.lines, tiers));
   // With an applied code the money rows are the platform's own quote of this
   // cart (the discount changes the service fee's base, so the sheet must not
   // work it out itself); without one they are the list prices and the same

@@ -186,6 +186,15 @@ export interface Tier {
   sale_window_start?: string | null;
   sale_window_end?: string | null;
   sort_order: number;
+  /**
+   * The platform's commission per ticket of this category at its current
+   * price (minor units), for a general-admission ticket and for an assigned
+   * seat, when the organizer's billing terms make the buyer pay it
+   * (fee_mode buyer_pays). 0 / absent otherwise. The checkout adds it to the
+   * service charge on top of `service_fee_percent`.
+   */
+  service_charge_minor?: number;
+  seated_service_charge_minor?: number;
 }
 
 /**

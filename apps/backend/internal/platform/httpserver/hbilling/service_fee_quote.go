@@ -1,9 +1,11 @@
 // service_fee_quote.go — GET /v1/organizations/{org_id}/billing/service-fee-quote
 // (billing.read). An organizer who wants the net ticket price lets the buyer
 // pay the platform's commission as the service charge (terms fee_mode
-// buyer_pays). This answers how large that service charge must be per ticket
-// at a given price: the price-list (or individual) rate of a sold ticket
-// right now, computed by the same rating code that bills the sale.
+// buyer_pays). This answers how large that commission is per ticket at a
+// given price: the price-list (or individual) rate of a sold ticket right
+// now, computed by the same rating code that bills the sale. The checkout
+// adds exactly this amount on top of the channel's fee_percent
+// (billing.BuyerCharge, hcheckout.PricingRules.BuyerCharge).
 package hbilling
 
 import (
