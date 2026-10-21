@@ -54,6 +54,7 @@ func newEventsFixture(t *testing.T) *eventsFixture {
 	t.Cleanup(func() {
 		bg := context.Background()
 		_, _ = pool.Exec(bg, `DELETE FROM charge_allocations WHERE charge_id IN (SELECT id FROM charges WHERE account_id = $1)`, acc.ID)
+		_, _ = pool.Exec(bg, `DELETE FROM credit_lots WHERE account_id = $1`, acc.ID)
 		_, _ = pool.Exec(bg, `DELETE FROM charge_reversals WHERE charge_id IN (SELECT id FROM charges WHERE account_id = $1)`, acc.ID)
 		_, _ = pool.Exec(bg, `DELETE FROM charges WHERE account_id = $1`, acc.ID)
 		_, _ = pool.Exec(bg, `DELETE FROM billable_events WHERE account_id = $1`, acc.ID)
@@ -356,7 +357,13 @@ func TestBillingEvents_AllocationShapeIsEnforced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lot := uuid.New()
+	var lot uuid.UUID
+	if err := f.pool.QueryRow(ctx, `INSERT INTO credit_lots (account_id, org_id, currency, kind, source,
+	        tier, unseated_rate_minor, seated_surcharge_minor, purchased_at, face_minor, remaining_minor)
+	        VALUES ($1, $2, 'EUR', 'purchased', 'adjustment', 1, 55, 35, now(), 100, 60) RETURNING id`,
+		f.account.ID, f.account.OrgID).Scan(&lot); err != nil {
+		t.Fatal(err)
+	}
 	ok, err := f.q.InsertChargeAllocation(ctx, gen.InsertChargeAllocationParams{
 		ChargeID: ch.ID, Kind: "purchased_lot", LotID: &lot, AmountMinor: 40, Currency: "EUR",
 	})

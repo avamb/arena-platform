@@ -34,6 +34,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/opswatchdog"
 )
 
@@ -45,6 +46,8 @@ const (
 	CheckReversalMismatch       = "reversal_mismatch"
 	CheckCollectLag             = "collect_lag"
 	CheckRateLag                = "rate_lag"
+	CheckCreditJournal          = "credit_journal_mismatch"
+	CheckCreditAllocations      = "credit_allocation_mismatch"
 )
 
 // Thresholds. Plain constants: they do not differ per deployment.
@@ -183,6 +186,8 @@ func (r *Reconciler) Run(ctx context.Context) (Report, error) {
 		{CheckReversalMismatch, r.reversalMismatch},
 		{CheckCollectLag, r.collectLag},
 		{CheckRateLag, r.rateLag},
+		{CheckCreditJournal, r.creditJournal},
+		{CheckCreditAllocations, r.creditAllocations},
 	}
 	var firstErr error
 	for _, st := range steps {
@@ -398,6 +403,53 @@ ORDER BY rv.id LIMIT 1000`, r.opts.Since, r.orgArg())
 	return nil
 }
 
+// 4a. Credits: every lot's remaining_minor is the signed sum of its journal
+// and the remaining_after of its last entry (41 section 6.10). Lots have no
+// event date, so the check is not bounded by the date X.
+func (r *Reconciler) creditJournal(ctx context.Context, rep *Report) error {
+	rows, err := gen.New(r.pool).ListCreditLotMismatches(ctx, r.orgArg(), 1000)
+	if err != nil {
+		return err
+	}
+	f := Finding{Check: CheckCreditJournal, PerOrg: map[uuid.UUID]int64{},
+		Note: "a credit lot's balance differs from its journal"}
+	for _, m := range rows {
+		f.add(m.OrgID, m.LotID)
+	}
+	rep.Counts[CheckCreditJournal] = int64(len(rows))
+	if f.Count > 0 {
+		rep.Findings = append(rep.Findings, f)
+	}
+	return nil
+}
+
+// 4b. Credits: what the journal consumed from a lot equals the charge
+// allocations naming it (41 section 6.10).
+func (r *Reconciler) creditAllocations(ctx context.Context, rep *Report) error {
+	rows, err := gen.New(r.pool).ListConsumeAllocationMismatches(ctx, r.orgArg(), 1000)
+	if err != nil {
+		return err
+	}
+	f := Finding{Check: CheckCreditAllocations, PerOrg: map[uuid.UUID]int64{},
+		Note: "credits consumed from a lot differ from the charge allocations naming it"}
+	for _, m := range rows {
+		f.add(m.OrgID, m.LotID)
+	}
+	rep.Counts[CheckCreditAllocations] = int64(len(rows))
+	if f.Count > 0 {
+		rep.Findings = append(rep.Findings, f)
+	}
+	return nil
+}
+
+func (f *Finding) add(org, id uuid.UUID) {
+	f.Count++
+	f.PerOrg[org]++
+	if len(f.Sample) < sampleIDs {
+		f.Sample = append(f.Sample, id)
+	}
+}
+
 // 5. Collect lag: the oldest source cursor against now. A pipeline that never
 // ran (no cursor at all) for longer than the lag threshold is behind too.
 func (r *Reconciler) collectLag(ctx context.Context, rep *Report) error {
@@ -471,6 +523,7 @@ func (r *Reconciler) publish(_ context.Context, rep Report) {
 var allChecks = []string{
 	CheckOrderItemsWithoutEvent, CheckTicketsWithoutEvent, CheckEventsWithoutCharge,
 	CheckReversalMismatch, CheckCollectLag, CheckRateLag,
+	CheckCreditJournal, CheckCreditAllocations,
 }
 
 // alertInput renders a finding as an alert without personal data.

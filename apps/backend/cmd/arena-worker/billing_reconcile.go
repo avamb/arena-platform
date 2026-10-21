@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	billingcredits "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/credits"
 	billingreconcile "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/reconcile"
 	billingusage "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/usage"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/clock"
@@ -52,6 +53,18 @@ func registerBillingReconcileHandler(reg *worker.Registry, pool *pgxpool.Pool, c
 		Scheduler: billingusage.NewPGScheduler(pool),
 		Logger:    logger,
 	}))
+
+	// billing.credit_expire takes what is left of expired bonus lots (task
+	// B3-2). Same switch: credits are spent only by the rating job.
+	var exp *billingcredits.Expirer
+	if !cfg.BillingCollectSince.IsZero() {
+		exp = billingcredits.NewExpirer(pool, nil, logger)
+	}
+	reg.Register(billingcredits.ExpireJobType, billingcredits.NewExpireHandler(billingcredits.HandlerOptions{
+		Expirer:   exp,
+		Scheduler: billingcredits.NewPGScheduler(pool),
+		Logger:    logger,
+	}))
 }
 
 // scheduleBillingReconcile seeds the first reconcile at start-up. Non-fatal:
@@ -65,5 +78,8 @@ func scheduleBillingReconcile(ctx context.Context, pool *pgxpool.Pool, cfg *conf
 	}
 	if err := billingusage.ScheduleInitialJob(ctx, pool); err != nil {
 		logger.Warn("could not schedule initial billing usage projection job", "error", err.Error())
+	}
+	if err := billingcredits.ScheduleInitialJob(ctx, pool); err != nil {
+		logger.Warn("could not schedule initial billing credit expire job", "error", err.Error())
 	}
 }

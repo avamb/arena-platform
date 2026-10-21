@@ -51,6 +51,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/bil24wire"
 	billingaccel "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/accel"
 	billingcollect "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/collect"
+	billingcredits "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/credits"
 	billingrate "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/rate"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
@@ -1008,7 +1009,11 @@ func buildBilling(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) (
 	if cfg.BillingCollectSince.IsZero() {
 		return collector, nil
 	}
-	return collector, billingrate.New(pool, billingrate.Options{Since: cfg.BillingCollectSince, Logger: logger})
+	return collector, billingrate.New(pool, billingrate.Options{
+		Since:   cfg.BillingCollectSince,
+		Settler: billingcredits.NewSettler(billingcredits.Options{}),
+		Logger:  logger,
+	})
 }
 
 // billingAccelLeg turns a possibly nil accelerator into a leg; a nil one is
