@@ -332,10 +332,14 @@ var orgIsolationAuditedSafe = map[string]string{
 
 	// hcheckout promo codes, hpayments payment configs, hbankaccounts, hapikeys,
 	// hbot invitations: queries scoped by (id, org_id).
-	"DELETE /v1/organizations/{org_id}/api-keys/{id}":                            "hapikeys",
-	"DELETE /v1/organizations/{org_id}/bank-accounts/{id}":                       "hbankaccounts",
-	"DELETE /v1/organizations/{org_id}/bot-invitations/{id}":                     "hbot",
-	"DELETE /v1/organizations/{org_id}/payment-configs/{id}":                     "hpayments",
+	"DELETE /v1/organizations/{org_id}/api-keys/{id}":        "hapikeys",
+	"DELETE /v1/organizations/{org_id}/bank-accounts/{id}":   "hbankaccounts",
+	"DELETE /v1/organizations/{org_id}/bot-invitations/{id}": "hbot",
+	"DELETE /v1/organizations/{org_id}/payment-configs/{id}": "hpayments",
+	// hpromoattempts: codeInOrg loads the code with GetPromoCodeByID(id, org_id) and every
+	// journal query is scoped by org_id; promo_attempts_integration_test.go drives a foreign org.
+	"GET /v1/organizations/{org_id}/promo-codes/{id}/attempts":                   "promo attempts",
+	"GET /v1/organizations/{org_id}/promo-codes/{id}/attempts/summary":           "promo attempts",
 	"DELETE /v1/organizations/{org_id}/promo-codes/{id}":                         "promo",
 	"GET /v1/organizations/{org_id}/payment-configs/{id}":                        "hpayments",
 	"GET /v1/organizations/{org_id}/promo-codes/{id}":                            "promo",

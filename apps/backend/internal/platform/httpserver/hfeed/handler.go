@@ -17,6 +17,7 @@ package hfeed
 
 import (
 	"context"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -121,6 +122,8 @@ type Handler struct {
 	// consent checkbox links to (P2, WithCheckoutConsent).
 	consentTermsURL   string
 	consentPrivacyURL string
+	// promoRec journals every promo-code check (migration 0158); nil = off.
+	promoRec *promoattempts.Recorder
 }
 
 // WithContactForm configures the hosted page's "Write to the organizer" form:

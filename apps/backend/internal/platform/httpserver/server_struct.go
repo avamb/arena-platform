@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -24,6 +25,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ratelimit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/redissession"
 )
@@ -130,6 +132,10 @@ type Server struct {
 	// pool access beyond the PoolDB interface (e.g. macs export, AB-50b).
 	// Wired from Options.PgxPool in wire.go.
 	pgxPool *pgxpool.Pool
+	// promoAttempts journals promo-code checks (promo_code_attempts); built on
+	// first use by promoAttemptRecorder.
+	promoAttempts     *promoattempts.Recorder
+	promoAttemptsOnce sync.Once
 	// stepUpSessionCheck replaces the database lookup of requireWebStepUp
 	// ("is this sign-in still live?") in unit tests; nil in production.
 	stepUpSessionCheck func(ctx context.Context, sessionID, userID uuid.UUID) (bool, error)

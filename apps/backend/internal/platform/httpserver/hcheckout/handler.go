@@ -5,6 +5,7 @@ package hcheckout
 
 import (
 	"context"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
 	"log/slog"
 	"net/http"
 
@@ -238,6 +239,8 @@ func ComputePricingLines(lines []PricingLineInput, discount int64, currency stri
 
 // Handler holds the shared dependencies for all checkout HTTP handlers.
 type Handler struct {
+	// promoRec journals every promo-code check (migration 0158); nil = off.
+	promoRec             *promoattempts.Recorder
 	checkoutQueries      *gen.Queries
 	reservationQueries   *gen.Queries
 	inventoryQueries     *gen.Queries
