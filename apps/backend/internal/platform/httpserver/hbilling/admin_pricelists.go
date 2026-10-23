@@ -290,6 +290,12 @@ func (h *AdminHandler) HandleCreatePriceList(w http.ResponseWriter, r *http.Requ
 		h.fail(w, r, "lock series", err)
 		return
 	}
+	// The wait for the lock may have taken long: judge "in the future" again
+	// on a clock read now, not on the one read before the transaction.
+	if !from.After(h.now()) {
+		unprocessable(w, r, "billing.effective_from_not_future", "effective_from "+notFutureMessage)
+		return
+	}
 	state, err := q.GetPriceListSeriesState(ctx, body.Code, body.Currency)
 	if err != nil {
 		h.fail(w, r, "series state", err)
@@ -489,16 +495,30 @@ func (h *AdminHandler) HandleRevokePriceList(w http.ResponseWriter, r *http.Requ
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := h.queries.WithTx(tx)
-	cur, err := q.LockPriceListByID(ctx, id)
+	// Lock order is the one HandleCreatePriceList and HandleCreateAccountTerms
+	// use: the series advisory lock first, the version row second. The series
+	// is learned from an unlocked read, and the version is read AGAIN under
+	// the locks, so the coverage check below sees what concurrent revokes and
+	// terms have committed.
+	probe, err := q.GetPriceListByID(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		notFound(w, r, "billing.price_list_not_found", "this price list version does not exist")
 		return
 	}
 	if err != nil {
+		h.fail(w, r, "read price list", err)
+		return
+	}
+	if err := q.LockPriceListSeries(ctx, probe.Code, probe.Currency); err != nil {
+		h.fail(w, r, "lock series", err)
+		return
+	}
+	cur, err := q.LockPriceListByID(ctx, id)
+	if err != nil { // the row cannot disappear: nothing deletes a version
 		h.fail(w, r, "lock price list", err)
 		return
 	}
-	now := h.now()
+	now := h.now() // after the locks
 	switch {
 	case cur.RevokedAt != nil:
 		conflict(w, r, "billing.price_list_already_revoked", "this version is already revoked")

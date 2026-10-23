@@ -154,7 +154,7 @@ WHERE  org_id = $1 AND currency = $2 AND effective_from > $3;
 UPDATE org_rate_overrides
 SET    effective_to = $2::timestamptz
 WHERE  id = $1 AND $2::timestamptz > effective_from AND $2::timestamptz > $3::timestamptz
-  AND  (effective_to IS NULL OR effective_to > $3::timestamptz)
+  AND  (effective_to IS NULL OR (effective_to > $3::timestamptz AND $2::timestamptz < effective_to))
 RETURNING id, org_id, currency, unseated_minor, seated_minor, effective_from, effective_to, note, created_by, created_at;
 
 -- name: DeleteNotStartedOrgRateOverride :execrows
