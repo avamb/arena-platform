@@ -86,7 +86,7 @@ WHERE  id = $1;
 SELECT id, org_id, billing_period, state, total_amount_minor, currency,
        issued_at, paid_at, voided_at, created_at, updated_at
 FROM   invoices
-WHERE  org_id = $1 AND billing_period = $2;
+WHERE  org_id = $1 AND billing_period = $2 AND account_id IS NULL;
 
 -- name: ListInvoicesByOrg :many
 SELECT id, org_id, billing_period, state, total_amount_minor, currency,

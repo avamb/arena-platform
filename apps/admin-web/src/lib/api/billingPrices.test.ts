@@ -292,3 +292,22 @@ describe("the reason gate", () => {
     expect(requiresAdminReason("/v1/admin/billing/accounts", "GET")).toBe(false);
   });
 });
+
+describe("fee mode of the account terms", () => {
+  const f = { ...termsFormFrom(undefined), effectiveFromLocal: FUTURE, priceListCode: "b15-test" };
+
+  it("defaults to organizer pays and sends the choice", () => {
+    expect(f.feeMode).toBe("organizer_pays");
+    const ok = buildTermsRequest(f, "organizer", NOW);
+    expect(ok.ok && ok.request.fee_mode).toBe("organizer_pays");
+    const buyer = buildTermsRequest({ ...f, feeMode: "buyer_pays" }, "organizer", NOW);
+    expect(buyer.ok && buyer.request.fee_mode).toBe("buyer_pays");
+  });
+
+  it("pre-fills the form from the terms in force", () => {
+    const current = { price_list_code: "b15-test", plan_kind: "standard", billing_cycle: "monthly", shortfall_policy: "invoice_postpaid", fee_mode: "buyer_pays" };
+    expect(termsFormFrom(current as never).feeMode).toBe("buyer_pays");
+    expect(termsFormFrom({ ...current, fee_mode: "organizer_pays" } as never).feeMode).toBe("organizer_pays");
+    expect(termsFormFrom({ ...current, fee_mode: undefined } as never).feeMode).toBe("organizer_pays");
+  });
+});

@@ -284,4 +284,22 @@ describe("RateFormBody and TermsFormBody", () => {
     expect(html).toContain("prepaid only");
     expect(html).toContain('value="standard-2026" selected');
   });
+
+  it("asks who pays the platform fee and explains buyer pays", () => {
+    const base = { account, onChange: noop, priceLists: ["standard-2026"], errors: [] };
+    const organizer = renderToStaticMarkup(createElement(TermsFormBody, { ...base, form: termsFormFrom(account.terms[0]) }));
+    expect(organizer).toContain("Who pays the platform fee");
+    expect(organizer).toContain('value="organizer_pays" selected');
+    expect(organizer).toContain("The organizer pays the platform rate");
+    const buyer = renderToStaticMarkup(createElement(TermsFormBody, { ...base, form: { ...termsFormFrom(account.terms[0]), feeMode: "buyer_pays" } }));
+    expect(buyer).toContain('value="buyer_pays" selected');
+    expect(buyer).toContain("The organizer receives the net ticket price");
+    expect(buyer).toContain("service charge is the platform commission");
+  });
+
+  it("marks a buyer-pays account in the accounts table", () => {
+    const withMode = { ...account, terms: [{ ...account.terms[0], fee_mode: "buyer_pays" }, account.terms[1]] } as BillingAccount;
+    const html = renderToStaticMarkup(createElement(AccountsTable, { accounts: [withMode], onChangeTerms: noop }));
+    expect(html).toContain("Buyer pays");
+  });
 });
