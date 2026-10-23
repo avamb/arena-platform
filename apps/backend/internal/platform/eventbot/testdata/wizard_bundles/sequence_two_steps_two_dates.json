@@ -1,0 +1,227 @@
+{
+  "description": "Two steps on two dates, the second date with other prices.",
+  "input": {
+    "event": {
+      "name": "Golden chain",
+      "description": "",
+      "age": "18+",
+      "promoterId": ""
+    },
+    "currency": "PLN",
+    "venue": {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "name": "Golden Hall",
+      "timezone": "Europe/Warsaw",
+      "capacity": 400
+    },
+    "externalRefPrefix": "web:org-1:draft-6",
+    "dates": [
+      {
+        "day": "2027-10-01",
+        "time": "20:00",
+        "salesEnd": "",
+        "doors": "",
+        "capacity": "",
+        "tickets": {
+          "mode": "sequence",
+          "categories": [
+            {
+              "name": "First wave",
+              "price": "49",
+              "places": "",
+              "until": "2027-09-15",
+              "limit": ""
+            },
+            {
+              "name": "Second wave",
+              "price": "59",
+              "places": "",
+              "until": "",
+              "limit": ""
+            }
+          ],
+          "schedule": []
+        }
+      },
+      {
+        "day": "2027-10-08",
+        "time": "20:00",
+        "salesEnd": "",
+        "doors": "",
+        "capacity": "250",
+        "tickets": {
+          "mode": "sequence",
+          "categories": [
+            {
+              "name": "First wave",
+              "price": "54",
+              "places": "",
+              "until": "2027-09-22",
+              "limit": "100"
+            },
+            {
+              "name": "Second wave",
+              "price": "64",
+              "places": "",
+              "until": "",
+              "limit": ""
+            }
+          ],
+          "schedule": []
+        }
+      }
+    ]
+  },
+  "bundles": [
+    {
+      "source": "arena",
+      "externalRef": "web:org-1:draft-6:1",
+      "action": {
+        "actionId": 0,
+        "actionName": "Golden chain",
+        "fullActionName": "",
+        "description": "",
+        "bigPosterUrl": "",
+        "age": "18+",
+        "organizerName": "",
+        "promoterId": "",
+        "arenaEventId": ""
+      },
+      "actionEvent": {
+        "actionEventId": 0,
+        "day": "01.10.2027",
+        "time": "20:00",
+        "endTime": "",
+        "currency": "PLN",
+        "sellEndTime": "2027-10-01T20:00:00+02:00",
+        "sellStartTime": "",
+        "doorsOpenTime": null,
+        "chargePercent": 0,
+        "seatingPlanId": 0,
+        "seatingPlanName": "",
+        "arenaSessionId": ""
+      },
+      "venue": {
+        "arenaVenueId": "11111111-1111-4111-8111-111111111111",
+        "venueId": 0,
+        "venueName": "Golden Hall",
+        "address": "",
+        "cityId": 0,
+        "cityName": "",
+        "countryId": 0,
+        "countryName": "",
+        "timezone": "",
+        "geoLat": null,
+        "geoLon": null
+      },
+      "categoryList": [
+        {
+          "categoryPriceId": 0,
+          "categoryPriceName": "First wave",
+          "price": 49,
+          "placement": false,
+          "availability": 400,
+          "sellStartTime": "",
+          "sellEndTime": "2027-09-16T00:00:00+02:00",
+          "nextCategoryIndex": 1,
+          "sellLimit": 0,
+          "priceSchedule": [],
+          "arenaTierId": ""
+        },
+        {
+          "categoryPriceId": 0,
+          "categoryPriceName": "Second wave",
+          "price": 59,
+          "placement": false,
+          "availability": 0,
+          "sellStartTime": "2027-09-16T00:00:00+02:00",
+          "sellEndTime": "",
+          "nextCategoryIndex": -1,
+          "sellLimit": 0,
+          "priceSchedule": [],
+          "arenaTierId": ""
+        }
+      ],
+      "seatList": null,
+      "svg": "",
+      "publish": false,
+      "channelIds": null,
+      "changeMessage": ""
+    },
+    {
+      "source": "arena",
+      "externalRef": "web:org-1:draft-6:2",
+      "action": {
+        "actionId": 0,
+        "actionName": "Golden chain",
+        "fullActionName": "",
+        "description": "",
+        "bigPosterUrl": "",
+        "age": "18+",
+        "organizerName": "",
+        "promoterId": "",
+        "arenaEventId": ""
+      },
+      "actionEvent": {
+        "actionEventId": 0,
+        "day": "08.10.2027",
+        "time": "20:00",
+        "endTime": "",
+        "currency": "PLN",
+        "sellEndTime": "2027-10-08T20:00:00+02:00",
+        "sellStartTime": "",
+        "doorsOpenTime": null,
+        "chargePercent": 0,
+        "seatingPlanId": 0,
+        "seatingPlanName": "",
+        "arenaSessionId": ""
+      },
+      "venue": {
+        "arenaVenueId": "11111111-1111-4111-8111-111111111111",
+        "venueId": 0,
+        "venueName": "Golden Hall",
+        "address": "",
+        "cityId": 0,
+        "cityName": "",
+        "countryId": 0,
+        "countryName": "",
+        "timezone": "",
+        "geoLat": null,
+        "geoLon": null
+      },
+      "categoryList": [
+        {
+          "categoryPriceId": 0,
+          "categoryPriceName": "First wave",
+          "price": 54,
+          "placement": false,
+          "availability": 250,
+          "sellStartTime": "",
+          "sellEndTime": "2027-09-23T00:00:00+02:00",
+          "nextCategoryIndex": 1,
+          "sellLimit": 100,
+          "priceSchedule": [],
+          "arenaTierId": ""
+        },
+        {
+          "categoryPriceId": 0,
+          "categoryPriceName": "Second wave",
+          "price": 64,
+          "placement": false,
+          "availability": 0,
+          "sellStartTime": "",
+          "sellEndTime": "",
+          "nextCategoryIndex": -1,
+          "sellLimit": 0,
+          "priceSchedule": [],
+          "arenaTierId": ""
+        }
+      ],
+      "seatList": null,
+      "svg": "",
+      "publish": false,
+      "channelIds": null,
+      "changeMessage": ""
+    }
+  ]
+}

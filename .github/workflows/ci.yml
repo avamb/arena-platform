@@ -31,7 +31,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache: true
 
       - name: Run golangci-lint
@@ -78,7 +78,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache: true
 
       - name: Download dependencies
@@ -160,7 +160,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache: true
 
       - name: Download dependencies
@@ -212,7 +212,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache: true
 
       - name: Set up Node.js
@@ -544,14 +544,16 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache: true
 
       - name: Build Go binaries
         run: |
           go build -o /tmp/arena-migrate     ./apps/backend/cmd/arena-migrate
           go build -o /tmp/arena-e2e-seed    ./apps/backend/cmd/arena-e2e-seed
-          go build -o /tmp/arena-api         ./apps/backend/cmd/arena-api
+          # Test-only build tag: the poster-first live specs script the vision model through
+          # Options.PosterReader (cmd/arena-api/poster_reader_e2e.go). Never used for a deployed image.
+          go build -tags e2eposter -o /tmp/arena-api ./apps/backend/cmd/arena-api
 
       - name: Run database migrations
         run: /tmp/arena-migrate up
@@ -799,7 +801,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache: true
 
       - name: Build Go binaries

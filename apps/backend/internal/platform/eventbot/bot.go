@@ -506,6 +506,15 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	if text != "" && b.routeDialogText(ctx, chatID, from, text) {
 		return
 	}
+	// A picture or a location answers an open Materials question first
+	// (materials_input.go): a dialog is open only while its screen is the
+	// latest one the person pressed.
+	if (m.Document != nil || len(m.Photo) > 0) && b.materialsPhoto(ctx, chatID, from, m) {
+		return
+	}
+	if m.Location != nil && b.materialsLocation(ctx, chatID, from, m.Location) {
+		return
+	}
 	if m.Document != nil || len(m.Photo) > 0 {
 		if b.wizardPoster(ctx, chatID, from, m) {
 			return
@@ -561,6 +570,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.promoCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pm:"))
 	case "pr":
 		b.promoterCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pr:"))
+	case "mt":
+		b.materialsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "mt:"))
 	case "ct":
 		b.categoryCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ct:"))
 	case "og":

@@ -1,0 +1,16 @@
+package httpserver
+
+// This reader only looks: a comment may say UPDATE charges SET or
+// INSERT INTO credit_ledger, and /* DELETE FROM charges */ too.
+
+const readCharges = `SELECT id, amount_minor, currency FROM charges WHERE org_id = $1`
+
+// DELETE FROM charge_allocations and credit_lots are not append-only tables.
+const clean = `DELETE FROM charge_allocations WHERE charge_id = $1`
+
+type pageInfo struct {
+	Total int64
+	Ratio float64
+}
+
+func render(ratio float64) float64 { return ratio }

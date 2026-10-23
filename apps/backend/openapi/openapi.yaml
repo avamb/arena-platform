@@ -6925,6 +6925,15 @@ components:
           items:
             type: string
           example: ["Forum Karlin"]
+        venues:
+          type: array
+          description: |
+            The venues of the event's visible sessions with their own postal
+            address and the session starts held there (never the seller's
+            address). Empty when the event has no visible session. Absent on
+            older backends and in the promoter page's event list.
+          items:
+            $ref: "#/components/schemas/PublicEventVenue"
         first_session_at:
           type: [string, "null"]
           format: date-time
@@ -7435,6 +7444,56 @@ components:
         label:
           type: [string, "null"]
           description: Optional text shown with the point.
+
+    PublicEventVenue:
+      type: object
+      required: [name, country, city, address, postal_code, timezone, session_starts]
+      description: |
+        A place an event is held at, for the sales page "where it takes
+        place" block: the VENUE's own name and postal address (never the
+        seller's legal address) and the start times of the event's visible
+        (scheduled or completed) sessions held there. A field the organizer
+        did not fill is null; nothing is guessed. No contact data is public.
+      properties:
+        name:
+          type: string
+          description: Venue name.
+          example: "Forum Karlin"
+        country:
+          type: [string, "null"]
+          description: Country of the venue as stored (ISO 3166-1 alpha-2), or null.
+          example: "CZ"
+        city:
+          type: [string, "null"]
+          description: |
+            English name of the venue's city from the geo reference data, or
+            null when the venue has no city or the city has no English name.
+          example: "Prague"
+        address:
+          type: [string, "null"]
+          description: |
+            Street address lines (`address_line1`, `address_line2` joined by
+            a comma; the legacy free-form `address` when no structured line
+            is set), or null.
+          example: "Pernerova 51"
+        postal_code:
+          type: [string, "null"]
+          description: Postal code of the venue, or null.
+          example: "18600"
+        timezone:
+          type: [string, "null"]
+          description: IANA time zone of the venue, or null.
+          example: "Europe/Prague"
+        session_starts:
+          type: array
+          maxItems: 60
+          items:
+            type: string
+            format: date-time
+          description: |
+            Start times (RFC 3339 UTC, earliest first, at most 60) of the
+            event's sessions held at this venue.
+          example: ["2026-08-15T18:00:00Z"]
 
     PublicEventMaterials:
       type: object
@@ -18672,6 +18731,552 @@ components:
           items:
             $ref: "#/components/schemas/OnboardingBotNotice"
 
+    BillingPriceListRule:
+      type: object
+      required: [id, rule_type, line, event_kind, sale_currency, params, sort_order]
+      description: One rule of a price-list version. Amounts inside params are minor units of the price list currency, percentages are basis points (pct_bp).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the rule row.
+        rule_type:
+          type: string
+          description: "Rule type: fixed_per_ticket, percent_of_price_with_cap, low_price_formula, credit_pack or fixed_per_event."
+          example: fixed_per_ticket
+        line:
+          type: string
+          description: "Line of the rule: standard, or venue for the permanent-venue plan."
+          example: standard
+        event_kind:
+          type: string
+          description: "Event kind the rule rates: ticket_sold, or event_published for fixed_per_event."
+          example: ticket_sold
+        sale_currency:
+          type: [string, "null"]
+          description: Sale currency of a low_price_formula rule (its threshold is in that currency), null for every other rule.
+        params:
+          type: object
+          additionalProperties: true
+          description: The numbers of the rule as the rating engine reads them, for example unseated_minor and seated_minor.
+        sort_order:
+          type: integer
+          format: int32
+          description: Position of the rule in the version.
+
+    BillingPriceListRuleInput:
+      type: object
+      additionalProperties: false
+      required: [rule_type, line, event_kind, params]
+      description: One rule of a new price-list version. Every number is entered by the operator; nothing has a default.
+      properties:
+        rule_type:
+          type: string
+          description: "Rule type: fixed_per_ticket, percent_of_price_with_cap, low_price_formula, credit_pack or fixed_per_event."
+          example: fixed_per_ticket
+        line:
+          type: string
+          description: "Line of the rule: standard, or venue for percent_of_price_with_cap."
+          example: standard
+        event_kind:
+          type: string
+          description: "Event kind the rule rates: ticket_sold, or event_published for fixed_per_event."
+          example: ticket_sold
+        sale_currency:
+          type: string
+          description: Sale currency, required for low_price_formula and forbidden for every other rule.
+          example: EUR
+        params:
+          type: object
+          additionalProperties: true
+          description: The numbers of the rule, amounts in minor units and percentages in basis points. The keys depend on rule_type.
+
+    BillingPriceListPack:
+      type: object
+      required: [id, tier, currency, face_minor, unseated_rate_minor, seated_surcharge_minor, active, sort_order]
+      description: One credit-pack tier of a price-list version. Money is in minor units of the price list currency.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the pack row.
+        tier:
+          type: integer
+          format: int32
+          description: Tier number of the pack, 1 or more.
+        currency:
+          type: string
+          description: Currency of the price list.
+          example: EUR
+        face_minor:
+          type: integer
+          format: int64
+          description: Face value of the pack in minor units.
+        unseated_rate_minor:
+          type: integer
+          format: int64
+          description: Rate of one ticket without a seat, in minor units.
+        seated_surcharge_minor:
+          type: integer
+          format: int64
+          description: Surcharge of one seated ticket, in minor units.
+        active:
+          type: boolean
+          description: Whether the pack can be bought.
+        sort_order:
+          type: integer
+          format: int32
+          description: Position of the pack in the version.
+
+    BillingPriceListPackInput:
+      type: object
+      additionalProperties: false
+      required: [tier, face_minor, unseated_rate_minor, seated_surcharge_minor]
+      description: One credit-pack tier of a new price-list version.
+      properties:
+        tier:
+          type: integer
+          format: int32
+          description: Tier number, 1 or more and unique inside the version.
+        face_minor:
+          type: integer
+          format: int64
+          description: Face value of the pack in minor units, more than 0.
+        unseated_rate_minor:
+          type: integer
+          format: int64
+          description: Rate of one ticket without a seat, in minor units.
+        seated_surcharge_minor:
+          type: integer
+          format: int64
+          description: Surcharge of one seated ticket, in minor units.
+        active:
+          type: boolean
+          description: Whether the pack can be bought. Defaults to true.
+
+    BillingPriceListVersion:
+      type: object
+      required: [id, code, version, currency, effective_from, revoked_at, locked, free_tickets_annual_limit, floor_per_ticket_minor, bonus_share_cap_bp, bonus_covers_surcharge, created_by, reason, created_at, status]
+      description: One version of a price list in one currency. A version is never edited. A new price is a new version.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the version.
+        code:
+          type: string
+          description: Code of the price list.
+          example: standard-2026
+        version:
+          type: integer
+          format: int32
+          description: Version number inside the code and currency, counted from 1.
+        currency:
+          type: string
+          description: Currency of the price list.
+          example: EUR
+        effective_from:
+          type: string
+          format: date-time
+          description: First moment the version rates events. Events are rated by the version in force at their occurred_at.
+        revoked_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the version was revoked, null while it is not. Only a version that has not started can be revoked.
+        locked:
+          type: boolean
+          description: The version is locked, a change needs a superadmin with a reason.
+        free_tickets_annual_limit:
+          type: [integer, "null"]
+          format: int32
+          description: Free tickets per year, null until a superadmin sets it.
+        floor_per_ticket_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Floor of platform revenue per ticket in minor units, null until a superadmin sets it.
+        bonus_share_cap_bp:
+          type: integer
+          format: int32
+          description: Largest share of a charge that may be paid with bonus credits, in basis points.
+        bonus_covers_surcharge:
+          type: boolean
+          description: Whether bonus credits may pay the seat surcharge.
+        created_by:
+          type: [string, "null"]
+          description: Id of the operator who created the version, or migration.
+        reason:
+          type: [string, "null"]
+          description: The X-Admin-Reason given when the version was created.
+        created_at:
+          type: string
+          format: date-time
+          description: When the version was created.
+        status:
+          type: string
+          description: "State at the time of the request: scheduled (not started), in_force, superseded (a later version is in force) or revoked."
+          example: scheduled
+        rules_count:
+          type: integer
+          format: int32
+          description: Number of rules. Present in the list only.
+        packs_count:
+          type: integer
+          format: int32
+          description: Number of credit packs. Present in the list only.
+
+    BillingPriceListVersionList:
+      type: object
+      required: [items]
+      description: Every version of the price lists, oldest first inside a code and currency.
+      properties:
+        items:
+          type: array
+          description: The versions.
+          items:
+            $ref: "#/components/schemas/BillingPriceListVersion"
+
+    BillingPriceListDetail:
+      description: A price-list version with its rules and packs. After a create it also lists the rules the previous version had and this one lacks.
+      allOf:
+        - $ref: "#/components/schemas/BillingPriceListVersion"
+        - type: object
+          required: [rules, packs]
+          properties:
+            rules:
+              type: array
+              description: The rules of the version.
+              items:
+                $ref: "#/components/schemas/BillingPriceListRule"
+            packs:
+              type: array
+              description: The credit packs of the version.
+              items:
+                $ref: "#/components/schemas/BillingPriceListPack"
+            warnings:
+              type: array
+              description: Present after a create. Each text names a rule the previous version had and the new one does not.
+              items:
+                type: string
+                description: One warning for the operator.
+
+    BillingCreatePriceListRequest:
+      type: object
+      additionalProperties: false
+      required: [code, currency, effective_from, bonus_share_cap_bp, rules]
+      description: Body of POST /v1/admin/billing/price-lists. It creates the next version of the price list with that code and currency. Every number is typed by the operator.
+      properties:
+        code:
+          type: string
+          description: Code of the price list, 2-64 characters, lower case.
+          example: standard-2026
+        currency:
+          type: string
+          description: Three capital letters.
+          example: EUR
+        effective_from:
+          type: string
+          format: date-time
+          description: Start of the version. It must be in the future and after the start of the latest version that was not revoked.
+        locked:
+          type: boolean
+          description: Lock the version. Defaults to false.
+        free_tickets_annual_limit:
+          type: [integer, "null"]
+          format: int32
+          description: Free tickets per year, or null to leave it unset.
+        floor_per_ticket_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Floor of platform revenue per ticket in minor units, or null to leave it unset.
+        bonus_share_cap_bp:
+          type: integer
+          format: int32
+          description: Largest share of a charge paid with bonus credits, in basis points, 0-10000 and a multiple of 10.
+        bonus_covers_surcharge:
+          type: boolean
+          description: Whether bonus credits may pay the seat surcharge. Defaults to false.
+        rules:
+          type: array
+          description: The rules of the version, at least one.
+          items:
+            $ref: "#/components/schemas/BillingPriceListRuleInput"
+        packs:
+          type: array
+          description: The credit packs of the version, may be empty.
+          items:
+            $ref: "#/components/schemas/BillingPriceListPackInput"
+
+    BillingRateOverride:
+      type: object
+      required: [id, org_id, currency, unseated_minor, seated_minor, effective_from, effective_to, note, created_by, created_at, status]
+      description: An individual per-ticket rate of an organization. It replaces the price-list rate for the organization in that currency.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the rate.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        org_name:
+          type: string
+          description: Name of the organization. Present in the list only.
+        currency:
+          type: string
+          description: Currency of the rate.
+          example: EUR
+        unseated_minor:
+          type: integer
+          format: int64
+          description: Rate of a ticket without a seat, in minor units.
+        seated_minor:
+          type: integer
+          format: int64
+          description: Rate of a seated ticket, in minor units.
+        effective_from:
+          type: string
+          format: date-time
+          description: First moment the rate applies.
+        effective_to:
+          type: [string, "null"]
+          format: date-time
+          description: First moment the rate no longer applies, null while it is open.
+        note:
+          type: [string, "null"]
+          description: Free note of the operator.
+        created_by:
+          type: [string, "null"]
+          description: Id of the operator who created the rate, or migration.
+        created_at:
+          type: string
+          format: date-time
+          description: When the rate was created.
+        status:
+          type: string
+          description: "State at the time of the request: scheduled, in_force or ended."
+          example: in_force
+        closed_rate_ids:
+          type: array
+          description: Present after a create. Ids of the earlier rates that were ended at the start of this one.
+          items:
+            type: string
+            format: uuid
+            description: Id of an earlier rate.
+
+    BillingRateOverrideList:
+      type: object
+      required: [items]
+      description: Individual rates, every period of them.
+      properties:
+        items:
+          type: array
+          description: The rates, by organization name, currency and start (newest first).
+          items:
+            $ref: "#/components/schemas/BillingRateOverride"
+
+    BillingCreateRateOverrideRequest:
+      type: object
+      additionalProperties: false
+      required: [org_id, currency, unseated_minor, seated_minor, effective_from]
+      description: Body of POST /v1/admin/billing/rate-overrides. The rate starts in the future after the organization's earlier rates of that currency.
+      properties:
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        currency:
+          type: string
+          description: Three capital letters.
+          example: EUR
+        unseated_minor:
+          type: integer
+          format: int64
+          description: Rate of a ticket without a seat, in minor units.
+        seated_minor:
+          type: integer
+          format: int64
+          description: Rate of a seated ticket, in minor units.
+        effective_from:
+          type: string
+          format: date-time
+          description: Start of the rate. It must be in the future.
+        effective_to:
+          type: [string, "null"]
+          format: date-time
+          description: End of the rate, or null for an open rate.
+        note:
+          type: string
+          maxLength: 500
+          description: Free note, for example the contract it comes from.
+
+    BillingCloseRateOverrideRequest:
+      type: object
+      additionalProperties: false
+      required: [effective_to]
+      description: Body of POST /v1/admin/billing/rate-overrides/{id}/close.
+      properties:
+        effective_to:
+          type: string
+          format: date-time
+          description: New end of the rate. It must be in the future, after the start and not after the start of the organization's next rate.
+
+    BillingAccountTerms:
+      type: object
+      required: [id, effective_from, price_list_code, plan_kind, billing_cycle, shortfall_policy, issuer_id, invoice_delay_days, due_days, locked, created_by, reason, created_at]
+      description: One dated row of the conditions of a billing account. The terms of an event are the last row that started before the event.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the terms row.
+        effective_from:
+          type: string
+          format: date-time
+          description: First moment the terms apply.
+        price_list_code:
+          type: string
+          description: Code of the price list the account is rated by.
+        plan_kind:
+          type: string
+          description: "standard, or venue for a permanent venue."
+          example: standard
+        billing_cycle:
+          type: string
+          description: "prepaid, per_event or monthly."
+          example: monthly
+        shortfall_policy:
+          type: string
+          description: "invoice_postpaid or block_publishing."
+          example: invoice_postpaid
+        issuer_id:
+          type: string
+          format: uuid
+          description: The legal entity that invoices the account.
+        invoice_delay_days:
+          type: [integer, "null"]
+          format: int32
+          description: Days after the last session before a per-event invoice is made.
+        due_days:
+          type: [integer, "null"]
+          format: int32
+          description: Days to pay an invoice.
+        locked:
+          type: boolean
+          description: Whether only a superadmin may change the row.
+        created_by:
+          type: [string, "null"]
+          description: Id of the operator who created the row, or migration.
+        reason:
+          type: [string, "null"]
+          description: The X-Admin-Reason given when the row was created.
+        created_at:
+          type: string
+          format: date-time
+          description: When the row was created.
+
+    BillingAdminAccountFlags:
+      type: object
+      required: [venue, tools, existing_client]
+      description: The three marks of an account. Venue and existing client are derived from rows, tools is the account kind.
+      properties:
+        venue:
+          type: boolean
+          description: The terms in force use the venue plan (a permanent venue).
+        tools:
+          type: boolean
+          description: The account is a tools account (generator), not an organizer account.
+        existing_client:
+          type: boolean
+          description: The organization has an individual rate. A separate date of connection does not exist yet.
+
+    BillingAdminAccount:
+      type: object
+      required: [id, org_id, org_name, currency, issuer_id, account_kind, terms, flags, current_terms_id]
+      description: A billing account with its terms history and marks.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the account.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        org_name:
+          type: string
+          description: Name of the organization.
+        currency:
+          type: string
+          description: Currency of the account.
+          example: EUR
+        issuer_id:
+          type: string
+          format: uuid
+          description: The legal entity that invoices the account.
+        account_kind:
+          type: string
+          description: "organizer or tools."
+          example: organizer
+        terms:
+          type: array
+          description: All terms rows, oldest first.
+          items:
+            $ref: "#/components/schemas/BillingAccountTerms"
+        current_terms_id:
+          type: [string, "null"]
+          format: uuid
+          description: Id of the terms row in force now, null when none has started.
+        flags:
+          allOf:
+            - $ref: "#/components/schemas/BillingAdminAccountFlags"
+          description: The marks of the account.
+
+    BillingAdminAccountList:
+      type: object
+      required: [items]
+      description: Billing accounts.
+      properties:
+        items:
+          type: array
+          description: The accounts, by organization name.
+          items:
+            $ref: "#/components/schemas/BillingAdminAccount"
+
+    BillingCreateAccountTermsRequest:
+      type: object
+      additionalProperties: false
+      required: [effective_from, price_list_code, plan_kind, billing_cycle, shortfall_policy]
+      description: Body of POST /v1/admin/billing/accounts/{account_id}/terms. It adds a terms row that starts in the future.
+      properties:
+        effective_from:
+          type: string
+          format: date-time
+          description: Start of the terms. It must be in the future and after the start of every earlier terms row.
+        price_list_code:
+          type: string
+          description: Code of a price list that has a version in force in the account currency at that moment.
+        plan_kind:
+          type: string
+          description: "standard, or venue for a permanent venue. The price list version must carry the rule this plan is rated by."
+          example: standard
+        billing_cycle:
+          type: string
+          description: "prepaid, per_event or monthly. A tools account is prepaid only."
+          example: monthly
+        shortfall_policy:
+          type: string
+          description: "invoice_postpaid or block_publishing."
+          example: invoice_postpaid
+        invoice_delay_days:
+          type: [integer, "null"]
+          format: int32
+          description: Days after the last session before a per-event invoice is made.
+        due_days:
+          type: [integer, "null"]
+          format: int32
+          description: Days to pay an invoice.
+
 paths:
   /healthz:
     get:
@@ -22557,6 +23162,526 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
           description: User is not deactivated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/price-lists:
+    get:
+      operationId: getV1AdminBillingPriceLists
+      summary: Admin - list price-list versions
+      description: "Lists every version of every price list with its status (scheduled, in_force, superseded, revoked). Requires JWT, billing.admin and a platform superadmin."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: code
+          in: query
+          required: false
+          description: Only versions of this price list code.
+          schema: {type: string}
+        - name: currency
+          in: query
+          required: false
+          description: Only versions in this currency.
+          schema: {type: string}
+      responses:
+        "200":
+          description: "The versions."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPriceListVersionList"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: postV1AdminBillingPriceLists
+      summary: Admin - create a price-list version
+      description: "Creates the next version of a price list. The version starts in the future, so it cannot change an event that already happened. Every rule is checked by the rating engine parser. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log.
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingCreatePriceListRequest"
+      responses:
+        "201":
+          description: "The new version with its rules, packs and warnings."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPriceListDetail"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The start is not after the latest version that was not revoked"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "A field or a rule is not valid, or the start is not in the future"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/price-lists/{id}:
+    get:
+      operationId: getV1AdminBillingPriceList
+      summary: Admin - get a price-list version
+      description: "Returns one version with its rules and packs. Requires JWT, billing.admin and a platform superadmin."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Id of the version."
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: "The version."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPriceListDetail"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Version not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/price-lists/{id}/revoke:
+    post:
+      operationId: postV1AdminBillingPriceListRevoke
+      summary: Admin - revoke a price-list version that has not started
+      description: "Revokes a version before its effective_from. After that moment the answer is 409. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Id of the version."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log.
+          schema: {type: string, minLength: 1}
+      responses:
+        "200":
+          description: "The revoked version."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPriceListDetail"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Version not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The version is already revoked, has started, or is the first version accounts depend on"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/rate-overrides:
+    get:
+      operationId: getV1AdminBillingRateOverrides
+      summary: Admin - list individual rates
+      description: "Lists the individual per-ticket rates of organizations, every period of them. Requires JWT, billing.admin and a platform superadmin."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: org_id
+          in: query
+          required: false
+          description: Only rates of this organization.
+          schema: {type: string, format: uuid}
+        - name: currency
+          in: query
+          required: false
+          description: Only rates in this currency.
+          schema: {type: string}
+      responses:
+        "200":
+          description: "The rates."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingRateOverrideList"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "org_id is not a UUID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: postV1AdminBillingRateOverrides
+      summary: Admin - create an individual rate
+      description: "Creates an individual rate that starts in the future and ends the earlier rate still open at that moment. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log.
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingCreateRateOverrideRequest"
+      responses:
+        "201":
+          description: "The new rate."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingRateOverride"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Organization not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The start is not after the organization latest rate in that currency"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "A field is not valid, or the start is not in the future"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/rate-overrides/{id}:
+    delete:
+      operationId: deleteV1AdminBillingRateOverride
+      summary: Admin - remove an individual rate that has not started
+      description: "Removes a rate before its effective_from. A rate that started is never removed, close it instead. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Id of the rate."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log.
+          schema: {type: string, minLength: 1}
+      responses:
+        "204":
+          description: The rate was removed.
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Rate not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The rate has already started"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/rate-overrides/{id}/close:
+    post:
+      operationId: postV1AdminBillingRateOverrideClose
+      summary: Admin - close an individual rate
+      description: "Sets the end of an individual rate. The end is in the future. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Id of the rate."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log.
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingCloseRateOverrideRequest"
+      responses:
+        "200":
+          description: "The rate with its new end."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingRateOverride"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Rate not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The rate has already ended, or the end passes the start of the next rate"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "The end is not in the future or not after the start"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/accounts:
+    get:
+      operationId: getV1AdminBillingAccounts
+      summary: Admin - list billing accounts
+      description: "Lists billing accounts with their terms history and the venue, tools and existing-client marks. Requires JWT, billing.admin and a platform superadmin."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: org_id
+          in: query
+          required: false
+          description: Only accounts of this organization.
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: "The accounts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAdminAccountList"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "org_id is not a UUID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/accounts/{account_id}/terms:
+    post:
+      operationId: postV1AdminBillingAccountTerms
+      summary: Admin - add terms to a billing account
+      description: "Adds a dated terms row that starts in the future: price list, plan kind (venue or standard), cycle and shortfall policy. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          description: "Id of the billing account."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log.
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingCreateAccountTermsRequest"
+      responses:
+        "201":
+          description: "The new terms row."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccountTerms"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Account not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The start is not after the latest terms of the account"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "A field is not valid, the start is not in the future, or the price list does not fit the plan"
           content:
             application/json:
               schema:
@@ -27116,7 +28241,10 @@ paths:
         may also go back to `draft`: that is "take off sale". The event leaves
         every public surface and the sites are told, while its sessions, orders
         and sold tickets stay exactly as they are, and publishing it again
-        restores the channels it was sold in. Every real transition is written
+        restores the channels it was sold in. Publishing also schedules the
+        non-deleted draft sessions inspected by the publish gate, in the same
+        transaction as the event and its audit row. Scheduled, cancelled and
+        completed sessions are left unchanged. Every real transition is written
         to the audit log (`v1.event.status_update`, with `from_status` and
         `to_status`). Re-applying the same status is a no-op (HTTP 200).
         Owner-gated: org_id in the path must match the event's owning
@@ -38289,9 +39417,17 @@ paths:
                     allOf:
                       - $ref: "#/components/schemas/EventItem"
                       - type: object
-                        required: [materials]
+                        required: [materials, venues]
                         description: Fields added to the event on this route.
                         properties:
+                          venues:
+                            type: array
+                            description: |
+                              The venues of the event's visible sessions with their
+                              own postal address and the start times of the sessions
+                              held there (`PublicEventVenue`); `[]` when none.
+                            items:
+                              $ref: "#/components/schemas/PublicEventVenue"
                           materials:
                             description: The event's page materials; every list is `[]` when empty.
                             allOf:
