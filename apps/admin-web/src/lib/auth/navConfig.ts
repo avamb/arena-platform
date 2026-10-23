@@ -66,6 +66,9 @@ export type NavRoutePath =
   | "/customer-imports"
   | "/onboarding"
   | "/billing/prices"
+  | "/billing/invoices"
+  | "/billing/payment-fees"
+  | "/billing/bank"
   | "/organizations/$orgId/promo-codes";
 
 export type PermissionRule =
@@ -369,6 +372,33 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform"],
     purpose:
       "Billing: versions of the price lists (a new price is a new version that starts in the future), the individual rates of organizations, and the terms of billing accounts. Requires billing.admin and a platform superadmin; every change asks for a reason and is audited.",
+  },
+  {
+    id: "billing_invoices",
+    label: "Invoices",
+    to: "/billing/invoices",
+    permission: { anyOf: ["billing.admin"] },
+    scopeKinds: ["global", "platform"],
+    purpose:
+      "Billing: platform invoices to organizations. Make a draft usage invoice for a finished month, issue it for a bank transfer or a card payment, record money that arrived outside the feeds, or void it. Requires billing.admin and a platform superadmin; every change asks for a reason and is audited.",
+  },
+  {
+    id: "billing_payment_fees",
+    label: "Payment fees",
+    to: "/billing/payment-fees",
+    permission: { anyOf: ["billing.admin"] },
+    scopeKinds: ["global", "platform"],
+    purpose:
+      "Billing: the average card fee (percentage and fixed part, per currency) that a card payer adds to an invoice. A new version starts in the future. Requires billing.admin and a platform superadmin; every change asks for a reason and is audited.",
+  },
+  {
+    id: "billing_bank",
+    label: "Bank payments",
+    to: "/billing/bank",
+    permission: { anyOf: ["billing.admin"] },
+    scopeKinds: ["global", "platform"],
+    purpose:
+      "Billing: incoming bank payments. Match a payment the bank feed could not match to an invoice, ignore it with a reason, or import a statement by hand. Requires billing.admin and a platform superadmin; every change asks for a reason and is audited.",
   },
 ];
 

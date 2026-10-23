@@ -342,6 +342,10 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `OUTBOX_POLL_INTERVAL`, `WORKER_POLL_INTERVAL`, `WORKER_METRICS_ADDR`, `SENDER_VERIFICATION_POLL_INTERVAL` | — | ● | — | — |
 | `OPS_TELEGRAM_BOT_TOKEN`, `OPS_TELEGRAM_CHAT_ID`, `OPS_ALERT_ENV_LABEL`, `OPS_WATCHDOG_HEARTBEAT_HOUR_UTC` | — | ● | — | — |
 | `SALES_TELEGRAM_BOT_TOKEN` | — | ● | — | — |
+| `BILLING_COLLECT_SINCE` (RFC 3339, empty = billing collection off; the owner names the date X) | — | ● | — | — |
+| `BILLING_STRIPE_SECRET_KEY`, `BILLING_STRIPE_WEBHOOK_SECRET` (the PLATFORM's Stripe account for organizer invoices and credit packs; empty = card payment off) | ● | — | — | — |
+| `BILLING_BANK_WEBHOOK_SECRET` (HMAC key of bank payment notifications; empty = the bank webhook answers 503) | ● | — | — | — |
+| `BILLING_ORGANIZER_ENABLED` (`true` opens credit packs and platform invoices to organizers; default off = those routes answer 404 `billing.organizer_disabled`, the operator console is unaffected) | ● | — | — | — |
 | `EVENTS_TELEGRAM_BOT_TOKEN` | — | — | ✅ | — |
 | `BOT_ARENA_API_URL`, `BOT_METRICS_ADDR`, `BOT_SELF_ONBOARDING_ENABLED`, `BOT_ONBOARDING_SITE_BUTTON` | — | — | ● | — |
 | `POSTER_LLM_API_KEY` (secret), `POSTER_LLM_MODEL` | ● | — | — | — |

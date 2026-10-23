@@ -307,6 +307,34 @@ type Config struct {
 	WorkerJobTimeout       time.Duration `env:"WORKER_JOB_TIMEOUT"        required:"false" default:"5m"`
 	WorkerRetryBackoffBase time.Duration `env:"WORKER_RETRY_BACKOFF_BASE" required:"false" default:"2s"`
 	WorkerRetryBackoffMax  time.Duration `env:"WORKER_RETRY_BACKOFF_MAX"  required:"false" default:"10m"`
+	// BillingCollectSince is the date X of billing collection
+	// (internal/platform/billing/collect, BILLING_COLLECT_SINCE, RFC 3339):
+	// the billing.collect job reads sales whose business time is at or after
+	// it and never earlier. Empty (the zero value) switches collection off, so
+	// a deployment that has not named the date writes no billing facts.
+	// Read only by arena-worker.
+	BillingCollectSince time.Time `env:"BILLING_COLLECT_SINCE" required:"false" default:""`
+	// BillingStripeSecretKey is the secret key of the PLATFORM's own Stripe
+	// account (the Estonian issuer, owner decision B-14), which collects card
+	// payments of organizer invoices and credit packs. Never an organizer's
+	// key. Empty: card payment of platform invoices is off (503). arena-api.
+	BillingStripeSecretKey string `env:"BILLING_STRIPE_SECRET_KEY" required:"false" default:""`
+	// BillingStripeWebhookSecret signs the platform Stripe account's webhook
+	// (POST /v1/billing/stripe/webhook). Empty: the route answers 503.
+	BillingStripeWebhookSecret string `env:"BILLING_STRIPE_WEBHOOK_SECRET" required:"false" default:""`
+	// BillingBankWebhookSecret is the HMAC-SHA256 key of incoming bank
+	// payment notifications (POST /v1/billing/bank/webhook/{provider}).
+	// Empty: the route answers 503 and bank payments are matched only from
+	// operator imports.
+	BillingBankWebhookSecret string `env:"BILLING_BANK_WEBHOOK_SECRET" required:"false" default:""`
+	// BillingOrganizerEnabled opens the organizer's credit packs and platform
+	// invoices (balance, packs, pack order, invoices, card payment, payer,
+	// service-fee quote, ledger). Off by default: until the owner confirms the
+	// pack prices, the issuer details and the card fee, those routes answer
+	// 404 billing.organizer_disabled and the event center hides the screens.
+	// The operator's /v1/admin/billing routes and both webhooks are not
+	// affected. Read only by arena-api.
+	BillingOrganizerEnabled bool `env:"BILLING_ORGANIZER_ENABLED" required:"false" default:"false"`
 
 	// -------------------------------------------------------------------------
 	// Outbox dispatcher
@@ -721,6 +749,9 @@ func LoadFor(role Role) (*Config, error) {
 		EventsTelegramBotToken:      getenv("EVENTS_TELEGRAM_BOT_TOKEN", ""),
 		EventsTelegramBotUsername:   getenv("EVENTS_TELEGRAM_BOT_USERNAME", ""),
 		BotServiceToken:             getenv("BOT_SERVICE_TOKEN", ""),
+		BillingStripeSecretKey:      getenv("BILLING_STRIPE_SECRET_KEY", ""),
+		BillingStripeWebhookSecret:  getenv("BILLING_STRIPE_WEBHOOK_SECRET", ""),
+		BillingBankWebhookSecret:    getenv("BILLING_BANK_WEBHOOK_SECRET", ""),
 		BotArenaAPIURL:              getenv("BOT_ARENA_API_URL", "http://localhost:8080"),
 		OnboardingSiteURL:           strings.TrimRight(getenv("ONBOARDING_SITE_URL", "https://arenasoldout.com"), "/"),
 		OnboardingTermsURL:          strings.TrimSpace(getenv("ONBOARDING_TERMS_URL", "")),
@@ -920,6 +951,12 @@ func LoadFor(role Role) (*Config, error) {
 	}
 	cfg.OnboardingEnabled = b
 
+	b, err = getenvBool("BILLING_ORGANIZER_ENABLED", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.BillingOrganizerEnabled = b
+
 	b, err = getenvBool("BOT_SELF_ONBOARDING_ENABLED", false)
 	if err != nil {
 		parseErrs = append(parseErrs, err)
@@ -987,6 +1024,14 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.WorkerRetryBackoffMax = d
+
+	if raw := strings.TrimSpace(getenv("BILLING_COLLECT_SINCE", "")); raw != "" {
+		since, perr := time.Parse(time.RFC3339, raw)
+		if perr != nil {
+			parseErrs = append(parseErrs, fmt.Errorf("BILLING_COLLECT_SINCE must be an RFC 3339 timestamp (got %q): %w", raw, perr))
+		}
+		cfg.BillingCollectSince = since.UTC()
+	}
 
 	// Outbox settings.
 	d, err = getenvDuration("OUTBOX_POLL_INTERVAL", 2*time.Second, false)

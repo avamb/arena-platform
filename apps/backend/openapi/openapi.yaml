@@ -19121,9 +19121,224 @@ components:
           format: date-time
           description: New end of the rate. It must be in the future, after the start and not after the start of the organization's next rate.
 
+    BillingChargeItem:
+      type: object
+      required: [id, billable_event_id, kind, occurred_at, rated_at, event_id, session_id, order_id, currency, amount_minor, rule_type, reason, reversal_of, price_list_version, pricing_class, seated, sale_currency, unit_price_minor]
+      description: One charge. A reversal has reversal_of set and a negative amount, and carries the time of the event it reverses.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the charge.
+        billable_event_id:
+          type: string
+          format: uuid
+          description: Id of the billing event the charge rates.
+        kind:
+          type: string
+          description: "Kind of the billing event: ticket_sold, ticket_refunded, ticket_cancelled, session_cancelled, event_published or ticket_complimentary."
+          example: ticket_sold
+        occurred_at:
+          type: string
+          format: date-time
+          description: When the event happened.
+        rated_at:
+          type: string
+          format: date-time
+          description: When the charge was made.
+        event_id:
+          type: [string, "null"]
+          format: uuid
+          description: The event the charge belongs to, when it has one.
+        session_id:
+          type: [string, "null"]
+          format: uuid
+          description: The session the charge belongs to, when it has one.
+        order_id:
+          type: [string, "null"]
+          format: uuid
+          description: The order of a sale, when there is one.
+        currency:
+          type: string
+          description: Currency of amount_minor, the currency of the billing account.
+          example: EUR
+        amount_minor:
+          type: integer
+          format: int64
+          description: The charge in minor units of currency. Zero for a free or journal-only event, negative for a reversal.
+        rule_type:
+          type: string
+          description: The rule that rated the event (none when no rule applied).
+          example: fixed_per_ticket
+        reason:
+          type: [string, "null"]
+          description: Why the amount is zero or reduced, when it is.
+        reversal_of:
+          type: [string, "null"]
+          format: uuid
+          description: Set when this row reverses another charge.
+        price_list_version:
+          type: [integer, "null"]
+          format: int32
+          description: Version of the price list in force at the event time.
+        pricing_class:
+          type: [string, "null"]
+          description: "standard or low_price, for a sale."
+        seated:
+          type: [boolean, "null"]
+          description: Whether the sold place was a numbered seat.
+        sale_currency:
+          type: [string, "null"]
+          description: Currency the ticket was sold in.
+        unit_price_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Face price of the ticket in minor units of sale_currency.
+
+    BillingChargeTotal:
+      type: object
+      required: [currency, charged_minor, reversed_minor, net_minor, count]
+      description: The sum of charges in one currency. Sums are never added across currencies.
+      properties:
+        currency:
+          type: string
+          description: Currency of the sums.
+          example: EUR
+        charged_minor:
+          type: integer
+          format: int64
+          description: Sum of the direct charges in minor units.
+        reversed_minor:
+          type: integer
+          format: int64
+          description: Sum of the reversals in minor units, zero or negative.
+        net_minor:
+          type: integer
+          format: int64
+          description: charged_minor plus reversed_minor.
+        count:
+          type: integer
+          format: int64
+          description: Number of direct charges.
+
+    BillingChargeList:
+      type: object
+      required: [items, totals, next_cursor, preliminary]
+      description: A page of charges with the sums over the whole filter.
+      properties:
+        items:
+          type: array
+          description: The charges of this page, newest event first.
+          items:
+            $ref: "#/components/schemas/BillingChargeItem"
+        totals:
+          type: array
+          description: Sums per currency over the whole filter, not only this page.
+          items:
+            $ref: "#/components/schemas/BillingChargeTotal"
+        next_cursor:
+          type: [string, "null"]
+          description: Pass it as cursor to get the next page. Null on the last page.
+        preliminary:
+          type: boolean
+          description: Always true while invoices are not issued. The numbers are what has been charged so far.
+
+    BillingChargeRuleLine:
+      type: object
+      required: [rule_type, reason, currency, net_minor, count]
+      description: The net charge of one rule in one currency, a line of the future invoice.
+      properties:
+        rule_type:
+          type: string
+          description: The rule that rated the events.
+          example: fixed_per_ticket
+        reason:
+          type: [string, "null"]
+          description: Why the amount is zero or reduced, when it is.
+        currency:
+          type: string
+          description: Currency of net_minor.
+          example: EUR
+        net_minor:
+          type: integer
+          format: int64
+          description: Direct charges plus reversals of this rule, in minor units.
+        count:
+          type: integer
+          format: int64
+          description: Number of direct charges.
+
+    BillingChargeSessionLine:
+      type: object
+      required: [session_id, session_start_at, currency, charged_minor, reversed_minor, net_minor, count]
+      description: The charge summary of one session of an event in one currency.
+      properties:
+        session_id:
+          type: [string, "null"]
+          format: uuid
+          description: The session. Null for charges that belong to the event as a whole.
+        session_start_at:
+          type: [string, "null"]
+          format: date-time
+          description: Start of the session. Null when it has none.
+        currency:
+          type: string
+          description: Currency of the sums.
+          example: EUR
+        charged_minor:
+          type: integer
+          format: int64
+          description: Sum of the direct charges in minor units.
+        reversed_minor:
+          type: integer
+          format: int64
+          description: Sum of the reversals in minor units, zero or negative.
+        net_minor:
+          type: integer
+          format: int64
+          description: charged_minor plus reversed_minor.
+        count:
+          type: integer
+          format: int64
+          description: Number of direct charges.
+
+    BillingEventSummary:
+      type: object
+      required: [event_id, totals, by_rule, by_session, events_by_kind, preliminary]
+      description: What the platform charged for one event of the organization.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: The event.
+        totals:
+          type: array
+          description: Sums per currency.
+          items:
+            $ref: "#/components/schemas/BillingChargeTotal"
+        by_rule:
+          type: array
+          description: The net charge per rule and currency.
+          items:
+            $ref: "#/components/schemas/BillingChargeRuleLine"
+        by_session:
+          type: array
+          description: The summary per session and currency, earliest session first.
+          items:
+            $ref: "#/components/schemas/BillingChargeSessionLine"
+        events_by_kind:
+          type: object
+          description: The number of billing events of this event by kind.
+          additionalProperties:
+            type: integer
+            format: int64
+        preliminary:
+          type: boolean
+          description: Always true while invoices are not issued.
+
     BillingAccountTerms:
       type: object
-      required: [id, effective_from, price_list_code, plan_kind, billing_cycle, shortfall_policy, issuer_id, invoice_delay_days, due_days, locked, created_by, reason, created_at]
+      required: [id, effective_from, price_list_code, plan_kind, billing_cycle, shortfall_policy, issuer_id, invoice_delay_days, due_days, fee_mode, locked, created_by, reason, created_at]
       description: One dated row of the conditions of a billing account. The terms of an event are the last row that started before the event.
       properties:
         id:
@@ -19161,6 +19376,9 @@ components:
           type: [integer, "null"]
           format: int32
           description: Days to pay an invoice.
+        fee_mode:
+          type: string
+          description: Who pays the platform commission on a sold ticket, organizer_pays (the organizer is billed) or buyer_pays (the buyer pays it as the service charge).
         locked:
           type: boolean
           description: Whether only a superadmin may change the row.
@@ -19276,6 +19494,834 @@ components:
           type: [integer, "null"]
           format: int32
           description: Days to pay an invoice.
+        fee_mode:
+          type: string
+          description: Who pays the platform commission on a sold ticket, organizer_pays (default) or buyer_pays. Any other value is 422 billing.invalid_terms.
+
+    BillingCurrentRate:
+      type: object
+      required: [tier, unseated_rate_minor, seated_surcharge_minor]
+      description: "The per-ticket rate of the purchased lot that pays next."
+      properties:
+        tier:
+          type: [integer, "null"]
+          format: int32
+          description: "Tier of the pack the lot was bought in."
+        unseated_rate_minor:
+          type: [integer, "null"]
+          format: int64
+          description: "Price of one unseated ticket in minor units of the account currency."
+        seated_surcharge_minor:
+          type: [integer, "null"]
+          format: int64
+          description: "Extra price of a seated ticket in minor units."
+
+    BillingCreditLot:
+      type: object
+      required: [id, kind, source, currency, tier, unseated_rate_minor, seated_surcharge_minor, face_minor, remaining_minor, purchased_at, expires_at]
+      description: "A credit lot that still holds something."
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "Lot id."
+        kind:
+          type: string
+          description: "purchased or bonus."
+          example: purchased
+        source:
+          type: string
+          description: "How the lot came to be: a pack purchase, a campaign, or a cancelled session."
+        currency:
+          type: string
+          description: "Currency of the money fields."
+          example: EUR
+        tier:
+          type: [integer, "null"]
+          format: int32
+          description: "Tier of the pack a purchased lot was bought in, null for a bonus lot."
+        unseated_rate_minor:
+          type: [integer, "null"]
+          format: int64
+          description: "Price of one unseated ticket this lot pays, minor units. Null for a bonus lot."
+        seated_surcharge_minor:
+          type: [integer, "null"]
+          format: int64
+          description: "Extra price of a seated ticket, minor units. Null for a bonus lot."
+        face_minor:
+          type: integer
+          format: int64
+          description: "What the lot was worth when it was made, minor units."
+        remaining_minor:
+          type: integer
+          format: int64
+          description: "What is left, minor units."
+        purchased_at:
+          type: string
+          format: date-time
+          description: "When the lot was made."
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When the rest expires, null when it does not."
+
+    BillingAccountBalance:
+      type: object
+      required: [account_id, currency, balance_minor, purchased_minor, bonus_minor, next_bonus_expires_at, current_rate, lots]
+      description: "The balance of one billing account (one per currency)."
+      properties:
+        account_id:
+          type: string
+          format: uuid
+          description: "Billing account id."
+        currency:
+          type: string
+          description: "Currency of the account."
+          example: EUR
+        balance_minor:
+          type: integer
+          format: int64
+          description: "What can be spent now: purchased plus bonus, minor units."
+        purchased_minor:
+          type: integer
+          format: int64
+          description: "Purchased credits left, minor units."
+        bonus_minor:
+          type: integer
+          format: int64
+          description: "Bonus credits left, minor units."
+        next_bonus_expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When the nearest bonus expires, null when none does."
+        current_rate:
+          oneOf:
+            - $ref: "#/components/schemas/BillingCurrentRate"
+            - type: "null"
+          description: "The rate of the purchased lot that pays next, null when there is none."
+        lots:
+          type: array
+          description: "The lots that still hold something."
+          items:
+            $ref: "#/components/schemas/BillingCreditLot"
+
+    BillingBalanceResponse:
+      type: object
+      required: [accounts]
+      description: "The credit balances of an organization."
+      properties:
+        accounts:
+          type: array
+          description: "One balance per billing account."
+          items:
+            $ref: "#/components/schemas/BillingAccountBalance"
+
+    BillingPackOffer:
+      type: object
+      required: [id, account_id, currency, tier, face_minor, unseated_rate_minor, seated_surcharge_minor, tickets_unseated, card_fee_minor, card_payment_available]
+      description: "A credit pack on offer."
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "Pack id, used to order it."
+        account_id:
+          type: string
+          format: uuid
+          description: "Billing account the pack is bought for."
+        currency:
+          type: string
+          description: "Currency of the money fields."
+          example: EUR
+        tier:
+          type: integer
+          format: int32
+          description: "Tier number of the pack."
+        face_minor:
+          type: integer
+          format: int64
+          description: "Price of the pack, minor units."
+        unseated_rate_minor:
+          type: integer
+          format: int64
+          description: "Price of one unseated ticket paid from this pack, minor units."
+        seated_surcharge_minor:
+          type: integer
+          format: int64
+          description: "Extra price of a seated ticket, minor units."
+        tickets_unseated:
+          type: integer
+          format: int64
+          description: "How many unseated tickets the pack pays."
+        card_fee_minor:
+          type: [integer, "null"]
+          format: int64
+          description: "The fee a card payment adds, minor units. Null when card payment is not set up."
+        card_payment_available:
+          type: boolean
+          description: "True when the pack can be paid by card now."
+
+    BillingPackList:
+      type: object
+      required: [packs]
+      description: "The credit packs on offer."
+      properties:
+        packs:
+          type: array
+          description: "The active packs of every account."
+          items:
+            $ref: "#/components/schemas/BillingPackOffer"
+
+    BillingOrderPackRequest:
+      type: object
+      additionalProperties: false
+      required: [payment_method]
+      description: "Body of POST /v1/organizations/{org_id}/billing/packs/{pack_id}/order."
+      properties:
+        payment_method:
+          type: string
+          description: "bank_transfer or stripe_card."
+          example: bank_transfer
+
+    BillingAccountInvoiceLine:
+      type: object
+      required: [id, kind, rule_type, description, quantity, unit_amount_minor, total_amount_minor, currency]
+      description: "A line of a platform invoice."
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "Line id."
+        kind:
+          type: string
+          description: "Kind of the line, for example a rate line or the payment system fee."
+        rule_type:
+          type: [string, "null"]
+          description: "The pricing rule the line is rated by, null for other lines."
+        description:
+          type: string
+          description: "Text printed on the invoice."
+        quantity:
+          type: integer
+          format: int64
+          description: "Quantity."
+        unit_amount_minor:
+          type: integer
+          format: int64
+          description: "Price of one unit, minor units."
+        total_amount_minor:
+          type: integer
+          format: int64
+          description: "Quantity times the unit price, minor units."
+        currency:
+          type: string
+          description: "Currency of the line."
+          example: EUR
+
+    BillingAccountInvoice:
+      type: object
+      required: [id, org_id, account_id, kind, state, number, billing_period, payment_method, payment_reference, currency, subtotal_minor, card_fee_minor, tax_minor, total_minor, period_from, period_to, issued_at, due_at, paid_at, paid_amount_minor, paid_via, voided_at, payment_url, pack_id, lines]
+      description: "A platform invoice to an organization."
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "Invoice id."
+        org_id:
+          type: string
+          format: uuid
+          description: "Organization the invoice is for."
+        account_id:
+          type: [string, "null"]
+          format: uuid
+          description: "Billing account, null for a legacy invoice."
+        kind:
+          type: string
+          description: "usage, credit_pack, credit_note, subscription or manual."
+          example: credit_pack
+        state:
+          type: string
+          description: "draft, issued, paid or void."
+          example: issued
+        number:
+          type: [string, "null"]
+          description: "Invoice number, null until the invoice is issued."
+        billing_period:
+          type: string
+          description: "The month the invoice is for, YYYY-MM."
+        payment_method:
+          type: [string, "null"]
+          description: "bank_transfer or stripe_card, null until the invoice is issued."
+        payment_reference:
+          type: [string, "null"]
+          description: "The reference to write in a bank transfer, null until issued."
+        currency:
+          type: string
+          description: "Currency of the money fields."
+          example: EUR
+        subtotal_minor:
+          type: integer
+          format: int64
+          description: "Total of the lines before the card fee and tax, minor units."
+        card_fee_minor:
+          type: integer
+          format: int64
+          description: "The card payment fee, minor units, 0 for a bank transfer."
+        tax_minor:
+          type: integer
+          format: int64
+          description: "Tax, minor units."
+        total_minor:
+          type: integer
+          format: int64
+          description: "What is to be paid, minor units."
+        period_from:
+          type: [string, "null"]
+          format: date-time
+          description: "Start of the billed period, for a usage invoice."
+        period_to:
+          type: [string, "null"]
+          format: date-time
+          description: "End of the billed period, for a usage invoice."
+        issued_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When the invoice was issued."
+        due_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When payment is due."
+        paid_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When the payment was recorded."
+        paid_amount_minor:
+          type: [integer, "null"]
+          format: int64
+          description: "The amount that was paid, minor units."
+        paid_via:
+          type: [string, "null"]
+          description: "How it was paid, for example stripe_card, bank_transfer or manual."
+        voided_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When the invoice was voided."
+        payment_url:
+          type: [string, "null"]
+          description: "The Stripe payment page of a card invoice, null when there is none."
+        pack_id:
+          type: [string, "null"]
+          format: uuid
+          description: "The credit pack a credit_pack invoice is for."
+        lines:
+          type: array
+          description: "The lines, in order."
+          items:
+            $ref: "#/components/schemas/BillingAccountInvoiceLine"
+        payment_url_error:
+          type: string
+          description: "Present only in the answer to ordering a pack or issuing an invoice for a card payment when the Stripe page could not be made; the page can be opened later."
+
+    BillingAccountInvoiceList:
+      type: object
+      required: [invoices, has_more]
+      description: "A page of platform invoices of an organization."
+      properties:
+        invoices:
+          type: array
+          description: "The invoices, newest first."
+          items:
+            $ref: "#/components/schemas/BillingAccountInvoice"
+        has_more:
+          type: boolean
+          description: "True when there are more invoices after this page."
+
+    BillingAdminInvoiceList:
+      type: object
+      required: [invoices]
+      description: "Platform invoices in one state."
+      properties:
+        invoices:
+          type: array
+          description: "The invoices, newest first."
+          items:
+            $ref: "#/components/schemas/BillingAccountInvoice"
+
+    BillingPayByCardResponse:
+      type: object
+      required: [invoice_id, payment_url]
+      description: "The card payment page of an invoice."
+      properties:
+        invoice_id:
+          type: string
+          format: uuid
+          description: "Invoice id."
+        payment_url:
+          type: [string, "null"]
+          description: "The Stripe payment page."
+
+    BillingLedgerEntry:
+      type: object
+      required: [seq, lot_id, entry_type, amount_minor, currency, remaining_after, charge_id, invoice_id, reason, created_at]
+      description: "One entry of the credit journal."
+      properties:
+        seq:
+          type: integer
+          format: int64
+          description: "Position in the journal; the next_before paging value."
+        lot_id:
+          type: string
+          format: uuid
+          description: "The credit lot the entry is about."
+        entry_type:
+          type: string
+          description: "What happened to the lot, for example purchase, consume, expire or restore."
+        amount_minor:
+          type: integer
+          format: int64
+          description: "Always positive; the sign follows from entry_type. Minor units."
+        currency:
+          type: string
+          description: "Currency of the money fields."
+          example: EUR
+        remaining_after:
+          type: integer
+          format: int64
+          description: "What the lot held after the entry, minor units."
+        charge_id:
+          type: [string, "null"]
+          format: uuid
+          description: "The charge a consume entry paid."
+        invoice_id:
+          type: [string, "null"]
+          format: uuid
+          description: "The invoice a purchase entry belongs to."
+        reason:
+          type: [string, "null"]
+          description: "Why, when it is recorded."
+        created_at:
+          type: string
+          format: date-time
+          description: "When the entry was made."
+
+    BillingServiceFeeQuote:
+      type: object
+      description: "The platform commission of one sold ticket at a price, now."
+      required: [account_id, currency, ticket_currency, price_minor, seated, pricing_class, fee_mode, service_fee_minor, rule_type, price_list_version]
+      properties:
+        account_id:
+          type: string
+          format: uuid
+          description: "Billing account the commission is charged to."
+        currency:
+          type: string
+          description: "Currency of service_fee_minor (the account's)."
+        ticket_currency:
+          type: string
+          description: "Currency of the ticket price asked about."
+        price_minor:
+          type: integer
+          format: int64
+          description: "The ticket price asked about, minor units."
+        seated:
+          type: boolean
+          description: "Whether the ticket is a seat on a plan."
+        pricing_class:
+          type: string
+          description: "standard or low_price, as the sale would be classified."
+        fee_mode:
+          type: string
+          description: "The account's fee mode now: organizer_pays or buyer_pays."
+        service_fee_minor:
+          type: integer
+          format: int64
+          description: "Commission per ticket in minor units of currency: the service charge that covers the platform in fee_mode buyer_pays."
+        rule_type:
+          type: string
+          description: "Price-list rule that computed it."
+        reason:
+          type: [string, "null"]
+          description: "Why the amount is what it is (free, override), null for a plain rule."
+        price_list_version:
+          type: integer
+          format: int32
+          description: "Version of the price list in force."
+
+    BillingLedgerResponse:
+      type: object
+      required: [entries, next_before]
+      description: "A page of the credit journal of one billing account."
+      properties:
+        account_id:
+          type: string
+          format: uuid
+          description: "The billing account. Absent when the organization has no account."
+        currency:
+          type: string
+          description: "Currency of the account. Absent when the organization has no account."
+          example: EUR
+        entries:
+          type: array
+          description: "The entries, newest first."
+          items:
+            $ref: "#/components/schemas/BillingLedgerEntry"
+        next_before:
+          type: [integer, "null"]
+          format: int64
+          description: "Pass it as before to get the next page. Null on the last page."
+
+    BillingPayerRequest:
+      type: object
+      additionalProperties: false
+      required: [legal_name]
+      description: "The payer details printed on invoices (body and answer of PUT /v1/organizations/{org_id}/billing/payer)."
+      properties:
+        legal_name:
+          type: string
+          description: "Legal name of the payer, 1 to 200 characters."
+        address:
+          type: string
+          description: "Address, at most 500 characters."
+        country:
+          type: string
+          description: "Two-letter country code in capitals, or empty."
+          example: ES
+        tax_id:
+          type: string
+          description: "Tax number, at most 50 characters."
+        email:
+          type: string
+          description: "E-mail address for invoices, or empty."
+
+    BillingPayerResponse:
+      type: object
+      required: [payer, accounts_updated]
+      description: "The stored payer details."
+      properties:
+        payer:
+          allOf:
+            - $ref: "#/components/schemas/BillingPayerRequest"
+          description: "The details as stored, after trimming."
+        accounts_updated:
+          type: integer
+          format: int64
+          description: "How many billing accounts of the organization were updated."
+
+    BillingCreateUsageInvoiceRequest:
+      type: object
+      additionalProperties: false
+      required: [period]
+      description: "Body of POST /v1/admin/billing/accounts/{account_id}/invoices."
+      properties:
+        period:
+          type: string
+          description: "The finished month to bill, YYYY-MM."
+          example: 2026-09
+
+    BillingUsageInvoiceResult:
+      type: object
+      required: [invoice]
+      description: "A made usage invoice."
+      properties:
+        invoice:
+          oneOf:
+            - $ref: "#/components/schemas/BillingAccountInvoice"
+            - type: "null"
+          description: "The draft invoice, null when there was nothing to bill."
+
+    BillingIssueInvoiceRequest:
+      type: object
+      additionalProperties: false
+      required: [payment_method]
+      description: "Body of POST /v1/admin/billing/invoices/{invoice_id}/issue."
+      properties:
+        payment_method:
+          type: string
+          description: "bank_transfer or stripe_card."
+          example: bank_transfer
+
+    BillingMarkInvoicePaidRequest:
+      type: object
+      additionalProperties: false
+      required: [amount_minor, paid_at, reference]
+      description: "Body of POST /v1/admin/billing/invoices/{invoice_id}/mark-paid."
+      properties:
+        amount_minor:
+          type: integer
+          format: int64
+          description: "The amount that arrived, minor units, positive. It must match the invoice like a bank transfer does."
+        paid_at:
+          type: string
+          format: date-time
+          description: "When the money arrived. It cannot be in the future."
+        reference:
+          type: string
+          description: "The bank statement line or other proof, 1 to 200 characters."
+
+    BillingVoidInvoiceRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      description: "Body of POST /v1/admin/billing/invoices/{invoice_id}/void."
+      properties:
+        reason:
+          type: string
+          description: "Why the invoice is voided, 1 to 500 characters."
+
+    BillingPaymentFee:
+      type: object
+      required: [id, method, currency, pct_bp, fixed_minor, effective_from, reason, created_at]
+      description: "A version of the average card fee."
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "Version id."
+        method:
+          type: string
+          description: "Payment method, stripe_card."
+          example: stripe_card
+        currency:
+          type: string
+          description: "Currency the fee applies to."
+          example: EUR
+        pct_bp:
+          type: integer
+          format: int32
+          description: "Percentage part in basis points."
+        fixed_minor:
+          type: integer
+          format: int64
+          description: "Fixed part in minor units."
+        effective_from:
+          type: string
+          format: date-time
+          description: "When the version starts."
+        reason:
+          type: [string, "null"]
+          description: "The reason the operator gave."
+        created_at:
+          type: string
+          format: date-time
+          description: "When the version was added."
+
+    BillingPaymentFeeList:
+      type: object
+      required: [payment_fees]
+      description: "Every version of the card fee."
+      properties:
+        payment_fees:
+          type: array
+          description: "The versions."
+          items:
+            $ref: "#/components/schemas/BillingPaymentFee"
+
+    BillingCreatePaymentFeeRequest:
+      type: object
+      additionalProperties: false
+      required: [method, currency, pct_bp, fixed_minor, effective_from]
+      description: "Body of POST /v1/admin/billing/payment-fees."
+      properties:
+        method:
+          type: string
+          description: "Payment method, stripe_card."
+          example: stripe_card
+        currency:
+          type: string
+          description: "Three-letter currency code."
+          example: EUR
+        pct_bp:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 2000
+          description: "Percentage part in basis points, 0 to 2000."
+        fixed_minor:
+          type: integer
+          format: int64
+          description: "Fixed part in minor units, 0 to 100000."
+        effective_from:
+          type: string
+          format: date-time
+          description: "When the version starts. It must be in the future and after the latest version of the method and currency."
+
+    BillingBankTransfer:
+      type: object
+      additionalProperties: false
+      required: [id, booked_at, amount_minor, currency]
+      description: "One incoming bank transfer as a bank posts it."
+      properties:
+        id:
+          type: string
+          description: "The bank's own id of the transfer, 1 to 200 characters. A repeat of it is a no-op."
+        booked_at:
+          type: string
+          format: date-time
+          description: "When the bank booked the transfer."
+        amount_minor:
+          type: integer
+          format: int64
+          description: "The amount in minor units. Zero or negative amounts are skipped as not a payment."
+        currency:
+          type: string
+          description: "Three-letter currency code."
+          example: EUR
+        reference:
+          type: string
+          description: "The payment reference the payer wrote, at most 1000 characters."
+        counterparty_name:
+          type: string
+          description: "The payer's name as the bank shows it, at most 300 characters."
+
+    BillingBankImportRequest:
+      type: object
+      additionalProperties: false
+      required: [transactions]
+      description: "Body of the bank webhook and of POST /v1/admin/billing/bank-transactions."
+      properties:
+        transactions:
+          type: array
+          description: "1 to 500 transfers."
+          items:
+            $ref: "#/components/schemas/BillingBankTransfer"
+
+    BillingBankMatchRequest:
+      type: object
+      additionalProperties: false
+      required: [invoice_id]
+      description: "Body of POST /v1/admin/billing/bank-transactions/{transaction_id}/match."
+      properties:
+        invoice_id:
+          type: string
+          format: uuid
+          description: "The invoice the payment paid."
+
+    BillingBankIgnoreRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      description: "Body of POST /v1/admin/billing/bank-transactions/{transaction_id}/ignore."
+      properties:
+        reason:
+          type: string
+          description: "Why the payment is ignored, 1 to 500 characters."
+
+    BillingBankIngestItem:
+      type: object
+      required: [id, status]
+      description: "What happened to one transfer of a delivery."
+      properties:
+        id:
+          type: string
+          description: "The bank's id of the transfer."
+        status:
+          type: string
+          description: "duplicate, matched or unmatched."
+          example: matched
+        transaction_id:
+          type: string
+          format: uuid
+          description: "Id of the stored payment. Absent for a duplicate."
+        invoice_id:
+          type: string
+          format: uuid
+          description: "The invoice the payment was matched to. Present when matched."
+        invoice_number:
+          type: [string, "null"]
+          description: "Number of that invoice. Present when matched."
+        unmatched_reason:
+          type: string
+          description: "Why the payment waits for an operator. Present when unmatched."
+
+    BillingBankIngestResult:
+      type: object
+      required: [received, skipped, duplicate, matched, unmatched, items]
+      description: "The summary of one delivery of transfers."
+      properties:
+        received:
+          type: integer
+          description: "How many transfers the delivery held."
+        skipped:
+          type: integer
+          description: "Outgoing or zero movements that were not stored."
+        duplicate:
+          type: integer
+          description: "Transfers stored before."
+        matched:
+          type: integer
+          description: "Transfers matched to an invoice, which is now paid."
+        unmatched:
+          type: integer
+          description: "Transfers stored and waiting for an operator."
+        items:
+          type: array
+          description: "One entry per stored or repeated transfer."
+          items:
+            $ref: "#/components/schemas/BillingBankIngestItem"
+
+    BillingBankTransaction:
+      type: object
+      required: [id, provider, external_id, booked_at, amount_minor, currency, reference, counterparty_name, status, unmatched_reason, invoice_id, matched_at, received_at]
+      description: "An incoming bank payment."
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "Payment id."
+        provider:
+          type: string
+          description: "The bank or aggregator, or manual for an operator's import."
+        external_id:
+          type: string
+          description: "The bank's own id of the transfer."
+        booked_at:
+          type: string
+          format: date-time
+          description: "When the bank booked the transfer."
+        amount_minor:
+          type: integer
+          format: int64
+          description: "The amount in minor units."
+        currency:
+          type: string
+          description: "Currency of the amount."
+          example: EUR
+        reference:
+          type: [string, "null"]
+          description: "The payment reference the payer wrote."
+        counterparty_name:
+          type: [string, "null"]
+          description: "The payer's name as the bank shows it."
+        status:
+          type: string
+          description: "matched, unmatched or ignored."
+          example: unmatched
+        unmatched_reason:
+          type: [string, "null"]
+          description: "Why the payment is not matched, or why it was ignored."
+        invoice_id:
+          type: [string, "null"]
+          format: uuid
+          description: "The invoice the payment paid."
+        matched_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When it was matched."
+        received_at:
+          type: string
+          format: date-time
+          description: "When arena received it."
+
+    BillingBankTransactionList:
+      type: object
+      required: [transactions]
+      description: "Incoming bank payments."
+      properties:
+        transactions:
+          type: array
+          description: "The payments, newest first."
+          items:
+            $ref: "#/components/schemas/BillingBankTransaction"
 
 paths:
   /healthz:
@@ -23682,6 +24728,756 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "422":
           description: "A field is not valid, the start is not in the future, or the price list does not fit the plan"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/invoices:
+    get:
+      operationId: getV1AdminBillingInvoices
+      summary: "Admin - list platform invoices"
+      description: "Lists platform invoices in one state, newest first. Requires JWT, billing.admin and a platform superadmin."
+      tags: [v1, admin, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: state
+          in: query
+          required: false
+          description: "draft, issued, paid or void. Default issued."
+          schema: {type: string}
+        - name: limit
+          in: query
+          required: false
+          description: "Page size, 1 to 200. Default 100."
+          schema: {type: integer, minimum: 1, maximum: 200}
+      responses:
+        "200":
+          description: "The invoices."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAdminInvoiceList"
+        "400":
+          description: "A parameter or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/invoices/{invoice_id}:
+    get:
+      operationId: getV1AdminBillingInvoice
+      summary: "Admin - one platform invoice"
+      description: "One invoice with its lines. Requires JWT, billing.admin and a platform superadmin."
+      tags: [v1, admin, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          description: "Invoice UUID."
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: "The invoice."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccountInvoice"
+        "400":
+          description: "A parameter or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/accounts/{account_id}/invoices:
+    post:
+      operationId: postV1AdminBillingAccountInvoices
+      summary: "Admin - make a usage invoice"
+      description: "Makes a DRAFT usage invoice of a finished month (in the issuer's time zone) from every charge no credit lot or earlier invoice covered. 200 with a null invoice when there is nothing to bill. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction."
+      tags: [v1, admin, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          description: "Billing account UUID."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: "Human-readable business reason for this change. It is stored in the audit log."
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingCreateUsageInvoiceRequest"
+      responses:
+        "200":
+          description: "There was nothing to bill: invoice is null."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingUsageInvoiceResult"
+        "201":
+          description: "The draft invoice."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingUsageInvoiceResult"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "There is no such billing account"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "The period is not valid or the month is not over yet"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/invoices/{invoice_id}/issue:
+    post:
+      operationId: postV1AdminBillingInvoiceIssue
+      summary: "Admin - issue a draft invoice"
+      description: "Gives a draft invoice its number, payment reference and due date and, for a card payment, the payment system fee line. The Stripe payment page is made after the commit; when that fails the answer carries payment_url_error. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction."
+      tags: [v1, admin, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          description: "Invoice UUID."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: "Human-readable business reason for this change. It is stored in the audit log."
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingIssueInvoiceRequest"
+      responses:
+        "200":
+          description: "The issued invoice."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccountInvoice"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "Only a draft invoice can be issued"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "payment_method is not valid or the card fee is not configured for the currency"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Card payment is not configured, or billing is not available"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/invoices/{invoice_id}/mark-paid:
+    post:
+      operationId: postV1AdminBillingInvoiceMarkPaid
+      summary: "Admin - record a payment that arrived outside the webhooks"
+      description: "Records money that arrived some other way (a transfer the bank feed missed). Same amount rule as a bank transfer. A pack's credits are written in the same transaction. Repeating the same call changes nothing. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction."
+      tags: [v1, admin, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          description: "Invoice UUID."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: "Human-readable business reason for this change. It is stored in the audit log."
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingMarkInvoicePaidRequest"
+      responses:
+        "200":
+          description: "The invoice after the payment."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccountInvoice"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The invoice is not open for payment or is already paid"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "A field is not valid or the amount does not match the invoice"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/invoices/{invoice_id}/void:
+    post:
+      operationId: postV1AdminBillingInvoiceVoid
+      summary: "Admin - void an invoice"
+      description: "Voids a draft or unpaid invoice; its charges go back to the next invoice. Stripe is closed first, and when Stripe says the money already arrived nothing is voided (409). A paid invoice is never voided; correct it with a credit note. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction."
+      tags: [v1, admin, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          description: "Invoice UUID."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: "Human-readable business reason for this change. It is stored in the audit log."
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingVoidInvoiceRequest"
+      responses:
+        "200":
+          description: "The voided invoice."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccountInvoice"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The invoice is paid, Stripe has already collected it, or it is a legacy invoice"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "The reason is missing or too long"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Stripe could not close the payment page, nothing was voided"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/payment-fees:
+    get:
+      operationId: getV1AdminBillingPaymentFees
+      summary: "Admin - list payment fee versions"
+      description: "Lists every version of the average card fee a card payer adds to an invoice. Requires JWT, billing.admin and a platform superadmin."
+      tags: [v1, admin, billing]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: "The fee versions."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPaymentFeeList"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: postV1AdminBillingPaymentFees
+      summary: "Admin - add a payment fee version"
+      description: "Adds a new version of the card fee. It must start in the future and after the latest version of its method and currency, so no issued invoice changes. There is no default: the operator types the numbers. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction."
+      tags: [v1, admin, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: "Human-readable business reason for this change. It is stored in the audit log."
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingCreatePaymentFeeRequest"
+      responses:
+        "201":
+          description: "The new fee version."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPaymentFee"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "A field is not valid, or effective_from is not in the future or not after the latest version"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/bank-transactions:
+    get:
+      operationId: getV1AdminBillingBankTransactions
+      summary: "Admin - list incoming bank payments"
+      description: "Lists incoming bank payments, newest first. Requires JWT, billing.admin and a platform superadmin."
+      tags: [v1, admin, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: "matched, unmatched or ignored. Default all."
+          schema: {type: string}
+        - name: limit
+          in: query
+          required: false
+          description: "Page size, 1 to 200. Default 100."
+          schema: {type: integer, minimum: 1, maximum: 200}
+      responses:
+        "200":
+          description: "The payments."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingBankTransactionList"
+        "400":
+          description: "A parameter or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: postV1AdminBillingBankTransactions
+      summary: "Admin - import a bank statement"
+      description: "Imports a statement the operator pastes when a bank has no feed. Same rules as the bank webhook with the provider manual; each transfer is stored once and matched like a webhook transfer. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction."
+      tags: [v1, admin, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: "Human-readable business reason for this change. It is stored in the audit log."
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingBankImportRequest"
+      responses:
+        "200":
+          description: "The result of the import."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingBankIngestResult"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "The statement has no transfers, more than 500, or a transfer is not valid"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/bank-transactions/{transaction_id}/match:
+    post:
+      operationId: postV1AdminBillingBankTransactionMatch
+      summary: "Admin - match a bank payment to an invoice"
+      description: "Ties an unmatched payment to an invoice (a payer forgot the reference). Same amount rule as automatic matching. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction."
+      tags: [v1, admin, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: transaction_id
+          in: path
+          required: true
+          description: "Bank payment UUID."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: "Human-readable business reason for this change. It is stored in the audit log."
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingBankMatchRequest"
+      responses:
+        "200":
+          description: "The matched payment."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingBankTransaction"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "There is no such payment or invoice"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The invoice is not open for payment or is already paid"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "invoice_id is not a UUID or the amount does not match the invoice"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/billing/bank-transactions/{transaction_id}/ignore:
+    post:
+      operationId: postV1AdminBillingBankTransactionIgnore
+      summary: "Admin - ignore a bank payment"
+      description: "Marks a payment that is not for an invoice (a refund from a supplier, a test transfer) as ignored. A matched payment cannot be ignored. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction."
+      tags: [v1, admin, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: transaction_id
+          in: path
+          required: true
+          description: "Bank payment UUID."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: "Human-readable business reason for this change. It is stored in the audit log."
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingBankIgnoreRequest"
+      responses:
+        "200":
+          description: "The ignored payment."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingBankTransaction"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "There is no such payment"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "A matched payment paid an invoice and cannot be ignored"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "The reason is missing or too long"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
           content:
             application/json:
               schema:
@@ -42802,6 +44598,12 @@ paths:
       summary: Receive Stripe Billing webhook events
       description: |
         Unauthenticated endpoint. Stripe-signature verified inside the handler.
+        When BILLING_STRIPE_SECRET_KEY is set it books platform invoices paid
+        by Stripe Checkout (checkout.session.completed with payment_status
+        paid, checkout.session.async_payment_succeeded) or by a hosted Stripe
+        invoice (invoice.paid), verified with BILLING_STRIPE_WEBHOOK_SECRET.
+        It is idempotent by event id. A database failure answers 500 so Stripe
+        redelivers; a bad signature answers 401.
       tags: [v1]
       requestBody:
         required: true
@@ -42815,13 +44617,86 @@ paths:
         "200":
           description: Event acknowledged.
         "400":
-          description: Invalid signature or malformed payload.
+          description: Malformed payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Webhook signature verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The payment could not be recorded yet; Stripe delivers the event again.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/billing/bank/webhook/{provider}:
+    post:
+      operationId: postV1BillingBankWebhook
+      summary: "Receive incoming bank transfers"
+      description: "Unauthenticated endpoint guarded by a signature. A bank (or an aggregator) posts incoming transfers; the body is signed in the X-Arena-Signature header as sha256=<hex HMAC-SHA256 of the raw body> keyed with BILLING_BANK_WEBHOOK_SECRET. Each transfer is stored once per provider and external id, and matched to the issued platform invoice whose payment reference it carries and whose amount it equals (the total, or the total without the card fee). Anything else waits for an operator. Outgoing and zero amounts are skipped, a repeat of a transfer is a no-op. Answers 503 while the secret is not configured."
+      tags: [v1, billing]
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: "Name of the bank or aggregator, matching ^[a-z][a-z0-9_-]{1,39}$. The name manual is reserved for the operator's own import and is 404 here."
+          schema: {type: string, pattern: "^[a-z][a-z0-9_-]{1,39}$"}
+        - name: X-Arena-Signature
+          in: header
+          required: true
+          description: "sha256= followed by the hex HMAC-SHA256 of the raw request body."
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingBankImportRequest"
+      responses:
+        "200":
+          description: "The delivery was processed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingBankIngestResult"
+        "400":
+          description: "The body is not {transactions: [...]} with 1 to 500 valid transfers"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "The signature is missing or wrong"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Unknown provider"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "A transfer could not be stored; the bank should deliver the batch again"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "The bank webhook is not configured"
           content:
             application/json:
               schema:
@@ -43054,6 +44929,709 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/billing/charges:
+    get:
+      operationId: listOrgBillingCharges
+      summary: List what the platform charged an organization
+      description: "Lists the charges the platform made to the organization, newest event first, with the sums per currency over the whole filter. Read-only and preliminary: nothing is invoiced yet. A reversal row has reversal_of set and a negative amount. Requires JWT and billing.read in the organization (the owner; the manager does not hold it)."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: from
+          description: "Inclusive start of the event time, an RFC 3339 time or a YYYY-MM-DD date."
+          in: query
+          required: false
+          schema: { type: string }
+        - name: to
+          description: "Exclusive end of the event time, an RFC 3339 time or a YYYY-MM-DD date. It must be after from."
+          in: query
+          required: false
+          schema: { type: string }
+        - name: event_id
+          description: Only the charges of this event of the organization. An event of another organization is 404.
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: limit
+          description: "Page size, 1 to 200. Default 50."
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200 }
+        - name: cursor
+          description: "The next_cursor of the previous page."
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: A page of charges.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingChargeList"
+        "400":
+          description: A parameter is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller is not a member of the organization or lacks billing.read there.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The event_id filter names an event that is not the organizations own.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Billing is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/billing/balance:
+    get:
+      operationId: getV1OrgBillingBalance
+      summary: "Credit balance of an organization"
+      description: "Per billing account (one per currency): what can be spent now, of it how much is bonus and when the nearest bonus expires, the per-ticket rate of the purchased lot that pays next, and the lots that still hold something. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: "Organization UUID that scopes this request (tenant isolation)."
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: "The balances."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingBalanceResponse"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Organizer billing is not open yet (billing.organizer_disabled)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/billing/packs:
+    get:
+      operationId: getV1OrgBillingPacks
+      summary: "Credit packs on offer"
+      description: "The active packs of the price list in force now for each billing account of the organization, with the card fee a card payment would add (null when card payment is not set up). Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: "Organization UUID that scopes this request (tenant isolation)."
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: "The packs."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPackList"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Organizer billing is not open yet (billing.organizer_disabled)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/billing/service-fee-quote:
+    get:
+      operationId: getV1OrgBillingServiceFeeQuote
+      summary: "Service charge that covers the platform commission"
+      description: "For an organizer who lets the buyer pay the platform commission as the service charge (terms fee_mode buyer_pays): the price-list or individual rate of one sold ticket at this price right now, computed by the code that bills the sale. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: "Organization UUID that scopes this request (tenant isolation)."
+          schema: {type: string, format: uuid}
+        - name: currency
+          in: query
+          required: true
+          description: "Currency of the ticket price, a 3-letter code."
+          schema: {type: string, minLength: 3, maxLength: 3}
+        - name: price_minor
+          in: query
+          required: true
+          description: "Ticket price before the service charge, in minor units."
+          schema: {type: integer, format: int64, minimum: 0}
+        - name: seated
+          in: query
+          required: false
+          description: "true for a seat on a plan. Default false."
+          schema: {type: boolean}
+      responses:
+        "200":
+          description: "The commission per ticket."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingServiceFeeQuote"
+        "400":
+          description: "A parameter is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The organization has no billing account for this currency, or organizer billing is not open yet (billing.organizer_disabled)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "The account has no usable terms, or the commission is in another currency and cannot be converted yet"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/billing/ledger:
+    get:
+      operationId: getV1OrgBillingLedger
+      summary: "Credit journal of an organization"
+      description: "The credit journal of one billing account, newest entry first, keyset paged by seq. Without account_id the first account is used; an organization without accounts gets an empty list. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: "Organization UUID that scopes this request (tenant isolation)."
+          schema: {type: string, format: uuid}
+        - name: account_id
+          in: query
+          required: false
+          description: "Billing account of the organization. An account of another organization is 404."
+          schema: {type: string, format: uuid}
+        - name: before
+          in: query
+          required: false
+          description: "Only entries with seq below this value: the next_before of the previous page."
+          schema: {type: integer, format: int64, minimum: 1}
+        - name: limit
+          in: query
+          required: false
+          description: "Page size, 1 to 200. Default 50."
+          schema: {type: integer, minimum: 1, maximum: 200}
+      responses:
+        "200":
+          description: "A page of journal entries."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingLedgerResponse"
+        "400":
+          description: "A parameter or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The organization has no such billing account, or organizer billing is not open yet (billing.organizer_disabled)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/billing/account-invoices:
+    get:
+      operationId: getV1OrgBillingAccountInvoices
+      summary: "Platform invoices of an organization"
+      description: "Lists the invoices the platform issued to the organization, newest first. A draft is the operator's and is not listed. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: "Organization UUID that scopes this request (tenant isolation)."
+          schema: {type: string, format: uuid}
+        - name: state
+          in: query
+          required: false
+          description: "Only invoices in this state: issued, paid or void."
+          schema: {type: string}
+        - name: limit
+          in: query
+          required: false
+          description: "Page size, 1 to 100. Default 50."
+          schema: {type: integer, minimum: 1, maximum: 100}
+        - name: offset
+          in: query
+          required: false
+          description: "Number of invoices to skip. Default 0."
+          schema: {type: integer, minimum: 0}
+      responses:
+        "200":
+          description: "A page of invoices."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccountInvoiceList"
+        "400":
+          description: "A parameter or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Organizer billing is not open yet (billing.organizer_disabled)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/billing/account-invoices/{invoice_id}:
+    get:
+      operationId: getV1OrgBillingAccountInvoice
+      summary: "One platform invoice of an organization"
+      description: "One invoice with its lines. An invoice of another organization, a draft, or an unknown id is 404. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: "Organization UUID that scopes this request (tenant isolation)."
+          schema: {type: string, format: uuid}
+        - name: invoice_id
+          in: path
+          required: true
+          description: "Invoice UUID."
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: "The invoice."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccountInvoice"
+        "400":
+          description: "A parameter or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Not found, or organizer billing is not open yet (billing.organizer_disabled)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/billing/packs/{pack_id}/order:
+    post:
+      operationId: postV1OrgBillingPackOrder
+      summary: "Order a credit pack"
+      description: "Creates an issued credit_pack invoice for the pack. A bank transfer gets the payment reference to write in the transfer; a card payment gets a Stripe Checkout page (payment_url) and a payment system fee line. The credits appear when the payment is recorded. The Idempotency-Key header is required: a repeat answers the first invoice with 200. Requires JWT and billing.purchase in the path organization (the owner; never an API key). While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: "Organization UUID that scopes this request (tenant isolation)."
+          schema: {type: string, format: uuid}
+        - name: pack_id
+          in: path
+          required: true
+          description: "Credit pack UUID from the packs list."
+          schema: {type: string, format: uuid}
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: "A key of 1 to 200 characters that makes a repeated click buy one pack."
+          schema: {type: string, minLength: 1, maxLength: 200}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingOrderPackRequest"
+      responses:
+        "200":
+          description: "The first invoice of this Idempotency-Key, returned again."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccountInvoice"
+        "201":
+          description: "The invoice was created."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccountInvoice"
+        "400":
+          description: "The Idempotency-Key header is missing or too long, or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The pack does not exist or is not on sale for this organization now, or organizer billing is not open yet (billing.organizer_disabled)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "This Idempotency-Key was used for another order"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "payment_method is not bank_transfer or stripe_card"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Card payment is not available right now, or billing is not available"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/billing/account-invoices/{invoice_id}/pay-by-card:
+    post:
+      operationId: postV1OrgBillingInvoicePayByCard
+      summary: "Open the card payment page of an invoice"
+      description: "Returns the Stripe payment page of an issued invoice that is paid by card, making it on first use (Checkout for a credit pack, a hosted Stripe invoice for a usage invoice). Requires JWT and billing.purchase in the path organization (the owner; never an API key). While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: "Organization UUID that scopes this request (tenant isolation)."
+          schema: {type: string, format: uuid}
+        - name: invoice_id
+          in: path
+          required: true
+          description: "Invoice UUID."
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: "The payment page."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPayByCardResponse"
+        "400":
+          description: "A parameter or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Not found, or organizer billing is not open yet (billing.organizer_disabled)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The invoice is not issued or is not paid by card"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Card payment is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/billing/payer:
+    put:
+      operationId: putV1OrgBillingPayer
+      summary: "Set the payer details of an organization"
+      description: "Sets the details printed on the organization's invoices. They are stored on every billing account of the organization. Requires JWT and billing.payer_manage in the path organization (the owner). While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: "Organization UUID that scopes this request (tenant isolation)."
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingPayerRequest"
+      responses:
+        "200":
+          description: "The payer details and the number of accounts updated."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPayerResponse"
+        "400":
+          description: "A parameter or the body is malformed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The organization has no billing account yet, or organizer billing is not open yet (billing.organizer_disabled)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "A payer field is not valid"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Billing is not available right now"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/billing/events/{event_id}/summary:
+    get:
+      operationId: getOrgBillingEventSummary
+      summary: What the platform charged for one event
+      description: "The charge summary of one event of the organization: sums per currency, the net charge per rule (the lines of the future invoice), the summary per session and the number of billing events per kind. Read-only and preliminary. Requires JWT and billing.read in the organization."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: event_id
+          description: Event UUID. An event of another organization, or an unknown one, is 404.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The event charge summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingEventSummary"
+        "400":
+          description: event_id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller is not a member of the organization or lacks billing.read there.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The event is not an event of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Billing is not configured.
           content:
             application/json:
               schema:

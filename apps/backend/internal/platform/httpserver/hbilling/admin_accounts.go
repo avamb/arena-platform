@@ -25,6 +25,8 @@ type createTermsBody struct {
 	ShortfallPolicy  string     `json:"shortfall_policy"`
 	InvoiceDelayDays *int32     `json:"invoice_delay_days"`
 	DueDays          *int32     `json:"due_days"`
+	// FeeMode: organizer_pays (default) or buyer_pays.
+	FeeMode string `json:"fee_mode"`
 }
 
 func termsJSON(t gen.BillingAccountTermsRow) map[string]any {
@@ -38,6 +40,7 @@ func termsJSON(t gen.BillingAccountTermsRow) map[string]any {
 		"issuer_id":          t.IssuerID.String(),
 		"invoice_delay_days": t.InvoiceDelayDays,
 		"due_days":           t.DueDays,
+		"fee_mode":           t.FeeMode,
 		"locked":             t.Locked,
 		"created_by":         t.CreatedBy,
 		"reason":             t.Reason,
@@ -178,6 +181,9 @@ func (h *AdminHandler) HandleCreateAccountTerms(w http.ResponseWriter, r *http.R
 	case !validBillingCycles[body.BillingCycle]:
 		unprocessable(w, r, "billing.invalid_terms", "billing_cycle must be prepaid, per_event or monthly")
 		return
+	case body.FeeMode != "" && body.FeeMode != "organizer_pays" && body.FeeMode != "buyer_pays":
+		unprocessable(w, r, "billing.invalid_terms", "fee_mode must be organizer_pays or buyer_pays")
+		return
 	case !validShortfallPolicy[body.ShortfallPolicy]:
 		unprocessable(w, r, "billing.invalid_terms", "shortfall_policy must be invoice_postpaid or block_publishing")
 		return
@@ -272,7 +278,7 @@ func (h *AdminHandler) HandleCreateAccountTerms(w http.ResponseWriter, r *http.R
 		AccountID: acc.ID, EffectiveFrom: from, PriceListCode: body.PriceListCode, PlanKind: body.PlanKind,
 		BillingCycle: body.BillingCycle, ShortfallPolicy: body.ShortfallPolicy, IssuerID: acc.IssuerID,
 		InvoiceDelayDays: body.InvoiceDelayDays, DueDays: body.DueDays,
-		CreatedBy: ptrString(actorID(r)), Reason: &reason,
+		CreatedBy: ptrString(actorID(r)), Reason: &reason, FeeMode: body.FeeMode,
 	})
 	if err != nil {
 		h.fail(w, r, "insert terms", err)
@@ -283,6 +289,7 @@ func (h *AdminHandler) HandleCreateAccountTerms(w http.ResponseWriter, r *http.R
 		"effective_from":  created.EffectiveFrom.UTC().Format(time.RFC3339Nano),
 		"price_list_code": created.PriceListCode, "plan_kind": created.PlanKind,
 		"billing_cycle": created.BillingCycle, "shortfall_policy": created.ShortfallPolicy,
+		"fee_mode": created.FeeMode,
 	}); err != nil {
 		h.fail(w, r, "audit", err)
 		return

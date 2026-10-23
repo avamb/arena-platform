@@ -175,17 +175,20 @@ type BillingAccountTermsRow struct {
 	CreatedBy        *string   `json:"created_by"`
 	Reason           *string   `json:"reason"`
 	CreatedAt        time.Time `json:"created_at"`
+	// FeeMode is organizer_pays (the price-list rate) or buyer_pays (the
+	// buyer's service charge is the platform's commission), migration 0160.
+	FeeMode string `json:"fee_mode"`
 }
 
 const billingAccountTermsColumns = `id, account_id, effective_from, price_list_code, plan_kind, billing_cycle,
        shortfall_policy, issuer_id, invoice_delay_days, due_days, locked,
-       created_by, reason, created_at`
+       created_by, reason, created_at, fee_mode`
 
 func scanBillingAccountTermsRow(row interface{ Scan(dest ...any) error }) (BillingAccountTermsRow, error) {
 	var r BillingAccountTermsRow
 	err := row.Scan(&r.ID, &r.AccountID, &r.EffectiveFrom, &r.PriceListCode, &r.PlanKind,
 		&r.BillingCycle, &r.ShortfallPolicy, &r.IssuerID, &r.InvoiceDelayDays, &r.DueDays,
-		&r.Locked, &r.CreatedBy, &r.Reason, &r.CreatedAt)
+		&r.Locked, &r.CreatedBy, &r.Reason, &r.CreatedAt, &r.FeeMode)
 	return r, err
 }
 
@@ -404,14 +407,16 @@ type InsertBillingAccountTermsParams struct {
 	Locked           bool
 	CreatedBy        *string
 	Reason           *string
+	// FeeMode is organizer_pays or buyer_pays; empty means organizer_pays.
+	FeeMode string
 }
 
 const insertBillingAccountTerms = `-- name: InsertBillingAccountTerms :one
 INSERT INTO billing_account_terms (
     account_id, effective_from, price_list_code, plan_kind, billing_cycle,
     shortfall_policy, issuer_id, invoice_delay_days, due_days, locked,
-    created_by, reason)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    created_by, reason, fee_mode)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE(NULLIF($13, ''), 'organizer_pays'))
 RETURNING ` + billingAccountTermsColumns
 
 // InsertBillingAccountTerms writes a new dated terms row. A second row with
@@ -420,7 +425,7 @@ func (q *Queries) InsertBillingAccountTerms(ctx context.Context, p InsertBilling
 	return scanBillingAccountTermsRow(q.db.QueryRow(ctx, insertBillingAccountTerms,
 		p.AccountID, p.EffectiveFrom, p.PriceListCode, p.PlanKind, p.BillingCycle,
 		p.ShortfallPolicy, p.IssuerID, p.InvoiceDelayDays, p.DueDays, p.Locked,
-		p.CreatedBy, p.Reason))
+		p.CreatedBy, p.Reason, p.FeeMode))
 }
 
 const insertBillingAccountTermsIfNone = `-- name: InsertBillingAccountTermsIfNone :exec
