@@ -6,6 +6,17 @@
 import { ApiError, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type {
+  BillingAccountInvoice,
+  BillingAccountInvoiceList,
+  BillingBalanceResponse,
+  BillingChargeList,
+  BillingEventSummary,
+  BillingLedgerResponse,
+  BillingPackList,
+  BillingPayByCardResponse,
+  BillingPayerRequest,
+  BillingPayerResponse,
+  BillingServiceFeeQuote,
   ComplimentaryListResponse,
   CreateOrderRefundsRequest,
   CreateOrderRefundsResponse,
@@ -725,4 +736,116 @@ export function setEventContact(
   input: { email: string; phone: string | null; phone_hidden: boolean },
 ): Promise<EventContactResponse> {
   return call<EventContactResponse>({ route: API.eventContact, params: { org_id: orgId, event_id: eventId }, body: input });
+}
+
+// ─── B2-7: billing usage (read-only, preliminary) ───────────────────────────
+
+export interface BillingChargesQuery {
+  /** Inclusive start of the event time, RFC 3339. */
+  from?: string;
+  /** Exclusive end of the event time, RFC 3339. */
+  to?: string;
+  eventId?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+/** One page of the charges, newest event first, with the sums of the whole filter. */
+export function listBillingCharges(orgId: string, query: BillingChargesQuery): Promise<BillingChargeList> {
+  return call<BillingChargeList>({
+    route: API.billingCharges,
+    params: { org_id: orgId },
+    query: { from: query.from, to: query.to, event_id: query.eventId, limit: query.limit, cursor: query.cursor },
+  });
+}
+
+/** The charge summary of one event: per currency, per rule, per session. */
+export function fetchBillingEventSummary(orgId: string, eventId: string): Promise<BillingEventSummary> {
+  return call<BillingEventSummary>({ route: API.billingEventSummary, params: { org_id: orgId, event_id: eventId } });
+}
+
+// ─── B3-3/B4: balance, packs, invoices, journal, commission quote, payer ────
+
+/** The credit balance of each billing account (one per currency). */
+export function fetchBillingBalance(orgId: string): Promise<BillingBalanceResponse> {
+  return call<BillingBalanceResponse>({ route: API.billingBalance, params: { org_id: orgId } });
+}
+
+/** The credit packs on offer, with the fee a card payment adds. */
+export function listBillingPacks(orgId: string): Promise<BillingPackList> {
+  return call<BillingPackList>({ route: API.billingPacks, params: { org_id: orgId } });
+}
+
+/**
+ * Orders a pack: an issued invoice (201), or the first one again (200) when
+ * `key` was used before. `key` is the Idempotency-Key of ONE confirmed order.
+ */
+export function orderBillingPack(
+  orgId: string,
+  packId: string,
+  paymentMethod: "bank_transfer" | "stripe_card",
+  key: string,
+): Promise<BillingAccountInvoice> {
+  return call<BillingAccountInvoice>({
+    route: API.billingPackOrder,
+    params: { org_id: orgId, pack_id: packId },
+    body: { payment_method: paymentMethod },
+    headers: { "Idempotency-Key": key },
+  });
+}
+
+export interface AccountInvoicesQuery {
+  state?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/** A page of the organization's platform invoices, newest first. */
+export function listAccountInvoices(orgId: string, query: AccountInvoicesQuery): Promise<BillingAccountInvoiceList> {
+  return call<BillingAccountInvoiceList>({
+    route: API.billingAccountInvoices,
+    params: { org_id: orgId },
+    query: { state: query.state, limit: query.limit, offset: query.offset },
+  });
+}
+
+export function fetchAccountInvoice(orgId: string, invoiceId: string): Promise<BillingAccountInvoice> {
+  return call<BillingAccountInvoice>({ route: API.billingAccountInvoice, params: { org_id: orgId, invoice_id: invoiceId } });
+}
+
+/** The Stripe payment page of an issued card invoice. */
+export function payInvoiceByCard(orgId: string, invoiceId: string): Promise<BillingPayByCardResponse> {
+  return call<BillingPayByCardResponse>({
+    route: API.billingInvoicePayByCard,
+    params: { org_id: orgId, invoice_id: invoiceId },
+  });
+}
+
+/** The credit journal of one account, newest first; `before` is the previous page's `next_before`. */
+export function listBillingLedger(
+  orgId: string,
+  query: { accountId?: string; before?: number; limit?: number },
+): Promise<BillingLedgerResponse> {
+  return call<BillingLedgerResponse>({
+    route: API.billingLedger,
+    params: { org_id: orgId },
+    query: { account_id: query.accountId, before: query.before, limit: query.limit },
+  });
+}
+
+/** The platform commission of one ticket at a price: the service charge that covers it. */
+export function fetchServiceFeeQuote(
+  orgId: string,
+  query: { currency: string; priceMinor: number; seated: boolean },
+): Promise<BillingServiceFeeQuote> {
+  return call<BillingServiceFeeQuote>({
+    route: API.billingServiceFeeQuote,
+    params: { org_id: orgId },
+    query: { currency: query.currency, price_minor: query.priceMinor, seated: query.seated ? "true" : "false" },
+  });
+}
+
+/** Sets the payer details printed on the invoices. */
+export function putBillingPayer(orgId: string, body: BillingPayerRequest): Promise<BillingPayerResponse> {
+  return call<BillingPayerResponse>({ route: API.billingPayer, params: { org_id: orgId }, body });
 }

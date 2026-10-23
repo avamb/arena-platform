@@ -872,3 +872,36 @@ fieldset legend {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* B3-3/B4: billing balance, packs, invoices. */
+.pay-ref {
+  margin-block: 0.75rem;
+}
+.pay-ref-code {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.billing-totals-list {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 1rem;
+  margin: 0.5rem 0 0;
+}
+.billing-totals-list dd {
+  margin: 0;
+  text-align: end;
+}
+.billing-order,
+.billing-issued,
+.billing-return {
+  margin-block: 1rem;
+}

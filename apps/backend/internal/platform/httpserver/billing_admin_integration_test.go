@@ -712,7 +712,7 @@ func TestBillingAdmin_EveryWriteIsAudited(t *testing.T) {
 		covered[s.route] = true
 	}
 	for route := range billingAdminWriteRoutes {
-		if !covered[route] {
+		if !covered[route] && !invoiceAdminAuditRoutes[route] {
 			t.Errorf("the audit test does not exercise %s", route)
 		}
 	}
