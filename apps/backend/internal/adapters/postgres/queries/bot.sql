@@ -198,12 +198,17 @@ SET    reminded_at = now()
 WHERE  id = $1;
 
 -- name: DeleteBotDraftsIdleBefore :many
--- Drafts abandoned since before $1, deleted; the rows come back so their
--- owners can be told the draft is gone.
+-- Up to $2 drafts abandoned since before $1, deleted (oldest first); the rows
+-- come back so their owners can be told the draft is gone. A backlog is worked
+-- off over several passes, so one pass never sends a flood of notices.
 DELETE FROM bot_drafts d
 USING  bot_telegram_links l
 WHERE  l.telegram_user_id = d.telegram_user_id
-  AND  d.updated_at < $1
+  AND  d.id IN (SELECT x.id FROM bot_drafts x
+                JOIN   bot_telegram_links xl ON xl.telegram_user_id = x.telegram_user_id
+                WHERE  x.updated_at < $1
+                ORDER  BY x.updated_at
+                LIMIT  $2)
 RETURNING d.id, d.telegram_user_id, d.org_id, d.mode, d.event_id, d.state, l.locale, d.updated_at;
 
 -- name: UpsertBotDialog :one
@@ -263,6 +268,15 @@ ORDER  BY updated_at DESC, created_at DESC, kind;
 DELETE FROM bot_dialogs
 WHERE  telegram_user_id = $1
   AND  kind = $2;
+
+-- name: DeleteBotDialogIfExpired :execrows
+-- Deletes the dialog only while it is still expired at the given instant, so a
+-- Save that revived it between the read and this delete is never erased, and
+-- of two parallel Loads exactly one gets 1 (the one that reports "expired").
+DELETE FROM bot_dialogs
+WHERE  telegram_user_id = $1
+  AND  kind = $2
+  AND  expires_at <= $3;
 
 -- name: DeleteExpiredBotDialogs :execrows
 DELETE FROM bot_dialogs

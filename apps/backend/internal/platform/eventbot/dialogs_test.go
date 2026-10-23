@@ -81,6 +81,18 @@ func (m *memDialogTable) DeleteBotDialog(_ context.Context, tg int64, kind strin
 	return nil
 }
 
+func (m *memDialogTable) DeleteBotDialogIfExpired(_ context.Context, tg int64, kind string, now time.Time) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k := memDialogKey{tg, kind}
+	row, ok := m.rows[k]
+	if !ok || row.ExpiresAt.After(now) {
+		return 0, nil
+	}
+	delete(m.rows, k)
+	return 1, nil
+}
+
 func (m *memDialogTable) ListBotDialogKindsByRecency(_ context.Context, tg int64) ([]string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -228,5 +240,85 @@ func TestDialogStore_NoDatabaseIsAnError(t *testing.T) {
 	}
 	if err := s.Delete(ctx, 1, "team"); !errors.Is(err, errNoDialogDatabase) {
 		t.Fatalf("Delete: %v", err)
+	}
+}
+
+// Parallel Loads of one expired dialog: exactly one reports "expired", the
+// rest see a dialog that never existed.
+func TestDialogStore_ParallelLoadsReportExpiryOnce(t *testing.T) {
+	ctx := context.Background()
+	clock := &testClock{t: time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)}
+	s := newMemDialogStore(clock)
+	if err := s.Save(ctx, 1, nil, "team", "email", sampleDialog{}, dialogTTL); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	clock.advance(dialogTTL)
+
+	const n = 16
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	reported := 0
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, found, expired, err := s.Load(ctx, 1, "team", nil)
+			if err != nil || found {
+				t.Errorf("found=%v err=%v", found, err)
+				return
+			}
+			if expired {
+				mu.Lock()
+				reported++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if reported != 1 {
+		t.Fatalf("expiry reported %d times, want exactly once", reported)
+	}
+}
+
+// racingDialogTable lets a Save land between Load's read and its delete.
+type racingDialogTable struct {
+	*memDialogTable
+	beforeDelete func()
+}
+
+func (r *racingDialogTable) DeleteBotDialogIfExpired(ctx context.Context, tg int64, kind string, now time.Time) (int64, error) {
+	if r.beforeDelete != nil {
+		r.beforeDelete()
+	}
+	return r.memDialogTable.DeleteBotDialogIfExpired(ctx, tg, kind, now)
+}
+
+// A Save that revives the dialog after Load read it as expired is never
+// erased: Load answers with the revived dialog.
+func TestDialogStore_SaveBetweenReadAndDeleteSurvives(t *testing.T) {
+	ctx := context.Background()
+	clock := &testClock{t: time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)}
+	mem := &memDialogTable{rows: map[memDialogKey]gen.BotDialogRow{}}
+	racing := &racingDialogTable{memDialogTable: mem}
+	s := &pgDialogStore{q: racing, now: clock.now}
+
+	if err := s.Save(ctx, 1, nil, "team", "email", sampleDialog{Email: "old"}, dialogTTL); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	clock.advance(dialogTTL)
+	racing.beforeDelete = func() {
+		racing.beforeDelete = nil
+		if err := s.Save(ctx, 1, nil, "team", "role", sampleDialog{Email: "new"}, dialogTTL); err != nil {
+			t.Errorf("racing Save: %v", err)
+		}
+	}
+
+	var got sampleDialog
+	step, found, expired, err := s.Load(ctx, 1, "team", &got)
+	if err != nil || !found || expired || step != "role" || got.Email != "new" {
+		t.Fatalf("revived dialog: step=%q found=%v expired=%v err=%v got=%+v", step, found, expired, err, got)
+	}
+	if _, found, _, _ := s.Load(ctx, 1, "team", nil); !found {
+		t.Fatal("the revived dialog was erased")
 	}
 }

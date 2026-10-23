@@ -50,12 +50,12 @@ func (m *memDrafts) MarkBotDraftReminded(_ context.Context, id uuid.UUID) error 
 	return nil
 }
 
-func (m *memDrafts) DeleteBotDraftsIdleBefore(_ context.Context, idleBefore time.Time) ([]gen.BotDraftReminderRow, error) {
+func (m *memDrafts) DeleteBotDraftsIdleBefore(_ context.Context, idleBefore time.Time, limit int32) ([]gen.BotDraftReminderRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var gone, kept []gen.BotDraftReminderRow
 	for _, r := range m.rows {
-		if r.UpdatedAt.Before(idleBefore) {
+		if r.UpdatedAt.Before(idleBefore) && len(gone) < int(limit) {
 			gone = append(gone, r)
 		} else {
 			kept = append(kept, r)
@@ -269,6 +269,44 @@ func TestDraftSweep_BatchLimit(t *testing.T) {
 	}
 	if res := sw.sweep(context.Background(), sweepNow); res.Reminded != 5 {
 		t.Fatalf("pass 2 reminded %d, want the remaining 5", res.Reminded)
+	}
+}
+
+// A backlog of expired drafts (the bot was down for days) is worked off over
+// several passes, never in one flood.
+func TestDraftSweep_DeletionBacklogIsBatched(t *testing.T) {
+	t.Parallel()
+	var rows []gen.BotDraftReminderRow
+	for i := 0; i < draftSweepBatch+7; i++ {
+		rows = append(rows, draftRow(int64(2000+i), "en", "", sweepNow.Add(-10*24*time.Hour)))
+	}
+	q := newMemDrafts(rows...)
+	snd := &fakeSender{}
+	sw := newTestSweeper(t, q, snd)
+
+	if res := sw.sweep(context.Background(), sweepNow); res.Deleted != draftSweepBatch {
+		t.Fatalf("pass 1 deleted %d, want %d", res.Deleted, draftSweepBatch)
+	}
+	if res := sw.sweep(context.Background(), sweepNow); res.Deleted != 7 {
+		t.Fatalf("pass 2 deleted %d, want the remaining 7", res.Deleted)
+	}
+}
+
+// Once the context is cancelled no further notice is sent.
+func TestDraftSweep_DeletionNoticesStopWhenContextEnds(t *testing.T) {
+	t.Parallel()
+	q := newMemDrafts(
+		draftRow(3001, "en", "", sweepNow.Add(-10*24*time.Hour)),
+		draftRow(3002, "en", "", sweepNow.Add(-10*24*time.Hour)),
+	)
+	snd := &fakeSender{}
+	sw := newTestSweeper(t, q, snd)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	sw.sweep(ctx, sweepNow)
+	if got := len(snd.messages()); got != 0 {
+		t.Fatalf("sent %d notices after the context ended", got)
 	}
 }
 
