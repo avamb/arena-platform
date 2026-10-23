@@ -36,7 +36,23 @@ const (
 	ReasonOverride    = "override"
 	ReasonNoRule      = "no_rule"
 	ReasonJournalOnly = "journal_only"
+	// ReasonBuyerPays marks a charge equal to the service charge the buyer
+	// paid (fee_mode buyer_pays).
+	ReasonBuyerPays = "buyer_pays"
 )
+
+// Fee modes of billing_account_terms.fee_mode (migration 0160).
+const (
+	// FeeModeOrganizerPays: the organizer pays the price-list rate.
+	FeeModeOrganizerPays = "organizer_pays"
+	// FeeModeBuyerPays: the organizer wants the net amount; the service
+	// charge the buyer pays on a ticket IS the platform's commission.
+	FeeModeBuyerPays = "buyer_pays"
+)
+
+// RuleBuyerServiceCharge is the rule type of a charge made in fee_mode
+// buyer_pays. It is not a price-list rule: no price_list_rules row carries it.
+const RuleBuyerServiceCharge RuleType = "buyer_service_charge"
 
 // DeferredFXRateMissing marks a charge that cannot be computed yet: a
 // percentage rule on a sale in another currency than the account's needs
@@ -174,6 +190,65 @@ func rateTicketSold(terms Terms, ev Event, c Charge) (Charge, error) {
 		c.Reason = ReasonFree
 		return c, nil
 	}
+	if terms.FeeMode() == FeeModeBuyerPays {
+		return rateBuyerPays(terms, ev, net, c)
+	}
+	return rateTicketAtList(terms, ev, net, c)
+}
+
+// StandardTicketCharge is what one sold ticket of ev costs the organizer at
+// the price list (or the individual rate), whatever the fee mode. In
+// fee_mode buyer_pays it is the service charge per ticket that covers the
+// platform: the organizer sets that service charge on the sale so the buyer
+// pays it and the organizer keeps the ticket price. ev.Kind is ignored (a
+// sold ticket is assumed); ev.OccurredAt must equal terms.At.
+func StandardTicketCharge(terms Terms, ev Event) (Charge, error) {
+	ev.Kind = KindTicketSold
+	ev.ServiceChargeMinor = 0
+	if !ev.OccurredAt.Equal(terms.At) || ev.UnitPriceMinor < 0 || ev.DiscountMinor < 0 {
+		return Charge{}, fmt.Errorf("%w: quote event", ErrInconsistentEvent)
+	}
+	c := Charge{
+		Currency: terms.Currency, PriceListID: terms.PriceList.ID, PriceListVersion: terms.PriceList.Version,
+		Inputs: map[string]int64{"unit_price_minor": ev.UnitPriceMinor, "discount_minor": ev.DiscountMinor,
+			"seated": boolInput(ev.Seated)},
+	}
+	net := ev.UnitPriceMinor - ev.DiscountMinor
+	c.Inputs["net_price_minor"] = net
+	if net <= 0 {
+		c.Reason = ReasonFree
+		return c, nil
+	}
+	return rateTicketAtList(terms, ev, net, c)
+}
+
+// rateBuyerPays charges what the buyer paid as the service charge on this
+// ticket: in this mode the service charge IS the platform's commission and
+// the organizer keeps the ticket price. The rate the price list (or the
+// individual rate) would have charged is kept in inputs as standard_minor, so
+// a report can show a service charge set below the platform's rate. A
+// service charge in another currency than the account's waits for an
+// exchange rate (fx_rate_missing), like every other cross-currency amount.
+func rateBuyerPays(terms Terms, ev Event, net int64, c Charge) (Charge, error) {
+	std, err := rateTicketAtList(terms, ev, net, Charge{
+		Currency: c.Currency, PriceListID: c.PriceListID, PriceListVersion: c.PriceListVersion,
+		Inputs: map[string]int64{},
+	})
+	if err == nil && std.Deferred == "" {
+		c.Inputs["standard_minor"] = std.AmountMinor
+	}
+	c.RuleType = RuleBuyerServiceCharge
+	c.Reason = ReasonBuyerPays
+	if ev.Currency != terms.Currency {
+		c.Deferred = DeferredFXRateMissing
+		return c, nil
+	}
+	c.AmountMinor = ev.ServiceChargeMinor
+	return c, nil
+}
+
+// rateTicketAtList is the price-list (or individual) rate of a sold ticket.
+func rateTicketAtList(terms Terms, ev Event, net int64, c Charge) (Charge, error) {
 	if o := terms.Override; o != nil {
 		return applyOverride(o, ev.Seated, c), nil
 	}

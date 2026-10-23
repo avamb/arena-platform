@@ -21,7 +21,7 @@ func registerJobRetentionHandler(reg *worker.Registry, pool *pgxpool.Pool, logge
 		Store:     jobretention.NewPGStore(pool),
 		Scheduler: jobretention.NewPGScheduler(pool),
 		Logger:    logger,
-		// promo_code_attempts older than 90 days (migration 0158).
+		// promo_code_attempts older than 90 days (migration 0161).
 		Extra: func(ctx context.Context, now time.Time) (string, int64, error) {
 			n, err := promoattempts.Purge(ctx, pool, now)
 			return "promo_code_attempts", n, err

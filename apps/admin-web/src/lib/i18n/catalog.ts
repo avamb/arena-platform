@@ -69,6 +69,9 @@ export const ruCatalog: Catalog = {
   "nav.geo": "Геосправочник (Geo)",
   "nav.onboarding": "Онбординг (Onboarding)",
   "nav.billing_prices": "Прайс-листы и ставки (Price lists and rates)",
+  "nav.billing_invoices": "Счета (Invoices)",
+  "nav.billing_payment_fees": "Комиссии карт (Payment fees)",
+  "nav.billing_bank": "Банковские платежи (Bank payments)",
 
   // Empty/scope states
   "shell.scopeNone":
@@ -169,6 +172,9 @@ export const enCatalog: Catalog = {
   "nav.geo": "Geo Registry",
   "nav.onboarding": "Onboarding",
   "nav.billing_prices": "Price lists and rates",
+  "nav.billing_invoices": "Invoices",
+  "nav.billing_payment_fees": "Payment fees",
+  "nav.billing_bank": "Bank payments",
 
   // Empty/scope states
   "shell.scopeNone":

@@ -1,5 +1,5 @@
 // Package promoattempts is the journal of promo-code checks
-// (promo_code_attempts, migration 0158).
+// (promo_code_attempts, migration 0161).
 //
 // Every surface that judges a code — the Bil24 gateway (ADD_PROMO_CODES,
 // CHECK_KDP, CREATE_ORDER_EXT), the widget's checkout/start and the org

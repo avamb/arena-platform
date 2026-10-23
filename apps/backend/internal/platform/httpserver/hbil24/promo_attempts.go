@@ -9,7 +9,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
 )
 
-// WithPromoAttempts wires the journal of promo-code checks (migration 0158).
+// WithPromoAttempts wires the journal of promo-code checks (migration 0161).
 // Without it the gateway keeps no journal. Returns the receiver for chaining.
 func (h *Handler) WithPromoAttempts(rec *promoattempts.Recorder) *Handler {
 	h.promoRec = rec

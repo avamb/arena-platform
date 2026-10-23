@@ -422,7 +422,7 @@ type Handler struct {
 	// is exactly the pre-#491 behaviour every earlier unit test asserts.
 	// Its interface and setter live in cmd_promo.go.
 	promoQ PromoQuerier
-	// promoRec journals every promo-code check (migration 0158); nil = off.
+	// promoRec journals every promo-code check (migration 0161); nil = off.
 	promoRec *promoattempts.Recorder
 
 	// refundQ / refundTicket (feature #509, W1-B8, spec §7.13) back the

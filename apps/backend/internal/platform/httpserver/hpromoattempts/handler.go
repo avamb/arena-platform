@@ -1,5 +1,5 @@
 // Package hpromoattempts serves the read side of the promo-code attempt
-// journal (migration 0158, internal/platform/promoattempts):
+// journal (migration 0161, internal/platform/promoattempts):
 //
 //	GET /v1/organizations/{org_id}/promo-codes/{id}/attempts          (promo.read)
 //	GET /v1/organizations/{org_id}/promo-codes/{id}/attempts/summary  (promo.read)

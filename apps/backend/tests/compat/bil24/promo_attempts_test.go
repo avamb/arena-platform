@@ -1,6 +1,6 @@
 //go:build integration
 
-// promo_attempts_test.go — the journal of promo-code checks (migration 0158)
+// promo_attempts_test.go — the journal of promo-code checks (migration 0161)
 // against the live gateway: a code that belongs to ANOTHER session is refused
 // and the refusal leaves a row naming the cause, an accepted code leaves an
 // "applied" row, a repeat inside a minute is stored once, and the read side

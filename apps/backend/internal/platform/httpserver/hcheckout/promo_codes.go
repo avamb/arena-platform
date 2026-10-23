@@ -766,7 +766,7 @@ func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Every verdict below is journaled (migration 0158); the write is
+	// Every verdict below is journaled (migration 0161); the write is
 	// asynchronous and never changes the answer.
 	journal := func(row *gen.PromoCodeRow, errCode string) {
 		a := promoattempts.Attempt{

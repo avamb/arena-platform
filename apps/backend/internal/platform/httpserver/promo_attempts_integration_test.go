@@ -2,7 +2,7 @@
 
 package httpserver
 
-// The read side of the promo-code attempt journal (migration 0158) through the
+// The read side of the promo-code attempt journal (migration 0161) through the
 // real router: an organization reads its own attempts (page, filters, summary),
 // a key of another organization gets the route's own 404 for the code and an
 // empty organization-wide list. Run against a migrated database.
