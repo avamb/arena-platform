@@ -6,6 +6,8 @@
 import { ApiError, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type {
+  BillingChargeList,
+  BillingEventSummary,
   ComplimentaryListResponse,
   CreateOrderRefundsRequest,
   CreateOrderRefundsResponse,
@@ -725,4 +727,30 @@ export function setEventContact(
   input: { email: string; phone: string | null; phone_hidden: boolean },
 ): Promise<EventContactResponse> {
   return call<EventContactResponse>({ route: API.eventContact, params: { org_id: orgId, event_id: eventId }, body: input });
+}
+
+// ─── B2-7: billing usage (read-only, preliminary) ───────────────────────────
+
+export interface BillingChargesQuery {
+  /** Inclusive start of the event time, RFC 3339. */
+  from?: string;
+  /** Exclusive end of the event time, RFC 3339. */
+  to?: string;
+  eventId?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+/** One page of the charges, newest event first, with the sums of the whole filter. */
+export function listBillingCharges(orgId: string, query: BillingChargesQuery): Promise<BillingChargeList> {
+  return call<BillingChargeList>({
+    route: API.billingCharges,
+    params: { org_id: orgId },
+    query: { from: query.from, to: query.to, event_id: query.eventId, limit: query.limit, cursor: query.cursor },
+  });
+}
+
+/** The charge summary of one event: per currency, per rule, per session. */
+export function fetchBillingEventSummary(orgId: string, eventId: string): Promise<BillingEventSummary> {
+  return call<BillingEventSummary>({ route: API.billingEventSummary, params: { org_id: orgId, event_id: eventId } });
 }
