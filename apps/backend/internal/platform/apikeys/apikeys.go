@@ -73,6 +73,10 @@ var ForbiddenScopeExact = map[string]bool{
 	"reconciliation.review": true,
 	"barcode_batch.approve": true,
 	"seating_plan.verify":   true,
+	// Buying credit packs and editing the payer are human-only (billing
+	// wave B-A, run decision R-B8): an API key may never spend money.
+	"billing.purchase":     true,
+	"billing.payer_manage": true,
 }
 
 // IsForbiddenScope reports whether scope may never be carried by an API key.

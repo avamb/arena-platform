@@ -1,4 +1,4 @@
--- 0157_session_seats_manage_permission.sql — the dedicated permission for
+-- 0161_session_seats_manage_permission.sql — the dedicated permission for
 -- managing the places of a session (task S1f, spec 08_architecture/26 §3.3
 -- and 40 §5.S).
 --

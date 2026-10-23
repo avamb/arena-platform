@@ -6,7 +6,10 @@
  *   metadata.via = event_center_web).
  * - Parses the platform error envelope into ApiError.
  * - On a 401 it refreshes the session ONCE and repeats the request.
- * - Aborts a request after 30 s.
+ * - Aborts a request after 30 s (a file upload gets 120 s, see `UPLOAD_TIMEOUT_MS`).
+ * - A call may carry a `form` (multipart/form-data) instead of a JSON `body`:
+ *   same transport, same token refresh, same channel header; the browser sets
+ *   the multipart Content-Type with its boundary, so it is never set here.
  *
  * The session itself is `session` (tabSession.ts): one tab of a session
  * rotates the refresh token, the others ask it (review finding M3).
@@ -17,6 +20,14 @@ import { TabSession, browserBus, browserLocks, browserStore, type Deps, type Tok
 import type { AuthLoginResponse, AuthRefreshResponse } from "@/lib/api/types";
 
 const TIMEOUT_MS = 30_000;
+/** A poster of a few megabytes over a slow phone connection needs more than 30 s. */
+export const UPLOAD_TIMEOUT_MS = 120_000;
+/**
+ * Reading a poster with the vision model: the server allows the model 45 s and
+ * 10 s more to write the answer, so the browser waits a little longer than that
+ * (and never repeats the paid request by itself).
+ */
+export const POSTER_READ_TIMEOUT_MS = 60_000;
 export const CLIENT_CHANNEL = "event_center_web";
 
 export class ApiError extends Error {
@@ -70,6 +81,12 @@ interface SendOptions {
   params?: Record<string, string>;
   query?: Record<string, string | number | undefined>;
   body?: unknown;
+  /** A multipart body. Never together with `body`. */
+  form?: FormData;
+  /** The caller's own cancel (a screen that left); a cancel is reported as `network.aborted`. */
+  signal?: AbortSignal;
+  /** Overrides the default 30 s. */
+  timeoutMs?: number;
   authenticated: boolean;
   accept?: string;
   /** Extra headers, for example X-Step-Up-Token on a money request. */
@@ -82,6 +99,8 @@ async function send(opts: SendOptions): Promise<Response> {
     ...opts.headers,
     "X-Client-Channel": CLIENT_CHANNEL,
   };
+  if (opts.body !== undefined && opts.form !== undefined) throw new Error("send: a call has a body or a form, not both");
+  // A form is NOT given a Content-Type: fetch adds multipart/form-data with the boundary.
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   if (opts.authenticated) {
     const token = session.getAccessToken();
@@ -92,17 +111,21 @@ async function send(opts: SendOptions): Promise<Response> {
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, TIMEOUT_MS);
+  }, opts.timeoutMs ?? TIMEOUT_MS);
+  const onCallerAbort = () => controller.abort();
+  if (opts.signal?.aborted === true) controller.abort();
+  else opts.signal?.addEventListener("abort", onCallerAbort, { once: true });
   try {
     return await fetch(`${config.apiBaseUrl}${buildPath(opts.route, opts.params, opts.query)}`, {
       method: opts.route.method,
       headers,
-      body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+      body: opts.form !== undefined ? opts.form : opts.body === undefined ? undefined : JSON.stringify(opts.body),
       signal: controller.signal,
       credentials: "omit",
     });
   } catch (cause) {
     if (timedOut) throw new ApiError(0, "network.timeout", "The request took too long.");
+    if (opts.signal?.aborted === true) throw new ApiError(0, "network.aborted", "The request was cancelled.");
     throw new ApiError(
       0,
       "network.failure",
@@ -110,6 +133,7 @@ async function send(opts: SendOptions): Promise<Response> {
     );
   } finally {
     clearTimeout(timer);
+    opts.signal?.removeEventListener("abort", onCallerAbort);
   }
 }
 
@@ -261,7 +285,7 @@ async function sendAuthed(opts: CallOptions): Promise<Response> {
   return res;
 }
 
-/** Authenticated JSON call. */
+/** Authenticated call: JSON by default, multipart when the options carry a `form`. */
 export async function call<T>(opts: CallOptions): Promise<T> {
   return readJson<T>(await sendAuthed(opts));
 }

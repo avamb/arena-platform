@@ -3176,6 +3176,441 @@ type Bil24VenueEntry struct {
 	VenueName *string `json:"venueName,omitempty"`
 }
 
+// BillingAccountTerms One dated row of the conditions of a billing account. The terms of an event are the last row that started before the event.
+type BillingAccountTerms struct {
+	// BillingCycle prepaid, per_event or monthly.
+	BillingCycle string `json:"billing_cycle"`
+
+	// CreatedAt When the row was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy Id of the operator who created the row, or migration.
+	CreatedBy *string `json:"created_by"`
+
+	// DueDays Days to pay an invoice.
+	DueDays *int32 `json:"due_days"`
+
+	// EffectiveFrom First moment the terms apply.
+	EffectiveFrom time.Time `json:"effective_from"`
+
+	// Id Id of the terms row.
+	Id openapi_types.UUID `json:"id"`
+
+	// InvoiceDelayDays Days after the last session before a per-event invoice is made.
+	InvoiceDelayDays *int32 `json:"invoice_delay_days"`
+
+	// IssuerId The legal entity that invoices the account.
+	IssuerId openapi_types.UUID `json:"issuer_id"`
+
+	// Locked Whether only a superadmin may change the row.
+	Locked bool `json:"locked"`
+
+	// PlanKind standard, or venue for a permanent venue.
+	PlanKind string `json:"plan_kind"`
+
+	// PriceListCode Code of the price list the account is rated by.
+	PriceListCode string `json:"price_list_code"`
+
+	// Reason The X-Admin-Reason given when the row was created.
+	Reason *string `json:"reason"`
+
+	// ShortfallPolicy invoice_postpaid or block_publishing.
+	ShortfallPolicy string `json:"shortfall_policy"`
+}
+
+// BillingAdminAccount A billing account with its terms history and marks.
+type BillingAdminAccount struct {
+	// AccountKind organizer or tools.
+	AccountKind string `json:"account_kind"`
+
+	// Currency Currency of the account.
+	Currency string `json:"currency"`
+
+	// CurrentTermsId Id of the terms row in force now, null when none has started.
+	CurrentTermsId *openapi_types.UUID `json:"current_terms_id"`
+
+	// Flags The marks of the account.
+	Flags BillingAdminAccountFlags `json:"flags"`
+
+	// Id Id of the account.
+	Id openapi_types.UUID `json:"id"`
+
+	// IssuerId The legal entity that invoices the account.
+	IssuerId openapi_types.UUID `json:"issuer_id"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Name of the organization.
+	OrgName string `json:"org_name"`
+
+	// Terms All terms rows, oldest first.
+	Terms []BillingAccountTerms `json:"terms"`
+}
+
+// BillingAdminAccountFlags The three marks of an account. Venue and existing client are derived from rows, tools is the account kind.
+type BillingAdminAccountFlags struct {
+	// ExistingClient The organization has an individual rate. A separate date of connection does not exist yet.
+	ExistingClient bool `json:"existing_client"`
+
+	// Tools The account is a tools account (generator), not an organizer account.
+	Tools bool `json:"tools"`
+
+	// Venue The terms in force use the venue plan (a permanent venue).
+	Venue bool `json:"venue"`
+}
+
+// BillingAdminAccountList Billing accounts.
+type BillingAdminAccountList struct {
+	// Items The accounts, by organization name.
+	Items []BillingAdminAccount `json:"items"`
+}
+
+// BillingCloseRateOverrideRequest Body of POST /v1/admin/billing/rate-overrides/{id}/close.
+type BillingCloseRateOverrideRequest struct {
+	// EffectiveTo New end of the rate. It must be in the future, after the start and not after the start of the organization's next rate.
+	EffectiveTo time.Time `json:"effective_to"`
+}
+
+// BillingCreateAccountTermsRequest Body of POST /v1/admin/billing/accounts/{account_id}/terms. It adds a terms row that starts in the future.
+type BillingCreateAccountTermsRequest struct {
+	// BillingCycle prepaid, per_event or monthly. A tools account is prepaid only.
+	BillingCycle string `json:"billing_cycle"`
+
+	// DueDays Days to pay an invoice.
+	DueDays *int32 `json:"due_days"`
+
+	// EffectiveFrom Start of the terms. It must be in the future and after the start of every earlier terms row.
+	EffectiveFrom time.Time `json:"effective_from"`
+
+	// InvoiceDelayDays Days after the last session before a per-event invoice is made.
+	InvoiceDelayDays *int32 `json:"invoice_delay_days"`
+
+	// PlanKind standard, or venue for a permanent venue. The price list version must carry the rule this plan is rated by.
+	PlanKind string `json:"plan_kind"`
+
+	// PriceListCode Code of a price list that has a version in force in the account currency at that moment.
+	PriceListCode string `json:"price_list_code"`
+
+	// ShortfallPolicy invoice_postpaid or block_publishing.
+	ShortfallPolicy string `json:"shortfall_policy"`
+}
+
+// BillingCreatePriceListRequest Body of POST /v1/admin/billing/price-lists. It creates the next version of the price list with that code and currency. Every number is typed by the operator.
+type BillingCreatePriceListRequest struct {
+	// BonusCoversSurcharge Whether bonus credits may pay the seat surcharge. Defaults to false.
+	BonusCoversSurcharge *bool `json:"bonus_covers_surcharge,omitempty"`
+
+	// BonusShareCapBp Largest share of a charge paid with bonus credits, in basis points, 0-10000 and a multiple of 10.
+	BonusShareCapBp int32 `json:"bonus_share_cap_bp"`
+
+	// Code Code of the price list, 2-64 characters, lower case.
+	Code string `json:"code"`
+
+	// Currency Three capital letters.
+	Currency string `json:"currency"`
+
+	// EffectiveFrom Start of the version. It must be in the future and after the start of the latest version that was not revoked.
+	EffectiveFrom time.Time `json:"effective_from"`
+
+	// FloorPerTicketMinor Floor of platform revenue per ticket in minor units, or null to leave it unset.
+	FloorPerTicketMinor *int64 `json:"floor_per_ticket_minor"`
+
+	// FreeTicketsAnnualLimit Free tickets per year, or null to leave it unset.
+	FreeTicketsAnnualLimit *int32 `json:"free_tickets_annual_limit"`
+
+	// Locked Lock the version. Defaults to false.
+	Locked *bool `json:"locked,omitempty"`
+
+	// Packs The credit packs of the version, may be empty.
+	Packs *[]BillingPriceListPackInput `json:"packs,omitempty"`
+
+	// Rules The rules of the version, at least one.
+	Rules []BillingPriceListRuleInput `json:"rules"`
+}
+
+// BillingCreateRateOverrideRequest Body of POST /v1/admin/billing/rate-overrides. The rate starts in the future after the organization's earlier rates of that currency.
+type BillingCreateRateOverrideRequest struct {
+	// Currency Three capital letters.
+	Currency string `json:"currency"`
+
+	// EffectiveFrom Start of the rate. It must be in the future.
+	EffectiveFrom time.Time `json:"effective_from"`
+
+	// EffectiveTo End of the rate, or null for an open rate.
+	EffectiveTo *time.Time `json:"effective_to"`
+
+	// Note Free note, for example the contract it comes from.
+	Note *string `json:"note,omitempty"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// SeatedMinor Rate of a seated ticket, in minor units.
+	SeatedMinor int64 `json:"seated_minor"`
+
+	// UnseatedMinor Rate of a ticket without a seat, in minor units.
+	UnseatedMinor int64 `json:"unseated_minor"`
+}
+
+// BillingPriceListDetail defines model for BillingPriceListDetail.
+type BillingPriceListDetail struct {
+	// BonusCoversSurcharge Whether bonus credits may pay the seat surcharge.
+	BonusCoversSurcharge bool `json:"bonus_covers_surcharge"`
+
+	// BonusShareCapBp Largest share of a charge that may be paid with bonus credits, in basis points.
+	BonusShareCapBp int32 `json:"bonus_share_cap_bp"`
+
+	// Code Code of the price list.
+	Code string `json:"code"`
+
+	// CreatedAt When the version was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy Id of the operator who created the version, or migration.
+	CreatedBy *string `json:"created_by"`
+
+	// Currency Currency of the price list.
+	Currency string `json:"currency"`
+
+	// EffectiveFrom First moment the version rates events. Events are rated by the version in force at their occurred_at.
+	EffectiveFrom time.Time `json:"effective_from"`
+
+	// FloorPerTicketMinor Floor of platform revenue per ticket in minor units, null until a superadmin sets it.
+	FloorPerTicketMinor *int64 `json:"floor_per_ticket_minor"`
+
+	// FreeTicketsAnnualLimit Free tickets per year, null until a superadmin sets it.
+	FreeTicketsAnnualLimit *int32 `json:"free_tickets_annual_limit"`
+
+	// Id Id of the version.
+	Id openapi_types.UUID `json:"id"`
+
+	// Locked The version is locked, a change needs a superadmin with a reason.
+	Locked bool `json:"locked"`
+
+	// Packs The credit packs of the version.
+	Packs []BillingPriceListPack `json:"packs"`
+
+	// PacksCount Number of credit packs. Present in the list only.
+	PacksCount *int32 `json:"packs_count,omitempty"`
+
+	// Reason The X-Admin-Reason given when the version was created.
+	Reason *string `json:"reason"`
+
+	// RevokedAt When the version was revoked, null while it is not. Only a version that has not started can be revoked.
+	RevokedAt *time.Time `json:"revoked_at"`
+
+	// Rules The rules of the version.
+	Rules []BillingPriceListRule `json:"rules"`
+
+	// RulesCount Number of rules. Present in the list only.
+	RulesCount *int32 `json:"rules_count,omitempty"`
+
+	// Status State at the time of the request: scheduled (not started), in_force, superseded (a later version is in force) or revoked.
+	Status string `json:"status"`
+
+	// Version Version number inside the code and currency, counted from 1.
+	Version int32 `json:"version"`
+
+	// Warnings Present after a create. Each text names a rule the previous version had and the new one does not.
+	Warnings *[]string `json:"warnings,omitempty"`
+}
+
+// BillingPriceListPack One credit-pack tier of a price-list version. Money is in minor units of the price list currency.
+type BillingPriceListPack struct {
+	// Active Whether the pack can be bought.
+	Active bool `json:"active"`
+
+	// Currency Currency of the price list.
+	Currency string `json:"currency"`
+
+	// FaceMinor Face value of the pack in minor units.
+	FaceMinor int64 `json:"face_minor"`
+
+	// Id Id of the pack row.
+	Id openapi_types.UUID `json:"id"`
+
+	// SeatedSurchargeMinor Surcharge of one seated ticket, in minor units.
+	SeatedSurchargeMinor int64 `json:"seated_surcharge_minor"`
+
+	// SortOrder Position of the pack in the version.
+	SortOrder int32 `json:"sort_order"`
+
+	// Tier Tier number of the pack, 1 or more.
+	Tier int32 `json:"tier"`
+
+	// UnseatedRateMinor Rate of one ticket without a seat, in minor units.
+	UnseatedRateMinor int64 `json:"unseated_rate_minor"`
+}
+
+// BillingPriceListPackInput One credit-pack tier of a new price-list version.
+type BillingPriceListPackInput struct {
+	// Active Whether the pack can be bought. Defaults to true.
+	Active *bool `json:"active,omitempty"`
+
+	// FaceMinor Face value of the pack in minor units, more than 0.
+	FaceMinor int64 `json:"face_minor"`
+
+	// SeatedSurchargeMinor Surcharge of one seated ticket, in minor units.
+	SeatedSurchargeMinor int64 `json:"seated_surcharge_minor"`
+
+	// Tier Tier number, 1 or more and unique inside the version.
+	Tier int32 `json:"tier"`
+
+	// UnseatedRateMinor Rate of one ticket without a seat, in minor units.
+	UnseatedRateMinor int64 `json:"unseated_rate_minor"`
+}
+
+// BillingPriceListRule One rule of a price-list version. Amounts inside params are minor units of the price list currency, percentages are basis points (pct_bp).
+type BillingPriceListRule struct {
+	// EventKind Event kind the rule rates: ticket_sold, or event_published for fixed_per_event.
+	EventKind string `json:"event_kind"`
+
+	// Id Id of the rule row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Line Line of the rule: standard, or venue for the permanent-venue plan.
+	Line string `json:"line"`
+
+	// Params The numbers of the rule as the rating engine reads them, for example unseated_minor and seated_minor.
+	Params map[string]interface{} `json:"params"`
+
+	// RuleType Rule type: fixed_per_ticket, percent_of_price_with_cap, low_price_formula, credit_pack or fixed_per_event.
+	RuleType string `json:"rule_type"`
+
+	// SaleCurrency Sale currency of a low_price_formula rule (its threshold is in that currency), null for every other rule.
+	SaleCurrency *string `json:"sale_currency"`
+
+	// SortOrder Position of the rule in the version.
+	SortOrder int32 `json:"sort_order"`
+}
+
+// BillingPriceListRuleInput One rule of a new price-list version. Every number is entered by the operator; nothing has a default.
+type BillingPriceListRuleInput struct {
+	// EventKind Event kind the rule rates: ticket_sold, or event_published for fixed_per_event.
+	EventKind string `json:"event_kind"`
+
+	// Line Line of the rule: standard, or venue for percent_of_price_with_cap.
+	Line string `json:"line"`
+
+	// Params The numbers of the rule, amounts in minor units and percentages in basis points. The keys depend on rule_type.
+	Params map[string]interface{} `json:"params"`
+
+	// RuleType Rule type: fixed_per_ticket, percent_of_price_with_cap, low_price_formula, credit_pack or fixed_per_event.
+	RuleType string `json:"rule_type"`
+
+	// SaleCurrency Sale currency, required for low_price_formula and forbidden for every other rule.
+	SaleCurrency *string `json:"sale_currency,omitempty"`
+}
+
+// BillingPriceListVersion One version of a price list in one currency. A version is never edited. A new price is a new version.
+type BillingPriceListVersion struct {
+	// BonusCoversSurcharge Whether bonus credits may pay the seat surcharge.
+	BonusCoversSurcharge bool `json:"bonus_covers_surcharge"`
+
+	// BonusShareCapBp Largest share of a charge that may be paid with bonus credits, in basis points.
+	BonusShareCapBp int32 `json:"bonus_share_cap_bp"`
+
+	// Code Code of the price list.
+	Code string `json:"code"`
+
+	// CreatedAt When the version was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy Id of the operator who created the version, or migration.
+	CreatedBy *string `json:"created_by"`
+
+	// Currency Currency of the price list.
+	Currency string `json:"currency"`
+
+	// EffectiveFrom First moment the version rates events. Events are rated by the version in force at their occurred_at.
+	EffectiveFrom time.Time `json:"effective_from"`
+
+	// FloorPerTicketMinor Floor of platform revenue per ticket in minor units, null until a superadmin sets it.
+	FloorPerTicketMinor *int64 `json:"floor_per_ticket_minor"`
+
+	// FreeTicketsAnnualLimit Free tickets per year, null until a superadmin sets it.
+	FreeTicketsAnnualLimit *int32 `json:"free_tickets_annual_limit"`
+
+	// Id Id of the version.
+	Id openapi_types.UUID `json:"id"`
+
+	// Locked The version is locked, a change needs a superadmin with a reason.
+	Locked bool `json:"locked"`
+
+	// PacksCount Number of credit packs. Present in the list only.
+	PacksCount *int32 `json:"packs_count,omitempty"`
+
+	// Reason The X-Admin-Reason given when the version was created.
+	Reason *string `json:"reason"`
+
+	// RevokedAt When the version was revoked, null while it is not. Only a version that has not started can be revoked.
+	RevokedAt *time.Time `json:"revoked_at"`
+
+	// RulesCount Number of rules. Present in the list only.
+	RulesCount *int32 `json:"rules_count,omitempty"`
+
+	// Status State at the time of the request: scheduled (not started), in_force, superseded (a later version is in force) or revoked.
+	Status string `json:"status"`
+
+	// Version Version number inside the code and currency, counted from 1.
+	Version int32 `json:"version"`
+}
+
+// BillingPriceListVersionList Every version of the price lists, oldest first inside a code and currency.
+type BillingPriceListVersionList struct {
+	// Items The versions.
+	Items []BillingPriceListVersion `json:"items"`
+}
+
+// BillingRateOverride An individual per-ticket rate of an organization. It replaces the price-list rate for the organization in that currency.
+type BillingRateOverride struct {
+	// ClosedRateIds Present after a create. Ids of the earlier rates that were ended at the start of this one.
+	ClosedRateIds *[]openapi_types.UUID `json:"closed_rate_ids,omitempty"`
+
+	// CreatedAt When the rate was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy Id of the operator who created the rate, or migration.
+	CreatedBy *string `json:"created_by"`
+
+	// Currency Currency of the rate.
+	Currency string `json:"currency"`
+
+	// EffectiveFrom First moment the rate applies.
+	EffectiveFrom time.Time `json:"effective_from"`
+
+	// EffectiveTo First moment the rate no longer applies, null while it is open.
+	EffectiveTo *time.Time `json:"effective_to"`
+
+	// Id Id of the rate.
+	Id openapi_types.UUID `json:"id"`
+
+	// Note Free note of the operator.
+	Note *string `json:"note"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Name of the organization. Present in the list only.
+	OrgName *string `json:"org_name,omitempty"`
+
+	// SeatedMinor Rate of a seated ticket, in minor units.
+	SeatedMinor int64 `json:"seated_minor"`
+
+	// Status State at the time of the request: scheduled, in_force or ended.
+	Status string `json:"status"`
+
+	// UnseatedMinor Rate of a ticket without a seat, in minor units.
+	UnseatedMinor int64 `json:"unseated_minor"`
+}
+
+// BillingRateOverrideList Individual rates, every period of them.
+type BillingRateOverrideList struct {
+	// Items The rates, by organization name, currency and start (newest first).
+	Items []BillingRateOverride `json:"items"`
+}
+
 // BindSessionSeatingRequest Request body for the seating-bind endpoint. Assigns the given
 // seating_plan_version to the target session in an assigned-seats
 // or hybrid admission mode, materializes one session_seats row per
@@ -6989,6 +7424,12 @@ type HostedPageEvent struct {
 	// the same way as `EventItem.venue_names`). Empty when the event
 	// has no sessions yet.
 	VenueNames []string `json:"venue_names"`
+
+	// Venues The venues of the event's visible sessions with their own postal
+	// address and the session starts held there (never the seller's
+	// address). Empty when the event has no visible session. Absent on
+	// older backends and in the promoter page's event list.
+	Venues *[]PublicEventVenue `json:"venues,omitempty"`
 }
 
 // HostedPageOrg Public-safe organization branding slice returned by
@@ -11550,6 +11991,38 @@ type PublicEventMaterials struct {
 	Videos []PublicMaterialVideo `json:"videos"`
 }
 
+// PublicEventVenue A place an event is held at, for the sales page "where it takes
+// place" block: the VENUE's own name and postal address (never the
+// seller's legal address) and the start times of the event's visible
+// (scheduled or completed) sessions held there. A field the organizer
+// did not fill is null; nothing is guessed. No contact data is public.
+type PublicEventVenue struct {
+	// Address Street address lines (`address_line1`, `address_line2` joined by
+	// a comma; the legacy free-form `address` when no structured line
+	// is set), or null.
+	Address *string `json:"address"`
+
+	// City English name of the venue's city from the geo reference data, or
+	// null when the venue has no city or the city has no English name.
+	City *string `json:"city"`
+
+	// Country Country of the venue as stored (ISO 3166-1 alpha-2), or null.
+	Country *string `json:"country"`
+
+	// Name Venue name.
+	Name string `json:"name"`
+
+	// PostalCode Postal code of the venue, or null.
+	PostalCode *string `json:"postal_code"`
+
+	// SessionStarts Start times (RFC 3339 UTC, earliest first, at most 60) of the
+	// event's sessions held at this venue.
+	SessionStarts []time.Time `json:"session_starts"`
+
+	// Timezone IANA time zone of the venue, or null.
+	Timezone *string `json:"timezone"`
+}
+
 // PublicFeedCheckoutQuoteRequest The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
 // (seated `seats`, general-admission `ga_items`, or both) plus the
 // optional promo code. The quote takes no buyer details.
@@ -15218,6 +15691,66 @@ type PostBil24CommandJSONBody struct {
 	union json.RawMessage
 }
 
+// GetV1AdminBillingAccountsParams defines parameters for GetV1AdminBillingAccounts.
+type GetV1AdminBillingAccountsParams struct {
+	// OrgId Only accounts of this organization.
+	OrgId *openapi_types.UUID `form:"org_id,omitempty" json:"org_id,omitempty"`
+}
+
+// PostV1AdminBillingAccountTermsParams defines parameters for PostV1AdminBillingAccountTerms.
+type PostV1AdminBillingAccountTermsParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// GetV1AdminBillingPriceListsParams defines parameters for GetV1AdminBillingPriceLists.
+type GetV1AdminBillingPriceListsParams struct {
+	// Code Only versions of this price list code.
+	Code *string `form:"code,omitempty" json:"code,omitempty"`
+
+	// Currency Only versions in this currency.
+	Currency *string `form:"currency,omitempty" json:"currency,omitempty"`
+}
+
+// PostV1AdminBillingPriceListsParams defines parameters for PostV1AdminBillingPriceLists.
+type PostV1AdminBillingPriceListsParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminBillingPriceListRevokeParams defines parameters for PostV1AdminBillingPriceListRevoke.
+type PostV1AdminBillingPriceListRevokeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// GetV1AdminBillingRateOverridesParams defines parameters for GetV1AdminBillingRateOverrides.
+type GetV1AdminBillingRateOverridesParams struct {
+	// OrgId Only rates of this organization.
+	OrgId *openapi_types.UUID `form:"org_id,omitempty" json:"org_id,omitempty"`
+
+	// Currency Only rates in this currency.
+	Currency *string `form:"currency,omitempty" json:"currency,omitempty"`
+}
+
+// PostV1AdminBillingRateOverridesParams defines parameters for PostV1AdminBillingRateOverrides.
+type PostV1AdminBillingRateOverridesParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// DeleteV1AdminBillingRateOverrideParams defines parameters for DeleteV1AdminBillingRateOverride.
+type DeleteV1AdminBillingRateOverrideParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminBillingRateOverrideCloseParams defines parameters for PostV1AdminBillingRateOverrideClose.
+type PostV1AdminBillingRateOverrideCloseParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // PostV1AdminCustomerImportsParams defines parameters for PostV1AdminCustomerImports.
 type PostV1AdminCustomerImportsParams struct {
 	// XAdminReason Human-readable business reason for the admin write (audit trail).
@@ -16378,6 +16911,18 @@ type UpdateWebhookSubscriberJSONBody struct {
 
 // PostBil24CommandJSONRequestBody defines body for PostBil24Command for application/json ContentType.
 type PostBil24CommandJSONRequestBody PostBil24CommandJSONBody
+
+// PostV1AdminBillingAccountTermsJSONRequestBody defines body for PostV1AdminBillingAccountTerms for application/json ContentType.
+type PostV1AdminBillingAccountTermsJSONRequestBody = BillingCreateAccountTermsRequest
+
+// PostV1AdminBillingPriceListsJSONRequestBody defines body for PostV1AdminBillingPriceLists for application/json ContentType.
+type PostV1AdminBillingPriceListsJSONRequestBody = BillingCreatePriceListRequest
+
+// PostV1AdminBillingRateOverridesJSONRequestBody defines body for PostV1AdminBillingRateOverrides for application/json ContentType.
+type PostV1AdminBillingRateOverridesJSONRequestBody = BillingCreateRateOverrideRequest
+
+// PostV1AdminBillingRateOverrideCloseJSONRequestBody defines body for PostV1AdminBillingRateOverrideClose for application/json ContentType.
+type PostV1AdminBillingRateOverrideCloseJSONRequestBody = BillingCloseRateOverrideRequest
 
 // PostV1AdminCustomerImportsJSONRequestBody defines body for PostV1AdminCustomerImports for application/json ContentType.
 type PostV1AdminCustomerImportsJSONRequestBody = CreateCustomerImportRequest

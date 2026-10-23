@@ -4,6 +4,7 @@ import { t } from './i18n.ts';
 import { plainText, renderRichText } from './richtext.ts';
 import { renderSellerBlock } from './seller.ts';
 import { renderContactButton } from './contact.ts';
+import { renderMaterials } from './materials.ts';
 import type { HostedPageEvent, HostedPageResponse, HostedPromoterPageResponse } from './api.ts';
 
 /** Clears a container's children (avoids innerHTML = '' churn semantics
@@ -171,6 +172,11 @@ export function formatEventDoors(event: HostedPageEvent, locale: PageLocale): st
 export interface RenderEventOptions {
   apiBase: string;
   resumingCheckout: boolean;
+  /** Called when a buyer presses play on an embedded video (the provider
+   * name: youtube, vimeo, rutube). Analytics hook, task 2-3. */
+  onVideoPlay?: (provider: string) => void;
+  /** Called when a buyer follows a "where else to buy" link (its host). */
+  onPartnerClick?: (host: string) => void;
 }
 
 /**
@@ -262,12 +268,26 @@ export function renderEvent(
   if (imageURL) {
     widget.setAttribute('cover', 'hidden');
   }
+  // The page itself draws the gallery, videos, map, other sellers and the
+  // photo report below (renderMaterials); the widget must not repeat them.
+  widget.setAttribute('materials', 'hidden');
   widget.setAttribute('locale', toWidgetLocale(locale));
   if (options.apiBase) {
     widget.setAttribute('api-base', options.apiBase);
   }
   widgetSection.appendChild(widget);
   container.appendChild(widgetSection);
+
+  // Gallery, videos, map, other sellers and the photo report — under the
+  // purchase card so the buying flow keeps the top of the page, and only the
+  // sections the event has data for (an older backend sends none).
+  const materials = renderMaterials(data.materials, locale, data.event.venue_names, {
+    onVideoPlay: options.onVideoPlay,
+    onPartnerClick: options.onPartnerClick,
+  }, data.event.venues ?? []);
+  if (materials) {
+    container.appendChild(materials);
+  }
 
   // Who the buyer's contract is with — under the purchase card, only when
   // the backend sends it (the channel's legal-details switch is on).
@@ -643,6 +663,8 @@ function mountTicketPicker(
   // The card is already a box. Without this the picker draws a second one
   // inside it, and one date reads as two separate things.
   widget.setAttribute('frame', 'hidden');
+  // A catalog/promoter card is only a picker; its event page shows the materials.
+  widget.setAttribute('materials', 'hidden');
   widget.setAttribute('locale', toWidgetLocale(locale));
   if (options.apiBase) {
     widget.setAttribute('api-base', options.apiBase);
