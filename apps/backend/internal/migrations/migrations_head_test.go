@@ -40,6 +40,7 @@ func TestHead_NumericPrefixPositive(t *testing.T) {
 }
 
 func TestHead_KnownCurrentHead(t *testing.T) {
+	const expectedHead = "0161_session_seats_manage_permission.sql"
 	const expectedHead = "0160_billing_invoices_payments.sql"
 	head, err := migrations.Head()
 	if err != nil {

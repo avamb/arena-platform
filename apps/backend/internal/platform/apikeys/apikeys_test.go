@@ -102,7 +102,7 @@ func TestValidateScopes(t *testing.T) {
 			"session.create", "session.read", "session.update", "tier.create",
 			"tier.read", "tier.update", "venue.read", "seating_plan.create",
 			"seating_plan.read", "seating_plan.update.own",
-			"event_session.assign_seating_plan", "media.write", "media.read",
+			"event_session.assign_seating_plan", "session.seats.manage", "media.write", "media.read",
 			"import.bil24_session",
 		}, nil},
 	}
