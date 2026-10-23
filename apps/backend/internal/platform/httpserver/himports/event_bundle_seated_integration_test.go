@@ -311,6 +311,10 @@ func TestEventBundleSeated_RefusalsAnswerWithTheirCodes(t *testing.T) {
 
 	// A plan drawn for another venue of the organization.
 	otherVenue, _ := insertSeatedPlan(t, ctx, pool, sf.orgID, sf.venueName+" B", nil)
+	// A plan of another organization.
+	other := newBundle525Fixture(t, ctx, pool)
+	_, foreign := insertSeatedPlan(t, ctx, pool, other.orgID, other.venueName, nil)
+	defer (&seatedFixture{bundle525Fixture: other}).cleanup()
 	cases := []struct {
 		name   string
 		mutate func(*bil24compat.ImportSessionRequest)
@@ -319,6 +323,9 @@ func TestEventBundleSeated_RefusalsAnswerWithTheirCodes(t *testing.T) {
 	}{
 		{"unknown version", func(b *bil24compat.ImportSessionRequest) {
 			b.ActionEvent.ArenaSeatingPlanVersionID = uuid.NewString()
+		}, 422, "import.invalid_seating_plan_version"},
+		{"a version of another organization", func(b *bil24compat.ImportSessionRequest) {
+			b.ActionEvent.ArenaSeatingPlanVersionID = foreign.String()
 		}, 422, "import.invalid_seating_plan_version"},
 		{"venue mismatch", func(b *bil24compat.ImportSessionRequest) {
 			b.Venue.ArenaVenueID = otherVenue.String()
@@ -412,6 +419,75 @@ func TestEventBundleSeated_RepeatImportNeverTouchesPlaces(t *testing.T) {
 		t.Fatalf("binding a plan to a GA session by a bundle: %d %s", rec.Code, rec.Body.String())
 	}
 	_ = gaOut
+}
+
+// TestEventBundleSeated_GAZoneQuantity: the plan draws the GA zone with 50
+// places. A bundle that names no quantity (availability 0) keeps the plan's
+// 50; one that names 70 gives the zone category 70 places. Either way the
+// session capacity and its inventory ledger are the 3 plan seats plus the
+// zone's places, and every GA place carries the zone category's tier.
+func TestEventBundleSeated_GAZoneQuantity(t *testing.T) {
+	pool := import517Pool(t)
+	ctx := context.Background()
+	h := newBundle525Handler(t, pool)
+	for _, tc := range []struct {
+		name         string
+		availability int32
+		wantZone     int32
+	}{
+		{"availability 0 keeps the plan's 50", 0, 50},
+		{"availability 70 sets the zone to 70", 70, 70},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sf := newSeatedFixture(t, ctx, pool)
+			defer sf.cleanup()
+			body := sf.seatedPayload()
+			body.CategoryList[2].Availability = tc.availability
+			rec, out := sf.call(h, body)
+			if rec.Code != http.StatusOK || !out.Created {
+				t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+			}
+			wantTotal := 3 + tc.wantZone
+
+			fans := tierByName(ctx, t, pool, out.SessionID)["Fans"]
+			if fans.Capacity == nil || *fans.Capacity != tc.wantZone {
+				t.Errorf("zone tier capacity = %v, want %d", fans.Capacity, tc.wantZone)
+			}
+			var units int32
+			if err := pool.QueryRow(ctx, `SELECT count(*) FROM session_seats
+				WHERE session_id = $1 AND kind = 'ga_unit' AND tier_id = $2`,
+				out.SessionID, fans.ID).Scan(&units); err != nil {
+				t.Fatal(err)
+			}
+			if units != tc.wantZone {
+				t.Errorf("ga_unit places of the zone tier = %d, want %d", units, tc.wantZone)
+			}
+			var orphan int32
+			if err := pool.QueryRow(ctx, `SELECT count(*) FROM session_seats
+				WHERE session_id = $1 AND kind = 'ga_unit' AND tier_id IS DISTINCT FROM $2`,
+				out.SessionID, fans.ID).Scan(&orphan); err != nil {
+				t.Fatal(err)
+			}
+			if orphan != 0 {
+				t.Errorf("%d GA places carry no or another tier", orphan)
+			}
+			var capacity, ledger int32
+			if err := pool.QueryRow(ctx, `SELECT capacity_total FROM sessions WHERE id = $1`,
+				out.SessionID).Scan(&capacity); err != nil {
+				t.Fatal(err)
+			}
+			if err := pool.QueryRow(ctx, `SELECT capacity_total FROM inventory_ledger
+				WHERE session_id = $1 AND tier_id IS NULL`, out.SessionID).Scan(&ledger); err != nil {
+				t.Fatal(err)
+			}
+			if capacity != wantTotal || ledger != wantTotal {
+				t.Errorf("session capacity %d, ledger %d, want %d both", capacity, ledger, wantTotal)
+			}
+			if out.SeatsMaterialized != int(wantTotal) {
+				t.Errorf("response places = %d, want %d", out.SeatsMaterialized, wantTotal)
+			}
+		})
+	}
 }
 
 func TestEventBundleSeated_ReadRoundTripsAndCopies(t *testing.T) {

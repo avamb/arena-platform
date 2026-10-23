@@ -315,10 +315,16 @@ func materializeArenaSeating(
 	sp *arenaSeatedPlan,
 	ordered []uuid.UUID,
 ) error {
-	// Lock order: the sessions row first (AGENTS.md). The session is new and
-	// invisible to anyone else, but the rule costs nothing to keep.
+	// Lock order: the sessions row first (AGENTS.md), then the plan version,
+	// then the places. The session is new and invisible to anyone else, but
+	// the order is the same as hseating's bind so the two can never meet in
+	// the opposite order on one version row.
 	if _, err := q.GetSessionSeatingBindingForUpdate(ctx, sessionID, eventID); err != nil {
 		return fmt.Errorf("lock new session: %w", err)
+	}
+	locked, err := q.LockSeatingPlanVersion(ctx, sp.versionID)
+	if err != nil {
+		return fmt.Errorf("lock seating plan version: %w", err)
 	}
 	tiers := make(map[int]uuid.UUID, len(sp.pairs))
 	for i, idx := range sp.pairs {
@@ -329,10 +335,6 @@ func materializeArenaSeating(
 	if _, err := seatmint.Materialize(ctx, q, sessionID, sp.geometry, tiers,
 		sp.mode != seatmint.ModeAssignedSeats, seatmint.Lenient); err != nil {
 		return err
-	}
-	locked, err := q.LockSeatingPlanVersion(ctx, sp.versionID)
-	if err != nil {
-		return fmt.Errorf("lock seating plan version: %w", err)
 	}
 	versionID := sp.versionID
 	if _, err := q.BindSessionSeatingPlan(ctx, sessionID, eventID, sp.mode, &versionID,

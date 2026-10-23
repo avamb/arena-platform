@@ -152,15 +152,20 @@ func (h *Handler) importSeating(
 		return seatingOutcome{}, err
 	}
 
+	// Lock order (AGENTS.md): the sessions row (above), then the version row,
+	// then the new places — the same order as hseating's bind and the arena
+	// seated branch. The wipe above only touches this session's own rows,
+	// which the sessions lock already guards.
+	locked, err := q.LockSeatingPlanVersion(ctx, versionID)
+	if err != nil {
+		return seatingOutcome{}, fmt.Errorf("lock seating plan version: %w", err)
+	}
+
 	materialized, err := h.materializeImportedSeats(ctx, q, geometry, mode, sessionID, tierIDs, warnings)
 	if err != nil {
 		return seatingOutcome{}, err
 	}
 
-	locked, err := q.LockSeatingPlanVersion(ctx, versionID)
-	if err != nil {
-		return seatingOutcome{}, fmt.Errorf("lock seating plan version: %w", err)
-	}
 	capacity := seatmint.PlanCapacity(mode, locked)
 	if _, err := q.BindSessionSeatingPlan(ctx, sessionID, eventID, mode, &versionID, capacity); err != nil {
 		return seatingOutcome{}, fmt.Errorf("bind seating plan to session: %w", err)

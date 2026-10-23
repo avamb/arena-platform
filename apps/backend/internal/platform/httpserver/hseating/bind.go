@@ -344,6 +344,21 @@ func (h *Handler) bindSessionSeatingCore(
 			"seating.bind_failed", "failed to bind seating plan", nil)
 	}
 
+	// Lock the version's locked_at on first bind (idempotent for later
+	// binds against the same version). This is the immutability latch
+	// described in §5.1 of the seating backlog: once any session references
+	// a version, its geometry MUST NOT change. Lock order (AGENTS.md): the
+	// sessions row above, then this version row, and only then the places
+	// below — the same order as the event-bundle import's seated branch
+	// (himports.materializeArenaSeating). A refusal further down rolls the
+	// stamp back with the rest of the transaction.
+	lockedVersion, err := qtx.LockSeatingPlanVersion(ctx, planVersionID)
+	if err != nil {
+		h.logger.Error("seating: bind lock version failed", slog.String("error", err.Error()))
+		return nil, bindErr(http.StatusInternalServerError,
+			"seating.bind_failed", "failed to lock seating plan version", nil)
+	}
+
 	// AB-40 B5: cross-check the parent plan's type against the requested
 	// admission mode. Before this gate an assigned_seats plan could be
 	// bound as hybrid, silently promising GA capacity the plan does not
@@ -551,17 +566,6 @@ func (h *Handler) bindSessionSeatingCore(
 	}
 	materialized := minted.Seats
 	gaMaterialized := minted.GAPlaces
-
-	// Lock the version's locked_at on first bind (idempotent for later
-	// binds against the same version). This is the immutability latch
-	// described in §5.1 of the seating backlog: once any session references
-	// a version, its geometry MUST NOT change.
-	lockedVersion, err := qtx.LockSeatingPlanVersion(ctx, planVersionID)
-	if err != nil {
-		h.logger.Error("seating: bind lock version failed", slog.String("error", err.Error()))
-		return nil, bindErr(http.StatusInternalServerError,
-			"seating.bind_failed", "failed to lock seating plan version", nil)
-	}
 
 	// Recompute capacity_total from the bound version per admission mode
 	// (AB-40 B6: bound seat count + sum of GA category capacities).
