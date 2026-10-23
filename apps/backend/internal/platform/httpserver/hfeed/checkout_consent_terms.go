@@ -40,7 +40,12 @@ func (h *Handler) WithLegalTerms(apiBase string) *Handler {
 // legalTermsURL is the link to the organizer's terms for an event sold
 // through feedToken; "" when it cannot be built (no base URL, lookup failed).
 func (h *Handler) legalTermsURL(ctx context.Context, eventID uuid.UUID, feedToken string) string {
-	if h.legalTermsBase == "" || h.publicFeedQueries == nil || !h.termsPublished(ctx) {
+	if h.legalTermsBase == "" || h.publicFeedQueries == nil {
+		return ""
+	}
+	// A failed publication lookup only hides the link here: showing the
+	// platform terms is safe for display. checkout/start decides differently.
+	if published, err := h.termsPublished(ctx); err != nil || !published {
 		return ""
 	}
 	link, err := h.publicFeedQueries.GetLegalTermsLink(ctx, eventID)
@@ -65,15 +70,16 @@ func (h *Handler) legalTermsURL(ctx context.Context, eventID uuid.UUID, feedToke
 // terms template (its English version, the fallback of every language).
 // Drafts are never public: until a version is published the consent keeps
 // pointing at the platform terms (P3 execution contract).
-func (h *Handler) termsPublished(ctx context.Context) bool {
+func (h *Handler) termsPublished(ctx context.Context) (bool, error) {
 	_, err := h.publicFeedQueries.GetPublishedLegalDocument(ctx, legaldocs.KindSaleTerms, legaldocs.DefaultLocale)
 	if err == nil {
-		return true
+		return true, nil
 	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		h.logger.Warn("public_feed: terms publication lookup failed", slog.String("error", err.Error()))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
 	}
-	return false
+	h.logger.Warn("public_feed: terms publication lookup failed", slog.String("error", err.Error()))
+	return false, err
 }
 
 // consentBlockFor is consentBlock with the organizer's terms link when the
@@ -95,7 +101,17 @@ func (h *Handler) consentBlockFor(ctx context.Context, required bool, legalName 
 // checkout/start then refuses the sale (it must not store a consent that
 // does not say what was accepted).
 func (h *Handler) attachTermsRendering(ctx context.Context, p *pendingConsent, orgID, eventID uuid.UUID, feedToken string) error {
-	if p == nil || h.legalTermsBase == "" || h.publicFeedQueries == nil || !h.termsPublished(ctx) {
+	if p == nil || h.legalTermsBase == "" || h.publicFeedQueries == nil {
+		return nil
+	}
+	// A database failure is not "no published terms": storing the platform
+	// version then would record a consent that may not match the page the
+	// buyer saw, so the sale is refused instead.
+	published, err := h.termsPublished(ctx)
+	if err != nil {
+		return err
+	}
+	if !published {
 		return nil
 	}
 	locale := ""
