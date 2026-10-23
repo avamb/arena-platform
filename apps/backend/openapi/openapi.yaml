@@ -4428,10 +4428,111 @@ components:
         used_at:
           type: [string, "null"]
           format: date-time
-          description: When the ticket was scanned at the door (latest scan of its barcodes, any authority); null if never.
+          description: When the ticket was first let in at the door (the first admission, by arena's own scanner or by MACS; for a ticket of the legacy import the newest scan of its barcodes); null if never.
+        scans:
+          type: array
+          description: The ticket's last scans at a door (up to 5, any result, newest first), as the order card prints them. Empty when the ticket was never scanned.
+          items:
+            $ref: "#/components/schemas/TicketScan"
         vip:
           type: boolean
           description: The organizer's private VIP mark. It is never printed on the PDF e-ticket or written in a letter to the buyer.
+
+    TicketScan:
+      type: object
+      required: [scanned_at, result, source, scanner_label, gate]
+      description: One scan of a ticket at a door (M2), by arena's own scanner or reported by MACS.
+      properties:
+        scanned_at:
+          type: string
+          format: date-time
+          description: When the scan happened at the door, as the scanner reported it.
+        result:
+          type: string
+          description: "What the gate decided: `admitted` or `denied`."
+        source:
+          type: string
+          description: "Who reported the scan: `arena_scanner` (arena's own scanner) or `macs` (the MACS gate system)."
+        scanner_label:
+          type: string
+          description: The scanner's own name as the reporting system gives it (MACS only; empty for arena's scanner).
+        gate:
+          type: string
+          description: The gate the scanner stood at; empty when the scanner did not say.
+
+    SessionTicketItem:
+      type: object
+      required: [ticket_id, system_ticket_id, status, tier_name, seat_label, order_id, order_number, buyer_name, buyer_email, entered, entered_at, last_scan]
+      description: One ticket of a session with its order, buyer and entry at the door (M2).
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the ticket.
+        system_ticket_id:
+          type: integer
+          format: int64
+          description: The ticket number printed on the e-ticket.
+        status:
+          type: string
+          description: "Ticket status: `active`, `cancelled`, `transferred` or `revoked`."
+        tier_name:
+          type: [string, "null"]
+          description: Name of the category; null when the category row is gone.
+        seat_label:
+          type: [string, "null"]
+          description: The seat parts joined with " / "; null for general admission.
+        order_id:
+          type: [string, "null"]
+          format: uuid
+          description: The order the ticket was sold with; null for an invitation.
+        order_number:
+          type: [integer, "null"]
+          format: int64
+          description: The order number (`orders.system_id`); null for an invitation.
+        buyer_name:
+          type: [string, "null"]
+          description: The buyer's name, when the order has one.
+        buyer_email:
+          type: [string, "null"]
+          description: The buyer's e-mail, else the ticket holder's.
+        entered:
+          type: boolean
+          description: True when the ticket was let in at a door.
+        entered_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the ticket was first let in; null when it was not.
+        last_scan:
+          description: The newest scan of the ticket whatever its result; null when nobody scanned it.
+          oneOf:
+            - $ref: "#/components/schemas/TicketScan"
+            - type: "null"
+
+    SessionTicketList:
+      type: object
+      required: [session_id, venue_timezone, total, has_more, items]
+      description: One page of a session's tickets with their entry at the door (M2).
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: The session.
+        venue_timezone:
+          type: [string, "null"]
+          description: IANA zone of the session's venue, for printing times; null when the session has no venue.
+        total:
+          type: integer
+          format: int64
+          description: How many tickets match the filter.
+        has_more:
+          type: boolean
+          description: True when a later page exists.
+        items:
+          type: array
+          description: The tickets of this page, in ticket-number order.
+          items:
+            $ref: "#/components/schemas/SessionTicketItem"
 
     OrderEventSummary:
       type: object
@@ -47906,6 +48007,95 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/sessions/{session_id}/tickets:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdTickets
+      summary: Tickets of a session with their entry at the door
+      description: |
+        Lists the tickets of one session in ticket-number order, each with its
+        order, buyer and what the door did with it: when it was first let in
+        and its newest scan. `entered=false` lists the active tickets nobody
+        has entered with ("who has not come yet"), `entered=true` the tickets
+        with an entry, no filter every ticket. A ticket counts as entered when
+        it carries `used_at`, an admitted scan or a scanned barcode, the same
+        reading the refund guard uses. The page carries the buyer's name and
+        e-mail, so an organization API key is refused with 403
+        `orders.session_tickets_api_key_forbidden`. The session must belong to
+        this organization, a session of another one is invisible. Requires the
+        `order.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+        - name: entered
+          in: query
+          required: false
+          description: "`false` lists active tickets nobody entered with, `true` the tickets with an entry. Absent lists every ticket."
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1 to 200 (default 50).
+          schema: { type: integer, minimum: 1, maximum: 200 }
+        - name: offset
+          in: query
+          required: false
+          description: Number of tickets to skip (default 0).
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: One page of the session's tickets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionTicketList"
+        "400":
+          description: A path parameter is not a UUID, or `entered`, `limit` or `offset` is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`order.read`), or the caller is an organization API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Order queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/sessions/{session_id}/sales.csv:
     get:
       operationId: getV1OrganizationsOrgIdSessionsSessionIdSalesCsv
@@ -47915,7 +48105,8 @@ paths:
         order number, order status, order date, buyer, e-mail, phone,
         category, price paid for that ticket, currency, EAN-13 barcode,
         ticket status, whether the ticket was admitted at the gate (`yes` /
-        `no`), sales channel and promo code. Written by the platform's
+        `no`), the time of the first entry, who reported it (`arena_scanner`
+        or `macs`), the scanner and gate, sales channel and promo code. Written by the platform's
         csvexport rules (spec 35 §5.1): UTF-8 with a BOM, `;` separator, CRLF,
         every text quoted, barcodes / phones / long numbers as Excel text
         (`="4600051000001"`), formula-looking values prefixed with `'`,

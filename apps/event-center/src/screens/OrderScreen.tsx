@@ -8,6 +8,7 @@ import { OrderLetters } from "@/components/OrderLetters";
 import { CancelOrder } from "@/components/CancelOrder";
 import { RefundOrder } from "@/components/RefundOrder";
 import { TicketVipBadge, TicketVipButton } from "@/components/TicketVip";
+import { TicketScans } from "@/components/TicketScans";
 import { Badge, ErrorBox, Loading } from "@/components/ui";
 import { useOrg } from "@/screens/OrgLayout";
 import { OrderStatusBadge } from "@/screens/OrdersScreen";
@@ -198,6 +199,8 @@ export function OrderScreen() {
                     })}
                   </dd>
                 </dl>
+                {/* M2 */}
+                <TicketScans scans={tk.scans} tz={tz} />
               </li>
             );
           })}

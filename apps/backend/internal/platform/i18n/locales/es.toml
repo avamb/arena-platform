@@ -3870,3 +3870,26 @@ other = "☑ VIP: pulsa para quitar"
 
 ["bot.ec.page_stats_line"]
 other = "Visitas a la página: {{.Views}} en {{.Days}} días{{if .Suspect}} (de ellas, {{.Suspect}} sospechosas){{end}}"
+["bot.ord.scan_src_arena_scanner"]
+other = "escáner de Arena"
+
+["bot.ord.scan_src_macs"]
+other = "MACS"
+
+["bot.ord.scan_gate"]
+other = " · acceso {{.Gate}}"
+
+["bot.ord.scan_denied"]
+other = " · ✖ rechazado {{.When}}"
+
+["bot.ses.not_entered_btn"]
+other = "No han entrado"
+
+["bot.ses.not_entered_head"]
+other = "<b>Aún no han entrado</b>\n{{.Scope}}\nEntradas: {{.Count}}"
+
+["bot.ses.not_entered_empty"]
+other = "Todos los que tienen una entrada válida ya han entrado."
+
+["bot.ses.not_entered_invite"]
+other = "invitación"

@@ -2,6 +2,7 @@ package hexport
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,13 +14,15 @@ import (
 
 // salesColumns are the columns of a sales export, in the spec's order
 // (§5.8): Заказ;Статус заказа;Дата;Покупатель;E-mail;Телефон;Категория;
-// Цена;Валюта;Штрихкод;Статус билета;Вошёл;Канал;Промокод. The event-level
-// file appends Сеанс.
+// Цена;Валюта;Штрихкод;Статус билета;Вошёл;Время входа;Источник входа;
+// Сканер / вход;Канал;Промокод (M2: the first admitted scan of the ticket).
+// The event-level file appends Сеанс.
 var salesColumns = []csvexport.Column{
 	csvexport.ColOrder, csvexport.ColOrderStatus, csvexport.ColDate,
 	csvexport.ColBuyer, csvexport.ColEmail, csvexport.ColPhone,
 	csvexport.ColCategory, csvexport.ColPrice, csvexport.ColCurrency,
 	csvexport.ColBarcode, csvexport.ColTicketStatus, csvexport.ColEntered,
+	csvexport.ColEnteredAt, csvexport.ColEnteredSource, csvexport.ColEnteredScanner,
 	csvexport.ColChannel, csvexport.ColPromoCode,
 }
 
@@ -141,6 +144,13 @@ func salesCells(row gen.ExportSalesRow, withSession bool) []csvexport.Cell {
 	if row.OrderCreatedAt != nil {
 		orderDate = *row.OrderCreatedAt
 	}
+	// A ticket is entered when it carries used_at or an admitted scan (the
+	// refund guard's own reading); the entry time is the first admission.
+	enteredAt := row.UsedAt
+	if enteredAt == nil {
+		enteredAt = row.EnteredAt
+	}
+	entered := enteredAt != nil
 	var order csvexport.Cell
 	if row.OrderNumber != nil {
 		order = csvexport.Number(*row.OrderNumber)
@@ -157,7 +167,10 @@ func salesCells(row gen.ExportSalesRow, withSession bool) []csvexport.Cell {
 		csvexport.TextPtr(row.Currency),
 		csvexport.Text(barcode),
 		csvexport.Text(row.TicketStatus),
-		csvexport.YesNo(row.UsedAt != nil),
+		csvexport.YesNo(entered),
+		csvexport.DateTimePtr(enteredAt, loc),
+		csvexport.TextPtr(row.EnteredSource),
+		csvexport.Text(scannerGate(row.EnteredScanner, row.EnteredGate)),
 		csvexport.TextPtr(row.ChannelName),
 		csvexport.TextPtr(row.PromoCode),
 	}
@@ -165,4 +178,17 @@ func salesCells(row gen.ExportSalesRow, withSession bool) []csvexport.Cell {
 		cells = append(cells, csvexport.DateTime(row.SessionStart, loc))
 	}
 	return cells
+}
+
+// scannerGate joins the scanner's own name and the gate it stood at, each
+// only when it exists ("Scanner 3 / Gate 2"). MACS names both; arena's own
+// scanner reports the gate alone.
+func scannerGate(scanner, gate *string) string {
+	var parts []string
+	for _, p := range []*string{scanner, gate} {
+		if p != nil && strings.TrimSpace(*p) != "" {
+			parts = append(parts, strings.TrimSpace(*p))
+		}
+	}
+	return strings.Join(parts, " / ")
 }

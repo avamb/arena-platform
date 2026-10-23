@@ -312,7 +312,11 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	// V1: a paid two-ticket order for the VIP twin test (vip_fixture.go).
-	return applyVIPOrder(ctx, tx)
+	if err := applyVIPOrder(ctx, tx); err != nil {
+		return err
+	}
+	// M2: the door-scans twin test's rows (scans_fixture.go).
+	return applyScansFixture(ctx, tx)
 }
 
 // Task 4-6 (the web promoters screens): ANOTHER organization with one

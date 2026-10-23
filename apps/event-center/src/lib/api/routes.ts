@@ -181,6 +181,8 @@ export const API = {
   // 2-3: statistics of the event's hosted page (page views, video plays, partner clicks).
   eventPageStats: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/page-stats" },
   eventPageStatsCsv: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/page-stats.csv" },
+  // M2: the tickets of a session with their entry at the door.
+  sessionTickets: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/tickets" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;

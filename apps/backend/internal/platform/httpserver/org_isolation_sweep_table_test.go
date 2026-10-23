@@ -342,6 +342,7 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/orders/{id}/cancel":                        "horders",
 	"POST /v1/organizations/{org_id}/orders/{order_id}/resend-tickets":          "horders",
 	"GET /v1/organizations/{org_id}/orders/{order_id}/consents":                 "horders.HandleConsents (GetOrderByID(order, path org), then the consents by (path org, the order's checkout session); covered by TestCheckoutConsent_OrderConsentsStayInsideTheOrganization)",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/tickets":              "horders.HandleSessionTickets (GetSessionSummaryHeader(session, path org), then the tickets of that session; an API key is refused; covered by TestSessionTickets_ScansTwinSources)",
 	"GET /v1/organizations/{org_id}/orders/{order_id}/letter-interactions":      "horders.HandleLetterInteractions (GetOrderByID(order, path org), then the letters by (order, path org); covered by TestBrevoWebhook_LetterInteractionsCarryUserAgentAndStayInsideTheOrganization)",
 	"GET /v1/organizations/{org_id}/orders/{order_id}/refund-options":           "refunds.Engine.Options (order loaded inside the path org; covered by TestRefundOrgRoutes_OptionsCreateReplayAndIsolation)",
 	"POST /v1/organizations/{org_id}/orders/{order_id}/refunds":                 "refunds.Engine.CreateBatch (order loaded inside the path org; covered by TestRefundOrgRoutes_OptionsCreateReplayAndIsolation)",

@@ -4009,3 +4009,26 @@ other = "☑ VIP: нажмите, чтобы снять"
 
 ["bot.ec.page_stats_line"]
 other = "Просмотры страницы: {{.Views}} за {{.Days}} дн.{{if .Suspect}} (из них подозрительных {{.Suspect}}){{end}}"
+["bot.ord.scan_src_arena_scanner"]
+other = "сканер Arena"
+
+["bot.ord.scan_src_macs"]
+other = "МАКС"
+
+["bot.ord.scan_gate"]
+other = " · вход {{.Gate}}"
+
+["bot.ord.scan_denied"]
+other = " · ✖ отказ на входе {{.When}}"
+
+["bot.ses.not_entered_btn"]
+other = "Не прошли"
+
+["bot.ses.not_entered_head"]
+other = "<b>Ещё не прошли</b>\n{{.Scope}}\nБилетов: {{.Count}}"
+
+["bot.ses.not_entered_empty"]
+other = "Все, у кого есть действующий билет, уже прошли."
+
+["bot.ses.not_entered_invite"]
+other = "приглашение"

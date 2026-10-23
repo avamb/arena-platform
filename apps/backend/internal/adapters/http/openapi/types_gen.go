@@ -11520,6 +11520,9 @@ type OrderTicketSummary struct {
 	// Price What the buyer paid for this unit, in minor currency units (order_items.total, after discount and fee; 0 for an invitation).
 	Price int64 `json:"price"`
 
+	// Scans The ticket's last scans at a door (up to 5, any result, newest first), as the order card prints them. Empty when the ticket was never scanned.
+	Scans *[]TicketScan `json:"scans,omitempty"`
+
 	// SeatLabel The seat parts that exist joined with " / " (e.g. "A / 3 / 12"); null for general admission.
 	SeatLabel *string `json:"seat_label"`
 
@@ -11544,7 +11547,7 @@ type OrderTicketSummary struct {
 	// TierName Name of the category; null when the tier row is gone.
 	TierName *string `json:"tier_name"`
 
-	// UsedAt When the ticket was scanned at the door (latest scan of its barcodes, any authority); null if never.
+	// UsedAt When the ticket was first let in at the door (the first admission, by arena's own scanner or by MACS; for a ticket of the legacy import the newest scan of its barcodes); null if never.
 	UsedAt *time.Time `json:"used_at"`
 
 	// Vip The organizer's private VIP mark. It is never printed on the PDF e-ticket or written in a letter to the buyer.
@@ -15192,6 +15195,63 @@ type SessionSummary struct {
 	} `json:"tiers"`
 }
 
+// SessionTicketItem One ticket of a session with its order, buyer and entry at the door (M2).
+type SessionTicketItem struct {
+	// BuyerEmail The buyer's e-mail, else the ticket holder's.
+	BuyerEmail *string `json:"buyer_email"`
+
+	// BuyerName The buyer's name, when the order has one.
+	BuyerName *string `json:"buyer_name"`
+
+	// Entered True when the ticket was let in at a door.
+	Entered bool `json:"entered"`
+
+	// EnteredAt When the ticket was first let in; null when it was not.
+	EnteredAt *time.Time `json:"entered_at"`
+
+	// LastScan The newest scan of the ticket whatever its result; null when nobody scanned it.
+	LastScan *TicketScan `json:"last_scan"`
+
+	// OrderId The order the ticket was sold with; null for an invitation.
+	OrderId *openapi_types.UUID `json:"order_id"`
+
+	// OrderNumber The order number (`orders.system_id`); null for an invitation.
+	OrderNumber *int64 `json:"order_number"`
+
+	// SeatLabel The seat parts joined with " / "; null for general admission.
+	SeatLabel *string `json:"seat_label"`
+
+	// Status Ticket status: `active`, `cancelled`, `transferred` or `revoked`.
+	Status string `json:"status"`
+
+	// SystemTicketId The ticket number printed on the e-ticket.
+	SystemTicketId int64 `json:"system_ticket_id"`
+
+	// TicketId UUIDv7 primary key of the ticket.
+	TicketId openapi_types.UUID `json:"ticket_id"`
+
+	// TierName Name of the category; null when the category row is gone.
+	TierName *string `json:"tier_name"`
+}
+
+// SessionTicketList One page of a session's tickets with their entry at the door (M2).
+type SessionTicketList struct {
+	// HasMore True when a later page exists.
+	HasMore bool `json:"has_more"`
+
+	// Items The tickets of this page, in ticket-number order.
+	Items []SessionTicketItem `json:"items"`
+
+	// SessionId The session.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Total How many tickets match the filter.
+	Total int64 `json:"total"`
+
+	// VenueTimezone IANA zone of the session's venue, for printing times; null when the session has no venue.
+	VenueTimezone *string `json:"venue_timezone"`
+}
+
 // SessionWarning A non-fatal note about a session write: the request succeeded, but
 // part of it could not be applied verbatim.
 type SessionWarning struct {
@@ -15592,6 +15652,24 @@ type TicketItemStatus string
 type TicketListResponse struct {
 	// Tickets Tickets issued for the checkout session (possibly empty).
 	Tickets []TicketItem `json:"tickets"`
+}
+
+// TicketScan One scan of a ticket at a door (M2), by arena's own scanner or reported by MACS.
+type TicketScan struct {
+	// Gate The gate the scanner stood at; empty when the scanner did not say.
+	Gate string `json:"gate"`
+
+	// Result What the gate decided: `admitted` or `denied`.
+	Result string `json:"result"`
+
+	// ScannedAt When the scan happened at the door, as the scanner reported it.
+	ScannedAt time.Time `json:"scanned_at"`
+
+	// ScannerLabel The scanner's own name as the reporting system gives it (MACS only; empty for arena's scanner).
+	ScannerLabel string `json:"scanner_label"`
+
+	// Source Who reported the scan: `arena_scanner` (arena's own scanner) or `macs` (the MACS gate system).
+	Source string `json:"source"`
 }
 
 // TicketTierDeleteResponse Soft-delete response envelope for a ticket tier.
@@ -18127,6 +18205,18 @@ type GetV1OrganizationsOrgIdSessionsSessionIdSeatsSeatKeyHistoryParams struct {
 type GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsvParams struct {
 	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdSessionsSessionIdTicketsParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdTickets.
+type GetV1OrganizationsOrgIdSessionsSessionIdTicketsParams struct {
+	// Entered `false` lists active tickets nobody entered with, `true` the tickets with an entry. Absent lists every ticket.
+	Entered *string `form:"entered,omitempty" json:"entered,omitempty"`
+
+	// Limit Page size, 1 to 200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of tickets to skip (default 0).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.

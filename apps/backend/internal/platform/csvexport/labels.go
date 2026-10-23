@@ -43,6 +43,10 @@ const (
 	ColUTMCampaign
 	ColCount
 	ColSuspectCount
+	// M2: the first admitted scan of a ticket.
+	ColEnteredAt
+	ColEnteredSource
+	ColEnteredScanner
 )
 
 // SupportedLocales are the header languages, in the order they are offered.
@@ -64,6 +68,7 @@ var labels = map[string]map[Column]string{
 		ColRevenue: "Revenue", ColOnSale: "On sale", ColDiscount: "Discount",
 		ColUTMSource: "UTM source", ColUTMCampaign: "UTM campaign",
 		ColCount: "Count", ColSuspectCount: "Suspected bots",
+		ColEnteredAt: "Entry time", ColEnteredSource: "Entry source", ColEnteredScanner: "Scanner / gate",
 	},
 	"ru": {
 		ColOrder: "Заказ", ColOrderStatus: "Статус заказа", ColDate: "Дата",
@@ -77,6 +82,7 @@ var labels = map[string]map[Column]string{
 		ColRevenue: "Выручка", ColOnSale: "В продаже", ColDiscount: "Скидка",
 		ColUTMSource: "UTM-источник", ColUTMCampaign: "UTM-кампания",
 		ColCount: "Количество", ColSuspectCount: "Из них боты",
+		ColEnteredAt: "Время входа", ColEnteredSource: "Источник входа", ColEnteredScanner: "Сканер / вход",
 	},
 	"es": {
 		ColOrder: "Pedido", ColOrderStatus: "Estado del pedido", ColDate: "Fecha",
@@ -90,6 +96,7 @@ var labels = map[string]map[Column]string{
 		ColRevenue: "Ingresos", ColOnSale: "En venta", ColDiscount: "Descuento",
 		ColUTMSource: "Fuente UTM", ColUTMCampaign: "Campaña UTM",
 		ColCount: "Cantidad", ColSuspectCount: "De ellos, bots",
+		ColEnteredAt: "Hora de entrada", ColEnteredSource: "Origen de la entrada", ColEnteredScanner: "Escáner / acceso",
 	},
 }
 

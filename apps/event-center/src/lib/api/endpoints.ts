@@ -42,6 +42,7 @@ import type {
   MeResponse,
   OrderDetail,
   OrderLetter,
+  SessionTicketList,
   OrderListResponse,
   OrderRefundOptions,
   OrderResendTicketsResponse,
@@ -740,6 +741,22 @@ export function setEventContact(
   input: { email: string; phone: string | null; phone_hidden: boolean },
 ): Promise<EventContactResponse> {
   return call<EventContactResponse>({ route: API.eventContact, params: { org_id: orgId, event_id: eventId }, body: input });
+}
+// M2
+export interface SessionTicketsQuery {
+  /** false = active tickets nobody entered with, true = tickets with an entry, absent = all. */
+  entered?: boolean;
+  limit: number;
+  offset: number;
+}
+
+/** One page of a session's tickets with the buyer and the entry at the door. */
+export function fetchSessionTickets(orgId: string, sessionId: string, q: SessionTicketsQuery): Promise<SessionTicketList> {
+  return call<SessionTicketList>({
+    route: API.sessionTickets,
+    params: { org_id: orgId, session_id: sessionId },
+    query: { entered: q.entered === undefined ? undefined : String(q.entered), limit: q.limit, offset: q.offset },
+  });
 }
 
 // ─── V1: the VIP mark of a ticket ─────────────────────────────────────────────

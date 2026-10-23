@@ -4015,3 +4015,26 @@ other = "☑ VIP: press to remove"
 
 ["bot.ec.page_stats_line"]
 other = "Page views: {{.Views}} in {{.Days}} days{{if .Suspect}} ({{.Suspect}} of them look like bots){{end}}"
+["bot.ord.scan_src_arena_scanner"]
+other = "Arena scanner"
+
+["bot.ord.scan_src_macs"]
+other = "MACS"
+
+["bot.ord.scan_gate"]
+other = " · gate {{.Gate}}"
+
+["bot.ord.scan_denied"]
+other = " · ✖ turned away {{.When}}"
+
+["bot.ses.not_entered_btn"]
+other = "Not entered"
+
+["bot.ses.not_entered_head"]
+other = "<b>Not entered yet</b>\n{{.Scope}}\nTickets: {{.Count}}"
+
+["bot.ses.not_entered_empty"]
+other = "Everyone with a valid ticket has come in."
+
+["bot.ses.not_entered_invite"]
+other = "invitation"

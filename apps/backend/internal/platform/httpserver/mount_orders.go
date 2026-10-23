@@ -28,6 +28,9 @@ func (s *Server) mountOrderRoutes(r chi.Router) {
 		pr.Get("/organizations/{org_id}/orders/{order_id}/letter-interactions", s.handleOrderLetterInteractions)
 		// One-screen session overview: places, categories, money, tickets, refunds.
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/summary", s.handleSessionSummary)
+		// The tickets of a session with their entry at the door, filterable to
+		// "has not come yet" (M2). Buyer data: an API key is refused.
+		pr.Get("/organizations/{org_id}/sessions/{session_id}/tickets", s.handleSessionTickets)
 		// The same overview for every session of an event, totals plus a list (EC-06).
 		pr.Get("/organizations/{org_id}/events/{event_id}/summary", s.handleEventSummary)
 		// The sales figures of a list of events in one request (WEB-LIST): the
