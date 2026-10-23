@@ -25,6 +25,8 @@ export interface HostedPageEvent {
   poster_url: string | null;
   age_rating: string | null;
   venue_names: string[];
+  /** Venues with their postal address and session starts. Absent on an older backend. */
+  venues?: HostedPageVenue[];
   first_session_at: string | null;
   last_session_at: string | null;
   /** IANA time zone name of the venue of the event's earliest session, or
@@ -97,6 +99,60 @@ export interface HostedPagePromoter {
   name: string;
 }
 
+/** One picture of the gallery or the photo report. `url` is an absolute
+ * signed address (host-relative only on a deployment without media storage). */
+export interface HostedPagePhoto {
+  media_id: string;
+  url: string;
+  caption: string | null;
+  width: number | null;
+  height: number | null;
+}
+
+/** One video link. `provider` is youtube, vimeo, rutube or https; `embed_url`
+ * is set only for the first three and is the ONLY address the page puts in an
+ * iframe, and only after the buyer presses play. */
+export interface HostedPageVideo {
+  provider: string;
+  video_id: string | null;
+  embed_url: string | null;
+  url: string;
+}
+
+/** A "where else to buy" link with the other seller's name. */
+export interface HostedPagePartnerLink {
+  url: string;
+  seller_name: string;
+}
+
+export interface HostedPageMapPoint {
+  latitude: number;
+  longitude: number;
+  label: string | null;
+}
+
+/** The event's page materials (task 1-2c). Every list may be empty; an older
+ * backend sends no block at all, which renders nothing. */
+export interface HostedPageMaterials {
+  gallery: HostedPagePhoto[];
+  videos: HostedPageVideo[];
+  partner_links: HostedPagePartnerLink[];
+  map_point: HostedPageMapPoint | null;
+  report_photos: HostedPagePhoto[];
+}
+
+/** A place the event is held at: the venue's own postal address (never the
+ * seller's), and the starts of the sessions held there. Empty fields are null. */
+export interface HostedPageVenue {
+  name: string;
+  country: string | null;
+  city: string | null;
+  address: string | null;
+  postal_code: string | null;
+  timezone: string | null;
+  session_starts: string[];
+}
+
 export interface HostedPageResponse {
   org: HostedPageOrg;
   event: HostedPageEvent;
@@ -105,6 +161,7 @@ export interface HostedPageResponse {
   seller?: HostedPageSeller | null;
   promoter?: HostedPagePromoter | null;
   contact_form?: HostedPageContactForm | null;
+  materials?: HostedPageMaterials | null;
 }
 
 export interface HostedPromoterPageResponse {

@@ -96,6 +96,33 @@ var validCreateAdmissionModes = map[string]bool{
 // constraints added in migration 0081.
 var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
+// schedulePublishedSessions uses the same locked update and change guard as
+// PATCH. Draft -> scheduled has no buyer-visible move, so Apply queues no
+// letter. Other states, deleted dates and dates outside this event stay intact.
+func (h *Handler) schedulePublishedSessions(ctx context.Context, tx pgx.Tx, eventID uuid.UUID, ids []uuid.UUID) (int64, error) {
+	var scheduled int64
+	for _, id := range ids {
+		before, err := sessionchange.Load(ctx, tx, id, true)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return 0, err
+		}
+		if before.EventID != eventID || before.State.Deleted || before.State.Status != "draft" {
+			continue
+		}
+		if _, err := h.sessionQueries.WithTx(tx).UpdateSession(ctx, id, eventID, nil, nil, nil, nil, nil, "scheduled", nil, nil, ""); err != nil {
+			return 0, err
+		}
+		if _, err := sessionchange.Apply(ctx, tx, sessionchange.Input{SessionID: id, Old: before.State, Notice: sessionchange.NoticeFor(ctx, "")}); err != nil {
+			return 0, err
+		}
+		scheduled++
+	}
+	return scheduled, nil
+}
+
 // IsValidSessionTransition returns true when the transition from → to is
 // allowed by the Session state machine. Forwards to internal/domain/catalog
 // so the rule lives in exactly one place.

@@ -136,7 +136,7 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/onboarding/confirm", flatPublic, "applicant access token"},
 	{"POST", "/v1/onboarding/resume", flatPublic, "applicant access token"},
 	{"PUT", "/v1/onboarding/applications/{id}/answers", flatPublic, "applicant access token"},
-	{"GET", "/v1/billing/tariffs/active", flatPublic, "published tariff"},
+	{"GET", "/v1/billing/tariffs/active", flatRowGuard, "the platform default tariff when org_id is absent; with ?org_id= (it may be an individual rate) hbilling.RowOrgAccess"},
 
 	// ── provider callbacks ──────────────────────────────────────────────────
 	{"POST", "/v1/payment-intents/webhook", flatPublic, "provider signature"},
@@ -182,6 +182,17 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/admin/geo/cities", flatPlatform, "superadmin or platform permission"},
 	{"POST", "/v1/admin/geo/countries", flatPlatform, "superadmin or platform permission"},
 	{"POST", "/v1/admin/impersonate", flatPlatform, "superadmin or platform permission"},
+	// /v1/admin/billing/*  (flatPlatform): billing.admin AND a platform superadmin
+	{"GET", "/v1/admin/billing/accounts", flatPlatform, "billing.admin and platform superadmin"},
+	{"POST", "/v1/admin/billing/accounts/{account_id}/terms", flatPlatform, "billing.admin and platform superadmin"},
+	{"GET", "/v1/admin/billing/price-lists", flatPlatform, "billing.admin and platform superadmin"},
+	{"POST", "/v1/admin/billing/price-lists", flatPlatform, "billing.admin and platform superadmin"},
+	{"GET", "/v1/admin/billing/price-lists/{id}", flatPlatform, "billing.admin and platform superadmin"},
+	{"POST", "/v1/admin/billing/price-lists/{id}/revoke", flatPlatform, "billing.admin and platform superadmin"},
+	{"GET", "/v1/admin/billing/rate-overrides", flatPlatform, "billing.admin and platform superadmin"},
+	{"POST", "/v1/admin/billing/rate-overrides", flatPlatform, "billing.admin and platform superadmin"},
+	{"DELETE", "/v1/admin/billing/rate-overrides/{id}", flatPlatform, "billing.admin and platform superadmin"},
+	{"POST", "/v1/admin/billing/rate-overrides/{id}/close", flatPlatform, "billing.admin and platform superadmin"},
 	{"POST", "/v1/admin/networks/{id}/agents", flatPlatform, "superadmin or platform permission"},
 	{"POST", "/v1/admin/networks/{id}/organizers", flatPlatform, "superadmin or platform permission"},
 	{"POST", "/v1/admin/networks/{id}/users", flatPlatform, "superadmin or platform permission"},

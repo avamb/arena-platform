@@ -69,6 +69,9 @@ export const API = {
   resendTickets: { method: "POST", path: "/v1/organizations/{org_id}/orders/{order_id}/resend-tickets" },
   // 4-2: cancel an unpaid order. Asks for the password again (spec 37 4.6).
   cancelOrder: { method: "POST", path: "/v1/organizations/{org_id}/orders/{id}/cancel" },
+  // 8-1: refund tickets of an order. The create asks for the password again (spec 37 4.6).
+  refundOptions: { method: "GET", path: "/v1/organizations/{org_id}/orders/{order_id}/refund-options" },
+  refundCreate: { method: "POST", path: "/v1/organizations/{org_id}/orders/{order_id}/refunds" },
   // 4-7: the owner's "Organization data".
   orgDetail: { method: "GET", path: "/v1/organizations/{id}" },
   orgUpdate: { method: "PATCH", path: "/v1/organizations/{id}" },
@@ -88,6 +91,74 @@ export const API = {
   revokeInvitation: { method: "DELETE", path: "/v1/organizations/{org_id}/bot-invitations/{id}" },
   resendInvitation: { method: "POST", path: "/v1/organizations/{org_id}/bot-invitations/{id}/resend" },
   removeMember: { method: "DELETE", path: "/v1/organizations/{org_id}/members/{user_id}" },
+  // 5-1: publish, take off sale, archive and delete an event.
+  eventStatus: { method: "POST", path: "/v1/organizations/{org_id}/events/{id}/status" },
+  eventDeleteImpact: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/delete-impact" },
+  eventDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{id}" },
+  // 7-1: the poster. The picture is uploaded once (multipart), then the event
+  // points at it with ONE PATCH of `poster_media_id`; GET gives a short-lived
+  // signed address of the bytes.
+  mediaUpload: { method: "POST", path: "/v1/media" },
+  mediaGet: { method: "GET", path: "/v1/media/{id}" },
+  // Poster-first creation: reads the uploaded poster with the vision model on the
+  // server (the model key never reaches the browser). Costs a daily slot of the organization.
+  posterFacts: { method: "POST", path: "/v1/organizations/{org_id}/media/{media_id}/poster-facts" },
+  eventUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{id}" },
+  // 5-3: the sales end and doors-open time of a session
+  sessionUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{id}" },
+  // 5-4: a date's categories. PATCH changes ONE thing of a category (open,
+  // base price, sale window, quantity). The price schedule is read and put
+  // back whole when the window in force now is the price being changed.
+  tierUpdate: {
+    method: "PATCH",
+    path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}",
+  },
+  tierSchedule: {
+    method: "GET",
+    path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule",
+  },
+  tierSchedulePut: {
+    method: "PUT",
+    path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule",
+  },
+  // 6-1a: the event wizard. The check (?dry_run=true) writes nothing; the
+  // geo reads are public and feed the venue form.
+  eventBundleCheck: { method: "POST", path: "/v1/organizations/{org_id}/imports/event-bundle" },
+  venues: { method: "GET", path: "/v1/organizations/{org_id}/venues" },
+  // Sales page materials of an event: gallery, videos, other sellers, the map
+  // point and the photo report (reads event.read, writes event.update), and the
+  // venue's own postal address (venue.update).
+  venueUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/venues/{id}" },
+  galleryList: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/media-items" },
+  galleryAdd: { method: "POST", path: "/v1/organizations/{org_id}/events/{event_id}/media-items" },
+  galleryOrder: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/media-items/order" },
+  galleryPatch: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/media-items/{item_id}" },
+  galleryDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{event_id}/media-items/{item_id}" },
+  videoList: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/videos" },
+  videoAdd: { method: "POST", path: "/v1/organizations/{org_id}/events/{event_id}/videos" },
+  videoOrder: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/videos/order" },
+  videoDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{event_id}/videos/{video_id}" },
+  partnerList: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/partner-links" },
+  partnerAdd: { method: "POST", path: "/v1/organizations/{org_id}/events/{event_id}/partner-links" },
+  partnerOrder: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/partner-links/order" },
+  partnerPatch: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}" },
+  partnerDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}" },
+  mapPointGet: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/map-point" },
+  mapPointPut: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/map-point" },
+  mapPointDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{event_id}/map-point" },
+  reportList: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/photo-report" },
+  reportAdd: { method: "POST", path: "/v1/organizations/{org_id}/events/{event_id}/photo-report" },
+  reportOrder: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/photo-report/order" },
+  reportPatch: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/photo-report/{photo_id}" },
+  reportDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{event_id}/photo-report/{photo_id}" },
+  geoCountries: { method: "GET", path: "/v1/geo/countries" },
+  geoCities: { method: "GET", path: "/v1/geo/cities" },
+  geoTimezones: { method: "GET", path: "/v1/geo/countries/{iso2}/timezones" },
+  geoCurrency: { method: "GET", path: "/v1/geo/countries/{iso2}/currency" },
+  // 5-2: move or cancel a session. The dry run first, then ONE PATCH of the
+  // existing session (a cancellation is status "cancelled", never a delete).
+  sessionChangeImpact: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/change-impact" },
+  eventContact: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/contact" },
   // 2-3: statistics of the event's hosted page (page views, video plays, partner clicks).
   eventPageStats: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/page-stats" },
   eventPageStatsCsv: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/page-stats.csv" },
@@ -104,7 +175,7 @@ export function buildPath(
   params: Record<string, string> = {},
   query: Record<string, string | number | undefined> = {},
 ): string {
-  const path = route.path.replace(/\{([a-z_]+)\}/g, (_match, name: string) => {
+  const path = route.path.replace(/\{([a-z0-9_]+)\}/g, (_match, name: string) => {
     const value = params[name];
     if (value === undefined || value.length === 0) {
       throw new Error(`buildPath: missing value for {${name}} in ${route.path}`);
