@@ -235,6 +235,13 @@ var orgIsolationAuditedSafe = map[string]string{
 	// foreign session and expects 404.
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms": "seat layout",
 	"POST /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest":   "seat layout",
+	// hbilling.ChargesHandler (task B2-6): eventInOrg compares events.org_id with the
+	// path organization (404 billing.event_not_found otherwise) and every charge query
+	// filters billable_events.org_id; billing_charges_integration_test.go drives a foreign event.
+	"GET /v1/organizations/{org_id}/billing/events/{event_id}/summary":                  "billing charges",
+	"GET /v1/organizations/{org_id}/billing/account-invoices/{invoice_id}":              "billing account invoices: loaded and compared with the path org, 404 otherwise",
+	"POST /v1/organizations/{org_id}/billing/account-invoices/{invoice_id}/pay-by-card": "billing account invoices: loaded and compared with the path org, 404 otherwise",
+	"POST /v1/organizations/{org_id}/billing/packs/{pack_id}/order":                     "a pack is a platform price-list row; the account is the path org's own",
 
 	// hcatalog event gallery and videos (task 1-2a, event_materials.go):
 	// materialsPrep runs requireEventInOrg first and every query is scoped by

@@ -13,6 +13,11 @@ export function intlLocale(locale: string): string {
   return locale === "en" ? "en-GB" : locale;
 }
 
+/** How many fraction digits the currency has (2 for EUR, 0 for JPY). */
+export function currencyFractionDigits(currency: string): number {
+  return fractionDigits(currency);
+}
+
 function fractionDigits(currency: string): number {
   try {
     return new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2;

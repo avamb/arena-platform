@@ -605,6 +605,9 @@ func (h *Handler) handleInvoiceTransition(w http.ResponseWriter, r *http.Request
 	if !h.invoiceOrgAllowed(w, r, invoice.OrgID, true) {
 		return
 	}
+	if h.refuseAccountInvoice(w, r, invoice.ID) {
+		return
+	}
 
 	// Check terminal state.
 	if isTerminalInvoiceState(invoice.State) {
@@ -765,4 +768,23 @@ func InvoiceLineToResponse(r gen.InvoiceLineRow) map[string]any {
 		resp["tariff_id"] = nil
 	}
 	return resp
+}
+
+// refuseAccountInvoice answers 409 for an invoice of the billing accounts
+// (migration 0160): its issue, payment and void go through the account
+// invoice routes, which write the credit lot of a pack and void in Stripe
+// first. It reports whether it answered.
+func (h *Handler) refuseAccountInvoice(w http.ResponseWriter, r *http.Request, id uuid.UUID) bool {
+	has, err := h.billingQueries.InvoiceHasBillingAccount(r.Context(), id)
+	if err != nil {
+		h.logger.Error("billing: invoice kind lookup failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "failed to fetch invoice", r))
+		return true
+	}
+	if has {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope("billing.account_invoice",
+			"this invoice belongs to a billing account; use the billing account invoice routes", r))
+		return true
+	}
+	return false
 }
