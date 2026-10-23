@@ -155,10 +155,15 @@ func TestBuildEventBundles_SessionsABundleCannotCarryAreListed(t *testing.T) {
 	src.Sessions = []bundleSessionSource{base, cancelled, seated, planned, pwyw, noVenue}
 
 	out := buildEventBundles(src)
-	if len(out.Bundles) != 1 || len(out.Skipped) != 5 {
+	// Task S1b: a session bound to a plan version is a bundle now; only
+	// assigned seats WITHOUT a version are skipped as seated.
+	if len(out.Bundles) != 2 || len(out.Skipped) != 4 {
 		t.Fatalf("bundles %d skipped %+v", len(out.Bundles), out.Skipped)
 	}
-	want := []string{SkipSessionCancelled, SkipSessionSeated, SkipSessionSeated, SkipSessionPayWhatYouWant, SkipSessionVenueMissing}
+	if got := out.Bundles[1].ActionEvent.ArenaSeatingPlanVersionID; got != planned.Session.SeatingPlanVersionID.String() {
+		t.Errorf("the planned session's bundle names version %q, want %s", got, planned.Session.SeatingPlanVersionID)
+	}
+	want := []string{SkipSessionCancelled, SkipSessionSeated, SkipSessionPayWhatYouWant, SkipSessionVenueMissing}
 	for i, w := range want {
 		if out.Skipped[i].Code != w {
 			t.Errorf("skipped[%d] = %s, want %s", i, out.Skipped[i].Code, w)
