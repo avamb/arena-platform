@@ -68,6 +68,15 @@ type Terms struct {
 // PlanKind is the account's plan kind at At (standard or venue).
 func (t Terms) PlanKind() string { return t.Terms.PlanKind }
 
+// FeeMode is the account's fee mode at At; an empty value (a row read before
+// migration 0160) is organizer_pays.
+func (t Terms) FeeMode() string {
+	if t.Terms.FeeMode == "" {
+		return FeeModeOrganizerPays
+	}
+	return t.Terms.FeeMode
+}
+
 // TermsAt loads the conditions of accountID in force at occurredAt: the last
 // terms row with effective_from <= occurredAt, the version of its price list
 // in the account's currency in force at occurredAt (never the version in

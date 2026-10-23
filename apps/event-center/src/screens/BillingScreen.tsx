@@ -12,6 +12,7 @@
  */
 import { useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { BillingNav } from "@/components/BillingNav";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
 import { fetchBillingEventSummary, listBillingCharges, listEvents } from "@/lib/api/endpoints";
 import type { BillingChargeItem, BillingChargeTotal } from "@/lib/api/types";
@@ -222,6 +223,7 @@ export function BillingScreen() {
   return (
     <article aria-labelledby="billing-title">
       <h1 id="billing-title">{t("billing.title")}</h1>
+      <BillingNav orgId={orgId} />
       <p className="muted">{t("billing.intro")}</p>
       <p className="notice" role="status" data-testid="billing-preliminary">
         {t("billing.preliminary")}

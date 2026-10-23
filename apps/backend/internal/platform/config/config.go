@@ -314,6 +314,19 @@ type Config struct {
 	// a deployment that has not named the date writes no billing facts.
 	// Read only by arena-worker.
 	BillingCollectSince time.Time `env:"BILLING_COLLECT_SINCE" required:"false" default:""`
+	// BillingStripeSecretKey is the secret key of the PLATFORM's own Stripe
+	// account (the Estonian issuer, owner decision B-14), which collects card
+	// payments of organizer invoices and credit packs. Never an organizer's
+	// key. Empty: card payment of platform invoices is off (503). arena-api.
+	BillingStripeSecretKey string `env:"BILLING_STRIPE_SECRET_KEY" required:"false" default:""`
+	// BillingStripeWebhookSecret signs the platform Stripe account's webhook
+	// (POST /v1/billing/stripe/webhook). Empty: the route answers 503.
+	BillingStripeWebhookSecret string `env:"BILLING_STRIPE_WEBHOOK_SECRET" required:"false" default:""`
+	// BillingBankWebhookSecret is the HMAC-SHA256 key of incoming bank
+	// payment notifications (POST /v1/billing/bank/webhook/{provider}).
+	// Empty: the route answers 503 and bank payments are matched only from
+	// operator imports.
+	BillingBankWebhookSecret string `env:"BILLING_BANK_WEBHOOK_SECRET" required:"false" default:""`
 
 	// -------------------------------------------------------------------------
 	// Outbox dispatcher
@@ -728,6 +741,9 @@ func LoadFor(role Role) (*Config, error) {
 		EventsTelegramBotToken:      getenv("EVENTS_TELEGRAM_BOT_TOKEN", ""),
 		EventsTelegramBotUsername:   getenv("EVENTS_TELEGRAM_BOT_USERNAME", ""),
 		BotServiceToken:             getenv("BOT_SERVICE_TOKEN", ""),
+		BillingStripeSecretKey:      getenv("BILLING_STRIPE_SECRET_KEY", ""),
+		BillingStripeWebhookSecret:  getenv("BILLING_STRIPE_WEBHOOK_SECRET", ""),
+		BillingBankWebhookSecret:    getenv("BILLING_BANK_WEBHOOK_SECRET", ""),
 		BotArenaAPIURL:              getenv("BOT_ARENA_API_URL", "http://localhost:8080"),
 		OnboardingSiteURL:           strings.TrimRight(getenv("ONBOARDING_SITE_URL", "https://arenasoldout.com"), "/"),
 		OnboardingTermsURL:          strings.TrimSpace(getenv("ONBOARDING_TERMS_URL", "")),

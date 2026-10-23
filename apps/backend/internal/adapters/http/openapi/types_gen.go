@@ -3176,6 +3176,150 @@ type Bil24VenueEntry struct {
 	VenueName *string `json:"venueName,omitempty"`
 }
 
+// BillingAccountBalance The balance of one billing account (one per currency).
+type BillingAccountBalance struct {
+	// AccountId Billing account id.
+	AccountId openapi_types.UUID `json:"account_id"`
+
+	// BalanceMinor What can be spent now: purchased plus bonus, minor units.
+	BalanceMinor int64 `json:"balance_minor"`
+
+	// BonusMinor Bonus credits left, minor units.
+	BonusMinor int64 `json:"bonus_minor"`
+
+	// Currency Currency of the account.
+	Currency string `json:"currency"`
+
+	// CurrentRate The rate of the purchased lot that pays next, null when there is none.
+	CurrentRate *BillingCurrentRate `json:"current_rate"`
+
+	// Lots The lots that still hold something.
+	Lots []BillingCreditLot `json:"lots"`
+
+	// NextBonusExpiresAt When the nearest bonus expires, null when none does.
+	NextBonusExpiresAt *time.Time `json:"next_bonus_expires_at"`
+
+	// PurchasedMinor Purchased credits left, minor units.
+	PurchasedMinor int64 `json:"purchased_minor"`
+}
+
+// BillingAccountInvoice A platform invoice to an organization.
+type BillingAccountInvoice struct {
+	// AccountId Billing account, null for a legacy invoice.
+	AccountId *openapi_types.UUID `json:"account_id"`
+
+	// BillingPeriod The month the invoice is for, YYYY-MM.
+	BillingPeriod string `json:"billing_period"`
+
+	// CardFeeMinor The card payment fee, minor units, 0 for a bank transfer.
+	CardFeeMinor int64 `json:"card_fee_minor"`
+
+	// Currency Currency of the money fields.
+	Currency string `json:"currency"`
+
+	// DueAt When payment is due.
+	DueAt *time.Time `json:"due_at"`
+
+	// Id Invoice id.
+	Id openapi_types.UUID `json:"id"`
+
+	// IssuedAt When the invoice was issued.
+	IssuedAt *time.Time `json:"issued_at"`
+
+	// Kind usage, credit_pack, credit_note, subscription or manual.
+	Kind string `json:"kind"`
+
+	// Lines The lines, in order.
+	Lines []BillingAccountInvoiceLine `json:"lines"`
+
+	// Number Invoice number, null until the invoice is issued.
+	Number *string `json:"number"`
+
+	// OrgId Organization the invoice is for.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PackId The credit pack a credit_pack invoice is for.
+	PackId *openapi_types.UUID `json:"pack_id"`
+
+	// PaidAmountMinor The amount that was paid, minor units.
+	PaidAmountMinor *int64 `json:"paid_amount_minor"`
+
+	// PaidAt When the payment was recorded.
+	PaidAt *time.Time `json:"paid_at"`
+
+	// PaidVia How it was paid, for example stripe_card, bank_transfer or manual.
+	PaidVia *string `json:"paid_via"`
+
+	// PaymentMethod bank_transfer or stripe_card, null until the invoice is issued.
+	PaymentMethod *string `json:"payment_method"`
+
+	// PaymentReference The reference to write in a bank transfer, null until issued.
+	PaymentReference *string `json:"payment_reference"`
+
+	// PaymentUrl The Stripe payment page of a card invoice, null when there is none.
+	PaymentUrl *string `json:"payment_url"`
+
+	// PaymentUrlError Present only in the answer to ordering a pack or issuing an invoice for a card payment when the Stripe page could not be made; the page can be opened later.
+	PaymentUrlError *string `json:"payment_url_error,omitempty"`
+
+	// PeriodFrom Start of the billed period, for a usage invoice.
+	PeriodFrom *time.Time `json:"period_from"`
+
+	// PeriodTo End of the billed period, for a usage invoice.
+	PeriodTo *time.Time `json:"period_to"`
+
+	// State draft, issued, paid or void.
+	State string `json:"state"`
+
+	// SubtotalMinor Total of the lines before the card fee and tax, minor units.
+	SubtotalMinor int64 `json:"subtotal_minor"`
+
+	// TaxMinor Tax, minor units.
+	TaxMinor int64 `json:"tax_minor"`
+
+	// TotalMinor What is to be paid, minor units.
+	TotalMinor int64 `json:"total_minor"`
+
+	// VoidedAt When the invoice was voided.
+	VoidedAt *time.Time `json:"voided_at"`
+}
+
+// BillingAccountInvoiceLine A line of a platform invoice.
+type BillingAccountInvoiceLine struct {
+	// Currency Currency of the line.
+	Currency string `json:"currency"`
+
+	// Description Text printed on the invoice.
+	Description string `json:"description"`
+
+	// Id Line id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Kind of the line, for example a rate line or the payment system fee.
+	Kind string `json:"kind"`
+
+	// Quantity Quantity.
+	Quantity int64 `json:"quantity"`
+
+	// RuleType The pricing rule the line is rated by, null for other lines.
+	RuleType *string `json:"rule_type"`
+
+	// TotalAmountMinor Quantity times the unit price, minor units.
+	TotalAmountMinor int64 `json:"total_amount_minor"`
+
+	// UnitAmountMinor Price of one unit, minor units.
+	UnitAmountMinor int64 `json:"unit_amount_minor"`
+}
+
+// BillingAccountInvoiceList A page of platform invoices of an organization.
+type BillingAccountInvoiceList struct {
+	// HasMore True when there are more invoices after this page.
+	HasMore bool `json:"has_more"`
+
+	// Invoices The invoices, newest first.
+	Invoices []BillingAccountInvoice `json:"invoices"`
+}
+
 // BillingAccountTerms One dated row of the conditions of a billing account. The terms of an event are the last row that started before the event.
 type BillingAccountTerms struct {
 	// BillingCycle prepaid, per_event or monthly.
@@ -3192,6 +3336,9 @@ type BillingAccountTerms struct {
 
 	// EffectiveFrom First moment the terms apply.
 	EffectiveFrom time.Time `json:"effective_from"`
+
+	// FeeMode Who pays the platform commission on a sold ticket, organizer_pays (the organizer is billed) or buyer_pays (the buyer pays it as the service charge).
+	FeeMode string `json:"fee_mode"`
 
 	// Id Id of the terms row.
 	Id openapi_types.UUID `json:"id"`
@@ -3264,6 +3411,147 @@ type BillingAdminAccountFlags struct {
 type BillingAdminAccountList struct {
 	// Items The accounts, by organization name.
 	Items []BillingAdminAccount `json:"items"`
+}
+
+// BillingAdminInvoiceList Platform invoices in one state.
+type BillingAdminInvoiceList struct {
+	// Invoices The invoices, newest first.
+	Invoices []BillingAccountInvoice `json:"invoices"`
+}
+
+// BillingBalanceResponse The credit balances of an organization.
+type BillingBalanceResponse struct {
+	// Accounts One balance per billing account.
+	Accounts []BillingAccountBalance `json:"accounts"`
+}
+
+// BillingBankIgnoreRequest Body of POST /v1/admin/billing/bank-transactions/{transaction_id}/ignore.
+type BillingBankIgnoreRequest struct {
+	// Reason Why the payment is ignored, 1 to 500 characters.
+	Reason string `json:"reason"`
+}
+
+// BillingBankImportRequest Body of the bank webhook and of POST /v1/admin/billing/bank-transactions.
+type BillingBankImportRequest struct {
+	// Transactions 1 to 500 transfers.
+	Transactions []BillingBankTransfer `json:"transactions"`
+}
+
+// BillingBankIngestItem What happened to one transfer of a delivery.
+type BillingBankIngestItem struct {
+	// Id The bank's id of the transfer.
+	Id string `json:"id"`
+
+	// InvoiceId The invoice the payment was matched to. Present when matched.
+	InvoiceId *openapi_types.UUID `json:"invoice_id,omitempty"`
+
+	// InvoiceNumber Number of that invoice. Present when matched.
+	InvoiceNumber *string `json:"invoice_number"`
+
+	// Status duplicate, matched or unmatched.
+	Status string `json:"status"`
+
+	// TransactionId Id of the stored payment. Absent for a duplicate.
+	TransactionId *openapi_types.UUID `json:"transaction_id,omitempty"`
+
+	// UnmatchedReason Why the payment waits for an operator. Present when unmatched.
+	UnmatchedReason *string `json:"unmatched_reason,omitempty"`
+}
+
+// BillingBankIngestResult The summary of one delivery of transfers.
+type BillingBankIngestResult struct {
+	// Duplicate Transfers stored before.
+	Duplicate int `json:"duplicate"`
+
+	// Items One entry per stored or repeated transfer.
+	Items []BillingBankIngestItem `json:"items"`
+
+	// Matched Transfers matched to an invoice, which is now paid.
+	Matched int `json:"matched"`
+
+	// Received How many transfers the delivery held.
+	Received int `json:"received"`
+
+	// Skipped Outgoing or zero movements that were not stored.
+	Skipped int `json:"skipped"`
+
+	// Unmatched Transfers stored and waiting for an operator.
+	Unmatched int `json:"unmatched"`
+}
+
+// BillingBankMatchRequest Body of POST /v1/admin/billing/bank-transactions/{transaction_id}/match.
+type BillingBankMatchRequest struct {
+	// InvoiceId The invoice the payment paid.
+	InvoiceId openapi_types.UUID `json:"invoice_id"`
+}
+
+// BillingBankTransaction An incoming bank payment.
+type BillingBankTransaction struct {
+	// AmountMinor The amount in minor units.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// BookedAt When the bank booked the transfer.
+	BookedAt time.Time `json:"booked_at"`
+
+	// CounterpartyName The payer's name as the bank shows it.
+	CounterpartyName *string `json:"counterparty_name"`
+
+	// Currency Currency of the amount.
+	Currency string `json:"currency"`
+
+	// ExternalId The bank's own id of the transfer.
+	ExternalId string `json:"external_id"`
+
+	// Id Payment id.
+	Id openapi_types.UUID `json:"id"`
+
+	// InvoiceId The invoice the payment paid.
+	InvoiceId *openapi_types.UUID `json:"invoice_id"`
+
+	// MatchedAt When it was matched.
+	MatchedAt *time.Time `json:"matched_at"`
+
+	// Provider The bank or aggregator, or manual for an operator's import.
+	Provider string `json:"provider"`
+
+	// ReceivedAt When arena received it.
+	ReceivedAt time.Time `json:"received_at"`
+
+	// Reference The payment reference the payer wrote.
+	Reference *string `json:"reference"`
+
+	// Status matched, unmatched or ignored.
+	Status string `json:"status"`
+
+	// UnmatchedReason Why the payment is not matched, or why it was ignored.
+	UnmatchedReason *string `json:"unmatched_reason"`
+}
+
+// BillingBankTransactionList Incoming bank payments.
+type BillingBankTransactionList struct {
+	// Transactions The payments, newest first.
+	Transactions []BillingBankTransaction `json:"transactions"`
+}
+
+// BillingBankTransfer One incoming bank transfer as a bank posts it.
+type BillingBankTransfer struct {
+	// AmountMinor The amount in minor units. Zero or negative amounts are skipped as not a payment.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// BookedAt When the bank booked the transfer.
+	BookedAt time.Time `json:"booked_at"`
+
+	// CounterpartyName The payer's name as the bank shows it, at most 300 characters.
+	CounterpartyName *string `json:"counterparty_name,omitempty"`
+
+	// Currency Three-letter currency code.
+	Currency string `json:"currency"`
+
+	// Id The bank's own id of the transfer, 1 to 200 characters. A repeat of it is a no-op.
+	Id string `json:"id"`
+
+	// Reference The payment reference the payer wrote, at most 1000 characters.
+	Reference *string `json:"reference,omitempty"`
 }
 
 // BillingChargeItem One charge. A reversal has reversal_of set and a negative amount, and carries the time of the event it reverses.
@@ -3415,6 +3703,9 @@ type BillingCreateAccountTermsRequest struct {
 	// EffectiveFrom Start of the terms. It must be in the future and after the start of every earlier terms row.
 	EffectiveFrom time.Time `json:"effective_from"`
 
+	// FeeMode Who pays the platform commission on a sold ticket, organizer_pays (default) or buyer_pays. Any other value is 422 billing.invalid_terms.
+	FeeMode *string `json:"fee_mode,omitempty"`
+
 	// InvoiceDelayDays Days after the last session before a per-event invoice is made.
 	InvoiceDelayDays *int32 `json:"invoice_delay_days"`
 
@@ -3426,6 +3717,24 @@ type BillingCreateAccountTermsRequest struct {
 
 	// ShortfallPolicy invoice_postpaid or block_publishing.
 	ShortfallPolicy string `json:"shortfall_policy"`
+}
+
+// BillingCreatePaymentFeeRequest Body of POST /v1/admin/billing/payment-fees.
+type BillingCreatePaymentFeeRequest struct {
+	// Currency Three-letter currency code.
+	Currency string `json:"currency"`
+
+	// EffectiveFrom When the version starts. It must be in the future and after the latest version of the method and currency.
+	EffectiveFrom time.Time `json:"effective_from"`
+
+	// FixedMinor Fixed part in minor units, 0 to 100000.
+	FixedMinor int64 `json:"fixed_minor"`
+
+	// Method Payment method, stripe_card.
+	Method string `json:"method"`
+
+	// PctBp Percentage part in basis points, 0 to 2000.
+	PctBp int32 `json:"pct_bp"`
 }
 
 // BillingCreatePriceListRequest Body of POST /v1/admin/billing/price-lists. It creates the next version of the price list with that code and currency. Every number is typed by the operator.
@@ -3485,6 +3794,60 @@ type BillingCreateRateOverrideRequest struct {
 	UnseatedMinor int64 `json:"unseated_minor"`
 }
 
+// BillingCreateUsageInvoiceRequest Body of POST /v1/admin/billing/accounts/{account_id}/invoices.
+type BillingCreateUsageInvoiceRequest struct {
+	// Period The finished month to bill, YYYY-MM.
+	Period string `json:"period"`
+}
+
+// BillingCreditLot A credit lot that still holds something.
+type BillingCreditLot struct {
+	// Currency Currency of the money fields.
+	Currency string `json:"currency"`
+
+	// ExpiresAt When the rest expires, null when it does not.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// FaceMinor What the lot was worth when it was made, minor units.
+	FaceMinor int64 `json:"face_minor"`
+
+	// Id Lot id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind purchased or bonus.
+	Kind string `json:"kind"`
+
+	// PurchasedAt When the lot was made.
+	PurchasedAt time.Time `json:"purchased_at"`
+
+	// RemainingMinor What is left, minor units.
+	RemainingMinor int64 `json:"remaining_minor"`
+
+	// SeatedSurchargeMinor Extra price of a seated ticket, minor units. Null for a bonus lot.
+	SeatedSurchargeMinor *int64 `json:"seated_surcharge_minor"`
+
+	// Source How the lot came to be: a pack purchase, a campaign, or a cancelled session.
+	Source string `json:"source"`
+
+	// Tier Tier of the pack a purchased lot was bought in, null for a bonus lot.
+	Tier *int32 `json:"tier"`
+
+	// UnseatedRateMinor Price of one unseated ticket this lot pays, minor units. Null for a bonus lot.
+	UnseatedRateMinor *int64 `json:"unseated_rate_minor"`
+}
+
+// BillingCurrentRate The per-ticket rate of the purchased lot that pays next.
+type BillingCurrentRate struct {
+	// SeatedSurchargeMinor Extra price of a seated ticket in minor units.
+	SeatedSurchargeMinor *int64 `json:"seated_surcharge_minor"`
+
+	// Tier Tier of the pack the lot was bought in.
+	Tier *int32 `json:"tier"`
+
+	// UnseatedRateMinor Price of one unseated ticket in minor units of the account currency.
+	UnseatedRateMinor *int64 `json:"unseated_rate_minor"`
+}
+
 // BillingEventSummary What the platform charged for one event of the organization.
 type BillingEventSummary struct {
 	// ByRule The net charge per rule and currency.
@@ -3504,6 +3867,186 @@ type BillingEventSummary struct {
 
 	// Totals Sums per currency.
 	Totals []BillingChargeTotal `json:"totals"`
+}
+
+// BillingIssueInvoiceRequest Body of POST /v1/admin/billing/invoices/{invoice_id}/issue.
+type BillingIssueInvoiceRequest struct {
+	// PaymentMethod bank_transfer or stripe_card.
+	PaymentMethod string `json:"payment_method"`
+}
+
+// BillingLedgerEntry One entry of the credit journal.
+type BillingLedgerEntry struct {
+	// AmountMinor Always positive; the sign follows from entry_type. Minor units.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// ChargeId The charge a consume entry paid.
+	ChargeId *openapi_types.UUID `json:"charge_id"`
+
+	// CreatedAt When the entry was made.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency Currency of the money fields.
+	Currency string `json:"currency"`
+
+	// EntryType What happened to the lot, for example purchase, consume, expire or restore.
+	EntryType string `json:"entry_type"`
+
+	// InvoiceId The invoice a purchase entry belongs to.
+	InvoiceId *openapi_types.UUID `json:"invoice_id"`
+
+	// LotId The credit lot the entry is about.
+	LotId openapi_types.UUID `json:"lot_id"`
+
+	// Reason Why, when it is recorded.
+	Reason *string `json:"reason"`
+
+	// RemainingAfter What the lot held after the entry, minor units.
+	RemainingAfter int64 `json:"remaining_after"`
+
+	// Seq Position in the journal; the next_before paging value.
+	Seq int64 `json:"seq"`
+}
+
+// BillingLedgerResponse A page of the credit journal of one billing account.
+type BillingLedgerResponse struct {
+	// AccountId The billing account. Absent when the organization has no account.
+	AccountId *openapi_types.UUID `json:"account_id,omitempty"`
+
+	// Currency Currency of the account. Absent when the organization has no account.
+	Currency *string `json:"currency,omitempty"`
+
+	// Entries The entries, newest first.
+	Entries []BillingLedgerEntry `json:"entries"`
+
+	// NextBefore Pass it as before to get the next page. Null on the last page.
+	NextBefore *int64 `json:"next_before"`
+}
+
+// BillingMarkInvoicePaidRequest Body of POST /v1/admin/billing/invoices/{invoice_id}/mark-paid.
+type BillingMarkInvoicePaidRequest struct {
+	// AmountMinor The amount that arrived, minor units, positive. It must match the invoice like a bank transfer does.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// PaidAt When the money arrived. It cannot be in the future.
+	PaidAt time.Time `json:"paid_at"`
+
+	// Reference The bank statement line or other proof, 1 to 200 characters.
+	Reference string `json:"reference"`
+}
+
+// BillingOrderPackRequest Body of POST /v1/organizations/{org_id}/billing/packs/{pack_id}/order.
+type BillingOrderPackRequest struct {
+	// PaymentMethod bank_transfer or stripe_card.
+	PaymentMethod string `json:"payment_method"`
+}
+
+// BillingPackList The credit packs on offer.
+type BillingPackList struct {
+	// Packs The active packs of every account.
+	Packs []BillingPackOffer `json:"packs"`
+}
+
+// BillingPackOffer A credit pack on offer.
+type BillingPackOffer struct {
+	// AccountId Billing account the pack is bought for.
+	AccountId openapi_types.UUID `json:"account_id"`
+
+	// CardFeeMinor The fee a card payment adds, minor units. Null when card payment is not set up.
+	CardFeeMinor *int64 `json:"card_fee_minor"`
+
+	// CardPaymentAvailable True when the pack can be paid by card now.
+	CardPaymentAvailable bool `json:"card_payment_available"`
+
+	// Currency Currency of the money fields.
+	Currency string `json:"currency"`
+
+	// FaceMinor Price of the pack, minor units.
+	FaceMinor int64 `json:"face_minor"`
+
+	// Id Pack id, used to order it.
+	Id openapi_types.UUID `json:"id"`
+
+	// SeatedSurchargeMinor Extra price of a seated ticket, minor units.
+	SeatedSurchargeMinor int64 `json:"seated_surcharge_minor"`
+
+	// TicketsUnseated How many unseated tickets the pack pays.
+	TicketsUnseated int64 `json:"tickets_unseated"`
+
+	// Tier Tier number of the pack.
+	Tier int32 `json:"tier"`
+
+	// UnseatedRateMinor Price of one unseated ticket paid from this pack, minor units.
+	UnseatedRateMinor int64 `json:"unseated_rate_minor"`
+}
+
+// BillingPayByCardResponse The card payment page of an invoice.
+type BillingPayByCardResponse struct {
+	// InvoiceId Invoice id.
+	InvoiceId openapi_types.UUID `json:"invoice_id"`
+
+	// PaymentUrl The Stripe payment page.
+	PaymentUrl *string `json:"payment_url"`
+}
+
+// BillingPayerRequest The payer details printed on invoices (body and answer of PUT /v1/organizations/{org_id}/billing/payer).
+type BillingPayerRequest struct {
+	// Address Address, at most 500 characters.
+	Address *string `json:"address,omitempty"`
+
+	// Country Two-letter country code in capitals, or empty.
+	Country *string `json:"country,omitempty"`
+
+	// Email E-mail address for invoices, or empty.
+	Email *string `json:"email,omitempty"`
+
+	// LegalName Legal name of the payer, 1 to 200 characters.
+	LegalName string `json:"legal_name"`
+
+	// TaxId Tax number, at most 50 characters.
+	TaxId *string `json:"tax_id,omitempty"`
+}
+
+// BillingPayerResponse The stored payer details.
+type BillingPayerResponse struct {
+	// AccountsUpdated How many billing accounts of the organization were updated.
+	AccountsUpdated int64 `json:"accounts_updated"`
+
+	// Payer The details as stored, after trimming.
+	Payer BillingPayerRequest `json:"payer"`
+}
+
+// BillingPaymentFee A version of the average card fee.
+type BillingPaymentFee struct {
+	// CreatedAt When the version was added.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency Currency the fee applies to.
+	Currency string `json:"currency"`
+
+	// EffectiveFrom When the version starts.
+	EffectiveFrom time.Time `json:"effective_from"`
+
+	// FixedMinor Fixed part in minor units.
+	FixedMinor int64 `json:"fixed_minor"`
+
+	// Id Version id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Method Payment method, stripe_card.
+	Method string `json:"method"`
+
+	// PctBp Percentage part in basis points.
+	PctBp int32 `json:"pct_bp"`
+
+	// Reason The reason the operator gave.
+	Reason *string `json:"reason"`
+}
+
+// BillingPaymentFeeList Every version of the card fee.
+type BillingPaymentFeeList struct {
+	// PaymentFees The versions.
+	PaymentFees []BillingPaymentFee `json:"payment_fees"`
 }
 
 // BillingPriceListDetail defines model for BillingPriceListDetail.
@@ -3762,6 +4305,54 @@ type BillingRateOverride struct {
 type BillingRateOverrideList struct {
 	// Items The rates, by organization name, currency and start (newest first).
 	Items []BillingRateOverride `json:"items"`
+}
+
+// BillingServiceFeeQuote The platform commission of one sold ticket at a price, now.
+type BillingServiceFeeQuote struct {
+	// AccountId Billing account the commission is charged to.
+	AccountId openapi_types.UUID `json:"account_id"`
+
+	// Currency Currency of service_fee_minor (the account's).
+	Currency string `json:"currency"`
+
+	// FeeMode The account's fee mode now: organizer_pays or buyer_pays.
+	FeeMode string `json:"fee_mode"`
+
+	// PriceListVersion Version of the price list in force.
+	PriceListVersion int32 `json:"price_list_version"`
+
+	// PriceMinor The ticket price asked about, minor units.
+	PriceMinor int64 `json:"price_minor"`
+
+	// PricingClass standard or low_price, as the sale would be classified.
+	PricingClass string `json:"pricing_class"`
+
+	// Reason Why the amount is what it is (free, override), null for a plain rule.
+	Reason *string `json:"reason"`
+
+	// RuleType Price-list rule that computed it.
+	RuleType string `json:"rule_type"`
+
+	// Seated Whether the ticket is a seat on a plan.
+	Seated bool `json:"seated"`
+
+	// ServiceFeeMinor Commission per ticket in minor units of currency: the service charge that covers the platform in fee_mode buyer_pays.
+	ServiceFeeMinor int64 `json:"service_fee_minor"`
+
+	// TicketCurrency Currency of the ticket price asked about.
+	TicketCurrency string `json:"ticket_currency"`
+}
+
+// BillingUsageInvoiceResult A made usage invoice.
+type BillingUsageInvoiceResult struct {
+	// Invoice The draft invoice, null when there was nothing to bill.
+	Invoice *BillingAccountInvoice `json:"invoice"`
+}
+
+// BillingVoidInvoiceRequest Body of POST /v1/admin/billing/invoices/{invoice_id}/void.
+type BillingVoidInvoiceRequest struct {
+	// Reason Why the invoice is voided, 1 to 500 characters.
+	Reason string `json:"reason"`
 }
 
 // BindSessionSeatingRequest Request body for the seating-bind endpoint. Assigns the given
@@ -15850,8 +16441,74 @@ type GetV1AdminBillingAccountsParams struct {
 	OrgId *openapi_types.UUID `form:"org_id,omitempty" json:"org_id,omitempty"`
 }
 
+// PostV1AdminBillingAccountInvoicesParams defines parameters for PostV1AdminBillingAccountInvoices.
+type PostV1AdminBillingAccountInvoicesParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // PostV1AdminBillingAccountTermsParams defines parameters for PostV1AdminBillingAccountTerms.
 type PostV1AdminBillingAccountTermsParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// GetV1AdminBillingBankTransactionsParams defines parameters for GetV1AdminBillingBankTransactions.
+type GetV1AdminBillingBankTransactionsParams struct {
+	// Status matched, unmatched or ignored. Default all.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// Limit Page size, 1 to 200. Default 100.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// PostV1AdminBillingBankTransactionsParams defines parameters for PostV1AdminBillingBankTransactions.
+type PostV1AdminBillingBankTransactionsParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminBillingBankTransactionIgnoreParams defines parameters for PostV1AdminBillingBankTransactionIgnore.
+type PostV1AdminBillingBankTransactionIgnoreParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminBillingBankTransactionMatchParams defines parameters for PostV1AdminBillingBankTransactionMatch.
+type PostV1AdminBillingBankTransactionMatchParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// GetV1AdminBillingInvoicesParams defines parameters for GetV1AdminBillingInvoices.
+type GetV1AdminBillingInvoicesParams struct {
+	// State draft, issued, paid or void. Default issued.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Limit Page size, 1 to 200. Default 100.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// PostV1AdminBillingInvoiceIssueParams defines parameters for PostV1AdminBillingInvoiceIssue.
+type PostV1AdminBillingInvoiceIssueParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminBillingInvoiceMarkPaidParams defines parameters for PostV1AdminBillingInvoiceMarkPaid.
+type PostV1AdminBillingInvoiceMarkPaidParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminBillingInvoiceVoidParams defines parameters for PostV1AdminBillingInvoiceVoid.
+type PostV1AdminBillingInvoiceVoidParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminBillingPaymentFeesParams defines parameters for PostV1AdminBillingPaymentFees.
+type PostV1AdminBillingPaymentFeesParams struct {
 	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
 	XAdminReason string `json:"X-Admin-Reason"`
 }
@@ -16261,6 +16918,12 @@ type UploadBarcodeBatchJSONBody struct {
 	Label    string   `json:"label"`
 }
 
+// PostV1BillingBankWebhookParams defines parameters for PostV1BillingBankWebhook.
+type PostV1BillingBankWebhookParams struct {
+	// XArenaSignature sha256= followed by the hex HMAC-SHA256 of the raw request body.
+	XArenaSignature string `json:"X-Arena-Signature"`
+}
+
 // GenerateInvoicesJSONBody defines parameters for GenerateInvoices.
 type GenerateInvoicesJSONBody struct {
 	PeriodEnd *time.Time `json:"period_end,omitempty"`
@@ -16514,6 +17177,18 @@ type RevokeOrganizationApiKeyParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// GetV1OrgBillingAccountInvoicesParams defines parameters for GetV1OrgBillingAccountInvoices.
+type GetV1OrgBillingAccountInvoicesParams struct {
+	// State Only invoices in this state: issued, paid or void.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Limit Page size, 1 to 100. Default 50.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of invoices to skip. Default 0.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // ListOrgBillingChargesParams defines parameters for ListOrgBillingCharges.
 type ListOrgBillingChargesParams struct {
 	// From Inclusive start of the event time, an RFC 3339 time or a YYYY-MM-DD date.
@@ -16530,6 +17205,36 @@ type ListOrgBillingChargesParams struct {
 
 	// Cursor The next_cursor of the previous page.
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// GetV1OrgBillingLedgerParams defines parameters for GetV1OrgBillingLedger.
+type GetV1OrgBillingLedgerParams struct {
+	// AccountId Billing account of the organization. An account of another organization is 404.
+	AccountId *openapi_types.UUID `form:"account_id,omitempty" json:"account_id,omitempty"`
+
+	// Before Only entries with seq below this value: the next_before of the previous page.
+	Before *int64 `form:"before,omitempty" json:"before,omitempty"`
+
+	// Limit Page size, 1 to 200. Default 50.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// PostV1OrgBillingPackOrderParams defines parameters for PostV1OrgBillingPackOrder.
+type PostV1OrgBillingPackOrderParams struct {
+	// IdempotencyKey A key of 1 to 200 characters that makes a repeated click buy one pack.
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
+// GetV1OrgBillingServiceFeeQuoteParams defines parameters for GetV1OrgBillingServiceFeeQuote.
+type GetV1OrgBillingServiceFeeQuoteParams struct {
+	// Currency Currency of the ticket price, a 3-letter code.
+	Currency string `form:"currency" json:"currency"`
+
+	// PriceMinor Ticket price before the service charge, in minor units.
+	PriceMinor int64 `form:"price_minor" json:"price_minor"`
+
+	// Seated true for a seat on a plan. Default false.
+	Seated *bool `form:"seated,omitempty" json:"seated,omitempty"`
 }
 
 // GetOrgBillingUsageParams defines parameters for GetOrgBillingUsage.
@@ -17083,8 +17788,32 @@ type UpdateWebhookSubscriberJSONBody struct {
 // PostBil24CommandJSONRequestBody defines body for PostBil24Command for application/json ContentType.
 type PostBil24CommandJSONRequestBody PostBil24CommandJSONBody
 
+// PostV1AdminBillingAccountInvoicesJSONRequestBody defines body for PostV1AdminBillingAccountInvoices for application/json ContentType.
+type PostV1AdminBillingAccountInvoicesJSONRequestBody = BillingCreateUsageInvoiceRequest
+
 // PostV1AdminBillingAccountTermsJSONRequestBody defines body for PostV1AdminBillingAccountTerms for application/json ContentType.
 type PostV1AdminBillingAccountTermsJSONRequestBody = BillingCreateAccountTermsRequest
+
+// PostV1AdminBillingBankTransactionsJSONRequestBody defines body for PostV1AdminBillingBankTransactions for application/json ContentType.
+type PostV1AdminBillingBankTransactionsJSONRequestBody = BillingBankImportRequest
+
+// PostV1AdminBillingBankTransactionIgnoreJSONRequestBody defines body for PostV1AdminBillingBankTransactionIgnore for application/json ContentType.
+type PostV1AdminBillingBankTransactionIgnoreJSONRequestBody = BillingBankIgnoreRequest
+
+// PostV1AdminBillingBankTransactionMatchJSONRequestBody defines body for PostV1AdminBillingBankTransactionMatch for application/json ContentType.
+type PostV1AdminBillingBankTransactionMatchJSONRequestBody = BillingBankMatchRequest
+
+// PostV1AdminBillingInvoiceIssueJSONRequestBody defines body for PostV1AdminBillingInvoiceIssue for application/json ContentType.
+type PostV1AdminBillingInvoiceIssueJSONRequestBody = BillingIssueInvoiceRequest
+
+// PostV1AdminBillingInvoiceMarkPaidJSONRequestBody defines body for PostV1AdminBillingInvoiceMarkPaid for application/json ContentType.
+type PostV1AdminBillingInvoiceMarkPaidJSONRequestBody = BillingMarkInvoicePaidRequest
+
+// PostV1AdminBillingInvoiceVoidJSONRequestBody defines body for PostV1AdminBillingInvoiceVoid for application/json ContentType.
+type PostV1AdminBillingInvoiceVoidJSONRequestBody = BillingVoidInvoiceRequest
+
+// PostV1AdminBillingPaymentFeesJSONRequestBody defines body for PostV1AdminBillingPaymentFees for application/json ContentType.
+type PostV1AdminBillingPaymentFeesJSONRequestBody = BillingCreatePaymentFeeRequest
 
 // PostV1AdminBillingPriceListsJSONRequestBody defines body for PostV1AdminBillingPriceLists for application/json ContentType.
 type PostV1AdminBillingPriceListsJSONRequestBody = BillingCreatePriceListRequest
@@ -17190,6 +17919,9 @@ type RegisterBarcodeJSONRequestBody = RegisterBarcodeRequest
 
 // CreateBarcodeAuthorityJSONRequestBody defines body for CreateBarcodeAuthority for application/json ContentType.
 type CreateBarcodeAuthorityJSONRequestBody = CreateBarcodeAuthorityRequest
+
+// PostV1BillingBankWebhookJSONRequestBody defines body for PostV1BillingBankWebhook for application/json ContentType.
+type PostV1BillingBankWebhookJSONRequestBody = BillingBankImportRequest
 
 // GenerateInvoicesJSONRequestBody defines body for GenerateInvoices for application/json ContentType.
 type GenerateInvoicesJSONRequestBody GenerateInvoicesJSONBody
@@ -17301,6 +18033,12 @@ type CreateOrganizationBankAccountJSONRequestBody = CreateBankAccountRequest
 
 // UpdateOrganizationBankAccountJSONRequestBody defines body for UpdateOrganizationBankAccount for application/json ContentType.
 type UpdateOrganizationBankAccountJSONRequestBody = UpdateBankAccountRequest
+
+// PostV1OrgBillingPackOrderJSONRequestBody defines body for PostV1OrgBillingPackOrder for application/json ContentType.
+type PostV1OrgBillingPackOrderJSONRequestBody = BillingOrderPackRequest
+
+// PutV1OrgBillingPayerJSONRequestBody defines body for PutV1OrgBillingPayer for application/json ContentType.
+type PutV1OrgBillingPayerJSONRequestBody = BillingPayerRequest
 
 // CreateOrganizationBotInvitationJSONRequestBody defines body for CreateOrganizationBotInvitation for application/json ContentType.
 type CreateOrganizationBotInvitationJSONRequestBody = BotInvitationCreateRequest

@@ -71,11 +71,11 @@ ORDER BY account_kind, currency;
 INSERT INTO billing_account_terms (
     account_id, effective_from, price_list_code, plan_kind, billing_cycle,
     shortfall_policy, issuer_id, invoice_delay_days, due_days, locked,
-    created_by, reason)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    created_by, reason, fee_mode)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE(NULLIF($13, ''), 'organizer_pays'))
 RETURNING id, account_id, effective_from, price_list_code, plan_kind, billing_cycle,
           shortfall_policy, issuer_id, invoice_delay_days, due_days, locked,
-          created_by, reason, created_at;
+          created_by, reason, created_at, fee_mode;
 
 -- name: InsertBillingAccountTermsIfNone :exec
 -- The first terms of an account, written only when it has none at all.

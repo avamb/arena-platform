@@ -60,14 +60,17 @@ func (s *Server) mountStripeBillingRoutes(r chi.Router) {
 		s.applyAuth(pr, "billing.admin", "billing")
 		pr.Post("/billing/stripe/push-invoice/{id}", s.handlePushInvoiceToStripe)
 	})
-	// Webhook is public (signature verification inside the handler).
-	r.Post("/billing/stripe/webhook", s.handleStripeBillingWebhook)
+	// Webhook is public (signature verification inside the handler). With the
+	// platform billing key set, mountAccountBillingRoutes serves it instead.
+	if !s.platformStripeWebhookEnabled() {
+		r.Post("/billing/stripe/webhook", s.handleStripeBillingWebhook)
+	}
 }
 
 // billingAdminHandler builds the handler of the superadmin screen "Price
 // lists and rates" (task B1-5).
 func (s *Server) billingAdminHandler() *hbilling.AdminHandler {
-	return hbilling.NewAdmin(s.pgxPool, s.audit, s.logger)
+	return hbilling.NewAdmin(s.pgxPool, s.audit, s.logger).WithPlatformStripe(s.platformStripe(), s.eventCenterURL())
 }
 
 // requireBillingSuperadmin lets only a platform superadmin through. The
