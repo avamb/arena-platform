@@ -47779,7 +47779,7 @@ paths:
         options), so the seat manager and the bot draw the form without
         knowing any algorithm (spec 26 §4.1, task S1e). Read-only. The
         session must belong to this organization. Requires
-        `event_session.assign_seating_plan`.
+        `session.seats.manage`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -47814,7 +47814,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor does not hold `event_session.assign_seating_plan` in this organization.
+          description: Actor does not hold `session.seats.manage` in this organization.
           content:
             application/json:
               schema:
@@ -47859,7 +47859,7 @@ paths:
         the dearest category down and must not increase. With
         `cheaper_row_edges` the actual shares (`metrics.by_slot[].share`)
         move away from the share template, because row edges are pushed into
-        cheaper categories. Requires `event_session.assign_seating_plan`.
+        cheaper categories. Requires `session.seats.manage`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -47904,7 +47904,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor does not hold `event_session.assign_seating_plan` in this organization.
+          description: Actor does not hold `session.seats.manage` in this organization.
           content:
             application/json:
               schema:
@@ -48987,7 +48987,7 @@ paths:
         General Admission place opens and closes but never changes category
         (`ga_unit`). `new_tiers` (creating a category inside the batch) is not
         supported yet and answers 422 `seat_batch.new_tiers_unsupported`.
-        Requires the `event_session.assign_seating_plan` permission in the
+        Requires the `session.seats.manage` permission in the
         organization. Audited as `v1.session.seat_batch.apply` with
         `batch_id`.
       tags: [v1]
@@ -49030,7 +49030,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it.
+          description: Actor does not hold `session.seats.manage` in the organization or is not a member of it.
           content:
             application/json:
               schema:
@@ -49066,7 +49066,7 @@ paths:
         The batches applied to the session, newest first. A list row carries
         only the number of changed and skipped seats; the seats themselves
         are in GET .../seat-batches/{batch_id}. Requires the
-        `event_session.assign_seating_plan` permission in the organization.
+        `session.seats.manage` permission in the organization.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -49111,7 +49111,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it.
+          description: Actor does not hold `session.seats.manage` in the organization or is not a member of it.
           content:
             application/json:
               schema:
@@ -49141,7 +49141,7 @@ paths:
       summary: One seat batch with every changed and skipped seat
       description: |
         The card of one batch: its changes (from/to per seat) and the seats it
-        skipped with the reason. Requires the `event_session.assign_seating_plan`
+        skipped with the reason. Requires the `session.seats.manage`
         permission in the organization.
       tags: [v1]
       security:
@@ -49182,7 +49182,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it.
+          description: Actor does not hold `session.seats.manage` in the organization or is not a member of it.
           content:
             application/json:
               schema:
@@ -49220,7 +49220,7 @@ paths:
         once and a revert is never reverted. A revert that would put back no
         seat at all is refused with 409 `seat_batch.nothing_to_revert` and
         writes nothing. Requires the
-        `event_session.assign_seating_plan` permission in the organization.
+        `session.seats.manage` permission in the organization.
         Audited as `v1.session.seat_batch.revert` with `batch_id`.
       tags: [v1]
       security:
@@ -49261,7 +49261,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it.
+          description: Actor does not hold `session.seats.manage` in the organization or is not a member of it.
           content:
             application/json:
               schema:
@@ -49298,7 +49298,7 @@ paths:
       description: |
         Every batch that changed the seat, or tried to and skipped it, newest
         first. `seat_key` must be path-escaped (`Parter|A|1` is sent as
-        `Parter%7CA%7C1`). Requires the `event_session.assign_seating_plan`
+        `Parter%7CA%7C1`). Requires the `session.seats.manage`
         permission in the organization.
       tags: [v1]
       security:
@@ -49349,7 +49349,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it.
+          description: Actor does not hold `session.seats.manage` in the organization or is not a member of it.
           content:
             application/json:
               schema:

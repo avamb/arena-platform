@@ -14239,6 +14239,241 @@ type SeatHistoryEntry struct {
 	To *SeatBatchSeatState `json:"to,omitempty"`
 }
 
+// SeatLayoutAlgorithm One seat-layout algorithm of the registry with its parameter schema.
+type SeatLayoutAlgorithm struct {
+	// DescriptionKey i18n key of a short description of the algorithm.
+	DescriptionKey *string `json:"description_key,omitempty"`
+
+	// Id Stable algorithm id (`desirability`, ...), sent back as `algorithm` of the suggest request.
+	Id string `json:"id"`
+
+	// LabelKey i18n key of the algorithm's name.
+	LabelKey string `json:"label_key"`
+
+	// Params The algorithm's parameters.
+	Params []SeatLayoutParam `json:"params"`
+
+	// RequiredAnnotations Annotations the algorithm cannot work without (for example `focal_point`, the stage).
+	RequiredAnnotations []string `json:"required_annotations"`
+}
+
+// SeatLayoutAlgorithmsResponse The seat-layout algorithms a session can use (task S1e).
+type SeatLayoutAlgorithmsResponse struct {
+	// Algorithms Every registered algorithm, sorted by id.
+	Algorithms []SeatLayoutAlgorithm `json:"algorithms"`
+
+	// Currency ISO 4217 currency of the session; every `minor_currency` parameter is in it.
+	Currency string `json:"currency"`
+
+	// SessionId UUIDv7 of the session.
+	SessionId openapi_types.UUID `json:"session_id"`
+}
+
+// SeatLayoutAnnotations Plan facts the allocator may need that are not part of the geometry.
+// Until they are stored on the seating plan (S1d) they travel in the
+// suggest request.
+type SeatLayoutAnnotations struct {
+	// FocalPoint The stage, in canvas coordinates. The desirability algorithm requires it.
+	FocalPoint *SeatLayoutPoint `json:"focal_point,omitempty"`
+
+	// ObstructedSeatKeys Seats with a restricted view.
+	ObstructedSeatKeys *[]string `json:"obstructed_seat_keys,omitempty"`
+
+	// SectionWeights Section key to weight from 0 (least wanted) to 1 (as good as the geometry says). A section left out weighs 1.
+	SectionWeights *map[string]float32 `json:"section_weights,omitempty"`
+}
+
+// SeatLayoutMetrics Revenue estimate of a proposal, a reference figure and never an
+// optimum: sold seats at the price they were sold for, held seats at
+// the price they are held for, every open free seat at the proposed
+// price. Closed seats are left out.
+type SeatLayoutMetrics struct {
+	// BySlot The estimate per proposed category.
+	BySlot []SeatLayoutSlotMetrics `json:"by_slot"`
+
+	// ClosedSeats Free seats an operator closed for sale.
+	ClosedSeats int `json:"closed_seats"`
+
+	// Currency ISO 4217 currency of every amount.
+	Currency string `json:"currency"`
+
+	// HeldSeats Seats in a hold.
+	HeldSeats int `json:"held_seats"`
+
+	// RevenueEstimateMinor Sold plus held plus remaining.
+	RevenueEstimateMinor int64 `json:"revenue_estimate_minor"`
+
+	// RevenueHeldMinor Held seats at the price they are held for.
+	RevenueHeldMinor int64 `json:"revenue_held_minor"`
+
+	// RevenueRemainingMinor Open free seats at the proposed prices.
+	RevenueRemainingMinor int64 `json:"revenue_remaining_minor"`
+
+	// RevenueSoldMinor Sold seats at the price they were sold for.
+	RevenueSoldMinor int64 `json:"revenue_sold_minor"`
+
+	// SoldFrozen Frozen seats, sold plus held.
+	SoldFrozen int `json:"sold_frozen"`
+
+	// SoldSeats Sold seats.
+	SoldSeats int `json:"sold_seats"`
+
+	// TotalSeats Seats of the plan.
+	TotalSeats int `json:"total_seats"`
+}
+
+// SeatLayoutParam One parameter of a seat-layout algorithm (task S1e). Clients draw the
+// form from this description and never hard-code an algorithm. Labels
+// are i18n keys, never texts.
+type SeatLayoutParam struct {
+	// Default Value used when the parameter is left out, of the parameter's own type; null when there is none.
+	Default interface{} `json:"default"`
+
+	// HintKey i18n key of an optional hint under the field.
+	HintKey *string `json:"hint_key,omitempty"`
+
+	// LabelKey i18n key of the parameter's label.
+	LabelKey string `json:"label_key"`
+
+	// Max Upper bound of an integer, or of every item of an integer list.
+	Max *int64 `json:"max,omitempty"`
+
+	// MaxItems Longest allowed integer list.
+	MaxItems *int `json:"max_items,omitempty"`
+
+	// Min Lower bound of an integer, or of every item of an integer list.
+	Min *int64 `json:"min,omitempty"`
+
+	// MinItems Shortest allowed integer list.
+	MinItems *int `json:"min_items,omitempty"`
+
+	// Name Parameter name as sent in `params` of the suggest request.
+	Name string `json:"name"`
+
+	// Options Allowed values of an `enum` parameter.
+	Options *[]SeatLayoutParamOption `json:"options,omitempty"`
+
+	// Required Whether the parameter must be sent (a parameter with a default never needs to be).
+	Required bool `json:"required"`
+
+	// Type One of `integer`, `boolean`, `enum`, `integer_list` (a JSON array of integers).
+	Type string `json:"type"`
+
+	// Unit How to read an integer: `count`, `minor_currency` (minor units of the session currency) or `percent`.
+	Unit *string `json:"unit,omitempty"`
+}
+
+// SeatLayoutParamOption One value of an enum parameter of a seat-layout algorithm.
+type SeatLayoutParamOption struct {
+	// LabelKey i18n key of the value's label.
+	LabelKey string `json:"label_key"`
+
+	// Value The value as sent in `params`.
+	Value string `json:"value"`
+}
+
+// SeatLayoutPoint A point in canvas coordinates of the seating plan.
+type SeatLayoutPoint struct {
+	// X Horizontal canvas coordinate.
+	X float32 `json:"x"`
+
+	// Y Vertical canvas coordinate.
+	Y float32 `json:"y"`
+}
+
+// SeatLayoutProposal A proposed layout. Nothing is applied.
+type SeatLayoutProposal struct {
+	// Assignments seat_key to slot key for every seat that is not sold or held (closed seats included).
+	Assignments map[string]string `json:"assignments"`
+
+	// FrozenSeatKeys Sold and held seats, left in their category at their own price, sorted.
+	FrozenSeatKeys []string `json:"frozen_seat_keys"`
+
+	// Slots The proposed categories.
+	Slots []SeatLayoutSlot `json:"slots"`
+}
+
+// SeatLayoutSlot One proposed category.
+type SeatLayoutSlot struct {
+	// Color Optional proposed colour, `#rrggbb`.
+	Color *string `json:"color,omitempty"`
+
+	// Key Slot key (`c1` is the dearest for the desirability algorithm).
+	Key string `json:"key"`
+
+	// Name Optional proposed name.
+	Name *string `json:"name,omitempty"`
+
+	// PriceAmount Proposed price in minor units of the session currency.
+	PriceAmount int64 `json:"price_amount"`
+
+	// Share Target share of the hall, 0 to 1.
+	Share float32 `json:"share"`
+}
+
+// SeatLayoutSlotMetrics Revenue estimate of one proposed category.
+type SeatLayoutSlotMetrics struct {
+	// OpenSeats Free seats of the slot that are open for sale.
+	OpenSeats int `json:"open_seats"`
+
+	// PriceAmount Proposed price in minor units.
+	PriceAmount int64 `json:"price_amount"`
+
+	// RevenueMinor open_seats times price_amount.
+	RevenueMinor int64 `json:"revenue_minor"`
+
+	// Seats Free seats the layout puts in the slot, closed seats included.
+	Seats int `json:"seats"`
+
+	// Share Actual share of the hall in the slot, 0 to 1.
+	Share float32 `json:"share"`
+
+	// SlotKey Key of the slot.
+	SlotKey string `json:"slot_key"`
+}
+
+// SeatLayoutSuggestRequest Body of POST .../seat-layout/suggest (task S1e).
+type SeatLayoutSuggestRequest struct {
+	// Algorithm Id of the algorithm from GET .../seat-layout/algorithms.
+	Algorithm string `json:"algorithm"`
+
+	// Annotations Stage, section weights and obstructed seats of the plan.
+	Annotations *SeatLayoutAnnotations `json:"annotations,omitempty"`
+
+	// Params Parameter values by name, checked against the algorithm's schema. A left-out or null parameter takes its default.
+	Params *map[string]interface{} `json:"params,omitempty"`
+}
+
+// SeatLayoutSuggestResponse A seat-layout proposal (task S1e). Nothing was written.
+type SeatLayoutSuggestResponse struct {
+	// Algorithm Id of the algorithm that made the proposal.
+	Algorithm string `json:"algorithm"`
+
+	// Currency ISO 4217 currency of the session.
+	Currency string `json:"currency"`
+
+	// GeometryChecksum Checksum of that geometry.
+	GeometryChecksum string `json:"geometry_checksum"`
+
+	// Layout The proposal.
+	Layout SeatLayoutProposal `json:"layout"`
+
+	// Metrics Its revenue estimate.
+	Metrics SeatLayoutMetrics `json:"metrics"`
+
+	// Params The parameters used, defaults filled in.
+	Params map[string]interface{} `json:"params"`
+
+	// SeatStatusVersion The session's seat_status_version the proposal was made against.
+	SeatStatusVersion int64 `json:"seat_status_version"`
+
+	// SeatingPlanVersionId Plan version whose geometry was read.
+	SeatingPlanVersionId openapi_types.UUID `json:"seating_plan_version_id"`
+
+	// SessionId UUIDv7 of the session.
+	SessionId openapi_types.UUID `json:"session_id"`
+}
+
 // SeatingCategoryPrice Resolved category → tier / price projection returned inside
 // `SeatingSchemaResponse.category_prices`. `index`, `name`, `color`,
 // `price_hint`, `currency_hint` are copied verbatim from the stored
@@ -18878,6 +19113,9 @@ type UpdateSellerProfileJSONRequestBody = UpdateSellerProfileRequest
 
 // PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatBatches for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody = SeatBatchRequest
+
+// PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest for application/json ContentType.
+type PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody = SeatLayoutSuggestRequest
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody

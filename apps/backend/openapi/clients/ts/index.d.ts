@@ -7888,7 +7888,7 @@ export interface paths {
          *     options), so the seat manager and the bot draw the form without
          *     knowing any algorithm (spec 26 §4.1, task S1e). Read-only. The
          *     session must belong to this organization. Requires
-         *     `event_session.assign_seating_plan`.
+         *     `session.seats.manage`.
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdSeatLayoutAlgorithms"];
         put?: never;
@@ -7926,7 +7926,7 @@ export interface paths {
          *     the dearest category down and must not increase. With
          *     `cheaper_row_edges` the actual shares (`metrics.by_slot[].share`)
          *     move away from the share template, because row edges are pushed into
-         *     cheaper categories. Requires `event_session.assign_seating_plan`.
+         *     cheaper categories. Requires `session.seats.manage`.
          */
         post: operations["postV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest"];
         delete?: never;
@@ -7960,6 +7960,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/sessions/{session_id}/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tickets of a session with their entry at the door
+         * @description Lists the tickets of one session in ticket-number order, each with its
+         *     order, buyer and what the door did with it: when it was first let in
+         *     and its newest scan. `entered=false` lists the active tickets nobody
+         *     has entered with ("who has not come yet"), `entered=true` the tickets
+         *     with an entry, no filter every ticket. A ticket counts as entered when
+         *     it carries `used_at`, an admitted scan or a scanned barcode, the same
+         *     reading the refund guard uses. The page carries the buyer's name and
+         *     e-mail, so an organization API key is refused with 403
+         *     `orders.session_tickets_api_key_forbidden`. The session must belong to
+         *     this organization, a session of another one is invisible. Requires the
+         *     `order.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdTickets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/sales.csv": {
         parameters: {
             query?: never;
@@ -7973,7 +8003,8 @@ export interface paths {
          *     order number, order status, order date, buyer, e-mail, phone,
          *     category, price paid for that ticket, currency, EAN-13 barcode,
          *     ticket status, whether the ticket was admitted at the gate (`yes` /
-         *     `no`), sales channel and promo code. Written by the platform's
+         *     `no`), the time of the first entry, who reported it (`arena_scanner`
+         *     or `macs`), the scanner and gate, sales channel and promo code. Written by the platform's
          *     csvexport rules (spec 35 §5.1): UTF-8 with a BOM, `;` separator, CRLF,
          *     every text quoted, barcodes / phones / long numbers as Excel text
          *     (`="4600051000001"`), formula-looking values prefixed with `'`,
@@ -8262,7 +8293,7 @@ export interface paths {
          * @description The batches applied to the session, newest first. A list row carries
          *     only the number of changed and skipped seats; the seats themselves
          *     are in GET .../seat-batches/{batch_id}. Requires the
-         *     `event_session.assign_seating_plan` permission in the organization.
+         *     `session.seats.manage` permission in the organization.
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdSeatBatches"];
         put?: never;
@@ -8279,7 +8310,7 @@ export interface paths {
          *     General Admission place opens and closes but never changes category
          *     (`ga_unit`). `new_tiers` (creating a category inside the batch) is not
          *     supported yet and answers 422 `seat_batch.new_tiers_unsupported`.
-         *     Requires the `event_session.assign_seating_plan` permission in the
+         *     Requires the `session.seats.manage` permission in the
          *     organization. Audited as `v1.session.seat_batch.apply` with
          *     `batch_id`.
          */
@@ -8300,7 +8331,7 @@ export interface paths {
         /**
          * One seat batch with every changed and skipped seat
          * @description The card of one batch: its changes (from/to per seat) and the seats it
-         *     skipped with the reason. Requires the `event_session.assign_seating_plan`
+         *     skipped with the reason. Requires the `session.seats.manage`
          *     permission in the organization.
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdSeatBatchesBatchId"];
@@ -8332,7 +8363,7 @@ export interface paths {
          *     once and a revert is never reverted. A revert that would put back no
          *     seat at all is refused with 409 `seat_batch.nothing_to_revert` and
          *     writes nothing. Requires the
-         *     `event_session.assign_seating_plan` permission in the organization.
+         *     `session.seats.manage` permission in the organization.
          *     Audited as `v1.session.seat_batch.revert` with `batch_id`.
          */
         post: operations["postV1OrganizationsOrgIdSessionsSessionIdSeatBatchesBatchIdRevert"];
@@ -8353,7 +8384,7 @@ export interface paths {
          * History of one seat
          * @description Every batch that changed the seat, or tried to and skipped it, newest
          *     first. `seat_key` must be path-escaped (`Parter|A|1` is sent as
-         *     `Parter%7CA%7C1`). Requires the `event_session.assign_seating_plan`
+         *     `Parter%7CA%7C1`). Requires the `session.seats.manage`
          *     permission in the organization.
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdSeatsSeatKeyHistory"];
@@ -13217,11 +13248,90 @@ export interface components {
             barcode: string;
             /**
              * Format: date-time
-             * @description When the ticket was scanned at the door (latest scan of its barcodes, any authority); null if never.
+             * @description When the ticket was first let in at the door (the first admission, by arena's own scanner or by MACS; for a ticket of the legacy import the newest scan of its barcodes); null if never.
              */
             used_at: string | null;
+            /** @description The ticket's last scans at a door (up to 5, any result, newest first), as the order card prints them. Empty when the ticket was never scanned. */
+            scans?: components["schemas"]["TicketScan"][];
             /** @description The organizer's private VIP mark. It is never printed on the PDF e-ticket or written in a letter to the buyer. */
             vip: boolean;
+        };
+        /** @description One scan of a ticket at a door (M2), by arena's own scanner or reported by MACS. */
+        TicketScan: {
+            /**
+             * Format: date-time
+             * @description When the scan happened at the door, as the scanner reported it.
+             */
+            scanned_at: string;
+            /** @description What the gate decided: `admitted` or `denied`. */
+            result: string;
+            /** @description Who reported the scan: `arena_scanner` (arena's own scanner) or `macs` (the MACS gate system). */
+            source: string;
+            /** @description The scanner's own name as the reporting system gives it (MACS only; empty for arena's scanner). */
+            scanner_label: string;
+            /** @description The gate the scanner stood at; empty when the scanner did not say. */
+            gate: string;
+        };
+        /** @description One ticket of a session with its order, buyer and entry at the door (M2). */
+        SessionTicketItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the ticket.
+             */
+            ticket_id: string;
+            /**
+             * Format: int64
+             * @description The ticket number printed on the e-ticket.
+             */
+            system_ticket_id: number;
+            /** @description Ticket status: `active`, `cancelled`, `transferred` or `revoked`. */
+            status: string;
+            /** @description Name of the category; null when the category row is gone. */
+            tier_name: string | null;
+            /** @description The seat parts joined with " / "; null for general admission. */
+            seat_label: string | null;
+            /**
+             * Format: uuid
+             * @description The order the ticket was sold with; null for an invitation.
+             */
+            order_id: string | null;
+            /**
+             * Format: int64
+             * @description The order number (`orders.system_id`); null for an invitation.
+             */
+            order_number: number | null;
+            /** @description The buyer's name, when the order has one. */
+            buyer_name: string | null;
+            /** @description The buyer's e-mail, else the ticket holder's. */
+            buyer_email: string | null;
+            /** @description True when the ticket was let in at a door. */
+            entered: boolean;
+            /**
+             * Format: date-time
+             * @description When the ticket was first let in; null when it was not.
+             */
+            entered_at: string | null;
+            /** @description The newest scan of the ticket whatever its result; null when nobody scanned it. */
+            last_scan: components["schemas"]["TicketScan"] | null;
+        };
+        /** @description One page of a session's tickets with their entry at the door (M2). */
+        SessionTicketList: {
+            /**
+             * Format: uuid
+             * @description The session.
+             */
+            session_id: string;
+            /** @description IANA zone of the session's venue, for printing times; null when the session has no venue. */
+            venue_timezone: string | null;
+            /**
+             * Format: int64
+             * @description How many tickets match the filter.
+             */
+            total: number;
+            /** @description True when a later page exists. */
+            has_more: boolean;
+            /** @description The tickets of this page, in ticket-number order. */
+            items: components["schemas"]["SessionTicketItem"][];
         };
         /** @description One audit-trail event recorded against an order. */
         OrderEventSummary: {
@@ -54933,7 +55043,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold `event_session.assign_seating_plan` in this organization. */
+            /** @description Actor does not hold `session.seats.manage` in this organization. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -55021,7 +55131,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold `event_session.assign_seating_plan` in this organization. */
+            /** @description Actor does not hold `session.seats.manage` in this organization. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -55115,6 +55225,92 @@ export interface operations {
                 };
             };
             /** @description Actor does not hold the required permission (`order.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdTickets: {
+        parameters: {
+            query?: {
+                /** @description `false` lists active tickets nobody entered with, `true` the tickets with an entry. Absent lists every ticket. */
+                entered?: string;
+                /** @description Page size, 1 to 200 (default 50). */
+                limit?: number;
+                /** @description Number of tickets to skip (default 0). */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the session's tickets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionTicketList"];
+                };
+            };
+            /** @description A path parameter is not a UUID, or `entered`, `limit` or `offset` is invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`), or the caller is an organization API key. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -56103,7 +56299,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it. */
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -56186,7 +56382,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it. */
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -56276,7 +56472,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it. */
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -56357,7 +56553,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it. */
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -56452,7 +56648,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold `event_session.assign_seating_plan` in the organization or is not a member of it. */
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
             403: {
                 headers: {
                     [name: string]: unknown;
