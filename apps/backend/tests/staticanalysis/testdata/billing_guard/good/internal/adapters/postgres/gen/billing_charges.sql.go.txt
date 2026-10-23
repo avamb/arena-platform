@@ -1,0 +1,29 @@
+package gen
+
+import "context"
+
+// ChargeRow is a charge: money is int64 minor units with its currency.
+type ChargeRow struct {
+	ID               string
+	AmountMinor      int64
+	DiscountMinor    *int64
+	PlatformFeeBp    int64
+	Currency         string
+	PageTotal        int64 `json:"-"`
+	RemainingMinor   int64
+	UnusedFlag       bool
+	SomeUnrelatedFee float64Holder
+}
+
+type float64Holder struct{}
+
+// InsertCharge writes one charge.
+func (q *Queries) InsertCharge(ctx context.Context, amountMinor int64, currency string) error {
+	_, err := q.db.Exec(ctx, `INSERT INTO charges (amount_minor, currency) VALUES ($1, $2)`, amountMinor, currency)
+	return err
+}
+
+// InsertCreditLedger calls a sibling wrapper of the same family.
+func (q *Queries) InsertCreditLedgerTwice(ctx context.Context) error {
+	return q.InsertCreditLedgerRow(ctx)
+}

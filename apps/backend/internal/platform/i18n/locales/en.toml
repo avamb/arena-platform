@@ -3762,6 +3762,239 @@ other = "← Back to the card"
 ["bot.wz.warn_tier_not_in_payload"]
 other = "Arena closed the categories that are not in the new list. Tickets sold in them stay valid."
 
+["bot.mt.btn"]
+other = "🖼 Materials"
+
+["bot.mt.menu"]
+other = "🖼 <b>Materials</b> · {{.Event}}\n\nThis is what buyers see on the event page: photos, videos, a map and links to other sellers. Choose a part."
+
+["bot.mt.readonly"]
+other = "You can look at the materials. Only the owner and the manager can change them."
+
+["bot.mt.gone_dialog"]
+other = "This screen is out of date. Open the event and press Materials again."
+
+["bot.mt.menu_btn"]
+other = "Materials"
+
+["bot.mt.sec_g"]
+other = "📷 Photos {{.N}}/{{.Max}}"
+
+["bot.mt.sec_v"]
+other = "🎬 Videos {{.N}}/{{.Max}}"
+
+["bot.mt.sec_p"]
+other = "🛒 Where else to buy {{.N}}/{{.Max}}"
+
+["bot.mt.sec_m"]
+other = "📍 Map: {{.State}}"
+
+["bot.mt.sec_r"]
+other = "📸 Photo report {{.N}}/{{.Max}}"
+
+["bot.mt.state_set"]
+other = "set"
+
+["bot.mt.state_unset"]
+other = "not set"
+
+["bot.mt.list_g"]
+other = "📷 <b>Photos</b> · {{.Event}}\n{{.N}} of {{.Max}}"
+
+["bot.mt.list_v"]
+other = "🎬 <b>Videos</b> · {{.Event}}\n{{.N}} of {{.Max}}"
+
+["bot.mt.list_p"]
+other = "🛒 <b>Where else to buy</b> · {{.Event}}\n{{.N}} of {{.Max}}"
+
+["bot.mt.list_r"]
+other = "📸 <b>Photo report</b> · {{.Event}}\n{{.N}} of {{.Max}}"
+
+["bot.mt.empty_g"]
+other = "There are no photos yet."
+
+["bot.mt.empty_v"]
+other = "There are no videos yet."
+
+["bot.mt.empty_p"]
+other = "There are no links yet."
+
+["bot.mt.empty_r"]
+other = "There are no photos in the report yet."
+
+["bot.mt.hint_g"]
+other = "Photos appear on the event page in this order."
+
+["bot.mt.hint_v"]
+other = "Videos appear on the event page in this order. Links to YouTube, Vimeo and Rutube play on the page."
+
+["bot.mt.hint_p"]
+other = "Buyers see these links as other places to buy a ticket, with the seller's name."
+
+["bot.mt.hint_m"]
+other = "The page shows the point on a map."
+
+["bot.mt.hint_r"]
+other = "Buyers see the photo report after the date of the event."
+
+["bot.mt.pick_hint"]
+other = "Press a number to open an entry."
+
+["bot.mt.no_caption"]
+other = "no caption"
+
+["bot.mt.add_btn"]
+other = "➕ Add"
+
+["bot.mt.ask_g"]
+other = "Send a photo. You can write a caption in the same message. I take JPEG and PNG."
+
+["bot.mt.ask_r"]
+other = "Send a photo of the event. You can write a caption in the same message. I take JPEG and PNG."
+
+["bot.mt.ask_more_g"]
+other = "Send the next photo, or press Done."
+
+["bot.mt.ask_more_r"]
+other = "Send the next photo, or press Done."
+
+["bot.mt.ask_v"]
+other = "Send the link to the video, for example https://youtu.be/abc. Links to YouTube, Vimeo and Rutube play on the page. Any other https link shows as a link."
+
+["bot.mt.ask_p"]
+other = "Send the link to the page where buyers can get a ticket, for example https://ticketportal.cz/event/123. The seller's name is the name of the site. You can change it later."
+
+["bot.mt.ask_m"]
+other = "Send the point as latitude and longitude, for example 50.0755, 14.4378. You can also send a location from Telegram (the paperclip, then Location)."
+
+["bot.mt.ask_caption"]
+other = "Send the caption for this photo. Use up to 200 characters."
+
+["bot.mt.ask_seller"]
+other = "Send the name of the seller. Use up to 120 characters."
+
+["bot.mt.card_photo_g"]
+other = "📷 <b>Photo {{.N}} of {{.Total}}</b>\nCaption: {{.Caption}}"
+
+["bot.mt.card_photo_r"]
+other = "📸 <b>Report photo {{.N}} of {{.Total}}</b>\nCaption: {{.Caption}}"
+
+["bot.mt.card_video"]
+other = "🎬 <b>Video {{.N}} of {{.Total}}</b>\n{{.Url}}\nType: {{.Provider}}"
+
+["bot.mt.card_partner"]
+other = "🛒 <b>Link {{.N}} of {{.Total}}</b>\n{{.Url}}\nSeller: {{.Seller}}"
+
+["bot.mt.up_btn"]
+other = "⬆ Move up"
+
+["bot.mt.down_btn"]
+other = "⬇ Move down"
+
+["bot.mt.caption_btn"]
+other = "✏ Caption"
+
+["bot.mt.caption_clear_btn"]
+other = "Remove caption"
+
+["bot.mt.seller_btn"]
+other = "✏ Seller name"
+
+["bot.mt.delete_btn"]
+other = "🗑 Delete"
+
+["bot.mt.delete_yes_btn"]
+other = "Yes, delete"
+
+["bot.mt.cancel_btn"]
+other = "Cancel"
+
+["bot.mt.done_btn"]
+other = "✔ Done"
+
+["bot.mt.del_ask_g"]
+other = "Delete this photo from the event page?"
+
+["bot.mt.del_ask_v"]
+other = "Delete this video from the event page?"
+
+["bot.mt.del_ask_p"]
+other = "Delete this link from the event page?"
+
+["bot.mt.del_ask_m"]
+other = "Delete the point from the event page?"
+
+["bot.mt.del_ask_r"]
+other = "Delete this photo from the photo report?"
+
+["bot.mt.map_none"]
+other = "📍 <b>Map</b> · {{.Event}}\n\nThere is no point yet, so the page shows no map."
+
+["bot.mt.map_card"]
+other = "📍 <b>Map</b> · {{.Event}}\n\nLatitude {{.Lat}}, longitude {{.Lon}}\n{{.Link}}"
+
+["bot.mt.map_set_btn"]
+other = "📍 Set the point"
+
+["bot.mt.map_change_btn"]
+other = "📍 Change the point"
+
+["bot.mt.added"]
+other = "Added."
+
+["bot.mt.added_more"]
+other = "Added. {{.N}} of {{.Max}}."
+
+["bot.mt.saved"]
+other = "Saved."
+
+["bot.mt.moved"]
+other = "Moved."
+
+["bot.mt.deleted"]
+other = "Deleted."
+
+["bot.mt.err_full"]
+other = "This part is full. You can keep {{.Max}} at most. Delete one first, then add the new one."
+
+["bot.mt.err_photo_failed"]
+other = "I could not take this photo. Send it again, or send another one."
+
+["bot.mt.err_photo_big"]
+other = "The picture is too big. Send one under 10 MB."
+
+["bot.mt.err_photo_type"]
+other = "I can use JPEG and PNG pictures only. Send the picture as a photo, or as a file."
+
+["bot.mt.err_need_photo"]
+other = "I wait for a photo now. Send it, or press Cancel."
+
+["bot.mt.err_need_text"]
+other = "I wait for text now. Send it, or press Cancel."
+
+["bot.mt.err_caption"]
+other = "The caption must be one line of up to 200 characters."
+
+["bot.mt.err_video_url"]
+other = "This is not a video link I can use. Send a full https link, for example https://youtu.be/abc."
+
+["bot.mt.err_partner_url"]
+other = "This is not a link I can use. Send a full https link, for example https://ticketportal.cz/event/123."
+
+["bot.mt.err_seller"]
+other = "The name must have 1 to 120 characters."
+
+["bot.mt.err_map"]
+other = "I could not read the point. Send latitude and longitude, for example 50.0755, 14.4378."
+
+["bot.mt.err_duplicate"]
+other = "This photo is already in the list."
+
+["bot.mt.err_gone"]
+other = "This entry is not in the list any more. Here is the list now."
+
+["bot.mt.err_changed"]
+other = "The list changed while you worked. Check it and try again."
 ["bot.ord.scan_src_arena_scanner"]
 other = "Arena scanner"
 

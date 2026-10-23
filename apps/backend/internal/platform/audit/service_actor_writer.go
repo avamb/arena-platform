@@ -46,6 +46,9 @@ func WithServiceActor(inner Writer) Writer {
 	return &serviceActorWriter{inner: inner}
 }
 
+// DurableInTx implements DurableWriter by asking the wrapped writer.
+func (w *serviceActorWriter) DurableInTx() bool { return IsDurableInTx(w.inner) }
+
 // Write implements Writer.
 func (w *serviceActorWriter) Write(ctx context.Context, ev Event) error {
 	return w.inner.Write(ctx, attributeToServiceActor(ctx, ev))

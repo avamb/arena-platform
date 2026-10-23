@@ -3756,6 +3756,239 @@ other = "← Назад к карточке"
 ["bot.wz.warn_tier_not_in_payload"]
 other = "Категории, которых нет в новом списке, закрыты. Проданные в них билеты остаются в силе."
 
+["bot.mt.btn"]
+other = "🖼 Материалы"
+
+["bot.mt.menu"]
+other = "🖼 <b>Материалы</b> · {{.Event}}\n\nТо, что покупатели видят на странице мероприятия: фото, видео, карта и ссылки на других продавцов. Выберите раздел."
+
+["bot.mt.readonly"]
+other = "Вы можете смотреть материалы. Менять их могут только владелец и менеджер."
+
+["bot.mt.gone_dialog"]
+other = "Этот экран устарел. Откройте мероприятие и снова нажмите «Материалы»."
+
+["bot.mt.menu_btn"]
+other = "Материалы"
+
+["bot.mt.sec_g"]
+other = "📷 Фото {{.N}}/{{.Max}}"
+
+["bot.mt.sec_v"]
+other = "🎬 Видео {{.N}}/{{.Max}}"
+
+["bot.mt.sec_p"]
+other = "🛒 Где ещё купить {{.N}}/{{.Max}}"
+
+["bot.mt.sec_m"]
+other = "📍 Карта: {{.State}}"
+
+["bot.mt.sec_r"]
+other = "📸 Фотоотчёт {{.N}}/{{.Max}}"
+
+["bot.mt.state_set"]
+other = "задана"
+
+["bot.mt.state_unset"]
+other = "не задана"
+
+["bot.mt.list_g"]
+other = "📷 <b>Фото</b> · {{.Event}}\n{{.N}} из {{.Max}}"
+
+["bot.mt.list_v"]
+other = "🎬 <b>Видео</b> · {{.Event}}\n{{.N}} из {{.Max}}"
+
+["bot.mt.list_p"]
+other = "🛒 <b>Где ещё купить</b> · {{.Event}}\n{{.N}} из {{.Max}}"
+
+["bot.mt.list_r"]
+other = "📸 <b>Фотоотчёт</b> · {{.Event}}\n{{.N}} из {{.Max}}"
+
+["bot.mt.empty_g"]
+other = "Фото пока нет."
+
+["bot.mt.empty_v"]
+other = "Видео пока нет."
+
+["bot.mt.empty_p"]
+other = "Ссылок пока нет."
+
+["bot.mt.empty_r"]
+other = "В фотоотчёте пока нет фото."
+
+["bot.mt.hint_g"]
+other = "Фото идут на странице мероприятия в этом порядке."
+
+["bot.mt.hint_v"]
+other = "Видео идут на странице мероприятия в этом порядке. Ссылки на YouTube, Vimeo и Rutube играют прямо на странице."
+
+["bot.mt.hint_p"]
+other = "Покупатели видят эти ссылки как другие места, где можно купить билет, с названием продавца."
+
+["bot.mt.hint_m"]
+other = "Страница показывает точку на карте."
+
+["bot.mt.hint_r"]
+other = "Покупатели увидят фотоотчёт после даты мероприятия."
+
+["bot.mt.pick_hint"]
+other = "Нажмите на номер, чтобы открыть запись."
+
+["bot.mt.no_caption"]
+other = "без подписи"
+
+["bot.mt.add_btn"]
+other = "➕ Добавить"
+
+["bot.mt.ask_g"]
+other = "Пришлите фото. Подпись можно написать в том же сообщении. Я принимаю JPEG и PNG."
+
+["bot.mt.ask_r"]
+other = "Пришлите фото с мероприятия. Подпись можно написать в том же сообщении. Я принимаю JPEG и PNG."
+
+["bot.mt.ask_more_g"]
+other = "Пришлите следующее фото или нажмите «Готово»."
+
+["bot.mt.ask_more_r"]
+other = "Пришлите следующее фото или нажмите «Готово»."
+
+["bot.mt.ask_v"]
+other = "Пришлите ссылку на видео, например https://youtu.be/abc. Ссылки на YouTube, Vimeo и Rutube играют на странице. Любая другая ссылка https показывается как ссылка."
+
+["bot.mt.ask_p"]
+other = "Пришлите ссылку на страницу, где покупатели могут взять билет, например https://ticketportal.cz/event/123. Продавец называется по имени сайта. Позже имя можно изменить."
+
+["bot.mt.ask_m"]
+other = "Пришлите точку: широту и долготу, например 50.0755, 14.4378. Можно прислать и геопозицию из Telegram (скрепка, затем «Геопозиция»)."
+
+["bot.mt.ask_caption"]
+other = "Пришлите подпись к этому фото. Не больше 200 символов."
+
+["bot.mt.ask_seller"]
+other = "Пришлите название продавца. Не больше 120 символов."
+
+["bot.mt.card_photo_g"]
+other = "📷 <b>Фото {{.N}} из {{.Total}}</b>\nПодпись: {{.Caption}}"
+
+["bot.mt.card_photo_r"]
+other = "📸 <b>Фото отчёта {{.N}} из {{.Total}}</b>\nПодпись: {{.Caption}}"
+
+["bot.mt.card_video"]
+other = "🎬 <b>Видео {{.N}} из {{.Total}}</b>\n{{.Url}}\nТип: {{.Provider}}"
+
+["bot.mt.card_partner"]
+other = "🛒 <b>Ссылка {{.N}} из {{.Total}}</b>\n{{.Url}}\nПродавец: {{.Seller}}"
+
+["bot.mt.up_btn"]
+other = "⬆ Выше"
+
+["bot.mt.down_btn"]
+other = "⬇ Ниже"
+
+["bot.mt.caption_btn"]
+other = "✏ Подпись"
+
+["bot.mt.caption_clear_btn"]
+other = "Убрать подпись"
+
+["bot.mt.seller_btn"]
+other = "✏ Продавец"
+
+["bot.mt.delete_btn"]
+other = "🗑 Удалить"
+
+["bot.mt.delete_yes_btn"]
+other = "Да, удалить"
+
+["bot.mt.cancel_btn"]
+other = "Отмена"
+
+["bot.mt.done_btn"]
+other = "✔ Готово"
+
+["bot.mt.del_ask_g"]
+other = "Удалить это фото со страницы мероприятия?"
+
+["bot.mt.del_ask_v"]
+other = "Удалить это видео со страницы мероприятия?"
+
+["bot.mt.del_ask_p"]
+other = "Удалить эту ссылку со страницы мероприятия?"
+
+["bot.mt.del_ask_m"]
+other = "Удалить точку со страницы мероприятия?"
+
+["bot.mt.del_ask_r"]
+other = "Удалить это фото из фотоотчёта?"
+
+["bot.mt.map_none"]
+other = "📍 <b>Карта</b> · {{.Event}}\n\nТочки пока нет, поэтому страница не показывает карту."
+
+["bot.mt.map_card"]
+other = "📍 <b>Карта</b> · {{.Event}}\n\nШирота {{.Lat}}, долгота {{.Lon}}\n{{.Link}}"
+
+["bot.mt.map_set_btn"]
+other = "📍 Задать точку"
+
+["bot.mt.map_change_btn"]
+other = "📍 Изменить точку"
+
+["bot.mt.added"]
+other = "Добавлено."
+
+["bot.mt.added_more"]
+other = "Добавлено. {{.N}} из {{.Max}}."
+
+["bot.mt.saved"]
+other = "Сохранено."
+
+["bot.mt.moved"]
+other = "Перенесено."
+
+["bot.mt.deleted"]
+other = "Удалено."
+
+["bot.mt.err_full"]
+other = "Этот раздел заполнен. Можно хранить не больше {{.Max}}. Сначала удалите одну запись, потом добавьте новую."
+
+["bot.mt.err_photo_failed"]
+other = "Не получилось принять это фото. Пришлите его ещё раз или пришлите другое."
+
+["bot.mt.err_photo_big"]
+other = "Картинка слишком большая. Пришлите файл меньше 10 МБ."
+
+["bot.mt.err_photo_type"]
+other = "Я принимаю только картинки JPEG и PNG. Пришлите картинку как фото или как файл."
+
+["bot.mt.err_need_photo"]
+other = "Сейчас я жду фото. Пришлите его или нажмите «Отмена»."
+
+["bot.mt.err_need_text"]
+other = "Сейчас я жду текст. Пришлите его или нажмите «Отмена»."
+
+["bot.mt.err_caption"]
+other = "Подпись — одна строка, не больше 200 символов."
+
+["bot.mt.err_video_url"]
+other = "Такая ссылка на видео мне не подходит. Пришлите полную ссылку https, например https://youtu.be/abc."
+
+["bot.mt.err_partner_url"]
+other = "Такая ссылка мне не подходит. Пришлите полную ссылку https, например https://ticketportal.cz/event/123."
+
+["bot.mt.err_seller"]
+other = "В названии должно быть от 1 до 120 символов."
+
+["bot.mt.err_map"]
+other = "Не получилось прочитать точку. Пришлите широту и долготу, например 50.0755, 14.4378."
+
+["bot.mt.err_duplicate"]
+other = "Это фото уже есть в списке."
+
+["bot.mt.err_gone"]
+other = "Этой записи в списке больше нет. Вот список сейчас."
+
+["bot.mt.err_changed"]
+other = "Список изменился, пока вы работали. Проверьте его и повторите."
 ["bot.ord.scan_src_arena_scanner"]
 other = "сканер Arena"
 

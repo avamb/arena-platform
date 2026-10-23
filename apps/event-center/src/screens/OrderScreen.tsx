@@ -6,6 +6,7 @@ import { useI18n, type MessageKey } from "@/lib/i18n";
 import { UNPAID_REASONS, orderNumber, seatText, ticketDelivery } from "@/lib/orders";
 import { OrderLetters } from "@/components/OrderLetters";
 import { CancelOrder } from "@/components/CancelOrder";
+import { RefundOrder } from "@/components/RefundOrder";
 import { TicketScans } from "@/components/TicketScans";
 import { Badge, ErrorBox, Loading } from "@/components/ui";
 import { useOrg } from "@/screens/OrgLayout";
@@ -70,6 +71,17 @@ export function OrderScreen() {
       )}
 
       <CancelOrder orgId={orgId} orderId={o.id} systemId={o.system_id} status={o.status} canWrite={access.can("order.write")} />
+      <RefundOrder
+        // Another organization or order is another refund: its ticked tickets, its reason, its
+        // Idempotency-Key and an answer in flight must never be reused for this one.
+        key={`${orgId}:${o.id}`}
+        orgId={orgId}
+        orderId={o.id}
+        systemId={o.system_id}
+        status={o.status}
+        canCreate={access.can("refund.create") && access.can("refund.read")}
+        canApprove={access.can("refund.approve")}
+      />
 
       <OrderLetters orgId={orgId} order={o} can={access.can} />
       {unpaid !== null && o.unpaid_reason.length > 0 && (

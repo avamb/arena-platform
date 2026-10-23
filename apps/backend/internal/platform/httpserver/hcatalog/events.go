@@ -982,6 +982,7 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 	// AB-42 publish gate: an event may only be published once it is sellable.
 	// It must have at least one session, and every session must carry at
 	// least one ticket tier. Half-finished events stay resumable in draft.
+	var publishSessions []uuid.UUID
 	if req.Status == "published" && h.sessionQueries != nil && h.tierQueries != nil {
 		sessions, sErr := h.sessionQueries.ListSessionsByEvent(ctx, eventID)
 		if sErr != nil {
@@ -1013,6 +1014,9 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 			if len(tiers) == 0 {
 				untieredSessionIDs = append(untieredSessionIDs, sess.ID.String())
 			}
+			if sess.Status == "draft" {
+				publishSessions = append(publishSessions, sess.ID)
+			}
 		}
 		if len(untieredSessionIDs) > 0 {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
@@ -1028,7 +1032,7 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	updated, ok := h.applyEventStatus(w, r, current, orgID, req.Status)
+	updated, ok := h.applyEventStatus(w, r, current, orgID, req.Status, publishSessions)
 	if !ok {
 		return
 	}

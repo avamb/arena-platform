@@ -224,17 +224,77 @@ export const PARITY: readonly ParityRow[] = [
   },
   {
     area: "Мероприятия",
+    fn: "Афиша: загрузка, просмотр и замена",
+    bot: "wizard_bot.go (UploadPoster), arena_client_refs.go",
+    web: "R4",
+    // 7-1
+    ready: { twin: "live/poster.spec.ts" },
+    routes: ["POST /v1/media", "GET /v1/media/{id}", `PATCH ${O}/events/{id}`],
+    note: "7-1: афиша в мастере (загрузка, затем черновик, затем привязка) и кнопка «Загрузить / Заменить афишу» на карточке. Загрузка и привязка — два отдельных шага: сбой привязки не создаёт второе мероприятие и не удаляет файл. Права: просмотр `media.read`, изменение `media.write` и `event.update`. Афиша — первый шаг мастера: загрузить её или осознанно нажать «Продолжить без афиши» (жёсткого требования к афише для публикации и продажи нет). Замена афиши на карточке мероприятия не читает афишу и не меняет данные мероприятия.",
+  },
+  {
+    area: "Мероприятия",
+    fn: "Афиша: предложить данные мероприятия по загруженной афише",
+    bot: "wizard_bot.go (readPosterHints), wizard_hints.go",
+    web: "R4",
+    // poster-first creation
+    ready: { twin: "live/poster-first.spec.ts" },
+    routes: [`POST ${O}/media/{media_id}/poster-facts`],
+    note: "Афиша загружается сразу после выбора (один media id: для чтения и для привязки при создании). Чтение моделью — отдельный явный платный шаг после пояснения, что картинка уходит на распознавание; ключ модели только на сервере. Результат — подсказки на проверку: ничего не подставляется без «Подставить выбранное», набранный текст не заменяется без отдельной отметки, площадка выбирается из списка организации (по названию не создаётся и не назначается), цена — только после выбора категории и при известной валюте, одна дата афиши идёт в первую дату. Сбой, отсутствие настройки и лимит не мешают ручному заполнению и не теряют загруженную афишу; повтор только явный. Как у бота: подсказки держатся до решения организатора.",
+  },
+  {
+    area: "Мероприятия",
+    fn: "Материалы страницы продаж: галерея, видео, где ещё купить, адрес и точка, фотоотчёт",
+    bot: "— (редакторы бота: PR #171, не слит)",
+    web: "R4",
+    // sales page materials
+    ready: { twin: "live/materials.spec.ts" },
+    routes: [
+      `GET ${O}/events/{event_id}/media-items`,
+      `POST ${O}/events/{event_id}/media-items`,
+      `PUT ${O}/events/{event_id}/media-items/order`,
+      `PATCH ${O}/events/{event_id}/media-items/{item_id}`,
+      `DELETE ${O}/events/{event_id}/media-items/{item_id}`,
+      `GET ${O}/events/{event_id}/videos`,
+      `POST ${O}/events/{event_id}/videos`,
+      `PUT ${O}/events/{event_id}/videos/order`,
+      `DELETE ${O}/events/{event_id}/videos/{video_id}`,
+      `GET ${O}/events/{event_id}/partner-links`,
+      `POST ${O}/events/{event_id}/partner-links`,
+      `PUT ${O}/events/{event_id}/partner-links/order`,
+      `PATCH ${O}/events/{event_id}/partner-links/{link_id}`,
+      `DELETE ${O}/events/{event_id}/partner-links/{link_id}`,
+      `GET ${O}/events/{event_id}/map-point`,
+      `PUT ${O}/events/{event_id}/map-point`,
+      `DELETE ${O}/events/{event_id}/map-point`,
+      `GET ${O}/events/{event_id}/photo-report`,
+      `POST ${O}/events/{event_id}/photo-report`,
+      `PUT ${O}/events/{event_id}/photo-report/order`,
+      `PATCH ${O}/events/{event_id}/photo-report/{photo_id}`,
+      `DELETE ${O}/events/{event_id}/photo-report/{photo_id}`,
+      `PATCH ${O}/venues/{id}`,
+    ],
+    note: "Раздел «Материалы страницы продаж» на карточке мероприятия. Читать может `event.read`, менять — `event.update` (сервер проверяет каждый вызов), загрузка фото — ещё `media.write`, адрес площадки — `venue.update`. Лимиты 6 / 4 / 3 / 30. Адрес берётся с площадки сеанса, а не из юридического адреса продавца. Видео: изменение ссылки — добавить новую, затем удалить старую (PATCH у API нет). Фотоотчёт публичен только после окончания последнего сеанса (решает сервер).",
+  },
+  {
+    area: "Мероприятия",
     fn: "Публикация, снятие с продажи, архив",
     bot: "evstatus.go, `ec:ev:`",
     web: "R4",
+    // 5-1
+    ready: { twin: "live/event-status.spec.ts", smoke: "event-status.mock.spec.ts" },
     routes: ["GET /v1/events/{id}", `POST ${O}/events/{id}/status`],
+    note: "5-1: блок «Статус» на карточке. Кнопки идут из таблицы переходов сервера (её копию сверяет тест с Go-файлом) и из прав `event.publish` / `event.delete`. «Снять с продажи» и «В архив» — одно подтверждение с текстом «проданные билеты остаются действительными».",
   },
   {
     area: "Мероприятия",
     fn: "Удаление мероприятия",
     bot: "evstatus.go, `ec:ev:…:del` (слово)",
     web: "R4",
+    // 5-1
+    ready: { twin: "live/event-status.spec.ts", smoke: "event-status.mock.spec.ts" },
     routes: [`GET ${O}/events/{event_id}/delete-impact`, `DELETE ${O}/events/{id}`],
+    note: "5-1: сначала пробный расчёт (`delete-impact`). Если что-то продано, показаны цифры и предложен архив. Иначе нужно набрать слово удаления.",
   },
   {
     area: "Мероприятия",
@@ -275,21 +335,31 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Перенос сеанса",
     bot: "sessions_dialog.go, `ses:mv`, `ses:go`",
     web: "R4",
-    routes: [`GET ${O}/sessions/{session_id}/change-impact`, `PATCH ${O}/events/{event_id}/sessions/{id}`],
+    ready: { twin: "live/session-change.spec.ts" },
+    routes: [
+      `GET ${O}/sessions/{session_id}/change-impact`,
+      `PATCH ${O}/events/{event_id}/sessions/{id}`,
+      `GET ${O}/venues`,
+    ],
+    note: "Сначала сухой прогон, потом одно нажатие. Заказы сайта-партнёра блокируют перенос, текст честный.",
   },
   {
     area: "Сеансы",
     fn: "Отмена сеанса",
     bot: "sessions_dialog.go, `ses:cx`, `ses:cxall` (слово)",
     web: "R4",
+    ready: { twin: "live/session-change.spec.ts" },
     routes: [`GET ${O}/sessions/{session_id}/change-impact`, `PATCH ${O}/events/{event_id}/sessions/{id}`],
+    note: "Только со словом сеанса. Письма уходят, деньги не возвращаются, заказы остаются оплаченными.",
   },
   {
     area: "Сеансы",
     fn: "Контакт организатора для писем",
     bot: "sessions_dialog.go (`sesSaveContact`)",
     web: "R4",
+    ready: { twin: "live/session-change.spec.ts" },
     routes: [`PUT ${O}/events/{event_id}/contact`],
+    note: "Форма e-mail появляется внутри переноса или отмены, когда сухой прогон говорит contact_missing.",
   },
   {
     area: "Сеансы",
@@ -297,6 +367,7 @@ export const PARITY: readonly ParityRow[] = [
     bot: "sessions_sale_times.go, `ses:se`, `ses:dr`",
     web: "R4",
     routes: [`PATCH ${O}/events/{event_id}/sessions/{id}`],
+    ready: { twin: "live/sale-times.spec.ts", smoke: "sale-times.mock.spec.ts" }, // 5-3
   },
   // ── Категории ───────────────────────────────────────────────────────
   {
@@ -312,6 +383,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Открыть или закрыть продажи категории",
     bot: "categories.go, `ct:op`, `ct:cl`",
     web: "R4",
+    // 5-4
+    ready: { twin: "live/categories.spec.ts" },
     routes: [`PATCH ${O}/events/{event_id}/sessions/{session_id}/tiers/{id}`],
   },
   {
@@ -319,6 +392,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Цена, окно продаж, количество",
     bot: "categories.go, `ct:pr`, `ct:wn`, `ct:qt`",
     web: "R4",
+    // 5-4
+    ready: { twin: "live/categories.spec.ts" },
     routes: [
       `PATCH ${O}/events/{event_id}/sessions/{session_id}/tiers/{id}`,
       `GET ${O}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule`,
@@ -369,7 +444,10 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Возврат по заказу",
     bot: "refund_dialog.go, `or:f:` (слово и кнопка)",
     web: "R5",
+    // 8-1
+    ready: { twin: "live/refund.spec.ts" },
     routes: [`GET ${O}/orders/{order_id}/refund-options`, `POST ${O}/orders/{order_id}/refunds`],
+    note: "Кнопка на карточке оплаченного заказа (`refund.create`). Ветка по `route` сервера: сайт продавца, провайдер без возвратов и заказ без оплаты только объясняются. Билеты не отмечены сначала, часть суммы — для одного билета, причина обязательна, флажок письма; последняя проверка, слово ВЕРНУТЬ и пароль ещё раз (раздел 4.6). Один `Idempotency-Key` на операцию: потерянный ответ проверяется тем же ключом, деньги дважды не уходят.",
   },
   {
     area: "Возвраты",
@@ -481,6 +559,44 @@ export const PARITY: readonly ParityRow[] = [
     web: "—",
     routes: ["POST /v1/bot/invitations/accept"],
     note: "В вебе: письмо с установкой пароля ведёт на `/accept-invite`. Приглашение из «Команды» с каналом web — экран «Команда» (4-5).",
+  },
+  // 6-1a
+  {
+    area: "Мероприятия",
+    fn: "Мастер: мероприятие и площадка",
+    bot: "wizard*.go, `wz:` (шаги названия, возраста, промоутера, площадки)",
+    web: "R2",
+    ready: { twin: "live/wizard-event-venue.spec.ts" },
+    routes: [
+      `POST ${O}/imports/event-bundle`,
+      `GET ${O}/venues`,
+      `GET ${O}/promoters`,
+      "GET /v1/geo/countries",
+      "GET /v1/geo/cities",
+      "GET /v1/geo/countries/{iso2}/timezones",
+      "GET /v1/geo/countries/{iso2}/currency",
+    ],
+    note: "6-1a: форма из двух разделов с проверкой на лету (`?dry_run=true`, не чаще раза в секунду, ошибки по `errors[].field`), черновик в браузере. Под флагом сборки `VITE_FEATURE_WIZARD=1`. Даты, билеты и сохранение — 6-1b и 6-1c.",
+  },
+  // 6-1b
+  {
+    area: "Мероприятия",
+    fn: "Мастер: даты и билеты",
+    bot: "wizard.go `BuildBundle`, wizard_dates.go, wizard_sale_times.go, wizard_date_tickets.go",
+    web: "R2",
+    ready: { twin: "live/wizard-dates-tickets.spec.ts" },
+    routes: [`POST ${O}/imports/event-bundle`],
+    note: "6-1b: сеансы (день, время, конец продаж, «вход с», места), у каждого свои билеты или «как у прошлой»: одна категория со ступенями цены, несколько сразу, несколько по очереди (этапы по дню и/или числу билетов). Проверка на лету по каждому сеансу. Пакет сравнивается с пакетом бота на общих golden-файлах (`eventbot/testdata/wizard_bundles`). Сохранение — 6-1c.",
+  },
+  // 6-1c
+  {
+    area: "Мероприятия",
+    fn: "Мастер: создание черновика (GA)",
+    bot: "wizard_io.go `BuildBundle`, шаг «Создать»",
+    web: "R2",
+    ready: { twin: "live/create-event.spec.ts" },
+    routes: [`POST ${O}/imports/event-bundle`],
+    note: "6-1c: кнопка «Создать мероприятие» (список и меню, флаг `VITE_FEATURE_WIZARD`, право `import.bil24_session`): один явный POST проверенного пакета с `publish:false`, ключ идемпотентности `externalRef` = `web:<org>:<черновик>:1`. Создаётся черновик события и черновик сеанса, не в продаже. В этом выпуске одна дата и существующая площадка. Двойной клик даёт один запрос; при потерянном ответе черновик остаётся, повтор идёт с тем же ключом и второго мероприятия не создаёт.",
   },
   // M2
   {

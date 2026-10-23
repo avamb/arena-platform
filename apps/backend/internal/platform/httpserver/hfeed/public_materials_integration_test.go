@@ -354,15 +354,99 @@ func TestPublicMaterials_ExistingFieldsUnchanged(t *testing.T) {
 		t.Errorf("page org keys = %s, want %s", got, want)
 	}
 	const wantEvent = "age_rating,description,first_session_at,first_session_doors_at,first_session_timezone,id,image_url," +
-		"last_session_at,poster_url,session_count,short_description,slug,title,venue_names"
+		"last_session_at,poster_url,session_count,short_description,slug,title,venue_names,venues"
 	if got := strings.Join(sortedKeys(event), ","); got != wantEvent {
 		t.Errorf("page event keys = %s, want %s", got, wantEvent)
 	}
 
 	feed := f.feedBody(t)
 	const wantFeed = "created_at,description,display_number,first_session_at,id,image_url,last_session_at,materials,name,org_id," +
-		"poster_media_id,poster_url,sessions,status,updated_at,venue_names,visibility"
+		"poster_media_id,poster_url,sessions,status,updated_at,venue_names,venues,visibility"
 	if got := strings.Join(sortedKeys(feed), ","); got != wantFeed {
 		t.Errorf("feed event keys = %s, want %s", got, wantFeed)
 	}
+}
+
+// TestPublicVenues_AddressPerVenueNothingInvented: the page and the feed list
+// the REAL venues of the event's visible sessions with their own postal
+// address (not the seller's), a cancelled or draft session adds no venue, an
+// empty field stays null and nothing is derived from the map point.
+func TestPublicVenues_AddressPerVenueNothingInvented(t *testing.T) {
+	pool := publicPageIntegrationPool(t)
+	f := newMaterialsFixture(t, pool)
+	f.withSession(t, 48*time.Hour)
+	ctx := context.Background()
+
+	second, cancelledVenue, draftVenue := uuid.New(), uuid.New(), uuid.New()
+	t.Cleanup(func() {
+		bg := context.Background()
+		_, _ = pool.Exec(bg, `DELETE FROM sessions WHERE event_id = $1`, f.eventID)
+		_, _ = pool.Exec(bg, `DELETE FROM venues WHERE id = ANY($1)`, []uuid.UUID{second, cancelledVenue, draftVenue})
+	})
+	if _, err := pool.Exec(ctx, `UPDATE venues SET address_line1 = 'Pernerova 51', address_line2 = 'Hall 2', postal_code = '18600', country = 'CZ' WHERE id = $1`, f.venue); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []struct {
+		id   uuid.UUID
+		name string
+	}{{second, "Bare Club"}, {cancelledVenue, "Cancelled Place"}, {draftVenue, "Draft Place"}} {
+		if _, err := pool.Exec(ctx, `INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Berlin')`, v.id, f.orgID, v.name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert := func(venue uuid.UUID, status string, in time.Duration) {
+		end := time.Now().UTC().Add(in)
+		if _, err := pool.Exec(ctx, `INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, sales_end_at, capacity_total, status, currency, currency_source)
+		      VALUES ($1, $2, $3, $4, $5, $4, 50, $6, 'EUR', 'override')`, uuid.New(), f.eventID, venue, end.Add(-2*time.Hour), end, status); err != nil {
+			t.Fatalf("session %s: %v", status, err)
+		}
+	}
+	insert(second, "scheduled", 72*time.Hour)
+	insert(cancelledVenue, "cancelled", 96*time.Hour)
+	insert(draftVenue, "draft", 120*time.Hour)
+
+	type venue struct {
+		Name          string   `json:"name"`
+		Country       *string  `json:"country"`
+		City          *string  `json:"city"`
+		Address       *string  `json:"address"`
+		PostalCode    *string  `json:"postal_code"`
+		SessionStarts []string `json:"session_starts"`
+	}
+	check := func(where string, raw json.RawMessage) {
+		t.Helper()
+		var vs []venue
+		if err := json.Unmarshal(raw, &vs); err != nil {
+			t.Fatalf("%s: %v (%s)", where, err, raw)
+		}
+		if len(vs) != 2 {
+			t.Fatalf("%s: want the 2 visible venues, got %+v", where, vs)
+		}
+		byName := map[string]venue{}
+		for _, v := range vs {
+			byName[v.Name] = v
+		}
+		hall, bare := byName["Materials Hall"], byName["Bare Club"]
+		if hall.Address == nil || *hall.Address != "Pernerova 51, Hall 2" || hall.PostalCode == nil || *hall.PostalCode != "18600" || hall.Country == nil || *hall.Country != "CZ" {
+			t.Errorf("%s: hall = %+v", where, hall)
+		}
+		if len(hall.SessionStarts) != 1 || len(bare.SessionStarts) != 1 {
+			t.Errorf("%s: each venue lists its own session start: %+v / %+v", where, hall, bare)
+		}
+		if bare.Address != nil || bare.Country != nil || bare.City != nil || bare.PostalCode != nil {
+			t.Errorf("%s: an empty venue stays empty, nothing invented: %+v", where, bare)
+		}
+		if _, ok := byName["Cancelled Place"]; ok {
+			t.Errorf("%s: a cancelled session must not add its venue", where)
+		}
+		if _, ok := byName["Draft Place"]; ok {
+			t.Errorf("%s: a draft session must not add its venue", where)
+		}
+	}
+	var pageEvent map[string]json.RawMessage
+	if err := json.Unmarshal(f.pageBody(t)["event"], &pageEvent); err != nil {
+		t.Fatal(err)
+	}
+	check("page", pageEvent["venues"])
+	check("feed", f.feedBody(t)["venues"])
 }

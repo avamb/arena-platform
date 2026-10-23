@@ -27,6 +27,7 @@ import { PromoListScreen } from "@/screens/PromoListScreen";
 import { PromoCreateScreen } from "@/screens/PromoCreateScreen";
 import { PromoScreen } from "@/screens/PromoScreen";
 import { TeamScreen } from "@/screens/TeamScreen";
+import { EventWizardScreen } from "@/screens/EventWizardScreen";
 import { parsePromoCardSearch, parsePromoListSearch } from "@/lib/promo";
 
 const rootRoute = createRootRoute({ component: RootLayout, notFoundComponent: NotFoundScreen });
@@ -181,6 +182,14 @@ const orgDataRoute = createRoute({
   component: OrgDataScreen,
 });
 
+// 6-1a: the event wizard. "new" is a static segment, so it wins over "$eventId".
+// The screen itself shows "not found" unless the build has VITE_FEATURE_WIZARD=1.
+const eventNewRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/events/new",
+  component: EventWizardScreen,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -205,6 +214,7 @@ export const routeTree = rootRoute.addChildren([
     promoCodeRoute,
     teamRoute,
     orgDataRoute,
+    eventNewRoute,
   ]),
 ]);
 

@@ -11,6 +11,7 @@ package eventbot
 //	ec:cm:<session>    summary CSV of one date
 //	ec:nt              the Notifications screen
 //	ec:ev:<event>:<act> a status button: publish, take off sale, archive, delete (evstatus.go)
+//	ec:mt:<event>      the Materials menu: photos, videos, map, links, report (materials.go)
 //
 // The ids are in the payload (a UUID plus its prefix is 43 bytes, inside
 // Telegram's 64), because a button on a card must keep meaning THAT event
@@ -47,6 +48,8 @@ func (b *Bot) ecCallback(ctx context.Context, chatID int64, msgID int, from *mod
 		b.showEventCard(ctx, chatID, &msgID, from, target, flag == "1")
 	case "ev":
 		b.evStatusCallback(ctx, chatID, msgID, from, target, flag)
+	case "mt":
+		b.showMaterials(ctx, chatID, &msgID, from, target) // the Materials menu (task 7-3)
 	case "es":
 		b.showEventSummary(ctx, chatID, &msgID, from, target)
 	case "ss":
