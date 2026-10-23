@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ApiError } from "@/lib/api/http";
 import type { BillingAccountInvoice, BillingPackOffer } from "@/lib/api/types";
 import {
   EMPTY_PAYER,
@@ -8,6 +9,7 @@ import {
   invoiceStateKey,
   isEmptyBalance,
   isInvoiceStateFilter,
+  isOrganizerDisabled,
   ledgerKey,
   ledgerSign,
   ledgerSigned,
@@ -152,5 +154,15 @@ describe("the payer form", () => {
       }),
     ).toEqual({ legal_name: "Acme S.L.", address: "Calle 1, 28001 Madrid", country: "ES", tax_id: "B123", email: "hi@acme.test" });
     expect(payerFromOrg({})).toEqual(EMPTY_PAYER);
+  });
+});
+
+describe("isOrganizerDisabled", () => {
+  it("is true only for the API's billing.organizer_disabled answer", () => {
+    expect(isOrganizerDisabled(new ApiError(404, "billing.organizer_disabled", "closed"))).toBe(true);
+    expect(isOrganizerDisabled(new ApiError(404, "billing.invoice_not_found", "missing"))).toBe(false);
+    expect(isOrganizerDisabled(new ApiError(503, "http.503", "down"))).toBe(false);
+    expect(isOrganizerDisabled(new Error("billing.organizer_disabled"))).toBe(false);
+    expect(isOrganizerDisabled(null)).toBe(false);
   });
 });

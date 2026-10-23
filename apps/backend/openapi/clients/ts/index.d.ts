@@ -7325,7 +7325,7 @@ export interface paths {
         };
         /**
          * Credit balance of an organization
-         * @description Per billing account (one per currency): what can be spent now, of it how much is bonus and when the nearest bonus expires, the per-ticket rate of the purchased lot that pays next, and the lots that still hold something. Requires JWT and billing.read in the path organization.
+         * @description Per billing account (one per currency): what can be spent now, of it how much is bonus and when the nearest bonus expires, the per-ticket rate of the purchased lot that pays next, and the lots that still hold something. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
          */
         get: operations["getV1OrgBillingBalance"];
         put?: never;
@@ -7345,7 +7345,7 @@ export interface paths {
         };
         /**
          * Credit packs on offer
-         * @description The active packs of the price list in force now for each billing account of the organization, with the card fee a card payment would add (null when card payment is not set up). Requires JWT and billing.read in the path organization.
+         * @description The active packs of the price list in force now for each billing account of the organization, with the card fee a card payment would add (null when card payment is not set up). Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
          */
         get: operations["getV1OrgBillingPacks"];
         put?: never;
@@ -7365,7 +7365,7 @@ export interface paths {
         };
         /**
          * Service charge that covers the platform commission
-         * @description For an organizer who lets the buyer pay the platform commission as the service charge (terms fee_mode buyer_pays): the price-list or individual rate of one sold ticket at this price right now, computed by the code that bills the sale. Requires JWT and billing.read in the path organization.
+         * @description For an organizer who lets the buyer pay the platform commission as the service charge (terms fee_mode buyer_pays): the price-list or individual rate of one sold ticket at this price right now, computed by the code that bills the sale. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
          */
         get: operations["getV1OrgBillingServiceFeeQuote"];
         put?: never;
@@ -7385,7 +7385,7 @@ export interface paths {
         };
         /**
          * Credit journal of an organization
-         * @description The credit journal of one billing account, newest entry first, keyset paged by seq. Without account_id the first account is used; an organization without accounts gets an empty list. Requires JWT and billing.read in the path organization.
+         * @description The credit journal of one billing account, newest entry first, keyset paged by seq. Without account_id the first account is used; an organization without accounts gets an empty list. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
          */
         get: operations["getV1OrgBillingLedger"];
         put?: never;
@@ -7405,7 +7405,7 @@ export interface paths {
         };
         /**
          * Platform invoices of an organization
-         * @description Lists the invoices the platform issued to the organization, newest first. A draft is the operator's and is not listed. Requires JWT and billing.read in the path organization.
+         * @description Lists the invoices the platform issued to the organization, newest first. A draft is the operator's and is not listed. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
          */
         get: operations["getV1OrgBillingAccountInvoices"];
         put?: never;
@@ -7425,7 +7425,7 @@ export interface paths {
         };
         /**
          * One platform invoice of an organization
-         * @description One invoice with its lines. An invoice of another organization, a draft, or an unknown id is 404. Requires JWT and billing.read in the path organization.
+         * @description One invoice with its lines. An invoice of another organization, a draft, or an unknown id is 404. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
          */
         get: operations["getV1OrgBillingAccountInvoice"];
         put?: never;
@@ -7447,7 +7447,7 @@ export interface paths {
         put?: never;
         /**
          * Order a credit pack
-         * @description Creates an issued credit_pack invoice for the pack. A bank transfer gets the payment reference to write in the transfer; a card payment gets a Stripe Checkout page (payment_url) and a payment system fee line. The credits appear when the payment is recorded. The Idempotency-Key header is required: a repeat answers the first invoice with 200. Requires JWT and billing.purchase in the path organization (the owner; never an API key).
+         * @description Creates an issued credit_pack invoice for the pack. A bank transfer gets the payment reference to write in the transfer; a card payment gets a Stripe Checkout page (payment_url) and a payment system fee line. The credits appear when the payment is recorded. The Idempotency-Key header is required: a repeat answers the first invoice with 200. Requires JWT and billing.purchase in the path organization (the owner; never an API key). While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
          */
         post: operations["postV1OrgBillingPackOrder"];
         delete?: never;
@@ -7467,7 +7467,7 @@ export interface paths {
         put?: never;
         /**
          * Open the card payment page of an invoice
-         * @description Returns the Stripe payment page of an issued invoice that is paid by card, making it on first use (Checkout for a credit pack, a hosted Stripe invoice for a usage invoice). Requires JWT and billing.purchase in the path organization (the owner; never an API key).
+         * @description Returns the Stripe payment page of an issued invoice that is paid by card, making it on first use (Checkout for a credit pack, a hosted Stripe invoice for a usage invoice). Requires JWT and billing.purchase in the path organization (the owner; never an API key). While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
          */
         post: operations["postV1OrgBillingInvoicePayByCard"];
         delete?: never;
@@ -7486,7 +7486,7 @@ export interface paths {
         get?: never;
         /**
          * Set the payer details of an organization
-         * @description Sets the details printed on the organization's invoices. They are stored on every billing account of the organization. Requires JWT and billing.payer_manage in the path organization (the owner).
+         * @description Sets the details printed on the organization's invoices. They are stored on every billing account of the organization. Requires JWT and billing.payer_manage in the path organization (the owner). While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
          */
         put: operations["putV1OrgBillingPayer"];
         post?: never;
@@ -51817,6 +51817,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Organizer billing is not open yet (billing.organizer_disabled) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Billing is not available right now */
             503: {
                 headers: {
@@ -51860,6 +51869,15 @@ export interface operations {
             };
             /** @description Permission denied */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organizer billing is not open yet (billing.organizer_disabled) */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -51933,7 +51951,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The organization has no billing account for this currency */
+            /** @description The organization has no billing account for this currency, or organizer billing is not open yet (billing.organizer_disabled) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -52017,7 +52035,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The organization has no such billing account */
+            /** @description The organization has no such billing account, or organizer billing is not open yet (billing.organizer_disabled) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -52092,6 +52110,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Organizer billing is not open yet (billing.organizer_disabled) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Billing is not available right now */
             503: {
                 headers: {
@@ -52153,7 +52180,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Not found */
+            /** @description Not found, or organizer billing is not open yet (billing.organizer_disabled) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -52239,7 +52266,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The pack does not exist or is not on sale for this organization now */
+            /** @description The pack does not exist or is not on sale for this organization now, or organizer billing is not open yet (billing.organizer_disabled) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -52327,7 +52354,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Not found */
+            /** @description Not found, or organizer billing is not open yet (billing.organizer_disabled) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -52408,7 +52435,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The organization has no billing account yet */
+            /** @description The organization has no billing account yet, or organizer billing is not open yet (billing.organizer_disabled) */
             404: {
                 headers: {
                     [name: string]: unknown;

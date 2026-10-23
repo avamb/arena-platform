@@ -1575,6 +1575,7 @@ export const ru: Record<MessageKey, string> = {
   "billing.nav.usage": "Использование",
   "billing.nav.balance": "Баланс и пакеты",
   "billing.nav.invoices": "Счета",
+  "billing.closed": "Пакеты кредитов и счета платформы пока не открыты. Мы сообщим, когда они откроются. Начисления видны на вкладке «Использование».",
   "billing.balance.title": "Биллинг: баланс и пакеты",
   "billing.balance.intro": "Кредиты оплачивают комиссию платформы за проданные билеты. Вы покупаете пакет кредитов, и комиссия за каждый проданный билет списывается с него.",
   "billing.balance.section": "Ваш баланс",
@@ -1751,6 +1752,8 @@ export const ru: Record<MessageKey, string> = {
   "apiError.billingPayerInvalid.next": "Проверьте юридическое название, код страны и e-mail, потом сохраните ещё раз.",
   "apiError.billingTerms.title": "Сейчас мы не можем рассчитать комиссию.",
   "apiError.billingTerms.next": "Условия вашего счёта не готовы. Напишите в поддержку, и мы всё исправим.",
+  "apiError.billingClosed.title": "Пакеты кредитов и счета платформы пока не открыты.",
+  "apiError.billingClosed.next": "Мы сообщим, когда они откроются. Начисления видны на вкладке «Использование».",
   "apiError.billingFxMissing.title": "Эту валюту пока нельзя пересчитать.",
   "apiError.billingFxMissing.next": "Выберите валюту вашего счёта или напишите в поддержку.",
 };

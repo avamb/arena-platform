@@ -153,6 +153,7 @@ func newAcctEnv(t *testing.T) *acctEnv {
 	stub := newBillingStripeStub(t)
 	e := &acctEnv{stripe: stub}
 	e.sec1Env = newSec1EnvCfg(t, func(c *config.Config) {
+		c.BillingOrganizerEnabled = true
 		c.BillingStripeSecretKey = "sk_test_platform_billing"
 		c.BillingStripeWebhookSecret = acctStripeWebhookSecret
 		c.BillingBankWebhookSecret = acctBankSecret

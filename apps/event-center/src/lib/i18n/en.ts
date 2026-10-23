@@ -1575,6 +1575,7 @@ export const en = {
   "billing.nav.usage": "Usage",
   "billing.nav.balance": "Balance and packs",
   "billing.nav.invoices": "Invoices",
+  "billing.closed": "Credit packs and platform invoices are not open yet. We will tell you when they open. Your usage is on the Usage tab.",
   "billing.balance.title": "Billing: balance and packs",
   "billing.balance.intro": "Credits pay the platform fee for the tickets you sell. You buy a pack of credits, and each sold ticket takes its fee from them.",
   "billing.balance.section": "Your balance",
@@ -1751,6 +1752,8 @@ export const en = {
   "apiError.billingPayerInvalid.next": "Check the legal name, the country code and the e-mail, then save again.",
   "apiError.billingTerms.title": "We cannot calculate the commission now.",
   "apiError.billingTerms.next": "Your billing terms are not ready. Write to support and we will fix it.",
+  "apiError.billingClosed.title": "Credit packs and platform invoices are not open yet.",
+  "apiError.billingClosed.next": "We will tell you when they open. Your usage is on the Usage tab.",
   "apiError.billingFxMissing.title": "We cannot convert this currency yet.",
   "apiError.billingFxMissing.next": "Choose the currency of your account, or write to support.",
 } as const;
