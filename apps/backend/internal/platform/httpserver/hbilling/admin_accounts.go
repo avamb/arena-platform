@@ -212,6 +212,17 @@ func (h *AdminHandler) HandleCreateAccountTerms(w http.ResponseWriter, r *http.R
 		h.fail(w, r, "lock terms", err)
 		return
 	}
+	if !from.After(h.now()) { // judged again after the lock wait
+		unprocessable(w, r, "billing.effective_from_not_future", "effective_from "+notFutureMessage)
+		return
+	}
+	// The price list's series lock: a concurrent revoke of the version found
+	// below either finished (and this read no longer sees it) or waits for
+	// this transaction (and then sees these terms). Same order as the revoke.
+	if err := q.LockPriceListSeries(ctx, body.PriceListCode, acc.Currency); err != nil {
+		h.fail(w, r, "lock price list series", err)
+		return
+	}
 	latest, err := q.GetBillingAccountTermsLatestFrom(ctx, acc.ID)
 	if err != nil {
 		h.fail(w, r, "latest terms", err)
