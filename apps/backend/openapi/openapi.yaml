@@ -39712,10 +39712,16 @@ paths:
         (`legal_renderings`): the same inputs always answer the same
         `rendering_id` and `sha256`, and a consent at checkout names that
         rendering. The texts seeded so far are English drafts marked
-        "DRAFT — awaiting legal review" in every language.
+        "DRAFT — awaiting legal review" in every language, stored as DRAFTS:
+        a draft is never served, so until an operator publishes a version
+        this route answers `404 terms.not_published` and the checkout
+        consent keeps the platform terms. Before the HTML is served it is
+        checked again: only the markup the renderer writes, and only the
+        bytes its SHA-256 names (`500 terms.render_failed` otherwise).
 
         Any miss (unknown slug, no channel, an event that is not published,
-        not the promoter's, a feed token of another organization) answers the
+        not the promoter's, a feed token of another organization, a seller
+        profile that is not complete) answers the
         same `404 page.not_found` as the hosted page. Rate-limited per client
         IP. Cache-Control is short (30s).
 

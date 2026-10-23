@@ -271,6 +271,14 @@ func TestCheckoutConsent_FlagOnRequiresAndRecordsTheConsent(t *testing.T) {
 		t.Fatalf("GET profile: %d %s", code, raw)
 	}
 
+	// ── drafts are never public: the platform terms until one is published ─
+	if !termsPublished(t, ctx, pool) {
+		if s := f.feedSession(t, srv); s.Consent.TermsURL != "https://site.arena-integration.test/legal/buyer-terms" {
+			t.Fatalf("draft terms linked: %+v", s.Consent)
+		}
+	}
+	publishSeededTerms(t, ctx, pool, "en", "es")
+
 	// ── the feed session tells the widget ──────────────────────────────────
 	s := f.feedSession(t, srv)
 	if !s.Consent.Required || s.Consent.SellerLegalName != "Consent Teatro S.L." ||

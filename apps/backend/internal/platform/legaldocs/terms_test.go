@@ -174,6 +174,30 @@ func TestRenderTerms_MerchantOfRecordNamesThePlatform(t *testing.T) {
 	}
 }
 
+// TestRenderTerms_IncompleteSellerIsRefused: terms are never rendered from
+// partial seller data (the same rule as the seller block, sellerinfo.Missing);
+// a merchant-of-record channel names the platform and is not affected.
+func TestRenderTerms_IncompleteSellerIsRefused(t *testing.T) {
+	for name, edit := range map[string]func(*fakeStore){
+		"no tax number":   func(s *fakeStore) { s.seller.TaxID = nil },
+		"no street":       func(s *fakeStore) { s.seller.AddressLine1 = strp(" ") },
+		"no public email": func(s *fakeStore) { s.seller.PublicContact = []byte(`{"phone":"+34 600"}`) },
+	} {
+		s := newFakeStore(testBody)
+		edit(s)
+		if _, err := RenderTerms(context.Background(), s, TermsRequest{OrgID: s.seller.OrgID}); err != ErrSellerIncomplete {
+			t.Errorf("%s: %v", name, err)
+		}
+		if len(s.renderings) != 0 {
+			t.Errorf("%s: a rendering was stored", name)
+		}
+		s.seller.PaymentMode = "merchant_of_record"
+		if _, err := RenderTerms(context.Background(), s, TermsRequest{OrgID: s.seller.OrgID}); err != nil {
+			t.Errorf("%s under MoR: %v", name, err)
+		}
+	}
+}
+
 func TestRenderTerms_NotFoundAndNoDocument(t *testing.T) {
 	s := newFakeStore(testBody)
 	if _, err := RenderTerms(context.Background(), s, TermsRequest{OrgID: uuid.New()}); err != ErrNotFound {

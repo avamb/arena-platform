@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 )
 
 // ErrNotFound: the terms page does not exist (unknown slug, no channel, an
@@ -22,6 +23,12 @@ var ErrNotFound = errors.New("legaldocs: terms not found")
 // ErrNoDocument: no version of the terms is published in the language or in
 // English.
 var ErrNoDocument = errors.New("legaldocs: no published terms")
+
+// ErrSellerIncomplete: the seller's profile misses what the terms must name
+// (sellerinfo.Missing: legal name, tax number, address, the channel's public
+// e-mail). No terms are rendered from partial data; callers answer it like a
+// missing page and the checkout keeps the platform terms.
+var ErrSellerIncomplete = errors.New("legaldocs: seller profile incomplete")
 
 // Store is what rendering the terms reads and writes. *gen.Queries
 // satisfies it, on the pool or on a transaction.
@@ -110,6 +117,9 @@ func RenderTerms(ctx context.Context, s Store, req TermsRequest) (Rendering, err
 	}
 	if err != nil {
 		return Rendering{}, fmt.Errorf("legaldocs: seller: %w", err)
+	}
+	if seller.PaymentMode != "merchant_of_record" && !sellerComplete(seller) {
+		return Rendering{}, ErrSellerIncomplete
 	}
 
 	var event *gen.LegalTermsEventRow
@@ -232,6 +242,28 @@ func RenderTerms(ctx context.Context, s Store, req TermsRequest) (Rendering, err
 		return Rendering{}, fmt.Errorf("legaldocs: store rendering: %w", err)
 	}
 	return renderingFromRow(row, values), nil
+}
+
+// sellerComplete applies sellerinfo.Missing, the rule of the seller block
+// and of the consent (P1a, P2), to the terms inputs.
+func sellerComplete(r gen.LegalTermsSellerRow) bool {
+	p := sellerinfo.Profile{
+		LegalName:   optString(r.LegalName),
+		TaxID:       optString(r.TaxID),
+		AddressLine: optString(r.AddressLine1),
+		City:        optString(r.AddressCity),
+		PostalCode:  optString(r.AddressPostalCode),
+	}
+	if len(r.PublicContact) > 0 {
+		var c struct {
+			Email any `json:"email"`
+		}
+		if json.Unmarshal(r.PublicContact, &c) == nil {
+			e, _ := c.Email.(string)
+			p.PublicEmail = strings.TrimSpace(e)
+		}
+	}
+	return len(sellerinfo.Missing(p)) == 0
 }
 
 func sellerFromRow(r gen.LegalTermsSellerRow) Seller {

@@ -12,6 +12,14 @@
 //
 //   - The database keeps a published template and a rendering frozen.
 //
+//   - The migration seeds every language as a DRAFT (drafts are never
+//     public): on a fresh database the page answers 404 terms.not_published
+//     and the consent keeps the platform terms until a version is published
+//     (checked only while nothing is published yet, the database is shared).
+//     publishSeededTerms then publishes the seeded drafts the tests read.
+//
+//   - A seller profile that is not complete renders no terms (404).
+//
 //   - The superadmin's template routes: draft, 422 for an unknown
 //     placeholder, publish retires the previous version, 409 for a second
 //     publish, 403 for an owner, legal.manage is never an API key scope.
@@ -75,6 +83,32 @@ func shaHex(s string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// termsPublished reports whether an English sale_terms version is published.
+func termsPublished(t *testing.T, ctx context.Context, pool *pgxpool.Pool) bool {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM legal_documents WHERE kind = 'sale_terms' AND locale = 'en' AND status = 'published'`).Scan(&n); err != nil {
+		t.Fatalf("published terms: %v", err)
+	}
+	return n > 0
+}
+
+// publishSeededTerms publishes the migration's version 1 draft of each
+// language that has nothing published yet, the way an operator would after
+// the lawyer's review. A published version is never changed or deleted, so
+// this stays in the (test) database.
+func publishSeededTerms(t *testing.T, ctx context.Context, pool *pgxpool.Pool, locales ...string) {
+	t.Helper()
+	for _, l := range locales {
+		if _, err := pool.Exec(ctx, `UPDATE legal_documents SET status = 'published', published_at = now()
+			WHERE kind = 'sale_terms' AND locale = $1 AND version = 1 AND status = 'draft'
+			  AND NOT EXISTS (SELECT 1 FROM legal_documents p
+			                  WHERE p.kind = 'sale_terms' AND p.locale = $1 AND p.status = 'published')`, l); err != nil {
+			t.Fatalf("publish the seeded %s terms: %v", l, err)
+		}
+	}
+}
+
 func TestLegalTerms_PublicPage(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := t.Context()
@@ -101,6 +135,15 @@ func TestLegalTerms_PublicPage(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM org_promoters WHERE org_id = $1`, f.orgID)
 	}()
 	base := "/v1/public/pages/" + orgSlug + "/terms"
+
+	// ── drafts are never public ───────────────────────────────────────────
+	if !termsPublished(t, ctx, pool) {
+		rec, _ := getTerms(t, srv, base+"?locale=en", nil)
+		if rec.Code != http.StatusNotFound || buyerFieldsErrorCode(t, rec.Body.Bytes()) != "terms.not_published" {
+			t.Fatalf("draft terms served: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+	publishSeededTerms(t, ctx, pool, "en", "es", "he")
 
 	// ── the organization's terms, in Spanish, stored once ─────────────────
 	rec, es := getTerms(t, srv, base+"?locale=es-ES", nil)
@@ -190,6 +233,15 @@ func TestLegalTerms_PublicPage(t *testing.T) {
 		strings.Contains(rec.Body.String(), "<script") || !strings.Contains(rec.Body.String(), es.SHA256) {
 		t.Fatalf("html page: %d %v %s", rec.Code, rec.Header(), rec.Body.String())
 	}
+
+	// ── no terms from a seller profile that is not complete ──────────────
+	if _, err := pool.Exec(ctx, `UPDATE organizations SET tax_id = NULL, tax_id_scheme = NULL WHERE id = $1`, f.orgID); err != nil {
+		t.Fatal(err)
+	}
+	if rec, _ := getTerms(t, srv, base+"?locale=en", nil); rec.Code != http.StatusNotFound || buyerFieldsErrorCode(t, rec.Body.Bytes()) != "page.not_found" {
+		t.Fatalf("incomplete seller: %d %s", rec.Code, rec.Body.String())
+	}
+	f.completeProfile(t, ctx)
 
 	// ── the database keeps evidence frozen ───────────────────────────────
 	if _, err := pool.Exec(ctx, `UPDATE legal_renderings SET body_html = 'x' WHERE id = $1`, es.RenderingID); err == nil {
@@ -285,11 +337,17 @@ func TestLegalDocuments_AdminRoutes(t *testing.T) {
 		}{d.ID, d.Status, d.Locale, d.BodyTemplate, d.Version}
 	}
 
-	// The current German version, to put its text back at the end.
-	var prevBody string
+	// The newest German version (the seeded draft on a fresh database), to
+	// put its text back at the end, and whether one is published.
+	var prevBody, prevStatus string
 	var prevVersion int
-	if err := pool.QueryRow(ctx, `SELECT body_template, version FROM legal_documents WHERE kind = 'sale_terms' AND locale = 'de' AND status = 'published'`).Scan(&prevBody, &prevVersion); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT body_template, version, status FROM legal_documents
+		WHERE kind = 'sale_terms' AND locale = 'de' ORDER BY (status = 'published') DESC, version DESC LIMIT 1`).Scan(&prevBody, &prevVersion, &prevStatus); err != nil {
 		t.Fatalf("current de version: %v", err)
+	}
+	var maxVersion int
+	if err := pool.QueryRow(ctx, `SELECT max(version) FROM legal_documents WHERE kind = 'sale_terms' AND locale = 'de'`).Scan(&maxVersion); err != nil {
+		t.Fatal(err)
 	}
 
 	// ── an owner of an organization is refused ───────────────────────────
@@ -332,8 +390,8 @@ func TestLegalDocuments_AdminRoutes(t *testing.T) {
 	}
 	draft := decode(raw)
 	created = append(created, draft.ID)
-	if draft.Status != "draft" || draft.Version != prevVersion+1 {
-		t.Fatalf("draft = %+v (previous version %d)", draft, prevVersion)
+	if draft.Status != "draft" || draft.Version != maxVersion+1 {
+		t.Fatalf("draft = %+v (newest version %d)", draft, maxVersion)
 	}
 	code, raw = call(adminToken, "P3a test", http.MethodPost, "/v1/admin/legal-documents/"+draft.ID+"/publish", "")
 	if code != http.StatusOK || decode(raw).Status != "published" {
@@ -345,7 +403,11 @@ func TestLegalDocuments_AdminRoutes(t *testing.T) {
 		(SELECT status FROM legal_documents WHERE kind = 'sale_terms' AND locale = 'de' AND version = $1)`, prevVersion).Scan(&publishedDE, &retiredPrev); err != nil {
 		t.Fatal(err)
 	}
-	if publishedDE != draft.ID || retiredPrev != "retired" {
+	wantPrev := "retired"
+	if prevStatus != "published" {
+		wantPrev = prevStatus // a draft stays a draft: publishing retires only the published one
+	}
+	if publishedDE != draft.ID || retiredPrev != wantPrev {
 		t.Fatalf("after publish: published %s, previous %s", publishedDE, retiredPrev)
 	}
 	if code, raw := call(adminToken, "P3a test", http.MethodPost, "/v1/admin/legal-documents/"+draft.ID+"/publish", ""); code != http.StatusConflict ||

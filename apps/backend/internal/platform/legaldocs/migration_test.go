@@ -74,9 +74,10 @@ func TestMigration0163_ChecksMatchGoConstants(t *testing.T) {
 	}
 }
 
-// TestSeededTemplates_Parse: the version 1 the migration publishes in every
+// TestSeededTemplates_Parse: the version 1 the migration stores in every
 // language parses with today's allowlist, is marked as a draft for the
-// lawyer, and renders with no placeholder left over.
+// lawyer, is NOT published (drafts are never public), and renders with no
+// placeholder left over.
 func TestSeededTemplates_Parse(t *testing.T) {
 	up := migrationUp(t)
 	m := regexp.MustCompile(`(?s)\$seed\$(.*?)\$seed\$`).FindStringSubmatch(up)
@@ -92,8 +93,11 @@ func TestSeededTemplates_Parse(t *testing.T) {
 	}
 	for _, l := range Locales {
 		if !strings.Contains(up, "('"+l+"')") {
-			t.Errorf("the seed does not publish %q", l)
+			t.Errorf("the seed does not store %q", l)
 		}
+	}
+	if !strings.Contains(up, "1, 'draft', $seed$") || strings.Contains(up, "'published', $seed$") {
+		t.Error("the seeded draft must stay a draft until the lawyer approves it")
 	}
 	v := BuildValues(Data{Locale: "en", DocumentVersion: 1, Seller: Seller{LegalName: "X", Country: "ES"}, Promoter: &Promoter{Name: "P"}})
 	out := Render(tpl, v, "en")

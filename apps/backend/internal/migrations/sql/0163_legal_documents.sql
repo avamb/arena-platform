@@ -34,8 +34,11 @@
 --                        platform terms version until now).
 --
 -- The seeded version 1 of sale_terms is an ENGLISH DRAFT in all seven
--- languages, marked "DRAFT — awaiting legal review". The texts wait for the
--- lawyer (ST-3); the code does not.
+-- languages, marked "DRAFT — awaiting legal review", stored as a DRAFT: no
+-- terms page exists and every checkout keeps linking the platform terms
+-- (P2) until a platform superadmin publishes a version the lawyer approved
+-- (ST-3; contract docs/tasks/p3_organizer_terms_execution_contract.md:
+-- drafts are never public, no document is enabled by default).
 -- =====================================================================
 
 SET LOCAL lock_timeout = '5s';
@@ -209,11 +212,12 @@ JOIN   permissions p ON p.name = 'legal.manage'
 WHERE  r.name = 'platform_superadmin'
 ON CONFLICT DO NOTHING;
 
--- Version 1 of sale_terms in every language: an English draft that waits
--- for the lawyer (ST-3). legaldocs.TestSeededTemplates_Parse parses it.
+-- Version 1 of sale_terms in every language: an English DRAFT that waits
+-- for the lawyer (ST-3); it is not published. legaldocs.TestSeededTemplates_Parse
+-- parses it.
 -- +goose StatementBegin
-INSERT INTO legal_documents (kind, locale, version, status, body_template, published_at)
-SELECT 'sale_terms', l.locale, 1, 'published', $seed$DRAFT — awaiting legal review. This is a working draft of the terms of sale. It is not final and it is not legal advice.
+INSERT INTO legal_documents (kind, locale, version, status, body_template)
+SELECT 'sale_terms', l.locale, 1, 'draft', $seed$DRAFT — awaiting legal review. This is a working draft of the terms of sale. It is not final and it is not legal advice.
 
 ## Terms of sale
 
@@ -273,7 +277,7 @@ The privacy policy linked on the checkout page explains how your personal data i
 These terms are governed by the law of {{law.country}}. This does not take away the protection that the law of your country of residence gives you as a consumer.
 {{else}}
 These terms are governed by the law of the country of the seller. This does not take away the protection that the law of your country of residence gives you as a consumer.
-{{/if}}$seed$, now()
+{{/if}}$seed$
 FROM (VALUES ('en'), ('ru'), ('cs'), ('he'), ('es'), ('de'), ('fr')) AS l(locale);
 -- +goose StatementEnd
 

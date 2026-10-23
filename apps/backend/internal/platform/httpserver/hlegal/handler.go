@@ -159,7 +159,8 @@ func (h *Handler) HandlePublicTerms(w http.ResponseWriter, r *http.Request) {
 		Locale:        locale,
 	})
 	switch {
-	case errors.Is(err, legaldocs.ErrNotFound):
+	case errors.Is(err, legaldocs.ErrNotFound), errors.Is(err, legaldocs.ErrSellerIncomplete):
+		// No terms from partial seller data: the same 404 as a missing page.
 		notFound(w, r)
 		return
 	case errors.Is(err, legaldocs.ErrNoDocument):
@@ -171,6 +172,12 @@ func (h *Handler) HandlePublicTerms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Second line of defence: serve only markup Render could have written,
+	// and only the bytes the stored hash names.
+	if !renderingIntact(rendering) {
+		h.failed(w, r, "integrity", fmt.Errorf("rendering %s failed the HTML check", rendering.ID))
+		return
+	}
 	w.Header().Set("Cache-Control", "public, max-age=30, stale-while-revalidate=15")
 	if fromHeader {
 		// Add, never Set: the CORS middleware's Vary: Origin must stay.
@@ -191,6 +198,13 @@ func (h *Handler) HandlePublicTerms(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// renderingIntact reports whether a rendering may be served: its HTML is
+// exactly the markup legaldocs.Render writes (legaldocs.SafeRenderedHTML)
+// and still hashes to the stored SHA-256.
+func renderingIntact(rd legaldocs.Rendering) bool {
+	return legaldocs.SafeRenderedHTML(rd.HTML) && legaldocs.SHA256Hex([]byte(rd.HTML)) == rd.SHA256
+}
+
 func (h *Handler) failed(w http.ResponseWriter, r *http.Request, step string, err error) {
 	h.logger.Error("legal terms: "+step+" failed", slog.String("error", err.Error()))
 	httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -201,6 +215,13 @@ func (h *Handler) failed(w http.ResponseWriter, r *http.Request, step string, er
 // open from the checkout link (the tickets page renders the JSON from P3c
 // on). No script runs on it: the CSP allows inline styles only.
 func writeTermsPage(w http.ResponseWriter, rd legaldocs.Rendering) {
+	if !renderingIntact(rd) {
+		// Never interpolate markup this package did not check.
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("The terms of sale could not be shown. Try again in a minute."))
+		return
+	}
 	dir := "ltr"
 	if rd.Locale == "he" {
 		dir = "rtl"

@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/legaldocs"
 )
@@ -39,7 +40,7 @@ func (h *Handler) WithLegalTerms(apiBase string) *Handler {
 // legalTermsURL is the link to the organizer's terms for an event sold
 // through feedToken; "" when it cannot be built (no base URL, lookup failed).
 func (h *Handler) legalTermsURL(ctx context.Context, eventID uuid.UUID, feedToken string) string {
-	if h.legalTermsBase == "" || h.publicFeedQueries == nil {
+	if h.legalTermsBase == "" || h.publicFeedQueries == nil || !h.termsPublished(ctx) {
 		return ""
 	}
 	link, err := h.publicFeedQueries.GetLegalTermsLink(ctx, eventID)
@@ -60,6 +61,21 @@ func (h *Handler) legalTermsURL(ctx context.Context, eventID uuid.UUID, feedToke
 	return h.legalTermsBase + "/v1/public/pages/" + url.PathEscape(link.OrgSlug) + "/terms?" + q.Encode()
 }
 
+// termsPublished reports whether the platform has published the organizer
+// terms template (its English version, the fallback of every language).
+// Drafts are never public: until a version is published the consent keeps
+// pointing at the platform terms (P3 execution contract).
+func (h *Handler) termsPublished(ctx context.Context) bool {
+	_, err := h.publicFeedQueries.GetPublishedLegalDocument(ctx, legaldocs.KindSaleTerms, legaldocs.DefaultLocale)
+	if err == nil {
+		return true
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		h.logger.Warn("public_feed: terms publication lookup failed", slog.String("error", err.Error()))
+	}
+	return false
+}
+
 // consentBlockFor is consentBlock with the organizer's terms link when the
 // channel asks for the consent and the link can be built.
 func (h *Handler) consentBlockFor(ctx context.Context, required bool, legalName string, eventID uuid.UUID, feedToken string) publicConsentBlock {
@@ -74,12 +90,12 @@ func (h *Handler) consentBlockFor(ctx context.Context, required bool, legalName 
 
 // attachTermsRendering renders (or finds) the organizer's terms the buyer
 // accepts and names them on the pending consent. It runs on the pool before
-// any transaction opens. No published terms (or no terms page for this
-// channel) keeps the platform version; a database failure is returned, and
+// any transaction opens. No published terms, no terms page for this channel
+// or a seller profile that is not complete keeps the platform version; a database failure is returned, and
 // checkout/start then refuses the sale (it must not store a consent that
 // does not say what was accepted).
 func (h *Handler) attachTermsRendering(ctx context.Context, p *pendingConsent, orgID, eventID uuid.UUID, feedToken string) error {
-	if p == nil || h.legalTermsBase == "" || h.publicFeedQueries == nil {
+	if p == nil || h.legalTermsBase == "" || h.publicFeedQueries == nil || !h.termsPublished(ctx) {
 		return nil
 	}
 	locale := ""
@@ -92,7 +108,7 @@ func (h *Handler) attachTermsRendering(ctx context.Context, p *pendingConsent, o
 		EventID:   &eventID,
 		Locale:    locale,
 	})
-	if errors.Is(err, legaldocs.ErrNotFound) || errors.Is(err, legaldocs.ErrNoDocument) {
+	if errors.Is(err, legaldocs.ErrNotFound) || errors.Is(err, legaldocs.ErrNoDocument) || errors.Is(err, legaldocs.ErrSellerIncomplete) {
 		h.logger.Warn("public_feed_checkout: no organizer terms to name, keeping the platform terms",
 			slog.String("org_id", orgID.String()),
 			slog.String("error", err.Error()),
