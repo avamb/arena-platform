@@ -83,14 +83,17 @@ func (h *AdminHandler) WithClock(now func() time.Time) *AdminHandler {
 	return h
 }
 
-// ready answers 503 when the handler has no database or no audit writer.
+// ready answers 503 when the handler has no database, or - for a write - no
+// audit writer that puts its row into audit_events on the change's transaction.
 func (h *AdminHandler) ready(w http.ResponseWriter, r *http.Request, write bool) bool {
 	if h.pool == nil || h.queries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.billing_unavailable", "billing is not available right now, please try again in a moment", r))
 		return false
 	}
-	if write && h.audit == nil {
+	// A writer that only logs (audit.SlogWriter) would let the change commit
+	// with no audit row, so it counts as "no writer".
+	if write && !audit.IsDurableInTx(h.audit) {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.audit_unavailable", "nothing was changed: the audit log is not available, please try again in a moment", r))
 		return false
@@ -171,6 +174,8 @@ func (h *AdminHandler) auditTx(r *http.Request, tx pgx.Tx, action, resourceType 
 		Metadata:     meta,
 	})
 }
+
+const notFutureMessage = "must be in the future: it never starts in the past, so it cannot change a sale that already happened"
 
 // timeJSON formats a time as RFC 3339 UTC, nil for nil.
 func timeJSON(t *time.Time) any {
