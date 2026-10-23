@@ -187,6 +187,33 @@ export function cartServiceFee(subtotalMinor: number, feePercent: string | null 
 }
 
 /**
+ * The platform's commission the buyer pays on a cart when the organizer's
+ * billing terms say fee_mode buyer_pays: per ticket, the category's
+ * `service_charge_minor` (or `seated_service_charge_minor` for an assigned
+ * seat), summed over the lines. The backend adds it to the service charge on
+ * top of the channel percentage (never as its base) and only for a cart that
+ * costs something, so a free cart gets 0. `checkout/quote` stays the
+ * authority; this is the sheet's own estimate before the payment page.
+ */
+export function cartBuyerCommission(lines: CartLineItem[], tiers: Tier[] | null | undefined): number {
+  if (!tiers || tiers.length === 0) return 0;
+  const byId = new Map(tiers.map((t) => [t.id, t]));
+  let subtotal = 0;
+  let commission = 0;
+  for (const line of lines) {
+    subtotal += line.priceAmount * line.quantity;
+    if (line.priceAmount <= 0) continue;
+    const tier = byId.get(line.tierId);
+    if (!tier) continue;
+    const perTicket = line.type === 'seated' ? tier.seated_service_charge_minor : tier.service_charge_minor;
+    if (typeof perTicket === 'number' && Number.isFinite(perTicket) && perTicket > 0) {
+      commission += perTicket * line.quantity;
+    }
+  }
+  return subtotal > 0 ? commission : 0;
+}
+
+/**
  * Total number of individual tickets across all cart lines.
  */
 export function cartItemCount(lines: CartLineItem[]): number {

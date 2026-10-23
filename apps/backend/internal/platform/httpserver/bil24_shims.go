@@ -121,7 +121,7 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 		// ADD_PROMO_CODES / CHECK_KDP can validate codes against the cart's org
 		// and GET_CART can apply the session's accepted code. Without it both
 		// commands self-gate with -99 and GET_CART reports discountAmount=0.
-		h = h.WithPromoCodes(q)
+		h = h.WithPromoCodes(q).WithBuyerCharges(q) // + a buyer_pays commission
 		// Feature #492 (W1-B1b, spec §7.7): wire CREATE_ORDER_EXT so it creates a
 		// real order aggregate through internal/platform/ordering instead of
 		// answering -5. Pool opens the per-command transaction; SessionQ backs the

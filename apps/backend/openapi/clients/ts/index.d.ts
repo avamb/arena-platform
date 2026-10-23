@@ -5946,6 +5946,16 @@ export interface paths {
          *         top of the ticket prices at checkout; the widget shows it as
          *         a cart line so the buyer sees the total before the payment
          *         page does.
+         *       * `tiers[].service_charge_minor` and
+         *         `tiers[].seated_service_charge_minor` — the platform's
+         *         commission per ticket of the category at its current price
+         *         (general admission and assigned seat), in minor units of the
+         *         tier's currency, when the organizer's billing terms make the
+         *         buyer pay it (fee_mode `buyer_pays`); 0 otherwise. The checkout
+         *         adds it to the service charge ON TOP of `service_fee_percent`
+         *         (which is not charged on it), for a cart whose amount after the
+         *         promo code is above zero. `checkout/quote` stays the authority
+         *         on the amount.
          *       * `promo_codes_available` — true when the organization has at
          *         least one promo code that is active, inside its date window
          *         and not used up. The widget shows its promo field only then.
@@ -18922,12 +18932,22 @@ export interface components {
             discount: number;
             /**
              * Format: int64
-             * @description Platform service charge computed as
+             * @description Service charge the buyer pays: the channel's percentage
              *     `(subtotal - discount) * PlatformFeeRate / 10_000` using
-             *     integer (floor) arithmetic. Rate is configured in
-             *     `PricingRules` on the server.
+             *     integer (floor) arithmetic, plus `platform_commission`.
              */
             platform_fee: number;
+            /**
+             * Format: int64
+             * @description The part of `platform_fee` that is the platform's commission
+             *     paid by the buyer: when the organizer's billing terms say
+             *     fee_mode `buyer_pays`, the price-list rate of each ticket at its
+             *     price before the promo code (general admission or assigned
+             *     seat), summed over the cart. 0 for every other organizer and for
+             *     a cart whose amount after the promo code is 0. Already included
+             *     in `platform_fee`; never a base of the percentage.
+             */
+            platform_commission?: number;
             /**
              * Format: int64
              * @description Payment-provider processing fee computed as
@@ -47941,6 +47961,8 @@ export interface operations {
             };
             /**
              * @description Database unavailable (dependency.database_unavailable), or
+             *     `checkout.pricing_unavailable` when the organizer's billing terms
+             *     (the buyer commission of fee_mode buyer_pays) could not be read, or
              *     `checkout.unavailable` when the channel's checkout settings (buyer
              *     fields, consent) could not be read, or
              *     `checkout.payment_start_failed` — the payment provider refused to
@@ -48057,7 +48079,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database not available. */
+            /**
+             * @description Database not available, or `checkout.pricing_unavailable` when
+             *     the organizer's billing terms (the buyer commission of fee_mode
+             *     buyer_pays) could not be read.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -48417,7 +48443,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database unavailable (`dependency.database_unavailable`). */
+            /**
+             * @description Database unavailable (`dependency.database_unavailable`), or
+             *     `checkout.pricing_unavailable` when the organizer's billing terms
+             *     (the buyer commission of fee_mode buyer_pays) could not be read.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;

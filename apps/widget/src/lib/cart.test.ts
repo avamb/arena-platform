@@ -17,6 +17,7 @@ import {
   isTwoMinWarning,
   formatCountdown,
   cartServiceFee,
+  cartBuyerCommission,
 } from './cart.js';
 import type { CartLineItem, CartState } from './cart.js';
 import type { CategoryPrice, Tier } from '../types.js';
@@ -372,5 +373,32 @@ describe('formatCountdown', () => {
 
   it('floors fractional seconds', () => {
     expect(formatCountdown(61.9)).toBe('1:01');
+  });
+});
+
+describe('cartBuyerCommission (fee_mode buyer_pays)', () => {
+  const tiers = [
+    { id: 'ga', name: 'GA', pricing_mode: 'fixed', price_amount: 2500, currency: 'EUR', sort_order: 0,
+      service_charge_minor: 59, seated_service_charge_minor: 109 },
+    { id: 'free', name: 'Free', pricing_mode: 'free', price_amount: 0, currency: 'EUR', sort_order: 1,
+      service_charge_minor: 0, seated_service_charge_minor: 0 },
+  ] as Tier[];
+
+  it('adds the commission per ticket, the seated rate for a seat', () => {
+    const lines = [
+      makeLine({ type: 'ga', tierId: 'ga', priceAmount: 2500, quantity: 2, currency: 'EUR' }),
+      makeLine({ type: 'seated', tierId: 'ga', priceAmount: 2500, quantity: 1, currency: 'EUR' }),
+    ];
+    expect(cartBuyerCommission(lines, tiers)).toBe(2 * 59 + 109);
+    // It joins the channel percentage in the one "Service fee" line.
+    expect(cartServiceFee(7500, '1.25') + cartBuyerCommission(lines, tiers)).toBe(93 + 227);
+  });
+
+  it('adds nothing for free tickets, a free cart or an organizer_pays session', () => {
+    const free = [makeLine({ type: 'ga', tierId: 'free', priceAmount: 0, quantity: 3, currency: 'EUR' })];
+    expect(cartBuyerCommission(free, tiers)).toBe(0);
+    const plain = [makeLine({ type: 'ga', tierId: 'ga', priceAmount: 2500, quantity: 1, currency: 'EUR' })];
+    expect(cartBuyerCommission(plain, null)).toBe(0);
+    expect(cartBuyerCommission(plain, [{ ...tiers[0], service_charge_minor: undefined }] as Tier[])).toBe(0);
   });
 });

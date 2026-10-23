@@ -365,7 +365,13 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// Bil24 gateway applies), read on the pool before the hold transaction
 	// opens — never inside it (AGENTS.md: no pool read while holding the
 	// sessions row lock).
-	pricingRules := h.channelPricingRules(ctx, checkCtx.OrgID, checkCtx.SalesChannelID)
+	// fee_mode buyer_pays adds the platform's commission on top
+	// (cartPricingRules, buyer_charge.go).
+	pricingRules, pricingOK := h.cartPricingRules(ctx, checkCtx.OrgID, checkCtx.SalesChannelID, sessionID)
+	if !pricingOK {
+		writePricingUnavailable(w, r)
+		return
+	}
 
 	// ── 6b. Validate buyer fields against channel flags (WID-0d) ────────────────
 	// Fetch the buyer-field flags for this feed token and enforce them.
@@ -836,7 +842,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			seatTierPrices[tid] = l.UnitPrice
 		}
 		h.confirmPublicCheckout(ctx, w, r, checkCtx, res.ID, checkoutToken, bd, promoCodeID, expiresAt,
-			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale, consent)
+			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale, consent, pricingRules.BuyerCharge)
 		return
 	}
 
@@ -990,7 +996,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// Pure GA: reservation_ga_items.unit_price is authoritative for every unit,
 	// so no tier price map is needed.
 	h.confirmPublicCheckout(ctx, w, r, checkCtx, reservation.ID, checkoutToken, bd, promoCodeID, expiresAt,
-		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, nil, req.ReturnURL, buyerLocale, consent)
+		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, nil, req.ReturnURL, buyerLocale, consent, pricingRules.BuyerCharge)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1219,6 +1225,7 @@ func (h *Handler) confirmPublicCheckout(
 	returnURL string,
 	buyerLocale string,
 	consent *pendingConsent,
+	unitServiceCharge func(currency string, unitPrice int64, seated bool) int64,
 ) {
 	// ── 0. A paid cart needs a place to send the buyer BACK to, and a
 	// payment window, before anything is written. Resolving the return URL
@@ -1338,7 +1345,7 @@ func (h *Handler) confirmPublicCheckout(
 		return
 	}
 
-	orderID, err := h.createPublicOrder(ctx, tx, txq, checkCtx, cs, buyer, tierUnitPrices)
+	orderID, err := h.createPublicOrder(ctx, tx, txq, checkCtx, cs, buyer, tierUnitPrices, unitServiceCharge)
 	if err != nil {
 		h.logger.Error("public_feed_checkout: create order failed",
 			slog.String("checkout_session_id", cs.ID.String()),
@@ -1503,6 +1510,7 @@ func (h *Handler) createPublicOrder(
 	cs gen.CheckoutSessionRow,
 	buyer publicOrderBuyer,
 	tierUnitPrices map[uuid.UUID]int64,
+	unitServiceCharge func(currency string, unitPrice int64, seated bool) int64,
 ) (*uuid.UUID, error) {
 	var customerID *uuid.UUID
 	if buyer.Email != "" {
@@ -1587,6 +1595,9 @@ func (h *Handler) createPublicOrder(
 		BuyerEmail:        ptrOrNil(buyer.Email),
 		BuyerPhone:        buyer.Phone,
 		TierUnitPrices:    tierUnitPrices,
+		// Each ticket carries its own buyer commission in order_items.charge
+		// (fee_mode buyer_pays), the same hook the cart was priced with.
+		UnitServiceCharge: unitServiceCharge,
 	})
 	if err != nil {
 		return nil, err

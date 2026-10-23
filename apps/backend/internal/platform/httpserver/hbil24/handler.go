@@ -28,6 +28,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/billing"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
@@ -412,6 +413,10 @@ type Handler struct {
 	// the pre-W1 immutable-hold path so every pre-#484 unit test that builds
 	// a Handler without a pool keeps passing.
 	cartDeps CartDeps
+
+	// buyerChargeQ resolves a buyer_pays organizer's platform commission,
+	// added to every cart's service charge (buyer_charge.go). Nil = never.
+	buyerChargeQ billing.BuyerChargeQueries
 
 	// promoQ (feature #491, W1-B1a, spec §7.6) is the promo-code surface
 	// ADD_PROMO_CODES / CHECK_KDP validate against and that GET_CART reads

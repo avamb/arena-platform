@@ -94,15 +94,22 @@ func (h *Handler) handleBil24GetCart(w http.ResponseWriter, r *http.Request, req
 	// codes. Only the first code that yields a non-zero discount is applied —
 	// see cmd_promo.go and BEHAVIOR_DIFFERENCES.md.
 	disc := h.sessionCartDiscount(ctx, promoCtx{cc: cc, snap: snap})
+	commission, ok := h.snapCommission(ctx, cc.orgID, snap, snap.sum-disc.total)
+	if !ok {
+		h.writeCartTransient(w, req, cc)
+		return
+	}
 
 	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command,
-		getCartExtra(snap, cartFeePercent(channel), disc)))
+		getCartExtra(snap, cartFeePercent(channel), disc, commission)))
 }
 
 // getCartExtra is the pure §7.5 projection of a cart snapshot: the money block
 // plus actionEventList grouped by action event, in first-seen order so the
 // response is stable across calls.
-func getCartExtra(snap cartSnapshot, feePercent float64, disc cartDiscount) map[string]any {
+// commission is a buyer_pays organizer's platform commission on the cart
+// (snapCommission), added to chargeAmount; 0 for everyone else.
+func getCartExtra(snap cartSnapshot, feePercent float64, disc cartDiscount, commission int64) map[string]any {
 	byEvent := make(map[any][]map[string]any, len(snap.events))
 	for i, l := range snap.lines {
 		// Per-row discount: the prorated share of the applied promo code,
@@ -146,7 +153,7 @@ func getCartExtra(snap cartSnapshot, feePercent float64, disc cartDiscount) map[
 	// the encoding step below.
 	discount := disc.total
 	sum := snap.sum
-	charge := feeChargeMinor(sum-discount, feePercent)
+	charge := cartChargeMinor(sum-discount, feePercent, commission)
 	total := sum - discount + charge
 
 	return map[string]any{

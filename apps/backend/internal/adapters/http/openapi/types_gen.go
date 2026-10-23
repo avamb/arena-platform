@@ -12349,10 +12349,18 @@ type PricingBreakdownItem struct {
 	// weighted average and `quantity` the sum across lines.
 	Lines *[]PricingLineItem `json:"lines,omitempty"`
 
-	// PlatformFee Platform service charge computed as
+	// PlatformCommission The part of `platform_fee` that is the platform's commission
+	// paid by the buyer: when the organizer's billing terms say
+	// fee_mode `buyer_pays`, the price-list rate of each ticket at its
+	// price before the promo code (general admission or assigned
+	// seat), summed over the cart. 0 for every other organizer and for
+	// a cart whose amount after the promo code is 0. Already included
+	// in `platform_fee`; never a base of the percentage.
+	PlatformCommission *int64 `json:"platform_commission,omitempty"`
+
+	// PlatformFee Service charge the buyer pays: the channel's percentage
 	// `(subtotal - discount) * PlatformFeeRate / 10_000` using
-	// integer (floor) arithmetic. Rate is configured in
-	// `PricingRules` on the server.
+	// integer (floor) arithmetic, plus `platform_commission`.
 	PlatformFee int64 `json:"platform_fee"`
 
 	// ProviderFee Payment-provider processing fee computed as
@@ -13053,10 +13061,18 @@ type QuoteResponseItem struct {
 	// fixed-price.
 	NextPriceChangeAt *time.Time `json:"next_price_change_at"`
 
-	// PlatformFee Platform service charge computed as
+	// PlatformCommission The part of `platform_fee` that is the platform's commission
+	// paid by the buyer: when the organizer's billing terms say
+	// fee_mode `buyer_pays`, the price-list rate of each ticket at its
+	// price before the promo code (general admission or assigned
+	// seat), summed over the cart. 0 for every other organizer and for
+	// a cart whose amount after the promo code is 0. Already included
+	// in `platform_fee`; never a base of the percentage.
+	PlatformCommission *int64 `json:"platform_commission,omitempty"`
+
+	// PlatformFee Service charge the buyer pays: the channel's percentage
 	// `(subtotal - discount) * PlatformFeeRate / 10_000` using
-	// integer (floor) arithmetic. Rate is configured in
-	// `PricingRules` on the server.
+	// integer (floor) arithmetic, plus `platform_commission`.
 	PlatformFee int64 `json:"platform_fee"`
 
 	// PromoCode Echoed promo code when one was applied and validated;

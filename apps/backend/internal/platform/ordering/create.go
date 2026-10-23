@@ -62,6 +62,15 @@ type CreateInput struct {
 
 	// Metadata lands on orders.metadata; nil means '{}'.
 	Metadata json.RawMessage
+
+	// UnitServiceCharge is the platform's commission the buyer paid on one
+	// ticket (fee_mode buyer_pays): the SAME hook the cart was priced with
+	// (hcheckout.PricingRules.BuyerCharge, billing.BuyerCharge.PerTicket).
+	// When set, each unit's order_items.charge carries its own commission in
+	// full and only the rest of the charge (the channel's percentage) is
+	// spread by unit price, so billing rates every ticket at exactly the
+	// commission its buyer paid. nil keeps the plain price-weighted spread.
+	UnitServiceCharge func(currency string, unitPrice int64, seated bool) int64
 }
 
 // CreateResult is the freshly written aggregate.
@@ -76,6 +85,9 @@ type unit struct {
 	tierID        uuid.UUID
 	sessionSeatID *uuid.UUID
 	unitPrice     int64
+	// seated is session_seats.kind = 'seat' (billing's own test), false for a
+	// GA unit and a GA line.
+	seated bool
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -136,7 +148,7 @@ func CreateOrderFromCheckout(ctx context.Context, q CreateStore, in CreateInput)
 		return CreateResult{}, fmt.Errorf("ordering: insert order: %w", err)
 	}
 
-	items, err := writeOrderItems(ctx, q, order.ID, units, discount, charge)
+	items, err := writeOrderItems(ctx, q, order.ID, units, subtotal, discount, charge, *cs.Currency, in.UnitServiceCharge)
 	if err != nil {
 		return CreateResult{}, err
 	}
@@ -197,21 +209,23 @@ func loadPricedAggregate(ctx context.Context, q CreateStore, in CreateInput) (ge
 }
 
 // writeOrderItems materialises one order_items row per unit, spreading the
-// order-level discount and charge across them by unit-price weight so the item
-// sums reconcile with the order sums to the cent.
+// order-level discount and charge across them so the item sums reconcile with
+// the order sums to the cent (see allocateCharge for the charge).
 func writeOrderItems(
 	ctx context.Context,
 	q CreateStore,
 	orderID uuid.UUID,
 	units []unit,
-	discount, charge int64,
+	subtotal, discount, charge int64,
+	currency string,
+	perTicket func(currency string, unitPrice int64, seated bool) int64,
 ) ([]gen.OrderItemRow, error) {
 	prices := make([]int64, len(units))
 	for i, u := range units {
 		prices[i] = u.unitPrice
 	}
 	discShares := prorate(discount, prices)
-	chargeShares := prorate(charge, prices)
+	chargeShares := allocateCharge(units, prices, subtotal-discount, charge, currency, perTicket)
 
 	items := make([]gen.OrderItemRow, 0, len(units))
 	var ordinal int32 // 1-based and dense per order; int32 all the way to
@@ -302,7 +316,7 @@ func collectUnits(ctx context.Context, q CreateStore, reservationID uuid.UUID, i
 			return nil, fmt.Errorf("%w (seat_key=%s)", ErrMissingUnitPrice, s.SeatKey)
 		}
 		seatID := s.ID
-		units = append(units, unit{tierID: *s.TierID, sessionSeatID: &seatID, unitPrice: price})
+		units = append(units, unit{tierID: *s.TierID, sessionSeatID: &seatID, unitPrice: price, seated: s.Kind == "seat"})
 	}
 	return units, nil
 }
@@ -329,6 +343,42 @@ func seatPrice(s gen.SessionSeatRow, in CreateInput, lockedByTier map[uuid.UUID]
 // ─────────────────────────────────────────────────────────────────────────────
 // Proration
 // ─────────────────────────────────────────────────────────────────────────────
+
+// allocateCharge splits the order-level charge across units. Without a
+// commission hook it is the price-weighted prorate it always was. With one
+// (fee_mode buyer_pays), every unit first takes its own commission
+// perTicket(currency, price, seated), the same per-ticket amount the cart
+// was priced with, and only the remainder (the channel's percentage) is
+// prorated by price: a cheap ticket must carry its whole fixed commission or
+// billing, which rates each ticket at min(its charge, the platform rate),
+// would bill less than the buyer paid. A cart whose amount after the promo
+// code is 0 paid no commission (hcheckout.LinesCommission). If the charge is
+// smaller than the commissions (the cart was priced without them, or under
+// other terms), the plain prorate is used: the order sums stay exact and
+// billing charges what was paid.
+func allocateCharge(units []unit, prices []int64, discounted, charge int64, currency string,
+	perTicket func(currency string, unitPrice int64, seated bool) int64,
+) []int64 {
+	if perTicket == nil || discounted <= 0 || charge <= 0 {
+		return prorate(charge, prices)
+	}
+	fixed := make([]int64, len(units))
+	var sum int64
+	for i, u := range units {
+		if c := perTicket(currency, u.unitPrice, u.seated); c > 0 {
+			fixed[i] = c
+			sum += c
+		}
+	}
+	if sum == 0 || sum > charge {
+		return prorate(charge, prices)
+	}
+	rest := prorate(charge-sum, prices)
+	for i := range rest {
+		rest[i] += fixed[i]
+	}
+	return rest
+}
 
 // prorate distributes `amount` (minor currency units) across units weighted by
 // their prices, using largest-remainder so the shares sum EXACTLY to amount.
