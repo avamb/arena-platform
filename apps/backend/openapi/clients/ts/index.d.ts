@@ -1665,6 +1665,214 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/billing/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - list platform invoices
+         * @description Lists platform invoices in one state, newest first. Requires JWT, billing.admin and a platform superadmin.
+         */
+        get: operations["getV1AdminBillingInvoices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/invoices/{invoice_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - one platform invoice
+         * @description One invoice with its lines. Requires JWT, billing.admin and a platform superadmin.
+         */
+        get: operations["getV1AdminBillingInvoice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/accounts/{account_id}/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - make a usage invoice
+         * @description Makes a DRAFT usage invoice of a finished month (in the issuer's time zone) from every charge no credit lot or earlier invoice covered. 200 with a null invoice when there is nothing to bill. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction.
+         */
+        post: operations["postV1AdminBillingAccountInvoices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/invoices/{invoice_id}/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - issue a draft invoice
+         * @description Gives a draft invoice its number, payment reference and due date and, for a card payment, the payment system fee line. The Stripe payment page is made after the commit; when that fails the answer carries payment_url_error. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction.
+         */
+        post: operations["postV1AdminBillingInvoiceIssue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/invoices/{invoice_id}/mark-paid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - record a payment that arrived outside the webhooks
+         * @description Records money that arrived some other way (a transfer the bank feed missed). Same amount rule as a bank transfer. A pack's credits are written in the same transaction. Repeating the same call changes nothing. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction.
+         */
+        post: operations["postV1AdminBillingInvoiceMarkPaid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/invoices/{invoice_id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - void an invoice
+         * @description Voids a draft or unpaid invoice; its charges go back to the next invoice. Stripe is closed first, and when Stripe says the money already arrived nothing is voided (409). A paid invoice is never voided; correct it with a credit note. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction.
+         */
+        post: operations["postV1AdminBillingInvoiceVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/payment-fees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - list payment fee versions
+         * @description Lists every version of the average card fee a card payer adds to an invoice. Requires JWT, billing.admin and a platform superadmin.
+         */
+        get: operations["getV1AdminBillingPaymentFees"];
+        put?: never;
+        /**
+         * Admin - add a payment fee version
+         * @description Adds a new version of the card fee. It must start in the future and after the latest version of its method and currency, so no issued invoice changes. There is no default: the operator types the numbers. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction.
+         */
+        post: operations["postV1AdminBillingPaymentFees"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/bank-transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - list incoming bank payments
+         * @description Lists incoming bank payments, newest first. Requires JWT, billing.admin and a platform superadmin.
+         */
+        get: operations["getV1AdminBillingBankTransactions"];
+        put?: never;
+        /**
+         * Admin - import a bank statement
+         * @description Imports a statement the operator pastes when a bank has no feed. Same rules as the bank webhook with the provider manual; each transfer is stored once and matched like a webhook transfer. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction.
+         */
+        post: operations["postV1AdminBillingBankTransactions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/bank-transactions/{transaction_id}/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - match a bank payment to an invoice
+         * @description Ties an unmatched payment to an invoice (a payer forgot the reference). Same amount rule as automatic matching. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction.
+         */
+        post: operations["postV1AdminBillingBankTransactionMatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/bank-transactions/{transaction_id}/ignore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - ignore a bank payment
+         * @description Marks a payment that is not for an invoice (a refund from a supplier, a test transfer) as ignored. A matched payment cannot be ignored. Requires JWT, billing.admin and a platform superadmin. Needs the X-Admin-Reason header and writes an audit row on the same transaction.
+         */
+        post: operations["postV1AdminBillingBankTransactionIgnore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/users/{user_id}/global-roles": {
         parameters: {
             query?: never;
@@ -6970,8 +7178,34 @@ export interface paths {
         /**
          * Receive Stripe Billing webhook events
          * @description Unauthenticated endpoint. Stripe-signature verified inside the handler.
+         *     When BILLING_STRIPE_SECRET_KEY is set it books platform invoices paid
+         *     by Stripe Checkout (checkout.session.completed with payment_status
+         *     paid, checkout.session.async_payment_succeeded) or by a hosted Stripe
+         *     invoice (invoice.paid), verified with BILLING_STRIPE_WEBHOOK_SECRET.
+         *     It is idempotent by event id. A database failure answers 500 so Stripe
+         *     redelivers; a bad signature answers 401.
          */
         post: operations["stripeBillingWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/bank/webhook/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive incoming bank transfers
+         * @description Unauthenticated endpoint guarded by a signature. A bank (or an aggregator) posts incoming transfers; the body is signed in the X-Arena-Signature header as sha256=<hex HMAC-SHA256 of the raw body> keyed with BILLING_BANK_WEBHOOK_SECRET. Each transfer is stored once per provider and external id, and matched to the issued platform invoice whose payment reference it carries and whose amount it equals (the total, or the total without the card fee). Anything else waits for an operator. Outgoing and zero amounts are skipped, a repeat of a transfer is a no-op. Answers 503 while the secret is not configured.
+         */
+        post: operations["postV1BillingBankWebhook"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7054,6 +7288,226 @@ export interface paths {
          * @description Get billing usage summary for an organization.
          */
         get: operations["getOrgBillingUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/charges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List what the platform charged an organization
+         * @description Lists the charges the platform made to the organization, newest event first, with the sums per currency over the whole filter. Read-only and preliminary: nothing is invoiced yet. A reversal row has reversal_of set and a negative amount. Requires JWT and billing.read in the organization (the owner; the manager does not hold it).
+         */
+        get: operations["listOrgBillingCharges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/balance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Credit balance of an organization
+         * @description Per billing account (one per currency): what can be spent now, of it how much is bonus and when the nearest bonus expires, the per-ticket rate of the purchased lot that pays next, and the lots that still hold something. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
+         */
+        get: operations["getV1OrgBillingBalance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Credit packs on offer
+         * @description The active packs of the price list in force now for each billing account of the organization, with the card fee a card payment would add (null when card payment is not set up). Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
+         */
+        get: operations["getV1OrgBillingPacks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/service-fee-quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Service charge that covers the platform commission
+         * @description For an organizer who lets the buyer pay the platform commission as the service charge (terms fee_mode buyer_pays): the price-list or individual rate of one sold ticket at this price right now, computed by the code that bills the sale. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
+         */
+        get: operations["getV1OrgBillingServiceFeeQuote"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Credit journal of an organization
+         * @description The credit journal of one billing account, newest entry first, keyset paged by seq. Without account_id the first account is used; an organization without accounts gets an empty list. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
+         */
+        get: operations["getV1OrgBillingLedger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/account-invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Platform invoices of an organization
+         * @description Lists the invoices the platform issued to the organization, newest first. A draft is the operator's and is not listed. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
+         */
+        get: operations["getV1OrgBillingAccountInvoices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/account-invoices/{invoice_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One platform invoice of an organization
+         * @description One invoice with its lines. An invoice of another organization, a draft, or an unknown id is 404. Requires JWT and billing.read in the path organization. While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
+         */
+        get: operations["getV1OrgBillingAccountInvoice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/packs/{pack_id}/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Order a credit pack
+         * @description Creates an issued credit_pack invoice for the pack. A bank transfer gets the payment reference to write in the transfer; a card payment gets a Stripe Checkout page (payment_url) and a payment system fee line. The credits appear when the payment is recorded. The Idempotency-Key header is required: a repeat answers the first invoice with 200. Requires JWT and billing.purchase in the path organization (the owner; never an API key). While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
+         */
+        post: operations["postV1OrgBillingPackOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/account-invoices/{invoice_id}/pay-by-card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open the card payment page of an invoice
+         * @description Returns the Stripe payment page of an issued invoice that is paid by card, making it on first use (Checkout for a credit pack, a hosted Stripe invoice for a usage invoice). Requires JWT and billing.purchase in the path organization (the owner; never an API key). While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
+         */
+        post: operations["postV1OrgBillingInvoicePayByCard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/payer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the payer details of an organization
+         * @description Sets the details printed on the organization's invoices. They are stored on every billing account of the organization. Requires JWT and billing.payer_manage in the path organization (the owner). While BILLING_ORGANIZER_ENABLED is off (the default) it answers 404 billing.organizer_disabled.
+         */
+        put: operations["putV1OrgBillingPayer"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/events/{event_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the platform charged for one event
+         * @description The charge summary of one event of the organization: sums per currency, the net charge per rule (the lines of the future invoice), the summary per session and the number of billing events per kind. Read-only and preliminary. Requires JWT and billing.read in the organization.
+         */
+        get: operations["getOrgBillingEventSummary"];
         put?: never;
         post?: never;
         delete?: never;
@@ -25095,6 +25549,209 @@ export interface components {
              */
             effective_to: string;
         };
+        /** @description One charge. A reversal has reversal_of set and a negative amount, and carries the time of the event it reverses. */
+        BillingChargeItem: {
+            /**
+             * Format: uuid
+             * @description Id of the charge.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Id of the billing event the charge rates.
+             */
+            billable_event_id: string;
+            /**
+             * @description Kind of the billing event: ticket_sold, ticket_refunded, ticket_cancelled, session_cancelled, event_published or ticket_complimentary.
+             * @example ticket_sold
+             */
+            kind: string;
+            /**
+             * Format: date-time
+             * @description When the event happened.
+             */
+            occurred_at: string;
+            /**
+             * Format: date-time
+             * @description When the charge was made.
+             */
+            rated_at: string;
+            /**
+             * Format: uuid
+             * @description The event the charge belongs to, when it has one.
+             */
+            event_id: string | null;
+            /**
+             * Format: uuid
+             * @description The session the charge belongs to, when it has one.
+             */
+            session_id: string | null;
+            /**
+             * Format: uuid
+             * @description The order of a sale, when there is one.
+             */
+            order_id: string | null;
+            /**
+             * @description Currency of amount_minor, the currency of the billing account.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description The charge in minor units of currency. Zero for a free or journal-only event, negative for a reversal.
+             */
+            amount_minor: number;
+            /**
+             * @description The rule that rated the event (none when no rule applied).
+             * @example fixed_per_ticket
+             */
+            rule_type: string;
+            /** @description Why the amount is zero or reduced, when it is. */
+            reason: string | null;
+            /**
+             * Format: uuid
+             * @description Set when this row reverses another charge.
+             */
+            reversal_of: string | null;
+            /**
+             * Format: int32
+             * @description Version of the price list in force at the event time.
+             */
+            price_list_version: number | null;
+            /** @description standard or low_price, for a sale. */
+            pricing_class: string | null;
+            /** @description Whether the sold place was a numbered seat. */
+            seated: boolean | null;
+            /** @description Currency the ticket was sold in. */
+            sale_currency: string | null;
+            /**
+             * Format: int64
+             * @description Face price of the ticket in minor units of sale_currency.
+             */
+            unit_price_minor: number | null;
+        };
+        /** @description The sum of charges in one currency. Sums are never added across currencies. */
+        BillingChargeTotal: {
+            /**
+             * @description Currency of the sums.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Sum of the direct charges in minor units.
+             */
+            charged_minor: number;
+            /**
+             * Format: int64
+             * @description Sum of the reversals in minor units, zero or negative.
+             */
+            reversed_minor: number;
+            /**
+             * Format: int64
+             * @description charged_minor plus reversed_minor.
+             */
+            net_minor: number;
+            /**
+             * Format: int64
+             * @description Number of direct charges.
+             */
+            count: number;
+        };
+        /** @description A page of charges with the sums over the whole filter. */
+        BillingChargeList: {
+            /** @description The charges of this page, newest event first. */
+            items: components["schemas"]["BillingChargeItem"][];
+            /** @description Sums per currency over the whole filter, not only this page. */
+            totals: components["schemas"]["BillingChargeTotal"][];
+            /** @description Pass it as cursor to get the next page. Null on the last page. */
+            next_cursor: string | null;
+            /** @description Always true while invoices are not issued. The numbers are what has been charged so far. */
+            preliminary: boolean;
+        };
+        /** @description The net charge of one rule in one currency, a line of the future invoice. */
+        BillingChargeRuleLine: {
+            /**
+             * @description The rule that rated the events.
+             * @example fixed_per_ticket
+             */
+            rule_type: string;
+            /** @description Why the amount is zero or reduced, when it is. */
+            reason: string | null;
+            /**
+             * @description Currency of net_minor.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Direct charges plus reversals of this rule, in minor units.
+             */
+            net_minor: number;
+            /**
+             * Format: int64
+             * @description Number of direct charges.
+             */
+            count: number;
+        };
+        /** @description The charge summary of one session of an event in one currency. */
+        BillingChargeSessionLine: {
+            /**
+             * Format: uuid
+             * @description The session. Null for charges that belong to the event as a whole.
+             */
+            session_id: string | null;
+            /**
+             * Format: date-time
+             * @description Start of the session. Null when it has none.
+             */
+            session_start_at: string | null;
+            /**
+             * @description Currency of the sums.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Sum of the direct charges in minor units.
+             */
+            charged_minor: number;
+            /**
+             * Format: int64
+             * @description Sum of the reversals in minor units, zero or negative.
+             */
+            reversed_minor: number;
+            /**
+             * Format: int64
+             * @description charged_minor plus reversed_minor.
+             */
+            net_minor: number;
+            /**
+             * Format: int64
+             * @description Number of direct charges.
+             */
+            count: number;
+        };
+        /** @description What the platform charged for one event of the organization. */
+        BillingEventSummary: {
+            /**
+             * Format: uuid
+             * @description The event.
+             */
+            event_id: string;
+            /** @description Sums per currency. */
+            totals: components["schemas"]["BillingChargeTotal"][];
+            /** @description The net charge per rule and currency. */
+            by_rule: components["schemas"]["BillingChargeRuleLine"][];
+            /** @description The summary per session and currency, earliest session first. */
+            by_session: components["schemas"]["BillingChargeSessionLine"][];
+            /** @description The number of billing events of this event by kind. */
+            events_by_kind: {
+                [key: string]: number;
+            };
+            /** @description Always true while invoices are not issued. */
+            preliminary: boolean;
+        };
         /** @description One dated row of the conditions of a billing account. The terms of an event are the last row that started before the event. */
         BillingAccountTerms: {
             /**
@@ -25139,6 +25796,8 @@ export interface components {
              * @description Days to pay an invoice.
              */
             due_days: number | null;
+            /** @description Who pays the platform commission on a sold ticket, organizer_pays (the organizer is billed) or buyer_pays (the buyer pays it as the service charge). */
+            fee_mode: string;
             /** @description Whether only a superadmin may change the row. */
             locked: boolean;
             /** @description Id of the operator who created the row, or migration. */
@@ -25238,6 +25897,734 @@ export interface components {
              * @description Days to pay an invoice.
              */
             due_days?: number | null;
+            /** @description Who pays the platform commission on a sold ticket, organizer_pays (default) or buyer_pays. Any other value is 422 billing.invalid_terms. */
+            fee_mode?: string;
+        };
+        /** @description The per-ticket rate of the purchased lot that pays next. */
+        BillingCurrentRate: {
+            /**
+             * Format: int32
+             * @description Tier of the pack the lot was bought in.
+             */
+            tier: number | null;
+            /**
+             * Format: int64
+             * @description Price of one unseated ticket in minor units of the account currency.
+             */
+            unseated_rate_minor: number | null;
+            /**
+             * Format: int64
+             * @description Extra price of a seated ticket in minor units.
+             */
+            seated_surcharge_minor: number | null;
+        };
+        /** @description A credit lot that still holds something. */
+        BillingCreditLot: {
+            /**
+             * Format: uuid
+             * @description Lot id.
+             */
+            id: string;
+            /**
+             * @description purchased or bonus.
+             * @example purchased
+             */
+            kind: string;
+            /** @description How the lot came to be: a pack purchase, a campaign, or a cancelled session. */
+            source: string;
+            /**
+             * @description Currency of the money fields.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int32
+             * @description Tier of the pack a purchased lot was bought in, null for a bonus lot.
+             */
+            tier: number | null;
+            /**
+             * Format: int64
+             * @description Price of one unseated ticket this lot pays, minor units. Null for a bonus lot.
+             */
+            unseated_rate_minor: number | null;
+            /**
+             * Format: int64
+             * @description Extra price of a seated ticket, minor units. Null for a bonus lot.
+             */
+            seated_surcharge_minor: number | null;
+            /**
+             * Format: int64
+             * @description What the lot was worth when it was made, minor units.
+             */
+            face_minor: number;
+            /**
+             * Format: int64
+             * @description What is left, minor units.
+             */
+            remaining_minor: number;
+            /**
+             * Format: date-time
+             * @description When the lot was made.
+             */
+            purchased_at: string;
+            /**
+             * Format: date-time
+             * @description When the rest expires, null when it does not.
+             */
+            expires_at: string | null;
+        };
+        /** @description The balance of one billing account (one per currency). */
+        BillingAccountBalance: {
+            /**
+             * Format: uuid
+             * @description Billing account id.
+             */
+            account_id: string;
+            /**
+             * @description Currency of the account.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description What can be spent now: purchased plus bonus, minor units.
+             */
+            balance_minor: number;
+            /**
+             * Format: int64
+             * @description Purchased credits left, minor units.
+             */
+            purchased_minor: number;
+            /**
+             * Format: int64
+             * @description Bonus credits left, minor units.
+             */
+            bonus_minor: number;
+            /**
+             * Format: date-time
+             * @description When the nearest bonus expires, null when none does.
+             */
+            next_bonus_expires_at: string | null;
+            /** @description The rate of the purchased lot that pays next, null when there is none. */
+            current_rate: components["schemas"]["BillingCurrentRate"] | null;
+            /** @description The lots that still hold something. */
+            lots: components["schemas"]["BillingCreditLot"][];
+        };
+        /** @description The credit balances of an organization. */
+        BillingBalanceResponse: {
+            /** @description One balance per billing account. */
+            accounts: components["schemas"]["BillingAccountBalance"][];
+        };
+        /** @description A credit pack on offer. */
+        BillingPackOffer: {
+            /**
+             * Format: uuid
+             * @description Pack id, used to order it.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Billing account the pack is bought for.
+             */
+            account_id: string;
+            /**
+             * @description Currency of the money fields.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int32
+             * @description Tier number of the pack.
+             */
+            tier: number;
+            /**
+             * Format: int64
+             * @description Price of the pack, minor units.
+             */
+            face_minor: number;
+            /**
+             * Format: int64
+             * @description Price of one unseated ticket paid from this pack, minor units.
+             */
+            unseated_rate_minor: number;
+            /**
+             * Format: int64
+             * @description Extra price of a seated ticket, minor units.
+             */
+            seated_surcharge_minor: number;
+            /**
+             * Format: int64
+             * @description How many unseated tickets the pack pays.
+             */
+            tickets_unseated: number;
+            /**
+             * Format: int64
+             * @description The fee a card payment adds, minor units. Null when card payment is not set up.
+             */
+            card_fee_minor: number | null;
+            /** @description True when the pack can be paid by card now. */
+            card_payment_available: boolean;
+        };
+        /** @description The credit packs on offer. */
+        BillingPackList: {
+            /** @description The active packs of every account. */
+            packs: components["schemas"]["BillingPackOffer"][];
+        };
+        /** @description Body of POST /v1/organizations/{org_id}/billing/packs/{pack_id}/order. */
+        BillingOrderPackRequest: {
+            /**
+             * @description bank_transfer or stripe_card.
+             * @example bank_transfer
+             */
+            payment_method: string;
+        };
+        /** @description A line of a platform invoice. */
+        BillingAccountInvoiceLine: {
+            /**
+             * Format: uuid
+             * @description Line id.
+             */
+            id: string;
+            /** @description Kind of the line, for example a rate line or the payment system fee. */
+            kind: string;
+            /** @description The pricing rule the line is rated by, null for other lines. */
+            rule_type: string | null;
+            /** @description Text printed on the invoice. */
+            description: string;
+            /**
+             * Format: int64
+             * @description Quantity.
+             */
+            quantity: number;
+            /**
+             * Format: int64
+             * @description Price of one unit, minor units.
+             */
+            unit_amount_minor: number;
+            /**
+             * Format: int64
+             * @description Quantity times the unit price, minor units.
+             */
+            total_amount_minor: number;
+            /**
+             * @description Currency of the line.
+             * @example EUR
+             */
+            currency: string;
+        };
+        /** @description A platform invoice to an organization. */
+        BillingAccountInvoice: {
+            /**
+             * Format: uuid
+             * @description Invoice id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Organization the invoice is for.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Billing account, null for a legacy invoice.
+             */
+            account_id: string | null;
+            /**
+             * @description usage, credit_pack, credit_note, subscription or manual.
+             * @example credit_pack
+             */
+            kind: string;
+            /**
+             * @description draft, issued, paid or void.
+             * @example issued
+             */
+            state: string;
+            /** @description Invoice number, null until the invoice is issued. */
+            number: string | null;
+            /** @description The month the invoice is for, YYYY-MM. */
+            billing_period: string;
+            /** @description bank_transfer or stripe_card, null until the invoice is issued. */
+            payment_method: string | null;
+            /** @description The reference to write in a bank transfer, null until issued. */
+            payment_reference: string | null;
+            /**
+             * @description Currency of the money fields.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Total of the lines before the card fee and tax, minor units.
+             */
+            subtotal_minor: number;
+            /**
+             * Format: int64
+             * @description The card payment fee, minor units, 0 for a bank transfer.
+             */
+            card_fee_minor: number;
+            /**
+             * Format: int64
+             * @description Tax, minor units.
+             */
+            tax_minor: number;
+            /**
+             * Format: int64
+             * @description What is to be paid, minor units.
+             */
+            total_minor: number;
+            /**
+             * Format: date-time
+             * @description Start of the billed period, for a usage invoice.
+             */
+            period_from: string | null;
+            /**
+             * Format: date-time
+             * @description End of the billed period, for a usage invoice.
+             */
+            period_to: string | null;
+            /**
+             * Format: date-time
+             * @description When the invoice was issued.
+             */
+            issued_at: string | null;
+            /**
+             * Format: date-time
+             * @description When payment is due.
+             */
+            due_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the payment was recorded.
+             */
+            paid_at: string | null;
+            /**
+             * Format: int64
+             * @description The amount that was paid, minor units.
+             */
+            paid_amount_minor: number | null;
+            /** @description How it was paid, for example stripe_card, bank_transfer or manual. */
+            paid_via: string | null;
+            /**
+             * Format: date-time
+             * @description When the invoice was voided.
+             */
+            voided_at: string | null;
+            /** @description The Stripe payment page of a card invoice, null when there is none. */
+            payment_url: string | null;
+            /**
+             * Format: uuid
+             * @description The credit pack a credit_pack invoice is for.
+             */
+            pack_id: string | null;
+            /** @description The lines, in order. */
+            lines: components["schemas"]["BillingAccountInvoiceLine"][];
+            /** @description Present only in the answer to ordering a pack or issuing an invoice for a card payment when the Stripe page could not be made; the page can be opened later. */
+            payment_url_error?: string;
+        };
+        /** @description A page of platform invoices of an organization. */
+        BillingAccountInvoiceList: {
+            /** @description The invoices, newest first. */
+            invoices: components["schemas"]["BillingAccountInvoice"][];
+            /** @description True when there are more invoices after this page. */
+            has_more: boolean;
+        };
+        /** @description Platform invoices in one state. */
+        BillingAdminInvoiceList: {
+            /** @description The invoices, newest first. */
+            invoices: components["schemas"]["BillingAccountInvoice"][];
+        };
+        /** @description The card payment page of an invoice. */
+        BillingPayByCardResponse: {
+            /**
+             * Format: uuid
+             * @description Invoice id.
+             */
+            invoice_id: string;
+            /** @description The Stripe payment page. */
+            payment_url: string | null;
+        };
+        /** @description One entry of the credit journal. */
+        BillingLedgerEntry: {
+            /**
+             * Format: int64
+             * @description Position in the journal; the next_before paging value.
+             */
+            seq: number;
+            /**
+             * Format: uuid
+             * @description The credit lot the entry is about.
+             */
+            lot_id: string;
+            /** @description What happened to the lot, for example purchase, consume, expire or restore. */
+            entry_type: string;
+            /**
+             * Format: int64
+             * @description Always positive; the sign follows from entry_type. Minor units.
+             */
+            amount_minor: number;
+            /**
+             * @description Currency of the money fields.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description What the lot held after the entry, minor units.
+             */
+            remaining_after: number;
+            /**
+             * Format: uuid
+             * @description The charge a consume entry paid.
+             */
+            charge_id: string | null;
+            /**
+             * Format: uuid
+             * @description The invoice a purchase entry belongs to.
+             */
+            invoice_id: string | null;
+            /** @description Why, when it is recorded. */
+            reason: string | null;
+            /**
+             * Format: date-time
+             * @description When the entry was made.
+             */
+            created_at: string;
+        };
+        /** @description The platform commission of one sold ticket at a price, now. */
+        BillingServiceFeeQuote: {
+            /**
+             * Format: uuid
+             * @description Billing account the commission is charged to.
+             */
+            account_id: string;
+            /** @description Currency of service_fee_minor (the account's). */
+            currency: string;
+            /** @description Currency of the ticket price asked about. */
+            ticket_currency: string;
+            /**
+             * Format: int64
+             * @description The ticket price asked about, minor units.
+             */
+            price_minor: number;
+            /** @description Whether the ticket is a seat on a plan. */
+            seated: boolean;
+            /** @description standard or low_price, as the sale would be classified. */
+            pricing_class: string;
+            /** @description The account's fee mode now: organizer_pays or buyer_pays. */
+            fee_mode: string;
+            /**
+             * Format: int64
+             * @description Commission per ticket in minor units of currency: the service charge that covers the platform in fee_mode buyer_pays.
+             */
+            service_fee_minor: number;
+            /** @description Price-list rule that computed it. */
+            rule_type: string;
+            /** @description Why the amount is what it is (free, override), null for a plain rule. */
+            reason?: string | null;
+            /**
+             * Format: int32
+             * @description Version of the price list in force.
+             */
+            price_list_version: number;
+        };
+        /** @description A page of the credit journal of one billing account. */
+        BillingLedgerResponse: {
+            /**
+             * Format: uuid
+             * @description The billing account. Absent when the organization has no account.
+             */
+            account_id?: string;
+            /**
+             * @description Currency of the account. Absent when the organization has no account.
+             * @example EUR
+             */
+            currency?: string;
+            /** @description The entries, newest first. */
+            entries: components["schemas"]["BillingLedgerEntry"][];
+            /**
+             * Format: int64
+             * @description Pass it as before to get the next page. Null on the last page.
+             */
+            next_before: number | null;
+        };
+        /** @description The payer details printed on invoices (body and answer of PUT /v1/organizations/{org_id}/billing/payer). */
+        BillingPayerRequest: {
+            /** @description Legal name of the payer, 1 to 200 characters. */
+            legal_name: string;
+            /** @description Address, at most 500 characters. */
+            address?: string;
+            /**
+             * @description Two-letter country code in capitals, or empty.
+             * @example ES
+             */
+            country?: string;
+            /** @description Tax number, at most 50 characters. */
+            tax_id?: string;
+            /** @description E-mail address for invoices, or empty. */
+            email?: string;
+        };
+        /** @description The stored payer details. */
+        BillingPayerResponse: {
+            /** @description The details as stored, after trimming. */
+            payer: components["schemas"]["BillingPayerRequest"];
+            /**
+             * Format: int64
+             * @description How many billing accounts of the organization were updated.
+             */
+            accounts_updated: number;
+        };
+        /** @description Body of POST /v1/admin/billing/accounts/{account_id}/invoices. */
+        BillingCreateUsageInvoiceRequest: {
+            /**
+             * @description The finished month to bill, YYYY-MM.
+             * @example 2026-09
+             */
+            period: string;
+        };
+        /** @description A made usage invoice. */
+        BillingUsageInvoiceResult: {
+            /** @description The draft invoice, null when there was nothing to bill. */
+            invoice: components["schemas"]["BillingAccountInvoice"] | null;
+        };
+        /** @description Body of POST /v1/admin/billing/invoices/{invoice_id}/issue. */
+        BillingIssueInvoiceRequest: {
+            /**
+             * @description bank_transfer or stripe_card.
+             * @example bank_transfer
+             */
+            payment_method: string;
+        };
+        /** @description Body of POST /v1/admin/billing/invoices/{invoice_id}/mark-paid. */
+        BillingMarkInvoicePaidRequest: {
+            /**
+             * Format: int64
+             * @description The amount that arrived, minor units, positive. It must match the invoice like a bank transfer does.
+             */
+            amount_minor: number;
+            /**
+             * Format: date-time
+             * @description When the money arrived. It cannot be in the future.
+             */
+            paid_at: string;
+            /** @description The bank statement line or other proof, 1 to 200 characters. */
+            reference: string;
+        };
+        /** @description Body of POST /v1/admin/billing/invoices/{invoice_id}/void. */
+        BillingVoidInvoiceRequest: {
+            /** @description Why the invoice is voided, 1 to 500 characters. */
+            reason: string;
+        };
+        /** @description A version of the average card fee. */
+        BillingPaymentFee: {
+            /**
+             * Format: uuid
+             * @description Version id.
+             */
+            id: string;
+            /**
+             * @description Payment method, stripe_card.
+             * @example stripe_card
+             */
+            method: string;
+            /**
+             * @description Currency the fee applies to.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int32
+             * @description Percentage part in basis points.
+             */
+            pct_bp: number;
+            /**
+             * Format: int64
+             * @description Fixed part in minor units.
+             */
+            fixed_minor: number;
+            /**
+             * Format: date-time
+             * @description When the version starts.
+             */
+            effective_from: string;
+            /** @description The reason the operator gave. */
+            reason: string | null;
+            /**
+             * Format: date-time
+             * @description When the version was added.
+             */
+            created_at: string;
+        };
+        /** @description Every version of the card fee. */
+        BillingPaymentFeeList: {
+            /** @description The versions. */
+            payment_fees: components["schemas"]["BillingPaymentFee"][];
+        };
+        /** @description Body of POST /v1/admin/billing/payment-fees. */
+        BillingCreatePaymentFeeRequest: {
+            /**
+             * @description Payment method, stripe_card.
+             * @example stripe_card
+             */
+            method: string;
+            /**
+             * @description Three-letter currency code.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int32
+             * @description Percentage part in basis points, 0 to 2000.
+             */
+            pct_bp: number;
+            /**
+             * Format: int64
+             * @description Fixed part in minor units, 0 to 100000.
+             */
+            fixed_minor: number;
+            /**
+             * Format: date-time
+             * @description When the version starts. It must be in the future and after the latest version of the method and currency.
+             */
+            effective_from: string;
+        };
+        /** @description One incoming bank transfer as a bank posts it. */
+        BillingBankTransfer: {
+            /** @description The bank's own id of the transfer, 1 to 200 characters. A repeat of it is a no-op. */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When the bank booked the transfer.
+             */
+            booked_at: string;
+            /**
+             * Format: int64
+             * @description The amount in minor units. Zero or negative amounts are skipped as not a payment.
+             */
+            amount_minor: number;
+            /**
+             * @description Three-letter currency code.
+             * @example EUR
+             */
+            currency: string;
+            /** @description The payment reference the payer wrote, at most 1000 characters. */
+            reference?: string;
+            /** @description The payer's name as the bank shows it, at most 300 characters. */
+            counterparty_name?: string;
+        };
+        /** @description Body of the bank webhook and of POST /v1/admin/billing/bank-transactions. */
+        BillingBankImportRequest: {
+            /** @description 1 to 500 transfers. */
+            transactions: components["schemas"]["BillingBankTransfer"][];
+        };
+        /** @description Body of POST /v1/admin/billing/bank-transactions/{transaction_id}/match. */
+        BillingBankMatchRequest: {
+            /**
+             * Format: uuid
+             * @description The invoice the payment paid.
+             */
+            invoice_id: string;
+        };
+        /** @description Body of POST /v1/admin/billing/bank-transactions/{transaction_id}/ignore. */
+        BillingBankIgnoreRequest: {
+            /** @description Why the payment is ignored, 1 to 500 characters. */
+            reason: string;
+        };
+        /** @description What happened to one transfer of a delivery. */
+        BillingBankIngestItem: {
+            /** @description The bank's id of the transfer. */
+            id: string;
+            /**
+             * @description duplicate, matched or unmatched.
+             * @example matched
+             */
+            status: string;
+            /**
+             * Format: uuid
+             * @description Id of the stored payment. Absent for a duplicate.
+             */
+            transaction_id?: string;
+            /**
+             * Format: uuid
+             * @description The invoice the payment was matched to. Present when matched.
+             */
+            invoice_id?: string;
+            /** @description Number of that invoice. Present when matched. */
+            invoice_number?: string | null;
+            /** @description Why the payment waits for an operator. Present when unmatched. */
+            unmatched_reason?: string;
+        };
+        /** @description The summary of one delivery of transfers. */
+        BillingBankIngestResult: {
+            /** @description How many transfers the delivery held. */
+            received: number;
+            /** @description Outgoing or zero movements that were not stored. */
+            skipped: number;
+            /** @description Transfers stored before. */
+            duplicate: number;
+            /** @description Transfers matched to an invoice, which is now paid. */
+            matched: number;
+            /** @description Transfers stored and waiting for an operator. */
+            unmatched: number;
+            /** @description One entry per stored or repeated transfer. */
+            items: components["schemas"]["BillingBankIngestItem"][];
+        };
+        /** @description An incoming bank payment. */
+        BillingBankTransaction: {
+            /**
+             * Format: uuid
+             * @description Payment id.
+             */
+            id: string;
+            /** @description The bank or aggregator, or manual for an operator's import. */
+            provider: string;
+            /** @description The bank's own id of the transfer. */
+            external_id: string;
+            /**
+             * Format: date-time
+             * @description When the bank booked the transfer.
+             */
+            booked_at: string;
+            /**
+             * Format: int64
+             * @description The amount in minor units.
+             */
+            amount_minor: number;
+            /**
+             * @description Currency of the amount.
+             * @example EUR
+             */
+            currency: string;
+            /** @description The payment reference the payer wrote. */
+            reference: string | null;
+            /** @description The payer's name as the bank shows it. */
+            counterparty_name: string | null;
+            /**
+             * @description matched, unmatched or ignored.
+             * @example unmatched
+             */
+            status: string;
+            /** @description Why the payment is not matched, or why it was ignored. */
+            unmatched_reason: string | null;
+            /**
+             * Format: uuid
+             * @description The invoice the payment paid.
+             */
+            invoice_id: string | null;
+            /**
+             * Format: date-time
+             * @description When it was matched.
+             */
+            matched_at: string | null;
+            /**
+             * Format: date-time
+             * @description When arena received it.
+             */
+            received_at: string;
+        };
+        /** @description Incoming bank payments. */
+        BillingBankTransactionList: {
+            /** @description The payments, newest first. */
+            transactions: components["schemas"]["BillingBankTransaction"][];
         };
     };
     responses: never;
@@ -30053,6 +31440,945 @@ export interface operations {
             };
             /** @description A field is not valid, the start is not in the future, or the price list does not fit the plan */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminBillingInvoices: {
+        parameters: {
+            query?: {
+                /** @description draft, issued, paid or void. Default issued. */
+                state?: string;
+                /** @description Page size, 1 to 200. Default 100. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invoices. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAdminInvoiceList"];
+                };
+            };
+            /** @description A parameter or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminBillingInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Invoice UUID. */
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invoice. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccountInvoice"];
+                };
+            };
+            /** @description A parameter or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingAccountInvoices: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Billing account UUID. */
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingCreateUsageInvoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description There was nothing to bill: invoice is null. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingUsageInvoiceResult"];
+                };
+            };
+            /** @description The draft invoice. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingUsageInvoiceResult"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description There is no such billing account */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The period is not valid or the month is not over yet */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingInvoiceIssue: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Invoice UUID. */
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingIssueInvoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description The issued invoice. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccountInvoice"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Only a draft invoice can be issued */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description payment_method is not valid or the card fee is not configured for the currency */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Card payment is not configured, or billing is not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingInvoiceMarkPaid: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Invoice UUID. */
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingMarkInvoicePaidRequest"];
+            };
+        };
+        responses: {
+            /** @description The invoice after the payment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccountInvoice"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The invoice is not open for payment or is already paid */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is not valid or the amount does not match the invoice */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingInvoiceVoid: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Invoice UUID. */
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingVoidInvoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description The voided invoice. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccountInvoice"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The invoice is paid, Stripe has already collected it, or it is a legacy invoice */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The reason is missing or too long */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stripe could not close the payment page, nothing was voided */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminBillingPaymentFees: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The fee versions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingPaymentFeeList"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingPaymentFees: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingCreatePaymentFeeRequest"];
+            };
+        };
+        responses: {
+            /** @description The new fee version. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingPaymentFee"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is not valid, or effective_from is not in the future or not after the latest version */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminBillingBankTransactions: {
+        parameters: {
+            query?: {
+                /** @description matched, unmatched or ignored. Default all. */
+                status?: string;
+                /** @description Page size, 1 to 200. Default 100. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingBankTransactionList"];
+                };
+            };
+            /** @description A parameter or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingBankTransactions: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingBankImportRequest"];
+            };
+        };
+        responses: {
+            /** @description The result of the import. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingBankIngestResult"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The statement has no transfers, more than 500, or a transfer is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingBankTransactionMatch: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Bank payment UUID. */
+                transaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingBankMatchRequest"];
+            };
+        };
+        responses: {
+            /** @description The matched payment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingBankTransaction"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description There is no such payment or invoice */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The invoice is not open for payment or is already paid */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description invoice_id is not a UUID or the amount does not match the invoice */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingBankTransactionIgnore: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Bank payment UUID. */
+                transaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingBankIgnoreRequest"];
+            };
+        };
+        responses: {
+            /** @description The ignored payment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingBankTransaction"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description There is no such payment */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A matched payment paid an invoice and cannot be ignored */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The reason is missing or too long */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -49375,7 +51701,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid signature or malformed payload. */
+            /** @description Malformed payload. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -49384,7 +51710,100 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Webhook signature verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The payment could not be recorded yet; Stripe delivers the event again. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1BillingBankWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description sha256= followed by the hex HMAC-SHA256 of the raw request body. */
+                "X-Arena-Signature": string;
+            };
+            path: {
+                /** @description Name of the bank or aggregator, matching ^[a-z][a-z0-9_-]{1,39}$. The name manual is reserved for the operator's own import and is 404 here. */
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingBankImportRequest"];
+            };
+        };
+        responses: {
+            /** @description The delivery was processed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingBankIngestResult"];
+                };
+            };
+            /** @description The body is not {transactions: [...]} with 1 to 500 valid transfers */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The signature is missing or wrong */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown provider */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A transfer could not be stored; the bank should deliver the batch again */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The bank webhook is not configured */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -49614,6 +52033,841 @@ export interface operations {
                 };
             };
             /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listOrgBillingCharges: {
+        parameters: {
+            query?: {
+                /** @description Inclusive start of the event time, an RFC 3339 time or a YYYY-MM-DD date. */
+                from?: string;
+                /** @description Exclusive end of the event time, an RFC 3339 time or a YYYY-MM-DD date. It must be after from. */
+                to?: string;
+                /** @description Only the charges of this event of the organization. An event of another organization is 404. */
+                event_id?: string;
+                /** @description Page size, 1 to 200. Default 50. */
+                limit?: number;
+                /** @description The next_cursor of the previous page. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of charges. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingChargeList"];
+                };
+            };
+            /** @description A parameter is malformed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller is not a member of the organization or lacks billing.read there. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The event_id filter names an event that is not the organizations own. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrgBillingBalance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The balances. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingBalanceResponse"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organizer billing is not open yet (billing.organizer_disabled) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrgBillingPacks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The packs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingPackList"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organizer billing is not open yet (billing.organizer_disabled) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrgBillingServiceFeeQuote: {
+        parameters: {
+            query: {
+                /** @description Currency of the ticket price, a 3-letter code. */
+                currency: string;
+                /** @description Ticket price before the service charge, in minor units. */
+                price_minor: number;
+                /** @description true for a seat on a plan. Default false. */
+                seated?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The commission per ticket. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingServiceFeeQuote"];
+                };
+            };
+            /** @description A parameter is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization has no billing account for this currency, or organizer billing is not open yet (billing.organizer_disabled) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The account has no usable terms, or the commission is in another currency and cannot be converted yet */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrgBillingLedger: {
+        parameters: {
+            query?: {
+                /** @description Billing account of the organization. An account of another organization is 404. */
+                account_id?: string;
+                /** @description Only entries with seq below this value: the next_before of the previous page. */
+                before?: number;
+                /** @description Page size, 1 to 200. Default 50. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of journal entries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingLedgerResponse"];
+                };
+            };
+            /** @description A parameter or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization has no such billing account, or organizer billing is not open yet (billing.organizer_disabled) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrgBillingAccountInvoices: {
+        parameters: {
+            query?: {
+                /** @description Only invoices in this state: issued, paid or void. */
+                state?: string;
+                /** @description Page size, 1 to 100. Default 50. */
+                limit?: number;
+                /** @description Number of invoices to skip. Default 0. */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of invoices. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccountInvoiceList"];
+                };
+            };
+            /** @description A parameter or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organizer billing is not open yet (billing.organizer_disabled) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrgBillingAccountInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Invoice UUID. */
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invoice. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccountInvoice"];
+                };
+            };
+            /** @description A parameter or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or organizer billing is not open yet (billing.organizer_disabled) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrgBillingPackOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description A key of 1 to 200 characters that makes a repeated click buy one pack. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Credit pack UUID from the packs list. */
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingOrderPackRequest"];
+            };
+        };
+        responses: {
+            /** @description The first invoice of this Idempotency-Key, returned again. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccountInvoice"];
+                };
+            };
+            /** @description The invoice was created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccountInvoice"];
+                };
+            };
+            /** @description The Idempotency-Key header is missing or too long, or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The pack does not exist or is not on sale for this organization now, or organizer billing is not open yet (billing.organizer_disabled) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description This Idempotency-Key was used for another order */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description payment_method is not bank_transfer or stripe_card */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Card payment is not available right now, or billing is not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrgBillingInvoicePayByCard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Invoice UUID. */
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payment page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingPayByCardResponse"];
+                };
+            };
+            /** @description A parameter or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or organizer billing is not open yet (billing.organizer_disabled) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The invoice is not issued or is not paid by card */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Card payment is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putV1OrgBillingPayer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingPayerRequest"];
+            };
+        };
+        responses: {
+            /** @description The payer details and the number of accounts updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingPayerResponse"];
+                };
+            };
+            /** @description A parameter or the body is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization has no billing account yet, or organizer billing is not open yet (billing.organizer_disabled) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A payer field is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getOrgBillingEventSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Event UUID. An event of another organization, or an unknown one, is 404. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The event charge summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingEventSummary"];
+                };
+            };
+            /** @description event_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller is not a member of the organization or lacks billing.read there. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The event is not an event of the organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not configured. */
             503: {
                 headers: {
                     [name: string]: unknown;
