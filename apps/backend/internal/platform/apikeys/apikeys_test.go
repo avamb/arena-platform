@@ -92,6 +92,8 @@ func TestValidateScopes(t *testing.T) {
 		{"api-key-manage", []string{"api_key.manage"}, apikeys.ErrForbiddenScope},
 		{"geo-admin", []string{"venue.create", "geo.admin"}, apikeys.ErrForbiddenScope},
 		{"billing-admin", []string{"billing.admin"}, apikeys.ErrForbiddenScope},
+		{"billing-purchase", []string{"billing.read", "billing.purchase"}, apikeys.ErrForbiddenScope},
+		{"billing-payer-manage", []string{"billing.payer_manage"}, apikeys.ErrForbiddenScope},
 		{"network-prefix", []string{"network.view_sales"}, apikeys.ErrForbiddenScope},
 		{"superadmin-prefix", []string{"superadmin.read"}, apikeys.ErrForbiddenScope},
 		{"seating-plan-verify", []string{"seating_plan.verify"}, apikeys.ErrForbiddenScope},

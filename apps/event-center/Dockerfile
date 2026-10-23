@@ -24,11 +24,13 @@
 # § Build arguments
 #   VITE_API_BASE_URL  — backend API base URL (required; no trailing slash)
 #   VITE_ENABLE_SOURCEMAPS — set to "true" to generate .map files (CI only)
+#   VITE_FEATURE_WIZARD — "1" (the default) shows "Create event"; "0" is the rollback
 #
 # ============================================================
 
 ARG VITE_API_BASE_URL
 ARG VITE_ENABLE_SOURCEMAPS=false
+ARG VITE_FEATURE_WIZARD=1
 
 # ---- Stage 1: build ----
 FROM node:20-alpine AS build
@@ -57,8 +59,10 @@ RUN mkdir -p ../backend/openapi/clients && \
 
 ARG VITE_API_BASE_URL
 ARG VITE_ENABLE_SOURCEMAPS=false
+ARG VITE_FEATURE_WIZARD=1
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_ENABLE_SOURCEMAPS=${VITE_ENABLE_SOURCEMAPS}
+ENV VITE_FEATURE_WIZARD=${VITE_FEATURE_WIZARD}
 
 RUN npm run build
 

@@ -1,0 +1,247 @@
+{
+  "description": "Two dates that sell different categories at once, in New York time, one sales end after midnight.",
+  "input": {
+    "event": {
+      "name": "Golden parallel",
+      "description": "Two evenings.",
+      "age": "6+",
+      "promoterId": ""
+    },
+    "currency": "USD",
+    "venue": {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "name": "Golden Hall",
+      "timezone": "America/New_York",
+      "capacity": 150
+    },
+    "externalRefPrefix": "web:org-1:draft-4",
+    "dates": [
+      {
+        "day": "2027-11-05",
+        "time": "19:00",
+        "salesEnd": "20:00",
+        "doors": "",
+        "capacity": "",
+        "tickets": {
+          "mode": "parallel",
+          "categories": [
+            {
+              "name": "Children 4-6",
+              "price": "10",
+              "places": "40",
+              "until": "",
+              "limit": ""
+            },
+            {
+              "name": "Adults",
+              "price": "25,5",
+              "places": "60",
+              "until": "",
+              "limit": ""
+            }
+          ],
+          "schedule": []
+        }
+      },
+      {
+        "day": "2027-11-06",
+        "time": "22:00",
+        "salesEnd": "01:00",
+        "doors": "21:00",
+        "capacity": "",
+        "tickets": {
+          "mode": "parallel",
+          "categories": [
+            {
+              "name": "Children 6+",
+              "price": "12",
+              "places": "50",
+              "until": "",
+              "limit": ""
+            },
+            {
+              "name": "Adults",
+              "price": "25,5",
+              "places": "60",
+              "until": "",
+              "limit": ""
+            },
+            {
+              "name": "Family",
+              "price": "40",
+              "places": "10",
+              "until": "",
+              "limit": ""
+            }
+          ],
+          "schedule": []
+        }
+      }
+    ]
+  },
+  "bundles": [
+    {
+      "source": "arena",
+      "externalRef": "web:org-1:draft-4:1",
+      "action": {
+        "actionId": 0,
+        "actionName": "Golden parallel",
+        "fullActionName": "",
+        "description": "Two evenings.",
+        "bigPosterUrl": "",
+        "age": "6+",
+        "organizerName": "",
+        "promoterId": "",
+        "arenaEventId": ""
+      },
+      "actionEvent": {
+        "actionEventId": 0,
+        "day": "05.11.2027",
+        "time": "19:00",
+        "endTime": "",
+        "currency": "USD",
+        "sellEndTime": "2027-11-05T20:00:00-04:00",
+        "sellStartTime": "",
+        "doorsOpenTime": null,
+        "chargePercent": 0,
+        "seatingPlanId": 0,
+        "seatingPlanName": "",
+        "arenaSessionId": ""
+      },
+      "venue": {
+        "arenaVenueId": "11111111-1111-4111-8111-111111111111",
+        "venueId": 0,
+        "venueName": "Golden Hall",
+        "address": "",
+        "cityId": 0,
+        "cityName": "",
+        "countryId": 0,
+        "countryName": "",
+        "timezone": "",
+        "geoLat": null,
+        "geoLon": null
+      },
+      "categoryList": [
+        {
+          "categoryPriceId": 0,
+          "categoryPriceName": "Children 4-6",
+          "price": 10,
+          "placement": false,
+          "availability": 40,
+          "sellStartTime": "",
+          "sellEndTime": "",
+          "nextCategoryIndex": -1,
+          "sellLimit": null,
+          "priceSchedule": [],
+          "arenaTierId": ""
+        },
+        {
+          "categoryPriceId": 0,
+          "categoryPriceName": "Adults",
+          "price": 25.5,
+          "placement": false,
+          "availability": 60,
+          "sellStartTime": "",
+          "sellEndTime": "",
+          "nextCategoryIndex": -1,
+          "sellLimit": null,
+          "priceSchedule": [],
+          "arenaTierId": ""
+        }
+      ],
+      "seatList": null,
+      "svg": "",
+      "publish": false,
+      "channelIds": null,
+      "changeMessage": ""
+    },
+    {
+      "source": "arena",
+      "externalRef": "web:org-1:draft-4:2",
+      "action": {
+        "actionId": 0,
+        "actionName": "Golden parallel",
+        "fullActionName": "",
+        "description": "Two evenings.",
+        "bigPosterUrl": "",
+        "age": "6+",
+        "organizerName": "",
+        "promoterId": "",
+        "arenaEventId": ""
+      },
+      "actionEvent": {
+        "actionEventId": 0,
+        "day": "06.11.2027",
+        "time": "22:00",
+        "endTime": "",
+        "currency": "USD",
+        "sellEndTime": "2027-11-07T01:00:00-04:00",
+        "sellStartTime": "",
+        "doorsOpenTime": "2027-11-06T21:00:00-04:00",
+        "chargePercent": 0,
+        "seatingPlanId": 0,
+        "seatingPlanName": "",
+        "arenaSessionId": ""
+      },
+      "venue": {
+        "arenaVenueId": "11111111-1111-4111-8111-111111111111",
+        "venueId": 0,
+        "venueName": "Golden Hall",
+        "address": "",
+        "cityId": 0,
+        "cityName": "",
+        "countryId": 0,
+        "countryName": "",
+        "timezone": "",
+        "geoLat": null,
+        "geoLon": null
+      },
+      "categoryList": [
+        {
+          "categoryPriceId": 0,
+          "categoryPriceName": "Children 6+",
+          "price": 12,
+          "placement": false,
+          "availability": 50,
+          "sellStartTime": "",
+          "sellEndTime": "",
+          "nextCategoryIndex": -1,
+          "sellLimit": null,
+          "priceSchedule": [],
+          "arenaTierId": ""
+        },
+        {
+          "categoryPriceId": 0,
+          "categoryPriceName": "Adults",
+          "price": 25.5,
+          "placement": false,
+          "availability": 60,
+          "sellStartTime": "",
+          "sellEndTime": "",
+          "nextCategoryIndex": -1,
+          "sellLimit": null,
+          "priceSchedule": [],
+          "arenaTierId": ""
+        },
+        {
+          "categoryPriceId": 0,
+          "categoryPriceName": "Family",
+          "price": 40,
+          "placement": false,
+          "availability": 10,
+          "sellStartTime": "",
+          "sellEndTime": "",
+          "nextCategoryIndex": -1,
+          "sellLimit": null,
+          "priceSchedule": [],
+          "arenaTierId": ""
+        }
+      ],
+      "seatList": null,
+      "svg": "",
+      "publish": false,
+      "channelIds": null,
+      "changeMessage": ""
+    }
+  ]
+}

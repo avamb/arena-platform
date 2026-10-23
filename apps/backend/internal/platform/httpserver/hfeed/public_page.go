@@ -63,18 +63,22 @@ type hostedPageOrgResponse struct {
 // has always been, so the field is omitted there rather than duplicated —
 // see hostedPromoterPageResponse.
 type hostedPageEventResponse struct {
-	ID                   string   `json:"id"`
-	Slug                 string   `json:"slug"`
-	Title                string   `json:"title"`
-	Description          *string  `json:"description"`
-	ShortDescription     *string  `json:"short_description"`
-	ImageURL             *string  `json:"image_url"`
-	PosterURL            *string  `json:"poster_url"`
-	AgeRating            *string  `json:"age_rating"`
-	VenueNames           []string `json:"venue_names"`
-	FirstSessionAt       *string  `json:"first_session_at"`
-	LastSessionAt        *string  `json:"last_session_at"`
-	FirstSessionTimezone *string  `json:"first_session_timezone"`
+	ID               string   `json:"id"`
+	Slug             string   `json:"slug"`
+	Title            string   `json:"title"`
+	Description      *string  `json:"description"`
+	ShortDescription *string  `json:"short_description"`
+	ImageURL         *string  `json:"image_url"`
+	PosterURL        *string  `json:"poster_url"`
+	AgeRating        *string  `json:"age_rating"`
+	VenueNames       []string `json:"venue_names"`
+	// Venues are the places of the event with their own postal address and the
+	// session starts held there; the sales page lists them instead of tying
+	// every date to the first venue. Single-event page only.
+	Venues               []publicVenue `json:"venues"`
+	FirstSessionAt       *string       `json:"first_session_at"`
+	LastSessionAt        *string       `json:"last_session_at"`
+	FirstSessionTimezone *string       `json:"first_session_timezone"`
 	// SessionCount is the number of active, non-cancelled sessions. The
 	// tickets page prints a clock time in the card header and the event
 	// heading only when it is exactly 1: with several sessions on one day
@@ -200,6 +204,7 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 			ImageURL:         resolved.EventImageURL,
 			AgeRating:        resolved.EventAgeRating,
 			VenueNames:       []string{},
+			Venues:           []publicVenue{},
 		},
 		FeedToken:     resolved.FeedToken,
 		DefaultLocale: resolved.OrgDefaultLocale,
@@ -235,6 +240,9 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 	// Venue name(s) are cheap (one aggregate query keyed by event id) and
 	// presentational — a lookup failure must not turn a resolved page into a
 	// 500 (mirrors hydrateFeedVenueNames in public_feed.go).
+	if vs := h.loadPublicVenues(ctx, []uuid.UUID{resolved.EventID})[resolved.EventID]; len(vs) > 0 {
+		resp.Event.Venues = vs
+	}
 	if h.publicFeedQueries != nil {
 		names, err := h.publicFeedQueries.ListEventVenueNames(ctx, []uuid.UUID{resolved.EventID})
 		if err != nil {
@@ -394,6 +402,7 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 			AgeRating:            e.EventAgeRating,
 			ImageURL:             e.EventImageURL,
 			VenueNames:           []string{},
+			Venues:               []publicVenue{},
 			FirstSessionTimezone: e.FirstSessionTimezone,
 			FeedToken:            e.FeedToken,
 		}
