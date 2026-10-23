@@ -1,5 +1,5 @@
 -- session_seat_batches.sql — sqlc-style query definitions for the seat
--- batches of a session (task S1c, migration 0158). Companion hand-written
+-- batches of a session (task S1c, migration 0162). Companion hand-written
 -- gen file: apps/backend/internal/adapters/postgres/gen/session_seat_batches.sql.go
 --
 -- Lock order of a batch (seatlayout.ApplyBatch / Revert, AGENTS.md):

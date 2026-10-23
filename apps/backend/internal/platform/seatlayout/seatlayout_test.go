@@ -122,17 +122,17 @@ func TestSeatProbe_EscapesTheKey(t *testing.T) {
 }
 
 // TestKinds_MatchMigrationCheckConstraint keeps the Go kinds and the CHECK
-// of session_seat_batches.kind (migration 0158) in step.
+// of session_seat_batches.kind (migration 0162) in step.
 func TestKinds_MatchMigrationCheckConstraint(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
-	path := filepath.Join(filepath.Dir(file), "..", "..", "migrations", "sql", "0158_session_seat_batches.sql")
+	path := filepath.Join(filepath.Dir(file), "..", "..", "migrations", "sql", "0162_session_seat_batches.sql")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read migration: %v", err)
 	}
 	m := regexp.MustCompile(`CHECK \(kind IN \(([^)]*)\)\)`).FindSubmatch(raw)
 	if m == nil {
-		t.Fatal("kind CHECK not found in migration 0158")
+		t.Fatal("kind CHECK not found in migration 0162")
 	}
 	var sqlKinds []string
 	for _, part := range strings.Split(string(m[1]), ",") {

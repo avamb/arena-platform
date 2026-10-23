@@ -1,5 +1,5 @@
 // Hand-maintained typed query wrapper; follows sqlc output conventions.
-// source: session_seat_batches.sql (task S1c, migration 0158)
+// source: session_seat_batches.sql (task S1c, migration 0162)
 //
 // These queries are the storage half of seatlayout.ApplyBatch. Every one
 // that runs inside a batch transaction is called AFTER

@@ -156,7 +156,7 @@ func TestHostedPageResponse_ExistingFieldsUnchanged(t *testing.T) {
 		t.Errorf("org keys = %s, want %s", got, want)
 	}
 	const wantEvent = "age_rating,description,feed_token,first_session_at,first_session_doors_at,first_session_timezone," +
-		"id,image_url,last_session_at,poster_url,session_count,short_description,slug,title,venue_names"
+		"id,image_url,last_session_at,poster_url,session_count,short_description,slug,title,venue_names,venues"
 	ev := hostedPageEventResponse{FeedToken: "x"}
 	if got := strings.Join(keysOf(t, ev), ","); got != wantEvent {
 		t.Errorf("event keys = %s, want %s", got, wantEvent)
@@ -164,7 +164,7 @@ func TestHostedPageResponse_ExistingFieldsUnchanged(t *testing.T) {
 }
 
 // TestPublicFeedEventResponse_ExistingFieldsUnchanged: the event of the widget
-// feed keeps its fields (the detail adds sessions and, since 1-2c, materials).
+// feed keeps its fields (the detail adds sessions, since 1-2c materials, and venues).
 func TestPublicFeedEventResponse_ExistingFieldsUnchanged(t *testing.T) {
 	const want = "created_at,description,display_number,first_session_at,id,image_url,last_session_at,name,org_id," +
 		"poster_media_id,poster_url,status,updated_at,venue_names,visibility"

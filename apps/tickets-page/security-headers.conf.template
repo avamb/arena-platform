@@ -12,7 +12,10 @@
 # challenges.cloudflare.com is Cloudflare Turnstile, the captcha of the
 # "Write to the organizer" form (contact.ts); its script is loaded only
 # when a buyer opens the form.
+# www.youtube-nocookie.com, player.vimeo.com and rutube.ru are the three video
+# embed hosts of the event page (materials.ts EMBED_RULES): an <iframe> to them
+# is created only after a buyer presses play. Keep the two lists identical.
 add_header X-Content-Type-Options "nosniff" always;
 add_header X-Frame-Options "DENY" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self' data:; connect-src 'self' __API_ORIGIN__ https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; form-action 'self' https:; frame-ancestors 'none'; base-uri 'self'" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' __API_ORIGIN__ https: data:; font-src 'self' data:; connect-src 'self' __API_ORIGIN__ https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com https://www.youtube-nocookie.com https://player.vimeo.com https://rutube.ru; form-action 'self' https:; frame-ancestors 'none'; base-uri 'self'" always;

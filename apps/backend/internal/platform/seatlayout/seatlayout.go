@@ -41,7 +41,7 @@ import (
 )
 
 // Kind of a batch, mirrored by the CHECK of session_seat_batches.kind
-// (migration 0158; TestKinds_MatchMigrationCheckConstraint keeps the pair).
+// (migration 0162; TestKinds_MatchMigrationCheckConstraint keeps the pair).
 type Kind string
 
 // Batch kinds.

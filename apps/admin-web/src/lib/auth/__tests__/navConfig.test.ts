@@ -75,6 +75,8 @@ const platformSuperadmin = fixture(
     // APP-09 — organizer applications queue (platform_superadmin only).
     "onboarding.review",
     "onboarding.settings",
+    // B1-5 — price lists and rates (billing.admin, platform superadmin).
+    "billing.admin",
   ],
   ["global", "network:0193f01a-0001-7000-8000-000000000001"],
 );
@@ -178,6 +180,7 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       "webhooks",
       "customer_imports",
       "onboarding",
+      "billing_prices",
     ]);
   });
 
