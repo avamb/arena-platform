@@ -7,6 +7,10 @@ import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { Badge, DownloadButton, Empty, ErrorBox, Loading } from "@/components/ui";
 import { SalesFigures } from "@/components/SalesFigures";
+import { EventStatusBlock } from "@/components/EventStatusBlock";
+import { EventPoster } from "@/components/EventPoster";
+import { MaterialsSection } from "@/components/materials/MaterialsSection";
+import { posterCapabilities } from "@/lib/posters";
 import { useOrg } from "@/screens/OrgLayout";
 import { SalesStateBadge, useEventsList } from "@/screens/EventsScreen";
 
@@ -102,6 +106,7 @@ export function EventScreen() {
           cancelled: s.status === "cancelled",
         }));
   const sample = sampleSession(refs);
+  const poster = posterCapabilities(access.can);
 
   return (
     <article aria-labelledby="event-title">
@@ -140,6 +145,25 @@ export function EventScreen() {
           </Link>
         )}
       </div>
+
+      <EventStatusBlock
+        orgId={orgId}
+        eventId={eventId}
+        eventName={event.name}
+        status={event.status}
+        canPublish={access.can("event.publish")}
+        canDelete={access.can("event.delete")}
+      />
+
+      <EventPoster
+        key={`${orgId}:${eventId}`}
+        orgId={orgId}
+        eventId={eventId}
+        eventName={event.name}
+        posterMediaId={event.poster_media_id ?? null}
+        canView={poster.canView}
+        canChange={poster.canChange}
+      />
 
       {canSales && (
         <section aria-labelledby="event-totals">
@@ -193,6 +217,15 @@ export function EventScreen() {
           </ul>
         </section>
       )}
+
+      <MaterialsSection
+        key={`${orgId}:${eventId}`}
+        orgId={orgId}
+        eventId={eventId}
+        status={event.status}
+        publicUrl={event.public_url}
+        can={access.can}
+      />
     </article>
   );
 }

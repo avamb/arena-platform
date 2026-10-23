@@ -445,7 +445,10 @@ func run() error {
 	// The poller goroutine exits when rootCtx is cancelled (already done).
 	// Drain its channel to avoid a goroutine leak.
 	select {
-	case <-pollerErrCh:
+	case err := <-pollerErrCh:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			logger.Warn("outbox backlog poller exited with error", "error", err.Error())
+		}
 	case <-time.After(2 * time.Second):
 		logger.Warn("outbox backlog poller did not stop within 2s")
 	}

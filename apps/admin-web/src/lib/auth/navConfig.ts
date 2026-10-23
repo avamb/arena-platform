@@ -65,6 +65,7 @@ export type NavRoutePath =
   | "/webhooks"
   | "/customer-imports"
   | "/onboarding"
+  | "/billing/prices"
   | "/organizations/$orgId/promo-codes";
 
 export type PermissionRule =
@@ -359,6 +360,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform"],
     purpose:
       "Organizer applications: the queue of submitted forms, the system's checks, approve / request details / reject, and the onboarding settings. Requires onboarding.review; the settings tab requires onboarding.settings.",
+  },
+  {
+    id: "billing_prices",
+    label: "Price lists and rates",
+    to: "/billing/prices",
+    permission: { anyOf: ["billing.admin"] },
+    scopeKinds: ["global", "platform"],
+    purpose:
+      "Billing: versions of the price lists (a new price is a new version that starts in the future), the individual rates of organizations, and the terms of billing accounts. Requires billing.admin and a platform superadmin; every change asks for a reason and is audited.",
   },
 ];
 
