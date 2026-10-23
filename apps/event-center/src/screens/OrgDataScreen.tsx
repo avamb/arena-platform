@@ -90,13 +90,14 @@ export function statusOf(p: SellerProfile): StatusState {
   return "complete";
 }
 
-function SellerStatus({ profile }: { profile: SellerProfile }) {
+export function SellerStatus({ profile }: { profile: SellerProfile }) {
   const { t } = useI18n();
   const state = statusOf(profile);
   const missing = profile.missing.map((n) => missingKey(n)).filter((k): k is NonNullable<ReturnType<typeof missingKey>> => k !== null);
   return (
     <section aria-labelledby="org-data-status-title" data-testid="org-data-status" data-state={state} data-seller-shown={profile.seller_shown ? "true" : "false"}>
       <h2 id="org-data-status-title">{t("orgData.status.title")}</h2>
+      <p data-testid="org-data-status-auto">{t("orgData.status.auto")}</p>
       {state === "complete" && <p className="notice notice-ok" role="status">{t("orgData.status.complete")}</p>}
       {state === "legal" && <p className="notice" role="status">{t("orgData.status.legalComplete")}</p>}
       {state === "incomplete" && (

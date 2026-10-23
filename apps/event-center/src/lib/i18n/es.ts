@@ -811,6 +811,7 @@ export const es: Record<MessageKey, string> = {
   "orgData.ownerOnly.text": "Pide al propietario de la organización que abra esta página, o vuelve a los eventos.",
   "orgData.payments": "Los pagos aún no están conectados. Ya puedes crear eventos, y podrás vender entradas en cuanto se conecte tu proveedor de pagos. Esta nota desaparecerá cuando todo esté listo.",
   "orgData.status.title": "Datos del vendedor",
+  "orgData.status.auto": "Un perfil de vendedor completo se muestra automáticamente como bloque del vendedor en tus páginas de venta. Solo un superadministrador de la plataforma puede ocultarlo, y aquí no se puede desactivar.",
   "orgData.status.complete": "Los datos del vendedor están completos. Se muestran en tus páginas de venta.",
   "orgData.status.incomplete": "Los datos del vendedor no están completos, así que aún no se muestran en la página de venta. Por favor, rellena:",
   "orgData.status.legalComplete": "Los datos legales están completos. Cada página de venta necesita además su correo público.",

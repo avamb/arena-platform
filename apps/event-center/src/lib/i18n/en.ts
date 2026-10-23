@@ -811,6 +811,7 @@ export const en = {
   "orgData.ownerOnly.text": "Ask the owner of the organization to open this page, or go back to the events.",
   "orgData.payments": "Payments are not connected yet. You can create events now, and ticket sales start once your payment provider is connected. This note disappears when everything is ready.",
   "orgData.status.title": "Seller data",
+  "orgData.status.auto": "A complete seller profile is shown automatically as the seller block on your hosted sales pages. Only a platform superadmin can hide it, and you cannot switch it off here.",
   "orgData.status.complete": "The seller data is complete. It is shown on your sales pages.",
   "orgData.status.incomplete": "The seller data is not complete, so it is not shown on the sales page yet. Please fill in:",
   "orgData.status.legalComplete": "The legal data is complete. Each sales page also needs its own public e-mail.",
