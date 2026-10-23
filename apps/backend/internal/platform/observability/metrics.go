@@ -40,6 +40,7 @@ const (
 	subsystemOutbox  = "outbox"
 	subsystemPayment = "payment"
 	subsystemEmail   = "email"
+	subsystemBilling = "billing"
 )
 
 // E-mail webhook label values (Brevo delivery status). A closed set for the
@@ -144,6 +145,10 @@ const (
 	LabelStatus = "status"
 	LabelState  = "state"
 	LabelQueue  = "queue"
+	// LabelCheck names one billing reconcile check, LabelStage one stage of
+	// the billing pipeline (collect, rate). Both are fixed sets.
+	LabelCheck = "check"
+	LabelStage = "stage"
 )
 
 // DefaultHTTPDurationBuckets are the Prometheus histogram buckets used for
@@ -211,6 +216,15 @@ type Metrics struct {
 
 	// OutboxBacklog reports the number of unpublished outbox events.
 	OutboxBacklog prometheus.Gauge
+
+	// BillingReconcileFindings is the number of billing facts the last daily
+	// reconcile found out of order, per check (billing wave B-A, task B2-5).
+	BillingReconcileFindings *prometheus.GaugeVec
+
+	// BillingLagSeconds is how far the billing pipeline is behind, per stage
+	// (collect: age of the oldest source cursor, rate: age of the oldest
+	// event waiting for its charge).
+	BillingLagSeconds *prometheus.GaugeVec
 
 	// HTTPPanicsTotal counts HTTP handler panics caught by the Recoverer
 	// middleware. Incremented once per panic regardless of the error type.
@@ -396,6 +410,26 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 			},
 		),
 
+		BillingReconcileFindings: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: MetricsNamespace,
+				Subsystem: subsystemBilling,
+				Name:      "reconcile_findings",
+				Help:      "Billing facts the last daily reconcile found out of order, per check.",
+			},
+			[]string{LabelCheck},
+		),
+
+		BillingLagSeconds: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: MetricsNamespace,
+				Subsystem: subsystemBilling,
+				Name:      "lag_seconds",
+				Help:      "How far the billing pipeline is behind, in seconds, per stage (collect, rate).",
+			},
+			[]string{LabelStage},
+		),
+
 		HTTPPanicsTotal: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: MetricsNamespace,
@@ -495,6 +529,8 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 		m.DBPoolWaitDurationSeconds,
 		m.WorkerJobsLagSeconds,
 		m.OutboxBacklog,
+		m.BillingReconcileFindings,
+		m.BillingLagSeconds,
 		m.HTTPPanicsTotal,
 		m.IdempotencyReplaysTotal,
 		m.IdempotencyCleanupDeletedTotal,
@@ -519,6 +555,16 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 	}
 
 	return m, nil
+}
+
+// SetBillingFindings records the finding count of one billing reconcile check.
+func (m *Metrics) SetBillingFindings(check string, n int64) {
+	m.BillingReconcileFindings.WithLabelValues(check).Set(float64(n))
+}
+
+// SetBillingLag records how far one billing pipeline stage is behind.
+func (m *Metrics) SetBillingLag(stage string, seconds int64) {
+	m.BillingLagSeconds.WithLabelValues(stage).Set(float64(seconds))
 }
 
 // MustNew is the panic-on-error variant of New, intended for use in main()
