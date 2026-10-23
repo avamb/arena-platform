@@ -172,13 +172,22 @@ func TestSeatBatches_ApplyListHistoryRevert(t *testing.T) {
 		t.Fatalf("history = %d %v", code, resp)
 	}
 
+	// Seat 1 was closed after the paint, so the paint has nothing to put
+	// back: refused, nothing written. Reverting the close first unblocks it.
+	code, resp = f.do(t, http.MethodPost, base+"/seat-batches/"+batchID+"/revert", x.manager, "")
+	if code != http.StatusConflict || prom0113Code(resp) != "seat_batch.nothing_to_revert" {
+		t.Fatalf("revert before the close is undone = %d %v", code, resp)
+	}
+	closeID := items[0].(map[string]any)["id"].(string)
+	if code, resp := f.do(t, http.MethodPost, base+"/seat-batches/"+closeID+"/revert", x.manager, ""); code != http.StatusCreated {
+		t.Fatalf("revert of the close = %d %v", code, resp)
+	}
 	code, resp = f.do(t, http.MethodPost, base+"/seat-batches/"+batchID+"/revert", x.manager, "")
 	if code != http.StatusCreated || resp["kind"] != "revert" || resp["reverts_batch_id"] != batchID {
 		t.Fatalf("revert = %d %v", code, resp)
 	}
-	// Seat 1 was closed after the paint, so the revert leaves it alone.
-	if sk, _ := resp["skipped"].([]any); len(sk) != 1 || sk[0].(map[string]any)["reason"] != "changed_since" {
-		t.Fatalf("revert skipped = %v", resp["skipped"])
+	if ch, _ := resp["changes"].([]any); len(ch) != 1 {
+		t.Fatalf("revert changes = %v", resp["changes"])
 	}
 	if code, resp := f.do(t, http.MethodPost, base+"/seat-batches/"+batchID+"/revert", x.manager, ""); code != http.StatusConflict || prom0113Code(resp) != "seat_batch.already_reverted" {
 		t.Fatalf("second revert = %d %v", code, resp)
