@@ -48,7 +48,21 @@ JOIN   permissions p_old ON p_old.id = rp.permission_id
 JOIN   permissions p_new ON p_new.name = 'session.seats.manage'
 ON CONFLICT DO NOTHING;
 
+-- API keys carry their rights as a list of scopes of their own
+-- (api_keys.scopes), not through roles, so a key that holds the old scope
+-- would lose the seat routes the day they move to the new permission. Give
+-- every such key the new scope too (found by the wave C release review; on
+-- 2026-10-23 nine keys held the old scope, none had used a seat route).
+UPDATE api_keys
+SET    scopes = array_append(scopes, 'session.seats.manage')
+WHERE  scopes @> ARRAY['event_session.assign_seating_plan']
+  AND  NOT scopes @> ARRAY['session.seats.manage'];
+
 -- +goose Down
+
+UPDATE api_keys
+SET    scopes = array_remove(scopes, 'session.seats.manage')
+WHERE  scopes @> ARRAY['session.seats.manage'];
 
 DELETE FROM role_permissions
 WHERE permission_id IN (SELECT id FROM permissions WHERE name = 'session.seats.manage');
