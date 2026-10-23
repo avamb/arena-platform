@@ -233,6 +233,9 @@ const apiEnv = {
       : []),
   ].join(","),
   EVENT_CENTER_PUBLIC_URL: `http://127.0.0.1:${uiPort}`,
+  // Credit packs and platform invoices (B3-3/B4) are closed by default in a
+  // deployment; the billing-packs twin needs them open.
+  BILLING_ORGANIZER_ENABLED: process.env.BILLING_ORGANIZER_ENABLED ?? "true",
   // The hosted sales site: promoter cards show "<this>/<slug>" (task 4-6).
   PUBLIC_TICKETS_BASE_URL: process.env.PUBLIC_TICKETS_BASE_URL ?? "https://tickets.e2e.test",
   // Posters (task 7-1): uploads need a storage. A LOCAL one under the git-ignored

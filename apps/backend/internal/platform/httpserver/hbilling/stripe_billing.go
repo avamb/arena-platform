@@ -107,6 +107,9 @@ func (h *Handler) HandlePushInvoiceToStripe(w http.ResponseWriter, r *http.Reque
 	if !h.invoiceOrgAllowed(w, r, invoice.OrgID, true) {
 		return
 	}
+	if h.refuseAccountInvoice(w, r, invoice.ID) {
+		return
+	}
 
 	if invoice.State != "issued" {
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope("stripe_billing.wrong_state",

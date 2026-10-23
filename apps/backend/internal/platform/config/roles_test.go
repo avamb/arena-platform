@@ -488,3 +488,24 @@ func TestLoadFor_PosterReadsPerOrgPerDay(t *testing.T) {
 		t.Error("a negative cap must be refused")
 	}
 }
+
+func TestLoadFor_BillingCollectSince(t *testing.T) {
+	clearConfigEnv(t)
+	setEnv(t, productionCommon)
+	setEnv(t, roleMinimum[RoleWorker])
+	if cfg, err := LoadFor(RoleWorker); err != nil || !cfg.BillingCollectSince.IsZero() {
+		t.Fatalf("unset: err=%v since=%v, want collection off", err, cfg.BillingCollectSince)
+	}
+	t.Setenv("BILLING_COLLECT_SINCE", "2026-10-01T00:00:00+02:00")
+	cfg, err := LoadFor(RoleWorker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.BillingCollectSince.UTC().Format("2006-01-02T15:04:05Z"); got != "2026-09-30T22:00:00Z" {
+		t.Fatalf("BillingCollectSince = %s, want 2026-09-30T22:00:00Z", got)
+	}
+	t.Setenv("BILLING_COLLECT_SINCE", "yesterday")
+	if _, err := LoadFor(RoleWorker); err == nil {
+		t.Fatal("a value that is not RFC 3339 must be refused")
+	}
+}

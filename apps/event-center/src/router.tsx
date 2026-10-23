@@ -17,12 +17,16 @@ import { SessionScreen } from "@/screens/SessionScreen";
 import { OrdersScreen } from "@/screens/OrdersScreen";
 import { OrderScreen } from "@/screens/OrderScreen";
 import { NotificationsScreen } from "@/screens/NotificationsScreen";
+import { BillingBalanceScreen } from "@/screens/BillingBalanceScreen";
+import { BillingInvoicesScreen } from "@/screens/BillingInvoicesScreen";
+import { BillingScreen } from "@/screens/BillingScreen";
 import { InvitationsScreen } from "@/screens/InvitationsScreen";
 import { PromotersScreen } from "@/screens/PromotersScreen";
 import { PromoterScreen } from "@/screens/PromoterScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
 import { OrgDataScreen } from "@/screens/OrgDataScreen";
 import { parseEventsSearch, parseLoginSearch, parseOrdersSearch, parsePromotersSearch } from "@/lib/search";
+import { parseBalanceSearch } from "@/lib/billingPacks";
 import { PromoListScreen } from "@/screens/PromoListScreen";
 import { PromoCreateScreen } from "@/screens/PromoCreateScreen";
 import { PromoScreen } from "@/screens/PromoScreen";
@@ -125,6 +129,29 @@ const notificationsRoute = createRoute({
   component: NotificationsScreen,
 });
 
+// B2-7: billing usage (read-only). Reachable by the address for everyone, the
+// screen itself explains it is the owner's.
+const billingRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/billing",
+  component: BillingScreen,
+});
+
+// B3-3/B4: balance and packs (also the Stripe return address) and invoices.
+// Both explain themselves to a person without billing.read.
+const billingBalanceRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/billing/balance",
+  validateSearch: parseBalanceSearch,
+  component: BillingBalanceScreen,
+});
+
+const billingInvoicesRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/billing/invoices",
+  component: BillingInvoicesScreen,
+});
+
 // 4-4: invitations.
 const invitationsRoute = createRoute({
   getParentRoute: () => orgRoute,
@@ -207,6 +234,9 @@ export const routeTree = rootRoute.addChildren([
     orderRoute,
     notificationsRoute,
     invitationsRoute,
+    billingRoute,
+    billingBalanceRoute,
+    billingInvoicesRoute,
     promotersRoute,
     promoterRoute,
     promoRoute,
