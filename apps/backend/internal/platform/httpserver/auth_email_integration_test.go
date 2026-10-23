@@ -231,7 +231,16 @@ func runWorkerJob(t *testing.T, pool *pgxpool.Pool, reg *worker.Registry) bool {
 	}
 	handler, ok := reg.Lookup(job.Type)
 	if !ok {
-		t.Fatalf("no handler for job type %q", job.Type)
+		// The queue of the shared gate database also holds jobs that other
+		// tests (session changes, letters, refunds) queued and left behind.
+		// They are not this drain's to run: close them without running, the
+		// way the named types above are. A missing handler for the test's OWN
+		// job still fails the test, with "no email addressed to ... arrived".
+		t.Logf("closing a leftover %q job without running it", job.Type)
+		if err := q.MarkDone(context.Background(), job.ID); err != nil {
+			t.Fatalf("MarkDone: %v", err)
+		}
+		return true
 	}
 	if herr := handler(context.Background(), job.Payload); herr != nil {
 		t.Fatalf("handler for %s failed: %v", job.Type, herr)
