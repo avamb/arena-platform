@@ -7786,6 +7786,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Seat-layout algorithms and their parameters
+         * @description Lists every seat-layout algorithm of the registry with the schema of
+         *     its parameters (number of categories 1 to 15, prices, shares,
+         *     options), so the seat manager and the bot draw the form without
+         *     knowing any algorithm (spec 26 §4.1, task S1e). Read-only. The
+         *     session must belong to this organization. Requires
+         *     `event_session.assign_seating_plan`.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSeatLayoutAlgorithms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Propose a seat layout
+         * @description Runs one seat-layout algorithm on the geometry of the session's plan
+         *     version and the current state of its seats, and answers the proposed
+         *     categories, the category of every free seat and a revenue estimate
+         *     (spec 26 §4.1, task S1e). Writes NOTHING: applying a layout is a
+         *     separate step. Sold and held seats are never moved; they count in the
+         *     estimate at the price they were sold or held for ("sold by fact plus
+         *     the rest at the new prices"). A seat still marked held whose
+         *     reservation has expired (not draft/active, or past `expires_at`) is
+         *     treated as free: the expiry sweep is about to release it, so it gets a
+         *     category and counts at the proposed price. Until the plan stores its
+         *     annotations (S1d), the stage and section weights travel in the body;
+         *     a section weight or an obstructed seat the plan does not have is 400
+         *     `seat_layout.invalid_annotation`. An explicit `prices` list goes from
+         *     the dearest category down and must not increase. With
+         *     `cheaper_row_edges` the actual shares (`metrics.by_slot[].share`)
+         *     move away from the share template, because row edges are pushed into
+         *     cheaper categories. Requires `event_session.assign_seating_plan`.
+         */
+        post: operations["postV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/summary": {
         parameters: {
             query?: never;
@@ -13194,6 +13255,230 @@ export interface components {
              * @description Places withheld from sale by an operator.
              */
             unavailable: number;
+        };
+        /**
+         * @description One parameter of a seat-layout algorithm (task S1e). Clients draw the
+         *     form from this description and never hard-code an algorithm. Labels
+         *     are i18n keys, never texts.
+         */
+        SeatLayoutParam: {
+            /** @description Parameter name as sent in `params` of the suggest request. */
+            name: string;
+            /** @description One of `integer`, `boolean`, `enum`, `integer_list` (a JSON array of integers). */
+            type: string;
+            /** @description Whether the parameter must be sent (a parameter with a default never needs to be). */
+            required: boolean;
+            /**
+             * Format: int64
+             * @description Lower bound of an integer, or of every item of an integer list.
+             */
+            min?: number;
+            /**
+             * Format: int64
+             * @description Upper bound of an integer, or of every item of an integer list.
+             */
+            max?: number;
+            /** @description Shortest allowed integer list. */
+            min_items?: number;
+            /** @description Longest allowed integer list. */
+            max_items?: number;
+            /** @description Value used when the parameter is left out, of the parameter's own type; null when there is none. */
+            default: unknown;
+            /** @description Allowed values of an `enum` parameter. */
+            options?: components["schemas"]["SeatLayoutParamOption"][];
+            /** @description How to read an integer: `count`, `minor_currency` (minor units of the session currency) or `percent`. */
+            unit?: string;
+            /** @description i18n key of the parameter's label. */
+            label_key: string;
+            /** @description i18n key of an optional hint under the field. */
+            hint_key?: string;
+        };
+        /** @description One value of an enum parameter of a seat-layout algorithm. */
+        SeatLayoutParamOption: {
+            /** @description The value as sent in `params`. */
+            value: string;
+            /** @description i18n key of the value's label. */
+            label_key: string;
+        };
+        /** @description One seat-layout algorithm of the registry with its parameter schema. */
+        SeatLayoutAlgorithm: {
+            /** @description Stable algorithm id (`desirability`, ...), sent back as `algorithm` of the suggest request. */
+            id: string;
+            /** @description i18n key of the algorithm's name. */
+            label_key: string;
+            /** @description i18n key of a short description of the algorithm. */
+            description_key?: string;
+            /** @description Annotations the algorithm cannot work without (for example `focal_point`, the stage). */
+            required_annotations: string[];
+            /** @description The algorithm's parameters. */
+            params: components["schemas"]["SeatLayoutParam"][];
+        };
+        /** @description The seat-layout algorithms a session can use (task S1e). */
+        SeatLayoutAlgorithmsResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the session.
+             */
+            session_id: string;
+            /** @description ISO 4217 currency of the session; every `minor_currency` parameter is in it. */
+            currency: string;
+            /** @description Every registered algorithm, sorted by id. */
+            algorithms: components["schemas"]["SeatLayoutAlgorithm"][];
+        };
+        /** @description A point in canvas coordinates of the seating plan. */
+        SeatLayoutPoint: {
+            /** @description Horizontal canvas coordinate. */
+            x: number;
+            /** @description Vertical canvas coordinate. */
+            y: number;
+        };
+        /**
+         * @description Plan facts the allocator may need that are not part of the geometry.
+         *     Until they are stored on the seating plan (S1d) they travel in the
+         *     suggest request.
+         */
+        SeatLayoutAnnotations: {
+            /** @description The stage, in canvas coordinates. The desirability algorithm requires it. */
+            focal_point?: components["schemas"]["SeatLayoutPoint"];
+            /** @description Section key to weight from 0 (least wanted) to 1 (as good as the geometry says). A section left out weighs 1. */
+            section_weights?: {
+                [key: string]: number;
+            };
+            /** @description Seats with a restricted view. */
+            obstructed_seat_keys?: string[];
+        };
+        /** @description Body of POST .../seat-layout/suggest (task S1e). */
+        SeatLayoutSuggestRequest: {
+            /** @description Id of the algorithm from GET .../seat-layout/algorithms. */
+            algorithm: string;
+            /** @description Parameter values by name, checked against the algorithm's schema. A left-out or null parameter takes its default. */
+            params?: {
+                [key: string]: unknown;
+            };
+            /** @description Stage, section weights and obstructed seats of the plan. */
+            annotations?: components["schemas"]["SeatLayoutAnnotations"];
+        };
+        /** @description One proposed category. */
+        SeatLayoutSlot: {
+            /** @description Slot key (`c1` is the dearest for the desirability algorithm). */
+            key: string;
+            /** @description Optional proposed name. */
+            name?: string;
+            /** @description Optional proposed colour, `#rrggbb`. */
+            color?: string;
+            /**
+             * Format: int64
+             * @description Proposed price in minor units of the session currency.
+             */
+            price_amount: number;
+            /** @description Target share of the hall, 0 to 1. */
+            share: number;
+        };
+        /** @description A proposed layout. Nothing is applied. */
+        SeatLayoutProposal: {
+            /** @description The proposed categories. */
+            slots: components["schemas"]["SeatLayoutSlot"][];
+            /** @description seat_key to slot key for every seat that is not sold or held (closed seats included). */
+            assignments: {
+                [key: string]: string;
+            };
+            /** @description Sold and held seats, left in their category at their own price, sorted. */
+            frozen_seat_keys: string[];
+        };
+        /** @description Revenue estimate of one proposed category. */
+        SeatLayoutSlotMetrics: {
+            /** @description Key of the slot. */
+            slot_key: string;
+            /**
+             * Format: int64
+             * @description Proposed price in minor units.
+             */
+            price_amount: number;
+            /** @description Free seats the layout puts in the slot, closed seats included. */
+            seats: number;
+            /** @description Free seats of the slot that are open for sale. */
+            open_seats: number;
+            /**
+             * Format: int64
+             * @description open_seats times price_amount.
+             */
+            revenue_minor: number;
+            /** @description Actual share of the hall in the slot, 0 to 1. */
+            share: number;
+        };
+        /**
+         * @description Revenue estimate of a proposal, a reference figure and never an
+         *     optimum: sold seats at the price they were sold for, held seats at
+         *     the price they are held for, every open free seat at the proposed
+         *     price. Closed seats are left out.
+         */
+        SeatLayoutMetrics: {
+            /** @description ISO 4217 currency of every amount. */
+            currency: string;
+            /** @description Seats of the plan. */
+            total_seats: number;
+            /** @description Frozen seats, sold plus held. */
+            sold_frozen: number;
+            /** @description Sold seats. */
+            sold_seats: number;
+            /** @description Seats in a hold. */
+            held_seats: number;
+            /** @description Free seats an operator closed for sale. */
+            closed_seats: number;
+            /**
+             * Format: int64
+             * @description Sold seats at the price they were sold for.
+             */
+            revenue_sold_minor: number;
+            /**
+             * Format: int64
+             * @description Held seats at the price they are held for.
+             */
+            revenue_held_minor: number;
+            /**
+             * Format: int64
+             * @description Open free seats at the proposed prices.
+             */
+            revenue_remaining_minor: number;
+            /**
+             * Format: int64
+             * @description Sold plus held plus remaining.
+             */
+            revenue_estimate_minor: number;
+            /** @description The estimate per proposed category. */
+            by_slot: components["schemas"]["SeatLayoutSlotMetrics"][];
+        };
+        /** @description A seat-layout proposal (task S1e). Nothing was written. */
+        SeatLayoutSuggestResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the session.
+             */
+            session_id: string;
+            /** @description Id of the algorithm that made the proposal. */
+            algorithm: string;
+            /** @description The parameters used, defaults filled in. */
+            params: {
+                [key: string]: unknown;
+            };
+            /** @description ISO 4217 currency of the session. */
+            currency: string;
+            /**
+             * Format: uuid
+             * @description Plan version whose geometry was read.
+             */
+            seating_plan_version_id: string;
+            /** @description Checksum of that geometry. */
+            geometry_checksum: string;
+            /**
+             * Format: int64
+             * @description The session's seat_status_version the proposal was made against.
+             */
+            seat_status_version: number;
+            /** @description The proposal. */
+            layout: components["schemas"]["SeatLayoutProposal"];
+            /** @description Its revenue estimate. */
+            metrics: components["schemas"]["SeatLayoutMetrics"];
         };
         /**
          * @description One-screen overview of a session: places by status, categories with
@@ -53840,6 +54125,187 @@ export interface operations {
                 };
             };
             /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdSeatLayoutAlgorithms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The algorithms. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatLayoutAlgorithmsResponse"];
+                };
+            };
+            /** @description org_id or session_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `event_session.assign_seating_plan` in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeatLayoutSuggestRequest"];
+            };
+        };
+        responses: {
+            /** @description The proposal and its estimate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatLayoutSuggestResponse"];
+                };
+            };
+            /**
+             * @description Invalid path parameter or body (`seat_layout.invalid_body`), an
+             *     unknown algorithm (`seat_layout.unknown_algorithm`), a parameter
+             *     outside the algorithm's schema (`seat_layout.invalid_param`) or an
+             *     invalid annotation (`seat_layout.invalid_annotation`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `event_session.assign_seating_plan` in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The session has no seating plan (`seat_layout.no_seating_plan`),
+             *     its plan has no seats (`seat_layout.no_seats`), or the algorithm
+             *     needs an annotation that was not given
+             *     (`seat_layout.annotation_required`, for example the stage).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

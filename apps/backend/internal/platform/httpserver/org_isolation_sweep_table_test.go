@@ -230,6 +230,11 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers":                    "tiers",
 	"PUT /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule": "tiers",
 
+	// S1e seat-layout allocator (seat_layout_shims.go): requireSessionInPathOrg
+	// before the handler; seat_layout_suggest_integration_test.go drives a
+	// foreign session and expects 404.
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms": "seat layout",
+	"POST /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest":   "seat layout",
 	// hbilling.ChargesHandler (task B2-6): eventInOrg compares events.org_id with the
 	// path organization (404 billing.event_not_found otherwise) and every charge query
 	// filters billable_events.org_id; billing_charges_integration_test.go drives a foreign event.

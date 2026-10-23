@@ -105,4 +105,19 @@ func (s *Server) mountSeatingRoutes(r chi.Router) {
 
 	// S1c: seat batches (apply, list, revert, per-seat history).
 	s.mountSeatBatchRoutes(r)
+
+	// S1e: the seat-layout allocator (spec 26 §4.1). Read-only: the list of
+	// algorithms with their parameter schemas, and a proposal that writes
+	// nothing. Same gate as the seat routes above, session.seats.manage (S1f).
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "session.seats.manage", "seating")
+		pr.Get(
+			"/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms",
+			s.handleListLayoutAlgorithms,
+		)
+		pr.Post(
+			"/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest",
+			s.handleSuggestSeatLayout,
+		)
+	})
 }

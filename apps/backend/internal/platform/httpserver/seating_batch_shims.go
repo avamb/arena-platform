@@ -11,12 +11,12 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// mountSeatBatchRoutes registers the batch surface. The gate stays
-// event_session.assign_seating_plan, like the PATCH routes it replaces,
-// until task S1f moves the family to session.seats.manage.
+// mountSeatBatchRoutes registers the batch surface. The gate is
+// session.seats.manage (task S1f, migration 0161), like the PATCH routes it
+// replaces.
 func (s *Server) mountSeatBatchRoutes(r chi.Router) {
 	r.Group(func(pr chi.Router) {
-		s.applyAuth(pr, "event_session.assign_seating_plan", "seating")
+		s.applyAuth(pr, "session.seats.manage", "seating")
 		base := "/organizations/{org_id}/sessions/{session_id}"
 		pr.Post(base+"/seat-batches", s.seatBatchShim(func(w http.ResponseWriter, r *http.Request) {
 			s.seatingHandler().HandleCreateSeatBatch(w, r)
