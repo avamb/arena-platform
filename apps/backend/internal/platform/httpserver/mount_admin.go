@@ -37,6 +37,8 @@ func (s *Server) mountBillingRoutes(r chi.Router) {
 		pr.Get("/billing/invoices/{id}", s.handleGetInvoice)
 		pr.Get("/organizations/{org_id}/billing/usage", s.handleGetUsage)
 		pr.Get("/organizations/{org_id}/billing/invoices", s.handleListOrgInvoices)
+		pr.Get("/organizations/{org_id}/billing/charges", s.handleListOrgCharges)
+		pr.Get("/organizations/{org_id}/billing/events/{event_id}/summary", s.handleGetEventBillingSummary)
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "billing.admin", "billing")

@@ -19079,6 +19079,221 @@ components:
           format: date-time
           description: New end of the rate. It must be in the future, after the start and not after the start of the organization's next rate.
 
+    BillingChargeItem:
+      type: object
+      required: [id, billable_event_id, kind, occurred_at, rated_at, event_id, session_id, order_id, currency, amount_minor, rule_type, reason, reversal_of, price_list_version, pricing_class, seated, sale_currency, unit_price_minor]
+      description: One charge. A reversal has reversal_of set and a negative amount, and carries the time of the event it reverses.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the charge.
+        billable_event_id:
+          type: string
+          format: uuid
+          description: Id of the billing event the charge rates.
+        kind:
+          type: string
+          description: "Kind of the billing event: ticket_sold, ticket_refunded, ticket_cancelled, session_cancelled, event_published or ticket_complimentary."
+          example: ticket_sold
+        occurred_at:
+          type: string
+          format: date-time
+          description: When the event happened.
+        rated_at:
+          type: string
+          format: date-time
+          description: When the charge was made.
+        event_id:
+          type: [string, "null"]
+          format: uuid
+          description: The event the charge belongs to, when it has one.
+        session_id:
+          type: [string, "null"]
+          format: uuid
+          description: The session the charge belongs to, when it has one.
+        order_id:
+          type: [string, "null"]
+          format: uuid
+          description: The order of a sale, when there is one.
+        currency:
+          type: string
+          description: Currency of amount_minor, the currency of the billing account.
+          example: EUR
+        amount_minor:
+          type: integer
+          format: int64
+          description: The charge in minor units of currency. Zero for a free or journal-only event, negative for a reversal.
+        rule_type:
+          type: string
+          description: The rule that rated the event (none when no rule applied).
+          example: fixed_per_ticket
+        reason:
+          type: [string, "null"]
+          description: Why the amount is zero or reduced, when it is.
+        reversal_of:
+          type: [string, "null"]
+          format: uuid
+          description: Set when this row reverses another charge.
+        price_list_version:
+          type: [integer, "null"]
+          format: int32
+          description: Version of the price list in force at the event time.
+        pricing_class:
+          type: [string, "null"]
+          description: "standard or low_price, for a sale."
+        seated:
+          type: [boolean, "null"]
+          description: Whether the sold place was a numbered seat.
+        sale_currency:
+          type: [string, "null"]
+          description: Currency the ticket was sold in.
+        unit_price_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Face price of the ticket in minor units of sale_currency.
+
+    BillingChargeTotal:
+      type: object
+      required: [currency, charged_minor, reversed_minor, net_minor, count]
+      description: The sum of charges in one currency. Sums are never added across currencies.
+      properties:
+        currency:
+          type: string
+          description: Currency of the sums.
+          example: EUR
+        charged_minor:
+          type: integer
+          format: int64
+          description: Sum of the direct charges in minor units.
+        reversed_minor:
+          type: integer
+          format: int64
+          description: Sum of the reversals in minor units, zero or negative.
+        net_minor:
+          type: integer
+          format: int64
+          description: charged_minor plus reversed_minor.
+        count:
+          type: integer
+          format: int64
+          description: Number of direct charges.
+
+    BillingChargeList:
+      type: object
+      required: [items, totals, next_cursor, preliminary]
+      description: A page of charges with the sums over the whole filter.
+      properties:
+        items:
+          type: array
+          description: The charges of this page, newest event first.
+          items:
+            $ref: "#/components/schemas/BillingChargeItem"
+        totals:
+          type: array
+          description: Sums per currency over the whole filter, not only this page.
+          items:
+            $ref: "#/components/schemas/BillingChargeTotal"
+        next_cursor:
+          type: [string, "null"]
+          description: Pass it as cursor to get the next page. Null on the last page.
+        preliminary:
+          type: boolean
+          description: Always true while invoices are not issued. The numbers are what has been charged so far.
+
+    BillingChargeRuleLine:
+      type: object
+      required: [rule_type, reason, currency, net_minor, count]
+      description: The net charge of one rule in one currency, a line of the future invoice.
+      properties:
+        rule_type:
+          type: string
+          description: The rule that rated the events.
+          example: fixed_per_ticket
+        reason:
+          type: [string, "null"]
+          description: Why the amount is zero or reduced, when it is.
+        currency:
+          type: string
+          description: Currency of net_minor.
+          example: EUR
+        net_minor:
+          type: integer
+          format: int64
+          description: Direct charges plus reversals of this rule, in minor units.
+        count:
+          type: integer
+          format: int64
+          description: Number of direct charges.
+
+    BillingChargeSessionLine:
+      type: object
+      required: [session_id, session_start_at, currency, charged_minor, reversed_minor, net_minor, count]
+      description: The charge summary of one session of an event in one currency.
+      properties:
+        session_id:
+          type: [string, "null"]
+          format: uuid
+          description: The session. Null for charges that belong to the event as a whole.
+        session_start_at:
+          type: [string, "null"]
+          format: date-time
+          description: Start of the session. Null when it has none.
+        currency:
+          type: string
+          description: Currency of the sums.
+          example: EUR
+        charged_minor:
+          type: integer
+          format: int64
+          description: Sum of the direct charges in minor units.
+        reversed_minor:
+          type: integer
+          format: int64
+          description: Sum of the reversals in minor units, zero or negative.
+        net_minor:
+          type: integer
+          format: int64
+          description: charged_minor plus reversed_minor.
+        count:
+          type: integer
+          format: int64
+          description: Number of direct charges.
+
+    BillingEventSummary:
+      type: object
+      required: [event_id, totals, by_rule, by_session, events_by_kind, preliminary]
+      description: What the platform charged for one event of the organization.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: The event.
+        totals:
+          type: array
+          description: Sums per currency.
+          items:
+            $ref: "#/components/schemas/BillingChargeTotal"
+        by_rule:
+          type: array
+          description: The net charge per rule and currency.
+          items:
+            $ref: "#/components/schemas/BillingChargeRuleLine"
+        by_session:
+          type: array
+          description: The summary per session and currency, earliest session first.
+          items:
+            $ref: "#/components/schemas/BillingChargeSessionLine"
+        events_by_kind:
+          type: object
+          description: The number of billing events of this event by kind.
+          additionalProperties:
+            type: integer
+            format: int64
+        preliminary:
+          type: boolean
+          description: Always true while invoices are not issued.
+
     BillingAccountTerms:
       type: object
       required: [id, effective_from, price_list_code, plan_kind, billing_cycle, shortfall_policy, issuer_id, invoice_delay_days, due_days, locked, created_by, reason, created_at]
@@ -43012,6 +43227,140 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/billing/charges:
+    get:
+      operationId: listOrgBillingCharges
+      summary: List what the platform charged an organization
+      description: "Lists the charges the platform made to the organization, newest event first, with the sums per currency over the whole filter. Read-only and preliminary: nothing is invoiced yet. A reversal row has reversal_of set and a negative amount. Requires JWT and billing.read in the organization (the owner; the manager does not hold it)."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: from
+          description: "Inclusive start of the event time, an RFC 3339 time or a YYYY-MM-DD date."
+          in: query
+          required: false
+          schema: { type: string }
+        - name: to
+          description: "Exclusive end of the event time, an RFC 3339 time or a YYYY-MM-DD date. It must be after from."
+          in: query
+          required: false
+          schema: { type: string }
+        - name: event_id
+          description: Only the charges of this event of the organization. An event of another organization is 404.
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: limit
+          description: "Page size, 1 to 200. Default 50."
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200 }
+        - name: cursor
+          description: "The next_cursor of the previous page."
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: A page of charges.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingChargeList"
+        "400":
+          description: A parameter is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller is not a member of the organization or lacks billing.read there.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The event_id filter names an event that is not the organizations own.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Billing is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/billing/events/{event_id}/summary:
+    get:
+      operationId: getOrgBillingEventSummary
+      summary: What the platform charged for one event
+      description: "The charge summary of one event of the organization: sums per currency, the net charge per rule (the lines of the future invoice), the summary per session and the number of billing events per kind. Read-only and preliminary. Requires JWT and billing.read in the organization."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: event_id
+          description: Event UUID. An event of another organization, or an unknown one, is 404.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The event charge summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingEventSummary"
+        "400":
+          description: event_id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller is not a member of the organization or lacks billing.read there.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The event is not an event of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Billing is not configured.
           content:
             application/json:
               schema:

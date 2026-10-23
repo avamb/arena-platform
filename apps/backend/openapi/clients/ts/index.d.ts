@@ -7062,6 +7062,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/billing/charges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List what the platform charged an organization
+         * @description Lists the charges the platform made to the organization, newest event first, with the sums per currency over the whole filter. Read-only and preliminary: nothing is invoiced yet. A reversal row has reversal_of set and a negative amount. Requires JWT and billing.read in the organization (the owner; the manager does not hold it).
+         */
+        get: operations["listOrgBillingCharges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/events/{event_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the platform charged for one event
+         * @description The charge summary of one event of the organization: sums per currency, the net charge per rule (the lines of the future invoice), the summary per session and the number of billing events per kind. Read-only and preliminary. Requires JWT and billing.read in the organization.
+         */
+        get: operations["getOrgBillingEventSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/billing/invoices": {
         parameters: {
             query?: never;
@@ -24759,6 +24799,209 @@ export interface components {
              * @description New end of the rate. It must be in the future, after the start and not after the start of the organization's next rate.
              */
             effective_to: string;
+        };
+        /** @description One charge. A reversal has reversal_of set and a negative amount, and carries the time of the event it reverses. */
+        BillingChargeItem: {
+            /**
+             * Format: uuid
+             * @description Id of the charge.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Id of the billing event the charge rates.
+             */
+            billable_event_id: string;
+            /**
+             * @description Kind of the billing event: ticket_sold, ticket_refunded, ticket_cancelled, session_cancelled, event_published or ticket_complimentary.
+             * @example ticket_sold
+             */
+            kind: string;
+            /**
+             * Format: date-time
+             * @description When the event happened.
+             */
+            occurred_at: string;
+            /**
+             * Format: date-time
+             * @description When the charge was made.
+             */
+            rated_at: string;
+            /**
+             * Format: uuid
+             * @description The event the charge belongs to, when it has one.
+             */
+            event_id: string | null;
+            /**
+             * Format: uuid
+             * @description The session the charge belongs to, when it has one.
+             */
+            session_id: string | null;
+            /**
+             * Format: uuid
+             * @description The order of a sale, when there is one.
+             */
+            order_id: string | null;
+            /**
+             * @description Currency of amount_minor, the currency of the billing account.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description The charge in minor units of currency. Zero for a free or journal-only event, negative for a reversal.
+             */
+            amount_minor: number;
+            /**
+             * @description The rule that rated the event (none when no rule applied).
+             * @example fixed_per_ticket
+             */
+            rule_type: string;
+            /** @description Why the amount is zero or reduced, when it is. */
+            reason: string | null;
+            /**
+             * Format: uuid
+             * @description Set when this row reverses another charge.
+             */
+            reversal_of: string | null;
+            /**
+             * Format: int32
+             * @description Version of the price list in force at the event time.
+             */
+            price_list_version: number | null;
+            /** @description standard or low_price, for a sale. */
+            pricing_class: string | null;
+            /** @description Whether the sold place was a numbered seat. */
+            seated: boolean | null;
+            /** @description Currency the ticket was sold in. */
+            sale_currency: string | null;
+            /**
+             * Format: int64
+             * @description Face price of the ticket in minor units of sale_currency.
+             */
+            unit_price_minor: number | null;
+        };
+        /** @description The sum of charges in one currency. Sums are never added across currencies. */
+        BillingChargeTotal: {
+            /**
+             * @description Currency of the sums.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Sum of the direct charges in minor units.
+             */
+            charged_minor: number;
+            /**
+             * Format: int64
+             * @description Sum of the reversals in minor units, zero or negative.
+             */
+            reversed_minor: number;
+            /**
+             * Format: int64
+             * @description charged_minor plus reversed_minor.
+             */
+            net_minor: number;
+            /**
+             * Format: int64
+             * @description Number of direct charges.
+             */
+            count: number;
+        };
+        /** @description A page of charges with the sums over the whole filter. */
+        BillingChargeList: {
+            /** @description The charges of this page, newest event first. */
+            items: components["schemas"]["BillingChargeItem"][];
+            /** @description Sums per currency over the whole filter, not only this page. */
+            totals: components["schemas"]["BillingChargeTotal"][];
+            /** @description Pass it as cursor to get the next page. Null on the last page. */
+            next_cursor: string | null;
+            /** @description Always true while invoices are not issued. The numbers are what has been charged so far. */
+            preliminary: boolean;
+        };
+        /** @description The net charge of one rule in one currency, a line of the future invoice. */
+        BillingChargeRuleLine: {
+            /**
+             * @description The rule that rated the events.
+             * @example fixed_per_ticket
+             */
+            rule_type: string;
+            /** @description Why the amount is zero or reduced, when it is. */
+            reason: string | null;
+            /**
+             * @description Currency of net_minor.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Direct charges plus reversals of this rule, in minor units.
+             */
+            net_minor: number;
+            /**
+             * Format: int64
+             * @description Number of direct charges.
+             */
+            count: number;
+        };
+        /** @description The charge summary of one session of an event in one currency. */
+        BillingChargeSessionLine: {
+            /**
+             * Format: uuid
+             * @description The session. Null for charges that belong to the event as a whole.
+             */
+            session_id: string | null;
+            /**
+             * Format: date-time
+             * @description Start of the session. Null when it has none.
+             */
+            session_start_at: string | null;
+            /**
+             * @description Currency of the sums.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Sum of the direct charges in minor units.
+             */
+            charged_minor: number;
+            /**
+             * Format: int64
+             * @description Sum of the reversals in minor units, zero or negative.
+             */
+            reversed_minor: number;
+            /**
+             * Format: int64
+             * @description charged_minor plus reversed_minor.
+             */
+            net_minor: number;
+            /**
+             * Format: int64
+             * @description Number of direct charges.
+             */
+            count: number;
+        };
+        /** @description What the platform charged for one event of the organization. */
+        BillingEventSummary: {
+            /**
+             * Format: uuid
+             * @description The event.
+             */
+            event_id: string;
+            /** @description Sums per currency. */
+            totals: components["schemas"]["BillingChargeTotal"][];
+            /** @description The net charge per rule and currency. */
+            by_rule: components["schemas"]["BillingChargeRuleLine"][];
+            /** @description The summary per session and currency, earliest session first. */
+            by_session: components["schemas"]["BillingChargeSessionLine"][];
+            /** @description The number of billing events of this event by kind. */
+            events_by_kind: {
+                [key: string]: number;
+            };
+            /** @description Always true while invoices are not issued. */
+            preliminary: boolean;
         };
         /** @description One dated row of the conditions of a billing account. The terms of an event are the last row that started before the event. */
         BillingAccountTerms: {
@@ -49270,6 +49513,155 @@ export interface operations {
                 };
             };
             /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listOrgBillingCharges: {
+        parameters: {
+            query?: {
+                /** @description Inclusive start of the event time, an RFC 3339 time or a YYYY-MM-DD date. */
+                from?: string;
+                /** @description Exclusive end of the event time, an RFC 3339 time or a YYYY-MM-DD date. It must be after from. */
+                to?: string;
+                /** @description Only the charges of this event of the organization. An event of another organization is 404. */
+                event_id?: string;
+                /** @description Page size, 1 to 200. Default 50. */
+                limit?: number;
+                /** @description The next_cursor of the previous page. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of charges. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingChargeList"];
+                };
+            };
+            /** @description A parameter is malformed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller is not a member of the organization or lacks billing.read there. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The event_id filter names an event that is not the organizations own. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getOrgBillingEventSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Event UUID. An event of another organization, or an unknown one, is 404. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The event charge summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingEventSummary"];
+                };
+            };
+            /** @description event_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller is not a member of the organization or lacks billing.read there. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The event is not an event of the organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Billing is not configured. */
             503: {
                 headers: {
                     [name: string]: unknown;
