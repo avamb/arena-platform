@@ -161,6 +161,10 @@ func (h *AdminHandler) HandleCreateRateOverride(w http.ResponseWriter, r *http.R
 		h.fail(w, r, "lock series", err)
 		return
 	}
+	if !from.After(h.now()) { // judged again after the lock wait
+		unprocessable(w, r, "billing.effective_from_not_future", "effective_from "+notFutureMessage)
+		return
+	}
 	latest, err := q.GetOrgRateSeriesLatestFrom(ctx, orgID, body.Currency)
 	if err != nil {
 		h.fail(w, r, "series state", err)
@@ -229,17 +233,11 @@ func (h *AdminHandler) HandleCloseRateOverride(w http.ResponseWriter, r *http.Re
 	if !decodeBody(w, r, &body) {
 		return
 	}
-	now := h.now()
 	if body.EffectiveTo == nil {
 		unprocessable(w, r, "billing.invalid_period", "effective_to is required")
 		return
 	}
 	end := body.EffectiveTo.UTC()
-	if !end.After(now) {
-		unprocessable(w, r, "billing.invalid_period",
-			"effective_to must be in the future: an individual rate is never closed backwards, sales it already priced stay as they are")
-		return
-	}
 
 	ctx := r.Context()
 	tx, err := h.pool.Begin(ctx)
@@ -258,12 +256,24 @@ func (h *AdminHandler) HandleCloseRateOverride(w http.ResponseWriter, r *http.Re
 		h.fail(w, r, "lock rate", err)
 		return
 	}
+	now := h.now() // after the row lock
 	if cur.EffectiveTo != nil && !cur.EffectiveTo.After(now) {
 		conflict(w, r, "billing.rate_override_ended", "this individual rate has already ended")
 		return
 	}
+	if !end.After(now) {
+		unprocessable(w, r, "billing.invalid_period",
+			"effective_to must be in the future: an individual rate is never closed backwards, sales it already priced stay as they are")
+		return
+	}
 	if !end.After(cur.EffectiveFrom) {
 		unprocessable(w, r, "billing.invalid_period", "effective_to must be after the start of the rate")
+		return
+	}
+	if cur.EffectiveTo != nil && !end.Before(*cur.EffectiveTo) {
+		unprocessable(w, r, "billing.invalid_period",
+			"effective_to must be earlier than the current end ("+cur.EffectiveTo.UTC().Format(time.RFC3339)+
+				"): closing a rate never extends its period")
 		return
 	}
 	next, err := q.NextOrgRateOverrideFrom(ctx, cur.OrgID, cur.Currency, cur.EffectiveFrom)
@@ -332,7 +342,7 @@ func (h *AdminHandler) HandleDeleteRateOverride(w http.ResponseWriter, r *http.R
 		h.fail(w, r, "lock rate", err)
 		return
 	}
-	n, err := q.DeleteNotStartedOrgRateOverride(ctx, id, h.now())
+	n, err := q.DeleteNotStartedOrgRateOverride(ctx, id, h.now()) // clock read after the row lock
 	if err != nil {
 		h.fail(w, r, "delete rate", err)
 		return

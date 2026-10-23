@@ -492,9 +492,18 @@ func TestBillingAdmin_IndividualRates(t *testing.T) {
 	if jsonField(t, closed, "effective_to") == "" {
 		t.Errorf("closed = %s", closed)
 	}
-	// The first cannot be stretched past the second's start.
-	e.expect(t, http.StatusConflict, http.MethodPost, "/v1/admin/billing/rate-overrides/"+firstID+"/close", e.super, "b15 close",
-		fmt.Sprintf(`{"effective_to":%q}`, rfc(start2.Add(time.Hour))))
+	// The first was closed at the second's start: closing never extends it,
+	// neither past that start nor to any later moment.
+	for _, to := range []time.Time{start2.Add(time.Hour), start2} {
+		out := e.expect(t, http.StatusUnprocessableEntity, http.MethodPost, "/v1/admin/billing/rate-overrides/"+firstID+"/close", e.super, "b15 close",
+			fmt.Sprintf(`{"effective_to":%q}`, rfc(to)))
+		if c := billingErrCode(out); c != "billing.invalid_period" {
+			t.Errorf("extending the closed first rate to %s: %q", to, c)
+		}
+	}
+	// An earlier end is a shortening and is allowed.
+	e.expect(t, http.StatusOK, http.MethodPost, "/v1/admin/billing/rate-overrides/"+firstID+"/close", e.super, "b15 close",
+		fmt.Sprintf(`{"effective_to":%q}`, rfc(start2.Add(-time.Minute))))
 
 	// A rate that has started is never removed and never closed backwards.
 	started := uuid.New()
