@@ -102,4 +102,7 @@ func (s *Server) mountSeatingRoutes(r chi.Router) {
 			s.handleListSessionSeatsAdmin,
 		)
 	})
+
+	// S1c: seat batches (apply, list, revert, per-seat history).
+	s.mountSeatBatchRoutes(r)
 }

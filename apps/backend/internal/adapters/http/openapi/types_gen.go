@@ -13769,6 +13769,204 @@ type ScannerValidateResponseInvalidReason string
 // ScannerValidateResponseStatus Current barcode status (unchanged by this call).
 type ScannerValidateResponseStatus string
 
+// SeatBatch One recorded batch of seat changes.
+type SeatBatch struct {
+	// ActorId Who applied the batch, null for a principal that is not a UUID.
+	ActorId *openapi_types.UUID `json:"actor_id"`
+
+	// ActorLabel The kind of principal that applied the batch (`user`, `service`, ...).
+	ActorLabel string `json:"actor_label"`
+
+	// AppliedAt When the batch was applied.
+	AppliedAt time.Time `json:"applied_at"`
+
+	// Changes The seats the batch changed.
+	Changes []SeatBatchChange `json:"changes"`
+
+	// Id UUID of the batch.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind `paint`, `close`, `open`, `apply_layout` or `revert`.
+	Kind string `json:"kind"`
+
+	// RevertedAt When the batch was reverted, null while it is not.
+	RevertedAt *time.Time `json:"reverted_at"`
+
+	// RevertedByBatchId The revert batch, null while the batch is not reverted.
+	RevertedByBatchId *openapi_types.UUID `json:"reverted_by_batch_id"`
+
+	// RevertsBatchId For a revert, the batch it reverted; null otherwise.
+	RevertsBatchId *openapi_types.UUID `json:"reverts_batch_id"`
+
+	// SeatStatusVersion The session's seat_status_version after the batch (one bump per batch).
+	SeatStatusVersion int64 `json:"seat_status_version"`
+
+	// SessionId UUID of the session.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Skipped The seats the batch left alone, with the reason.
+	Skipped []SeatBatchSkipped `json:"skipped"`
+
+	// UnchangedSeatKeys Seats that already were in the requested state. Only in the answer of an apply or a revert.
+	UnchangedSeatKeys *[]string `json:"unchanged_seat_keys,omitempty"`
+}
+
+// SeatBatchChange One seat a batch changed.
+type SeatBatchChange struct {
+	// From The seat before the batch.
+	From SeatBatchSeatState `json:"from"`
+
+	// SeatKey The seat's key.
+	SeatKey string `json:"seat_key"`
+
+	// To The seat after the batch.
+	To SeatBatchSeatState `json:"to"`
+}
+
+// SeatBatchChangeRequest What one seat should become; at least one of tier_id and status.
+type SeatBatchChangeRequest struct {
+	// SeatKey The seat's key.
+	SeatKey string `json:"seat_key"`
+
+	// Status `available` or `unavailable`.
+	Status *string `json:"status,omitempty"`
+
+	// TierId The category to put the seat in, a live category of this session.
+	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
+}
+
+// SeatBatchList One page of a session's batches.
+type SeatBatchList struct {
+	// HasMore True when another page follows.
+	HasMore bool `json:"has_more"`
+
+	// Items The batches, newest first, without their per-seat arrays.
+	Items []SeatBatchSummary `json:"items"`
+
+	// Total Number of batches of the session.
+	Total int64 `json:"total"`
+}
+
+// SeatBatchRequest One batch of seat changes (task S1c).
+type SeatBatchRequest struct {
+	// Changes The seats to change, at most 10 000. A seat_key may appear twice only with the same target.
+	Changes []SeatBatchChangeRequest `json:"changes"`
+
+	// Kind `paint` (tier_id only), `close` (status unavailable only), `open` (status available only) or `apply_layout` (either or both).
+	Kind string `json:"kind"`
+
+	// NewTiers Categories to create inside the batch. Not supported yet; a non-empty list answers 422 `seat_batch.new_tiers_unsupported`.
+	NewTiers *[]map[string]interface{} `json:"new_tiers,omitempty"`
+}
+
+// SeatBatchSeatState A seat's category and status before or after a batch.
+type SeatBatchSeatState struct {
+	// Status `available` or `unavailable`.
+	Status string `json:"status"`
+
+	// TierId The seat's category, null when it has none.
+	TierId *openapi_types.UUID `json:"tier_id"`
+}
+
+// SeatBatchSkipped One seat a batch left alone.
+type SeatBatchSkipped struct {
+	// Reason `sold`, `held`, `seat_not_found`, `unknown_status`, `ga_unit` (a General Admission place cannot change category), `changed_since` (a revert found the seat changed again) or `tier_unavailable` (a revert's category was deleted).
+	Reason string `json:"reason"`
+
+	// SeatKey The seat's key.
+	SeatKey string `json:"seat_key"`
+
+	// Status The seat's status when it was skipped; absent for an unknown key.
+	Status *string `json:"status,omitempty"`
+}
+
+// SeatBatchSummary One row of the batch list; the per-seat arrays are only in SeatBatch.
+type SeatBatchSummary struct {
+	// ActorId Who applied the batch, null for a principal that is not a UUID.
+	ActorId *openapi_types.UUID `json:"actor_id"`
+
+	// ActorLabel The kind of principal that applied the batch (`user`, `service`, ...).
+	ActorLabel string `json:"actor_label"`
+
+	// AppliedAt When the batch was applied.
+	AppliedAt time.Time `json:"applied_at"`
+
+	// ChangedCount Number of seats the batch changed.
+	ChangedCount int32 `json:"changed_count"`
+
+	// Id UUID of the batch.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind `paint`, `close`, `open`, `apply_layout` or `revert`.
+	Kind string `json:"kind"`
+
+	// RevertedAt When the batch was reverted, null while it is not.
+	RevertedAt *time.Time `json:"reverted_at"`
+
+	// RevertedByBatchId The revert batch, null while the batch is not reverted.
+	RevertedByBatchId *openapi_types.UUID `json:"reverted_by_batch_id"`
+
+	// RevertsBatchId For a revert, the batch it reverted; null otherwise.
+	RevertsBatchId *openapi_types.UUID `json:"reverts_batch_id"`
+
+	// SeatStatusVersion The session's seat_status_version after the batch.
+	SeatStatusVersion int64 `json:"seat_status_version"`
+
+	// SessionId UUID of the session.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// SkippedCount Number of seats the batch left alone.
+	SkippedCount int32 `json:"skipped_count"`
+}
+
+// SeatHistory One page of a seat's history.
+type SeatHistory struct {
+	// HasMore True when another page follows.
+	HasMore bool `json:"has_more"`
+
+	// Items The entries, newest first.
+	Items []SeatHistoryEntry `json:"items"`
+
+	// SeatKey The seat's key.
+	SeatKey string `json:"seat_key"`
+
+	// Total Number of entries.
+	Total int64 `json:"total"`
+}
+
+// SeatHistoryEntry One batch as seen from one seat.
+type SeatHistoryEntry struct {
+	// ActorLabel The kind of principal that applied the batch.
+	ActorLabel string `json:"actor_label"`
+
+	// AppliedAt When the batch was applied.
+	AppliedAt time.Time `json:"applied_at"`
+
+	// BatchId UUID of the batch.
+	BatchId openapi_types.UUID `json:"batch_id"`
+
+	// From The seat before the batch; only for `changed`.
+	From *SeatBatchSeatState `json:"from,omitempty"`
+
+	// Kind The batch's kind.
+	Kind string `json:"kind"`
+
+	// Outcome `changed` or `skipped`.
+	Outcome string `json:"outcome"`
+
+	// Reason Why the seat was skipped (SeatBatchSkipped.reason); only for `skipped`.
+	Reason *string `json:"reason,omitempty"`
+
+	// RevertedAt When the batch was reverted, null while it is not.
+	RevertedAt *time.Time `json:"reverted_at"`
+
+	// RevertedByBatchId The revert batch, null while the batch is not reverted.
+	RevertedByBatchId *openapi_types.UUID `json:"reverted_by_batch_id"`
+
+	// To The seat after the batch; only for `changed`.
+	To *SeatBatchSeatState `json:"to,omitempty"`
+}
+
 // SeatingCategoryPrice Resolved category → tier / price projection returned inside
 // `SeatingSchemaResponse.category_prices`. `index`, `name`, `color`,
 // `price_hint`, `currency_hint` are copied verbatim from the stored
@@ -17587,6 +17785,24 @@ type GetV1OrganizationsOrgIdSessionsSessionIdSampleTicketParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdSessionsSessionIdSeatBatchesParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSeatBatches.
+type GetV1OrganizationsOrgIdSessionsSessionIdSeatBatchesParams struct {
+	// Limit Page size, 1-50 (default 20).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of batches to skip (default 0).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdSessionsSessionIdSeatsSeatKeyHistoryParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSeatsSeatKeyHistory.
+type GetV1OrganizationsOrgIdSessionsSessionIdSeatsSeatKeyHistoryParams struct {
+	// Limit Page size, 1-100 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of entries to skip (default 0).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsvParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsv.
 type GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsvParams struct {
 	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
@@ -18219,6 +18435,9 @@ type PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody = ResolveOrde
 
 // UpdateSellerProfileJSONRequestBody defines body for UpdateSellerProfile for application/json ContentType.
 type UpdateSellerProfileJSONRequestBody = UpdateSellerProfileRequest
+
+// PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatBatches for application/json ContentType.
+type PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody = SeatBatchRequest
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody
