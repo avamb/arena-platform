@@ -1497,6 +1497,174 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/billing/price-lists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - list price-list versions
+         * @description Lists every version of every price list with its status (scheduled, in_force, superseded, revoked). Requires JWT, billing.admin and a platform superadmin.
+         */
+        get: operations["getV1AdminBillingPriceLists"];
+        put?: never;
+        /**
+         * Admin - create a price-list version
+         * @description Creates the next version of a price list. The version starts in the future, so it cannot change an event that already happened. Every rule is checked by the rating engine parser. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
+         */
+        post: operations["postV1AdminBillingPriceLists"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/price-lists/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - get a price-list version
+         * @description Returns one version with its rules and packs. Requires JWT, billing.admin and a platform superadmin.
+         */
+        get: operations["getV1AdminBillingPriceList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/price-lists/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - revoke a price-list version that has not started
+         * @description Revokes a version before its effective_from. After that moment the answer is 409. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
+         */
+        post: operations["postV1AdminBillingPriceListRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/rate-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - list individual rates
+         * @description Lists the individual per-ticket rates of organizations, every period of them. Requires JWT, billing.admin and a platform superadmin.
+         */
+        get: operations["getV1AdminBillingRateOverrides"];
+        put?: never;
+        /**
+         * Admin - create an individual rate
+         * @description Creates an individual rate that starts in the future and ends the earlier rate still open at that moment. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
+         */
+        post: operations["postV1AdminBillingRateOverrides"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/rate-overrides/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Admin - remove an individual rate that has not started
+         * @description Removes a rate before its effective_from. A rate that started is never removed, close it instead. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
+         */
+        delete: operations["deleteV1AdminBillingRateOverride"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/rate-overrides/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - close an individual rate
+         * @description Sets the end of an individual rate. The end is in the future. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
+         */
+        post: operations["postV1AdminBillingRateOverrideClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - list billing accounts
+         * @description Lists billing accounts with their terms history and the venue, tools and existing-client marks. Requires JWT, billing.admin and a platform superadmin.
+         */
+        get: operations["getV1AdminBillingAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/accounts/{account_id}/terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - add terms to a billing account
+         * @description Adds a dated terms row that starts in the future: price list, plan kind (venue or standard), cycle and shortfall policy. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
+         */
+        post: operations["postV1AdminBillingAccountTerms"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/users/{user_id}/global-roles": {
         parameters: {
             query?: never;
@@ -2683,7 +2851,10 @@ export interface paths {
          *     may also go back to `draft`: that is "take off sale". The event leaves
          *     every public surface and the sites are told, while its sessions, orders
          *     and sold tickets stay exactly as they are, and publishing it again
-         *     restores the channels it was sold in. Every real transition is written
+         *     restores the channels it was sold in. Publishing also schedules the
+         *     non-deleted draft sessions inspected by the publish gate, in the same
+         *     transaction as the event and its audit row. Scheduled, cancelled and
+         *     completed sessions are left unchanged. Every real transition is written
          *     to the audit log (`v1.event.status_update`, with `from_status` and
          *     `to_status`). Re-applying the same status is a no-op (HTTP 200).
          *     Owner-gated: org_id in the path must match the event's owning
@@ -14032,7 +14203,7 @@ export interface components {
              */
             session_count: number;
             /**
-             * @description The organizer's own text of the event (EC-31, migration 0161): up
+             * @description The organizer's own text of the event (EC-31, migration 0165): up
              *     to 2000 characters of plain text that the ticket and the
              *     session-change e-mails print under "About the event". Null when
              *     the event has none.
@@ -14434,6 +14605,13 @@ export interface components {
              *     ]
              */
             venue_names: string[];
+            /**
+             * @description The venues of the event's visible sessions with their own postal
+             *     address and the session starts held there (never the seller's
+             *     address). Empty when the event has no visible session. Absent on
+             *     older backends and in the promoter page's event list.
+             */
+            venues?: components["schemas"]["PublicEventVenue"][];
             /**
              * Format: date-time
              * @description Earliest session start (trigger-maintained cache), or null.
@@ -14877,6 +15055,56 @@ export interface components {
             longitude: number;
             /** @description Optional text shown with the point. */
             label: string | null;
+        };
+        /**
+         * @description A place an event is held at, for the sales page "where it takes
+         *     place" block: the VENUE's own name and postal address (never the
+         *     seller's legal address) and the start times of the event's visible
+         *     (scheduled or completed) sessions held there. A field the organizer
+         *     did not fill is null; nothing is guessed. No contact data is public.
+         */
+        PublicEventVenue: {
+            /**
+             * @description Venue name.
+             * @example Forum Karlin
+             */
+            name: string;
+            /**
+             * @description Country of the venue as stored (ISO 3166-1 alpha-2), or null.
+             * @example CZ
+             */
+            country: string | null;
+            /**
+             * @description English name of the venue's city from the geo reference data, or
+             *     null when the venue has no city or the city has no English name.
+             * @example Prague
+             */
+            city: string | null;
+            /**
+             * @description Street address lines (`address_line1`, `address_line2` joined by
+             *     a comma; the legacy free-form `address` when no structured line
+             *     is set), or null.
+             * @example Pernerova 51
+             */
+            address: string | null;
+            /**
+             * @description Postal code of the venue, or null.
+             * @example 18600
+             */
+            postal_code: string | null;
+            /**
+             * @description IANA time zone of the venue, or null.
+             * @example Europe/Prague
+             */
+            timezone: string | null;
+            /**
+             * @description Start times (RFC 3339 UTC, earliest first, at most 60) of the
+             *     event's sessions held at this venue.
+             * @example [
+             *       "2026-08-15T18:00:00Z"
+             *     ]
+             */
+            session_starts: string[];
         };
         /**
          * @description The materials of an event's page (task 1-2c), the same block on the
@@ -21685,7 +21913,7 @@ export interface components {
             promoterId?: string | null;
             /**
              * @description Arena event-bundle extension (source=arena only; EC-31, migration
-             *     0161): the organizer's own text that the ticket and session-change
+             *     0165): the organizer's own text that the ticket and session-change
              *     e-mails print under "About the event". Absent or null keeps the
              *     stored text, "" removes it, a string replaces it after the same
              *     filter as PATCH `email_note` (plain text, at most 2000
@@ -24262,6 +24490,511 @@ export interface components {
         OnboardingBotNoticesResponse: {
             /** @description The claimed decisions. */
             notices: components["schemas"]["OnboardingBotNotice"][];
+        };
+        /** @description One rule of a price-list version. Amounts inside params are minor units of the price list currency, percentages are basis points (pct_bp). */
+        BillingPriceListRule: {
+            /**
+             * Format: uuid
+             * @description Id of the rule row.
+             */
+            id: string;
+            /**
+             * @description Rule type: fixed_per_ticket, percent_of_price_with_cap, low_price_formula, credit_pack or fixed_per_event.
+             * @example fixed_per_ticket
+             */
+            rule_type: string;
+            /**
+             * @description Line of the rule: standard, or venue for the permanent-venue plan.
+             * @example standard
+             */
+            line: string;
+            /**
+             * @description Event kind the rule rates: ticket_sold, or event_published for fixed_per_event.
+             * @example ticket_sold
+             */
+            event_kind: string;
+            /** @description Sale currency of a low_price_formula rule (its threshold is in that currency), null for every other rule. */
+            sale_currency: string | null;
+            /** @description The numbers of the rule as the rating engine reads them, for example unseated_minor and seated_minor. */
+            params: {
+                [key: string]: unknown;
+            };
+            /**
+             * Format: int32
+             * @description Position of the rule in the version.
+             */
+            sort_order: number;
+        };
+        /** @description One rule of a new price-list version. Every number is entered by the operator; nothing has a default. */
+        BillingPriceListRuleInput: {
+            /**
+             * @description Rule type: fixed_per_ticket, percent_of_price_with_cap, low_price_formula, credit_pack or fixed_per_event.
+             * @example fixed_per_ticket
+             */
+            rule_type: string;
+            /**
+             * @description Line of the rule: standard, or venue for percent_of_price_with_cap.
+             * @example standard
+             */
+            line: string;
+            /**
+             * @description Event kind the rule rates: ticket_sold, or event_published for fixed_per_event.
+             * @example ticket_sold
+             */
+            event_kind: string;
+            /**
+             * @description Sale currency, required for low_price_formula and forbidden for every other rule.
+             * @example EUR
+             */
+            sale_currency?: string;
+            /** @description The numbers of the rule, amounts in minor units and percentages in basis points. The keys depend on rule_type. */
+            params: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description One credit-pack tier of a price-list version. Money is in minor units of the price list currency. */
+        BillingPriceListPack: {
+            /**
+             * Format: uuid
+             * @description Id of the pack row.
+             */
+            id: string;
+            /**
+             * Format: int32
+             * @description Tier number of the pack, 1 or more.
+             */
+            tier: number;
+            /**
+             * @description Currency of the price list.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Face value of the pack in minor units.
+             */
+            face_minor: number;
+            /**
+             * Format: int64
+             * @description Rate of one ticket without a seat, in minor units.
+             */
+            unseated_rate_minor: number;
+            /**
+             * Format: int64
+             * @description Surcharge of one seated ticket, in minor units.
+             */
+            seated_surcharge_minor: number;
+            /** @description Whether the pack can be bought. */
+            active: boolean;
+            /**
+             * Format: int32
+             * @description Position of the pack in the version.
+             */
+            sort_order: number;
+        };
+        /** @description One credit-pack tier of a new price-list version. */
+        BillingPriceListPackInput: {
+            /**
+             * Format: int32
+             * @description Tier number, 1 or more and unique inside the version.
+             */
+            tier: number;
+            /**
+             * Format: int64
+             * @description Face value of the pack in minor units, more than 0.
+             */
+            face_minor: number;
+            /**
+             * Format: int64
+             * @description Rate of one ticket without a seat, in minor units.
+             */
+            unseated_rate_minor: number;
+            /**
+             * Format: int64
+             * @description Surcharge of one seated ticket, in minor units.
+             */
+            seated_surcharge_minor: number;
+            /** @description Whether the pack can be bought. Defaults to true. */
+            active?: boolean;
+        };
+        /** @description One version of a price list in one currency. A version is never edited. A new price is a new version. */
+        BillingPriceListVersion: {
+            /**
+             * Format: uuid
+             * @description Id of the version.
+             */
+            id: string;
+            /**
+             * @description Code of the price list.
+             * @example standard-2026
+             */
+            code: string;
+            /**
+             * Format: int32
+             * @description Version number inside the code and currency, counted from 1.
+             */
+            version: number;
+            /**
+             * @description Currency of the price list.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: date-time
+             * @description First moment the version rates events. Events are rated by the version in force at their occurred_at.
+             */
+            effective_from: string;
+            /**
+             * Format: date-time
+             * @description When the version was revoked, null while it is not. Only a version that has not started can be revoked.
+             */
+            revoked_at: string | null;
+            /** @description The version is locked, a change needs a superadmin with a reason. */
+            locked: boolean;
+            /**
+             * Format: int32
+             * @description Free tickets per year, null until a superadmin sets it.
+             */
+            free_tickets_annual_limit: number | null;
+            /**
+             * Format: int64
+             * @description Floor of platform revenue per ticket in minor units, null until a superadmin sets it.
+             */
+            floor_per_ticket_minor: number | null;
+            /**
+             * Format: int32
+             * @description Largest share of a charge that may be paid with bonus credits, in basis points.
+             */
+            bonus_share_cap_bp: number;
+            /** @description Whether bonus credits may pay the seat surcharge. */
+            bonus_covers_surcharge: boolean;
+            /** @description Id of the operator who created the version, or migration. */
+            created_by: string | null;
+            /** @description The X-Admin-Reason given when the version was created. */
+            reason: string | null;
+            /**
+             * Format: date-time
+             * @description When the version was created.
+             */
+            created_at: string;
+            /**
+             * @description State at the time of the request: scheduled (not started), in_force, superseded (a later version is in force) or revoked.
+             * @example scheduled
+             */
+            status: string;
+            /**
+             * Format: int32
+             * @description Number of rules. Present in the list only.
+             */
+            rules_count?: number;
+            /**
+             * Format: int32
+             * @description Number of credit packs. Present in the list only.
+             */
+            packs_count?: number;
+        };
+        /** @description Every version of the price lists, oldest first inside a code and currency. */
+        BillingPriceListVersionList: {
+            /** @description The versions. */
+            items: components["schemas"]["BillingPriceListVersion"][];
+        };
+        /** @description A price-list version with its rules and packs. After a create it also lists the rules the previous version had and this one lacks. */
+        BillingPriceListDetail: components["schemas"]["BillingPriceListVersion"] & {
+            /** @description The rules of the version. */
+            rules: components["schemas"]["BillingPriceListRule"][];
+            /** @description The credit packs of the version. */
+            packs: components["schemas"]["BillingPriceListPack"][];
+            /** @description Present after a create. Each text names a rule the previous version had and the new one does not. */
+            warnings?: string[];
+        };
+        /** @description Body of POST /v1/admin/billing/price-lists. It creates the next version of the price list with that code and currency. Every number is typed by the operator. */
+        BillingCreatePriceListRequest: {
+            /**
+             * @description Code of the price list, 2-64 characters, lower case.
+             * @example standard-2026
+             */
+            code: string;
+            /**
+             * @description Three capital letters.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: date-time
+             * @description Start of the version. It must be in the future and after the start of the latest version that was not revoked.
+             */
+            effective_from: string;
+            /** @description Lock the version. Defaults to false. */
+            locked?: boolean;
+            /**
+             * Format: int32
+             * @description Free tickets per year, or null to leave it unset.
+             */
+            free_tickets_annual_limit?: number | null;
+            /**
+             * Format: int64
+             * @description Floor of platform revenue per ticket in minor units, or null to leave it unset.
+             */
+            floor_per_ticket_minor?: number | null;
+            /**
+             * Format: int32
+             * @description Largest share of a charge paid with bonus credits, in basis points, 0-10000 and a multiple of 10.
+             */
+            bonus_share_cap_bp: number;
+            /** @description Whether bonus credits may pay the seat surcharge. Defaults to false. */
+            bonus_covers_surcharge?: boolean;
+            /** @description The rules of the version, at least one. */
+            rules: components["schemas"]["BillingPriceListRuleInput"][];
+            /** @description The credit packs of the version, may be empty. */
+            packs?: components["schemas"]["BillingPriceListPackInput"][];
+        };
+        /** @description An individual per-ticket rate of an organization. It replaces the price-list rate for the organization in that currency. */
+        BillingRateOverride: {
+            /**
+             * Format: uuid
+             * @description Id of the rate.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /** @description Name of the organization. Present in the list only. */
+            org_name?: string;
+            /**
+             * @description Currency of the rate.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Rate of a ticket without a seat, in minor units.
+             */
+            unseated_minor: number;
+            /**
+             * Format: int64
+             * @description Rate of a seated ticket, in minor units.
+             */
+            seated_minor: number;
+            /**
+             * Format: date-time
+             * @description First moment the rate applies.
+             */
+            effective_from: string;
+            /**
+             * Format: date-time
+             * @description First moment the rate no longer applies, null while it is open.
+             */
+            effective_to: string | null;
+            /** @description Free note of the operator. */
+            note: string | null;
+            /** @description Id of the operator who created the rate, or migration. */
+            created_by: string | null;
+            /**
+             * Format: date-time
+             * @description When the rate was created.
+             */
+            created_at: string;
+            /**
+             * @description State at the time of the request: scheduled, in_force or ended.
+             * @example in_force
+             */
+            status: string;
+            /** @description Present after a create. Ids of the earlier rates that were ended at the start of this one. */
+            closed_rate_ids?: string[];
+        };
+        /** @description Individual rates, every period of them. */
+        BillingRateOverrideList: {
+            /** @description The rates, by organization name, currency and start (newest first). */
+            items: components["schemas"]["BillingRateOverride"][];
+        };
+        /** @description Body of POST /v1/admin/billing/rate-overrides. The rate starts in the future after the organization's earlier rates of that currency. */
+        BillingCreateRateOverrideRequest: {
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /**
+             * @description Three capital letters.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Rate of a ticket without a seat, in minor units.
+             */
+            unseated_minor: number;
+            /**
+             * Format: int64
+             * @description Rate of a seated ticket, in minor units.
+             */
+            seated_minor: number;
+            /**
+             * Format: date-time
+             * @description Start of the rate. It must be in the future.
+             */
+            effective_from: string;
+            /**
+             * Format: date-time
+             * @description End of the rate, or null for an open rate.
+             */
+            effective_to?: string | null;
+            /** @description Free note, for example the contract it comes from. */
+            note?: string;
+        };
+        /** @description Body of POST /v1/admin/billing/rate-overrides/{id}/close. */
+        BillingCloseRateOverrideRequest: {
+            /**
+             * Format: date-time
+             * @description New end of the rate. It must be in the future, after the start and not after the start of the organization's next rate.
+             */
+            effective_to: string;
+        };
+        /** @description One dated row of the conditions of a billing account. The terms of an event are the last row that started before the event. */
+        BillingAccountTerms: {
+            /**
+             * Format: uuid
+             * @description Id of the terms row.
+             */
+            id: string;
+            /**
+             * Format: date-time
+             * @description First moment the terms apply.
+             */
+            effective_from: string;
+            /** @description Code of the price list the account is rated by. */
+            price_list_code: string;
+            /**
+             * @description standard, or venue for a permanent venue.
+             * @example standard
+             */
+            plan_kind: string;
+            /**
+             * @description prepaid, per_event or monthly.
+             * @example monthly
+             */
+            billing_cycle: string;
+            /**
+             * @description invoice_postpaid or block_publishing.
+             * @example invoice_postpaid
+             */
+            shortfall_policy: string;
+            /**
+             * Format: uuid
+             * @description The legal entity that invoices the account.
+             */
+            issuer_id: string;
+            /**
+             * Format: int32
+             * @description Days after the last session before a per-event invoice is made.
+             */
+            invoice_delay_days: number | null;
+            /**
+             * Format: int32
+             * @description Days to pay an invoice.
+             */
+            due_days: number | null;
+            /** @description Whether only a superadmin may change the row. */
+            locked: boolean;
+            /** @description Id of the operator who created the row, or migration. */
+            created_by: string | null;
+            /** @description The X-Admin-Reason given when the row was created. */
+            reason: string | null;
+            /**
+             * Format: date-time
+             * @description When the row was created.
+             */
+            created_at: string;
+        };
+        /** @description The three marks of an account. Venue and existing client are derived from rows, tools is the account kind. */
+        BillingAdminAccountFlags: {
+            /** @description The terms in force use the venue plan (a permanent venue). */
+            venue: boolean;
+            /** @description The account is a tools account (generator), not an organizer account. */
+            tools: boolean;
+            /** @description The organization has an individual rate. A separate date of connection does not exist yet. */
+            existing_client: boolean;
+        };
+        /** @description A billing account with its terms history and marks. */
+        BillingAdminAccount: {
+            /**
+             * Format: uuid
+             * @description Id of the account.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /** @description Name of the organization. */
+            org_name: string;
+            /**
+             * @description Currency of the account.
+             * @example EUR
+             */
+            currency: string;
+            /**
+             * Format: uuid
+             * @description The legal entity that invoices the account.
+             */
+            issuer_id: string;
+            /**
+             * @description organizer or tools.
+             * @example organizer
+             */
+            account_kind: string;
+            /** @description All terms rows, oldest first. */
+            terms: components["schemas"]["BillingAccountTerms"][];
+            /**
+             * Format: uuid
+             * @description Id of the terms row in force now, null when none has started.
+             */
+            current_terms_id: string | null;
+            /** @description The marks of the account. */
+            flags: components["schemas"]["BillingAdminAccountFlags"];
+        };
+        /** @description Billing accounts. */
+        BillingAdminAccountList: {
+            /** @description The accounts, by organization name. */
+            items: components["schemas"]["BillingAdminAccount"][];
+        };
+        /** @description Body of POST /v1/admin/billing/accounts/{account_id}/terms. It adds a terms row that starts in the future. */
+        BillingCreateAccountTermsRequest: {
+            /**
+             * Format: date-time
+             * @description Start of the terms. It must be in the future and after the start of every earlier terms row.
+             */
+            effective_from: string;
+            /** @description Code of a price list that has a version in force in the account currency at that moment. */
+            price_list_code: string;
+            /**
+             * @description standard, or venue for a permanent venue. The price list version must carry the rule this plan is rated by.
+             * @example standard
+             */
+            plan_kind: string;
+            /**
+             * @description prepaid, per_event or monthly. A tools account is prepaid only.
+             * @example monthly
+             */
+            billing_cycle: string;
+            /**
+             * @description invoice_postpaid or block_publishing.
+             * @example invoice_postpaid
+             */
+            shortfall_policy: string;
+            /**
+             * Format: int32
+             * @description Days after the last session before a per-event invoice is made.
+             */
+            invoice_delay_days?: number | null;
+            /**
+             * Format: int32
+             * @description Days to pay an invoice.
+             */
+            due_days?: number | null;
         };
     };
     responses: never;
@@ -28421,6 +29154,662 @@ export interface operations {
             };
             /** @description User is not deactivated */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminBillingPriceLists: {
+        parameters: {
+            query?: {
+                /** @description Only versions of this price list code. */
+                code?: string;
+                /** @description Only versions in this currency. */
+                currency?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The versions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingPriceListVersionList"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingPriceLists: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingCreatePriceListRequest"];
+            };
+        };
+        responses: {
+            /** @description The new version with its rules, packs and warnings. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingPriceListDetail"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The start is not after the latest version that was not revoked */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field or a rule is not valid, or the start is not in the future */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminBillingPriceList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the version. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingPriceListDetail"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Version not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingPriceListRevoke: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the version. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The revoked version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingPriceListDetail"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Version not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The version is already revoked, has started, or is the first version accounts depend on */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminBillingRateOverrides: {
+        parameters: {
+            query?: {
+                /** @description Only rates of this organization. */
+                org_id?: string;
+                /** @description Only rates in this currency. */
+                currency?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingRateOverrideList"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description org_id is not a UUID */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingRateOverrides: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingCreateRateOverrideRequest"];
+            };
+        };
+        responses: {
+            /** @description The new rate. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingRateOverride"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The start is not after the organization latest rate in that currency */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is not valid, or the start is not in the future */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteV1AdminBillingRateOverride: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the rate. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rate was removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The rate has already started */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingRateOverrideClose: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the rate. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingCloseRateOverrideRequest"];
+            };
+        };
+        responses: {
+            /** @description The rate with its new end. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingRateOverride"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The rate has already ended, or the end passes the start of the next rate */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The end is not in the future or not after the start */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminBillingAccounts: {
+        parameters: {
+            query?: {
+                /** @description Only accounts of this organization. */
+                org_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The accounts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAdminAccountList"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description org_id is not a UUID */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingAccountTerms: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the billing account. */
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingCreateAccountTermsRequest"];
+            };
+        };
+        responses: {
+            /** @description The new terms row. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccountTerms"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The start is not after the latest terms of the account */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is not valid, the start is not in the future, or the price list does not fit the plan */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -44065,6 +45454,12 @@ export interface operations {
                          *     is the same as on the hosted page.
                          */
                         event: components["schemas"]["EventItem"] & {
+                            /**
+                             * @description The venues of the event's visible sessions with their
+                             *     own postal address and the start times of the sessions
+                             *     held there (`PublicEventVenue`); `[]` when none.
+                             */
+                            venues: components["schemas"]["PublicEventVenue"][];
                             /** @description The event's page materials; every list is `[]` when empty. */
                             materials: components["schemas"]["PublicEventMaterials"];
                         };

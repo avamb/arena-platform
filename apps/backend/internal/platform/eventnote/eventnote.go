@@ -3,7 +3,7 @@
 // buyer of the event to read ("come 30 minutes early", "the cloakroom is
 // free").
 //
-// The text is plain text. It is stored in event_email_notes (migration 0161)
+// The text is plain text. It is stored in event_email_notes (migration 0165)
 // after Normalize, which is the ONLY server-side filter: no HTML, no control
 // characters, at most MaxLinks links and every link an https:// address. The
 // letter templates get the note through Parse as paragraphs of text and link

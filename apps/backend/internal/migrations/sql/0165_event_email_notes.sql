@@ -1,4 +1,4 @@
--- 0161_event_email_notes.sql — EC-31 (task 7-1 of the event-center execution
+-- 0165_event_email_notes.sql — EC-31 (task 7-1 of the event-center execution
 -- spec): the organizer's own text of an event that the ticket and the
 -- session-change letters print under "About the event".
 --

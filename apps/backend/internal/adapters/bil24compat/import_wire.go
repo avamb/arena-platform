@@ -83,7 +83,7 @@ type ImportSessionAction struct {
 	// session-change letters print under "About the event". Absent or null
 	// keeps the stored text, "" removes it, a string is filtered by
 	// eventnote.Normalize (422 import.invalid_email_note when refused).
-	EmailNote *string `json:"emailNote"`
+	EmailNote *string `json:"emailNote,omitempty"`
 	// ArenaEventID (arena extension, source=arena only) addresses an existing
 	// event of the organization by its arena UUID — what an event center
 	// reads from GET /v1/organizations/{org_id}/events. It plays the role

@@ -1,5 +1,5 @@
 // event_email_note.go - the organizer's own text of an event for the buyer
-// letters (EC-31, migration 0161).
+// letters (EC-31, migration 0165).
 //
 //	PATCH /v1/organizations/{org_id}/events/{id}                          email_note: absent keeps, null or "" clears
 //	POST  /v1/organizations/{org_id}/events/{event_id}/email-note/test    (event.update)
@@ -23,6 +23,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventnote"
@@ -75,19 +76,19 @@ func writeInvalidEmailNote(w http.ResponseWriter, r *http.Request, err error) {
 	))
 }
 
-// saveEmailNote stores (or, for "", removes) the note and audits the change.
-// The audit row never carries the text.
-func (h *Handler) saveEmailNote(r *http.Request, eventID, orgID uuid.UUID, note string) error {
-	ctx := r.Context()
-	var err error
+// writeEmailNote stores (or, for "", removes) the note through q, which is
+// bound to the PATCH's transaction.
+func writeEmailNote(ctx context.Context, q *gen.Queries, eventID, orgID uuid.UUID, note string) error {
 	if note == "" {
-		err = h.eventQueries.DeleteEventEmailNote(ctx, eventID, orgID)
-	} else {
-		err = h.eventQueries.UpsertEventEmailNote(ctx, eventID, orgID, note)
+		return q.DeleteEventEmailNote(ctx, eventID, orgID)
 	}
-	if err != nil {
-		return err
-	}
+	return q.UpsertEventEmailNote(ctx, eventID, orgID, note)
+}
+
+// auditEmailNote records the change after it has been committed. The audit
+// row never carries the text.
+func (h *Handler) auditEmailNote(r *http.Request, eventID, orgID uuid.UUID, note string) {
+	ctx := r.Context()
 	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(ctx)
 		if auditErr := h.audit.Write(ctx, audit.Event{
@@ -105,7 +106,6 @@ func (h *Handler) saveEmailNote(r *http.Request, eventID, orgID uuid.UUID, note 
 			h.logger.Warn("event: email note audit write failed", slog.String("error", auditErr.Error()))
 		}
 	}
-	return nil
 }
 
 // hydrateEmailNotes fills EmailNote from one batched query. Like the other

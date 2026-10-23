@@ -241,6 +241,9 @@ func run() error {
 	}
 
 	srv := httpserver.New(httpserver.Options{
+		// PosterReader is nil in every normal build (the Anthropic reader is then built from
+		// POSTER_LLM_API_KEY); only the e2eposter build tag injects a deterministic reader.
+		PosterReader:                injectedPosterReader(),
 		GatewayBundle:               gatewayBundle,
 		Config:                      cfg,
 		Logger:                      logger,
@@ -307,7 +310,10 @@ func run() error {
 
 	// Drain the goroutine so the test/process exits with no live handler.
 	select {
-	case <-listenErrCh:
+	case err := <-listenErrCh:
+		if err != nil {
+			logger.Warn("listener exited with error during shutdown", "error", err.Error())
+		}
 	case <-time.After(cfg.ShutdownTimeout):
 	}
 

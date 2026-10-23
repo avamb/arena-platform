@@ -157,13 +157,13 @@ func TestParse_QuoteClosingLinkKeepsMultibyteText(t *testing.T) {
 
 // The table's CHECK and the Go limit are the same number.
 func TestLimitMatchesMigration(t *testing.T) {
-	body, err := os.ReadFile("../../migrations/sql/0161_event_email_notes.sql")
+	body, err := os.ReadFile("../../migrations/sql/0165_event_email_notes.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
 	m := regexp.MustCompile(`char_length\(note\)\s+BETWEEN\s+1\s+AND\s+(\d+)`).FindSubmatch(body)
 	if m == nil {
-		t.Fatal("note length CHECK not found in 0161")
+		t.Fatal("note length CHECK not found in 0165")
 	}
 	n, _ := strconv.Atoi(string(m[1]))
 	if n != MaxRunes {

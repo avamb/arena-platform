@@ -31,6 +31,12 @@ export type OrderTicketSummary = S["OrderTicketSummary"];
 export type OrderDeliveryEntry = S["OrderDeliveryEntry"];
 export type OrderLetter = S["OrderLetter"];
 export type OrderRefundLetter = S["OrderRefundLetter"];
+// 8-1: refunds of an order.
+export type OrderRefundOptions = S["OrderRefundOptions"];
+export type OrderRefundTicketOption = S["OrderRefundTicketOption"];
+export type OrderRefundItem = S["OrderRefundItem"];
+export type CreateOrderRefundsRequest = S["CreateOrderRefundsRequest"];
+export type CreateOrderRefundsResponse = S["CreateOrderRefundsResponse"];
 export type OrderResendTicketsResponse = S["OrderResendTicketsResponse"];
 export type ComplimentaryListItem = S["ComplimentaryListItem"];
 export type ComplimentaryListResponse = S["ComplimentaryListResponse"];
@@ -61,3 +67,38 @@ export type BotInvitation = S["BotInvitation"];
 export type BotInvitationCreateResponse = S["BotInvitationCreateResponse"];
 export type BotInvitationResendResponse = S["BotInvitationResendResponse"];
 export type BotInvitationRevokeResponse = S["BotInvitationRevokeResponse"];
+// 5-1: event status
+export type EventEnvelope = S["EventEnvelope"];
+export type EventDeleteImpact = S["EventDeleteImpact"];
+// 5-3
+export type SessionEnvelope = S["SessionEnvelope"];
+// 5-4: a date's categories (open, price, sale window, quantity).
+export type TicketTierEnvelope = S["TicketTierEnvelope"];
+export type UpdateTicketTierRequest = S["UpdateTicketTierRequest"];
+export type TierPriceWindow = S["TierPriceWindow"];
+export type TierPriceWindowInput = S["TierPriceWindowInput"];
+export type TierPriceSchedule = S["TierPriceSchedule"];
+export type TierPriceScheduleEnvelope = S["TierPriceScheduleEnvelope"];
+export type PutTierPriceScheduleRequest = S["PutTierPriceScheduleRequest"];
+// 6-1a: the event wizard.
+export type VenueItem = S["VenueItem"];
+export type GeoCountryItem = S["GeoCountryItem"];
+export type GeoCountriesResponse = S["GeoCountriesResponse"];
+export type GeoCityItem = S["GeoCityItem"];
+export type GeoCitySuggestion = S["GeoCitySuggestion"];
+export type GeoCitiesResponse = S["GeoCitiesResponse"];
+export type GeoCountryTimezonesResponse = S["GeoCountryTimezonesResponse"];
+export type GeoCountryCurrencyResponse = S["GeoCountryCurrencyResponse"];
+export type ImportDryRunError = S["ImportDryRunError"];
+export type ImportEventBundleDryRunResponse = S["ImportEventBundleDryRunResponse"];
+// 6-1c: the answer of a real (not dry-run) event-bundle import.
+export type ImportBil24SessionResponse = S["ImportBil24SessionResponse"];
+// 7-1: the event poster (upload, preview, attach).
+export type MediaObject = S["MediaObject"];
+// Poster-first creation: what the vision model read from an uploaded poster (hints only).
+export type PosterFactsResponse = S["PosterFactsResponse"];
+// 5-2: move or cancel a session, the organizer contact, the venues list.
+export type SessionChangeImpact = S["SessionChangeImpact"];
+export type SessionChangeSummary = S["SessionChangeSummary"];
+export type OrganizerContact = S["OrganizerContact"];
+export type EventContactResponse = S["EventContactResponse"];

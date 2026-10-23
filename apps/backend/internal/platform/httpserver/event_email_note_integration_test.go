@@ -328,3 +328,34 @@ func TestEventEmailNote_TestLetterRouteAndWorker(t *testing.T) {
 		t.Errorf("foreign org job: err %v, sent %d", err, len(sender.sent))
 	}
 }
+
+// The PATCH writes the event row, its metadata and the letter text in ONE
+// transaction: when the metadata is refused (a slug another event holds), the
+// name and the text of the same request are not applied either.
+func TestEventEmailNote_PatchIsAtomicWithTheEventRow(t *testing.T) {
+	e := newENEnv(t)
+	org := e.org(t, "A")
+	owner := e.user(t, "owner")
+	e.member(t, owner, org, "org_admin")
+	tok := e.token(t, owner)
+	taker, ev := e.event(t, org), e.event(t, org)
+	base := "/v1/organizations/" + org.String() + "/events/"
+	slug := "atomic-" + uuid.NewString()[:8]
+	e.expect(t, http.StatusOK, http.MethodPatch, base+taker.String(), tok, "", `{"slug":`+jsonString(slug)+`}`)
+	e.expect(t, http.StatusOK, http.MethodPatch, base+ev.String(), tok, "", `{"email_note":"first text"}`)
+
+	st, out := e.do(t, http.MethodPatch, base+ev.String(), tok, "",
+		`{"name":"Half applied","email_note":"second text","slug":`+jsonString(slug)+`}`)
+	if st < 400 {
+		t.Fatalf("a duplicate slug was accepted: %d %s", st, out)
+	}
+	if got, _ := e.noteOf(t, ev); got != "first text" {
+		t.Fatalf("the note of a failed PATCH is %q, want the old text", got)
+	}
+	if n := e.count(t, `SELECT count(*) FROM events WHERE id = $1 AND name = 'Half applied'`, ev); n != 0 {
+		t.Fatal("the name of a failed PATCH was applied")
+	}
+	if n := e.count(t, `SELECT count(*) FROM audit_events WHERE action = 'v1.event.email_note.update' AND resource_id = $1`, ev.String()); n != 1 {
+		t.Errorf("audit rows = %d: a rolled back change must not be audited", n)
+	}
+}

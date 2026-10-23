@@ -768,7 +768,26 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		posterMediaID = &parsed
 	}
 
-	updated, err := h.eventQueries.UpdateEvent(ctx, eventID, orgID, req.Name, description, req.Visibility, imageURL, posterMediaID)
+	// With a letter text in the request the event row, the metadata and the
+	// text are written in ONE transaction: a failure of any of them rolls the
+	// others back, so the event is never left half edited (EC-31). Without it
+	// the request keeps its old, untransacted shape.
+	q := h.eventQueries
+	var tx pgx.Tx
+	if emailNoteSet {
+		var beginErr error
+		if tx, beginErr = h.pool.BeginTx(ctx, pgx.TxOptions{}); beginErr != nil {
+			h.logger.Error("event: update begin failed", slog.String("error", beginErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.update_failed", "failed to update event", r,
+			))
+			return
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		q = h.eventQueries.WithTx(tx)
+	}
+
+	updated, err := q.UpdateEvent(ctx, eventID, orgID, req.Name, description, req.Visibility, imageURL, posterMediaID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("event.not_found", "event not found", r))
@@ -782,7 +801,7 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if emailNoteSet {
-		if err := h.saveEmailNote(r, eventID, orgID, emailNote); err != nil {
+		if err := writeEmailNote(ctx, q, eventID, orgID, emailNote); err != nil {
 			h.logger.Error("event: email note update failed", slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"event.email_note_update_failed", "failed to update the event letter text", r,
@@ -858,7 +877,7 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		resolvedMetaDesc := resolveStr(req.MetaDescription, existing.MetaDescription)
 		resolvedMetaKW := resolveStr(req.MetaKeywords, existing.MetaKeywords)
 
-		meta, metaErr := h.eventQueries.UpdateEventMetadata(ctx, eventID, orgID,
+		meta, metaErr := q.UpdateEventMetadata(ctx, eventID, orgID,
 			resolvedSlug, resolvedShortDesc, resolvedGenre, resolvedAgeRating,
 			resolvedDuration, resolvedTeaserURL, resolvedTrailerURL, resolvedMetaDesc, resolvedMetaKW,
 		)
@@ -891,6 +910,17 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 				h.logger.Warn("event: audit write failed", "error", auditErr.Error())
 			}
 		}
+	}
+
+	if tx != nil {
+		if err := tx.Commit(ctx); err != nil {
+			h.logger.Error("event: update commit failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.update_failed", "failed to update event", r,
+			))
+			return
+		}
+		h.auditEmailNote(r, eventID, orgID, emailNote)
 	}
 
 	// W1-B7c (#506): a subscribed mirror re-reads the event on notification, so
@@ -1007,6 +1037,7 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 	// AB-42 publish gate: an event may only be published once it is sellable.
 	// It must have at least one session, and every session must carry at
 	// least one ticket tier. Half-finished events stay resumable in draft.
+	var publishSessions []uuid.UUID
 	if req.Status == "published" && h.sessionQueries != nil && h.tierQueries != nil {
 		sessions, sErr := h.sessionQueries.ListSessionsByEvent(ctx, eventID)
 		if sErr != nil {
@@ -1038,6 +1069,9 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 			if len(tiers) == 0 {
 				untieredSessionIDs = append(untieredSessionIDs, sess.ID.String())
 			}
+			if sess.Status == "draft" {
+				publishSessions = append(publishSessions, sess.ID)
+			}
 		}
 		if len(untieredSessionIDs) > 0 {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
@@ -1053,7 +1087,7 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	updated, ok := h.applyEventStatus(w, r, current, orgID, req.Status)
+	updated, ok := h.applyEventStatus(w, r, current, orgID, req.Status, publishSessions)
 	if !ok {
 		return
 	}

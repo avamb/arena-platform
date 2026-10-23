@@ -1,7 +1,7 @@
 // Hand-maintained typed query wrapper; follows sqlc output conventions.
 // source: event_email_notes.sql
 //
-// The organizer's own text of an event for the buyer letters (migration 0161,
+// The organizer's own text of an event for the buyer letters (migration 0165,
 // EC-31). The text is filtered by eventnote.Normalize before it gets here; a
 // row exists only while the event has a note.
 
