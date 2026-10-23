@@ -73,6 +73,7 @@ type dialogQueries interface {
 	UpsertBotDialog(ctx context.Context, telegramUserID int64, orgID *uuid.UUID, kind, step string, state json.RawMessage, expiresAt time.Time) (gen.BotDialogRow, error)
 	GetBotDialog(ctx context.Context, telegramUserID int64, kind string) (gen.BotDialogRow, error)
 	DeleteBotDialog(ctx context.Context, telegramUserID int64, kind string) error
+	DeleteBotDialogIfExpired(ctx context.Context, telegramUserID int64, kind string, now time.Time) (int64, error)
 	ListBotDialogKindsByRecency(ctx context.Context, telegramUserID int64) ([]string, error)
 	UpdateBotDialogQuiet(ctx context.Context, telegramUserID int64, orgID *uuid.UUID, kind, step string, state json.RawMessage, expiresAt time.Time) (int64, error)
 }
@@ -138,16 +139,35 @@ func (s *pgDialogStore) Load(ctx context.Context, tg int64, kind string, into an
 	if err != nil {
 		return "", false, false, fmt.Errorf("eventbot: load %s dialog: %w", kind, err)
 	}
-	if !s.now().Before(row.ExpiresAt) {
+	if now := s.now(); !now.Before(row.ExpiresAt) {
 		// Deleting is what makes "expired" a one-time answer: the next Load
 		// finds nothing and the person's text goes wherever it would have gone
-		// without a dialog.
-		if err := s.q.DeleteBotDialog(ctx, tg, kind); err != nil {
+		// without a dialog. The delete is conditional on the row STILL being
+		// expired, so it is also the arbiter: of two parallel Loads only the
+		// one that removed the row reports "expired", and a Save that revived
+		// the dialog after our read is never erased.
+		n, err := s.q.DeleteBotDialogIfExpired(ctx, tg, kind, now)
+		if err != nil {
 			return "", false, false, fmt.Errorf("eventbot: drop expired %s dialog: %w", kind, err)
 		}
-		// The step it lapsed on stays visible: a caller says "expired" only
-		// for a dialog that was waiting for typed text.
-		return row.Step, false, true, nil
+		if n > 0 {
+			// The step it lapsed on stays visible: a caller says "expired"
+			// only for a dialog that was waiting for typed text.
+			return row.Step, false, true, nil
+		}
+		// Lost the race: another Load reported it, or a Save revived it.
+		// Look once more and answer for what is there now.
+		row, err = s.q.GetBotDialog(ctx, tg, kind)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", false, false, nil
+		}
+		if err != nil {
+			return "", false, false, fmt.Errorf("eventbot: load %s dialog: %w", kind, err)
+		}
+		if !now.Before(row.ExpiresAt) {
+			// Still expired yet not deleted by us: someone else owns the report.
+			return "", false, false, nil
+		}
 	}
 	if into != nil && len(row.State) > 0 {
 		if err := json.Unmarshal(row.State, into); err != nil {
