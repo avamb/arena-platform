@@ -5,6 +5,7 @@
  */
 import { ApiError, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
+import type { PageStatsResponse } from "@/lib/api/types";
 import type {
   BillingAccountInvoice,
   BillingAccountInvoiceList,
@@ -41,6 +42,7 @@ import type {
   MeResponse,
   OrderDetail,
   OrderLetter,
+  SessionTicketList,
   OrderListResponse,
   OrderRefundOptions,
   OrderResendTicketsResponse,
@@ -424,6 +426,8 @@ export interface InvitationInput {
   name: string;
   /** `web-<operation>-<index>` (lib/invitations.ts batchId): a repeat replays, it never mails twice. */
   batchId: string;
+  /** V1: mark the invitation with the organizer's private VIP flag. */
+  vip?: boolean;
 }
 
 export interface InvitationIssued {
@@ -445,6 +449,7 @@ export function issueInvitation(orgId: string, input: InvitationInput): Promise<
       recipients: [input.email],
       recipient_names: input.name === "" ? undefined : [input.name],
       batch_id: input.batchId,
+      vip: input.vip === true ? true : undefined,
       issued_by: "event_center_web",
     },
   });
@@ -737,7 +742,52 @@ export function setEventContact(
 ): Promise<EventContactResponse> {
   return call<EventContactResponse>({ route: API.eventContact, params: { org_id: orgId, event_id: eventId }, body: input });
 }
+// M2
+export interface SessionTicketsQuery {
+  /** false = active tickets nobody entered with, true = tickets with an entry, absent = all. */
+  entered?: boolean;
+  limit: number;
+  offset: number;
+}
 
+/** One page of a session's tickets with the buyer and the entry at the door. */
+export function fetchSessionTickets(orgId: string, sessionId: string, q: SessionTicketsQuery): Promise<SessionTicketList> {
+  return call<SessionTicketList>({
+    route: API.sessionTickets,
+    params: { org_id: orgId, session_id: sessionId },
+    query: { entered: q.entered === undefined ? undefined : String(q.entered), limit: q.limit, offset: q.offset },
+  });
+}
+
+// ─── V1: the VIP mark of a ticket ─────────────────────────────────────────────
+
+/**
+ * Sets or clears the organizer's private VIP mark of one ticket
+ * (`ticket.update`). Idempotent: the value is the wanted one, not a toggle.
+ */
+export function setTicketVip(orgId: string, ticketId: string, vip: boolean): Promise<{ ticket_id: string; vip: boolean; changed: boolean }> {
+  return call<{ ticket_id: string; vip: boolean; changed: boolean }>({
+    route: API.ticketVip,
+    params: { org_id: orgId, ticket_id: ticketId },
+    body: { vip },
+  });
+}
+
+// 2-3: statistics of the event's hosted page. The window is the API's default
+// (the last 30 days, ending today in the venue's zone).
+export function fetchPageStats(orgId: string, eventId: string): Promise<PageStatsResponse> {
+  return call<PageStatsResponse>({ route: API.eventPageStats, params: { org_id: orgId, event_id: eventId } });
+}
+
+export function downloadPageStatsCsv(orgId: string, eventId: string, locale: string): Promise<DownloadedFile> {
+  return download({
+    route: API.eventPageStatsCsv,
+    params: { org_id: orgId, event_id: eventId },
+    query: { locale },
+    accept: "text/csv",
+    fallbackName: "page-stats.csv",
+  });
+}
 // ─── B2-7: billing usage (read-only, preliminary) ───────────────────────────
 
 export interface BillingChargesQuery {

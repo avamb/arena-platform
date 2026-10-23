@@ -7,6 +7,8 @@ import { UNPAID_REASONS, orderNumber, seatText, ticketDelivery } from "@/lib/ord
 import { OrderLetters } from "@/components/OrderLetters";
 import { CancelOrder } from "@/components/CancelOrder";
 import { RefundOrder } from "@/components/RefundOrder";
+import { TicketVipBadge, TicketVipButton } from "@/components/TicketVip";
+import { TicketScans } from "@/components/TicketScans";
 import { Badge, ErrorBox, Loading } from "@/components/ui";
 import { useOrg } from "@/screens/OrgLayout";
 import { OrderStatusBadge } from "@/screens/OrdersScreen";
@@ -170,7 +172,17 @@ export function OrderScreen() {
                 <p className="card-meta">
                   <Badge tone={tk.status === "active" ? "ok" : "neutral"}>{t(statusKey)}</Badge>
                   {tk.used_at !== null && <span>{t("ticket.used", { time: formatDateTime(tk.used_at, tz, locale) })}</span>}
+                  <TicketVipBadge vip={tk.vip} />
                 </p>
+                <TicketVipButton
+                  orgId={orgId}
+                  orderId={o.id}
+                  ticketId={tk.id}
+                  number={tk.system_ticket_id}
+                  vip={tk.vip}
+                  active={tk.status === "active"}
+                  canUpdate={access.can("ticket.update")}
+                />
                 <dl className="facts-grid">
                   {seat.length > 0 && (
                     <>
@@ -187,6 +199,8 @@ export function OrderScreen() {
                     })}
                   </dd>
                 </dl>
+                {/* M2 */}
+                <TicketScans scans={tk.scans} tz={tz} />
               </li>
             );
           })}

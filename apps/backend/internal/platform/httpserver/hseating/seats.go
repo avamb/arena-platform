@@ -37,10 +37,13 @@ import (
 	"net/http"
 	"sort"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/seatlayout"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/txretry"
 )
 
 // seatsBodyLimit caps the JSON payload for the block/unblock endpoint.
@@ -202,110 +205,172 @@ func (h *Handler) HandlePatchSessionSeats(w http.ResponseWriter, r *http.Request
 	// responses are stable and easy to diff in operator UIs.
 	targetKeys, unknown := expandSeatSelectors(req, seatByKey, sectorIndex, rowIndex)
 
-	// Begin transaction. The version bump is issued exactly once so all
-	// mutated rows share the same status_version stamp — that keeps the
-	// SEAT-B3 seat-status delta endpoint returning the whole batch atomically.
-	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "failed to begin transaction", r,
-		))
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	qtx := h.queries.WithTx(tx)
-
-	newVersion, err := qtx.IncrementSessionSeatStatusVersion(ctx, sessionID)
-	if err != nil {
-		h.logger.Error("seating: seats patch version bump failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating.seats_patch_failed", "failed to bump seat_status_version", r,
+	// One batch holds at most seatlayout.MaxChanges seats. A sector or row
+	// selector can expand past it on a big hall: refuse with a 422 naming
+	// the cap (the same code the category PATCH uses), never a 500.
+	if len(targetKeys) > seatlayout.MaxChanges {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			"seating.too_many_seat_keys",
+			"the selectors match more seats than one request may change; split the request",
+			r,
+			map[string]any{"max": seatlayout.MaxChanges, "received": len(targetKeys)},
 		))
 		return
 	}
 
-	outcomes := make([]seatOutcome, 0, len(targetKeys)+len(unknown))
-	summary := seatsSummary{Requested: len(targetKeys) + len(unknown)}
-
-	for _, key := range unknown {
-		outcomes = append(outcomes, seatOutcome{
-			SeatKey: key,
-			Outcome: seatOutcomeSkipped,
-			Reason:  seatReasonNotFound,
-			Status:  "",
-		})
-		summary.Skipped++
-	}
-
-	changedKeys := make([]string, 0, len(targetKeys))
-	for _, key := range targetKeys {
-		row := seatByKey[key]
-		outcome, err := applySeatAction(ctx, qtx, req.Action, row, newVersion)
-		if err != nil {
-			h.logger.Error("seating: seats patch apply failed",
-				slog.String("seat_key", key),
-				slog.String("error", err.Error()),
-			)
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"seating.seats_patch_failed", "failed to apply seat transition", r,
-			))
-			return
-		}
-		outcomes = append(outcomes, outcome)
-		switch outcome.Outcome {
-		case seatOutcomeBlocked, seatOutcomeUnblocked:
-			summary.Changed++
-			changedKeys = append(changedKeys, key)
-		case seatOutcomeNoop:
-			summary.Noop++
-		case seatOutcomeSkipped:
-			summary.Skipped++
-		}
-	}
-
-	// Every operator request emits one audit event even when no seat actually
-	// changed — the attempt itself is the auditable action, and downstream
-	// forensic queries need to see "operator X asked to block row 12 at
-	// 15:04:05" whether or not any seat was already unavailable. The metadata
-	// carries the effective + skipped seat lists so a reviewer can
-	// reconstruct the outcome without re-issuing the seat-status snapshot.
-	// The action name (`v1.session.seats.block` / `.unblock`) mirrors the
-	// SEAT-B2 `v1.session.seating.bind` convention so forensic queries can
-	// filter on the `v1.session.seats.*` prefix.
+	// The write goes through seatlayout.ApplyBatch (task S1c): one
+	// transaction that bumps sessions.seat_status_version exactly once (the
+	// sessions row lock, first statement), locks the seats FOR UPDATE in
+	// seat_key order, stamps every changed row with the new version — so the
+	// SEAT-B3 seat-status delta endpoint returns the whole batch atomically —
+	// and records a session_seat_batches row (kind close/open). held/sold
+	// seats are skipped with a reason; the batch never fails because of them.
+	kind, status := seatlayout.KindClose, seatlayout.StatusUnavailable
 	auditAction := "v1.session.seats.block"
 	if req.Action == seatsActionUnblock {
+		kind, status = seatlayout.KindOpen, seatlayout.StatusAvailable
 		auditAction = "v1.session.seats.unblock"
 	}
-	if err := h.writeSessionAuditTx(ctx, tx, r, auditAction, sessionID, map[string]any{
+	orgID, _ := httputil.UUIDPathParam(w, r, "org_id")
+
+	var batch seatlayout.Batch
+	if len(targetKeys) > 0 {
+		changes := make([]seatlayout.Change, 0, len(targetKeys))
+		for _, key := range targetKeys {
+			st := status
+			changes = append(changes, seatlayout.Change{SeatKey: key, Status: &st})
+		}
+		var err error
+		batch, err = seatlayout.ApplyBatch(ctx, h.pool, h.queries, seatlayout.BatchInput{
+			OrgID:     orgID,
+			SessionID: sessionID,
+			Actor:     batchActor(ctx),
+			Kind:      kind,
+			Changes:   changes,
+			Audit: func(ctx context.Context, tx pgx.Tx, b seatlayout.Batch) error {
+				outcomes, summary := seatOutcomes(req.Action, unknown, targetKeys, b)
+				return h.writeSeatsPatchAudit(ctx, tx, r, auditAction, sessionID, eventID, req.Action,
+					&b.ID, b.SeatStatusVersion, outcomes, summary)
+			},
+		})
+		if err != nil {
+			h.writeSeatsBatchError(w, r, err)
+			return
+		}
+	} else {
+		// Only unknown keys (or empty sectors / rows): nothing to lock in
+		// session_seats. The attempt is still audited and still bumps the
+		// version, as this endpoint always did.
+		v, err := h.auditOnlySeatsPatch(ctx, r, auditAction, sessionID, eventID, req.Action, unknown)
+		if err != nil {
+			h.writeSeatsBatchError(w, r, err)
+			return
+		}
+		batch.SeatStatusVersion = v
+	}
+
+	outcomes, summary := seatOutcomes(req.Action, unknown, targetKeys, batch)
+	httputil.WriteJSON(w, http.StatusOK, seatsPatchResponse{
+		SessionID:         sessionID.String(),
+		Action:            req.Action,
+		SeatStatusVersion: batch.SeatStatusVersion,
+		Outcomes:          outcomes,
+		Summary:           summary,
+	})
+}
+
+// writeSeatsPatchAudit emits the one audit event of a block/unblock request.
+// Every operator request is audited even when no seat actually changed —
+// the attempt itself is the auditable action. The metadata carries the
+// effective + skipped counts so a reviewer can reconstruct the outcome
+// without re-issuing the seat-status snapshot, and the batch_id that
+// GET .../seat-batches lists. The action name (`v1.session.seats.block` /
+// `.unblock`) mirrors the SEAT-B2 `v1.session.seating.bind` convention.
+func (h *Handler) writeSeatsPatchAudit(
+	ctx context.Context, tx pgx.Tx, r *http.Request, auditAction string,
+	sessionID, eventID uuid.UUID, action string, batchID *uuid.UUID, version int64,
+	outcomes []seatOutcome, summary seatsSummary,
+) error {
+	changedKeys := make([]string, 0, summary.Changed)
+	for _, o := range outcomes {
+		if o.Outcome == seatOutcomeBlocked || o.Outcome == seatOutcomeUnblocked {
+			changedKeys = append(changedKeys, o.SeatKey)
+		}
+	}
+	meta := map[string]any{
 		"event_id":            eventID.String(),
-		"action":              req.Action,
-		"seat_status_version": newVersion,
+		"action":              action,
+		"seat_status_version": version,
 		"changed_seat_keys":   changedKeys,
 		"requested_count":     summary.Requested,
 		"changed_count":       summary.Changed,
 		"noop_count":          summary.Noop,
 		"skipped_count":       summary.Skipped,
-	}); err != nil {
+	}
+	if batchID != nil {
+		meta["batch_id"] = batchID.String()
+	}
+	return h.writeSessionAuditTx(ctx, tx, r, auditAction, sessionID, meta)
+}
+
+// auditOnlySeatsPatch handles a block/unblock request whose selectors
+// resolved to no seat at all: bump the version and write the audit event,
+// no batch row (there is nothing to revert).
+func (h *Handler) auditOnlySeatsPatch(
+	ctx context.Context, r *http.Request, auditAction string,
+	sessionID, eventID uuid.UUID, action string, unknown []string,
+) (int64, error) {
+	var version int64
+	err := txretry.Do(ctx, txretry.DefaultAttempts, func() error {
+		tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+		v, err := h.queries.WithTx(tx).IncrementSessionSeatStatusVersion(ctx, sessionID)
+		if err != nil {
+			return err
+		}
+		outcomes, summary := seatOutcomes(action, unknown, nil, seatlayout.Batch{SeatStatusVersion: v})
+		if err := h.writeSeatsPatchAudit(ctx, tx, r, auditAction, sessionID, eventID, action,
+			nil, v, outcomes, summary); err != nil {
+			return &seatlayout.AuditError{Err: err}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+		version = v
+		return nil
+	})
+	return version, err
+}
+
+// writeSeatsBatchError maps a seatlayout error of the block/unblock PATCH
+// to this route's codes.
+func (h *Handler) writeSeatsBatchError(w http.ResponseWriter, r *http.Request, err error) {
+	var auditErr *seatlayout.AuditError
+	var inErr *seatlayout.InputError
+	switch {
+	case errors.As(err, &inErr):
+		// Unreachable from the handler's own checks; a refused shape is
+		// still the caller's 4xx, never a 500.
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			inErr.Code, inErr.Message, r, inErr.Details,
+		))
+	case errors.Is(err, seatlayout.ErrSessionNotFound):
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"session.not_found", "session not found", r,
+		))
+	case errors.As(err, &auditErr):
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"seating.audit_failed", "failed to write audit event", r,
 		))
-		return
-	}
-
-	if err := tx.Commit(ctx); err != nil {
+	default:
+		h.logger.Error("seating: seats patch batch failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating.commit_failed", "failed to commit transaction", r,
+			"seating.seats_patch_failed", "failed to apply seat transition", r,
 		))
-		return
 	}
-
-	httputil.WriteJSON(w, http.StatusOK, seatsPatchResponse{
-		SessionID:         sessionID.String(),
-		Action:            req.Action,
-		SeatStatusVersion: newVersion,
-		Outcomes:          outcomes,
-		Summary:           summary,
-	})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -421,152 +486,84 @@ func expandSeatSelectors(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Per-seat transition
+// Per-seat outcome
 // ─────────────────────────────────────────────────────────────────────────────
 
-// applySeatAction dispatches to the correct DB helper for the given action
-// and translates the resulting row status into a stable outcome envelope.
-// held/sold seats are skipped with a reason; re-blocking or re-opening a
-// seat that is already in the target state is a noop (idempotent).
-func applySeatAction(
-	ctx context.Context,
-	qtx *gen.Queries,
-	action string,
-	row gen.SessionSeatRow,
-	statusVersion int64,
-) (seatOutcome, error) {
+// seatOutcomes builds the response outcomes of a block/unblock request:
+// unknown keys first (skipped, seat_not_found), then every target key in
+// seat_key order with the batch's decision for it.
+func seatOutcomes(action string, unknown, targetKeys []string, b seatlayout.Batch) ([]seatOutcome, seatsSummary) {
+	results := make(map[string]seatlayout.Result, len(targetKeys))
+	for _, c := range b.Changes {
+		results[c.SeatKey] = seatlayout.Result{SeatKey: c.SeatKey, Outcome: seatlayout.OutcomeApplied, From: c.From, To: c.To}
+	}
+	for _, n := range b.Noops {
+		st := seatlayout.SeatState{Status: n.Status}
+		results[n.SeatKey] = seatlayout.Result{SeatKey: n.SeatKey, Outcome: seatlayout.OutcomeNoop, From: st, To: st}
+	}
+	for _, sk := range b.Skipped {
+		st := seatlayout.SeatState{Status: sk.Status}
+		results[sk.SeatKey] = seatlayout.Result{SeatKey: sk.SeatKey, Outcome: seatlayout.OutcomeSkipped, Reason: sk.Reason, From: st, To: st}
+	}
+
+	outcomes := make([]seatOutcome, 0, len(unknown)+len(targetKeys))
+	summary := seatsSummary{Requested: len(unknown) + len(targetKeys)}
+	for _, key := range unknown {
+		outcomes = append(outcomes, seatOutcome{SeatKey: key, Outcome: seatOutcomeSkipped, Reason: seatReasonNotFound})
+		summary.Skipped++
+	}
+	for _, key := range targetKeys {
+		res, ok := results[key]
+		if !ok {
+			res = seatlayout.Result{SeatKey: key, Outcome: seatlayout.OutcomeSkipped, Reason: seatlayout.ReasonNotFound}
+		}
+		o := seatOutcomeFromResult(action, res)
+		outcomes = append(outcomes, o)
+		switch o.Outcome {
+		case seatOutcomeBlocked, seatOutcomeUnblocked:
+			summary.Changed++
+		case seatOutcomeNoop:
+			summary.Noop++
+		default:
+			summary.Skipped++
+		}
+	}
+	return outcomes, summary
+}
+
+// seatOutcomeFromResult translates one seatlayout decision into this
+// route's outcome envelope: a change names the resulting status
+// ('unavailable' after block, 'available' after unblock), a seat already in
+// the target state is a noop, held/sold seats are skipped with the reason.
+func seatOutcomeFromResult(action string, res seatlayout.Result) seatOutcome {
+	switch res.Outcome {
+	case seatlayout.OutcomeApplied:
+		outcome := seatOutcomeBlocked
+		if action == seatsActionUnblock {
+			outcome = seatOutcomeUnblocked
+		}
+		return seatOutcome{SeatKey: res.SeatKey, Outcome: outcome, Status: res.To.Status}
+	case seatlayout.OutcomeNoop:
+		return seatOutcome{SeatKey: res.SeatKey, Outcome: seatOutcomeNoop, Status: res.From.Status}
+	default:
+		return seatOutcome{SeatKey: res.SeatKey, Outcome: seatOutcomeSkipped, Reason: res.Reason, Status: res.From.Status}
+	}
+}
+
+// seatOutcomeFor is the block/unblock decision for one seat row — the same
+// seatlayout.Decide the batch runs under its lock, mapped to this route's
+// outcome. An unknown action is an error (guarded at the boundary by
+// validateSeatsPatchRequest).
+func seatOutcomeFor(action string, row gen.SessionSeatRow) (seatOutcome, error) {
+	var status string
 	switch action {
 	case seatsActionBlock:
-		return applySeatBlock(ctx, qtx, row, statusVersion)
+		status = seatlayout.StatusUnavailable
 	case seatsActionUnblock:
-		return applySeatUnblock(ctx, qtx, row, statusVersion)
+		status = seatlayout.StatusAvailable
 	default:
-		// Guarded by validateSeatsPatchRequest — reaching here is a bug.
 		return seatOutcome{}, errors.New("unreachable: invalid action")
 	}
+	res := seatlayout.Decide(&row, seatlayout.Target{SeatKey: row.SeatKey, Status: &status}, nil)
+	return seatOutcomeFromResult(action, res), nil
 }
-
-// applySeatBlock performs the `block` transition. Only 'available' rows
-// transition; 'unavailable' is a noop; 'held' and 'sold' are skipped so
-// active reservations / issued tickets are never invalidated mid-flight.
-func applySeatBlock(
-	ctx context.Context,
-	qtx *gen.Queries,
-	row gen.SessionSeatRow,
-	statusVersion int64,
-) (seatOutcome, error) {
-	switch row.Status {
-	case "available":
-		updated, err := qtx.BlockSessionSeat(ctx, row.ID, statusVersion)
-		if err != nil {
-			// A concurrent transition may have moved the seat out of
-			// 'available' between the snapshot read and the UPDATE. Treat
-			// that as a skipped outcome rather than a hard failure so the
-			// rest of the batch still applies.
-			if errors.Is(err, pgx.ErrNoRows) {
-				return seatOutcome{
-					SeatKey: row.SeatKey,
-					Outcome: seatOutcomeSkipped,
-					Reason:  "concurrent_transition",
-					Status:  row.Status,
-				}, nil
-			}
-			return seatOutcome{}, err
-		}
-		return seatOutcome{
-			SeatKey: updated.SeatKey,
-			Outcome: seatOutcomeBlocked,
-			Status:  updated.Status,
-		}, nil
-	case "unavailable":
-		return seatOutcome{
-			SeatKey: row.SeatKey,
-			Outcome: seatOutcomeNoop,
-			Status:  row.Status,
-		}, nil
-	case "held":
-		return seatOutcome{
-			SeatKey: row.SeatKey,
-			Outcome: seatOutcomeSkipped,
-			Reason:  seatReasonHeld,
-			Status:  row.Status,
-		}, nil
-	case "sold":
-		return seatOutcome{
-			SeatKey: row.SeatKey,
-			Outcome: seatOutcomeSkipped,
-			Reason:  seatReasonSold,
-			Status:  row.Status,
-		}, nil
-	default:
-		return seatOutcome{
-			SeatKey: row.SeatKey,
-			Outcome: seatOutcomeSkipped,
-			Reason:  "unknown_status",
-			Status:  row.Status,
-		}, nil
-	}
-}
-
-// applySeatUnblock performs the `unblock` transition. Only 'unavailable'
-// rows transition; 'available' is a noop; 'held' and 'sold' are skipped
-// (the seat is already committed to a reservation / ticket so there is
-// nothing for the operator to reopen).
-func applySeatUnblock(
-	ctx context.Context,
-	qtx *gen.Queries,
-	row gen.SessionSeatRow,
-	statusVersion int64,
-) (seatOutcome, error) {
-	switch row.Status {
-	case "unavailable":
-		updated, err := qtx.UnblockSessionSeat(ctx, row.ID, statusVersion)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return seatOutcome{
-					SeatKey: row.SeatKey,
-					Outcome: seatOutcomeSkipped,
-					Reason:  "concurrent_transition",
-					Status:  row.Status,
-				}, nil
-			}
-			return seatOutcome{}, err
-		}
-		return seatOutcome{
-			SeatKey: updated.SeatKey,
-			Outcome: seatOutcomeUnblocked,
-			Status:  updated.Status,
-		}, nil
-	case "available":
-		return seatOutcome{
-			SeatKey: row.SeatKey,
-			Outcome: seatOutcomeNoop,
-			Status:  row.Status,
-		}, nil
-	case "held":
-		return seatOutcome{
-			SeatKey: row.SeatKey,
-			Outcome: seatOutcomeSkipped,
-			Reason:  seatReasonHeld,
-			Status:  row.Status,
-		}, nil
-	case "sold":
-		return seatOutcome{
-			SeatKey: row.SeatKey,
-			Outcome: seatOutcomeSkipped,
-			Reason:  seatReasonSold,
-			Status:  row.Status,
-		}, nil
-	default:
-		return seatOutcome{
-			SeatKey: row.SeatKey,
-			Outcome: seatOutcomeSkipped,
-			Reason:  "unknown_status",
-			Status:  row.Status,
-		}, nil
-	}
-}
-
-// Audit note: the SEAT-B4 audit trail entry is emitted via the shared
-// session-scoped writeSessionAuditTx helper (bind.go) with an explicit
-// action of `v1.session.seats.block` / `v1.session.seats.unblock`.

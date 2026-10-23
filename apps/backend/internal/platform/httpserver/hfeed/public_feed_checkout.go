@@ -450,7 +450,19 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	if consentRecorded(consentRequired, req.Consent) {
 		consent = newPendingConsent(r, checkCtx.OrgID, req.Consent.Locale, buyerLocale,
 			h.showWithdrawalNotice(ctx, checkCtx.OrgID), time.Now(),
-			h.consentBlock(consentRequired, consentSeller))
+			h.consentBlockFor(ctx, consentRequired, consentSeller, checkCtx.EventID, feedToken))
+		// P3a: name the organizer terms rendering the buyer accepts. A
+		// failed read refuses the sale, like a failed flags read above.
+		if err := h.attachTermsRendering(ctx, consent, checkCtx.OrgID, checkCtx.EventID, feedToken); err != nil {
+			h.logger.Error("public_feed_checkout: terms rendering failed",
+				slog.String("org_id", checkCtx.OrgID.String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+				"checkout.unavailable", "We could not check this checkout. Try again in a minute.", r,
+			))
+			return
+		}
 	}
 
 	// ── 7. Price the GA lines ─────────────────────────────────────────────────

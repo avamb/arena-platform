@@ -38,6 +38,15 @@ const (
 	ColRevenue
 	ColOnSale
 	ColDiscount
+	// Page statistics (HP-2a, page-stats.csv).
+	ColUTMSource
+	ColUTMCampaign
+	ColCount
+	ColSuspectCount
+	// M2: the first admitted scan of a ticket.
+	ColEnteredAt
+	ColEnteredSource
+	ColEnteredScanner
 )
 
 // SupportedLocales are the header languages, in the order they are offered.
@@ -57,6 +66,9 @@ var labels = map[string]map[Column]string{
 		ColPlacesHeld: "Held", ColPlacesSold: "Sold", ColPlacesSoldUpstream: "Sold elsewhere",
 		ColPlacesUnavailable: "Unavailable", ColPaidTickets: "Paid tickets",
 		ColRevenue: "Revenue", ColOnSale: "On sale", ColDiscount: "Discount",
+		ColUTMSource: "UTM source", ColUTMCampaign: "UTM campaign",
+		ColCount: "Count", ColSuspectCount: "Suspected bots",
+		ColEnteredAt: "Entry time", ColEnteredSource: "Entry source", ColEnteredScanner: "Scanner / gate",
 	},
 	"ru": {
 		ColOrder: "Заказ", ColOrderStatus: "Статус заказа", ColDate: "Дата",
@@ -68,6 +80,9 @@ var labels = map[string]map[Column]string{
 		ColPlacesHeld: "Удержано", ColPlacesSold: "Продано", ColPlacesSoldUpstream: "Продано вне системы",
 		ColPlacesUnavailable: "Недоступно", ColPaidTickets: "Оплачено билетов",
 		ColRevenue: "Выручка", ColOnSale: "В продаже", ColDiscount: "Скидка",
+		ColUTMSource: "UTM-источник", ColUTMCampaign: "UTM-кампания",
+		ColCount: "Количество", ColSuspectCount: "Из них боты",
+		ColEnteredAt: "Время входа", ColEnteredSource: "Источник входа", ColEnteredScanner: "Сканер / вход",
 	},
 	"es": {
 		ColOrder: "Pedido", ColOrderStatus: "Estado del pedido", ColDate: "Fecha",
@@ -79,6 +94,9 @@ var labels = map[string]map[Column]string{
 		ColPlacesHeld: "Retenidas", ColPlacesSold: "Vendidas", ColPlacesSoldUpstream: "Vendidas fuera del sistema",
 		ColPlacesUnavailable: "No disponibles", ColPaidTickets: "Entradas pagadas",
 		ColRevenue: "Ingresos", ColOnSale: "En venta", ColDiscount: "Descuento",
+		ColUTMSource: "Fuente UTM", ColUTMCampaign: "Campaña UTM",
+		ColCount: "Cantidad", ColSuspectCount: "De ellos, bots",
+		ColEnteredAt: "Hora de entrada", ColEnteredSource: "Origen de la entrada", ColEnteredScanner: "Escáner / acceso",
 	},
 }
 

@@ -118,6 +118,7 @@ func applyPresentation(p *Payload, row gen.TicketPresentationRow) {
 	fillString(&p.TierName, row.TierName)
 	fillString(&p.HolderName, row.HolderName)
 	fillString(&p.PromoterName, row.PromoterName)
+	fillString(&p.EventEmailNote, row.EmailNote)
 
 	if p.DoorsOpenAt == nil && row.DoorsOpenAt != nil {
 		d := *row.DoorsOpenAt

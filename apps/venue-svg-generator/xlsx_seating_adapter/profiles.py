@@ -16,4 +16,16 @@ ARIBAU_PROFILE = {
     "seat_detection": {"type": "numeric_between_edge_markers"},
 }
 
-PROFILES = {"hunter": HUNTER_PROFILE, "aribau": ARIBAU_PROFILE}
+# Minimal layout the HTTP service can be tried and tested with, without any client file
+# (xlsx_seating_adapter/synthetic.py builds a workbook of exactly this shape): section headers
+# in their own row, then rows whose first and last numeric cells are the same row number
+# with numeric seats between them (an empty cell inside the span is an aisle gap).
+SYNTHETIC_PROFILE = {
+    "profile_id": "synthetic-v1",
+    "sheet_name": "Seating",
+    "section_header_labels": ["PARTERRE", "BALCONY"],
+    "row_detection": {"type": "equal_numeric_edge_markers"},
+    "seat_detection": {"type": "numeric_between_edge_markers"},
+}
+
+PROFILES = {"hunter": HUNTER_PROFILE, "aribau": ARIBAU_PROFILE, "synthetic": SYNTHETIC_PROFILE}

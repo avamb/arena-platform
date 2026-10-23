@@ -78,6 +78,12 @@ type ImportSessionAction struct {
 	// (the organization itself is the promoter), a UUID names one of the
 	// organization's active promoters. The Bil24-format importer ignores it.
 	PromoterID *string `json:"promoterId"`
+	// EmailNote is an arena-native event-bundle extension (EC-31, migration
+	// 0161, source=arena only): the organizer's own text that the ticket and
+	// session-change letters print under "About the event". Absent or null
+	// keeps the stored text, "" removes it, a string is filtered by
+	// eventnote.Normalize (422 import.invalid_email_note when refused).
+	EmailNote *string `json:"emailNote,omitempty"`
 	// ArenaEventID (arena extension, source=arena only) addresses an existing
 	// event of the organization by its arena UUID — what an event center
 	// reads from GET /v1/organizations/{org_id}/events. It plays the role
@@ -127,6 +133,16 @@ type ImportSessionActionEvent struct {
 	// created under. A UUID that is not a session of this organization
 	// answers 422 import.invalid_session.
 	ArenaSessionID string `json:"arenaSessionId"`
+	// ArenaSeatingPlanVersionID (arena extension, source=arena only, task
+	// S1b) is the seating plan version a NEW session is created from: a
+	// version of a plan of this organization drawn for the session's venue.
+	// The session gets every place of the plan — one seat per geometry seat,
+	// the GA zones' places — and its categories are the plan's (see
+	// ImportSessionCategory.PlanCategoryIndex). On an existing session it
+	// must name the version the session already has (absent keeps it): a
+	// bundle never re-binds a plan or touches places. Omitted from JSON when
+	// empty, so a general-admission bundle reads exactly as before.
+	ArenaSeatingPlanVersionID string `json:"arenaSeatingPlanVersionId,omitempty"`
 }
 
 // ImportSessionVenue is the Bil24 "venue" block. Timezone is an IANA zone
@@ -188,6 +204,14 @@ type ImportSessionCategory struct {
 	// rather than created afresh. A UUID that is not a tier of that session
 	// answers 422 import.invalid_category.
 	ArenaTierID string `json:"arenaTierId"`
+	// PlanCategoryIndex (arena extension, source=arena only, task S1b) is the
+	// 1-based index of the seating-plan category this entry prices when the
+	// bundle creates a session from actionEvent.arenaSeatingPlanVersionId.
+	// Absent, the entry is matched to the plan category of the same name
+	// (case- and space-insensitive; the plan's display-name override counts
+	// too). Ignored on a session that already exists. Omitted from JSON when
+	// nil.
+	PlanCategoryIndex *int `json:"planCategoryIndex,omitempty"`
 }
 
 // ImportPriceWindow is one scheduled price: Price (MAJOR units, like the

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -18,6 +19,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/clock"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbil24"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcatalog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
@@ -176,4 +178,9 @@ type Server struct {
 	// Options.PosterReader stub, else the Anthropic reader built from
 	// POSTER_LLM_API_KEY, else nil (the route answers 503). See poster_facts_shims.go.
 	posterReader PosterReader
+	// emailNoteTestQ caps the test letters of an event's own letter text per
+	// organization (EC-31). Built on first use: per-process state cannot live
+	// on the per-request catalog Handler. See event_email_note_shims.go.
+	emailNoteTestOnce sync.Once
+	emailNoteTestQ    hcatalog.EmailNoteTestQuota
 }

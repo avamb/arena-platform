@@ -3995,3 +3995,46 @@ other = "This entry is not in the list any more. Here is the list now."
 
 ["bot.mt.err_changed"]
 other = "The list changed while you worked. Check it and try again."
+["bot.ord.vip_mark"]
+other = "⭐ VIP"
+
+["bot.ord.vip_on_btn"]
+other = "⭐ Mark №{{.Num}} as VIP"
+
+["bot.ord.vip_off_btn"]
+other = "Remove VIP from №{{.Num}}"
+
+["bot.inv.vip_line"]
+other = "⭐ The invitations are marked VIP. The guest does not see the mark."
+
+["bot.inv.vip_on_btn"]
+other = "☐ Mark as VIP"
+
+["bot.inv.vip_off_btn"]
+other = "☑ VIP: press to remove"
+
+["bot.ec.page_stats_line"]
+other = "Page views: {{.Views}} in {{.Days}} days{{if .Suspect}} ({{.Suspect}} of them look like bots){{end}}"
+["bot.ord.scan_src_arena_scanner"]
+other = "Arena scanner"
+
+["bot.ord.scan_src_macs"]
+other = "MACS"
+
+["bot.ord.scan_gate"]
+other = " · gate {{.Gate}}"
+
+["bot.ord.scan_denied"]
+other = " · ✖ turned away {{.When}}"
+
+["bot.ses.not_entered_btn"]
+other = "Not entered"
+
+["bot.ses.not_entered_head"]
+other = "<b>Not entered yet</b>\n{{.Scope}}\nTickets: {{.Count}}"
+
+["bot.ses.not_entered_empty"]
+other = "Everyone with a valid ticket has come in."
+
+["bot.ses.not_entered_invite"]
+other = "invitation"

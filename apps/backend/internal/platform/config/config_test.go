@@ -1126,6 +1126,8 @@ func TestConfigFieldTags_EnvTagPresent(t *testing.T) {
 		{"PublicAPIIPRateLimit", "PUBLIC_API_IP_RATE_LIMIT"},
 		{"PublicPromoFailTokenLimit", "PUBLIC_PROMO_FAIL_TOKEN_RATE_LIMIT"},
 		{"PublicPromoFailIPLimit", "PUBLIC_PROMO_FAIL_IP_RATE_LIMIT"},
+		{"PublicPageTrackEventLimit", "PUBLIC_PAGE_TRACK_EVENT_RATE_LIMIT"},
+		{"PublicPageTrackIPLimit", "PUBLIC_PAGE_TRACK_IP_RATE_LIMIT"},
 		{"DatabaseURL", "DATABASE_URL"},
 		{"DBPoolMinConns", "DB_POOL_MIN_CONNS"},
 		{"DBPoolMaxConns", "DB_POOL_MAX_CONNS"},

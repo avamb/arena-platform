@@ -16,6 +16,7 @@ import { CategoryCard } from "@/components/CategoryCard";
 import { SalesFigures } from "@/components/SalesFigures";
 import { SessionSaleTimes } from "@/components/SessionSaleTimes";
 import { SessionChange } from "@/components/SessionChange";
+import { SessionTickets } from "@/components/SessionTickets";
 import { useOrg } from "@/screens/OrgLayout";
 
 function tierPrice(tier: TicketTierItem, locale: string, t: ReturnType<typeof useI18n>["t"]): string {
@@ -286,6 +287,8 @@ export function SessionScreen() {
           readOnly={(head?.status ?? item.status) === "cancelled"}
         />
       )}
+      {/* M2 */}
+      {canSales && <SessionTickets orgId={orgId} sessionId={sessionId} tz={tz} />}
     </article>
   );
 }

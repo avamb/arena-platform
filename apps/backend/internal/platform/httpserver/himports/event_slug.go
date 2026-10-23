@@ -14,6 +14,11 @@ import (
 // eventSlugMaxAttempts bounds the "-2", "-3", … search for a free slug.
 const eventSlugMaxAttempts = 50
 
+// reservedEventSlugs are page addresses taken by routes of the hosted page
+// itself: GET /v1/public/pages/{org_slug}/terms is the organizer's terms of
+// sale (P3a), so an event called "Terms" gets "terms-2".
+var reservedEventSlugs = map[string]bool{"terms": true}
+
 // assignEventSlug gives a freshly created event its public address:
 // tickets.arenasoldout.com/{page}/{slug}. Until 2026-09-29 an import never
 // set one, so an event created from the Telegram bot's wizard had no page
@@ -45,6 +50,9 @@ func freeEventSlug(ctx context.Context, q *gen.Queries, orgID uuid.UUID, name st
 		candidate := base
 		if i > 1 {
 			candidate = base + "-" + strconv.Itoa(i)
+		}
+		if reservedEventSlugs[candidate] {
+			continue
 		}
 		taken, err := q.EventSlugTaken(ctx, orgID, candidate)
 		if err != nil {

@@ -11,3 +11,4 @@ pdf_diagnostics
 independent_evaluation
 **/*.xlsx
 **/*.pdf
+**/tests

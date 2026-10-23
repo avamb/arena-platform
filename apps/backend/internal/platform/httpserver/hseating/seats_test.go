@@ -10,7 +10,6 @@ package hseating
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -206,15 +205,14 @@ func TestSeatB4_ExpandSelectors(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// applySeatAction
+// per-seat state machine (seatOutcomeFor)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// The gen.Queries type is concrete so we can't inject a fake through an
-// interface. Instead, applySeatAction is exercised via the pure branches
-// of applySeatBlock / applySeatUnblock; the assertions cover the
-// state-machine decisions (which outcome + reason each pre-status
-// produces) that never touch the database, which is what the endpoint
-// promises to callers.
+// Since task S1c the transition itself runs inside seatlayout.ApplyBatch
+// under the seat lock; seatOutcomeFor runs the same seatlayout.Decide on
+// one row and maps it to this route's outcome envelope. The assertions
+// cover the state-machine decisions (which outcome + reason each
+// pre-status produces), which is what the endpoint promises to callers.
 func TestSeatB4_ApplySeatBlock_StateMachine(t *testing.T) {
 	t.Parallel()
 
@@ -240,7 +238,7 @@ func TestSeatB4_ApplySeatBlock_StateMachine(t *testing.T) {
 			}
 			// A nil qtx is fine — the state-machine short-circuits before
 			// touching the database for every branch we test here.
-			out, err := applySeatBlock(context.Background(), nil, row, 42)
+			out, err := seatOutcomeFor(seatsActionBlock, row)
 			if err != nil {
 				t.Fatalf("unexpected err: %v", err)
 			}
@@ -287,7 +285,7 @@ func TestSeatB4_ApplySeatUnblock_StateMachine(t *testing.T) {
 				SeatKey: "A|1|1",
 				Status:  tc.status,
 			}
-			out, err := applySeatUnblock(context.Background(), nil, row, 42)
+			out, err := seatOutcomeFor(seatsActionUnblock, row)
 			if err != nil {
 				t.Fatalf("unexpected err: %v", err)
 			}
@@ -316,7 +314,7 @@ func TestSeatB4_ApplySeatAction_Dispatch(t *testing.T) {
 		Status:  "unavailable", // noop path — no DB call for either action
 	}
 
-	block, err := applySeatAction(context.Background(), nil, seatsActionBlock, row, 1)
+	block, err := seatOutcomeFor(seatsActionBlock, row)
 	if err != nil {
 		t.Fatalf("block dispatch failed: %v", err)
 	}
@@ -325,7 +323,7 @@ func TestSeatB4_ApplySeatAction_Dispatch(t *testing.T) {
 	}
 
 	row.Status = "available"
-	unblock, err := applySeatAction(context.Background(), nil, seatsActionUnblock, row, 1)
+	unblock, err := seatOutcomeFor(seatsActionUnblock, row)
 	if err != nil {
 		t.Fatalf("unblock dispatch failed: %v", err)
 	}
@@ -337,7 +335,7 @@ func TestSeatB4_ApplySeatAction_Dispatch(t *testing.T) {
 	// validateSeatsPatchRequest at the boundary; the internal helper
 	// still returns a non-nil error so a future bug never silently
 	// no-ops the transition.
-	_, err = applySeatAction(context.Background(), nil, "burn", row, 1)
+	_, err = seatOutcomeFor("burn", row)
 	if err == nil {
 		t.Fatal("expected error for invalid action")
 	}
@@ -420,17 +418,17 @@ func TestSeatB4_ReadRequest_HappyPath(t *testing.T) {
 //
 // The test exercises the SQL constant directly (no live DB) so it stays
 // self-contained: it asserts the WHERE clause requires status='available'
-// and there is no code path in applySeatBlock that mutates a held/sold
+// and there is no code path in seatOutcomeFor that mutates a held/sold
 // seat.
 func TestSeatB4_UnavailableSeatIsReservationConflict(t *testing.T) {
 	t.Parallel()
 
-	// Contract 1: applySeatBlock refuses held / sold rows (already
+	// Contract 1: seatOutcomeFor refuses held / sold rows (already
 	// checked in TestSeatB4_ApplySeatBlock_StateMachine — cross-check
 	// here that the reason maps to the doc'd "held" / "sold" reasons
 	// used by the Wave SEAT-C1 409 body).
 	held := gen.SessionSeatRow{SeatKey: "A|1|1", Status: "held"}
-	out, err := applySeatBlock(context.Background(), nil, held, 1)
+	out, err := seatOutcomeFor(seatsActionBlock, held)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
@@ -438,11 +436,10 @@ func TestSeatB4_UnavailableSeatIsReservationConflict(t *testing.T) {
 		t.Fatalf("reason = %q, want held", out.Reason)
 	}
 
-	// Contract 2: the pgx.ErrNoRows translation branch preserves the
-	// caller's transaction (no error propagates upward).
-	// applySeatBlock treats a concurrent transition as a skipped
-	// outcome tagged "concurrent_transition" so the whole batch keeps
-	// making forward progress.
+	// Contract 2: the batch reads every seat under FOR UPDATE, so a
+	// concurrent transition can no longer slip between the read and the
+	// UPDATE; a held/sold seat is skipped and the rest of the batch
+	// still applies (seatlayout.ApplyBatch).
 	if !errors.Is(pgx.ErrNoRows, pgx.ErrNoRows) {
 		t.Fatal("pgx.ErrNoRows sentinel check failed (should never happen)")
 	}

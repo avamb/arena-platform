@@ -48,6 +48,8 @@ func (s *Server) mountEventRoutes(r chi.Router) {
 			pr.Patch("/organizations/{org_id}/events/{id}", s.handleUpdateEvent)
 			// The organizer contact buyers answer to (promoter, else organization).
 			pr.Put("/organizations/{org_id}/events/{event_id}/contact", s.handleSetEventContact)
+			// A sample ticket letter with the event's own text, mailed to the organizer (EC-31).
+			pr.Post("/organizations/{org_id}/events/{event_id}/email-note/test", s.handleEventEmailNoteTest)
 		})
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "event.publish", "events")
@@ -234,6 +236,9 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		// Promoter landing page (tickets.arenasoldout.com/{org}) — lists
 		// every currently-visible event of the org, upcoming first.
 		r.Get("/public/pages/{org_slug}", s.handlePublicPromoterPage)
+		// Page statistics beacon (HP-2a): counts a page view, a video play
+		// or a partner click. No login, no cookie, no stored address.
+		r.Post("/public/pages/{org_slug}/{event_slug}/track", s.handlePublicPageTrack)
 	}
 	// "Write to the organizer" form of the hosted page (HP contact form).
 	// Always mounted; the handler answers 503 without a database.
