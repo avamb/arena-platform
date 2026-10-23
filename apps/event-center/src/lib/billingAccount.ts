@@ -6,6 +6,7 @@
  * different currencies: a balance, a pack and an invoice each carry their own.
  */
 import type { BillingAccountBalance, BillingAccountInvoice, BillingLedgerEntry, BillingPackOffer, BillingPayerRequest } from "@/lib/api/types";
+import { ApiError } from "@/lib/api/http";
 import { currencyFractionDigits } from "@/lib/format";
 
 // ─── packs and balances grouped by currency ───────────────────────────────
@@ -222,4 +223,15 @@ export function payerFromOrg(org: {
     tax_id: (org.tax_id ?? "").trim(),
     email: (org.contact_email ?? "").trim(),
   };
+}
+
+/**
+ * The API answers 404 `billing.organizer_disabled` on every organizer route of
+ * credit packs and platform invoices while BILLING_ORGANIZER_ENABLED is off.
+ * The screens then hide those sections instead of showing an error.
+ */
+export const ORGANIZER_DISABLED_CODE = "billing.organizer_disabled";
+
+export function isOrganizerDisabled(err: unknown): boolean {
+  return err instanceof ApiError && err.code === ORGANIZER_DISABLED_CODE;
 }

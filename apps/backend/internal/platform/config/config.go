@@ -327,6 +327,14 @@ type Config struct {
 	// Empty: the route answers 503 and bank payments are matched only from
 	// operator imports.
 	BillingBankWebhookSecret string `env:"BILLING_BANK_WEBHOOK_SECRET" required:"false" default:""`
+	// BillingOrganizerEnabled opens the organizer's credit packs and platform
+	// invoices (balance, packs, pack order, invoices, card payment, payer,
+	// service-fee quote, ledger). Off by default: until the owner confirms the
+	// pack prices, the issuer details and the card fee, those routes answer
+	// 404 billing.organizer_disabled and the event center hides the screens.
+	// The operator's /v1/admin/billing routes and both webhooks are not
+	// affected. Read only by arena-api.
+	BillingOrganizerEnabled bool `env:"BILLING_ORGANIZER_ENABLED" required:"false" default:"false"`
 
 	// -------------------------------------------------------------------------
 	// Outbox dispatcher
@@ -942,6 +950,12 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.OnboardingEnabled = b
+
+	b, err = getenvBool("BILLING_ORGANIZER_ENABLED", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.BillingOrganizerEnabled = b
 
 	b, err = getenvBool("BOT_SELF_ONBOARDING_ENABLED", false)
 	if err != nil {

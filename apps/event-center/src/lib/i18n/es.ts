@@ -1575,6 +1575,7 @@ export const es: Record<MessageKey, string> = {
   "billing.nav.usage": "Uso",
   "billing.nav.balance": "Saldo y paquetes",
   "billing.nav.invoices": "Facturas",
+  "billing.closed": "Los paquetes de créditos y las facturas de la plataforma aún no están abiertos. Te avisaremos cuando se abran. Tu uso está en la pestaña Uso.",
   "billing.balance.title": "Facturación: saldo y paquetes",
   "billing.balance.intro": "Los créditos pagan la comisión de la plataforma por las entradas que vendes. Compras un paquete de créditos y la comisión de cada entrada vendida se descuenta de él.",
   "billing.balance.section": "Tu saldo",
@@ -1751,6 +1752,8 @@ export const es: Record<MessageKey, string> = {
   "apiError.billingPayerInvalid.next": "Revisa el nombre legal, el código de país y el e-mail, y guarda de nuevo.",
   "apiError.billingTerms.title": "Ahora no podemos calcular la comisión.",
   "apiError.billingTerms.next": "Las condiciones de tu cuenta no están listas. Escribe a soporte y lo arreglaremos.",
+  "apiError.billingClosed.title": "Los paquetes de créditos y las facturas de la plataforma aún no están abiertos.",
+  "apiError.billingClosed.next": "Te avisaremos cuando se abran. Tu uso está en la pestaña Uso.",
   "apiError.billingFxMissing.title": "Todavía no podemos convertir esta moneda.",
   "apiError.billingFxMissing.next": "Elige la moneda de tu cuenta o escribe a soporte.",
 };

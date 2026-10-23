@@ -11,6 +11,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/stripebilling"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbilling"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // platformStripe is the PLATFORM's own Stripe account (never an
@@ -53,8 +54,32 @@ func (s *Server) platformStripeWebhookEnabled() bool {
 	return s.pgxPool != nil && s.cfg != nil && s.cfg.BillingStripeSecretKey != ""
 }
 
+// billingOrganizerEnabled reports BILLING_ORGANIZER_ENABLED, read per request
+// like the Stripe key (tests set the config after New).
+func (s *Server) billingOrganizerEnabled() bool {
+	return s.cfg != nil && s.cfg.BillingOrganizerEnabled
+}
+
+// requireBillingOrganizerEnabled closes the organizer's credit packs and
+// platform invoices until the owner opens them with BILLING_ORGANIZER_ENABLED.
+// It runs after the auth gate, so a caller without a token still gets 401;
+// a member then gets 404 billing.organizer_disabled, which the event center
+// reads to hide its screens. Nothing is read or written.
+func (s *Server) requireBillingOrganizerEnabled(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.billingOrganizerEnabled() {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"billing.organizer_disabled", "credit packs and platform invoices are not open yet", r,
+			))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // mountAccountBillingRoutes mounts the routes. The organizer routes carry
-// {org_id}: membership and the permission are judged in that organization.
+// {org_id}: membership and the permission are judged in that organization,
+// and they stay closed while BILLING_ORGANIZER_ENABLED is off.
 func (s *Server) mountAccountBillingRoutes(r chi.Router) {
 	if !s.authEnabled() {
 		return // a handler without a database answers 503, like the price-list screen
@@ -62,6 +87,7 @@ func (s *Server) mountAccountBillingRoutes(r chi.Router) {
 	h := s.accountBillingHandler
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "billing.read", "billing")
+		pr.Use(s.requireBillingOrganizerEnabled)
 		pr.Get("/organizations/{org_id}/billing/balance", func(w http.ResponseWriter, r *http.Request) { h().HandleBalance(w, r) })
 		pr.Get("/organizations/{org_id}/billing/packs", func(w http.ResponseWriter, r *http.Request) { h().HandlePacks(w, r) })
 		pr.Get("/organizations/{org_id}/billing/ledger", func(w http.ResponseWriter, r *http.Request) { h().HandleLedger(w, r) })
@@ -71,11 +97,13 @@ func (s *Server) mountAccountBillingRoutes(r chi.Router) {
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "billing.purchase", "billing")
+		pr.Use(s.requireBillingOrganizerEnabled)
 		pr.Post("/organizations/{org_id}/billing/packs/{pack_id}/order", func(w http.ResponseWriter, r *http.Request) { h().HandleOrderPack(w, r) })
 		pr.Post("/organizations/{org_id}/billing/account-invoices/{invoice_id}/pay-by-card", func(w http.ResponseWriter, r *http.Request) { h().HandlePayByCard(w, r) })
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "billing.payer_manage", "billing")
+		pr.Use(s.requireBillingOrganizerEnabled)
 		pr.Put("/organizations/{org_id}/billing/payer", func(w http.ResponseWriter, r *http.Request) { h().HandlePutPayer(w, r) })
 	})
 	// Public, guarded by their signatures.

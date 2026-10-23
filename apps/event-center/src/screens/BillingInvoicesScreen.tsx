@@ -12,11 +12,11 @@ import { useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { BillingInvoiceCard } from "@/components/BillingInvoiceCard";
 import { BillingLedger } from "@/components/BillingLedger";
-import { BillingNav } from "@/components/BillingNav";
+import { BillingClosedNotice, BillingNav } from "@/components/BillingNav";
 import { SelectField } from "@/components/FormField";
 import { Empty, ErrorBox, Loading } from "@/components/ui";
 import { fetchBillingBalance, listAccountInvoices } from "@/lib/api/endpoints";
-import { INVOICES_PAGE_SIZE, INVOICE_STATE_FILTERS, invoiceStateKey, isInvoiceStateFilter } from "@/lib/billingAccount";
+import { INVOICES_PAGE_SIZE, INVOICE_STATE_FILTERS, invoiceStateKey, isInvoiceStateFilter, isOrganizerDisabled } from "@/lib/billingAccount";
 import { useI18n } from "@/lib/i18n";
 import { useOrg } from "@/screens/OrgLayout";
 
@@ -45,6 +45,16 @@ export function BillingInvoicesScreen() {
         <p className="notice notice-bad" role="alert" data-testid="billing-no-access">
           {t("billing.noAccess")}
         </p>
+      </article>
+    );
+  }
+
+  if (isOrganizerDisabled(balance.error) || isOrganizerDisabled(invoices.error)) {
+    return (
+      <article aria-labelledby="billing-invoices-title">
+        <h1 id="billing-invoices-title">{t("billing.invoices.title")}</h1>
+        <BillingNav orgId={orgId} />
+        <BillingClosedNotice />
       </article>
     );
   }

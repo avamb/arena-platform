@@ -139,7 +139,8 @@ export type ApiErrorStem =
   | "billingNotCardPayable"
   | "billingPayerInvalid"
   | "billingTerms"
-  | "billingFxMissing";
+  | "billingFxMissing"
+  | "billingClosed";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -164,7 +165,7 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "tierPriceInvalid", "tierCapacityInvalid", "tierPriceWindows",
   // B3-3/B4
   "billingCardUnavailable", "billingKeyReused", "billingPackGone", "billingNoAccount", "billingNotCardPayable",
-  "billingPayerInvalid", "billingTerms", "billingFxMissing",
+  "billingPayerInvalid", "billingTerms", "billingFxMissing", "billingClosed",
 ];
 
 /**
@@ -272,6 +273,7 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "billing.fx_rate_missing": "billingFxMissing",
   "billing.invalid_payment_method": "invalid",
   "billing.bad_request": "invalid",
+  "billing.organizer_disabled": "billingClosed",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",
