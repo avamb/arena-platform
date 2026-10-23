@@ -19,12 +19,20 @@ import (
 // billingAdminWriteRoutes maps "METHOD /path" to the audit action the route
 // writes in the same transaction as its change.
 var billingAdminWriteRoutes = map[string]string{
-	"POST /v1/admin/billing/price-lists":                 hbilling.AuditPriceListCreate,
-	"POST /v1/admin/billing/price-lists/{id}/revoke":     hbilling.AuditPriceListRevoke,
-	"POST /v1/admin/billing/rate-overrides":              hbilling.AuditRateOverrideCreate,
-	"POST /v1/admin/billing/rate-overrides/{id}/close":   hbilling.AuditRateOverrideClose,
-	"DELETE /v1/admin/billing/rate-overrides/{id}":       hbilling.AuditRateOverrideDelete,
-	"POST /v1/admin/billing/accounts/{account_id}/terms": hbilling.AuditAccountTermsCreate,
+	"POST /v1/admin/billing/price-lists":                               hbilling.AuditPriceListCreate,
+	"POST /v1/admin/billing/price-lists/{id}/revoke":                   hbilling.AuditPriceListRevoke,
+	"POST /v1/admin/billing/rate-overrides":                            hbilling.AuditRateOverrideCreate,
+	"POST /v1/admin/billing/rate-overrides/{id}/close":                 hbilling.AuditRateOverrideClose,
+	"DELETE /v1/admin/billing/rate-overrides/{id}":                     hbilling.AuditRateOverrideDelete,
+	"POST /v1/admin/billing/accounts/{account_id}/terms":               hbilling.AuditAccountTermsCreate,
+	"POST /v1/admin/billing/accounts/{account_id}/invoices":            hbilling.AuditUsageInvoiceCreate,
+	"POST /v1/admin/billing/invoices/{invoice_id}/issue":               hbilling.AuditInvoiceIssue,
+	"POST /v1/admin/billing/invoices/{invoice_id}/mark-paid":           hbilling.AuditInvoiceMarkPaid,
+	"POST /v1/admin/billing/invoices/{invoice_id}/void":                hbilling.AuditInvoiceVoid,
+	"POST /v1/admin/billing/payment-fees":                              hbilling.AuditPaymentFeeCreate,
+	"POST /v1/admin/billing/bank-transactions":                         hbilling.AuditBankTransferImport,
+	"POST /v1/admin/billing/bank-transactions/{transaction_id}/match":  hbilling.AuditBankTransferMatch,
+	"POST /v1/admin/billing/bank-transactions/{transaction_id}/ignore": hbilling.AuditBankTransferIgnore,
 }
 
 func TestBillingAdmin_EveryWriteRouteHasAnAuditAction(t *testing.T) {

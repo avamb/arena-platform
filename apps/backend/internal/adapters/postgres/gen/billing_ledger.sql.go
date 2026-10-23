@@ -413,7 +413,7 @@ const getInvoiceByOrgAndPeriod = `-- name: GetInvoiceByOrgAndPeriod :one
 SELECT id, org_id, billing_period, state, total_amount_minor, currency,
        issued_at, paid_at, voided_at, created_at, updated_at
 FROM   invoices
-WHERE  org_id = $1 AND billing_period = $2`
+WHERE  org_id = $1 AND billing_period = $2 AND account_id IS NULL`
 
 // GetInvoiceByOrgAndPeriod fetches the invoice for one org and billing period.
 // Returns pgx.ErrNoRows when not found. Used to prevent duplicate invoice generation.

@@ -181,6 +181,9 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       "customer_imports",
       "onboarding",
       "billing_prices",
+      "billing_invoices",
+      "billing_payment_fees",
+      "billing_bank",
     ]);
   });
 
