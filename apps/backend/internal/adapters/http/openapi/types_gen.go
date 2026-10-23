@@ -5273,6 +5273,9 @@ type ComplimentaryCreateRequest struct {
 
 	// TierId Category to issue in; required on a general-admission session.
 	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
+
+	// Vip Mark every ticket of the issuance with the organizer's private VIP flag (default false). The flag is never printed on the PDF or written in the guest's letter.
+	Vip *bool `json:"vip,omitempty"`
 }
 
 // ComplimentaryCreateResponse The issuance that was created, or the existing one on a replay.
@@ -5441,6 +5444,9 @@ type ComplimentaryTicketItem struct {
 
 	// Used True once the ticket has been scanned at the door.
 	Used bool `json:"used"`
+
+	// Vip The organizer's private VIP mark of the ticket (the same flag as on a bought ticket). Never printed on the PDF or written in the guest's letter.
+	Vip bool `json:"vip"`
 }
 
 // ConfirmCheckoutRequest Request body for `POST /v1/checkout/{id}/confirm`.
@@ -11501,6 +11507,9 @@ type OrderTicketSummary struct {
 
 	// UsedAt When the ticket was scanned at the door (latest scan of its barcodes, any authority); null if never.
 	UsedAt *time.Time `json:"used_at"`
+
+	// Vip The organizer's private VIP mark. It is never printed on the PDF e-ticket or written in a letter to the buyer.
+	Vip bool `json:"vip"`
 }
 
 // OrgCityResponse Response of POST /v1/organizations/{org_id}/cities. `city` has the
@@ -17976,6 +17985,12 @@ type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody struct {
 	Note *string `json:"note,omitempty"`
 }
 
+// PatchV1OrganizationsOrgIdTicketsTicketIdVipJSONBody defines parameters for PatchV1OrganizationsOrgIdTicketsTicketIdVip.
+type PatchV1OrganizationsOrgIdTicketsTicketIdVipJSONBody struct {
+	// Vip True to mark the ticket as VIP, false to take the mark off.
+	Vip bool `json:"vip"`
+}
+
 // CreatePaymentIntentParams defines parameters for CreatePaymentIntent.
 type CreatePaymentIntentParams struct {
 	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
@@ -18614,6 +18629,9 @@ type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV
 
 // PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdScanRefundException for application/json ContentType.
 type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody
+
+// PatchV1OrganizationsOrgIdTicketsTicketIdVipJSONRequestBody defines body for PatchV1OrganizationsOrgIdTicketsTicketIdVip for application/json ContentType.
+type PatchV1OrganizationsOrgIdTicketsTicketIdVipJSONRequestBody PatchV1OrganizationsOrgIdTicketsTicketIdVipJSONBody
 
 // PostV1OrganizationsOrgIdVenuesJSONRequestBody defines body for PostV1OrganizationsOrgIdVenues for application/json ContentType.
 type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest

@@ -1522,6 +1522,12 @@ export const ru: Record<MessageKey, string> = {
   "mat.map.check": "Проверить в OpenStreetMap",
   "mat.map.removed": "Точка удалена.",
   "mat.preview.title": "Просмотр",
+  // V1: VIP-флаг билета.
+  "vip.badge": "VIP",
+  "vip.mark": "Отметить билет {number} как VIP",
+  "vip.unmark": "Снять VIP с билета {number}",
+  "vip.private": "Отметка VIP видна только вашей команде. Её нет на билете, и гость её не видит.",
+  "invitations.confirm.vip": "Отметить эти приглашения как VIP",
 
   "nav.billing": "Биллинг",
   "billing.title": "Биллинг: использование",

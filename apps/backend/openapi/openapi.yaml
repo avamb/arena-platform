@@ -4364,7 +4364,7 @@ components:
     OrderTicketSummary:
       type: object
       required: [id, item_id, status, holder_email, seat_sector, seat_row, seat_number, seat_label, issued_at,
-                 cancelled_at, system_ticket_id, tier_id, tier_name, price, currency, barcode, used_at]
+                 cancelled_at, system_ticket_id, tier_id, tier_name, price, currency, barcode, used_at, vip]
       description: |
         A ticket issued for one of the order's line items, with what the
         order card prints (EC-05): its category, the price the buyer paid
@@ -4429,6 +4429,9 @@ components:
           type: [string, "null"]
           format: date-time
           description: When the ticket was scanned at the door (latest scan of its barcodes, any authority); null if never.
+        vip:
+          type: boolean
+          description: The organizer's private VIP mark. It is never printed on the PDF e-ticket or written in a letter to the buyer.
 
     OrderEventSummary:
       type: object
@@ -15673,7 +15676,7 @@ components:
 
     ComplimentaryTicketItem:
       type: object
-      required: [id, system_ticket_id, holder_email, holder_name, status, used]
+      required: [id, system_ticket_id, holder_email, holder_name, status, used, vip]
       description: One ticket of a complimentary issuance, as the invitations list shows it.
       properties:
         id:
@@ -15696,6 +15699,9 @@ components:
         used:
           type: boolean
           description: True once the ticket has been scanned at the door.
+        vip:
+          type: boolean
+          description: The organizer's private VIP mark of the ticket (the same flag as on a bought ticket). Never printed on the PDF or written in the guest's letter.
 
     ComplimentaryListItem:
       type: object
@@ -15859,6 +15865,9 @@ components:
         notes:
           type: string
           description: Internal note.
+        vip:
+          type: boolean
+          description: Mark every ticket of the issuance with the organizer's private VIP flag (default false). The flag is never printed on the PDF or written in the guest's letter.
 
     ComplimentaryCreateResponse:
       type: object
@@ -15873,7 +15882,7 @@ components:
           description: The tickets of the issuance with their numbers and holders.
           items:
             type: object
-            description: One ticket (id, complimentary_issuance_id, session_id, tier_id, holder_email, holder_name, system_ticket_id, status, issued_at, created_at, updated_at).
+            description: One ticket (id, complimentary_issuance_id, session_id, tier_id, holder_email, holder_name, system_ticket_id, status, issued_at, created_at, updated_at, vip).
         letters:
           type: array
           description: The invitation letters of the issuance with their delivery status, as in the invitations list. Right after the issue the letters are queued (or empty while no delivery job exists).
@@ -49696,6 +49705,100 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
           description: "The ticket is not on review hold (ticket.not_on_review_hold), or money returned on its payment names no ticket and confirm_unattributed does not repeat that amount (ticket.review_hold_unattributed, with unattributed_amount and currency in the details)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Database not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/tickets/{ticket_id}/vip:
+    patch:
+      operationId: patchV1OrganizationsOrgIdTicketsTicketIdVip
+      summary: Set or clear the VIP mark of a ticket
+      description: |
+        The organizer marks a ticket (bought or an invitation) as VIP, or takes
+        the mark off. The mark is private to the organization: it is not
+        printed on the PDF e-ticket and not written in any letter to the buyer.
+        Requires `ticket.update` (owner and manager). The call is idempotent:
+        repeating the stored value answers 200 with `changed` false and writes
+        no audit event. A change is audited as `v1.ticket.vip_set`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: ticket_id
+          in: path
+          required: true
+          description: UUIDv7 of the ticket
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: The wanted value of the mark.
+              required: [vip]
+              properties:
+                vip:
+                  type: boolean
+                  description: True to mark the ticket as VIP, false to take the mark off.
+      responses:
+        "200":
+          description: The mark has the wanted value.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: The ticket and its mark after the call.
+                required: [ticket_id, vip, changed]
+                properties:
+                  ticket_id:
+                    type: string
+                    format: uuid
+                    description: UUIDv7 of the ticket.
+                  vip:
+                    type: boolean
+                    description: The mark after the call.
+                  changed:
+                    type: boolean
+                    description: False when the ticket already had that value.
+        "400":
+          description: "The body is not a JSON object with a boolean `vip` (ticket.invalid_vip)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "The caller lacks ticket.update in this organization."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Ticket not found in this organization (ticket.not_found)."
           content:
             application/json:
               schema:

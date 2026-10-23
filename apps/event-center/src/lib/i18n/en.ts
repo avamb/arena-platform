@@ -1522,6 +1522,12 @@ export const en = {
   "mat.map.check": "Check on OpenStreetMap",
   "mat.map.removed": "The point was removed.",
   "mat.preview.title": "Preview",
+  // V1: VIP mark of a ticket.
+  "vip.badge": "VIP",
+  "vip.mark": "Mark ticket {number} as VIP",
+  "vip.unmark": "Remove VIP from ticket {number}",
+  "vip.private": "The VIP mark is for your team only. It is not printed on the ticket and the guest does not see it.",
+  "invitations.confirm.vip": "Mark these invitations as VIP",
 
   "nav.billing": "Billing",
   "billing.title": "Billing: usage",

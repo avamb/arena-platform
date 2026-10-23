@@ -3995,3 +3995,20 @@ other = "This entry is not in the list any more. Here is the list now."
 
 ["bot.mt.err_changed"]
 other = "The list changed while you worked. Check it and try again."
+["bot.ord.vip_mark"]
+other = "⭐ VIP"
+
+["bot.ord.vip_on_btn"]
+other = "⭐ Mark №{{.Num}} as VIP"
+
+["bot.ord.vip_off_btn"]
+other = "Remove VIP from №{{.Num}}"
+
+["bot.inv.vip_line"]
+other = "⭐ The invitations are marked VIP. The guest does not see the mark."
+
+["bot.inv.vip_on_btn"]
+other = "☐ Mark as VIP"
+
+["bot.inv.vip_off_btn"]
+other = "☑ VIP: press to remove"

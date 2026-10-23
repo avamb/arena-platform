@@ -3989,3 +3989,20 @@ other = "Этой записи в списке больше нет. Вот сп�
 
 ["bot.mt.err_changed"]
 other = "Список изменился, пока вы работали. Проверьте его и повторите."
+["bot.ord.vip_mark"]
+other = "⭐ VIP"
+
+["bot.ord.vip_on_btn"]
+other = "⭐ Отметить №{{.Num}} как VIP"
+
+["bot.ord.vip_off_btn"]
+other = "Снять VIP с №{{.Num}}"
+
+["bot.inv.vip_line"]
+other = "⭐ Приглашения отмечены как VIP. Гость отметку не видит."
+
+["bot.inv.vip_on_btn"]
+other = "☐ Отметить как VIP"
+
+["bot.inv.vip_off_btn"]
+other = "☑ VIP: нажмите, чтобы снять"

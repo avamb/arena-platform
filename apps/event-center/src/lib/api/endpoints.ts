@@ -424,6 +424,8 @@ export interface InvitationInput {
   name: string;
   /** `web-<operation>-<index>` (lib/invitations.ts batchId): a repeat replays, it never mails twice. */
   batchId: string;
+  /** V1: mark the invitation with the organizer's private VIP flag. */
+  vip?: boolean;
 }
 
 export interface InvitationIssued {
@@ -445,6 +447,7 @@ export function issueInvitation(orgId: string, input: InvitationInput): Promise<
       recipients: [input.email],
       recipient_names: input.name === "" ? undefined : [input.name],
       batch_id: input.batchId,
+      vip: input.vip === true ? true : undefined,
       issued_by: "event_center_web",
     },
   });
@@ -738,6 +741,19 @@ export function setEventContact(
   return call<EventContactResponse>({ route: API.eventContact, params: { org_id: orgId, event_id: eventId }, body: input });
 }
 
+// ─── V1: the VIP mark of a ticket ─────────────────────────────────────────────
+
+/**
+ * Sets or clears the organizer's private VIP mark of one ticket
+ * (`ticket.update`). Idempotent: the value is the wanted one, not a toggle.
+ */
+export function setTicketVip(orgId: string, ticketId: string, vip: boolean): Promise<{ ticket_id: string; vip: boolean; changed: boolean }> {
+  return call<{ ticket_id: string; vip: boolean; changed: boolean }>({
+    route: API.ticketVip,
+    params: { org_id: orgId, ticket_id: ticketId },
+    body: { vip },
+  });
+}
 // ─── B2-7: billing usage (read-only, preliminary) ───────────────────────────
 
 export interface BillingChargesQuery {

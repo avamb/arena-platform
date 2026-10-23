@@ -1522,6 +1522,12 @@ export const es: Record<MessageKey, string> = {
   "mat.map.check": "Comprobar en OpenStreetMap",
   "mat.map.removed": "El punto se quitó.",
   "mat.preview.title": "Vista previa",
+  // V1: VIP mark of a ticket.
+  "vip.badge": "VIP",
+  "vip.mark": "Marcar la entrada {number} como VIP",
+  "vip.unmark": "Quitar VIP de la entrada {number}",
+  "vip.private": "La marca VIP es solo para tu equipo. No se imprime en la entrada y el invitado no la ve.",
+  "invitations.confirm.vip": "Marcar estas invitaciones como VIP",
 
   "nav.billing": "Facturación",
   "billing.title": "Facturación: uso",

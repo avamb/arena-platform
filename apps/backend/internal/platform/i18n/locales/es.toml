@@ -3850,3 +3850,20 @@ other = "Esta entrada ya no está en la lista. Aquí tienes la lista ahora."
 
 ["bot.mt.err_changed"]
 other = "La lista cambió mientras trabajabas. Revísala e inténtalo de nuevo."
+["bot.ord.vip_mark"]
+other = "⭐ VIP"
+
+["bot.ord.vip_on_btn"]
+other = "⭐ Marcar la n.º {{.Num}} como VIP"
+
+["bot.ord.vip_off_btn"]
+other = "Quitar VIP de la n.º {{.Num}}"
+
+["bot.inv.vip_line"]
+other = "⭐ Las invitaciones se marcan como VIP. El invitado no ve la marca."
+
+["bot.inv.vip_on_btn"]
+other = "☐ Marcar como VIP"
+
+["bot.inv.vip_off_btn"]
+other = "☑ VIP: pulsa para quitar"

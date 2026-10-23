@@ -304,7 +304,11 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	// 7-1: a poster of the other organization (poster_fixture.go).
-	return applyForeignPoster(ctx, tx)
+	if err := applyForeignPoster(ctx, tx); err != nil {
+		return err
+	}
+	// V1: a paid two-ticket order for the VIP twin test (vip_fixture.go).
+	return applyVIPOrder(ctx, tx)
 }
 
 // Task 4-6 (the web promoters screens): ANOTHER organization with one

@@ -340,6 +340,7 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/refunds/{refund_id}/resolve":               "refunds.Engine.Resolve (refund loaded inside the path org; covered by TestRefundOrgRoutes_RetryAndResolve)",
 	"POST /v1/organizations/{org_id}/tickets/{ticket_id}/scan-refund-exception": "platform superadmin only; the ticket must belong to the path org, checked inside refunds.Engine.GrantScanException (covered by TestScanException_SuperadminOnlyInsideTheOrganization)",
 	"POST /v1/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear":     "platform superadmin only; the ticket's organization (GetTicketOrgID) must be the path org (covered by TestReviewHoldClear_SuperadminOnlyInsideTheOrganization)",
+	"PATCH /v1/organizations/{org_id}/tickets/{ticket_id}/vip":                  "the ticket's organization (GetTicketOrgID) must be the path org (covered by TestTicketVIP_StaysInsideTheOrganization)",
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/sample-ticket":        "hsample",
 
 	// S1c seat batches: seatBatchShim runs requireSessionInPathOrg, and

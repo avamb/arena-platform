@@ -251,7 +251,7 @@ func newTicketDetailVals(itemID, ticketID, tierID uuid.UUID, status string, issu
 		itemID, int32(0), price, tierID, "Parterre",
 		ticketID, status, (*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil),
 		issuedAt, (*time.Time)(nil), int64(3000000001),
-		barcode, (*time.Time)(nil),
+		barcode, (*time.Time)(nil), false,
 		deliveryStatus, (*time.Time)(nil), (*string)(nil),
 	}
 }
