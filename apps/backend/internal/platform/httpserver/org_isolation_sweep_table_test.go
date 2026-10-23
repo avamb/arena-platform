@@ -197,7 +197,7 @@ func sweepRows() []sweepRow {
 			body: func(id sweepIDs) string {
 				return fmt.Sprintf(`{"seating_plan_version_id":%q,"admission_mode":"general_admission","category_tier_map":{},"auto_create_tiers":true}`, id.PlanVersion)
 			}},
-		{hole: "H8", name: "seat block", route: "PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/seats", perm: "event_session.assign_seating_plan",
+		{hole: "H8", name: "seat block", route: "PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/seats", perm: "session.seats.manage",
 			path: func(id sweepIDs) string { return sessionBase(id, id.Event, id.Session3) + "/seats" },
 			body: func(_ sweepIDs) string { return `{"action":"block","seat_keys":["S|A|1","S|A|2"]}` }},
 	}
@@ -230,6 +230,15 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers":                    "tiers",
 	"PUT /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule": "tiers",
 
+	// S1e seat-layout allocator (seat_layout_shims.go): requireSessionInPathOrg
+	// before the handler; seat_layout_suggest_integration_test.go drives a
+	// foreign session and expects 404.
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms": "seat layout",
+	"POST /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest":   "seat layout",
+	// hcatalog test letter of the event's own text (task 7-1,
+	// event_email_note.go): requireEventInOrg runs before anything is read or
+	// queued. event_email_note_integration_test.go drives a foreign event.
+	"POST /v1/organizations/{org_id}/events/{event_id}/email-note/test": "event email note",
 	// hbilling.ChargesHandler (task B2-6): eventInOrg compares events.org_id with the
 	// path organization (404 billing.event_not_found otherwise) and every charge query
 	// filters billable_events.org_id; billing_charges_integration_test.go drives a foreign event.
@@ -256,6 +265,12 @@ var orgIsolationAuditedSafe = map[string]string{
 	"DELETE /v1/organizations/{org_id}/events/{id}":                  "events",
 	"DELETE /v1/organizations/{org_id}/events/{id}/artists/{aid}":    "events",
 	"GET /v1/organizations/{org_id}/events/{event_id}/delete-impact": "events",
+	// hpagestats and hexport page-stats (task 2-3): GetEventPageStatsHeader is
+	// scoped by (event id, org id) and answers pgx.ErrNoRows for a foreign
+	// event (404 event.not_found); every counter query is keyed by the event
+	// id it returned. TestPageStats_OrganizerReadStaysInsideTheOrganization.
+	"GET /v1/organizations/{org_id}/events/{event_id}/page-stats":     "hpagestats",
+	"GET /v1/organizations/{org_id}/events/{event_id}/page-stats.csv": "hpagestats",
 	// himports.HandleEventBundleRead (task 3-2): GetEventRaw, then the event's
 	// organization must equal the path organization (404 event.not_found).
 	// TestEventBundleRead_OrganizationBoundary drives a foreign, unknown and
@@ -327,6 +342,7 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/orders/{id}/cancel":                        "horders",
 	"POST /v1/organizations/{org_id}/orders/{order_id}/resend-tickets":          "horders",
 	"GET /v1/organizations/{org_id}/orders/{order_id}/consents":                 "horders.HandleConsents (GetOrderByID(order, path org), then the consents by (path org, the order's checkout session); covered by TestCheckoutConsent_OrderConsentsStayInsideTheOrganization)",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/tickets":              "horders.HandleSessionTickets (GetSessionSummaryHeader(session, path org), then the tickets of that session; an API key is refused; covered by TestSessionTickets_ScansTwinSources)",
 	"GET /v1/organizations/{org_id}/orders/{order_id}/letter-interactions":      "horders.HandleLetterInteractions (GetOrderByID(order, path org), then the letters by (order, path org); covered by TestBrevoWebhook_LetterInteractionsCarryUserAgentAndStayInsideTheOrganization)",
 	"GET /v1/organizations/{org_id}/orders/{order_id}/refund-options":           "refunds.Engine.Options (order loaded inside the path org; covered by TestRefundOrgRoutes_OptionsCreateReplayAndIsolation)",
 	"POST /v1/organizations/{org_id}/orders/{order_id}/refunds":                 "refunds.Engine.CreateBatch (order loaded inside the path org; covered by TestRefundOrgRoutes_OptionsCreateReplayAndIsolation)",
@@ -335,8 +351,18 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/refunds/{refund_id}/resolve":               "refunds.Engine.Resolve (refund loaded inside the path org; covered by TestRefundOrgRoutes_RetryAndResolve)",
 	"POST /v1/organizations/{org_id}/tickets/{ticket_id}/scan-refund-exception": "platform superadmin only; the ticket must belong to the path org, checked inside refunds.Engine.GrantScanException (covered by TestScanException_SuperadminOnlyInsideTheOrganization)",
 	"POST /v1/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear":     "platform superadmin only; the ticket's organization (GetTicketOrgID) must be the path org (covered by TestReviewHoldClear_SuperadminOnlyInsideTheOrganization)",
+	"PATCH /v1/organizations/{org_id}/tickets/{ticket_id}/vip":                  "the ticket's organization (GetTicketOrgID) must be the path org (covered by TestTicketVIP_StaysInsideTheOrganization)",
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/sample-ticket":        "hsample",
-	"POST /v1/organizations/{org_id}/media/{media_id}/poster-facts":             "hmedia.PosterFacts (rowOrgAccess, then the object must carry the path org; covered by TestPosterFacts_RouteReadsOwnPosterAndKeepsOrganizationsApart)",
+
+	// S1c seat batches: seatBatchShim runs requireSessionInPathOrg, and
+	// seatlayout / the batch queries are scoped by (session, path org)
+	// again (covered by TestSeatBatches_StayInsideTheOrganization).
+	"POST /v1/organizations/{org_id}/sessions/{session_id}/seat-batches":                   "hseating",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/seat-batches/{batch_id}":         "hseating",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/seat-batches":                    "hseating",
+	"POST /v1/organizations/{org_id}/sessions/{session_id}/seat-batches/{batch_id}/revert": "hseating",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/seats/{seat_key}/history":        "hseating",
+	"POST /v1/organizations/{org_id}/media/{media_id}/poster-facts":                        "hmedia.PosterFacts (rowOrgAccess, then the object must carry the path org; covered by TestPosterFacts_RouteReadsOwnPosterAndKeepsOrganizationsApart)",
 
 	// hcheckout promo codes, hpayments payment configs, hbankaccounts, hapikeys,
 	// hbot invitations: queries scoped by (id, org_id).

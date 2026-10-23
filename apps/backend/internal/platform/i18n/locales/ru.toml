@@ -3989,3 +3989,46 @@ other = "Этой записи в списке больше нет. Вот сп�
 
 ["bot.mt.err_changed"]
 other = "Список изменился, пока вы работали. Проверьте его и повторите."
+["bot.ord.vip_mark"]
+other = "⭐ VIP"
+
+["bot.ord.vip_on_btn"]
+other = "⭐ Отметить №{{.Num}} как VIP"
+
+["bot.ord.vip_off_btn"]
+other = "Снять VIP с №{{.Num}}"
+
+["bot.inv.vip_line"]
+other = "⭐ Приглашения отмечены как VIP. Гость отметку не видит."
+
+["bot.inv.vip_on_btn"]
+other = "☐ Отметить как VIP"
+
+["bot.inv.vip_off_btn"]
+other = "☑ VIP: нажмите, чтобы снять"
+
+["bot.ec.page_stats_line"]
+other = "Просмотры страницы: {{.Views}} за {{.Days}} дн.{{if .Suspect}} (из них подозрительных {{.Suspect}}){{end}}"
+["bot.ord.scan_src_arena_scanner"]
+other = "сканер Arena"
+
+["bot.ord.scan_src_macs"]
+other = "МАКС"
+
+["bot.ord.scan_gate"]
+other = " · вход {{.Gate}}"
+
+["bot.ord.scan_denied"]
+other = " · ✖ отказ на входе {{.When}}"
+
+["bot.ses.not_entered_btn"]
+other = "Не прошли"
+
+["bot.ses.not_entered_head"]
+other = "<b>Ещё не прошли</b>\n{{.Scope}}\nБилетов: {{.Count}}"
+
+["bot.ses.not_entered_empty"]
+other = "Все, у кого есть действующий билет, уже прошли."
+
+["bot.ses.not_entered_invite"]
+other = "приглашение"

@@ -64,6 +64,14 @@ type publicFeedRateLimiter struct {
 	promoFailIPLimit    int
 	promoFailTokens     map[string]*rateLimiterWindow
 	promoFailIPs        map[string]*rateLimiterWindow
+
+	// Page statistics beacon (HP-2a, see config.PublicPageTrackEventLimit):
+	// a bucket per event page and one per client IP, both separate from the
+	// general buckets above. A limit <= 0 disables that check.
+	pageTrackEventLimit int
+	pageTrackIPLimit    int
+	pageTrackEvents     map[string]*rateLimiterWindow
+	pageTrackIPs        map[string]*rateLimiterWindow
 }
 
 // newPublicFeedRateLimiter creates a rate limiter with the given per-minute
@@ -78,6 +86,8 @@ func newPublicFeedRateLimiter(feedTokenLimit, checkoutTokenLimit, ipLimit int) *
 		ips:                make(map[string]*rateLimiterWindow),
 		promoFailTokens:    make(map[string]*rateLimiterWindow),
 		promoFailIPs:       make(map[string]*rateLimiterWindow),
+		pageTrackEvents:    make(map[string]*rateLimiterWindow),
+		pageTrackIPs:       make(map[string]*rateLimiterWindow),
 	}
 }
 
@@ -86,8 +96,10 @@ func newPublicFeedRateLimiter(feedTokenLimit, checkoutTokenLimit, ipLimit int) *
 func newPublicFeedRateLimiterFromConfig(cfg *config.Config) *publicFeedRateLimiter {
 	rl := newPublicFeedRateLimiter(publicFeedTokenRateLimit(cfg), publicCheckoutTokenRateLimit(cfg), publicAPIIPRateLimit(cfg))
 	rl.promoFailTokenLimit, rl.promoFailIPLimit = defaultPublicPromoFailTokenLimit, defaultPublicPromoFailIPLimit
+	rl.pageTrackEventLimit, rl.pageTrackIPLimit = defaultPublicPageTrackEventLimit, defaultPublicPageTrackIPLimit
 	if cfg != nil {
 		rl.promoFailTokenLimit, rl.promoFailIPLimit = cfg.PublicPromoFailTokenLimit, cfg.PublicPromoFailIPLimit
+		rl.pageTrackEventLimit, rl.pageTrackIPLimit = cfg.PublicPageTrackEventLimit, cfg.PublicPageTrackIPLimit
 	}
 	return rl
 }
@@ -107,6 +119,8 @@ func (rl *publicFeedRateLimiter) sweepExpiredLocked(now time.Time) {
 	sweepExpiredWindows(rl.ips, now)
 	sweepExpiredWindows(rl.promoFailTokens, now)
 	sweepExpiredWindows(rl.promoFailIPs, now)
+	sweepExpiredWindows(rl.pageTrackEvents, now)
+	sweepExpiredWindows(rl.pageTrackIPs, now)
 }
 
 // sweepExpiredWindows deletes every map entry whose window has already
@@ -267,6 +281,27 @@ func (rl *publicFeedRateLimiter) ReservePromoAttempt(token, ip string) (func(), 
 	}, false, 0
 }
 
+// CheckPageTrack counts one page-statistics beacon in the bucket of its event
+// page and in the bucket of its client IP, BOTH on every call (never
+// short-circuited: a burst that trips one bucket must still fill the other).
+// eventKey is the lower-cased slug pair of the page, not an id: the check runs
+// before any database read, so an unknown page costs no query. It reports the
+// larger Retry-After of the buckets that blocked.
+func (rl *publicFeedRateLimiter) CheckPageTrack(eventKey, ip string) (bool, int) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	okEvent, retryEvent := rl.check(rl.pageTrackEvents, eventKey, rl.pageTrackEventLimit)
+	okIP, retryIP := rl.check(rl.pageTrackIPs, ipRateKey(ip), rl.pageTrackIPLimit)
+	if okEvent && okIP {
+		return true, 0
+	}
+	retry := retryEvent
+	if retryIP > retry {
+		retry = retryIP
+	}
+	return false, retry
+}
+
 // CheckFeedToken / CheckCheckoutToken / CheckIP are exported adapter methods
 // so *publicFeedRateLimiter satisfies the hfeed.RateLimiter interface. They
 // forward to the private implementations above unchanged.
@@ -297,6 +332,8 @@ const (
 	defaultPublicAPIIPRateLimit         = 600
 	defaultPublicPromoFailTokenLimit    = 300
 	defaultPublicPromoFailIPLimit       = 10
+	defaultPublicPageTrackEventLimit    = 6000
+	defaultPublicPageTrackIPLimit       = 120
 )
 
 func publicFeedTokenRateLimit(cfg *config.Config) int {

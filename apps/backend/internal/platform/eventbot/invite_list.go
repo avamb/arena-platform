@@ -67,6 +67,9 @@ func inviteGuest(it openapi.ComplimentaryListItem) string {
 	if who == "" {
 		who = "—"
 	}
+	if len(it.Tickets) > 0 && it.Tickets[0].Vip {
+		who = "⭐ " + who
+	}
 	if it.TicketCount > 1 {
 		who += " ×" + invNum(it.TicketCount)
 	}
@@ -208,6 +211,9 @@ func (b *Bot) showInviteCard(ctx context.Context, chatID int64, editMsgID *int, 
 		}
 		if t.SystemTicketId > 0 {
 			guests.WriteString("№" + invNum(t.SystemTicketId) + " · ")
+		}
+		if t.Vip {
+			guests.WriteString("⭐ VIP · ")
 		}
 		r := InviteRecipient{}
 		if t.HolderName != nil {

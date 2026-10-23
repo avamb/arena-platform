@@ -49,6 +49,11 @@ function InvitationCard({
   return (
     <li className="card" data-testid="invitation-row" data-state={item.state} data-letter={letter}>
       <span className="card-title">
+        {ticket?.vip === true && (
+          <span data-testid="invitation-vip">
+            <Badge tone="wait">★ {t("vip.badge")}</Badge>{" "}
+          </span>
+        )}
         {guest}
         {ticket?.holder_name != null && ticket.holder_email != null && (
           <span className="muted"> · {ticket.holder_email}</span>

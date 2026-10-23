@@ -80,6 +80,7 @@ func ticketEntry(r gen.OrderTicketDetailRow, currency string) map[string]any {
 		"currency":         currency,
 		"barcode":          barcode,
 		"used_at":          timePtr(r.UsedAt),
+		"vip":              r.VIP,
 	}
 	return m
 }
@@ -300,6 +301,9 @@ func (h *Handler) loadDetailExtras(ctx context.Context, order gen.OrderRow) (det
 	for _, r := range rows {
 		ex.tickets = append(ex.tickets, ticketEntry(r, order.Currency))
 		ex.delivery = append(ex.delivery, deliveryEntry(r))
+	}
+	if len(rows) > 0 {
+		h.attachScans(ctx, order, ex.tickets, rows)
 	}
 
 	intents, err := h.queries.ListPaymentIntentsByCheckout(ctx, order.CheckoutSessionID)

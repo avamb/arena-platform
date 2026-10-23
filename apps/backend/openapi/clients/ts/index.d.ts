@@ -2390,8 +2390,8 @@ export interface paths {
          *     seat-key list, per-outcome counts, and the actor.
          *
          *     Requires JWT authentication and the
-         *     `event_session.assign_seating_plan` permission (same
-         *     operational role used for SEAT-B2 binding).
+         *     `session.seats.manage` permission (migration 0161, separate
+         *     from binding a plan).
          */
         patch: operations["patchSessionSeats"];
         trace?: never;
@@ -3954,7 +3954,7 @@ export interface paths {
         /**
          * Admin-only per-seat inventory (AB-39)
          * @description Returns per-seat rows with `tier_id` for the admin seat table.
-         *     Requires JWT + `event_session.assign_seating_plan`. Tenant is
+         *     Requires JWT + `session.seats.manage`. Tenant is
          *     resolved from the session's owning organization.
          */
         get: operations["listSessionSeatsAdmin"];
@@ -3999,7 +3999,7 @@ export interface paths {
          *       * Unknown seat_keys are reported in `unknown_seat_keys` — they
          *         do NOT fail the request.
          *
-         *     Requires JWT + `event_session.assign_seating_plan`. Tenant is
+         *     Requires JWT + `session.seats.manage`. Tenant is
          *     resolved from the session's owning organization.
          */
         patch: operations["patchSessionSeatsCategory"];
@@ -6035,6 +6035,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/pages/{org_slug}/{event_slug}/track": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Count a page view, a video play or a partner click of a hosted page
+         * @description The hosted page's statistics beacon (HP-2a). No JWT, no cookie. One
+         *     call adds one hit to a counter row of the event: the day (the calendar
+         *     day in the venue's zone), the kind and the two cleaned utm values. The
+         *     visitor's IP address, User-Agent, country and time of day are never
+         *     stored and never logged; an obvious bot (by User-Agent, or none) is
+         *     counted in `suspect_hits` instead of `hits`. The numbers are a guide for
+         *     the organizer, not proof for an advertising account.
+         *
+         *     The page is resolved like `GET /v1/public/pages/{org_slug}/{event_slug}`
+         *     (an organization's or a promoter's slug) and answers the same
+         *     `404 page.not_found` for every miss. One event keeps at most 200
+         *     different utm pairs a day; more are counted without utm.
+         *
+         *     Rate limited by the page (`PUBLIC_PAGE_TRACK_EVENT_RATE_LIMIT`) and by
+         *     client IP (`PUBLIC_PAGE_TRACK_IP_RATE_LIMIT`) before any database read;
+         *     a request over a limit is answered 429 `track.rate_limited` and is not
+         *     counted.
+         */
+        post: operations["postPublicPageTrack"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/pages/{org_slug}": {
         parameters: {
             query?: never;
@@ -6082,6 +6118,58 @@ export interface paths {
          *     publication/token state can change at any time.
          */
         get: operations["getPublicPromoterPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/pages/{org_slug}/terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organizer's terms of sale for a hosted page slug
+         * @description The organizer's terms of sale (line P, task P3a): the published
+         *     template of the platform with this seller's data substituted (legal
+         *     name and form, registration and tax numbers, address, public phone,
+         *     the promoter of the event, the refund policy, the seller's country).
+         *     The organizer never edits the text. No JWT required.
+         *
+         *     The slug is resolved like the hosted page: an organization first,
+         *     else a promoter that is not archived (then `event_slug` must name an
+         *     event linked to that promoter, and without it the promoter's data is
+         *     printed). The channel is the one of `feed_token` (any active channel
+         *     of that organization), else the organization's newest hosted-page
+         *     channel. For a `merchant_of_record` channel the platform is named as
+         *     the seller.
+         *
+         *     The rendering is stored once per document version and data
+         *     (`legal_renderings`): the same inputs always answer the same
+         *     `rendering_id` and `sha256`, and a consent at checkout names that
+         *     rendering. The texts seeded so far are English drafts marked
+         *     "DRAFT — awaiting legal review" in every language, stored as DRAFTS:
+         *     a draft is never served, so until an operator publishes a version
+         *     this route answers `404 terms.not_published` and the checkout
+         *     consent keeps the platform terms. Before the HTML is served it is
+         *     checked again: only the markup the renderer writes, and only the
+         *     bytes its SHA-256 names (`500 terms.render_failed` otherwise).
+         *
+         *     Any miss (unknown slug, no channel, an event that is not published,
+         *     not the promoter's, a feed token of another organization, a seller
+         *     profile that is not complete) answers the
+         *     same `404 page.not_found` as the hosted page. Rate-limited per client
+         *     IP. Cache-Control is short (30s).
+         *
+         *     The static segment `terms` takes precedence over the page route's
+         *     `{event_slug}`; no event is given the slug `terms`.
+         */
+        get: operations["getPublicTerms"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7786,6 +7874,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Seat-layout algorithms and their parameters
+         * @description Lists every seat-layout algorithm of the registry with the schema of
+         *     its parameters (number of categories 1 to 15, prices, shares,
+         *     options), so the seat manager and the bot draw the form without
+         *     knowing any algorithm (spec 26 §4.1, task S1e). Read-only. The
+         *     session must belong to this organization. Requires
+         *     `session.seats.manage`.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSeatLayoutAlgorithms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Propose a seat layout
+         * @description Runs one seat-layout algorithm on the geometry of the session's plan
+         *     version and the current state of its seats, and answers the proposed
+         *     categories, the category of every free seat and a revenue estimate
+         *     (spec 26 §4.1, task S1e). Writes NOTHING: applying a layout is a
+         *     separate step. Sold and held seats are never moved; they count in the
+         *     estimate at the price they were sold or held for ("sold by fact plus
+         *     the rest at the new prices"). A seat still marked held whose
+         *     reservation has expired (not draft/active, or past `expires_at`) is
+         *     treated as free: the expiry sweep is about to release it, so it gets a
+         *     category and counts at the proposed price. Until the plan stores its
+         *     annotations (S1d), the stage and section weights travel in the body;
+         *     a section weight or an obstructed seat the plan does not have is 400
+         *     `seat_layout.invalid_annotation`. An explicit `prices` list goes from
+         *     the dearest category down and must not increase. With
+         *     `cheaper_row_edges` the actual shares (`metrics.by_slot[].share`)
+         *     move away from the share template, because row edges are pushed into
+         *     cheaper categories. Requires `session.seats.manage`.
+         */
+        post: operations["postV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/summary": {
         parameters: {
             query?: never;
@@ -7811,6 +7960,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/sessions/{session_id}/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tickets of a session with their entry at the door
+         * @description Lists the tickets of one session in ticket-number order, each with its
+         *     order, buyer and what the door did with it: when it was first let in
+         *     and its newest scan. `entered=false` lists the active tickets nobody
+         *     has entered with ("who has not come yet"), `entered=true` the tickets
+         *     with an entry, no filter every ticket. A ticket counts as entered when
+         *     it carries `used_at`, an admitted scan or a scanned barcode, the same
+         *     reading the refund guard uses. The page carries the buyer's name and
+         *     e-mail, so an organization API key is refused with 403
+         *     `orders.session_tickets_api_key_forbidden`. The session must belong to
+         *     this organization, a session of another one is invisible. Requires the
+         *     `order.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdTickets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/sales.csv": {
         parameters: {
             query?: never;
@@ -7824,7 +8003,8 @@ export interface paths {
          *     order number, order status, order date, buyer, e-mail, phone,
          *     category, price paid for that ticket, currency, EAN-13 barcode,
          *     ticket status, whether the ticket was admitted at the gate (`yes` /
-         *     `no`), sales channel and promo code. Written by the platform's
+         *     `no`), the time of the first entry, who reported it (`arena_scanner`
+         *     or `macs`), the scanner and gate, sales channel and promo code. Written by the platform's
          *     csvexport rules (spec 35 §5.1): UTF-8 with a BOM, `;` separator, CRLF,
          *     every text quoted, barcodes / phones / long numbers as Excel text
          *     (`="4600051000001"`), formula-looking values prefixed with `'`,
@@ -7838,6 +8018,63 @@ export interface paths {
          *     organization is a 404.
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdSalesCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/page-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Statistics of the event's hosted page
+         * @description Page views, video plays and partner-link clicks counted by the page's
+         *     beacon (`POST /v1/public/pages/{org_slug}/{event_slug}/track`), per
+         *     day in the venue's zone, with the totals of the window and the biggest
+         *     utm pairs of the page views. By default the window is the last 30 days
+         *     ending today in the venue's zone; `from` and `to` (`YYYY-MM-DD`,
+         *     inclusive) set it, at most 366 days. Hits of probable bots are in
+         *     `suspect_hits`. A guide for the organizer, not proof for an advertising
+         *     account.
+         *
+         *     Requires `event.read`; an event of another organization (or a deleted
+         *     one) is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsEventIdPageStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/page-stats.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Statistics of the event's hosted page as a CSV file
+         * @description The counter rows behind `page-stats`: one row per day, kind and utm
+         *     pair (day, kind, utm source, utm campaign, count, probable bots). Same
+         *     window rules as the JSON route, same csvexport rules as the other
+         *     exports (UTF-8 with a BOM, `;` separator, header language by `locale`
+         *     / `lang` / Accept-Language). The file is event-level: a page view
+         *     belongs to the event, not to a session or a category.
+         *
+         *     Requires `event.read`; an event of another organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsEventIdPageStatsCsv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7984,6 +8221,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/email-note/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mail the organizer a sample ticket letter with the event's own text
+         * @description Queues a preview of the ticket e-mail with the event's own text
+         *     ("About the event", EC-31) so the organizer sees how buyers will read
+         *     it. The preview text is the `note` of the body (an unsaved draft,
+         *     filtered like PATCH `email_note`) or, when the body has none, the
+         *     stored text. The letter goes to the caller's own address, or to
+         *     `to`, which must be the caller's address or that of an active member
+         *     of the organization. It carries a "[Test]" mark in its subject, has no
+         *     ticket and no PDF, and is NOT recorded as a letter sent to a buyer.
+         *     At most 5 test letters an hour per organization (the counter lives in
+         *     the memory of one arena-api process). Requires `event.update`.
+         */
+        post: operations["postV1OrganizationsOrgIdEventsEventIdEmailNoteTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/sample-ticket": {
         parameters: {
             query?: never;
@@ -8007,6 +8273,121 @@ export interface paths {
          *     `session.read` permission and membership in the organization.
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdSampleTicket"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/seat-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the seat batches of a session
+         * @description The batches applied to the session, newest first. A list row carries
+         *     only the number of changed and skipped seats; the seats themselves
+         *     are in GET .../seat-batches/{batch_id}. Requires the
+         *     `session.seats.manage` permission in the organization.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSeatBatches"];
+        put?: never;
+        /**
+         * Apply a batch of seat changes to a session
+         * @description Repaints seats into another category (`paint`), closes them (`close`),
+         *     opens them (`open`) or does any mix of the two (`apply_layout`) in ONE
+         *     transaction (seatlayout.ApplyBatch, task S1c): the session row is
+         *     locked first and its `seat_status_version` is bumped exactly once,
+         *     the seats are locked in seat_key order, every changed seat is stamped
+         *     with the new version, and the batch is recorded so it can be listed
+         *     and reverted. A sold or held seat is frozen: it is listed in
+         *     `skipped` with a reason and the batch still applies the rest. A
+         *     General Admission place opens and closes but never changes category
+         *     (`ga_unit`). `new_tiers` (creating a category inside the batch) is not
+         *     supported yet and answers 422 `seat_batch.new_tiers_unsupported`.
+         *     Requires the `session.seats.manage` permission in the
+         *     organization. Audited as `v1.session.seat_batch.apply` with
+         *     `batch_id`.
+         */
+        post: operations["postV1OrganizationsOrgIdSessionsSessionIdSeatBatches"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/seat-batches/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One seat batch with every changed and skipped seat
+         * @description The card of one batch: its changes (from/to per seat) and the seats it
+         *     skipped with the reason. Requires the `session.seats.manage`
+         *     permission in the organization.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSeatBatchesBatchId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/seat-batches/{batch_id}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revert a seat batch
+         * @description Applies a NEW batch (kind `revert`) that puts every seat the original
+         *     batch changed back into its previous category and status, under the
+         *     same rules: a seat that is now sold or held is skipped, and so is a
+         *     seat a later batch changed again (`changed_since`) or whose previous
+         *     category was deleted (`tier_unavailable`). The original batch gets
+         *     `reverted_at` and `reverted_by_batch_id`. A batch is reverted at most
+         *     once and a revert is never reverted. A revert that would put back no
+         *     seat at all is refused with 409 `seat_batch.nothing_to_revert` and
+         *     writes nothing. Requires the
+         *     `session.seats.manage` permission in the organization.
+         *     Audited as `v1.session.seat_batch.revert` with `batch_id`.
+         */
+        post: operations["postV1OrganizationsOrgIdSessionsSessionIdSeatBatchesBatchIdRevert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/seats/{seat_key}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * History of one seat
+         * @description Every batch that changed the seat, or tried to and skipped it, newest
+         *     first. `seat_key` must be path-escaped (`Parter|A|1` is sent as
+         *     `Parter%7CA%7C1`). Requires the `session.seats.manage`
+         *     permission in the organization.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSeatsSeatKeyHistory"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8376,6 +8757,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/tickets/{ticket_id}/vip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set or clear the VIP mark of a ticket
+         * @description The organizer marks a ticket (bought or an invitation) as VIP, or takes
+         *     the mark off. The mark is private to the organization: it is not
+         *     printed on the PDF e-ticket and not written in any letter to the buyer.
+         *     Requires `ticket.update` (owner and manager). The call is idempotent:
+         *     repeating the stored value answers 200 with `changed` false and writes
+         *     no audit event. A change is audited as `v1.ticket.vip_set`.
+         */
+        patch: operations["patchV1OrganizationsOrgIdTicketsTicketIdVip"];
+        trace?: never;
+    };
     "/v1/admin/tickets/{id}/scans": {
         parameters: {
             query?: never;
@@ -8460,8 +8866,10 @@ export interface paths {
          *       this organization. `externalRef` becomes the mandatory idempotency
          *       key instead of `actionEvent.actionEventId` (event-bundle spec §3.2):
          *       a repeat call with the same `externalRef` edits the existing event
-         *       in place. Seating is NOT supported for source=arena in this wave —
-         *       `seatList`/`svg` are accepted but yield a warning, never seats.
+         *       in place. A seated session is created from a seating plan version
+         *       of the organization (`actionEvent.arenaSeatingPlanVersionId`, task
+         *       S1b); a Bil24 `seatList`/`svg` is ignored for source=arena with an
+         *       import.field_ignored_for_source warning.
          *
          *     The response (`ImportBil24SessionResponse`, unchanged shape between
          *     both routes) always includes `external_ref` and `compat_ids` — the
@@ -8845,6 +9253,82 @@ export interface paths {
          */
         put: operations["updateOnboardingSettings"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/legal-documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - versions of the terms templates
+         * @description Every version of the organizer terms templates (P3a), newest version
+         *     first within each kind and language, with the allowlist of
+         *     placeholders a template may use. Requires `legal.manage`, which only
+         *     platform_superadmin holds and no organization API key may carry.
+         */
+        get: operations["listLegalDocuments"];
+        put?: never;
+        /**
+         * Admin - save a new draft of a terms template
+         * @description Stores a new DRAFT, numbered after the last version of its kind and
+         *     language. The template may use only the allowlisted placeholders
+         *     (`{{key}}`, `{{#if key}}`, `{{else}}`, `{{/if}}`; headings `## `,
+         *     list items `- `, paragraphs): anything else answers 422 with every
+         *     problem and its line. Requires `legal.manage` and X-Admin-Reason;
+         *     audited (`v1.legal_document.create`).
+         */
+        post: operations["createLegalDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/legal-documents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - one version of a terms template
+         * @description Requires `legal.manage`.
+         */
+        get: operations["getLegalDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/legal-documents/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - publish a draft of a terms template
+         * @description The draft becomes the published version of its kind and language and
+         *     the previous published version is retired, in one transaction. A
+         *     published version never changes again (the database refuses it);
+         *     a new text is a new draft. Requires `legal.manage` and
+         *     X-Admin-Reason; audited (`v1.legal_document.publish`).
+         */
+        post: operations["publishLegalDocument"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12157,6 +12641,226 @@ export interface components {
                 message?: string;
             };
         };
+        /** @description One batch of seat changes (task S1c). */
+        SeatBatchRequest: {
+            /** @description `paint` (tier_id only), `close` (status unavailable only), `open` (status available only) or `apply_layout` (either or both). */
+            kind: string;
+            /** @description The seats to change, at most 10 000. A seat_key may appear twice only with the same target. */
+            changes: components["schemas"]["SeatBatchChangeRequest"][];
+            /** @description Categories to create inside the batch. Not supported yet; a non-empty list answers 422 `seat_batch.new_tiers_unsupported`. */
+            new_tiers?: Record<string, never>[];
+        };
+        /** @description What one seat should become; at least one of tier_id and status. */
+        SeatBatchChangeRequest: {
+            /** @description The seat's key. */
+            seat_key: string;
+            /**
+             * Format: uuid
+             * @description The category to put the seat in, a live category of this session.
+             */
+            tier_id?: string;
+            /** @description `available` or `unavailable`. */
+            status?: string;
+        };
+        /** @description A seat's category and status before or after a batch. */
+        SeatBatchSeatState: {
+            /**
+             * Format: uuid
+             * @description The seat's category, null when it has none.
+             */
+            tier_id: string | null;
+            /** @description `available` or `unavailable`. */
+            status: string;
+        };
+        /** @description One seat a batch changed. */
+        SeatBatchChange: {
+            /** @description The seat's key. */
+            seat_key: string;
+            /** @description The seat before the batch. */
+            from: components["schemas"]["SeatBatchSeatState"];
+            /** @description The seat after the batch. */
+            to: components["schemas"]["SeatBatchSeatState"];
+        };
+        /** @description One seat a batch left alone. */
+        SeatBatchSkipped: {
+            /** @description The seat's key. */
+            seat_key: string;
+            /** @description `sold`, `held`, `seat_not_found`, `unknown_status`, `ga_unit` (a General Admission place cannot change category), `changed_since` (a revert found the seat changed again) or `tier_unavailable` (a revert's category was deleted). */
+            reason: string;
+            /** @description The seat's status when it was skipped; absent for an unknown key. */
+            status?: string;
+        };
+        /** @description One recorded batch of seat changes. */
+        SeatBatch: {
+            /**
+             * Format: uuid
+             * @description UUID of the batch.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the session.
+             */
+            session_id: string;
+            /** @description `paint`, `close`, `open`, `apply_layout` or `revert`. */
+            kind: string;
+            /**
+             * Format: uuid
+             * @description Who applied the batch, null for a principal that is not a UUID.
+             */
+            actor_id: string | null;
+            /** @description The kind of principal that applied the batch (`user`, `service`, ...). */
+            actor_label: string;
+            /**
+             * Format: int64
+             * @description The session's seat_status_version after the batch (one bump per batch).
+             */
+            seat_status_version: number;
+            /**
+             * Format: date-time
+             * @description When the batch was applied.
+             */
+            applied_at: string;
+            /**
+             * Format: date-time
+             * @description When the batch was reverted, null while it is not.
+             */
+            reverted_at: string | null;
+            /**
+             * Format: uuid
+             * @description The revert batch, null while the batch is not reverted.
+             */
+            reverted_by_batch_id: string | null;
+            /**
+             * Format: uuid
+             * @description For a revert, the batch it reverted; null otherwise.
+             */
+            reverts_batch_id: string | null;
+            /** @description The seats the batch changed. */
+            changes: components["schemas"]["SeatBatchChange"][];
+            /** @description The seats the batch left alone, with the reason. */
+            skipped: components["schemas"]["SeatBatchSkipped"][];
+            /** @description Seats that already were in the requested state. Only in the answer of an apply or a revert. */
+            unchanged_seat_keys?: string[];
+        };
+        /** @description One row of the batch list; the per-seat arrays are only in SeatBatch. */
+        SeatBatchSummary: {
+            /**
+             * Format: uuid
+             * @description UUID of the batch.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the session.
+             */
+            session_id: string;
+            /** @description `paint`, `close`, `open`, `apply_layout` or `revert`. */
+            kind: string;
+            /**
+             * Format: uuid
+             * @description Who applied the batch, null for a principal that is not a UUID.
+             */
+            actor_id: string | null;
+            /** @description The kind of principal that applied the batch (`user`, `service`, ...). */
+            actor_label: string;
+            /**
+             * Format: int64
+             * @description The session's seat_status_version after the batch.
+             */
+            seat_status_version: number;
+            /**
+             * Format: date-time
+             * @description When the batch was applied.
+             */
+            applied_at: string;
+            /**
+             * Format: date-time
+             * @description When the batch was reverted, null while it is not.
+             */
+            reverted_at: string | null;
+            /**
+             * Format: uuid
+             * @description The revert batch, null while the batch is not reverted.
+             */
+            reverted_by_batch_id: string | null;
+            /**
+             * Format: uuid
+             * @description For a revert, the batch it reverted; null otherwise.
+             */
+            reverts_batch_id: string | null;
+            /**
+             * Format: int32
+             * @description Number of seats the batch changed.
+             */
+            changed_count: number;
+            /**
+             * Format: int32
+             * @description Number of seats the batch left alone.
+             */
+            skipped_count: number;
+        };
+        /** @description One page of a session's batches. */
+        SeatBatchList: {
+            /** @description The batches, newest first, without their per-seat arrays. */
+            items: components["schemas"]["SeatBatchSummary"][];
+            /**
+             * Format: int64
+             * @description Number of batches of the session.
+             */
+            total: number;
+            /** @description True when another page follows. */
+            has_more: boolean;
+        };
+        /** @description One batch as seen from one seat. */
+        SeatHistoryEntry: {
+            /**
+             * Format: uuid
+             * @description UUID of the batch.
+             */
+            batch_id: string;
+            /** @description The batch's kind. */
+            kind: string;
+            /** @description The kind of principal that applied the batch. */
+            actor_label: string;
+            /**
+             * Format: date-time
+             * @description When the batch was applied.
+             */
+            applied_at: string;
+            /**
+             * Format: date-time
+             * @description When the batch was reverted, null while it is not.
+             */
+            reverted_at: string | null;
+            /**
+             * Format: uuid
+             * @description The revert batch, null while the batch is not reverted.
+             */
+            reverted_by_batch_id: string | null;
+            /** @description `changed` or `skipped`. */
+            outcome: string;
+            /** @description Why the seat was skipped (SeatBatchSkipped.reason); only for `skipped`. */
+            reason?: string;
+            /** @description The seat before the batch; only for `changed`. */
+            from?: components["schemas"]["SeatBatchSeatState"];
+            /** @description The seat after the batch; only for `changed`. */
+            to?: components["schemas"]["SeatBatchSeatState"];
+        };
+        /** @description One page of a seat's history. */
+        SeatHistory: {
+            /** @description The seat's key. */
+            seat_key: string;
+            /** @description The entries, newest first. */
+            items: components["schemas"]["SeatHistoryEntry"][];
+            /**
+             * Format: int64
+             * @description Number of entries.
+             */
+            total: number;
+            /** @description True when another page follows. */
+            has_more: boolean;
+        };
         /** @description A refund in the organization's queue, with what is needed to place it. */
         OrderRefundQueueItem: components["schemas"]["OrderRefundItem"] & {
             /**
@@ -12544,9 +13248,90 @@ export interface components {
             barcode: string;
             /**
              * Format: date-time
-             * @description When the ticket was scanned at the door (latest scan of its barcodes, any authority); null if never.
+             * @description When the ticket was first let in at the door (the first admission, by arena's own scanner or by MACS; for a ticket of the legacy import the newest scan of its barcodes); null if never.
              */
             used_at: string | null;
+            /** @description The ticket's last scans at a door (up to 5, any result, newest first), as the order card prints them. Empty when the ticket was never scanned. */
+            scans?: components["schemas"]["TicketScan"][];
+            /** @description The organizer's private VIP mark. It is never printed on the PDF e-ticket or written in a letter to the buyer. */
+            vip: boolean;
+        };
+        /** @description One scan of a ticket at a door (M2), by arena's own scanner or reported by MACS. */
+        TicketScan: {
+            /**
+             * Format: date-time
+             * @description When the scan happened at the door, as the scanner reported it.
+             */
+            scanned_at: string;
+            /** @description What the gate decided: `admitted` or `denied`. */
+            result: string;
+            /** @description Who reported the scan: `arena_scanner` (arena's own scanner) or `macs` (the MACS gate system). */
+            source: string;
+            /** @description The scanner's own name as the reporting system gives it (MACS only; empty for arena's scanner). */
+            scanner_label: string;
+            /** @description The gate the scanner stood at; empty when the scanner did not say. */
+            gate: string;
+        };
+        /** @description One ticket of a session with its order, buyer and entry at the door (M2). */
+        SessionTicketItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the ticket.
+             */
+            ticket_id: string;
+            /**
+             * Format: int64
+             * @description The ticket number printed on the e-ticket.
+             */
+            system_ticket_id: number;
+            /** @description Ticket status: `active`, `cancelled`, `transferred` or `revoked`. */
+            status: string;
+            /** @description Name of the category; null when the category row is gone. */
+            tier_name: string | null;
+            /** @description The seat parts joined with " / "; null for general admission. */
+            seat_label: string | null;
+            /**
+             * Format: uuid
+             * @description The order the ticket was sold with; null for an invitation.
+             */
+            order_id: string | null;
+            /**
+             * Format: int64
+             * @description The order number (`orders.system_id`); null for an invitation.
+             */
+            order_number: number | null;
+            /** @description The buyer's name, when the order has one. */
+            buyer_name: string | null;
+            /** @description The buyer's e-mail, else the ticket holder's. */
+            buyer_email: string | null;
+            /** @description True when the ticket was let in at a door. */
+            entered: boolean;
+            /**
+             * Format: date-time
+             * @description When the ticket was first let in; null when it was not.
+             */
+            entered_at: string | null;
+            /** @description The newest scan of the ticket whatever its result; null when nobody scanned it. */
+            last_scan: components["schemas"]["TicketScan"] | null;
+        };
+        /** @description One page of a session's tickets with their entry at the door (M2). */
+        SessionTicketList: {
+            /**
+             * Format: uuid
+             * @description The session.
+             */
+            session_id: string;
+            /** @description IANA zone of the session's venue, for printing times; null when the session has no venue. */
+            venue_timezone: string | null;
+            /**
+             * Format: int64
+             * @description How many tickets match the filter.
+             */
+            total: number;
+            /** @description True when a later page exists. */
+            has_more: boolean;
+            /** @description The tickets of this page, in ticket-number order. */
+            items: components["schemas"]["SessionTicketItem"][];
         };
         /** @description One audit-trail event recorded against an order. */
         OrderEventSummary: {
@@ -12859,6 +13644,230 @@ export interface components {
              * @description Places withheld from sale by an operator.
              */
             unavailable: number;
+        };
+        /**
+         * @description One parameter of a seat-layout algorithm (task S1e). Clients draw the
+         *     form from this description and never hard-code an algorithm. Labels
+         *     are i18n keys, never texts.
+         */
+        SeatLayoutParam: {
+            /** @description Parameter name as sent in `params` of the suggest request. */
+            name: string;
+            /** @description One of `integer`, `boolean`, `enum`, `integer_list` (a JSON array of integers). */
+            type: string;
+            /** @description Whether the parameter must be sent (a parameter with a default never needs to be). */
+            required: boolean;
+            /**
+             * Format: int64
+             * @description Lower bound of an integer, or of every item of an integer list.
+             */
+            min?: number;
+            /**
+             * Format: int64
+             * @description Upper bound of an integer, or of every item of an integer list.
+             */
+            max?: number;
+            /** @description Shortest allowed integer list. */
+            min_items?: number;
+            /** @description Longest allowed integer list. */
+            max_items?: number;
+            /** @description Value used when the parameter is left out, of the parameter's own type; null when there is none. */
+            default: unknown;
+            /** @description Allowed values of an `enum` parameter. */
+            options?: components["schemas"]["SeatLayoutParamOption"][];
+            /** @description How to read an integer: `count`, `minor_currency` (minor units of the session currency) or `percent`. */
+            unit?: string;
+            /** @description i18n key of the parameter's label. */
+            label_key: string;
+            /** @description i18n key of an optional hint under the field. */
+            hint_key?: string;
+        };
+        /** @description One value of an enum parameter of a seat-layout algorithm. */
+        SeatLayoutParamOption: {
+            /** @description The value as sent in `params`. */
+            value: string;
+            /** @description i18n key of the value's label. */
+            label_key: string;
+        };
+        /** @description One seat-layout algorithm of the registry with its parameter schema. */
+        SeatLayoutAlgorithm: {
+            /** @description Stable algorithm id (`desirability`, ...), sent back as `algorithm` of the suggest request. */
+            id: string;
+            /** @description i18n key of the algorithm's name. */
+            label_key: string;
+            /** @description i18n key of a short description of the algorithm. */
+            description_key?: string;
+            /** @description Annotations the algorithm cannot work without (for example `focal_point`, the stage). */
+            required_annotations: string[];
+            /** @description The algorithm's parameters. */
+            params: components["schemas"]["SeatLayoutParam"][];
+        };
+        /** @description The seat-layout algorithms a session can use (task S1e). */
+        SeatLayoutAlgorithmsResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the session.
+             */
+            session_id: string;
+            /** @description ISO 4217 currency of the session; every `minor_currency` parameter is in it. */
+            currency: string;
+            /** @description Every registered algorithm, sorted by id. */
+            algorithms: components["schemas"]["SeatLayoutAlgorithm"][];
+        };
+        /** @description A point in canvas coordinates of the seating plan. */
+        SeatLayoutPoint: {
+            /** @description Horizontal canvas coordinate. */
+            x: number;
+            /** @description Vertical canvas coordinate. */
+            y: number;
+        };
+        /**
+         * @description Plan facts the allocator may need that are not part of the geometry.
+         *     Until they are stored on the seating plan (S1d) they travel in the
+         *     suggest request.
+         */
+        SeatLayoutAnnotations: {
+            /** @description The stage, in canvas coordinates. The desirability algorithm requires it. */
+            focal_point?: components["schemas"]["SeatLayoutPoint"];
+            /** @description Section key to weight from 0 (least wanted) to 1 (as good as the geometry says). A section left out weighs 1. */
+            section_weights?: {
+                [key: string]: number;
+            };
+            /** @description Seats with a restricted view. */
+            obstructed_seat_keys?: string[];
+        };
+        /** @description Body of POST .../seat-layout/suggest (task S1e). */
+        SeatLayoutSuggestRequest: {
+            /** @description Id of the algorithm from GET .../seat-layout/algorithms. */
+            algorithm: string;
+            /** @description Parameter values by name, checked against the algorithm's schema. A left-out or null parameter takes its default. */
+            params?: {
+                [key: string]: unknown;
+            };
+            /** @description Stage, section weights and obstructed seats of the plan. */
+            annotations?: components["schemas"]["SeatLayoutAnnotations"];
+        };
+        /** @description One proposed category. */
+        SeatLayoutSlot: {
+            /** @description Slot key (`c1` is the dearest for the desirability algorithm). */
+            key: string;
+            /** @description Optional proposed name. */
+            name?: string;
+            /** @description Optional proposed colour, `#rrggbb`. */
+            color?: string;
+            /**
+             * Format: int64
+             * @description Proposed price in minor units of the session currency.
+             */
+            price_amount: number;
+            /** @description Target share of the hall, 0 to 1. */
+            share: number;
+        };
+        /** @description A proposed layout. Nothing is applied. */
+        SeatLayoutProposal: {
+            /** @description The proposed categories. */
+            slots: components["schemas"]["SeatLayoutSlot"][];
+            /** @description seat_key to slot key for every seat that is not sold or held (closed seats included). */
+            assignments: {
+                [key: string]: string;
+            };
+            /** @description Sold and held seats, left in their category at their own price, sorted. */
+            frozen_seat_keys: string[];
+        };
+        /** @description Revenue estimate of one proposed category. */
+        SeatLayoutSlotMetrics: {
+            /** @description Key of the slot. */
+            slot_key: string;
+            /**
+             * Format: int64
+             * @description Proposed price in minor units.
+             */
+            price_amount: number;
+            /** @description Free seats the layout puts in the slot, closed seats included. */
+            seats: number;
+            /** @description Free seats of the slot that are open for sale. */
+            open_seats: number;
+            /**
+             * Format: int64
+             * @description open_seats times price_amount.
+             */
+            revenue_minor: number;
+            /** @description Actual share of the hall in the slot, 0 to 1. */
+            share: number;
+        };
+        /**
+         * @description Revenue estimate of a proposal, a reference figure and never an
+         *     optimum: sold seats at the price they were sold for, held seats at
+         *     the price they are held for, every open free seat at the proposed
+         *     price. Closed seats are left out.
+         */
+        SeatLayoutMetrics: {
+            /** @description ISO 4217 currency of every amount. */
+            currency: string;
+            /** @description Seats of the plan. */
+            total_seats: number;
+            /** @description Frozen seats, sold plus held. */
+            sold_frozen: number;
+            /** @description Sold seats. */
+            sold_seats: number;
+            /** @description Seats in a hold. */
+            held_seats: number;
+            /** @description Free seats an operator closed for sale. */
+            closed_seats: number;
+            /**
+             * Format: int64
+             * @description Sold seats at the price they were sold for.
+             */
+            revenue_sold_minor: number;
+            /**
+             * Format: int64
+             * @description Held seats at the price they are held for.
+             */
+            revenue_held_minor: number;
+            /**
+             * Format: int64
+             * @description Open free seats at the proposed prices.
+             */
+            revenue_remaining_minor: number;
+            /**
+             * Format: int64
+             * @description Sold plus held plus remaining.
+             */
+            revenue_estimate_minor: number;
+            /** @description The estimate per proposed category. */
+            by_slot: components["schemas"]["SeatLayoutSlotMetrics"][];
+        };
+        /** @description A seat-layout proposal (task S1e). Nothing was written. */
+        SeatLayoutSuggestResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the session.
+             */
+            session_id: string;
+            /** @description Id of the algorithm that made the proposal. */
+            algorithm: string;
+            /** @description The parameters used, defaults filled in. */
+            params: {
+                [key: string]: unknown;
+            };
+            /** @description ISO 4217 currency of the session. */
+            currency: string;
+            /**
+             * Format: uuid
+             * @description Plan version whose geometry was read.
+             */
+            seating_plan_version_id: string;
+            /** @description Checksum of that geometry. */
+            geometry_checksum: string;
+            /**
+             * Format: int64
+             * @description The session's seat_status_version the proposal was made against.
+             */
+            seat_status_version: number;
+            /** @description The proposal. */
+            layout: components["schemas"]["SeatLayoutProposal"];
+            /** @description Its revenue estimate. */
+            metrics: components["schemas"]["SeatLayoutMetrics"];
         };
         /**
          * @description One-screen overview of a session: places by status, categories with
@@ -14628,6 +15637,14 @@ export interface components {
              */
             session_count: number;
             /**
+             * @description The organizer's own text of the event (EC-31, migration 0165): up
+             *     to 2000 characters of plain text that the ticket and the
+             *     session-change e-mails print under "About the event". Null when
+             *     the event has none.
+             * @example Come 30 minutes early. The cloakroom is free.
+             */
+            email_note?: string | null;
+            /**
              * @description Discovery visibility for the cross-tenant GET /v1/events surface.
              *     `public` events appear in the default list; `unlisted` and
              *     `private` events require the caller to pass an explicit
@@ -15549,6 +16566,107 @@ export interface components {
             report_photos: components["schemas"]["PublicMaterialPhoto"][];
         };
         /**
+         * @description Body of POST /v1/public/pages/{org_slug}/{event_slug}/track, the hosted
+         *     page's statistics beacon (HP-2a). Unknown fields are ignored.
+         */
+        PageTrackRequest: {
+            /**
+             * @description What happened: `page_view`, `video_play` or `partner_click`. Any
+             *     other value is refused with 400 `track.invalid_kind`.
+             * @example page_view
+             */
+            kind: string;
+            /**
+             * @description Optional `utm_source` of the page address. Only the characters
+             *     `A-Z a-z 0-9 . _ ~ -` are kept (a value with any other character is
+             *     counted as empty) and it is cut to 64 characters.
+             * @example instagram
+             */
+            utm_source?: string;
+            /**
+             * @description Optional `utm_campaign` of the page address, cleaned like `utm_source`.
+             * @example spring
+             */
+            utm_campaign?: string;
+        };
+        /** @description A pair of counters of one kind. */
+        PageStatsCounts: {
+            /**
+             * Format: int64
+             * @description Hits that looked like a person with a browser.
+             */
+            hits: number;
+            /**
+             * Format: int64
+             * @description Hits counted apart because the browser looked like a bot (or sent no User-Agent).
+             */
+            suspect_hits: number;
+        };
+        /** @description The counters of the three kinds. */
+        PageStatsKinds: {
+            /** @description Opened the event page. */
+            page_view: components["schemas"]["PageStatsCounts"];
+            /** @description Pressed play on a video of the page. */
+            video_play: components["schemas"]["PageStatsCounts"];
+            /** @description Followed a "where else to buy" link. */
+            partner_click: components["schemas"]["PageStatsCounts"];
+        };
+        /** @description The counters of one calendar day (in the venue's zone) that has data. */
+        PageStatsDay: {
+            /**
+             * @description The day, `YYYY-MM-DD`.
+             * @example 2026-05-06
+             */
+            day: string;
+            /** @description Opened the event page. */
+            page_view: components["schemas"]["PageStatsCounts"];
+            /** @description Pressed play on a video of the page. */
+            video_play: components["schemas"]["PageStatsCounts"];
+            /** @description Followed a "where else to buy" link. */
+            partner_click: components["schemas"]["PageStatsCounts"];
+        };
+        /** @description One utm pair of the page views. Visits that carried no utm are the pair of two empty strings. */
+        PageStatsSource: {
+            /** @description The cleaned `utm_source`, empty when none. */
+            utm_source: string;
+            /** @description The cleaned `utm_campaign`, empty when none. */
+            utm_campaign: string;
+            /**
+             * Format: int64
+             * @description Page views that looked like a person.
+             */
+            hits: number;
+            /**
+             * Format: int64
+             * @description Page views counted apart as probable bots.
+             */
+            suspect_hits: number;
+        };
+        /**
+         * @description The statistics of an event's hosted page for a window of days. A guide
+         *     for the organizer, not proof for an advertising account: a bot may look
+         *     like a person and a person may block the beacon.
+         */
+        PageStatsResponse: {
+            /**
+             * Format: uuid
+             * @description The event.
+             */
+            event_id: string;
+            /** @description First day of the window, `YYYY-MM-DD`. */
+            from: string;
+            /** @description Last day of the window (inclusive), `YYYY-MM-DD`. */
+            to: string;
+            /** @description IANA zone of the event's venue that decides which day a hit belongs to; null (UTC days) while the event has no session. */
+            timezone: string | null;
+            /** @description Sums over the whole window. */
+            totals: components["schemas"]["PageStatsKinds"];
+            /** @description The days that have data, oldest first. A day without hits is absent. */
+            days: components["schemas"]["PageStatsDay"][];
+            /** @description The utm pairs of the page views, biggest first, at most 20. */
+            sources: components["schemas"]["PageStatsSource"][];
+        };
+        /**
          * @description Response envelope for GET /v1/public/pages/{org_slug}/{event_slug} —
          *     the resolver behind the shared hosted sales page
          *     (tickets.arenasoldout.com/{org_slug}/{event_slug}). `feed_token` is
@@ -15777,6 +16895,17 @@ export interface components {
              * @example festival,music,outdoor,summer
              */
             meta_keywords?: string | null;
+            /**
+             * @description Tri-state (absent=keep, null or "" = clear, value=set). The
+             *     organizer's own text that the ticket and session-change e-mails
+             *     print under "About the event". Plain text of at most 2000
+             *     characters: HTML tags are removed, control characters are
+             *     refused, at most 5 links and every link must be `https://`. A
+             *     refused text answers 400 `event.invalid_email_note` with
+             *     `error.details.reason`.
+             * @example Come 30 minutes early. The cloakroom is free.
+             */
+            email_note?: string | null;
         };
         /**
          * @description Status-transition body for POST
@@ -15797,6 +16926,39 @@ export interface components {
              * @enum {string}
              */
             status: "draft" | "published" | "cancelled" | "archived";
+        };
+        /** @description Optional body of the test-letter route. */
+        EventEmailNoteTestRequest: {
+            /**
+             * @description Address to send to: the caller's own, or that of an active member
+             *     of the organization. Empty means the caller's own address.
+             * @example manager@example.org
+             */
+            to?: string;
+            /**
+             * @description An unsaved draft to preview, filtered like PATCH `email_note`.
+             *     Absent means the stored text.
+             * @example Come 30 minutes early.
+             */
+            note?: string;
+            /**
+             * @description Language of the letter (en, ru, cs, de, es, fr, he). Empty means the caller's language.
+             * @example ru
+             */
+            locale?: string;
+        };
+        /** @description The test letter was queued. */
+        EventEmailNoteTestResponse: {
+            /**
+             * @description Always true on success.
+             * @example true
+             */
+            queued: boolean;
+            /**
+             * @description The address the letter goes to.
+             * @example manager@example.org
+             */
+            to: string;
         };
         /** @description Single-event response envelope. */
         EventEnvelope: {
@@ -19387,7 +20549,14 @@ export interface components {
              * @example Teatro Demo S.L.
              */
             seller_legal_name?: string;
-            /** @description The platform terms page (`PLATFORM_TERMS_URL`, else the site's /legal/terms); omitted when none is configured. */
+            /**
+             * @description While `required` is true and the API knows its public base URL:
+             *     the organizer's terms of sale for this event and channel,
+             *     `<API>/v1/public/pages/{org_slug}/terms?event_id=..&feed_token=..&format=html`
+             *     (P3a; an HTML page until the tickets page renders the terms).
+             *     Otherwise the platform terms page (`PLATFORM_TERMS_URL`, else the
+             *     site's /legal/terms); omitted when none is configured.
+             */
             terms_url?: string;
             /** @description The privacy policy (`ONBOARDING_PRIVACY_URL`, else the site's /legal/privacy); omitted when none is configured. */
             privacy_url?: string;
@@ -19410,8 +20579,10 @@ export interface components {
              */
             kind: string;
             /**
-             * @description The version accepted, `platform-terms:<version>;seller:<organization id>` until the organizer's rendered terms exist.
-             * @example platform-terms:2026-10-15;seller:0190a2b4-6f00-7000-8000-000000000001
+             * @description The version accepted: `sale_terms:v<document version>:<language>;seller:<organization id>`
+             *     for the organizer's rendered terms (P3a, then `legal_rendering_id` is set),
+             *     `platform-terms:<version>;seller:<organization id>` for a consent to the platform terms.
+             * @example sale_terms:v1:es;seller:0190a2b4-6f00-7000-8000-000000000001
              */
             terms_version: string;
             /**
@@ -19447,6 +20618,122 @@ export interface components {
             terms_url: string | null;
             /** @description The privacy policy link the checkbox showed. */
             privacy_url: string | null;
+            /**
+             * Format: uuid
+             * @description The rendering of the organizer's terms the buyer accepted (`legal_renderings`, P3a); null for a consent to the platform terms.
+             */
+            legal_rendering_id?: string | null;
+            /** @description SHA-256 (hex) of that rendering's HTML at acceptance; null with `legal_rendering_id`. */
+            terms_sha256?: string | null;
+        };
+        /** @description The organizer's terms of sale rendered for one seller, channel, event and language (P3a). */
+        PublicTermsResponse: {
+            /**
+             * @description Version of the template that was rendered.
+             * @example 1
+             */
+            document_version: number;
+            /**
+             * Format: uuid
+             * @description The stored rendering (`legal_renderings`); a consent at checkout names it.
+             */
+            rendering_id: string;
+            /**
+             * @description Language of the rendered version (after the fallback to `en`).
+             * @example es
+             */
+            locale: string;
+            /** @description The terms as HTML without scripts, styles or links, wrapped in `<article class="legal-document" lang=.. dir=..>`. */
+            html: string;
+            /** @description SHA-256 (hex) of `html`. */
+            sha256: string;
+            /**
+             * @description The refund policy stated, `no_refund`, `refund_until_sales_end` or `refund_by_law` (the event's, else the organization's, else `refund_by_law`).
+             * @example refund_by_law
+             */
+            refund_mode: string;
+            /**
+             * @description The seller the terms name.
+             * @example Teatro Demo S.L.
+             */
+            seller_legal_name: string;
+        };
+        /** @description One version of a terms template (P3a). Immutable once published. */
+        LegalDocument: {
+            /**
+             * Format: uuid
+             * @description Version id.
+             */
+            id: string;
+            /**
+             * @description Document kind, `sale_terms` so far.
+             * @example sale_terms
+             */
+            kind: string;
+            /**
+             * @description Language of the template (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+             * @example en
+             */
+            locale: string;
+            /**
+             * @description Version number within the kind and language, from 1.
+             * @example 1
+             */
+            version: number;
+            /**
+             * @description `draft`, `published` (at most one per kind and language) or `retired`.
+             * @example published
+             */
+            status: string;
+            /** @description The template text with its placeholders. */
+            body_template: string;
+            /**
+             * Format: uuid
+             * @description The operator who saved the draft; null for the seeded versions.
+             */
+            created_by: string | null;
+            /**
+             * Format: date-time
+             * @description When the draft was saved.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When it was published; null for a draft.
+             */
+            published_at: string | null;
+            /**
+             * Format: uuid
+             * @description The operator who published it.
+             */
+            published_by: string | null;
+            /**
+             * Format: date-time
+             * @description When a newer version replaced it.
+             */
+            retired_at: string | null;
+        };
+        /** @description Versions of the terms templates and the placeholder allowlist (P3a). */
+        LegalDocumentListResponse: {
+            /** @description The versions, newest first within each kind and language. */
+            items: components["schemas"]["LegalDocument"][];
+            /** @description Every placeholder key a template may use. */
+            placeholders: string[];
+        };
+        /** @description A new draft of a terms template (P3a). */
+        CreateLegalDocumentRequest: {
+            /**
+             * @description Document kind, `sale_terms`.
+             * @example sale_terms
+             */
+            kind: string;
+            /**
+             * @description Language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+             * @example es
+             */
+            locale: string;
+            /** @description The template text, at most 100 000 characters, only allowlisted placeholders. */
+            body_template: string;
         };
         /** @description The consents of one order (P2). */
         OrderConsentsResponse: {
@@ -21944,6 +23231,8 @@ export interface components {
             status: string;
             /** @description True once the ticket has been scanned at the door. */
             used: boolean;
+            /** @description The organizer's private VIP mark of the ticket (the same flag as on a bought ticket). Never printed on the PDF or written in the guest's letter. */
+            vip: boolean;
         };
         /**
          * @description One complimentary issuance in the paged list: the issuance row with
@@ -22084,6 +23373,8 @@ export interface components {
             issued_by?: string;
             /** @description Internal note. */
             notes?: string;
+            /** @description Mark every ticket of the issuance with the organizer's private VIP flag (default false). The flag is never printed on the PDF or written in the guest's letter. */
+            vip?: boolean;
         };
         /** @description The issuance that was created, or the existing one on a replay. */
         ComplimentaryCreateResponse: {
@@ -22284,6 +23575,17 @@ export interface components {
              *     `import.invalid_promoter`.
              */
             promoterId?: string | null;
+            /**
+             * @description Arena event-bundle extension (source=arena only; EC-31, migration
+             *     0165): the organizer's own text that the ticket and session-change
+             *     e-mails print under "About the event". Absent or null keeps the
+             *     stored text, "" removes it, a string replaces it after the same
+             *     filter as PATCH `email_note` (plain text, at most 2000
+             *     characters, at most 5 `https://` links). A refused text answers
+             *     422 `import.invalid_email_note`. The event-bundle read answers
+             *     "" when the event has none.
+             */
+            emailNote?: string | null;
         };
         /**
          * @description Bil24 "actionEvent" block — becomes an arena session. This block's
@@ -22301,6 +23603,23 @@ export interface components {
              *     or actionEventId names answers 409 import.external_ref_conflict.
              */
             arenaSessionId?: string;
+            /**
+             * Format: uuid
+             * @description Arena extension, source=arena only (task S1b): the seating plan
+             *     version a NEW session is created from — a version of a plan of
+             *     this organization drawn for the session's venue (422
+             *     import.invalid_seating_plan_version for an unknown or foreign
+             *     version, 422 import.seating_plan_venue_mismatch for another
+             *     venue). The session gets every place of the plan (one seat per
+             *     geometry seat, the GA zones' places) in admission mode
+             *     assigned_seats, hybrid or general_admission, and each
+             *     categoryList entry prices one plan category (see
+             *     `planCategoryIndex`). On a session that already exists it must
+             *     be absent or the version the session is bound to (409
+             *     import.seating_plan_version_conflict): a bundle never re-binds a
+             *     plan or touches places. Omitted when empty.
+             */
+            arenaSeatingPlanVersionId?: string;
             /**
              * Format: int64
              * @description Bil24 action-event identifier and the idempotency key of the
@@ -22452,6 +23771,21 @@ export interface components {
              */
             arenaTierId?: string;
             /**
+             * @description Arena extension, source=arena only (task S1b): the 1-based index
+             *     of the seating-plan category this entry prices when the bundle
+             *     creates a session from `actionEvent.arenaSeatingPlanVersionId`.
+             *     Without it the entry is matched to the plan category of the same
+             *     name (case- and space-insensitive; the plan's display-name
+             *     override counts too). Every plan category that has places needs
+             *     exactly one entry: 422 import.seating_category_unmatched (no
+             *     pair, ambiguous name), import.seating_category_duplicate (two
+             *     entries for one category) or import.seating_category_missing (a
+             *     plan category nobody prices). Ignored on a session that already
+             *     exists; written by GET .../event-bundle for the plan category a
+             *     tier sells. Omitted when absent.
+             */
+            planCategoryIndex?: number;
+            /**
              * Format: int64
              * @description Bil24 category-price identifier. Must be positive and below 1e9
              *     for source=bil24. For source=arena this field is OPTIONAL:
@@ -22475,8 +23809,13 @@ export interface components {
              */
             price?: number;
             /**
-             * @description Whether the category is seated. Seated categories are accepted but
-             *     imported as general admission by this endpoint.
+             * @description Whether the category is seated. On import it is informational:
+             *     whether a category is seated follows from the places it owns (a
+             *     source=arena bundle takes them from
+             *     `actionEvent.arenaSeatingPlanVersionId`). GET .../event-bundle
+             *     writes true for a category that owns plan seats. For a seated
+             *     category `availability` is ignored: its places are the plan's
+             *     seats.
              */
             placement?: boolean;
             /**
@@ -22798,8 +24137,9 @@ export interface components {
             session_id: string;
             /**
              * @description Stable reason: `event_bundle.session_cancelled`,
-             *     `event_bundle.session_seated` (a seating plan or assigned seats:
-             *     a bundle carries general admission only),
+             *     `event_bundle.session_seated` (assigned seats without a seating
+             *     plan version a bundle could name; a session bound to a version
+             *     is written with `arenaSeatingPlanVersionId`),
              *     `event_bundle.session_pay_what_you_want` (a category a bundle
              *     cannot say) or `event_bundle.session_venue_missing` (the venue
              *     was deleted).
@@ -22918,7 +24258,11 @@ export interface components {
          *     the organization's channels it is published into; `promoterId` is ""
          *     when the organization itself promotes the event. `bigPosterUrl` is
          *     left empty on purpose (an import without one keeps the stored
-         *     poster): the poster is `poster_media_id`.
+         *     poster): the poster is `poster_media_id`. A session bound to a
+         *     seating plan version carries `actionEvent.arenaSeatingPlanVersionId`,
+         *     `placement: true` on its seated categories and `planCategoryIndex`
+         *     on each category that sells a plan category (task S1b); a re-import
+         *     keeps the plan and every place.
          *
          *     Left out: deleted and cancelled sessions, sessions a bundle cannot
          *     carry (listed in `skipped` with the reason), the open/closed flag of
@@ -34339,7 +35683,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold event_session.assign_seating_plan */
+            /** @description Actor does not hold session.seats.manage */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -34350,6 +35694,15 @@ export interface operations {
             };
             /** @description Session not found or belongs to a different event / org */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The selectors match more than 10 000 seats (`seating.too_many_seat_keys`, details `max` and `received`); split the request. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -40962,7 +42315,7 @@ export interface operations {
                 };
             };
             /**
-             * @description Caller lacks `event_session.assign_seating_plan` or is not a
+             * @description Caller lacks `session.seats.manage` or is not a
              *     member of the session's owning organization
              *     (`org.access_denied`).
              */
@@ -47784,6 +49137,78 @@ export interface operations {
             };
         };
     };
+    postPublicPageTrack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization or promoter slug, matched case-insensitively. */
+                org_slug: string;
+                /** @description Event slug, matched case-insensitively. */
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageTrackRequest"];
+            };
+        };
+        responses: {
+            /** @description Counted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is not a JSON object (`track.invalid_body`) or the kind is not allowed (`track.invalid_kind`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Page not found (`page.not_found`), one outcome for every miss. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited (`track.rate_limited`, with Retry-After). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The hit could not be written (`track.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getPublicPromoterPage: {
         parameters: {
             query?: never;
@@ -47816,6 +49241,77 @@ export interface operations {
             };
             /** @description Rate limited. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicTerms: {
+        parameters: {
+            query?: {
+                /** @description The event whose refund policy and promoter the terms state, by id (a published event of the organization); wins over `event_slug`. The checkout consent link uses it. */
+                event_id?: string;
+                /** @description The same event by its slug. */
+                event_slug?: string;
+                /** @description The feed token of the channel the terms are read for; another organization's token answers 404. */
+                feed_token?: string;
+                /** @description Language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`, a region subtag is ignored); else the first tag of Accept-Language; anything else and a language with no published version fall back to `en`. */
+                locale?: string;
+                /** @description `html` for a self-contained HTML page (no scripts, strict CSP) instead of JSON; any other value answers JSON. */
+                format?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Organization or promoter slug, matched case-insensitively. */
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rendered terms, as JSON or as an HTML page when `format=html`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicTermsResponse"];
+                    "text/html": string;
+                };
+            };
+            /** @description `page.not_found` (any miss, see above) or `terms.not_published` (no version is published). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited (`page.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The terms could not be rendered (`terms.render_failed`). */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -53506,6 +55002,187 @@ export interface operations {
             };
         };
     };
+    getV1OrganizationsOrgIdSessionsSessionIdSeatLayoutAlgorithms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The algorithms. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatLayoutAlgorithmsResponse"];
+                };
+            };
+            /** @description org_id or session_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeatLayoutSuggestRequest"];
+            };
+        };
+        responses: {
+            /** @description The proposal and its estimate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatLayoutSuggestResponse"];
+                };
+            };
+            /**
+             * @description Invalid path parameter or body (`seat_layout.invalid_body`), an
+             *     unknown algorithm (`seat_layout.unknown_algorithm`), a parameter
+             *     outside the algorithm's schema (`seat_layout.invalid_param`) or an
+             *     invalid annotation (`seat_layout.invalid_annotation`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The session has no seating plan (`seat_layout.no_seating_plan`),
+             *     its plan has no seats (`seat_layout.no_seats`), or the algorithm
+             *     needs an annotation that was not given
+             *     (`seat_layout.annotation_required`, for example the stage).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getV1OrganizationsOrgIdSessionsSessionIdSummary: {
         parameters: {
             query?: never;
@@ -53548,6 +55225,92 @@ export interface operations {
                 };
             };
             /** @description Actor does not hold the required permission (`order.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdTickets: {
+        parameters: {
+            query?: {
+                /** @description `false` lists active tickets nobody entered with, `true` the tickets with an entry. Absent lists every ticket. */
+                entered?: string;
+                /** @description Page size, 1 to 200 (default 50). */
+                limit?: number;
+                /** @description Number of tickets to skip (default 0). */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the session's tickets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionTicketList"];
+                };
+            };
+            /** @description A path parameter is not a UUID, or `entered`, `limit` or `offset` is invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`), or the caller is an organization API key. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -53651,6 +55414,188 @@ export interface operations {
                 };
             };
             /** @description The export exceeds the row limit (`export.too_many_rows`, details `rows` and `max_rows`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsEventIdPageStats: {
+        parameters: {
+            query?: {
+                /** @description First day, `YYYY-MM-DD`. Default 29 days before `to`. */
+                from?: string;
+                /** @description Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone. */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The statistics of the window. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageStatsResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID, or the window is wrong (`page_stats.invalid_date`, `page_stats.invalid_range`, `page_stats.range_too_long`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found, or not part of this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`page_stats.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsEventIdPageStatsCsv: {
+        parameters: {
+            query?: {
+                /** @description First day, `YYYY-MM-DD`. Default 29 days before `to`. */
+                from?: string;
+                /** @description Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone. */
+                to?: string;
+                /** @description Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The CSV attachment, `Content-Disposition: attachment;
+             *     filename="page-stats_<event slug or id>_<YYYY-MM-DD>.csv"`.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description A path parameter is not a UUID, or the window is wrong. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found, or not part of this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The export exceeds the row limit (`export.too_many_rows`). */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -54125,6 +56070,107 @@ export interface operations {
             };
         };
     };
+    postV1OrganizationsOrgIdEventsEventIdEmailNoteTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["EventEmailNoteTestRequest"];
+            };
+        };
+        responses: {
+            /** @description The test letter is queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventEmailNoteTestResponse"];
+                };
+            };
+            /** @description Invalid body (`event.invalid_json`), a refused text (`event.invalid_email_note`), a missing or invalid address (`event.email_note_test_recipient_required`, `event.email_note_test_invalid_recipient`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The event has no text to preview (`event.email_note_empty`) or `to` is not a member of the organization (`event.email_note_test_recipient_not_member`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 5 test letters in an hour for this organization (`event.email_note_test_rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.email_note_test_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getV1OrganizationsOrgIdSessionsSessionIdSampleTicket: {
         parameters: {
             query?: {
@@ -54197,6 +56243,439 @@ export interface operations {
                 };
             };
             /** @description Session queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdSeatBatches: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1-50 (default 20). */
+                limit?: number;
+                /** @description Number of batches to skip (default 0). */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of batches. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatBatchList"];
+                };
+            };
+            /** @description Invalid path parameter, limit or offset (`seat_batch.invalid_page`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The batches could not be read (`seat_batch.list_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdSessionsSessionIdSeatBatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeatBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description The batch was applied and recorded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatBatch"];
+                };
+            };
+            /** @description Invalid path parameter or body (`seat_batch.invalid_body` — the decoder's text is in `details.reason`, the body is capped at 1 MiB; `seat_batch.invalid_kind`, `seat_batch.no_changes`, `seat_batch.invalid_change`, `seat_batch.duplicate_seat_key`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 10 000 changes (`seat_batch.too_many_changes`), a category that is not a live category of this session (`seat_batch.tier_not_in_session`), or `new_tiers` (`seat_batch.new_tiers_unsupported`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The batch could not be applied (`seat_batch.failed`, `seating.audit_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdSeatBatchesBatchId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the session */
+                session_id: string;
+                /** @description UUID of the batch */
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The batch. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatBatch"];
+                };
+            };
+            /** @description A path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found or not part of this organization (`session.not_found`), or no such batch of this session (`seat_batch.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The batch could not be read (`seat_batch.list_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdSessionsSessionIdSeatBatchesBatchIdRevert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the session */
+                session_id: string;
+                /** @description UUID of the batch to revert */
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The revert batch that was applied. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatBatch"];
+                };
+            };
+            /** @description A path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found or not part of this organization (`session.not_found`), or no such batch of this session (`seat_batch.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The batch was already reverted (`seat_batch.already_reverted`), is itself a revert (`seat_batch.revert_not_allowed`), or not a single seat can be put back (`seat_batch.nothing_to_revert`, details `skipped` with the reason per seat) — then nothing is written and the batch stays revertable, e.g. after the later batch that moved its seats is reverted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The revert could not be applied (`seat_batch.failed`, `seating.audit_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdSeatsSeatKeyHistory: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1-100 (default 50). */
+                limit?: number;
+                /** @description Number of entries to skip (default 0). */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the session */
+                session_id: string;
+                /** @description The seat's key, path-escaped. */
+                seat_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the seat's history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatHistory"];
+                };
+            };
+            /** @description Invalid path parameter, seat key, limit or offset (`seat_batch.invalid_seat_key`, `seat_batch.invalid_page`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The history could not be read (`seat_batch.list_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -55344,6 +57823,102 @@ export interface operations {
             };
         };
     };
+    patchV1OrganizationsOrgIdTicketsTicketIdVip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the ticket */
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description True to mark the ticket as VIP, false to take the mark off. */
+                    vip: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description The mark has the wanted value. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: uuid
+                         * @description UUIDv7 of the ticket.
+                         */
+                        ticket_id: string;
+                        /** @description The mark after the call. */
+                        vip: boolean;
+                        /** @description False when the ticket already had that value. */
+                        changed: boolean;
+                    };
+                };
+            };
+            /** @description The body is not a JSON object with a boolean `vip` (ticket.invalid_vip). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks ticket.update in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket not found in this organization (ticket.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     adminListTicketScanEvents: {
         parameters: {
             query?: never;
@@ -55608,7 +58183,9 @@ export interface operations {
              *     different `externalRef` (`import.external_ref_conflict`), or the
              *     session resolved by `externalRef`/`actionEventId` belongs to a
              *     different event than the supplied `actionId`
-             *     (`import.action_mismatch`).
+             *     (`import.action_mismatch`), or a source=arena bundle names
+             *     another seating plan version than the existing session's
+             *     (`import.seating_plan_version_conflict`).
              */
             409: {
                 headers: {
@@ -55631,7 +58208,14 @@ export interface operations {
              *     `import.end_time_invalid`, `import.invalid_sell_start_time` or
              *     `import.venue_name_required` (source=arena, neither `venueId` nor
              *     `venueName` present and no matched session to inherit a venue
-             *     from).
+             *     from); for a seated source=arena bundle also
+             *     `import.invalid_seating_plan_version`,
+             *     `import.seating_plan_venue_mismatch`,
+             *     `import.seating_category_unmatched`,
+             *     `import.seating_category_duplicate`,
+             *     `import.seating_category_missing` and
+             *     `import.seated_category_chain` (a `nextCategoryIndex` link to or
+             *     from a seated category).
              */
             422: {
                 headers: {
@@ -56640,6 +59224,269 @@ export interface operations {
                 };
             };
             /** @description A value is out of range (onboarding.invalid_field) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listLegalDocuments: {
+        parameters: {
+            query?: {
+                /** @description Only this kind (`sale_terms`). */
+                kind?: string;
+                /** @description Only this language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`). */
+                locale?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The versions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegalDocumentListResponse"];
+                };
+            };
+            /** @description Unknown kind or language (`legal.invalid_kind`, `legal.invalid_locale`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createLegalDocument: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateLegalDocumentRequest"];
+            };
+        };
+        responses: {
+            /** @description The draft. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegalDocument"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, a malformed body, an unknown kind or language. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Another draft of the same language was saved at the same moment (`legal.version_conflict`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The template has problems (`legal.invalid_template`, `details.problems` lists them). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getLegalDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Version id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegalDocument"];
+                };
+            };
+            /** @description The id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such version (`legal.document_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    publishLegalDocument: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the draft. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The published version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegalDocument"];
+                };
+            };
+            /** @description Missing X-Admin-Reason or the id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such version (`legal.document_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The version is not a draft (`legal.not_draft`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The template no longer parses (`legal.invalid_template`). */
             422: {
                 headers: {
                     [name: string]: unknown;

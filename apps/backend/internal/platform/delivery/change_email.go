@@ -172,7 +172,8 @@ func (h *changeEmail) handle(ctx context.Context, payload []byte) error {
 		letter.Kind = emailstatus.KindCancel
 		tplKind = templates.TemplateKindCancel
 	}
-	letter.TemplateVersion = templateVersion(h.renderer, tplKind, recipient.LocaleHint)
+	letter.TemplateVersion = templateVersionFor(h.renderer, tplKind, recipient.LocaleHint,
+		!changeEventNote(moves, rendered[0].Payload.EventEmailNote).Empty())
 	ids := make([]uuid.UUID, 0, len(rendered))
 	for _, t := range rendered {
 		ids = append(ids, t.TicketID)
@@ -355,6 +356,7 @@ func (h *changeEmail) buildMessage(
 		DoorsOpen:      formatClockForEmail(first.DoorsOpenAt, first.SessionTZ),
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
 		Branding:       branding,
+		EventNote:      changeEventNote(moves, first.EventEmailNote),
 		Change: templates.ChangeData{
 			Date:           sessionchange.Has(rec.Kinds, sessionchange.KindDate) || sessionchange.Has(rec.Kinds, sessionchange.KindTime),
 			Venue:          sessionchange.Has(rec.Kinds, sessionchange.KindVenue),

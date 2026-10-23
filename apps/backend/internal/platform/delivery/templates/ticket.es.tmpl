@@ -33,6 +33,10 @@
       <tr><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;">Total pagado</td><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;white-space:nowrap;text-align:right;">{{.Total}}</td></tr>
     </table>
   </td></tr>{{end}}
+  {{with .EventNote.Paragraphs}}<tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">Sobre el evento</div>
+    {{range .}}<p style="margin:0 0 8px 0;color:#46555f;font-size:14px;line-height:1.6;white-space:pre-line;">{{range .}}{{if .URL}}<a href="{{.URL}}" rel="noopener" style="color:#1a73e8;">{{.Text}}</a>{{else}}{{.Text}}{{end}}{{end}}</p>{{end}}
+  </td></tr>{{end}}
   {{if .WithdrawalNotice}}<tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Las entradas para un evento en una fecha concreta no están sujetas al derecho de desistimiento. Tu pedido pasa a ser vinculante al realizar el pago.</td></tr>{{end}}
   <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Abre el archivo en el móvil y muestra el código de barras en la entrada — no hace falta imprimirlo.</td></tr>
   {{if .Branding.ContactEmail}}<tr><td style="padding:8px 32px 16px 32px;color:#46555f;font-size:14px;line-height:1.6;">Si tienes alguna pregunta, responde a este correo.</td></tr>{{end}}
@@ -79,7 +83,10 @@ Pago:
 {{end}}{{with .ServiceFee}}- Gastos de gestión: {{.}}
 {{end}}- Total pagado: {{.Total}}
 {{end}}
-{{if .WithdrawalNotice}}Las entradas para un evento en una fecha concreta no están sujetas al derecho de desistimiento. Tu pedido pasa a ser vinculante al realizar el pago.
+{{with .EventNote.Plain}}Sobre el evento:
+{{.}}
+
+{{end}}{{if .WithdrawalNotice}}Las entradas para un evento en una fecha concreta no están sujetas al derecho de desistimiento. Tu pedido pasa a ser vinculante al realizar el pago.
 
 {{end}}Abre el archivo en el móvil y muestra el código de barras en la entrada — no hace falta imprimirlo.
 {{if .Branding.ContactEmail}}Si tienes alguna pregunta, responde a este correo.

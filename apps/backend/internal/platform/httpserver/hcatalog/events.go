@@ -186,8 +186,12 @@ type EventResponse struct {
 	SalesState    string  `json:"sales_state"`
 	NextSessionAt *string `json:"next_session_at"`
 	SessionCount  int     `json:"session_count"`
-	CreatedAt     string  `json:"created_at"`
-	UpdatedAt     string  `json:"updated_at"`
+	// EmailNote is the organizer's own text of the event that the ticket and
+	// session-change letters print (EC-31, event_email_notes). nil when the
+	// event has none. Hydrated by hydrateEvents, never by EventFromRow.
+	EmailNote *string `json:"email_note"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
 }
 
 func eventFromRow(e gen.EventRow) eventResponse {
@@ -243,6 +247,7 @@ func (h *Handler) hydrateEvents(ctx context.Context, responses []eventResponse) 
 	h.hydratePromoters(ctx, responses)
 	h.hydratePublicURLs(ctx, responses)
 	h.hydrateSalesStates(ctx, responses)
+	h.hydrateEmailNotes(ctx, responses)
 }
 
 // hydratedEvent is EventFromRow plus hydrateEvents for a single event.
@@ -673,6 +678,9 @@ type updateEventRequest struct {
 	TrailerURL       optionalString `json:"trailer_url"`
 	MetaDescription  optionalString `json:"meta_description"`
 	MetaKeywords     optionalString `json:"meta_keywords"`
+	// EmailNote is the organizer's own letter text (EC-31): absent keeps,
+	// null or "" clears, a string sets it after eventnote.Normalize.
+	EmailNote optionalString `json:"email_note"`
 }
 
 func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
@@ -724,6 +732,13 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// email_note (EC-31) is checked BEFORE anything is written, so a refused
+	// text leaves the event as it was.
+	emailNote, emailNoteSet, ok := parseEmailNote(w, r, req.EmailNote)
+	if !ok {
+		return
+	}
+
 	var description *string
 	if req.Description != nil {
 		trimmed := strings.TrimSpace(*req.Description)
@@ -753,7 +768,26 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		posterMediaID = &parsed
 	}
 
-	updated, err := h.eventQueries.UpdateEvent(ctx, eventID, orgID, req.Name, description, req.Visibility, imageURL, posterMediaID)
+	// With a letter text in the request the event row, the metadata and the
+	// text are written in ONE transaction: a failure of any of them rolls the
+	// others back, so the event is never left half edited (EC-31). Without it
+	// the request keeps its old, untransacted shape.
+	q := h.eventQueries
+	var tx pgx.Tx
+	if emailNoteSet {
+		var beginErr error
+		if tx, beginErr = h.pool.BeginTx(ctx, pgx.TxOptions{}); beginErr != nil {
+			h.logger.Error("event: update begin failed", slog.String("error", beginErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.update_failed", "failed to update event", r,
+			))
+			return
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		q = h.eventQueries.WithTx(tx)
+	}
+
+	updated, err := q.UpdateEvent(ctx, eventID, orgID, req.Name, description, req.Visibility, imageURL, posterMediaID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("event.not_found", "event not found", r))
@@ -764,6 +798,16 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 			"event.update_failed", "failed to update event", r,
 		))
 		return
+	}
+
+	if emailNoteSet {
+		if err := writeEmailNote(ctx, q, eventID, orgID, emailNote); err != nil {
+			h.logger.Error("event: email note update failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.email_note_update_failed", "failed to update the event letter text", r,
+			))
+			return
+		}
 	}
 
 	// clear_session_overrides (AB-47): when requested, null out the session-level
@@ -833,7 +877,7 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		resolvedMetaDesc := resolveStr(req.MetaDescription, existing.MetaDescription)
 		resolvedMetaKW := resolveStr(req.MetaKeywords, existing.MetaKeywords)
 
-		meta, metaErr := h.eventQueries.UpdateEventMetadata(ctx, eventID, orgID,
+		meta, metaErr := q.UpdateEventMetadata(ctx, eventID, orgID,
 			resolvedSlug, resolvedShortDesc, resolvedGenre, resolvedAgeRating,
 			resolvedDuration, resolvedTeaserURL, resolvedTrailerURL, resolvedMetaDesc, resolvedMetaKW,
 		)
@@ -866,6 +910,17 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 				h.logger.Warn("event: audit write failed", "error", auditErr.Error())
 			}
 		}
+	}
+
+	if tx != nil {
+		if err := tx.Commit(ctx); err != nil {
+			h.logger.Error("event: update commit failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.update_failed", "failed to update event", r,
+			))
+			return
+		}
+		h.auditEmailNote(r, eventID, orgID, emailNote)
 	}
 
 	// W1-B7c (#506): a subscribed mirror re-reads the event on notification, so

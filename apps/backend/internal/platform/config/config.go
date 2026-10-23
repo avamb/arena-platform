@@ -189,6 +189,16 @@ type Config struct {
 	PublicPromoFailTokenLimit int `env:"PUBLIC_PROMO_FAIL_TOKEN_RATE_LIMIT" required:"false" default:"300"`
 	PublicPromoFailIPLimit    int `env:"PUBLIC_PROMO_FAIL_IP_RATE_LIMIT" required:"false" default:"10"`
 
+	// Page statistics beacon (HP-2a, POST /v1/public/pages/{slug}/{event_slug}/track).
+	// The route has no feed token, so its second bucket is the page itself:
+	// PublicPageTrackEventLimit is requests per minute for ONE event page
+	// (every visitor of that page shares it, so it is generous), and
+	// PublicPageTrackIPLimit is per client IP (TrustedClientIP). Both are
+	// checked in addition to PublicAPIIPRateLimit. A request over a limit is
+	// answered 429 track.rate_limited and is not counted. 0 disables a check.
+	PublicPageTrackEventLimit int `env:"PUBLIC_PAGE_TRACK_EVENT_RATE_LIMIT" required:"false" default:"6000"`
+	PublicPageTrackIPLimit    int `env:"PUBLIC_PAGE_TRACK_IP_RATE_LIMIT" required:"false" default:"120"`
+
 	// -------------------------------------------------------------------------
 	// Widget hosted payment (Stripe Checkout Session redirect flow)
 	// -------------------------------------------------------------------------
@@ -852,6 +862,20 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.PublicPromoFailIPLimit = iPromoFailIP
+
+	// PUBLIC_PAGE_TRACK_EVENT_RATE_LIMIT / PUBLIC_PAGE_TRACK_IP_RATE_LIMIT —
+	// page statistics beacon, see the field docs above.
+	iTrackEvent, err := getenvInt("PUBLIC_PAGE_TRACK_EVENT_RATE_LIMIT", 6000)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.PublicPageTrackEventLimit = iTrackEvent
+
+	iTrackIP, err := getenvInt("PUBLIC_PAGE_TRACK_IP_RATE_LIMIT", 120)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.PublicPageTrackIPLimit = iTrackIP
 
 	// POSTER_READS_PER_ORG_PER_DAY: model calls per organization per day.
 	posterReads, err := getenvInt("POSTER_READS_PER_ORG_PER_DAY", 50)

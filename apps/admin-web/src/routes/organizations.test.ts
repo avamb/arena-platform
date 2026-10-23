@@ -894,6 +894,7 @@ describe("API keys tab helpers (feature #514, W1-C1c)", () => {
       "seating_plan.read",
       "seating_plan.update.own",
       "event_session.assign_seating_plan",
+      "session.seats.manage",
       "media.write",
       "media.read",
       "import.bil24_session",

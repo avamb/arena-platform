@@ -13,7 +13,8 @@ var ordKeys = []string{
 	"bot.ord.card_head", "bot.ord.card_event", "bot.ord.card_buyer", "bot.ord.buyer_unknown",
 	"bot.ord.contacts_private", "bot.ord.phone_call", "bot.ord.phone_wa",
 	"bot.ord.tickets_head", "bot.ord.tickets_more", "bot.ord.no_tickets", "bot.ord.ticket_line",
-	"bot.ord.seat", "bot.ord.entered", "bot.ord.tk_active", "bot.ord.tk_cancelled", "bot.ord.tk_transferred",
+	"bot.ord.seat", "bot.ord.entered", "bot.ord.scan_src_arena_scanner", "bot.ord.scan_src_macs",
+	"bot.ord.scan_gate", "bot.ord.scan_denied", "bot.ord.tk_active", "bot.ord.tk_cancelled", "bot.ord.tk_transferred",
 	"bot.ord.channel_line", "bot.ord.channel_hosted_page", "bot.ord.channel_widget", "bot.ord.channel_site",
 	"bot.ord.channel_other", "bot.ord.payment_line",
 	"bot.ord.letter_tickets_none", "bot.ord.letter_tickets_queued", "bot.ord.letter_tickets_partial_queued",
@@ -29,6 +30,7 @@ var ordKeys = []string{
 	"bot.ord.reason_unknown", "bot.ord.reason_provider",
 	"bot.ord.cancel_btn", "bot.ord.cancel_word", "bot.ord.cancel_ask", "bot.ord.cancel_wrong", "bot.ord.cancel_done",
 	"bot.ord.cancel_not_possible",
+	"bot.ord.vip_mark", "bot.ord.vip_on_btn", "bot.ord.vip_off_btn",
 }
 
 func init() {

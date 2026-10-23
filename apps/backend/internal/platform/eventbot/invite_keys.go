@@ -17,6 +17,7 @@ var inviteKeys = []string{
 	"bot.inv.state_valid", "bot.inv.state_revoked", "bot.inv.state_used", "bot.inv.card",
 	"bot.inv.revoke_btn", "bot.inv.revoke_ask", "bot.inv.revoke_wrong", "bot.inv.revoke_word",
 	"bot.inv.revoke_done", "bot.inv.revoke_already", "bot.inv.revoke_used", "bot.inv.private_only",
+	"bot.inv.vip_line", "bot.inv.vip_on_btn", "bot.inv.vip_off_btn",
 }
 
 func init() {

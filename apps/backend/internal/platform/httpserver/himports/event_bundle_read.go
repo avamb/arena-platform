@@ -37,19 +37,30 @@
 //     poster, which is what an edit wants. The poster's media id is the
 //     top-level poster_media_id (GET /v1/media/{id} signs a URL for it).
 //
+// A session bound to a seating plan version (task S1b) is written with
+// actionEvent.arenaSeatingPlanVersionId, its seated categories with
+// placement:true, and every category whose plan category it sells with
+// planCategoryIndex, so the bundle round-trips (a re-import keeps the plan
+// and the places) and a copy of it creates the same seats.
+//
 // Left out on purpose: sessions that are deleted or cancelled, sessions the
-// bundle cannot carry (a seating plan, a pay-what-you-want category) — each
-// of the last two is listed in skipped with the reason — the open/closed flag
+// bundle cannot carry (assigned seats without a plan version, a
+// pay-what-you-want category) — each of the last two is listed in skipped
+// with the reason — the open/closed flag
 // of a category, compat ids, the session's external ref, and anything secret
 // or about buyers (the answer reads catalog rows only).
 package himports
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -58,6 +69,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
@@ -68,8 +80,9 @@ const (
 	// SkipSessionCancelled — the session was cancelled; a bundle cannot
 	// re-open it, and the importer would only carry its moves forward.
 	SkipSessionCancelled = "event_bundle.session_cancelled"
-	// SkipSessionSeated — the session has a seating plan or assigned seats;
-	// an arena bundle carries general admission only.
+	// SkipSessionSeated — the session has assigned seats but no seating plan
+	// version a bundle could name (a session bound to a version is written,
+	// task S1b).
 	SkipSessionSeated = "event_bundle.session_seated"
 	// SkipSessionPayWhatYouWant — a category is pay-what-you-want, which a
 	// bundle cannot say (the importer would turn it into a fixed price).
@@ -127,6 +140,11 @@ type bundleSessionSource struct {
 	Tiers   []gen.TicketTierRow
 	Chain   []gen.TierChainRow
 	Stats   map[uuid.UUID]gaquota.Stats
+	// Geometry and Seats are loaded for a session bound to a seating plan
+	// version only (task S1b): they say which plan category each category
+	// prices and which categories are seated.
+	Geometry *seating.Geometry
+	Seats    []gen.SessionSeatRow
 }
 
 // bundleSource is what the read loaded, already scoped to one organization.
@@ -135,10 +153,12 @@ type bundleSource struct {
 	// PromoterID is the promoter linked to the event, nil for none.
 	PromoterID       *uuid.UUID
 	PromoterArchived bool
-	ChannelIDs       []uuid.UUID
-	Sessions         []bundleSessionSource
-	Windows          map[uuid.UUID][]gen.TicketTierPriceRow
-	Materials        EventBundleMaterials
+	// EmailNote is the event's own letter text, "" when it has none.
+	EmailNote  string
+	ChannelIDs []uuid.UUID
+	Sessions   []bundleSessionSource
+	Windows    map[uuid.UUID][]gen.TicketTierPriceRow
+	Materials  EventBundleMaterials
 }
 
 // HandleEventBundleRead serves GET .../events/{event_id}/event-bundle.
@@ -221,6 +241,13 @@ func loadBundleSource(ctx context.Context, q *gen.Queries, orgID, eventID uuid.U
 		}
 	}
 
+	switch note, nErr := q.GetEventEmailNote(ctx, eventID, orgID); {
+	case nErr == nil:
+		src.EmailNote = note
+	case !errors.Is(nErr, pgx.ErrNoRows):
+		return bundleSource{}, fmt.Errorf("read event email note: %w", nErr)
+	}
+
 	if src.ChannelIDs, err = q.ListEventPublicationChannelIDs(ctx, eventID, orgID); err != nil {
 		return bundleSource{}, fmt.Errorf("read event channels: %w", err)
 	}
@@ -233,9 +260,18 @@ func loadBundleSource(ctx context.Context, q *gen.Queries, orgID, eventID uuid.U
 		return bundleSource{}, fmt.Errorf("list sessions: %w", err)
 	}
 	venues := map[uuid.UUID]*gen.VenueRow{}
+	geometries := map[uuid.UUID]*seating.Geometry{}
 	var tierIDs []uuid.UUID
 	for _, s := range sessions {
 		ss := bundleSessionSource{Session: s}
+		if s.SeatingPlanVersionID != nil {
+			if ss.Geometry, err = loadBundleGeometry(ctx, q, *s.SeatingPlanVersionID, geometries); err != nil {
+				return bundleSource{}, err
+			}
+			if ss.Seats, err = q.ListSessionSeats(ctx, s.ID); err != nil {
+				return bundleSource{}, fmt.Errorf("list session seats: %w", err)
+			}
+		}
 		v, seen := venues[s.VenueID]
 		if !seen {
 			row, vErr := q.GetVenueByID(ctx, s.VenueID)
@@ -276,6 +312,30 @@ func loadBundleSource(ctx context.Context, q *gen.Queries, orgID, eventID uuid.U
 	return src, nil
 }
 
+// loadBundleGeometry reads a seating plan version's geometry once per read.
+// A version that no longer exists reads as no geometry: the bundle still
+// names the version, it just cannot say which plan category a tier prices.
+func loadBundleGeometry(ctx context.Context, q *gen.Queries, versionID uuid.UUID, cache map[uuid.UUID]*seating.Geometry) (*seating.Geometry, error) {
+	if g, ok := cache[versionID]; ok {
+		return g, nil
+	}
+	v, err := q.GetSeatingPlanVersionByID(ctx, versionID)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		cache[versionID] = nil
+		return nil, nil
+	case err != nil:
+		return nil, fmt.Errorf("read seating plan version: %w", err)
+	}
+	var g seating.Geometry
+	if err := json.Unmarshal(v.Geometry, &g); err != nil {
+		return nil, fmt.Errorf("decode seating plan geometry: %w", err)
+	}
+	g = seating.Canonicalize(g)
+	cache[versionID] = &g
+	return &g, nil
+}
+
 // buildEventBundles is the mapping itself — a pure function of what was
 // loaded, so it is unit-tested without a database.
 func buildEventBundles(src bundleSource) EventBundleReadResponse {
@@ -305,6 +365,8 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 		none := ""
 		promoter = &none
 	}
+	// "" = the event has no letter text of its own (posting it back clears nothing).
+	emailNote := src.EmailNote
 	channelIDs := make([]string, 0, len(src.ChannelIDs))
 	for _, id := range src.ChannelIDs {
 		channelIDs = append(channelIDs, id.String())
@@ -322,8 +384,10 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 		case ss.Venue == nil:
 			skip(SkipSessionVenueMissing, "the session's venue was deleted")
 			continue
-		case s.SeatingPlanVersionID != nil || s.AdmissionMode != "general_admission":
-			skip(SkipSessionSeated, "the session has a seating plan: an event bundle carries general admission only")
+		case s.SeatingPlanVersionID == nil && s.AdmissionMode != "general_admission":
+			// Seats with no plan version behind them: nothing a bundle can
+			// name. A session bound to a version is written (task S1b).
+			skip(SkipSessionSeated, "the session has assigned seats but no seating plan version")
 			continue
 		}
 		if hasPayWhatYouWant(ss.Tiers) {
@@ -350,6 +414,11 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 			Currency:       s.Currency,
 			SellEndTime:    s.SalesEndAt.In(loc).Format(time.RFC3339),
 		}
+		if s.SeatingPlanVersionID != nil {
+			// The session keeps its plan on a re-import; a copy of the bundle
+			// (arenaSessionId removed) creates the same seats from it.
+			ae.ArenaSeatingPlanVersionID = s.SeatingPlanVersionID.String()
+		}
 		doors := ""
 		if s.DoorsOpenAt != nil {
 			doors = s.DoorsOpenAt.In(loc).Format(time.RFC3339)
@@ -366,6 +435,7 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 				Description:  derefString(src.Event.Description),
 				Age:          derefString(src.Event.AgeRating),
 				PromoterID:   promoter,
+				EmailNote:    &emailNote,
 			},
 			ActionEvent: ae,
 			Venue: bil24compat.ImportSessionVenue{
@@ -484,6 +554,8 @@ func bundleCategories(
 		return total
 	}
 
+	homes, seatedTiers := planCategoryHomes(ss.Geometry, ss.Seats)
+
 	list := make([]bil24compat.ImportSessionCategory, 0, len(ss.Tiers))
 	for _, t := range ss.Tiers {
 		c := bil24compat.ImportSessionCategory{
@@ -491,6 +563,10 @@ func bundleCategories(
 			CategoryPriceName: t.Name,
 			Price:             money.Major(t.PriceAmount),
 			Availability:      quantity(t),
+			Placement:         seatedTiers[t.ID],
+		}
+		if idx, ok := homes[t.ID]; ok {
+			c.PlanCategoryIndex = &idx
 		}
 		if t.SaleWindowStart != nil {
 			c.SellStartTime = t.SaleWindowStart.In(loc).Format(time.RFC3339)
@@ -535,4 +611,102 @@ func bundleCategories(
 		list = append(list, c)
 	}
 	return list
+}
+
+// planCategoryHomes says, for a session bound to a seating plan, which plan
+// category each tier prices and which tiers are seated. A plan category's
+// HOME tier is the tier most of its places carry (ties: the tier of the
+// smallest seat_key), the rule the buyer renders use (hseating, task S1a); a
+// tier is given the lowest plan category it is home to. A tier that is home
+// to none (a category added by hand, or one that only repainted a few seats)
+// gets no planCategoryIndex: a copy of the bundle would then need the
+// organizer to name its plan category. Both maps are empty without a plan.
+func planCategoryHomes(g *seating.Geometry, seats []gen.SessionSeatRow) (map[uuid.UUID]int, map[uuid.UUID]bool) {
+	homes := map[uuid.UUID]int{}
+	seated := map[uuid.UUID]bool{}
+	if g == nil {
+		return homes, seated
+	}
+	seatCategory := make(map[string]int, g.SeatCount())
+	for _, section := range g.Sections {
+		for _, row := range section.Rows {
+			for _, seat := range row.Seats {
+				seatCategory[seat.Key] = seat.CategoryIndex
+			}
+		}
+	}
+	type tally struct {
+		count    int
+		firstKey string
+	}
+	byCategory := map[int]map[uuid.UUID]*tally{}
+	for _, s := range seats {
+		if s.TierID == nil {
+			continue
+		}
+		var idx int
+		switch s.Kind {
+		case "seat":
+			seated[*s.TierID] = true
+			ci, ok := seatCategory[s.SeatKey]
+			if !ok {
+				continue
+			}
+			idx = ci
+		default:
+			ci, ok := zoneIndexOfKey(s.SeatKey)
+			if !ok {
+				continue
+			}
+			idx = ci
+		}
+		tiers := byCategory[idx]
+		if tiers == nil {
+			tiers = map[uuid.UUID]*tally{}
+			byCategory[idx] = tiers
+		}
+		t := tiers[*s.TierID]
+		if t == nil {
+			t = &tally{firstKey: s.SeatKey}
+			tiers[*s.TierID] = t
+		}
+		t.count++
+		if s.SeatKey < t.firstKey {
+			t.firstKey = s.SeatKey
+		}
+	}
+	indexes := make([]int, 0, len(byCategory))
+	for idx := range byCategory {
+		indexes = append(indexes, idx)
+	}
+	sort.Ints(indexes)
+	for _, idx := range indexes {
+		var best uuid.UUID
+		var bestTally *tally
+		for tier, t := range byCategory[idx] {
+			if bestTally == nil || t.count > bestTally.count ||
+				(t.count == bestTally.count && t.firstKey < bestTally.firstKey) {
+				best, bestTally = tier, t
+			}
+		}
+		if _, taken := homes[best]; !taken {
+			homes[best] = idx
+		}
+	}
+	return homes, seated
+}
+
+// zoneIndexOfKey reads the plan category index out of a geometry GA zone's
+// place key ('ga|c3|000001' → 3). A category's own quota places ('ga|t…')
+// are not plan places.
+func zoneIndexOfKey(key string) (int, bool) {
+	rest, ok := strings.CutPrefix(key, "ga|c")
+	if !ok {
+		return 0, false
+	}
+	if i := strings.IndexByte(rest, '|'); i >= 0 {
+		rest = rest[:i]
+	}
+	idx, err := strconv.Atoi(rest)
+	return idx, err == nil
 }
