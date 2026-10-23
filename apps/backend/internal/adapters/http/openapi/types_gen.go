@@ -5273,6 +5273,9 @@ type ComplimentaryCreateRequest struct {
 
 	// TierId Category to issue in; required on a general-admission session.
 	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
+
+	// Vip Mark every ticket of the issuance with the organizer's private VIP flag (default false). The flag is never printed on the PDF or written in the guest's letter.
+	Vip *bool `json:"vip,omitempty"`
 }
 
 // ComplimentaryCreateResponse The issuance that was created, or the existing one on a replay.
@@ -5441,6 +5444,9 @@ type ComplimentaryTicketItem struct {
 
 	// Used True once the ticket has been scanned at the door.
 	Used bool `json:"used"`
+
+	// Vip The organizer's private VIP mark of the ticket (the same flag as on a bought ticket). Never printed on the PDF or written in the guest's letter.
+	Vip bool `json:"vip"`
 }
 
 // ConfirmCheckoutRequest Request body for `POST /v1/checkout/{id}/confirm`.
@@ -5754,6 +5760,18 @@ type CreateEventRequestStatus string
 
 // CreateEventRequestVisibility Initial visibility. Defaults to `public` on the server when omitted.
 type CreateEventRequestVisibility string
+
+// CreateLegalDocumentRequest A new draft of a terms template (P3a).
+type CreateLegalDocumentRequest struct {
+	// BodyTemplate The template text, at most 100 000 characters, only allowlisted placeholders.
+	BodyTemplate string `json:"body_template"`
+
+	// Kind Document kind, `sale_terms`.
+	Kind string `json:"kind"`
+
+	// Locale Language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+	Locale string `json:"locale"`
+}
 
 // CreateOperatorNetworkRequest defines model for CreateOperatorNetworkRequest.
 type CreateOperatorNetworkRequest struct {
@@ -6973,7 +6991,11 @@ type EventBundlePartnerLink struct {
 // the organization's channels it is published into; `promoterId` is ""
 // when the organization itself promotes the event. `bigPosterUrl` is
 // left empty on purpose (an import without one keeps the stored
-// poster): the poster is `poster_media_id`.
+// poster): the poster is `poster_media_id`. A session bound to a
+// seating plan version carries `actionEvent.arenaSeatingPlanVersionId`,
+// `placement: true` on its seated categories and `planCategoryIndex`
+// on each category that sells a plan category (task S1b); a re-import
+// keeps the plan and every place.
 //
 // Left out: deleted and cancelled sessions, sessions a bundle cannot
 // carry (listed in `skipped` with the reason), the open/closed flag of
@@ -7011,8 +7033,9 @@ type EventBundleReadResponse struct {
 // `EventBundleReadResponse`, with the reason.
 type EventBundleSkipped struct {
 	// Code Stable reason: `event_bundle.session_cancelled`,
-	// `event_bundle.session_seated` (a seating plan or assigned seats:
-	// a bundle carries general admission only),
+	// `event_bundle.session_seated` (assigned seats without a seating
+	// plan version a bundle could name; a session bound to a version
+	// is written with `arenaSeatingPlanVersionId`),
 	// `event_bundle.session_pay_what_you_want` (a category a bundle
 	// cannot say) or `event_bundle.session_venue_missing` (the venue
 	// was deleted).
@@ -7094,6 +7117,29 @@ type EventDeleteResponse struct {
 	// The `name` and `description` fields are locale-resolved per the
 	// request's Accept-Language header / ?lang= query parameter.
 	Event EventItem `json:"event"`
+}
+
+// EventEmailNoteTestRequest Optional body of the test-letter route.
+type EventEmailNoteTestRequest struct {
+	// Locale Language of the letter (en, ru, cs, de, es, fr, he). Empty means the caller's language.
+	Locale *string `json:"locale,omitempty"`
+
+	// Note An unsaved draft to preview, filtered like PATCH `email_note`.
+	// Absent means the stored text.
+	Note *string `json:"note,omitempty"`
+
+	// To Address to send to: the caller's own, or that of an active member
+	// of the organization. Empty means the caller's own address.
+	To *string `json:"to,omitempty"`
+}
+
+// EventEmailNoteTestResponse The test letter was queued.
+type EventEmailNoteTestResponse struct {
+	// Queued Always true on success.
+	Queued bool `json:"queued"`
+
+	// To The address the letter goes to.
+	To string `json:"to"`
 }
 
 // EventEnvelope Single-event response envelope.
@@ -7192,6 +7238,12 @@ type EventItem struct {
 	// DurationMinutes Event runtime in minutes (AB-45c).
 	// Tri-state PATCH: absent=keep, null=clear, value=set.
 	DurationMinutes *int32 `json:"duration_minutes"`
+
+	// EmailNote The organizer's own text of the event (EC-31, migration 0165): up
+	// to 2000 characters of plain text that the ticket and the
+	// session-change e-mails print under "About the event". Null when
+	// the event has none.
+	EmailNote *string `json:"email_note"`
 
 	// FirstSessionAt Earliest `start_at` over the event's active, non-cancelled
 	// sessions (RFC 3339, UTC). Maintained by a database trigger
@@ -8415,6 +8467,16 @@ type ImportBil24SessionAction struct {
 	// Description Free-form action description copied into the event description.
 	Description *string `json:"description,omitempty"`
 
+	// EmailNote Arena event-bundle extension (source=arena only; EC-31, migration
+	// 0165): the organizer's own text that the ticket and session-change
+	// e-mails print under "About the event". Absent or null keeps the
+	// stored text, "" removes it, a string replaces it after the same
+	// filter as PATCH `email_note` (plain text, at most 2000
+	// characters, at most 5 `https://` links). A refused text answers
+	// 422 `import.invalid_email_note`. The event-bundle read answers
+	// "" when the event has none.
+	EmailNote *string `json:"emailNote"`
+
 	// FullActionName Full action name. Preferred over actionName as the event title.
 	FullActionName *string `json:"fullActionName,omitempty"`
 
@@ -8439,6 +8501,21 @@ type ImportBil24SessionActionEvent struct {
 	// mint an id ≥ 1e9", supplied it must already be ≥ 1e9 and resolve
 	// to a session of this organization (event-bundle spec §3.1, §3.2).
 	ActionEventId int64 `json:"actionEventId"`
+
+	// ArenaSeatingPlanVersionId Arena extension, source=arena only (task S1b): the seating plan
+	// version a NEW session is created from — a version of a plan of
+	// this organization drawn for the session's venue (422
+	// import.invalid_seating_plan_version for an unknown or foreign
+	// version, 422 import.seating_plan_venue_mismatch for another
+	// venue). The session gets every place of the plan (one seat per
+	// geometry seat, the GA zones' places) in admission mode
+	// assigned_seats, hybrid or general_admission, and each
+	// categoryList entry prices one plan category (see
+	// `planCategoryIndex`). On a session that already exists it must
+	// be absent or the version the session is bound to (409
+	// import.seating_plan_version_conflict): a bundle never re-binds a
+	// plan or touches places. Omitted when empty.
+	ArenaSeatingPlanVersionId *openapi_types.UUID `json:"arenaSeatingPlanVersionId,omitempty"`
 
 	// ArenaSessionId Arena extension, source=arena only: the session this bundle edits,
 	// by its arena id (as listed by GET .../events/{event_id}/sessions).
@@ -8543,9 +8620,28 @@ type ImportBil24SessionCategory struct {
 	// (import.invalid_next_category / import.category_chain_cycle).
 	NextCategoryIndex *int `json:"nextCategoryIndex,omitempty"`
 
-	// Placement Whether the category is seated. Seated categories are accepted but
-	// imported as general admission by this endpoint.
+	// Placement Whether the category is seated. On import it is informational:
+	// whether a category is seated follows from the places it owns (a
+	// source=arena bundle takes them from
+	// `actionEvent.arenaSeatingPlanVersionId`). GET .../event-bundle
+	// writes true for a category that owns plan seats. For a seated
+	// category `availability` is ignored: its places are the plan's
+	// seats.
 	Placement *bool `json:"placement,omitempty"`
+
+	// PlanCategoryIndex Arena extension, source=arena only (task S1b): the 1-based index
+	// of the seating-plan category this entry prices when the bundle
+	// creates a session from `actionEvent.arenaSeatingPlanVersionId`.
+	// Without it the entry is matched to the plan category of the same
+	// name (case- and space-insensitive; the plan's display-name
+	// override counts too). Every plan category that has places needs
+	// exactly one entry: 422 import.seating_category_unmatched (no
+	// pair, ambiguous name), import.seating_category_duplicate (two
+	// entries for one category) or import.seating_category_missing (a
+	// plan category nobody prices). Ignored on a session that already
+	// exists; written by GET .../event-bundle for the plan category a
+	// tier sells. Omitted when absent.
+	PlanCategoryIndex *int `json:"planCategoryIndex,omitempty"`
 
 	// Price Ticket price in MAJOR currency units, as Bil24 sends it. Converted to
 	// the integer minor units arena stores, rounded half away from zero.
@@ -9111,6 +9207,51 @@ type InventoryRowItem struct {
 
 	// UpdatedAt RFC 3339 timestamp of the last ledger mutation.
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// LegalDocument One version of a terms template (P3a). Immutable once published.
+type LegalDocument struct {
+	// BodyTemplate The template text with its placeholders.
+	BodyTemplate string `json:"body_template"`
+
+	// CreatedAt When the draft was saved.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy The operator who saved the draft; null for the seeded versions.
+	CreatedBy *openapi_types.UUID `json:"created_by"`
+
+	// Id Version id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Document kind, `sale_terms` so far.
+	Kind string `json:"kind"`
+
+	// Locale Language of the template (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+	Locale string `json:"locale"`
+
+	// PublishedAt When it was published; null for a draft.
+	PublishedAt *time.Time `json:"published_at"`
+
+	// PublishedBy The operator who published it.
+	PublishedBy *openapi_types.UUID `json:"published_by"`
+
+	// RetiredAt When a newer version replaced it.
+	RetiredAt *time.Time `json:"retired_at"`
+
+	// Status `draft`, `published` (at most one per kind and language) or `retired`.
+	Status string `json:"status"`
+
+	// Version Version number within the kind and language, from 1.
+	Version int `json:"version"`
+}
+
+// LegalDocumentListResponse Versions of the terms templates and the placeholder allowlist (P3a).
+type LegalDocumentListResponse struct {
+	// Items The versions, newest first within each kind and language.
+	Items []LegalDocument `json:"items"`
+
+	// Placeholders Every placeholder key a template may use.
+	Placeholders []string `json:"placeholders"`
 }
 
 // LetterInteractionItem One open, proxy open or click Brevo reported on a letter (U-7). Dispute evidence; personal data.
@@ -10473,6 +10614,9 @@ type OrderConsentItem struct {
 	// Kind What was accepted. Only `sale_terms` so far (the organizer's sale terms and the platform policy).
 	Kind string `json:"kind"`
 
+	// LegalRenderingId The rendering of the organizer's terms the buyer accepted (`legal_renderings`, P3a); null for a consent to the platform terms.
+	LegalRenderingId *openapi_types.UUID `json:"legal_rendering_id"`
+
 	// Locale Language the checkbox was shown in, null when not stated.
 	Locale *string `json:"locale"`
 
@@ -10485,10 +10629,15 @@ type OrderConsentItem struct {
 	// SellerLegalName The seller name the checkbox showed.
 	SellerLegalName *string `json:"seller_legal_name"`
 
+	// TermsSha256 SHA-256 (hex) of that rendering's HTML at acceptance; null with `legal_rendering_id`.
+	TermsSha256 *string `json:"terms_sha256"`
+
 	// TermsUrl The sale terms link the checkbox showed.
 	TermsUrl *string `json:"terms_url"`
 
-	// TermsVersion The version accepted, `platform-terms:<version>;seller:<organization id>` until the organizer's rendered terms exist.
+	// TermsVersion The version accepted: `sale_terms:v<document version>:<language>;seller:<organization id>`
+	// for the organizer's rendered terms (P3a, then `legal_rendering_id` is set),
+	// `platform-terms:<version>;seller:<organization id>` for a consent to the platform terms.
 	TermsVersion string `json:"terms_version"`
 
 	// UserAgent The buyer's browser string at purchase (at most 512 characters); null when none was sent.
@@ -11371,6 +11520,9 @@ type OrderTicketSummary struct {
 	// Price What the buyer paid for this unit, in minor currency units (order_items.total, after discount and fee; 0 for an invitation).
 	Price int64 `json:"price"`
 
+	// Scans The ticket's last scans at a door (up to 5, any result, newest first), as the order card prints them. Empty when the ticket was never scanned.
+	Scans *[]TicketScan `json:"scans,omitempty"`
+
 	// SeatLabel The seat parts that exist joined with " / " (e.g. "A / 3 / 12"); null for general admission.
 	SeatLabel *string `json:"seat_label"`
 
@@ -11395,8 +11547,11 @@ type OrderTicketSummary struct {
 	// TierName Name of the category; null when the tier row is gone.
 	TierName *string `json:"tier_name"`
 
-	// UsedAt When the ticket was scanned at the door (latest scan of its barcodes, any authority); null if never.
+	// UsedAt When the ticket was first let in at the door (the first admission, by arena's own scanner or by MACS; for a ticket of the legacy import the newest scan of its barcodes); null if never.
 	UsedAt *time.Time `json:"used_at"`
+
+	// Vip The organizer's private VIP mark. It is never printed on the PDF e-ticket or written in a letter to the buyer.
+	Vip bool `json:"vip"`
 }
 
 // OrgCityResponse Response of POST /v1/organizations/{org_id}/cities. `city` has the
@@ -11622,6 +11777,99 @@ type OrganizerContactRequest struct {
 
 	// TurnstileToken Cloudflare Turnstile response token.
 	TurnstileToken *string `json:"turnstile_token,omitempty"`
+}
+
+// PageStatsCounts A pair of counters of one kind.
+type PageStatsCounts struct {
+	// Hits Hits that looked like a person with a browser.
+	Hits int64 `json:"hits"`
+
+	// SuspectHits Hits counted apart because the browser looked like a bot (or sent no User-Agent).
+	SuspectHits int64 `json:"suspect_hits"`
+}
+
+// PageStatsDay The counters of one calendar day (in the venue's zone) that has data.
+type PageStatsDay struct {
+	// Day The day, `YYYY-MM-DD`.
+	Day string `json:"day"`
+
+	// PageView Opened the event page.
+	PageView PageStatsCounts `json:"page_view"`
+
+	// PartnerClick Followed a "where else to buy" link.
+	PartnerClick PageStatsCounts `json:"partner_click"`
+
+	// VideoPlay Pressed play on a video of the page.
+	VideoPlay PageStatsCounts `json:"video_play"`
+}
+
+// PageStatsKinds The counters of the three kinds.
+type PageStatsKinds struct {
+	// PageView Opened the event page.
+	PageView PageStatsCounts `json:"page_view"`
+
+	// PartnerClick Followed a "where else to buy" link.
+	PartnerClick PageStatsCounts `json:"partner_click"`
+
+	// VideoPlay Pressed play on a video of the page.
+	VideoPlay PageStatsCounts `json:"video_play"`
+}
+
+// PageStatsResponse The statistics of an event's hosted page for a window of days. A guide
+// for the organizer, not proof for an advertising account: a bot may look
+// like a person and a person may block the beacon.
+type PageStatsResponse struct {
+	// Days The days that have data, oldest first. A day without hits is absent.
+	Days []PageStatsDay `json:"days"`
+
+	// EventId The event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// From First day of the window, `YYYY-MM-DD`.
+	From string `json:"from"`
+
+	// Sources The utm pairs of the page views, biggest first, at most 20.
+	Sources []PageStatsSource `json:"sources"`
+
+	// Timezone IANA zone of the event's venue that decides which day a hit belongs to; null (UTC days) while the event has no session.
+	Timezone *string `json:"timezone"`
+
+	// To Last day of the window (inclusive), `YYYY-MM-DD`.
+	To string `json:"to"`
+
+	// Totals Sums over the whole window.
+	Totals PageStatsKinds `json:"totals"`
+}
+
+// PageStatsSource One utm pair of the page views. Visits that carried no utm are the pair of two empty strings.
+type PageStatsSource struct {
+	// Hits Page views that looked like a person.
+	Hits int64 `json:"hits"`
+
+	// SuspectHits Page views counted apart as probable bots.
+	SuspectHits int64 `json:"suspect_hits"`
+
+	// UtmCampaign The cleaned `utm_campaign`, empty when none.
+	UtmCampaign string `json:"utm_campaign"`
+
+	// UtmSource The cleaned `utm_source`, empty when none.
+	UtmSource string `json:"utm_source"`
+}
+
+// PageTrackRequest Body of POST /v1/public/pages/{org_slug}/{event_slug}/track, the hosted
+// page's statistics beacon (HP-2a). Unknown fields are ignored.
+type PageTrackRequest struct {
+	// Kind What happened: `page_view`, `video_play` or `partner_click`. Any
+	// other value is refused with 400 `track.invalid_kind`.
+	Kind string `json:"kind"`
+
+	// UtmCampaign Optional `utm_campaign` of the page address, cleaned like `utm_source`.
+	UtmCampaign *string `json:"utm_campaign,omitempty"`
+
+	// UtmSource Optional `utm_source` of the page address. Only the characters
+	// `A-Z a-z 0-9 . _ ~ -` are kept (a value with any other character is
+	// counted as empty) and it is cut to 64 characters.
+	UtmSource *string `json:"utm_source,omitempty"`
 }
 
 // PaginationMeta Standard pagination metadata returned by list endpoints.
@@ -12991,6 +13239,30 @@ type PublicMaterialVideo struct {
 	VideoId *string `json:"video_id"`
 }
 
+// PublicTermsResponse The organizer's terms of sale rendered for one seller, channel, event and language (P3a).
+type PublicTermsResponse struct {
+	// DocumentVersion Version of the template that was rendered.
+	DocumentVersion int `json:"document_version"`
+
+	// Html The terms as HTML without scripts, styles or links, wrapped in `<article class="legal-document" lang=.. dir=..>`.
+	Html string `json:"html"`
+
+	// Locale Language of the rendered version (after the fallback to `en`).
+	Locale string `json:"locale"`
+
+	// RefundMode The refund policy stated, `no_refund`, `refund_until_sales_end` or `refund_by_law` (the event's, else the organization's, else `refund_by_law`).
+	RefundMode string `json:"refund_mode"`
+
+	// RenderingId The stored rendering (`legal_renderings`); a consent at checkout names it.
+	RenderingId openapi_types.UUID `json:"rendering_id"`
+
+	// SellerLegalName The seller the terms name.
+	SellerLegalName string `json:"seller_legal_name"`
+
+	// Sha256 SHA-256 (hex) of `html`.
+	Sha256 string `json:"sha256"`
+}
+
 // PublishEventRequest Request body for `POST /v1/events/{event_id}/publications`.
 // `feed_token_id` is required; `city_id` is optional and
 // defaults to `null` (= visible in all geographies).
@@ -13768,6 +14040,439 @@ type ScannerValidateResponseInvalidReason string
 
 // ScannerValidateResponseStatus Current barcode status (unchanged by this call).
 type ScannerValidateResponseStatus string
+
+// SeatBatch One recorded batch of seat changes.
+type SeatBatch struct {
+	// ActorId Who applied the batch, null for a principal that is not a UUID.
+	ActorId *openapi_types.UUID `json:"actor_id"`
+
+	// ActorLabel The kind of principal that applied the batch (`user`, `service`, ...).
+	ActorLabel string `json:"actor_label"`
+
+	// AppliedAt When the batch was applied.
+	AppliedAt time.Time `json:"applied_at"`
+
+	// Changes The seats the batch changed.
+	Changes []SeatBatchChange `json:"changes"`
+
+	// Id UUID of the batch.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind `paint`, `close`, `open`, `apply_layout` or `revert`.
+	Kind string `json:"kind"`
+
+	// RevertedAt When the batch was reverted, null while it is not.
+	RevertedAt *time.Time `json:"reverted_at"`
+
+	// RevertedByBatchId The revert batch, null while the batch is not reverted.
+	RevertedByBatchId *openapi_types.UUID `json:"reverted_by_batch_id"`
+
+	// RevertsBatchId For a revert, the batch it reverted; null otherwise.
+	RevertsBatchId *openapi_types.UUID `json:"reverts_batch_id"`
+
+	// SeatStatusVersion The session's seat_status_version after the batch (one bump per batch).
+	SeatStatusVersion int64 `json:"seat_status_version"`
+
+	// SessionId UUID of the session.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Skipped The seats the batch left alone, with the reason.
+	Skipped []SeatBatchSkipped `json:"skipped"`
+
+	// UnchangedSeatKeys Seats that already were in the requested state. Only in the answer of an apply or a revert.
+	UnchangedSeatKeys *[]string `json:"unchanged_seat_keys,omitempty"`
+}
+
+// SeatBatchChange One seat a batch changed.
+type SeatBatchChange struct {
+	// From The seat before the batch.
+	From SeatBatchSeatState `json:"from"`
+
+	// SeatKey The seat's key.
+	SeatKey string `json:"seat_key"`
+
+	// To The seat after the batch.
+	To SeatBatchSeatState `json:"to"`
+}
+
+// SeatBatchChangeRequest What one seat should become; at least one of tier_id and status.
+type SeatBatchChangeRequest struct {
+	// SeatKey The seat's key.
+	SeatKey string `json:"seat_key"`
+
+	// Status `available` or `unavailable`.
+	Status *string `json:"status,omitempty"`
+
+	// TierId The category to put the seat in, a live category of this session.
+	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
+}
+
+// SeatBatchList One page of a session's batches.
+type SeatBatchList struct {
+	// HasMore True when another page follows.
+	HasMore bool `json:"has_more"`
+
+	// Items The batches, newest first, without their per-seat arrays.
+	Items []SeatBatchSummary `json:"items"`
+
+	// Total Number of batches of the session.
+	Total int64 `json:"total"`
+}
+
+// SeatBatchRequest One batch of seat changes (task S1c).
+type SeatBatchRequest struct {
+	// Changes The seats to change, at most 10 000. A seat_key may appear twice only with the same target.
+	Changes []SeatBatchChangeRequest `json:"changes"`
+
+	// Kind `paint` (tier_id only), `close` (status unavailable only), `open` (status available only) or `apply_layout` (either or both).
+	Kind string `json:"kind"`
+
+	// NewTiers Categories to create inside the batch. Not supported yet; a non-empty list answers 422 `seat_batch.new_tiers_unsupported`.
+	NewTiers *[]map[string]interface{} `json:"new_tiers,omitempty"`
+}
+
+// SeatBatchSeatState A seat's category and status before or after a batch.
+type SeatBatchSeatState struct {
+	// Status `available` or `unavailable`.
+	Status string `json:"status"`
+
+	// TierId The seat's category, null when it has none.
+	TierId *openapi_types.UUID `json:"tier_id"`
+}
+
+// SeatBatchSkipped One seat a batch left alone.
+type SeatBatchSkipped struct {
+	// Reason `sold`, `held`, `seat_not_found`, `unknown_status`, `ga_unit` (a General Admission place cannot change category), `changed_since` (a revert found the seat changed again) or `tier_unavailable` (a revert's category was deleted).
+	Reason string `json:"reason"`
+
+	// SeatKey The seat's key.
+	SeatKey string `json:"seat_key"`
+
+	// Status The seat's status when it was skipped; absent for an unknown key.
+	Status *string `json:"status,omitempty"`
+}
+
+// SeatBatchSummary One row of the batch list; the per-seat arrays are only in SeatBatch.
+type SeatBatchSummary struct {
+	// ActorId Who applied the batch, null for a principal that is not a UUID.
+	ActorId *openapi_types.UUID `json:"actor_id"`
+
+	// ActorLabel The kind of principal that applied the batch (`user`, `service`, ...).
+	ActorLabel string `json:"actor_label"`
+
+	// AppliedAt When the batch was applied.
+	AppliedAt time.Time `json:"applied_at"`
+
+	// ChangedCount Number of seats the batch changed.
+	ChangedCount int32 `json:"changed_count"`
+
+	// Id UUID of the batch.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind `paint`, `close`, `open`, `apply_layout` or `revert`.
+	Kind string `json:"kind"`
+
+	// RevertedAt When the batch was reverted, null while it is not.
+	RevertedAt *time.Time `json:"reverted_at"`
+
+	// RevertedByBatchId The revert batch, null while the batch is not reverted.
+	RevertedByBatchId *openapi_types.UUID `json:"reverted_by_batch_id"`
+
+	// RevertsBatchId For a revert, the batch it reverted; null otherwise.
+	RevertsBatchId *openapi_types.UUID `json:"reverts_batch_id"`
+
+	// SeatStatusVersion The session's seat_status_version after the batch.
+	SeatStatusVersion int64 `json:"seat_status_version"`
+
+	// SessionId UUID of the session.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// SkippedCount Number of seats the batch left alone.
+	SkippedCount int32 `json:"skipped_count"`
+}
+
+// SeatHistory One page of a seat's history.
+type SeatHistory struct {
+	// HasMore True when another page follows.
+	HasMore bool `json:"has_more"`
+
+	// Items The entries, newest first.
+	Items []SeatHistoryEntry `json:"items"`
+
+	// SeatKey The seat's key.
+	SeatKey string `json:"seat_key"`
+
+	// Total Number of entries.
+	Total int64 `json:"total"`
+}
+
+// SeatHistoryEntry One batch as seen from one seat.
+type SeatHistoryEntry struct {
+	// ActorLabel The kind of principal that applied the batch.
+	ActorLabel string `json:"actor_label"`
+
+	// AppliedAt When the batch was applied.
+	AppliedAt time.Time `json:"applied_at"`
+
+	// BatchId UUID of the batch.
+	BatchId openapi_types.UUID `json:"batch_id"`
+
+	// From The seat before the batch; only for `changed`.
+	From *SeatBatchSeatState `json:"from,omitempty"`
+
+	// Kind The batch's kind.
+	Kind string `json:"kind"`
+
+	// Outcome `changed` or `skipped`.
+	Outcome string `json:"outcome"`
+
+	// Reason Why the seat was skipped (SeatBatchSkipped.reason); only for `skipped`.
+	Reason *string `json:"reason,omitempty"`
+
+	// RevertedAt When the batch was reverted, null while it is not.
+	RevertedAt *time.Time `json:"reverted_at"`
+
+	// RevertedByBatchId The revert batch, null while the batch is not reverted.
+	RevertedByBatchId *openapi_types.UUID `json:"reverted_by_batch_id"`
+
+	// To The seat after the batch; only for `changed`.
+	To *SeatBatchSeatState `json:"to,omitempty"`
+}
+
+// SeatLayoutAlgorithm One seat-layout algorithm of the registry with its parameter schema.
+type SeatLayoutAlgorithm struct {
+	// DescriptionKey i18n key of a short description of the algorithm.
+	DescriptionKey *string `json:"description_key,omitempty"`
+
+	// Id Stable algorithm id (`desirability`, ...), sent back as `algorithm` of the suggest request.
+	Id string `json:"id"`
+
+	// LabelKey i18n key of the algorithm's name.
+	LabelKey string `json:"label_key"`
+
+	// Params The algorithm's parameters.
+	Params []SeatLayoutParam `json:"params"`
+
+	// RequiredAnnotations Annotations the algorithm cannot work without (for example `focal_point`, the stage).
+	RequiredAnnotations []string `json:"required_annotations"`
+}
+
+// SeatLayoutAlgorithmsResponse The seat-layout algorithms a session can use (task S1e).
+type SeatLayoutAlgorithmsResponse struct {
+	// Algorithms Every registered algorithm, sorted by id.
+	Algorithms []SeatLayoutAlgorithm `json:"algorithms"`
+
+	// Currency ISO 4217 currency of the session; every `minor_currency` parameter is in it.
+	Currency string `json:"currency"`
+
+	// SessionId UUIDv7 of the session.
+	SessionId openapi_types.UUID `json:"session_id"`
+}
+
+// SeatLayoutAnnotations Plan facts the allocator may need that are not part of the geometry.
+// Until they are stored on the seating plan (S1d) they travel in the
+// suggest request.
+type SeatLayoutAnnotations struct {
+	// FocalPoint The stage, in canvas coordinates. The desirability algorithm requires it.
+	FocalPoint *SeatLayoutPoint `json:"focal_point,omitempty"`
+
+	// ObstructedSeatKeys Seats with a restricted view.
+	ObstructedSeatKeys *[]string `json:"obstructed_seat_keys,omitempty"`
+
+	// SectionWeights Section key to weight from 0 (least wanted) to 1 (as good as the geometry says). A section left out weighs 1.
+	SectionWeights *map[string]float32 `json:"section_weights,omitempty"`
+}
+
+// SeatLayoutMetrics Revenue estimate of a proposal, a reference figure and never an
+// optimum: sold seats at the price they were sold for, held seats at
+// the price they are held for, every open free seat at the proposed
+// price. Closed seats are left out.
+type SeatLayoutMetrics struct {
+	// BySlot The estimate per proposed category.
+	BySlot []SeatLayoutSlotMetrics `json:"by_slot"`
+
+	// ClosedSeats Free seats an operator closed for sale.
+	ClosedSeats int `json:"closed_seats"`
+
+	// Currency ISO 4217 currency of every amount.
+	Currency string `json:"currency"`
+
+	// HeldSeats Seats in a hold.
+	HeldSeats int `json:"held_seats"`
+
+	// RevenueEstimateMinor Sold plus held plus remaining.
+	RevenueEstimateMinor int64 `json:"revenue_estimate_minor"`
+
+	// RevenueHeldMinor Held seats at the price they are held for.
+	RevenueHeldMinor int64 `json:"revenue_held_minor"`
+
+	// RevenueRemainingMinor Open free seats at the proposed prices.
+	RevenueRemainingMinor int64 `json:"revenue_remaining_minor"`
+
+	// RevenueSoldMinor Sold seats at the price they were sold for.
+	RevenueSoldMinor int64 `json:"revenue_sold_minor"`
+
+	// SoldFrozen Frozen seats, sold plus held.
+	SoldFrozen int `json:"sold_frozen"`
+
+	// SoldSeats Sold seats.
+	SoldSeats int `json:"sold_seats"`
+
+	// TotalSeats Seats of the plan.
+	TotalSeats int `json:"total_seats"`
+}
+
+// SeatLayoutParam One parameter of a seat-layout algorithm (task S1e). Clients draw the
+// form from this description and never hard-code an algorithm. Labels
+// are i18n keys, never texts.
+type SeatLayoutParam struct {
+	// Default Value used when the parameter is left out, of the parameter's own type; null when there is none.
+	Default interface{} `json:"default"`
+
+	// HintKey i18n key of an optional hint under the field.
+	HintKey *string `json:"hint_key,omitempty"`
+
+	// LabelKey i18n key of the parameter's label.
+	LabelKey string `json:"label_key"`
+
+	// Max Upper bound of an integer, or of every item of an integer list.
+	Max *int64 `json:"max,omitempty"`
+
+	// MaxItems Longest allowed integer list.
+	MaxItems *int `json:"max_items,omitempty"`
+
+	// Min Lower bound of an integer, or of every item of an integer list.
+	Min *int64 `json:"min,omitempty"`
+
+	// MinItems Shortest allowed integer list.
+	MinItems *int `json:"min_items,omitempty"`
+
+	// Name Parameter name as sent in `params` of the suggest request.
+	Name string `json:"name"`
+
+	// Options Allowed values of an `enum` parameter.
+	Options *[]SeatLayoutParamOption `json:"options,omitempty"`
+
+	// Required Whether the parameter must be sent (a parameter with a default never needs to be).
+	Required bool `json:"required"`
+
+	// Type One of `integer`, `boolean`, `enum`, `integer_list` (a JSON array of integers).
+	Type string `json:"type"`
+
+	// Unit How to read an integer: `count`, `minor_currency` (minor units of the session currency) or `percent`.
+	Unit *string `json:"unit,omitempty"`
+}
+
+// SeatLayoutParamOption One value of an enum parameter of a seat-layout algorithm.
+type SeatLayoutParamOption struct {
+	// LabelKey i18n key of the value's label.
+	LabelKey string `json:"label_key"`
+
+	// Value The value as sent in `params`.
+	Value string `json:"value"`
+}
+
+// SeatLayoutPoint A point in canvas coordinates of the seating plan.
+type SeatLayoutPoint struct {
+	// X Horizontal canvas coordinate.
+	X float32 `json:"x"`
+
+	// Y Vertical canvas coordinate.
+	Y float32 `json:"y"`
+}
+
+// SeatLayoutProposal A proposed layout. Nothing is applied.
+type SeatLayoutProposal struct {
+	// Assignments seat_key to slot key for every seat that is not sold or held (closed seats included).
+	Assignments map[string]string `json:"assignments"`
+
+	// FrozenSeatKeys Sold and held seats, left in their category at their own price, sorted.
+	FrozenSeatKeys []string `json:"frozen_seat_keys"`
+
+	// Slots The proposed categories.
+	Slots []SeatLayoutSlot `json:"slots"`
+}
+
+// SeatLayoutSlot One proposed category.
+type SeatLayoutSlot struct {
+	// Color Optional proposed colour, `#rrggbb`.
+	Color *string `json:"color,omitempty"`
+
+	// Key Slot key (`c1` is the dearest for the desirability algorithm).
+	Key string `json:"key"`
+
+	// Name Optional proposed name.
+	Name *string `json:"name,omitempty"`
+
+	// PriceAmount Proposed price in minor units of the session currency.
+	PriceAmount int64 `json:"price_amount"`
+
+	// Share Target share of the hall, 0 to 1.
+	Share float32 `json:"share"`
+}
+
+// SeatLayoutSlotMetrics Revenue estimate of one proposed category.
+type SeatLayoutSlotMetrics struct {
+	// OpenSeats Free seats of the slot that are open for sale.
+	OpenSeats int `json:"open_seats"`
+
+	// PriceAmount Proposed price in minor units.
+	PriceAmount int64 `json:"price_amount"`
+
+	// RevenueMinor open_seats times price_amount.
+	RevenueMinor int64 `json:"revenue_minor"`
+
+	// Seats Free seats the layout puts in the slot, closed seats included.
+	Seats int `json:"seats"`
+
+	// Share Actual share of the hall in the slot, 0 to 1.
+	Share float32 `json:"share"`
+
+	// SlotKey Key of the slot.
+	SlotKey string `json:"slot_key"`
+}
+
+// SeatLayoutSuggestRequest Body of POST .../seat-layout/suggest (task S1e).
+type SeatLayoutSuggestRequest struct {
+	// Algorithm Id of the algorithm from GET .../seat-layout/algorithms.
+	Algorithm string `json:"algorithm"`
+
+	// Annotations Stage, section weights and obstructed seats of the plan.
+	Annotations *SeatLayoutAnnotations `json:"annotations,omitempty"`
+
+	// Params Parameter values by name, checked against the algorithm's schema. A left-out or null parameter takes its default.
+	Params *map[string]interface{} `json:"params,omitempty"`
+}
+
+// SeatLayoutSuggestResponse A seat-layout proposal (task S1e). Nothing was written.
+type SeatLayoutSuggestResponse struct {
+	// Algorithm Id of the algorithm that made the proposal.
+	Algorithm string `json:"algorithm"`
+
+	// Currency ISO 4217 currency of the session.
+	Currency string `json:"currency"`
+
+	// GeometryChecksum Checksum of that geometry.
+	GeometryChecksum string `json:"geometry_checksum"`
+
+	// Layout The proposal.
+	Layout SeatLayoutProposal `json:"layout"`
+
+	// Metrics Its revenue estimate.
+	Metrics SeatLayoutMetrics `json:"metrics"`
+
+	// Params The parameters used, defaults filled in.
+	Params map[string]interface{} `json:"params"`
+
+	// SeatStatusVersion The session's seat_status_version the proposal was made against.
+	SeatStatusVersion int64 `json:"seat_status_version"`
+
+	// SeatingPlanVersionId Plan version whose geometry was read.
+	SeatingPlanVersionId openapi_types.UUID `json:"seating_plan_version_id"`
+
+	// SessionId UUIDv7 of the session.
+	SessionId openapi_types.UUID `json:"session_id"`
+}
 
 // SeatingCategoryPrice Resolved category → tier / price projection returned inside
 // `SeatingSchemaResponse.category_prices`. `index`, `name`, `color`,
@@ -14725,6 +15430,63 @@ type SessionSummary struct {
 	} `json:"tiers"`
 }
 
+// SessionTicketItem One ticket of a session with its order, buyer and entry at the door (M2).
+type SessionTicketItem struct {
+	// BuyerEmail The buyer's e-mail, else the ticket holder's.
+	BuyerEmail *string `json:"buyer_email"`
+
+	// BuyerName The buyer's name, when the order has one.
+	BuyerName *string `json:"buyer_name"`
+
+	// Entered True when the ticket was let in at a door.
+	Entered bool `json:"entered"`
+
+	// EnteredAt When the ticket was first let in; null when it was not.
+	EnteredAt *time.Time `json:"entered_at"`
+
+	// LastScan The newest scan of the ticket whatever its result; null when nobody scanned it.
+	LastScan *TicketScan `json:"last_scan"`
+
+	// OrderId The order the ticket was sold with; null for an invitation.
+	OrderId *openapi_types.UUID `json:"order_id"`
+
+	// OrderNumber The order number (`orders.system_id`); null for an invitation.
+	OrderNumber *int64 `json:"order_number"`
+
+	// SeatLabel The seat parts joined with " / "; null for general admission.
+	SeatLabel *string `json:"seat_label"`
+
+	// Status Ticket status: `active`, `cancelled`, `transferred` or `revoked`.
+	Status string `json:"status"`
+
+	// SystemTicketId The ticket number printed on the e-ticket.
+	SystemTicketId int64 `json:"system_ticket_id"`
+
+	// TicketId UUIDv7 primary key of the ticket.
+	TicketId openapi_types.UUID `json:"ticket_id"`
+
+	// TierName Name of the category; null when the category row is gone.
+	TierName *string `json:"tier_name"`
+}
+
+// SessionTicketList One page of a session's tickets with their entry at the door (M2).
+type SessionTicketList struct {
+	// HasMore True when a later page exists.
+	HasMore bool `json:"has_more"`
+
+	// Items The tickets of this page, in ticket-number order.
+	Items []SessionTicketItem `json:"items"`
+
+	// SessionId The session.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Total How many tickets match the filter.
+	Total int64 `json:"total"`
+
+	// VenueTimezone IANA zone of the session's venue, for printing times; null when the session has no venue.
+	VenueTimezone *string `json:"venue_timezone"`
+}
+
 // SessionWarning A non-fatal note about a session write: the request succeeded, but
 // part of it could not be applied verbatim.
 type SessionWarning struct {
@@ -15125,6 +15887,24 @@ type TicketItemStatus string
 type TicketListResponse struct {
 	// Tickets Tickets issued for the checkout session (possibly empty).
 	Tickets []TicketItem `json:"tickets"`
+}
+
+// TicketScan One scan of a ticket at a door (M2), by arena's own scanner or reported by MACS.
+type TicketScan struct {
+	// Gate The gate the scanner stood at; empty when the scanner did not say.
+	Gate string `json:"gate"`
+
+	// Result What the gate decided: `admitted` or `denied`.
+	Result string `json:"result"`
+
+	// ScannedAt When the scan happened at the door, as the scanner reported it.
+	ScannedAt time.Time `json:"scanned_at"`
+
+	// ScannerLabel The scanner's own name as the reporting system gives it (MACS only; empty for arena's scanner).
+	ScannerLabel string `json:"scanner_label"`
+
+	// Source Who reported the scan: `arena_scanner` (arena's own scanner) or `macs` (the MACS gate system).
+	Source string `json:"source"`
 }
 
 // TicketTierDeleteResponse Soft-delete response envelope for a ticket tier.
@@ -15539,6 +16319,15 @@ type UpdateEventRequest struct {
 	// DurationMinutes Tri-state (absent=keep, null=clear, value=set).
 	// Event runtime in minutes (AB-45c).
 	DurationMinutes *int32 `json:"duration_minutes"`
+
+	// EmailNote Tri-state (absent=keep, null or "" = clear, value=set). The
+	// organizer's own text that the ticket and session-change e-mails
+	// print under "About the event". Plain text of at most 2000
+	// characters: HTML tags are removed, control characters are
+	// refused, at most 5 links and every link must be `https://`. A
+	// refused text answers 400 `event.invalid_email_note` with
+	// `error.details.reason`.
+	EmailNote *string `json:"email_note"`
 
 	// Genre Tri-state (absent=keep, null=clear, value=set).
 	// Event genre/category string (AB-45c).
@@ -16597,6 +17386,27 @@ type GetV1AdminCustomerImportsIdRowsParams struct {
 // GetV1AdminCustomerImportsIdRowsParamsAction defines parameters for GetV1AdminCustomerImportsIdRows.
 type GetV1AdminCustomerImportsIdRowsParamsAction string
 
+// ListLegalDocumentsParams defines parameters for ListLegalDocuments.
+type ListLegalDocumentsParams struct {
+	// Kind Only this kind (`sale_terms`).
+	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
+
+	// Locale Only this language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// CreateLegalDocumentParams defines parameters for CreateLegalDocument.
+type CreateLegalDocumentParams struct {
+	// XAdminReason Human-readable business reason for this change (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PublishLegalDocumentParams defines parameters for PublishLegalDocument.
+type PublishLegalDocumentParams struct {
+	// XAdminReason Human-readable business reason for this change (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // AttachNetworkAgentParams defines parameters for AttachNetworkAgent.
 type AttachNetworkAgentParams struct {
 	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
@@ -17345,6 +18155,27 @@ type GetV1OrganizationsOrgIdEventsSalesSummaryParams struct {
 	Ids string `form:"ids" json:"ids"`
 }
 
+// GetV1OrganizationsOrgIdEventsEventIdPageStatsParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdPageStats.
+type GetV1OrganizationsOrgIdEventsEventIdPageStatsParams struct {
+	// From First day, `YYYY-MM-DD`. Default 29 days before `to`.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdEventsEventIdPageStatsCsvParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdPageStatsCsv.
+type GetV1OrganizationsOrgIdEventsEventIdPageStatsCsvParams struct {
+	// From First day, `YYYY-MM-DD`. Default 29 days before `to`.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+
+	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdEventsEventIdSalesCsvParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdSalesCsv.
 type GetV1OrganizationsOrgIdEventsEventIdSalesCsvParams struct {
 	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
@@ -17587,10 +18418,40 @@ type GetV1OrganizationsOrgIdSessionsSessionIdSampleTicketParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdSessionsSessionIdSeatBatchesParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSeatBatches.
+type GetV1OrganizationsOrgIdSessionsSessionIdSeatBatchesParams struct {
+	// Limit Page size, 1-50 (default 20).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of batches to skip (default 0).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdSessionsSessionIdSeatsSeatKeyHistoryParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSeatsSeatKeyHistory.
+type GetV1OrganizationsOrgIdSessionsSessionIdSeatsSeatKeyHistoryParams struct {
+	// Limit Page size, 1-100 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of entries to skip (default 0).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsvParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsv.
 type GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsvParams struct {
 	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdSessionsSessionIdTicketsParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdTickets.
+type GetV1OrganizationsOrgIdSessionsSessionIdTicketsParams struct {
+	// Entered `false` lists active tickets nobody entered with, `true` the tickets with an entry. Absent lists every ticket.
+	Entered *string `form:"entered,omitempty" json:"entered,omitempty"`
+
+	// Limit Page size, 1 to 200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of tickets to skip (default 0).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.
@@ -17609,6 +18470,12 @@ type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody struct {
 
 	// Note A comment of up to 1000 characters, kept in the audit trail; its first 500 characters are shown to the organization's owners and its group.
 	Note *string `json:"note,omitempty"`
+}
+
+// PatchV1OrganizationsOrgIdTicketsTicketIdVipJSONBody defines parameters for PatchV1OrganizationsOrgIdTicketsTicketIdVip.
+type PatchV1OrganizationsOrgIdTicketsTicketIdVipJSONBody struct {
+	// Vip True to mark the ticket as VIP, false to take the mark off.
+	Vip bool `json:"vip"`
 }
 
 // CreatePaymentIntentParams defines parameters for CreatePaymentIntent.
@@ -17633,6 +18500,24 @@ type ListPublicFeedEventsParams struct {
 
 	// Offset Pagination offset.
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetPublicTermsParams defines parameters for GetPublicTerms.
+type GetPublicTermsParams struct {
+	// EventId The event whose refund policy and promoter the terms state, by id (a published event of the organization); wins over `event_slug`. The checkout consent link uses it.
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
+
+	// EventSlug The same event by its slug.
+	EventSlug *string `form:"event_slug,omitempty" json:"event_slug,omitempty"`
+
+	// FeedToken The feed token of the channel the terms are read for; another organization's token answers 404.
+	FeedToken *string `form:"feed_token,omitempty" json:"feed_token,omitempty"`
+
+	// Locale Language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`, a region subtag is ignored); else the first tag of Accept-Language; anything else and a language with no published version fall back to `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+
+	// Format `html` for a self-contained HTML page (no scripts, strict CSP) instead of JSON; any other value answers JSON.
+	Format *string `form:"format,omitempty" json:"format,omitempty"`
 }
 
 // GetPublicPaymentReturnParams defines parameters for GetPublicPaymentReturn.
@@ -17841,6 +18726,9 @@ type PatchV1AdminGeoCountriesIso2JSONRequestBody = GeoUpdateCountryRequest
 
 // PostV1AdminImpersonateJSONRequestBody defines body for PostV1AdminImpersonate for application/json ContentType.
 type PostV1AdminImpersonateJSONRequestBody = ImpersonateRequest
+
+// CreateLegalDocumentJSONRequestBody defines body for CreateLegalDocument for application/json ContentType.
+type CreateLegalDocumentJSONRequestBody = CreateLegalDocumentRequest
 
 // AttachNetworkAgentJSONRequestBody defines body for AttachNetworkAgent for application/json ContentType.
 type AttachNetworkAgentJSONRequestBody = AttachNetworkOrganizationRequest
@@ -18073,6 +18961,9 @@ type CreateEventJSONRequestBody = CreateEventRequest
 // SetEventContactJSONRequestBody defines body for SetEventContact for application/json ContentType.
 type SetEventContactJSONRequestBody = SetEventContactRequest
 
+// PostV1OrganizationsOrgIdEventsEventIdEmailNoteTestJSONRequestBody defines body for PostV1OrganizationsOrgIdEventsEventIdEmailNoteTest for application/json ContentType.
+type PostV1OrganizationsOrgIdEventsEventIdEmailNoteTestJSONRequestBody = EventEmailNoteTestRequest
+
 // SetEventMapPointJSONRequestBody defines body for SetEventMapPoint for application/json ContentType.
 type SetEventMapPointJSONRequestBody = SetEventMapPointRequest
 
@@ -18220,11 +19111,20 @@ type PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody = ResolveOrde
 // UpdateSellerProfileJSONRequestBody defines body for UpdateSellerProfile for application/json ContentType.
 type UpdateSellerProfileJSONRequestBody = UpdateSellerProfileRequest
 
+// PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatBatches for application/json ContentType.
+type PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody = SeatBatchRequest
+
+// PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest for application/json ContentType.
+type PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody = SeatLayoutSuggestRequest
+
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody
 
 // PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdScanRefundException for application/json ContentType.
 type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody
+
+// PatchV1OrganizationsOrgIdTicketsTicketIdVipJSONRequestBody defines body for PatchV1OrganizationsOrgIdTicketsTicketIdVip for application/json ContentType.
+type PatchV1OrganizationsOrgIdTicketsTicketIdVipJSONRequestBody PatchV1OrganizationsOrgIdTicketsTicketIdVipJSONBody
 
 // PostV1OrganizationsOrgIdVenuesJSONRequestBody defines body for PostV1OrganizationsOrgIdVenues for application/json ContentType.
 type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest
@@ -18255,6 +19155,9 @@ type PostPublicFeedFunnelEventsJSONRequestBody = WidgetFunnelEventsBatch
 
 // SendOrganizerContactJSONRequestBody defines body for SendOrganizerContact for application/json ContentType.
 type SendOrganizerContactJSONRequestBody = OrganizerContactRequest
+
+// PostPublicPageTrackJSONRequestBody defines body for PostPublicPageTrack for application/json ContentType.
+type PostPublicPageTrackJSONRequestBody = PageTrackRequest
 
 // SubmitReconciliationReportJSONRequestBody defines body for SubmitReconciliationReport for application/json ContentType.
 type SubmitReconciliationReportJSONRequestBody SubmitReconciliationReportJSONBody

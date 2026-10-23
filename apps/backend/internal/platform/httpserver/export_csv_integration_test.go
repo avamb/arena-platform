@@ -226,7 +226,7 @@ func TestExportCSV_SessionSalesFileKeepsBarcodesPhonesAndNamesExact(t *testing.T
 	if len(lines) != 3 {
 		t.Fatalf("lines: %d\n%s", len(lines), body)
 	}
-	if lines[0] != `"Заказ";"Статус заказа";"Дата";"Покупатель";"E-mail";"Телефон";"Категория";"Цена";"Валюта";"Штрихкод";"Статус билета";"Вошёл";"Канал";"Промокод"` {
+	if lines[0] != `"Заказ";"Статус заказа";"Дата";"Покупатель";"E-mail";"Телефон";"Категория";"Цена";"Валюта";"Штрихкод";"Статус билета";"Вошёл";"Время входа";"Источник входа";"Сканер / вход";"Канал";"Промокод"` {
 		t.Errorf("header: %s", lines[0])
 	}
 	// Ticket 1: stored EAN-13, admitted. Ticket 2: derived legacy code, not admitted.

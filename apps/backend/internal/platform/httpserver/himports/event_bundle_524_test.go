@@ -376,7 +376,10 @@ func TestNoteArenaIgnoredFields(t *testing.T) {
 		}
 	})
 
-	t.Run("seating payload warns seating_not_imported", func(t *testing.T) {
+	// Task S1b: an arena bundle takes its seats from
+	// arenaSeatingPlanVersionId, so a Bil24 svg / seatList is an ignored
+	// field; seating_not_imported keeps its one Bil24 meaning.
+	t.Run("svg and seatList are ignored fields, not seating_not_imported", func(t *testing.T) {
 		payload := arenaPayload()
 		payload.SVG = "<svg/>"
 		payload.SeatList = []bil24compat.ImportSessionSeat{{SeatID: 2873098559}}
@@ -384,8 +387,23 @@ func TestNoteArenaIgnoredFields(t *testing.T) {
 		noteArenaIgnoredFields(payload, sink)
 
 		got := sink.list()
-		if len(got) != 1 || got[0].Code != WarnSeatingNotImported {
-			t.Fatalf("warnings = %#v, want a single %s", got, WarnSeatingNotImported)
+		if len(got) != 1 || got[0].Code != WarnFieldIgnoredForSource {
+			t.Fatalf("warnings = %#v, want a single %s", got, WarnFieldIgnoredForSource)
+		}
+		for _, field := range []string{"svg", "seatList", "arenaSeatingPlanVersionId"} {
+			if !strings.Contains(got[0].Message, field) {
+				t.Errorf("warning message %q does not name %s", got[0].Message, field)
+			}
+		}
+	})
+
+	t.Run("a seating plan version is not an ignored field", func(t *testing.T) {
+		payload := arenaPayload()
+		payload.ActionEvent.ArenaSeatingPlanVersionID = "0192f2d1-0000-7000-8000-000000000001"
+		sink := newWarningSink()
+		noteArenaIgnoredFields(payload, sink)
+		if got := sink.list(); len(got) != 0 {
+			t.Fatalf("warnings = %#v, want none", got)
 		}
 	})
 }

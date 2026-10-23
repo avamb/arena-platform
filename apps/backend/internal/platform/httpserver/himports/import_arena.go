@@ -29,6 +29,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/seatmint"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 )
 
@@ -57,6 +58,9 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 	if err := applyArenaPromoter(ctx, q, plan, eventID); err != nil {
 		return importResult{}, err
 	}
+	if err := applyArenaEmailNote(ctx, q, plan, eventID); err != nil {
+		return importResult{}, err
+	}
 	venueID, loc, err := h.resolveArenaVenue(ctx, q, tx, plan, match, warnings)
 	if err != nil {
 		return importResult{}, err
@@ -77,7 +81,14 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 		finish = endAt.UTC()
 	}
 
-	sessionID, created, err := h.upsertArenaSession(ctx, q, tx, plan, match, eventID, venueID, startAt, finish, warnings)
+	// Task S1b: a new session may be created from a seating plan version
+	// (import_arena_seated.go); an existing one keeps its plan.
+	seated, err := resolveArenaSeating(ctx, q, plan, match, venueID)
+	if err != nil {
+		return importResult{}, err
+	}
+
+	sessionID, created, err := h.upsertArenaSession(ctx, q, tx, plan, match, eventID, venueID, startAt, finish, seated, warnings)
 	if err != nil {
 		return importResult{}, err
 	}
@@ -87,15 +98,24 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 		}
 	}
 
-	orderedTiers, cats, err := h.upsertArenaTiers(ctx, q, tx, plan, sessionID, warnings)
+	orderedTiers, cats, err := h.upsertArenaTiers(ctx, q, tx, plan, sessionID, seated.seatedEntries(), warnings)
 	if err != nil {
+		return importResult{}, err
+	}
+	if seated != nil {
+		if err := materializeArenaSeating(ctx, q, eventID, sessionID, seated, orderedTiers); err != nil {
+			return importResult{}, err
+		}
+	}
+	if err := refuseSeatedChainLinks(ctx, q, plan, sessionID, orderedTiers); err != nil {
 		return importResult{}, err
 	}
 
 	// Plan 08_architecture/23 step 7 — the same category-quota rules the
-	// Bil24-format importer follows. An arena bundle never carries an svg,
-	// so every category of the session is a General Admission one and mints
-	// its own places.
+	// Bil24-format importer follows. A category without places mints its own
+	// General Admission places; a category whose places are plan seats is
+	// left alone (gaquota.CategoryKind), and a plan GA zone already owns the
+	// places seatmint wrote, so the bundle's availability only resizes it.
 	chain, err := applyArenaCategoryExtras(ctx, q, plan, sessionID, orderedTiers)
 	if err != nil {
 		return importResult{}, err
@@ -110,6 +130,10 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 	}
 
 	if err := h.syncInventoryLedger(ctx, q, eventID, sessionID); err != nil {
+		return importResult{}, err
+	}
+	seatingOut, err := arenaSeatingOutcome(ctx, q, eventID, sessionID)
+	if err != nil {
 		return importResult{}, err
 	}
 	var publishedNow bool
@@ -130,7 +154,7 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 	// A dry run mints no compat id: the sequence would move for rows that
 	// are rolled back, and the ids would mean nothing to the caller.
 	if plan.Mode.DryRun {
-		return importResult{EventID: eventID, SessionID: sessionID, Created: created}, nil
+		return importResult{EventID: eventID, SessionID: sessionID, Created: created, Seating: seatingOut}, nil
 	}
 	compat, err := ensureCompatIDs(ctx, tx, eventID, sessionID, venueID, orderedTiers)
 	if err != nil {
@@ -149,6 +173,7 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 		SessionID:    sessionID,
 		TierIDs:      keyed,
 		Created:      created,
+		Seating:      seatingOut,
 		CompatIDs:    compat,
 		PublishedNow: publishedNow,
 		Publication:  firstPublication(publications),
@@ -572,11 +597,17 @@ func (h *Handler) upsertArenaSession(
 	m arenaMatch,
 	eventID, venueID uuid.UUID,
 	startAt, endAt time.Time,
+	seated *arenaSeatedPlan,
 	warnings *warningSink,
 ) (uuid.UUID, bool, error) {
 	capacity := plan.Request.TotalAvailability()
 
 	if m.SessionID == uuid.Nil {
+		if seated != nil {
+			// A session created from a plan starts with the plan's declared
+			// capacity; the places written next make it exact (Recompute).
+			capacity = seatmint.PlanCapacity(seated.mode, seated.version)
+		}
 		if capacity <= 0 {
 			return uuid.Nil, false, errCapacityRequired()
 		}
@@ -613,7 +644,10 @@ func (h *Handler) upsertArenaSession(
 	}
 
 	var capacityPtr *int32
-	if capacity > 0 {
+	// A session bound to a seating plan sizes itself from its places
+	// (syncInventoryLedger → gaquota.Recompute); the bundle's availability sum
+	// says nothing about its seats, so it is not written even for a moment.
+	if capacity > 0 && m.Ctx.AdmissionMode == "general_admission" {
 		capacityPtr = &capacity
 	}
 	status := ""
@@ -647,12 +681,17 @@ func (h *Handler) upsertArenaSession(
 //
 // The returned slice is positionally aligned with plan.Request.CategoryList so
 // compat_ids.category_price_ids can be built from it.
+//
+// seatedEntries marks the entries that price a seated plan category of a
+// session being created from a seating plan (task S1b): their new tier
+// carries no quantity, because its places are the plan's seats.
 func (h *Handler) upsertArenaTiers(
 	ctx context.Context,
 	q *gen.Queries,
 	tx pgx.Tx,
 	plan importPlan,
 	sessionID uuid.UUID,
+	seatedEntries map[int]bool,
 	warnings *warningSink,
 ) ([]uuid.UUID, []importedCategory, error) {
 	existing, err := q.ListTicketTiersBySession(ctx, sessionID)
@@ -685,7 +724,7 @@ func (h *Handler) upsertArenaTiers(
 			mode = "free"
 		}
 		var capacity *int32
-		if c.Availability > 0 {
+		if c.Availability > 0 && !seatedEntries[i] {
 			cap32 := c.Availability
 			capacity = &cap32
 		}

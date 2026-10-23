@@ -299,7 +299,7 @@ func TestHeader_Locales(t *testing.T) {
 	}
 	// Every locale labels every column.
 	for loc, m := range labels {
-		for c := ColOrder; c <= ColDiscount; c++ {
+		for c := ColOrder; c <= ColEnteredScanner; c++ {
 			if m[c] == "" {
 				t.Errorf("locale %s lacks a label for column %d", loc, c)
 			}

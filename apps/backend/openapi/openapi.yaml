@@ -3674,6 +3674,271 @@ components:
               type: string
               description: Human-readable explanation.
 
+    SeatBatchRequest:
+      type: object
+      description: One batch of seat changes (task S1c).
+      required: [kind, changes]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          description: "`paint` (tier_id only), `close` (status unavailable only), `open` (status available only) or `apply_layout` (either or both)."
+        changes:
+          type: array
+          description: The seats to change, at most 10 000. A seat_key may appear twice only with the same target.
+          items:
+            $ref: "#/components/schemas/SeatBatchChangeRequest"
+        new_tiers:
+          type: array
+          description: Categories to create inside the batch. Not supported yet; a non-empty list answers 422 `seat_batch.new_tiers_unsupported`.
+          items:
+            type: object
+            description: A category to create (reserved).
+    SeatBatchChangeRequest:
+      type: object
+      description: What one seat should become; at least one of tier_id and status.
+      required: [seat_key]
+      additionalProperties: false
+      properties:
+        seat_key:
+          type: string
+          description: The seat's key.
+        tier_id:
+          type: string
+          format: uuid
+          description: The category to put the seat in, a live category of this session.
+        status:
+          type: string
+          description: "`available` or `unavailable`."
+    SeatBatchSeatState:
+      type: object
+      description: A seat's category and status before or after a batch.
+      required: [tier_id, status]
+      properties:
+        tier_id:
+          type: [string, "null"]
+          format: uuid
+          description: The seat's category, null when it has none.
+        status:
+          type: string
+          description: "`available` or `unavailable`."
+    SeatBatchChange:
+      type: object
+      description: One seat a batch changed.
+      required: [seat_key, from, to]
+      properties:
+        seat_key:
+          type: string
+          description: The seat's key.
+        from:
+          description: The seat before the batch.
+          allOf:
+            - $ref: "#/components/schemas/SeatBatchSeatState"
+        to:
+          description: The seat after the batch.
+          allOf:
+            - $ref: "#/components/schemas/SeatBatchSeatState"
+    SeatBatchSkipped:
+      type: object
+      description: One seat a batch left alone.
+      required: [seat_key, reason]
+      properties:
+        seat_key:
+          type: string
+          description: The seat's key.
+        reason:
+          type: string
+          description: "`sold`, `held`, `seat_not_found`, `unknown_status`, `ga_unit` (a General Admission place cannot change category), `changed_since` (a revert found the seat changed again) or `tier_unavailable` (a revert's category was deleted)."
+        status:
+          type: string
+          description: The seat's status when it was skipped; absent for an unknown key.
+    SeatBatch:
+      type: object
+      description: One recorded batch of seat changes.
+      required: [id, session_id, kind, actor_id, actor_label, seat_status_version, applied_at, reverted_at, reverted_by_batch_id, reverts_batch_id, changes, skipped]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the batch.
+        session_id:
+          type: string
+          format: uuid
+          description: UUID of the session.
+        kind:
+          type: string
+          description: "`paint`, `close`, `open`, `apply_layout` or `revert`."
+        actor_id:
+          type: [string, "null"]
+          format: uuid
+          description: Who applied the batch, null for a principal that is not a UUID.
+        actor_label:
+          type: string
+          description: The kind of principal that applied the batch (`user`, `service`, ...).
+        seat_status_version:
+          type: integer
+          format: int64
+          description: The session's seat_status_version after the batch (one bump per batch).
+        applied_at:
+          type: string
+          format: date-time
+          description: When the batch was applied.
+        reverted_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the batch was reverted, null while it is not.
+        reverted_by_batch_id:
+          type: [string, "null"]
+          format: uuid
+          description: The revert batch, null while the batch is not reverted.
+        reverts_batch_id:
+          type: [string, "null"]
+          format: uuid
+          description: For a revert, the batch it reverted; null otherwise.
+        changes:
+          type: array
+          description: The seats the batch changed.
+          items:
+            $ref: "#/components/schemas/SeatBatchChange"
+        skipped:
+          type: array
+          description: The seats the batch left alone, with the reason.
+          items:
+            $ref: "#/components/schemas/SeatBatchSkipped"
+        unchanged_seat_keys:
+          type: array
+          description: Seats that already were in the requested state. Only in the answer of an apply or a revert.
+          items:
+            type: string
+    SeatBatchSummary:
+      type: object
+      description: One row of the batch list; the per-seat arrays are only in SeatBatch.
+      required: [id, session_id, kind, actor_id, actor_label, seat_status_version, applied_at, reverted_at, reverted_by_batch_id, reverts_batch_id, changed_count, skipped_count]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the batch.
+        session_id:
+          type: string
+          format: uuid
+          description: UUID of the session.
+        kind:
+          type: string
+          description: "`paint`, `close`, `open`, `apply_layout` or `revert`."
+        actor_id:
+          type: [string, "null"]
+          format: uuid
+          description: Who applied the batch, null for a principal that is not a UUID.
+        actor_label:
+          type: string
+          description: The kind of principal that applied the batch (`user`, `service`, ...).
+        seat_status_version:
+          type: integer
+          format: int64
+          description: The session's seat_status_version after the batch.
+        applied_at:
+          type: string
+          format: date-time
+          description: When the batch was applied.
+        reverted_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the batch was reverted, null while it is not.
+        reverted_by_batch_id:
+          type: [string, "null"]
+          format: uuid
+          description: The revert batch, null while the batch is not reverted.
+        reverts_batch_id:
+          type: [string, "null"]
+          format: uuid
+          description: For a revert, the batch it reverted; null otherwise.
+        changed_count:
+          type: integer
+          format: int32
+          description: Number of seats the batch changed.
+        skipped_count:
+          type: integer
+          format: int32
+          description: Number of seats the batch left alone.
+    SeatBatchList:
+      type: object
+      description: One page of a session's batches.
+      required: [items, total, has_more]
+      properties:
+        items:
+          type: array
+          description: The batches, newest first, without their per-seat arrays.
+          items:
+            $ref: "#/components/schemas/SeatBatchSummary"
+        total:
+          type: integer
+          format: int64
+          description: Number of batches of the session.
+        has_more:
+          type: boolean
+          description: True when another page follows.
+    SeatHistoryEntry:
+      type: object
+      description: One batch as seen from one seat.
+      required: [batch_id, kind, actor_label, applied_at, reverted_at, reverted_by_batch_id, outcome]
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+          description: UUID of the batch.
+        kind:
+          type: string
+          description: The batch's kind.
+        actor_label:
+          type: string
+          description: The kind of principal that applied the batch.
+        applied_at:
+          type: string
+          format: date-time
+          description: When the batch was applied.
+        reverted_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the batch was reverted, null while it is not.
+        reverted_by_batch_id:
+          type: [string, "null"]
+          format: uuid
+          description: The revert batch, null while the batch is not reverted.
+        outcome:
+          type: string
+          description: "`changed` or `skipped`."
+        reason:
+          type: string
+          description: Why the seat was skipped (SeatBatchSkipped.reason); only for `skipped`.
+        from:
+          description: The seat before the batch; only for `changed`.
+          allOf:
+            - $ref: "#/components/schemas/SeatBatchSeatState"
+        to:
+          description: The seat after the batch; only for `changed`.
+          allOf:
+            - $ref: "#/components/schemas/SeatBatchSeatState"
+    SeatHistory:
+      type: object
+      description: One page of a seat's history.
+      required: [seat_key, items, total, has_more]
+      properties:
+        seat_key:
+          type: string
+          description: The seat's key.
+        items:
+          type: array
+          description: The entries, newest first.
+          items:
+            $ref: "#/components/schemas/SeatHistoryEntry"
+        total:
+          type: integer
+          format: int64
+          description: Number of entries.
+        has_more:
+          type: boolean
+          description: True when another page follows.
     OrderRefundQueueItem:
       description: A refund in the organization's queue, with what is needed to place it.
       allOf:
@@ -4099,7 +4364,7 @@ components:
     OrderTicketSummary:
       type: object
       required: [id, item_id, status, holder_email, seat_sector, seat_row, seat_number, seat_label, issued_at,
-                 cancelled_at, system_ticket_id, tier_id, tier_name, price, currency, barcode, used_at]
+                 cancelled_at, system_ticket_id, tier_id, tier_name, price, currency, barcode, used_at, vip]
       description: |
         A ticket issued for one of the order's line items, with what the
         order card prints (EC-05): its category, the price the buyer paid
@@ -4163,7 +4428,111 @@ components:
         used_at:
           type: [string, "null"]
           format: date-time
-          description: When the ticket was scanned at the door (latest scan of its barcodes, any authority); null if never.
+          description: When the ticket was first let in at the door (the first admission, by arena's own scanner or by MACS; for a ticket of the legacy import the newest scan of its barcodes); null if never.
+        scans:
+          type: array
+          description: The ticket's last scans at a door (up to 5, any result, newest first), as the order card prints them. Empty when the ticket was never scanned.
+          items:
+            $ref: "#/components/schemas/TicketScan"
+        vip:
+          type: boolean
+          description: The organizer's private VIP mark. It is never printed on the PDF e-ticket or written in a letter to the buyer.
+
+    TicketScan:
+      type: object
+      required: [scanned_at, result, source, scanner_label, gate]
+      description: One scan of a ticket at a door (M2), by arena's own scanner or reported by MACS.
+      properties:
+        scanned_at:
+          type: string
+          format: date-time
+          description: When the scan happened at the door, as the scanner reported it.
+        result:
+          type: string
+          description: "What the gate decided: `admitted` or `denied`."
+        source:
+          type: string
+          description: "Who reported the scan: `arena_scanner` (arena's own scanner) or `macs` (the MACS gate system)."
+        scanner_label:
+          type: string
+          description: The scanner's own name as the reporting system gives it (MACS only; empty for arena's scanner).
+        gate:
+          type: string
+          description: The gate the scanner stood at; empty when the scanner did not say.
+
+    SessionTicketItem:
+      type: object
+      required: [ticket_id, system_ticket_id, status, tier_name, seat_label, order_id, order_number, buyer_name, buyer_email, entered, entered_at, last_scan]
+      description: One ticket of a session with its order, buyer and entry at the door (M2).
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the ticket.
+        system_ticket_id:
+          type: integer
+          format: int64
+          description: The ticket number printed on the e-ticket.
+        status:
+          type: string
+          description: "Ticket status: `active`, `cancelled`, `transferred` or `revoked`."
+        tier_name:
+          type: [string, "null"]
+          description: Name of the category; null when the category row is gone.
+        seat_label:
+          type: [string, "null"]
+          description: The seat parts joined with " / "; null for general admission.
+        order_id:
+          type: [string, "null"]
+          format: uuid
+          description: The order the ticket was sold with; null for an invitation.
+        order_number:
+          type: [integer, "null"]
+          format: int64
+          description: The order number (`orders.system_id`); null for an invitation.
+        buyer_name:
+          type: [string, "null"]
+          description: The buyer's name, when the order has one.
+        buyer_email:
+          type: [string, "null"]
+          description: The buyer's e-mail, else the ticket holder's.
+        entered:
+          type: boolean
+          description: True when the ticket was let in at a door.
+        entered_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the ticket was first let in; null when it was not.
+        last_scan:
+          description: The newest scan of the ticket whatever its result; null when nobody scanned it.
+          oneOf:
+            - $ref: "#/components/schemas/TicketScan"
+            - type: "null"
+
+    SessionTicketList:
+      type: object
+      required: [session_id, venue_timezone, total, has_more, items]
+      description: One page of a session's tickets with their entry at the door (M2).
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: The session.
+        venue_timezone:
+          type: [string, "null"]
+          description: IANA zone of the session's venue, for printing times; null when the session has no venue.
+        total:
+          type: integer
+          format: int64
+          description: How many tickets match the filter.
+        has_more:
+          type: boolean
+          description: True when a later page exists.
+        items:
+          type: array
+          description: The tickets of this page, in ticket-number order.
+          items:
+            $ref: "#/components/schemas/SessionTicketItem"
 
     OrderEventSummary:
       type: object
@@ -4526,6 +4895,317 @@ components:
           type: integer
           format: int64
           description: Places withheld from sale by an operator.
+
+    SeatLayoutParam:
+      type: object
+      required: [name, type, required, default, label_key]
+      description: |
+        One parameter of a seat-layout algorithm (task S1e). Clients draw the
+        form from this description and never hard-code an algorithm. Labels
+        are i18n keys, never texts.
+      properties:
+        name:
+          type: string
+          description: Parameter name as sent in `params` of the suggest request.
+        type:
+          type: string
+          description: "One of `integer`, `boolean`, `enum`, `integer_list` (a JSON array of integers)."
+        required:
+          type: boolean
+          description: Whether the parameter must be sent (a parameter with a default never needs to be).
+        min:
+          type: integer
+          format: int64
+          description: Lower bound of an integer, or of every item of an integer list.
+        max:
+          type: integer
+          format: int64
+          description: Upper bound of an integer, or of every item of an integer list.
+        min_items:
+          type: integer
+          description: Shortest allowed integer list.
+        max_items:
+          type: integer
+          description: Longest allowed integer list.
+        default:
+          description: Value used when the parameter is left out, of the parameter's own type; null when there is none.
+        options:
+          type: array
+          description: Allowed values of an `enum` parameter.
+          items:
+            $ref: "#/components/schemas/SeatLayoutParamOption"
+        unit:
+          type: string
+          description: "How to read an integer: `count`, `minor_currency` (minor units of the session currency) or `percent`."
+        label_key:
+          type: string
+          description: i18n key of the parameter's label.
+        hint_key:
+          type: string
+          description: i18n key of an optional hint under the field.
+
+    SeatLayoutParamOption:
+      type: object
+      required: [value, label_key]
+      description: One value of an enum parameter of a seat-layout algorithm.
+      properties:
+        value:
+          type: string
+          description: The value as sent in `params`.
+        label_key:
+          type: string
+          description: i18n key of the value's label.
+
+    SeatLayoutAlgorithm:
+      type: object
+      required: [id, label_key, required_annotations, params]
+      description: One seat-layout algorithm of the registry with its parameter schema.
+      properties:
+        id:
+          type: string
+          description: Stable algorithm id (`desirability`, ...), sent back as `algorithm` of the suggest request.
+        label_key:
+          type: string
+          description: i18n key of the algorithm's name.
+        description_key:
+          type: string
+          description: i18n key of a short description of the algorithm.
+        required_annotations:
+          type: array
+          description: "Annotations the algorithm cannot work without (for example `focal_point`, the stage)."
+          items:
+            type: string
+        params:
+          type: array
+          description: The algorithm's parameters.
+          items:
+            $ref: "#/components/schemas/SeatLayoutParam"
+
+    SeatLayoutAlgorithmsResponse:
+      type: object
+      required: [session_id, currency, algorithms]
+      description: The seat-layout algorithms a session can use (task S1e).
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the session.
+        currency:
+          type: string
+          description: ISO 4217 currency of the session; every `minor_currency` parameter is in it.
+        algorithms:
+          type: array
+          description: Every registered algorithm, sorted by id.
+          items:
+            $ref: "#/components/schemas/SeatLayoutAlgorithm"
+
+    SeatLayoutPoint:
+      type: object
+      required: [x, y]
+      description: A point in canvas coordinates of the seating plan.
+      properties:
+        x:
+          type: number
+          description: Horizontal canvas coordinate.
+        y:
+          type: number
+          description: Vertical canvas coordinate.
+
+    SeatLayoutAnnotations:
+      type: object
+      description: |
+        Plan facts the allocator may need that are not part of the geometry.
+        Until they are stored on the seating plan (S1d) they travel in the
+        suggest request.
+      properties:
+        focal_point:
+          description: The stage, in canvas coordinates. The desirability algorithm requires it.
+          allOf:
+            - $ref: "#/components/schemas/SeatLayoutPoint"
+        section_weights:
+          type: object
+          description: Section key to weight from 0 (least wanted) to 1 (as good as the geometry says). A section left out weighs 1.
+          additionalProperties:
+            type: number
+        obstructed_seat_keys:
+          type: array
+          description: Seats with a restricted view.
+          items:
+            type: string
+
+    SeatLayoutSuggestRequest:
+      type: object
+      required: [algorithm]
+      description: Body of POST .../seat-layout/suggest (task S1e).
+      properties:
+        algorithm:
+          type: string
+          description: Id of the algorithm from GET .../seat-layout/algorithms.
+        params:
+          type: object
+          description: Parameter values by name, checked against the algorithm's schema. A left-out or null parameter takes its default.
+          additionalProperties: true
+        annotations:
+          description: Stage, section weights and obstructed seats of the plan.
+          allOf:
+            - $ref: "#/components/schemas/SeatLayoutAnnotations"
+
+    SeatLayoutSlot:
+      type: object
+      required: [key, price_amount, share]
+      description: One proposed category.
+      properties:
+        key:
+          type: string
+          description: Slot key (`c1` is the dearest for the desirability algorithm).
+        name:
+          type: string
+          description: Optional proposed name.
+        color:
+          type: string
+          description: Optional proposed colour, `#rrggbb`.
+        price_amount:
+          type: integer
+          format: int64
+          description: Proposed price in minor units of the session currency.
+        share:
+          type: number
+          description: Target share of the hall, 0 to 1.
+
+    SeatLayoutProposal:
+      type: object
+      required: [slots, assignments, frozen_seat_keys]
+      description: A proposed layout. Nothing is applied.
+      properties:
+        slots:
+          type: array
+          description: The proposed categories.
+          items:
+            $ref: "#/components/schemas/SeatLayoutSlot"
+        assignments:
+          type: object
+          description: seat_key to slot key for every seat that is not sold or held (closed seats included).
+          additionalProperties:
+            type: string
+        frozen_seat_keys:
+          type: array
+          description: Sold and held seats, left in their category at their own price, sorted.
+          items:
+            type: string
+
+    SeatLayoutSlotMetrics:
+      type: object
+      required: [slot_key, price_amount, seats, open_seats, revenue_minor, share]
+      description: Revenue estimate of one proposed category.
+      properties:
+        slot_key:
+          type: string
+          description: Key of the slot.
+        price_amount:
+          type: integer
+          format: int64
+          description: Proposed price in minor units.
+        seats:
+          type: integer
+          description: Free seats the layout puts in the slot, closed seats included.
+        open_seats:
+          type: integer
+          description: Free seats of the slot that are open for sale.
+        revenue_minor:
+          type: integer
+          format: int64
+          description: open_seats times price_amount.
+        share:
+          type: number
+          description: Actual share of the hall in the slot, 0 to 1.
+
+    SeatLayoutMetrics:
+      type: object
+      required: [currency, total_seats, sold_frozen, sold_seats, held_seats, closed_seats, revenue_sold_minor, revenue_held_minor, revenue_remaining_minor, revenue_estimate_minor, by_slot]
+      description: |
+        Revenue estimate of a proposal, a reference figure and never an
+        optimum: sold seats at the price they were sold for, held seats at
+        the price they are held for, every open free seat at the proposed
+        price. Closed seats are left out.
+      properties:
+        currency:
+          type: string
+          description: ISO 4217 currency of every amount.
+        total_seats:
+          type: integer
+          description: Seats of the plan.
+        sold_frozen:
+          type: integer
+          description: Frozen seats, sold plus held.
+        sold_seats:
+          type: integer
+          description: Sold seats.
+        held_seats:
+          type: integer
+          description: Seats in a hold.
+        closed_seats:
+          type: integer
+          description: Free seats an operator closed for sale.
+        revenue_sold_minor:
+          type: integer
+          format: int64
+          description: Sold seats at the price they were sold for.
+        revenue_held_minor:
+          type: integer
+          format: int64
+          description: Held seats at the price they are held for.
+        revenue_remaining_minor:
+          type: integer
+          format: int64
+          description: Open free seats at the proposed prices.
+        revenue_estimate_minor:
+          type: integer
+          format: int64
+          description: Sold plus held plus remaining.
+        by_slot:
+          type: array
+          description: The estimate per proposed category.
+          items:
+            $ref: "#/components/schemas/SeatLayoutSlotMetrics"
+
+    SeatLayoutSuggestResponse:
+      type: object
+      required: [session_id, algorithm, params, currency, seating_plan_version_id, geometry_checksum, seat_status_version, layout, metrics]
+      description: A seat-layout proposal (task S1e). Nothing was written.
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the session.
+        algorithm:
+          type: string
+          description: Id of the algorithm that made the proposal.
+        params:
+          type: object
+          description: The parameters used, defaults filled in.
+          additionalProperties: true
+        currency:
+          type: string
+          description: ISO 4217 currency of the session.
+        seating_plan_version_id:
+          type: string
+          format: uuid
+          description: Plan version whose geometry was read.
+        geometry_checksum:
+          type: string
+          description: Checksum of that geometry.
+        seat_status_version:
+          type: integer
+          format: int64
+          description: The session's seat_status_version the proposal was made against.
+        layout:
+          description: The proposal.
+          allOf:
+            - $ref: "#/components/schemas/SeatLayoutProposal"
+        metrics:
+          description: Its revenue estimate.
+          allOf:
+            - $ref: "#/components/schemas/SeatLayoutMetrics"
 
     SessionSummary:
       type: object
@@ -6508,6 +7188,14 @@ components:
             Number of active, non-cancelled sessions of the event, past ones
             included — the same count the hosted page reports.
           example: 2
+        email_note:
+          type: [string, "null"]
+          description: |
+            The organizer's own text of the event (EC-31, migration 0165): up
+            to 2000 characters of plain text that the ticket and the
+            session-change e-mails print under "About the event". Null when
+            the event has none.
+          example: "Come 30 minutes early. The cloakroom is free."
         visibility:
           type: string
           enum: [public, private, unlisted]
@@ -7536,6 +8224,141 @@ components:
           items:
             $ref: "#/components/schemas/PublicMaterialPhoto"
 
+    PageTrackRequest:
+      type: object
+      required: [kind]
+      description: |
+        Body of POST /v1/public/pages/{org_slug}/{event_slug}/track, the hosted
+        page's statistics beacon (HP-2a). Unknown fields are ignored.
+      properties:
+        kind:
+          type: string
+          description: |
+            What happened: `page_view`, `video_play` or `partner_click`. Any
+            other value is refused with 400 `track.invalid_kind`.
+          example: "page_view"
+        utm_source:
+          type: string
+          description: |
+            Optional `utm_source` of the page address. Only the characters
+            `A-Z a-z 0-9 . _ ~ -` are kept (a value with any other character is
+            counted as empty) and it is cut to 64 characters.
+          example: "instagram"
+        utm_campaign:
+          type: string
+          description: Optional `utm_campaign` of the page address, cleaned like `utm_source`.
+          example: "spring"
+
+    PageStatsCounts:
+      type: object
+      required: [hits, suspect_hits]
+      description: A pair of counters of one kind.
+      properties:
+        hits:
+          type: integer
+          format: int64
+          description: Hits that looked like a person with a browser.
+        suspect_hits:
+          type: integer
+          format: int64
+          description: Hits counted apart because the browser looked like a bot (or sent no User-Agent).
+
+    PageStatsKinds:
+      type: object
+      required: [page_view, video_play, partner_click]
+      description: The counters of the three kinds.
+      properties:
+        page_view:
+          description: Opened the event page.
+          allOf:
+            - $ref: "#/components/schemas/PageStatsCounts"
+        video_play:
+          description: Pressed play on a video of the page.
+          allOf:
+            - $ref: "#/components/schemas/PageStatsCounts"
+        partner_click:
+          description: Followed a "where else to buy" link.
+          allOf:
+            - $ref: "#/components/schemas/PageStatsCounts"
+
+    PageStatsDay:
+      type: object
+      required: [day, page_view, video_play, partner_click]
+      description: The counters of one calendar day (in the venue's zone) that has data.
+      properties:
+        day:
+          type: string
+          description: The day, `YYYY-MM-DD`.
+          example: "2026-05-06"
+        page_view:
+          description: Opened the event page.
+          allOf:
+            - $ref: "#/components/schemas/PageStatsCounts"
+        video_play:
+          description: Pressed play on a video of the page.
+          allOf:
+            - $ref: "#/components/schemas/PageStatsCounts"
+        partner_click:
+          description: Followed a "where else to buy" link.
+          allOf:
+            - $ref: "#/components/schemas/PageStatsCounts"
+
+    PageStatsSource:
+      type: object
+      required: [utm_source, utm_campaign, hits, suspect_hits]
+      description: One utm pair of the page views. Visits that carried no utm are the pair of two empty strings.
+      properties:
+        utm_source:
+          type: string
+          description: The cleaned `utm_source`, empty when none.
+        utm_campaign:
+          type: string
+          description: The cleaned `utm_campaign`, empty when none.
+        hits:
+          type: integer
+          format: int64
+          description: Page views that looked like a person.
+        suspect_hits:
+          type: integer
+          format: int64
+          description: Page views counted apart as probable bots.
+
+    PageStatsResponse:
+      type: object
+      required: [event_id, from, to, timezone, totals, days, sources]
+      description: |
+        The statistics of an event's hosted page for a window of days. A guide
+        for the organizer, not proof for an advertising account: a bot may look
+        like a person and a person may block the beacon.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: The event.
+        from:
+          type: string
+          description: First day of the window, `YYYY-MM-DD`.
+        to:
+          type: string
+          description: Last day of the window (inclusive), `YYYY-MM-DD`.
+        timezone:
+          type: [string, "null"]
+          description: IANA zone of the event's venue that decides which day a hit belongs to; null (UTC days) while the event has no session.
+        totals:
+          description: Sums over the whole window.
+          allOf:
+            - $ref: "#/components/schemas/PageStatsKinds"
+        days:
+          type: array
+          description: The days that have data, oldest first. A day without hits is absent.
+          items:
+            $ref: "#/components/schemas/PageStatsDay"
+        sources:
+          type: array
+          description: The utm pairs of the page views, biggest first, at most 20.
+          items:
+            $ref: "#/components/schemas/PageStatsSource"
+
     HostedPageResponse:
       type: object
       required: [org, event, feed_token, default_locale, materials]
@@ -7784,6 +8607,17 @@ components:
             Tri-state (absent=keep, null=clear, value=set).
             Comma-separated SEO keywords for the event page (AB-45c).
           example: "festival,music,outdoor,summer"
+        email_note:
+          type: [string, "null"]
+          description: |
+            Tri-state (absent=keep, null or "" = clear, value=set). The
+            organizer's own text that the ticket and session-change e-mails
+            print under "About the event". Plain text of at most 2000
+            characters: HTML tags are removed, control characters are
+            refused, at most 5 links and every link must be `https://`. A
+            refused text answers 400 `event.invalid_email_note` with
+            `error.details.reason`.
+          example: "Come 30 minutes early. The cloakroom is free."
 
     UpdateEventStatusRequest:
       type: object
@@ -7806,6 +8640,41 @@ components:
             combination is rejected with HTTP 422 and
             `error.code = "event.invalid_transition"`.
           example: "published"
+
+    EventEmailNoteTestRequest:
+      type: object
+      description: Optional body of the test-letter route.
+      properties:
+        to:
+          type: string
+          description: |
+            Address to send to: the caller's own, or that of an active member
+            of the organization. Empty means the caller's own address.
+          example: "manager@example.org"
+        note:
+          type: string
+          description: |
+            An unsaved draft to preview, filtered like PATCH `email_note`.
+            Absent means the stored text.
+          example: "Come 30 minutes early."
+        locale:
+          type: string
+          description: Language of the letter (en, ru, cs, de, es, fr, he). Empty means the caller's language.
+          example: "ru"
+
+    EventEmailNoteTestResponse:
+      type: object
+      required: [queued, to]
+      description: The test letter was queued.
+      properties:
+        queued:
+          type: boolean
+          description: Always true on success.
+          example: true
+        to:
+          type: string
+          description: The address the letter goes to.
+          example: "manager@example.org"
 
     EventEnvelope:
       type: object
@@ -12027,7 +12896,13 @@ components:
           example: "Teatro Demo S.L."
         terms_url:
           type: string
-          description: The platform terms page (`PLATFORM_TERMS_URL`, else the site's /legal/terms); omitted when none is configured.
+          description: |
+            While `required` is true and the API knows its public base URL:
+            the organizer's terms of sale for this event and channel,
+            `<API>/v1/public/pages/{org_slug}/terms?event_id=..&feed_token=..&format=html`
+            (P3a; an HTML page until the tickets page renders the terms).
+            Otherwise the platform terms page (`PLATFORM_TERMS_URL`, else the
+            site's /legal/terms); omitted when none is configured.
         privacy_url:
           type: string
           description: The privacy policy (`ONBOARDING_PRIVACY_URL`, else the site's /legal/privacy); omitted when none is configured.
@@ -12051,8 +12926,11 @@ components:
           example: "sale_terms"
         terms_version:
           type: string
-          description: The version accepted, `platform-terms:<version>;seller:<organization id>` until the organizer's rendered terms exist.
-          example: "platform-terms:2026-10-15;seller:0190a2b4-6f00-7000-8000-000000000001"
+          description: |
+            The version accepted: `sale_terms:v<document version>:<language>;seller:<organization id>`
+            for the organizer's rendered terms (P3a, then `legal_rendering_id` is set),
+            `platform-terms:<version>;seller:<organization id>` for a consent to the platform terms.
+          example: "sale_terms:v1:es;seller:0190a2b4-6f00-7000-8000-000000000001"
         locale:
           type: [string, "null"]
           description: Language the checkbox was shown in, null when not stated.
@@ -12085,6 +12963,127 @@ components:
         privacy_url:
           type: [string, "null"]
           description: The privacy policy link the checkbox showed.
+        legal_rendering_id:
+          type: [string, "null"]
+          format: uuid
+          description: The rendering of the organizer's terms the buyer accepted (`legal_renderings`, P3a); null for a consent to the platform terms.
+        terms_sha256:
+          type: [string, "null"]
+          description: SHA-256 (hex) of that rendering's HTML at acceptance; null with `legal_rendering_id`.
+
+    PublicTermsResponse:
+      type: object
+      required: [document_version, rendering_id, locale, html, sha256, refund_mode, seller_legal_name]
+      description: The organizer's terms of sale rendered for one seller, channel, event and language (P3a).
+      properties:
+        document_version:
+          type: integer
+          description: Version of the template that was rendered.
+          example: 1
+        rendering_id:
+          type: string
+          format: uuid
+          description: The stored rendering (`legal_renderings`); a consent at checkout names it.
+        locale:
+          type: string
+          description: Language of the rendered version (after the fallback to `en`).
+          example: "es"
+        html:
+          type: string
+          description: The terms as HTML without scripts, styles or links, wrapped in `<article class="legal-document" lang=.. dir=..>`.
+        sha256:
+          type: string
+          description: SHA-256 (hex) of `html`.
+        refund_mode:
+          type: string
+          description: The refund policy stated, `no_refund`, `refund_until_sales_end` or `refund_by_law` (the event's, else the organization's, else `refund_by_law`).
+          example: "refund_by_law"
+        seller_legal_name:
+          type: string
+          description: The seller the terms name.
+          example: "Teatro Demo S.L."
+
+    LegalDocument:
+      type: object
+      required: [id, kind, locale, version, status, body_template, created_by, created_at, published_at, published_by, retired_at]
+      description: One version of a terms template (P3a). Immutable once published.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Version id.
+        kind:
+          type: string
+          description: Document kind, `sale_terms` so far.
+          example: "sale_terms"
+        locale:
+          type: string
+          description: Language of the template (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+          example: "en"
+        version:
+          type: integer
+          description: Version number within the kind and language, from 1.
+          example: 1
+        status:
+          type: string
+          description: "`draft`, `published` (at most one per kind and language) or `retired`."
+          example: "published"
+        body_template:
+          type: string
+          description: The template text with its placeholders.
+        created_by:
+          type: [string, "null"]
+          format: uuid
+          description: The operator who saved the draft; null for the seeded versions.
+        created_at:
+          type: string
+          format: date-time
+          description: When the draft was saved.
+        published_at:
+          type: [string, "null"]
+          format: date-time
+          description: When it was published; null for a draft.
+        published_by:
+          type: [string, "null"]
+          format: uuid
+          description: The operator who published it.
+        retired_at:
+          type: [string, "null"]
+          format: date-time
+          description: When a newer version replaced it.
+
+    LegalDocumentListResponse:
+      type: object
+      required: [items, placeholders]
+      description: Versions of the terms templates and the placeholder allowlist (P3a).
+      properties:
+        items:
+          type: array
+          description: The versions, newest first within each kind and language.
+          items:
+            $ref: "#/components/schemas/LegalDocument"
+        placeholders:
+          type: array
+          description: Every placeholder key a template may use.
+          items:
+            type: string
+
+    CreateLegalDocumentRequest:
+      type: object
+      required: [kind, locale, body_template]
+      description: A new draft of a terms template (P3a).
+      properties:
+        kind:
+          type: string
+          description: Document kind, `sale_terms`.
+          example: "sale_terms"
+        locale:
+          type: string
+          description: Language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+          example: "es"
+        body_template:
+          type: string
+          description: The template text, at most 100 000 characters, only allowlisted placeholders.
 
     OrderConsentsResponse:
       type: object
@@ -14967,7 +15966,7 @@ components:
 
     ComplimentaryTicketItem:
       type: object
-      required: [id, system_ticket_id, holder_email, holder_name, status, used]
+      required: [id, system_ticket_id, holder_email, holder_name, status, used, vip]
       description: One ticket of a complimentary issuance, as the invitations list shows it.
       properties:
         id:
@@ -14990,6 +15989,9 @@ components:
         used:
           type: boolean
           description: True once the ticket has been scanned at the door.
+        vip:
+          type: boolean
+          description: The organizer's private VIP mark of the ticket (the same flag as on a bought ticket). Never printed on the PDF or written in the guest's letter.
 
     ComplimentaryListItem:
       type: object
@@ -15153,6 +16155,9 @@ components:
         notes:
           type: string
           description: Internal note.
+        vip:
+          type: boolean
+          description: Mark every ticket of the issuance with the organizer's private VIP flag (default false). The flag is never printed on the PDF or written in the guest's letter.
 
     ComplimentaryCreateResponse:
       type: object
@@ -15167,7 +16172,7 @@ components:
           description: The tickets of the issuance with their numbers and holders.
           items:
             type: object
-            description: One ticket (id, complimentary_issuance_id, session_id, tier_id, holder_email, holder_name, system_ticket_id, status, issued_at, created_at, updated_at).
+            description: One ticket (id, complimentary_issuance_id, session_id, tier_id, holder_email, holder_name, system_ticket_id, status, issued_at, created_at, updated_at, vip).
         letters:
           type: array
           description: The invitation letters of the issuance with their delivery status, as in the invitations list. Right after the issue the letters are queued (or empty while no delivery job exists).
@@ -15382,6 +16387,17 @@ components:
             (the organization itself is the promoter), a UUID links one of
             the organization's active promoters. Anything else answers 422
             `import.invalid_promoter`.
+        emailNote:
+          type: [string, "null"]
+          description: |
+            Arena event-bundle extension (source=arena only; EC-31, migration
+            0165): the organizer's own text that the ticket and session-change
+            e-mails print under "About the event". Absent or null keeps the
+            stored text, "" removes it, a string replaces it after the same
+            filter as PATCH `email_note` (plain text, at most 2000
+            characters, at most 5 `https://` links). A refused text answers
+            422 `import.invalid_email_note`. The event-bundle read answers
+            "" when the event has none.
     ImportBil24SessionActionEvent:
       type: object
       description: |
@@ -15402,6 +16418,23 @@ components:
             not a session of this organization answers 422
             import.invalid_session; a session other than the one externalRef
             or actionEventId names answers 409 import.external_ref_conflict.
+        arenaSeatingPlanVersionId:
+          type: string
+          format: uuid
+          description: |
+            Arena extension, source=arena only (task S1b): the seating plan
+            version a NEW session is created from — a version of a plan of
+            this organization drawn for the session's venue (422
+            import.invalid_seating_plan_version for an unknown or foreign
+            version, 422 import.seating_plan_venue_mismatch for another
+            venue). The session gets every place of the plan (one seat per
+            geometry seat, the GA zones' places) in admission mode
+            assigned_seats, hybrid or general_admission, and each
+            categoryList entry prices one plan category (see
+            `planCategoryIndex`). On a session that already exists it must
+            be absent or the version the session is bound to (409
+            import.seating_plan_version_conflict): a bundle never re-binds a
+            plan or touches places. Omitted when empty.
         actionEventId:
           type: integer
           format: int64
@@ -15561,6 +16594,21 @@ components:
             GET .../sessions/{session_id}/tiers), so a renamed category is
             updated rather than created afresh. A UUID that is not a category
             of that session answers 422 import.invalid_category.
+        planCategoryIndex:
+          type: integer
+          description: |
+            Arena extension, source=arena only (task S1b): the 1-based index
+            of the seating-plan category this entry prices when the bundle
+            creates a session from `actionEvent.arenaSeatingPlanVersionId`.
+            Without it the entry is matched to the plan category of the same
+            name (case- and space-insensitive; the plan's display-name
+            override counts too). Every plan category that has places needs
+            exactly one entry: 422 import.seating_category_unmatched (no
+            pair, ambiguous name), import.seating_category_duplicate (two
+            entries for one category) or import.seating_category_missing (a
+            plan category nobody prices). Ignored on a session that already
+            exists; written by GET .../event-bundle for the plan category a
+            tier sells. Omitted when absent.
         categoryPriceId:
           type: integer
           format: int64
@@ -15586,8 +16634,13 @@ components:
         placement:
           type: boolean
           description: |
-            Whether the category is seated. Seated categories are accepted but
-            imported as general admission by this endpoint.
+            Whether the category is seated. On import it is informational:
+            whether a category is seated follows from the places it owns (a
+            source=arena bundle takes them from
+            `actionEvent.arenaSeatingPlanVersionId`). GET .../event-bundle
+            writes true for a category that owns plan seats. For a seated
+            category `availability` is ignored: its places are the plan's
+            seats.
         availability:
           type: integer
           format: int32
@@ -15978,8 +17031,9 @@ components:
           type: string
           description: |
             Stable reason: `event_bundle.session_cancelled`,
-            `event_bundle.session_seated` (a seating plan or assigned seats:
-            a bundle carries general admission only),
+            `event_bundle.session_seated` (assigned seats without a seating
+            plan version a bundle could name; a session bound to a version
+            is written with `arenaSeatingPlanVersionId`),
             `event_bundle.session_pay_what_you_want` (a category a bundle
             cannot say) or `event_bundle.session_venue_missing` (the venue
             was deleted).
@@ -16130,7 +17184,11 @@ components:
         the organization's channels it is published into; `promoterId` is ""
         when the organization itself promotes the event. `bigPosterUrl` is
         left empty on purpose (an import without one keeps the stored
-        poster): the poster is `poster_media_id`.
+        poster): the poster is `poster_media_id`. A session bound to a
+        seating plan version carries `actionEvent.arenaSeatingPlanVersionId`,
+        `placement: true` on its seated categories and `planCategoryIndex`
+        on each category that sells a plan category (task S1b); a re-import
+        keeps the plan and every place.
 
         Left out: deleted and cancelled sessions, sessions a bundle cannot
         carry (listed in `skipped` with the reason), the open/closed flag of
@@ -27543,8 +28601,8 @@ paths:
         seat-key list, per-outcome counts, and the actor.
 
         Requires JWT authentication and the
-        `event_session.assign_seating_plan` permission (same
-        operational role used for SEAT-B2 binding).
+        `session.seats.manage` permission (migration 0161, separate
+        from binding a plan).
       tags: [v1, seating]
       security:
         - bearerAuth: []
@@ -27606,13 +28664,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor does not hold event_session.assign_seating_plan
+          description: Actor does not hold session.seats.manage
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Session not found or belongs to a different event / org
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The selectors match more than 10 000 seats (`seating.too_many_seat_keys`, details `max` and `received`); split the request.
           content:
             application/json:
               schema:
@@ -33755,7 +34819,7 @@ paths:
       summary: Admin-only per-seat inventory (AB-39)
       description: |
         Returns per-seat rows with `tier_id` for the admin seat table.
-        Requires JWT + `event_session.assign_seating_plan`. Tenant is
+        Requires JWT + `session.seats.manage`. Tenant is
         resolved from the session's owning organization.
       tags: [v1, seating]
       security:
@@ -33829,7 +34893,7 @@ paths:
           * Unknown seat_keys are reported in `unknown_seat_keys` — they
             do NOT fail the request.
 
-        Requires JWT + `event_session.assign_seating_plan`. Tenant is
+        Requires JWT + `session.seats.manage`. Tenant is
         resolved from the session's owning organization.
       tags: [v1, seating]
       security:
@@ -33889,7 +34953,7 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: |
-            Caller lacks `event_session.assign_seating_plan` or is not a
+            Caller lacks `session.seats.manage` or is not a
             member of the session's owning organization
             (`org.access_denied`).
           content:
@@ -41280,6 +42344,82 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/public/pages/{org_slug}/{event_slug}/track:
+    post:
+      operationId: postPublicPageTrack
+      summary: Count a page view, a video play or a partner click of a hosted page
+      description: |
+        The hosted page's statistics beacon (HP-2a). No JWT, no cookie. One
+        call adds one hit to a counter row of the event: the day (the calendar
+        day in the venue's zone), the kind and the two cleaned utm values. The
+        visitor's IP address, User-Agent, country and time of day are never
+        stored and never logged; an obvious bot (by User-Agent, or none) is
+        counted in `suspect_hits` instead of `hits`. The numbers are a guide for
+        the organizer, not proof for an advertising account.
+
+        The page is resolved like `GET /v1/public/pages/{org_slug}/{event_slug}`
+        (an organization's or a promoter's slug) and answers the same
+        `404 page.not_found` for every miss. One event keeps at most 200
+        different utm pairs a day; more are counted without utm.
+
+        Rate limited by the page (`PUBLIC_PAGE_TRACK_EVENT_RATE_LIMIT`) and by
+        client IP (`PUBLIC_PAGE_TRACK_IP_RATE_LIMIT`) before any database read;
+        a request over a limit is answered 429 `track.rate_limited` and is not
+        counted.
+      tags: [PublicFeed]
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Organization or promoter slug, matched case-insensitively.
+        - name: event_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Event slug, matched case-insensitively.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PageTrackRequest"
+      responses:
+        "204":
+          description: Counted.
+        "400":
+          description: The body is not a JSON object (`track.invalid_body`) or the kind is not allowed (`track.invalid_kind`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Page not found (`page.not_found`), one outcome for every miss.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited (`track.rate_limited`, with Retry-After).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The hit could not be written (`track.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/public/pages/{org_slug}:
     get:
       operationId: getPublicPromoterPage
@@ -41344,6 +42484,119 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "429":
           description: Rate limited.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/pages/{org_slug}/terms:
+    get:
+      operationId: getPublicTerms
+      summary: The organizer's terms of sale for a hosted page slug
+      description: |
+        The organizer's terms of sale (line P, task P3a): the published
+        template of the platform with this seller's data substituted (legal
+        name and form, registration and tax numbers, address, public phone,
+        the promoter of the event, the refund policy, the seller's country).
+        The organizer never edits the text. No JWT required.
+
+        The slug is resolved like the hosted page: an organization first,
+        else a promoter that is not archived (then `event_slug` must name an
+        event linked to that promoter, and without it the promoter's data is
+        printed). The channel is the one of `feed_token` (any active channel
+        of that organization), else the organization's newest hosted-page
+        channel. For a `merchant_of_record` channel the platform is named as
+        the seller.
+
+        The rendering is stored once per document version and data
+        (`legal_renderings`): the same inputs always answer the same
+        `rendering_id` and `sha256`, and a consent at checkout names that
+        rendering. The texts seeded so far are English drafts marked
+        "DRAFT — awaiting legal review" in every language, stored as DRAFTS:
+        a draft is never served, so until an operator publishes a version
+        this route answers `404 terms.not_published` and the checkout
+        consent keeps the platform terms. Before the HTML is served it is
+        checked again: only the markup the renderer writes, and only the
+        bytes its SHA-256 names (`500 terms.render_failed` otherwise).
+
+        Any miss (unknown slug, no channel, an event that is not published,
+        not the promoter's, a feed token of another organization, a seller
+        profile that is not complete) answers the
+        same `404 page.not_found` as the hosted page. Rate-limited per client
+        IP. Cache-Control is short (30s).
+
+        The static segment `terms` takes precedence over the page route's
+        `{event_slug}`; no event is given the slug `terms`.
+      tags: [PublicFeed]
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Organization or promoter slug, matched case-insensitively.
+        - name: event_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: The event whose refund policy and promoter the terms state, by id (a published event of the organization); wins over `event_slug`. The checkout consent link uses it.
+        - name: event_slug
+          in: query
+          required: false
+          schema:
+            type: string
+          description: The same event by its slug.
+        - name: feed_token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: The feed token of the channel the terms are read for; another organization's token answers 404.
+        - name: locale
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`, a region subtag is ignored); else the first tag of Accept-Language; anything else and a language with no published version fall back to `en`.
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "`html` for a self-contained HTML page (no scripts, strict CSP) instead of JSON; any other value answers JSON."
+      responses:
+        "200":
+          description: The rendered terms, as JSON or as an HTML page when `format=html`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicTermsResponse"
+            text/html:
+              schema:
+                type: string
+                description: A complete HTML document holding the same `html`, the version and the SHA-256.
+        "404":
+          description: "`page.not_found` (any miss, see above) or `terms.not_published` (no version is published)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited (`page.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The terms could not be rendered (`terms.render_failed`).
           content:
             application/json:
               schema:
@@ -46516,6 +47769,175 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdSeatLayoutAlgorithms
+      summary: Seat-layout algorithms and their parameters
+      description: |
+        Lists every seat-layout algorithm of the registry with the schema of
+        its parameters (number of categories 1 to 15, prices, shares,
+        options), so the seat manager and the bot draw the form without
+        knowing any algorithm (spec 26 §4.1, task S1e). Read-only. The
+        session must belong to this organization. Requires
+        `session.seats.manage`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The algorithms.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatLayoutAlgorithmsResponse"
+        "400":
+          description: org_id or session_id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold `session.seats.manage` in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest:
+    post:
+      operationId: postV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest
+      summary: Propose a seat layout
+      description: |
+        Runs one seat-layout algorithm on the geometry of the session's plan
+        version and the current state of its seats, and answers the proposed
+        categories, the category of every free seat and a revenue estimate
+        (spec 26 §4.1, task S1e). Writes NOTHING: applying a layout is a
+        separate step. Sold and held seats are never moved; they count in the
+        estimate at the price they were sold or held for ("sold by fact plus
+        the rest at the new prices"). A seat still marked held whose
+        reservation has expired (not draft/active, or past `expires_at`) is
+        treated as free: the expiry sweep is about to release it, so it gets a
+        category and counts at the proposed price. Until the plan stores its
+        annotations (S1d), the stage and section weights travel in the body;
+        a section weight or an obstructed seat the plan does not have is 400
+        `seat_layout.invalid_annotation`. An explicit `prices` list goes from
+        the dearest category down and must not increase. With
+        `cheaper_row_edges` the actual shares (`metrics.by_slot[].share`)
+        move away from the share template, because row edges are pushed into
+        cheaper categories. Requires `session.seats.manage`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SeatLayoutSuggestRequest"
+      responses:
+        "200":
+          description: The proposal and its estimate.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatLayoutSuggestResponse"
+        "400":
+          description: |
+            Invalid path parameter or body (`seat_layout.invalid_body`), an
+            unknown algorithm (`seat_layout.unknown_algorithm`), a parameter
+            outside the algorithm's schema (`seat_layout.invalid_param`) or an
+            invalid annotation (`seat_layout.invalid_annotation`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold `session.seats.manage` in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            The session has no seating plan (`seat_layout.no_seating_plan`),
+            its plan has no seats (`seat_layout.no_seats`), or the algorithm
+            needs an annotation that was not given
+            (`seat_layout.annotation_required`, for example the stage).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/sessions/{session_id}/summary:
     get:
       operationId: getV1OrganizationsOrgIdSessionsSessionIdSummary
@@ -46585,6 +48007,95 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/sessions/{session_id}/tickets:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdTickets
+      summary: Tickets of a session with their entry at the door
+      description: |
+        Lists the tickets of one session in ticket-number order, each with its
+        order, buyer and what the door did with it: when it was first let in
+        and its newest scan. `entered=false` lists the active tickets nobody
+        has entered with ("who has not come yet"), `entered=true` the tickets
+        with an entry, no filter every ticket. A ticket counts as entered when
+        it carries `used_at`, an admitted scan or a scanned barcode, the same
+        reading the refund guard uses. The page carries the buyer's name and
+        e-mail, so an organization API key is refused with 403
+        `orders.session_tickets_api_key_forbidden`. The session must belong to
+        this organization, a session of another one is invisible. Requires the
+        `order.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+        - name: entered
+          in: query
+          required: false
+          description: "`false` lists active tickets nobody entered with, `true` the tickets with an entry. Absent lists every ticket."
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1 to 200 (default 50).
+          schema: { type: integer, minimum: 1, maximum: 200 }
+        - name: offset
+          in: query
+          required: false
+          description: Number of tickets to skip (default 0).
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: One page of the session's tickets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionTicketList"
+        "400":
+          description: A path parameter is not a UUID, or `entered`, `limit` or `offset` is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`order.read`), or the caller is an organization API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Order queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/sessions/{session_id}/sales.csv:
     get:
       operationId: getV1OrganizationsOrgIdSessionsSessionIdSalesCsv
@@ -46594,7 +48105,8 @@ paths:
         order number, order status, order date, buyer, e-mail, phone,
         category, price paid for that ticket, currency, EAN-13 barcode,
         ticket status, whether the ticket was admitted at the gate (`yes` /
-        `no`), sales channel and promo code. Written by the platform's
+        `no`), the time of the first entry, who reported it (`arena_scanner`
+        or `macs`), the scanner and gate, sales channel and promo code. Written by the platform's
         csvexport rules (spec 35 §5.1): UTF-8 with a BOM, `;` separator, CRLF,
         every text quoted, barcodes / phones / long numbers as Excel text
         (`="4600051000001"`), formula-looking values prefixed with `'`,
@@ -46664,6 +48176,185 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "413":
           description: The export exceeds the row limit (`export.too_many_rows`, details `rows` and `max_rows`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`export.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Export queries unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/page-stats:
+    get:
+      operationId: getV1OrganizationsOrgIdEventsEventIdPageStats
+      summary: Statistics of the event's hosted page
+      description: |
+        Page views, video plays and partner-link clicks counted by the page's
+        beacon (`POST /v1/public/pages/{org_slug}/{event_slug}/track`), per
+        day in the venue's zone, with the totals of the window and the biggest
+        utm pairs of the page views. By default the window is the last 30 days
+        ending today in the venue's zone; `from` and `to` (`YYYY-MM-DD`,
+        inclusive) set it, at most 366 days. Hits of probable bots are in
+        `suspect_hits`. A guide for the organizer, not proof for an advertising
+        account.
+
+        Requires `event.read`; an event of another organization (or a deleted
+        one) is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          description: First day, `YYYY-MM-DD`. Default 29 days before `to`.
+          schema: { type: string }
+        - name: to
+          in: query
+          required: false
+          description: Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The statistics of the window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageStatsResponse"
+        "400":
+          description: A path parameter is not a UUID, or the window is wrong (`page_stats.invalid_date`, `page_stats.invalid_range`, `page_stats.range_too_long`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found, or not part of this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`page_stats.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/page-stats.csv:
+    get:
+      operationId: getV1OrganizationsOrgIdEventsEventIdPageStatsCsv
+      summary: Statistics of the event's hosted page as a CSV file
+      description: |
+        The counter rows behind `page-stats`: one row per day, kind and utm
+        pair (day, kind, utm source, utm campaign, count, probable bots). Same
+        window rules as the JSON route, same csvexport rules as the other
+        exports (UTF-8 with a BOM, `;` separator, header language by `locale`
+        / `lang` / Accept-Language). The file is event-level: a page view
+        belongs to the event, not to a session or a category.
+
+        Requires `event.read`; an event of another organization is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          description: First day, `YYYY-MM-DD`. Default 29 days before `to`.
+          schema: { type: string }
+        - name: to
+          in: query
+          required: false
+          description: Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone.
+          schema: { type: string }
+        - name: locale
+          in: query
+          required: false
+          description: Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+          schema: { type: string }
+      responses:
+        "200":
+          description: |
+            The CSV attachment, `Content-Disposition: attachment;
+            filename="page-stats_<event slug or id>_<YYYY-MM-DD>.csv"`.
+          content:
+            text/csv:
+              schema:
+                type: string
+                description: Header row and one line per counter row.
+        "400":
+          description: A path parameter is not a UUID, or the window is wrong.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found, or not part of this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: The export exceeds the row limit (`export.too_many_rows`).
           content:
             application/json:
               schema:
@@ -47108,6 +48799,97 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/events/{event_id}/email-note/test:
+    post:
+      operationId: postV1OrganizationsOrgIdEventsEventIdEmailNoteTest
+      summary: Mail the organizer a sample ticket letter with the event's own text
+      description: |
+        Queues a preview of the ticket e-mail with the event's own text
+        ("About the event", EC-31) so the organizer sees how buyers will read
+        it. The preview text is the `note` of the body (an unsaved draft,
+        filtered like PATCH `email_note`) or, when the body has none, the
+        stored text. The letter goes to the caller's own address, or to
+        `to`, which must be the caller's address or that of an active member
+        of the organization. It carries a "[Test]" mark in its subject, has no
+        ticket and no PDF, and is NOT recorded as a letter sent to a buyer.
+        At most 5 test letters an hour per organization (the counter lives in
+        the memory of one arena-api process). Requires `event.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventEmailNoteTestRequest"
+      responses:
+        "202":
+          description: The test letter is queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventEmailNoteTestResponse"
+        "400":
+          description: Invalid body (`event.invalid_json`), a refused text (`event.invalid_email_note`), a missing or invalid address (`event.email_note_test_recipient_required`, `event.email_note_test_invalid_recipient`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The event has no text to preview (`event.email_note_empty`) or `to` is not a member of the organization (`event.email_note_test_recipient_not_member`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: More than 5 test letters in an hour for this organization (`event.email_note_test_rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.email_note_test_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/sessions/{session_id}/sample-ticket:
     get:
       operationId: getV1OrganizationsOrgIdSessionsSessionIdSampleTicket
@@ -47184,6 +48966,408 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Session queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/seat-batches:
+    post:
+      operationId: postV1OrganizationsOrgIdSessionsSessionIdSeatBatches
+      summary: Apply a batch of seat changes to a session
+      description: |
+        Repaints seats into another category (`paint`), closes them (`close`),
+        opens them (`open`) or does any mix of the two (`apply_layout`) in ONE
+        transaction (seatlayout.ApplyBatch, task S1c): the session row is
+        locked first and its `seat_status_version` is bumped exactly once,
+        the seats are locked in seat_key order, every changed seat is stamped
+        with the new version, and the batch is recorded so it can be listed
+        and reverted. A sold or held seat is frozen: it is listed in
+        `skipped` with a reason and the batch still applies the rest. A
+        General Admission place opens and closes but never changes category
+        (`ga_unit`). `new_tiers` (creating a category inside the batch) is not
+        supported yet and answers 422 `seat_batch.new_tiers_unsupported`.
+        Requires the `session.seats.manage` permission in the
+        organization. Audited as `v1.session.seat_batch.apply` with
+        `batch_id`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUID of the session
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SeatBatchRequest"
+      responses:
+        "201":
+          description: The batch was applied and recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatBatch"
+        "400":
+          description: Invalid path parameter or body (`seat_batch.invalid_body` — the decoder's text is in `details.reason`, the body is capped at 1 MiB; `seat_batch.invalid_kind`, `seat_batch.no_changes`, `seat_batch.invalid_change`, `seat_batch.duplicate_seat_key`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold `session.seats.manage` in the organization or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: More than 10 000 changes (`seat_batch.too_many_changes`), a category that is not a live category of this session (`seat_batch.tier_not_in_session`), or `new_tiers` (`seat_batch.new_tiers_unsupported`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The batch could not be applied (`seat_batch.failed`, `seating.audit_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdSeatBatches
+      summary: List the seat batches of a session
+      description: |
+        The batches applied to the session, newest first. A list row carries
+        only the number of changed and skipped seats; the seats themselves
+        are in GET .../seat-batches/{batch_id}. Requires the
+        `session.seats.manage` permission in the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUID of the session
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1-50 (default 20).
+          schema: { type: integer, minimum: 1, maximum: 50 }
+        - name: offset
+          in: query
+          required: false
+          description: Number of batches to skip (default 0).
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: One page of batches.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatBatchList"
+        "400":
+          description: Invalid path parameter, limit or offset (`seat_batch.invalid_page`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold `session.seats.manage` in the organization or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The batches could not be read (`seat_batch.list_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/seat-batches/{batch_id}:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdSeatBatchesBatchId
+      summary: One seat batch with every changed and skipped seat
+      description: |
+        The card of one batch: its changes (from/to per seat) and the seats it
+        skipped with the reason. Requires the `session.seats.manage`
+        permission in the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUID of the session
+          schema: { type: string, format: uuid }
+        - name: batch_id
+          in: path
+          required: true
+          description: UUID of the batch
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The batch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatBatch"
+        "400":
+          description: A path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold `session.seats.manage` in the organization or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found or not part of this organization (`session.not_found`), or no such batch of this session (`seat_batch.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The batch could not be read (`seat_batch.list_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/seat-batches/{batch_id}/revert:
+    post:
+      operationId: postV1OrganizationsOrgIdSessionsSessionIdSeatBatchesBatchIdRevert
+      summary: Revert a seat batch
+      description: |
+        Applies a NEW batch (kind `revert`) that puts every seat the original
+        batch changed back into its previous category and status, under the
+        same rules: a seat that is now sold or held is skipped, and so is a
+        seat a later batch changed again (`changed_since`) or whose previous
+        category was deleted (`tier_unavailable`). The original batch gets
+        `reverted_at` and `reverted_by_batch_id`. A batch is reverted at most
+        once and a revert is never reverted. A revert that would put back no
+        seat at all is refused with 409 `seat_batch.nothing_to_revert` and
+        writes nothing. Requires the
+        `session.seats.manage` permission in the organization.
+        Audited as `v1.session.seat_batch.revert` with `batch_id`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUID of the session
+          schema: { type: string, format: uuid }
+        - name: batch_id
+          in: path
+          required: true
+          description: UUID of the batch to revert
+          schema: { type: string, format: uuid }
+      responses:
+        "201":
+          description: The revert batch that was applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatBatch"
+        "400":
+          description: A path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold `session.seats.manage` in the organization or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found or not part of this organization (`session.not_found`), or no such batch of this session (`seat_batch.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The batch was already reverted (`seat_batch.already_reverted`), is itself a revert (`seat_batch.revert_not_allowed`), or not a single seat can be put back (`seat_batch.nothing_to_revert`, details `skipped` with the reason per seat) — then nothing is written and the batch stays revertable, e.g. after the later batch that moved its seats is reverted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The revert could not be applied (`seat_batch.failed`, `seating.audit_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/seats/{seat_key}/history:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdSeatsSeatKeyHistory
+      summary: History of one seat
+      description: |
+        Every batch that changed the seat, or tried to and skipped it, newest
+        first. `seat_key` must be path-escaped (`Parter|A|1` is sent as
+        `Parter%7CA%7C1`). Requires the `session.seats.manage`
+        permission in the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUID of the session
+          schema: { type: string, format: uuid }
+        - name: seat_key
+          in: path
+          required: true
+          description: The seat's key, path-escaped.
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1-100 (default 50).
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - name: offset
+          in: query
+          required: false
+          description: Number of entries to skip (default 0).
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: One page of the seat's history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatHistory"
+        "400":
+          description: Invalid path parameter, seat key, limit or offset (`seat_batch.invalid_seat_key`, `seat_batch.invalid_page`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold `session.seats.manage` in the organization or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The history could not be read (`seat_batch.list_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
           content:
             application/json:
               schema:
@@ -48275,6 +50459,100 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/tickets/{ticket_id}/vip:
+    patch:
+      operationId: patchV1OrganizationsOrgIdTicketsTicketIdVip
+      summary: Set or clear the VIP mark of a ticket
+      description: |
+        The organizer marks a ticket (bought or an invitation) as VIP, or takes
+        the mark off. The mark is private to the organization: it is not
+        printed on the PDF e-ticket and not written in any letter to the buyer.
+        Requires `ticket.update` (owner and manager). The call is idempotent:
+        repeating the stored value answers 200 with `changed` false and writes
+        no audit event. A change is audited as `v1.ticket.vip_set`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: ticket_id
+          in: path
+          required: true
+          description: UUIDv7 of the ticket
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: The wanted value of the mark.
+              required: [vip]
+              properties:
+                vip:
+                  type: boolean
+                  description: True to mark the ticket as VIP, false to take the mark off.
+      responses:
+        "200":
+          description: The mark has the wanted value.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: The ticket and its mark after the call.
+                required: [ticket_id, vip, changed]
+                properties:
+                  ticket_id:
+                    type: string
+                    format: uuid
+                    description: UUIDv7 of the ticket.
+                  vip:
+                    type: boolean
+                    description: The mark after the call.
+                  changed:
+                    type: boolean
+                    description: False when the ticket already had that value.
+        "400":
+          description: "The body is not a JSON object with a boolean `vip` (ticket.invalid_vip)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "The caller lacks ticket.update in this organization."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Ticket not found in this organization (ticket.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Database not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/admin/tickets/{id}/scans:
     get:
       operationId: adminListTicketScanEvents
@@ -48452,8 +50730,10 @@ paths:
           this organization. `externalRef` becomes the mandatory idempotency
           key instead of `actionEvent.actionEventId` (event-bundle spec §3.2):
           a repeat call with the same `externalRef` edits the existing event
-          in place. Seating is NOT supported for source=arena in this wave —
-          `seatList`/`svg` are accepted but yield a warning, never seats.
+          in place. A seated session is created from a seating plan version
+          of the organization (`actionEvent.arenaSeatingPlanVersionId`, task
+          S1b); a Bil24 `seatList`/`svg` is ignored for source=arena with an
+          import.field_ignored_for_source warning.
 
         The response (`ImportBil24SessionResponse`, unchanged shape between
         both routes) always includes `external_ref` and `compat_ids` — the
@@ -48547,7 +50827,9 @@ paths:
             different `externalRef` (`import.external_ref_conflict`), or the
             session resolved by `externalRef`/`actionEventId` belongs to a
             different event than the supplied `actionId`
-            (`import.action_mismatch`).
+            (`import.action_mismatch`), or a source=arena bundle names
+            another seating plan version than the existing session's
+            (`import.seating_plan_version_conflict`).
           content:
             application/json:
               schema:
@@ -48566,7 +50848,14 @@ paths:
             `import.end_time_invalid`, `import.invalid_sell_start_time` or
             `import.venue_name_required` (source=arena, neither `venueId` nor
             `venueName` present and no matched session to inherit a venue
-            from).
+            from); for a seated source=arena bundle also
+            `import.invalid_seating_plan_version`,
+            `import.seating_plan_venue_mismatch`,
+            `import.seating_category_unmatched`,
+            `import.seating_category_duplicate`,
+            `import.seating_category_missing` and
+            `import.seated_category_chain` (a `nextCategoryIndex` link to or
+            from a seated category).
           content:
             application/json:
               schema:
@@ -49440,6 +51729,241 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "422":
           description: A value is out of range (onboarding.invalid_field)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/legal-documents:
+    get:
+      operationId: listLegalDocuments
+      summary: Admin - versions of the terms templates
+      description: |
+        Every version of the organizer terms templates (P3a), newest version
+        first within each kind and language, with the allowlist of
+        placeholders a template may use. Requires `legal.manage`, which only
+        platform_superadmin holds and no organization API key may carry.
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          description: Only this kind (`sale_terms`).
+          schema:
+            type: string
+        - name: locale
+          in: query
+          required: false
+          description: Only this language (`en`, `ru`, `cs`, `he`, `es`, `de`, `fr`).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The versions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegalDocumentListResponse"
+        "400":
+          description: Unknown kind or language (`legal.invalid_kind`, `legal.invalid_locale`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: createLegalDocument
+      summary: Admin - save a new draft of a terms template
+      description: |
+        Stores a new DRAFT, numbered after the last version of its kind and
+        language. The template may use only the allowlisted placeholders
+        (`{{key}}`, `{{#if key}}`, `{{else}}`, `{{/if}}`; headings `## `,
+        list items `- `, paragraphs): anything else answers 422 with every
+        problem and its line. Requires `legal.manage` and X-Admin-Reason;
+        audited (`v1.legal_document.create`).
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLegalDocumentRequest"
+      responses:
+        "201":
+          description: The draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegalDocument"
+        "400":
+          description: Missing X-Admin-Reason, a malformed body, an unknown kind or language.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Another draft of the same language was saved at the same moment (`legal.version_conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The template has problems (`legal.invalid_template`, `details.problems` lists them).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/legal-documents/{id}:
+    get:
+      operationId: getLegalDocument
+      summary: Admin - one version of a terms template
+      description: Requires `legal.manage`.
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Version id.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegalDocument"
+        "400":
+          description: The id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such version (`legal.document_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/legal-documents/{id}/publish:
+    post:
+      operationId: publishLegalDocument
+      summary: Admin - publish a draft of a terms template
+      description: |
+        The draft becomes the published version of its kind and language and
+        the previous published version is retired, in one transaction. A
+        published version never changes again (the database refuses it);
+        a new text is a new draft. Requires `legal.manage` and
+        X-Admin-Reason; audited (`v1.legal_document.publish`).
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Id of the draft.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: The published version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegalDocument"
+        "400":
+          description: Missing X-Admin-Reason or the id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such version (`legal.document_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The version is not a draft (`legal.not_draft`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The template no longer parses (`legal.invalid_template`).
           content:
             application/json:
               schema:

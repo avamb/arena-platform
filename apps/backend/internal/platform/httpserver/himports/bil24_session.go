@@ -476,9 +476,9 @@ func resolveExternalRef(req bil24compat.ImportSessionRequest, source string) (st
 }
 
 // noteArenaIgnoredFields records the non-fatal "this field belongs to the
-// other source" warnings of spec §3: fee and seating-plan metadata mean
-// nothing for an arena-native bundle, and seating itself is out of scope for
-// this wave.
+// other source" warnings of spec §3: fee and Bil24 seating-plan metadata, the
+// sbt svg and the seat list mean nothing for an arena-native bundle, whose
+// seats come from actionEvent.arenaSeatingPlanVersionId (task S1b).
 func noteArenaIgnoredFields(req bil24compat.ImportSessionRequest, warnings *warningSink) {
 	var ignored []string
 	if req.ActionEvent.ChargePercent != 0 {
@@ -490,13 +490,23 @@ func noteArenaIgnoredFields(req bil24compat.ImportSessionRequest, warnings *warn
 	if trimSpace(req.ActionEvent.SeatingPlanName) != "" {
 		ignored = append(ignored, "actionEvent.seatingPlanName")
 	}
+	// Task S1b: an arena bundle takes its places from a seating plan version
+	// of the organization (actionEvent.arenaSeatingPlanVersionId), never from
+	// a Bil24 svg or seat list. WarnSeatingNotImported keeps its one Bil24
+	// meaning (a seatList without an svg).
+	hint := ""
+	if trimSpace(req.SVG) != "" {
+		ignored = append(ignored, "svg")
+	}
+	if len(req.SeatList) > 0 {
+		ignored = append(ignored, "seatList")
+	}
+	if trimSpace(req.SVG) != "" || len(req.SeatList) > 0 {
+		hint = " (a seated session is created from actionEvent.arenaSeatingPlanVersionId)"
+	}
 	if len(ignored) > 0 {
 		warnings.add(WarnFieldIgnoredForSource,
-			"ignored for source=arena: "+strings.Join(ignored, ", "))
-	}
-	if len(req.SeatList) > 0 || trimSpace(req.SVG) != "" {
-		warnings.add(WarnSeatingNotImported,
-			"seating is not supported for source=arena in this wave; the session stays general admission")
+			"ignored for source=arena: "+strings.Join(ignored, ", ")+hint)
 	}
 }
 

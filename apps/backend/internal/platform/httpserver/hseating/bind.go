@@ -68,6 +68,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/seatmint"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
@@ -343,6 +344,21 @@ func (h *Handler) bindSessionSeatingCore(
 			"seating.bind_failed", "failed to bind seating plan", nil)
 	}
 
+	// Lock the version's locked_at on first bind (idempotent for later
+	// binds against the same version). This is the immutability latch
+	// described in §5.1 of the seating backlog: once any session references
+	// a version, its geometry MUST NOT change. Lock order (AGENTS.md): the
+	// sessions row above, then this version row, and only then the places
+	// below — the same order as the event-bundle import's seated branch
+	// (himports.materializeArenaSeating). A refusal further down rolls the
+	// stamp back with the rest of the transaction.
+	lockedVersion, err := qtx.LockSeatingPlanVersion(ctx, planVersionID)
+	if err != nil {
+		h.logger.Error("seating: bind lock version failed", slog.String("error", err.Error()))
+		return nil, bindErr(http.StatusInternalServerError,
+			"seating.bind_failed", "failed to lock seating plan version", nil)
+	}
+
 	// AB-40 B5: cross-check the parent plan's type against the requested
 	// admission mode. Before this gate an assigned_seats plan could be
 	// bound as hybrid, silently promising GA capacity the plan does not
@@ -529,151 +545,32 @@ func (h *Handler) bindSessionSeatingCore(
 	// which is what GET_SEAT_LIST / GET_SCHEMA / the sbt-SVG image put on
 	// the wire. Seats without an external id keep falling back to the
 	// arena sequence.
-	seatCount := geometry.SeatCount()
-	seatKeys := make([]string, 0, seatCount)
-	sectorNames := make([]string, 0, seatCount)
-	rowNames := make([]string, 0, seatCount)
-	seatNumbers := make([]string, 0, seatCount)
-	tierIDs := make([]*string, 0, seatCount)
-	systemSeatIDs := make([]*int64, 0, seatCount)
-	var maxExternalID int64
-	for _, section := range geometry.Sections {
-		for _, row := range section.Rows {
-			for _, seat := range row.Seats {
-				tierID, hasTier := resolvedMap[seat.CategoryIndex]
-				if !hasTier {
-					// resolveCategoryTierMap guarantees every category
-					// referenced by a seat has an entry; a missing key
-					// here would be a canonicaliser bug, not user error.
-					return nil, bindErr(http.StatusInternalServerError,
-						"seating.bind_failed",
-						fmt.Sprintf("seat %q references unknown category_index %d",
-							seat.Key, seat.CategoryIndex),
-						nil)
-				}
-				tierStr := tierID.String()
-				seatKeys = append(seatKeys, seat.Key)
-				sectorNames = append(sectorNames, section.Name)
-				rowNames = append(rowNames, row.Name)
-				seatNumbers = append(seatNumbers, seat.Number)
-				tierIDs = append(tierIDs, &tierStr)
-				if seat.ExternalID > 0 {
-					ext := seat.ExternalID
-					systemSeatIDs = append(systemSeatIDs, &ext)
-					if ext > maxExternalID {
-						maxExternalID = ext
-					}
-				} else {
-					systemSeatIDs = append(systemSeatIDs, nil)
-				}
-			}
-		}
-	}
-	seatIDSource := gen.SeatIDSourceArena
-	if maxExternalID > 0 {
-		seatIDSource = gen.SeatIDSourceBil24
-		// Push the arena sequence past every explicitly assigned id so a
-		// later plain materialization can never mint a colliding value
-		// (system_seat_id is globally UNIQUE). Monotone and idempotent.
-		if err := qtx.AdvanceSessionSeatSystemIDSeq(ctx, maxExternalID); err != nil {
-			h.logger.Error("seating: bind seat id sequence advance failed",
-				slog.String("error", err.Error()),
-			)
-			return nil, bindErr(http.StatusInternalServerError,
-				"seating.bind_failed", "failed to reserve seat id range", nil)
-		}
-	}
-	materialized := 0
-	if len(seatKeys) > 0 {
-		inserted, err := qtx.InsertSessionSeats(
-			ctx, sessionID, seatKeys, sectorNames, rowNames, seatNumbers, tierIDs,
-			systemSeatIDs, seatIDSource,
-		)
-		if err != nil {
-			h.logger.Error("seating: bind seat materialize failed",
-				slog.String("error", err.Error()),
-			)
-			return nil, bindErr(http.StatusInternalServerError,
-				"seating.bind_failed", "failed to materialize session seats", nil)
-		}
-		materialized = int(inserted)
-	}
-
-	// AB-51: materialize one ga_unit row per General Admission place —
-	// "ga|c<categoryIndex>|<n>" keys, tier fixed to the category tier.
-	// GA places exist as inventory from setup, not as a by-product of
-	// purchase; they share the seat status machine and transition table.
 	//
-	// Decision 8 (keepGAPlaces): a rebind of the SAME version keeps the
-	// places the categories already own — with whatever quantity an
-	// operator has since set — instead of re-minting the geometry's.
-	gaMaterialized := 0
-	if req.AdmissionMode != "assigned_seats" && !keepGAPlaces {
-		for _, cat := range geometry.GACategories() {
-			tierID, hasTier := resolvedMap[cat.Index]
-			if !hasTier {
-				return nil, bindErr(http.StatusInternalServerError,
-					"seating.bind_failed",
-					fmt.Sprintf("GA category %d has no resolved tier", cat.Index),
-					nil)
-			}
-			if cat.Capacity <= 0 || cat.Capacity > math.MaxInt32 {
-				return nil, bindErr(http.StatusInternalServerError,
-					"seating.bind_failed",
-					fmt.Sprintf("GA category %d capacity %d out of range", cat.Index, cat.Capacity),
-					nil)
-			}
-			quantity := int32(cat.Capacity) //nolint:gosec // bound-checked above
-			inserted, err := qtx.InsertGAUnits(
-				ctx, sessionID,
-				fmt.Sprintf("ga|c%d", cat.Index),
-				0, &tierID, quantity,
-			)
-			if err != nil {
-				h.logger.Error("seating: bind GA unit materialize failed",
-					slog.String("error", err.Error()),
-				)
-				return nil, bindErr(http.StatusInternalServerError,
-					"seating.bind_failed", "failed to materialize GA units", nil)
-			}
-			gaMaterialized += int(inserted)
-			// Plan 08_architecture/23 step 7: the places just minted ARE
-			// the category's quantity from now on, so record it on the
-			// ticket_tiers row (a caller-supplied tier carries none) and
-			// reserve the category's own number for later quota edits.
-			if err := gaquota.AdoptPlanCategory(ctx, qtx, sessionID, tierID, quantity); err != nil {
-				h.logger.Error("seating: bind GA category adoption failed",
-					slog.String("error", err.Error()),
-				)
-				return nil, bindErr(http.StatusInternalServerError,
-					"seating.bind_failed", "failed to record GA category quantity", nil)
-			}
-		}
-	}
-
-	// Lock the version's locked_at on first bind (idempotent for later
-	// binds against the same version). This is the immutability latch
-	// described in §5.1 of the seating backlog: once any session references
-	// a version, its geometry MUST NOT change.
-	lockedVersion, err := qtx.LockSeatingPlanVersion(ctx, planVersionID)
+	// AB-51: every General Admission place becomes one ga_unit row —
+	// "ga|c<categoryIndex>|<n>" keys, tier fixed to the category tier — and
+	// the zone's quantity is recorded on its ticket_tiers row (plan
+	// 08_architecture/23 step 7). Decision 8 (keepGAPlaces): a rebind of the
+	// SAME version keeps the places the categories already own — with
+	// whatever quantity an operator has since set — instead of re-minting
+	// the geometry's.
+	//
+	// The step itself is seatmint.Materialize, shared with both imports.
+	// resolveCategoryTierMap guarantees every placed category has a tier, so
+	// a gap here is a canonicaliser bug and Strict turns it into a 500.
+	minted, err := seatmint.Materialize(ctx, qtx, sessionID, geometry, resolvedMap,
+		req.AdmissionMode != seatmint.ModeAssignedSeats && !keepGAPlaces, seatmint.Strict)
 	if err != nil {
-		h.logger.Error("seating: bind lock version failed", slog.String("error", err.Error()))
+		h.logger.Error("seating: bind seat materialize failed", slog.String("error", err.Error()))
 		return nil, bindErr(http.StatusInternalServerError,
-			"seating.bind_failed", "failed to lock seating plan version", nil)
+			"seating.bind_failed", "failed to materialize session seats", nil)
 	}
+	materialized := minted.Seats
+	gaMaterialized := minted.GAPlaces
 
 	// Recompute capacity_total from the bound version per admission mode
 	// (AB-40 B6: bound seat count + sum of GA category capacities).
 	// Documented capacity-propagation hook per 0016_sessions.sql:58.
-	var newCapacity int32
-	switch req.AdmissionMode {
-	case "hybrid":
-		newCapacity = lockedVersion.CapacitySeated + lockedVersion.CapacityStanding
-	case "general_admission":
-		newCapacity = lockedVersion.CapacityStanding
-	default:
-		newCapacity = lockedVersion.CapacitySeated
-	}
+	newCapacity := seatmint.PlanCapacity(req.AdmissionMode, lockedVersion)
 	updated, err := qtx.BindSessionSeatingPlan(
 		ctx, sessionID, eventID, req.AdmissionMode, &planVersionID, newCapacity,
 	)
@@ -846,19 +743,7 @@ func resolveCategoryTierMap(
 	// its tier) — this is what we must have a tier for. Seated
 	// categories not referenced by any seat are ignored (dangling
 	// legend entries are possible per §6 rule 5).
-	referenced := make(map[int]bool)
-	for _, section := range geometry.Sections {
-		for _, row := range section.Rows {
-			for _, seat := range row.Seats {
-				referenced[seat.CategoryIndex] = true
-			}
-		}
-	}
-	for _, c := range geometry.Categories {
-		if c.IsGA() {
-			referenced[c.Index] = true
-		}
-	}
+	referenced := seatmint.PlacedCategories(geometry)
 
 	resolved := make(map[int]uuid.UUID)
 	created := make([]uuid.UUID, 0)

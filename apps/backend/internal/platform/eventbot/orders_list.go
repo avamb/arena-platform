@@ -279,6 +279,10 @@ func (b *Bot) ordersCallback(ctx context.Context, chatID int64, msgID int, from 
 		// "Refund" (EC-21): its own dialog too.
 		b.refundCallback(ctx, chatID, msgID, from, arg)
 		return
+	case "vip":
+		// The organizer's private VIP mark of a ticket (V1).
+		b.vipPress(ctx, chatID, msgID, from, id, jwt, arg)
+		return
 	case "r":
 		// "Resend tickets" (EC-13): its own dialog, so the list behind the card stays.
 		b.resendCallback(ctx, chatID, msgID, from, arg)

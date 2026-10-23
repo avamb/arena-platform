@@ -47,6 +47,7 @@ type ComplimentaryListTicket struct {
 	HolderName     *string
 	Status         string
 	Used           bool
+	VIP            bool
 }
 
 // complimentaryListBase is the filtered, state-annotated set of an
@@ -129,7 +130,8 @@ func (q *Queries) ListComplimentaryTicketsForIssuances(ctx context.Context, issu
 	const sql = `
 SELECT t.complimentary_issuance_id, t.id, t.system_ticket_id, t.holder_email, t.holder_name, t.status,
        (t.used_at IS NOT NULL OR EXISTS (
-            SELECT 1 FROM barcodes b WHERE b.ticket_id = t.id AND b.status = 'scanned')) AS used
+            SELECT 1 FROM barcodes b WHERE b.ticket_id = t.id AND b.status = 'scanned')) AS used,
+       t.vip
 FROM   tickets t
 WHERE  t.complimentary_issuance_id = ANY($1)
 ORDER BY t.issued_at ASC, t.id ASC`
@@ -141,7 +143,7 @@ ORDER BY t.issued_at ASC, t.id ASC`
 	var out []ComplimentaryListTicket
 	for rows.Next() {
 		var t ComplimentaryListTicket
-		if err := rows.Scan(&t.IssuanceID, &t.ID, &t.SystemTicketID, &t.HolderEmail, &t.HolderName, &t.Status, &t.Used); err != nil {
+		if err := rows.Scan(&t.IssuanceID, &t.ID, &t.SystemTicketID, &t.HolderEmail, &t.HolderName, &t.Status, &t.Used, &t.VIP); err != nil {
 			return nil, err
 		}
 		out = append(out, t)

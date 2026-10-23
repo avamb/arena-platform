@@ -65,6 +65,8 @@ export function InviteForm({ orgId }: { orgId: string }) {
   const [tierId, setTierId] = useState("");
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<Phase>("edit");
+  // V1: the organizer's private VIP mark for every ticket of the operation.
+  const [vip, setVip] = useState(false);
   const [progress, setProgress] = useState<Progress>({ total: 0, done: 0, failure: null });
   // Minted when the confirmation is first shown, dropped when anything changes.
   const operation = useRef<string | null>(null);
@@ -130,6 +132,7 @@ export function InviteForm({ orgId }: { orgId: string }) {
           email: guests[i].email,
           name: guests[i].name,
           batchId: batchId(op, i),
+          vip,
         });
         done = i + 1;
         setProgress({ total: guests.length, done, failure: null });
@@ -151,6 +154,7 @@ export function InviteForm({ orgId }: { orgId: string }) {
 
   const reset = () => {
     operation.current = null;
+    setVip(false);
     setText("");
     setPhase("edit");
     setProgress({ total: 0, done: 0, failure: null });
@@ -324,6 +328,22 @@ export function InviteForm({ orgId }: { orgId: string }) {
                 <strong>{t("invitations.confirm.count", { count: parsed.guests.length })}</strong>
               </p>
               <p>{t("invitations.confirm.explain")}</p>
+              <p>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={vip}
+                    onChange={(e) => {
+                      // A different request is a different operation: a new batch id.
+                      operation.current = newOperationId();
+                      setVip(e.target.checked);
+                    }}
+                    data-testid="invite-vip"
+                  />{" "}
+                  {t("invitations.confirm.vip")}
+                </label>
+              </p>
+              <p className="muted">{t("vip.private")}</p>
               <div className="actions">
                 <button
                   type="button"

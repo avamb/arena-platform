@@ -6,6 +6,10 @@ package eventbot
 var sessionKeys = []string{
 	"bot.ses.list_title",
 	"bot.ses.list_empty",
+	"bot.ses.not_entered_btn",
+	"bot.ses.not_entered_head",
+	"bot.ses.not_entered_empty",
+	"bot.ses.not_entered_invite",
 	"bot.ses.card_hint",
 	"bot.ses.cancel_all_btn",
 	"bot.ses.move_btn",

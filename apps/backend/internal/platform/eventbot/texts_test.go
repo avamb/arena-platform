@@ -27,6 +27,8 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"Warnings": "", "URL": "u", "State": "s", "Text": "tx", "Until": "d", "Limit": "5", "Raw": "r", "Tickets": "t", "Letter": "l", "TicketRule": "tr", "Issued": 2, "Cancelled": 1, "Active": 1, "Min": "01.01.2026", "Max": "02.01.2026",
 		"Old": "o", "New": "n", "Contact": "c", "Letters": "", "Time": "19:30", "Now": "now", "Hours": 1, "Start": "19:30", "SalesEnd": "21:00", "Doors": "19:00", "Word": "CANCEL", "Subject": "s", "Zone": "Europe/Madrid",
 		"Message": "m", "Pct": 40, "Links": "l", "Url": "https://x.test/a",
+		// the page statistics line (page_stats.go)
+		"Views": 12, "Days": 30, "Suspect": 2,
 		// the event-center screens (ec_keys.go)
 		"Filter": "f", "Search": "s", "Legend": "lg", "Query": "q", "Count": 1, "Amount": "1 EUR", "Net": "1 EUR", "Used": 1,
 		"Code": "C", "Discount": "1 EUR", "Closed": "", "Places": 5, "Revenue": "1 EUR", "Transferred": 1, "Pending": "1 EUR",
@@ -37,7 +39,7 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		// the orders screens (ord_keys.go)
 		"Tab": "t", "Num": 1000000500, "Chip": "c", "Contacts": "", "Tier": "t", "Seat": "", "Entered": "", "Channel": "ch", "Provider": "stripe", "Msg": "m",
 		// the invitations screens (invite_keys.go)
-		"Order": "№1", "Ticket": "№1", "Next": "", "Chars": 1000, "Left": 2, "Sent": 3, "Got": 1, "Guests": "g", "Guest": "g", "Event": "e", "Line": 2, "Done": 1, "Why": "w",
+		"Order": "№1", "Gate": "2", "Ticket": "№1", "Next": "", "Chars": 1000, "Left": 2, "Sent": 3, "Got": 1, "Guests": "g", "Guest": "g", "Event": "e", "Line": 2, "Done": 1, "Why": "w",
 		// the Materials screens (materials_keys.go)
 		"Caption": "c", "Seller": "s", "Lat": "50.075500", "Lon": "14.437800",
 	}
