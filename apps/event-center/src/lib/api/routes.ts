@@ -79,6 +79,23 @@ export const API = {
   sellerProfileUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/seller-profile" },
   sellerDisplayUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/channels/{channel_id}/seller-display" },
   paymentConfigs: { method: "GET", path: "/v1/organizations/{org_id}/payment-configs" },
+  // B2-7: what the platform charged the organization (read-only, preliminary).
+  billingCharges: { method: "GET", path: "/v1/organizations/{org_id}/billing/charges" },
+  billingEventSummary: { method: "GET", path: "/v1/organizations/{org_id}/billing/events/{event_id}/summary" },
+  // B3-3/B4: balance, credit packs and their purchase, platform invoices, the
+  // credit journal, the commission quote and the payer details.
+  billingBalance: { method: "GET", path: "/v1/organizations/{org_id}/billing/balance" },
+  billingPacks: { method: "GET", path: "/v1/organizations/{org_id}/billing/packs" },
+  billingPackOrder: { method: "POST", path: "/v1/organizations/{org_id}/billing/packs/{pack_id}/order" },
+  billingAccountInvoices: { method: "GET", path: "/v1/organizations/{org_id}/billing/account-invoices" },
+  billingAccountInvoice: { method: "GET", path: "/v1/organizations/{org_id}/billing/account-invoices/{invoice_id}" },
+  billingInvoicePayByCard: {
+    method: "POST",
+    path: "/v1/organizations/{org_id}/billing/account-invoices/{invoice_id}/pay-by-card",
+  },
+  billingLedger: { method: "GET", path: "/v1/organizations/{org_id}/billing/ledger" },
+  billingServiceFeeQuote: { method: "GET", path: "/v1/organizations/{org_id}/billing/service-fee-quote" },
+  billingPayer: { method: "PUT", path: "/v1/organizations/{org_id}/billing/payer" },
   // 4-4: invitations (free tickets for named guests).
   complimentaryList: { method: "GET", path: "/v1/organizations/{org_id}/complimentary" },
   complimentaryIssue: { method: "POST", path: "/v1/organizations/{org_id}/complimentary" },

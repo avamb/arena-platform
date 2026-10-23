@@ -106,3 +106,26 @@ export type EventContactResponse = S["EventContactResponse"];
 export type TicketScan = S["TicketScan"];
 export type SessionTicketItem = S["SessionTicketItem"];
 export type SessionTicketList = S["SessionTicketList"];
+// B2-7: the platform's charges to the organization (read-only).
+export type BillingChargeList = S["BillingChargeList"];
+export type BillingChargeItem = S["BillingChargeItem"];
+export type BillingChargeTotal = S["BillingChargeTotal"];
+export type BillingChargeRuleLine = S["BillingChargeRuleLine"];
+export type BillingChargeSessionLine = S["BillingChargeSessionLine"];
+export type BillingEventSummary = S["BillingEventSummary"];
+// B3-3/B4: the organizer's billing account (balance, packs, invoices, journal, payer).
+export type BillingBalanceResponse = S["BillingBalanceResponse"];
+export type BillingAccountBalance = S["BillingAccountBalance"];
+export type BillingCreditLot = S["BillingCreditLot"];
+export type BillingCurrentRate = S["BillingCurrentRate"];
+export type BillingPackList = S["BillingPackList"];
+export type BillingPackOffer = S["BillingPackOffer"];
+export type BillingAccountInvoice = S["BillingAccountInvoice"];
+export type BillingAccountInvoiceLine = S["BillingAccountInvoiceLine"];
+export type BillingAccountInvoiceList = S["BillingAccountInvoiceList"];
+export type BillingPayByCardResponse = S["BillingPayByCardResponse"];
+export type BillingLedgerResponse = S["BillingLedgerResponse"];
+export type BillingLedgerEntry = S["BillingLedgerEntry"];
+export type BillingServiceFeeQuote = S["BillingServiceFeeQuote"];
+export type BillingPayerRequest = S["BillingPayerRequest"];
+export type BillingPayerResponse = S["BillingPayerResponse"];

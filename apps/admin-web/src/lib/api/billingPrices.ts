@@ -35,6 +35,7 @@ export type PriceListRule = Schemas["BillingPriceListRule"];
 export type PriceListPack = Schemas["BillingPriceListPack"];
 export type RateOverride = Schemas["BillingRateOverride"];
 export type BillingAccount = Schemas["BillingAdminAccount"];
+export type FeeMode = "organizer_pays" | "buyer_pays";
 export type AccountTerms = Schemas["BillingAccountTerms"];
 export type CreatePriceListRequest = Schemas["BillingCreatePriceListRequest"];
 export type CreateRateOverrideRequest = Schemas["BillingCreateRateOverrideRequest"];
@@ -598,6 +599,7 @@ export interface TermsForm {
   readonly shortfallPolicy: string;
   readonly invoiceDelayDays: string;
   readonly dueDays: string;
+  readonly feeMode: FeeMode;
 }
 
 export function termsFormFrom(current: AccountTerms | undefined): TermsForm {
@@ -609,8 +611,23 @@ export function termsFormFrom(current: AccountTerms | undefined): TermsForm {
     shortfallPolicy: current?.shortfall_policy ?? "invoice_postpaid",
     invoiceDelayDays: current?.invoice_delay_days == null ? "" : String(current.invoice_delay_days),
     dueDays: current?.due_days == null ? "" : String(current.due_days),
+    feeMode: current?.fee_mode === "buyer_pays" ? "buyer_pays" : "organizer_pays",
   };
 }
+
+export const FEE_MODES: readonly { value: FeeMode; label: string; explanation: string }[] = [
+  {
+    value: "organizer_pays",
+    label: "Organizer pays",
+    explanation: "The organizer pays the platform rate from its own money, as invoices or credits.",
+  },
+  {
+    value: "buyer_pays",
+    label: "Buyer pays",
+    explanation:
+      "The organizer receives the net ticket price. The buyer's service charge is the platform commission, so the organizer is charged nothing for the tickets.",
+  },
+];
 
 export const PLAN_KINDS: readonly { value: string; label: string }[] = [
   { value: "standard", label: "Standard" },
@@ -654,6 +671,7 @@ export function buildTermsRequest(
       shortfall_policy: form.shortfallPolicy,
       invoice_delay_days: delay,
       due_days: due,
+      fee_mode: form.feeMode,
     },
   };
 }
