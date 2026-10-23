@@ -8097,6 +8097,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/email-note/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mail the organizer a sample ticket letter with the event's own text
+         * @description Queues a preview of the ticket e-mail with the event's own text
+         *     ("About the event", EC-31) so the organizer sees how buyers will read
+         *     it. The preview text is the `note` of the body (an unsaved draft,
+         *     filtered like PATCH `email_note`) or, when the body has none, the
+         *     stored text. The letter goes to the caller's own address, or to
+         *     `to`, which must be the caller's address or that of an active member
+         *     of the organization. It carries a "[Test]" mark in its subject, has no
+         *     ticket and no PDF, and is NOT recorded as a letter sent to a buyer.
+         *     At most 5 test letters an hour per organization (the counter lives in
+         *     the memory of one arena-api process). Requires `event.update`.
+         */
+        post: operations["postV1OrganizationsOrgIdEventsEventIdEmailNoteTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/sample-ticket": {
         parameters: {
             query?: never;
@@ -15405,6 +15434,14 @@ export interface components {
              */
             session_count: number;
             /**
+             * @description The organizer's own text of the event (EC-31, migration 0165): up
+             *     to 2000 characters of plain text that the ticket and the
+             *     session-change e-mails print under "About the event". Null when
+             *     the event has none.
+             * @example Come 30 minutes early. The cloakroom is free.
+             */
+            email_note?: string | null;
+            /**
              * @description Discovery visibility for the cross-tenant GET /v1/events surface.
              *     `public` events appear in the default list; `unlisted` and
              *     `private` events require the caller to pass an explicit
@@ -16554,6 +16591,17 @@ export interface components {
              * @example festival,music,outdoor,summer
              */
             meta_keywords?: string | null;
+            /**
+             * @description Tri-state (absent=keep, null or "" = clear, value=set). The
+             *     organizer's own text that the ticket and session-change e-mails
+             *     print under "About the event". Plain text of at most 2000
+             *     characters: HTML tags are removed, control characters are
+             *     refused, at most 5 links and every link must be `https://`. A
+             *     refused text answers 400 `event.invalid_email_note` with
+             *     `error.details.reason`.
+             * @example Come 30 minutes early. The cloakroom is free.
+             */
+            email_note?: string | null;
         };
         /**
          * @description Status-transition body for POST
@@ -16574,6 +16622,39 @@ export interface components {
              * @enum {string}
              */
             status: "draft" | "published" | "cancelled" | "archived";
+        };
+        /** @description Optional body of the test-letter route. */
+        EventEmailNoteTestRequest: {
+            /**
+             * @description Address to send to: the caller's own, or that of an active member
+             *     of the organization. Empty means the caller's own address.
+             * @example manager@example.org
+             */
+            to?: string;
+            /**
+             * @description An unsaved draft to preview, filtered like PATCH `email_note`.
+             *     Absent means the stored text.
+             * @example Come 30 minutes early.
+             */
+            note?: string;
+            /**
+             * @description Language of the letter (en, ru, cs, de, es, fr, he). Empty means the caller's language.
+             * @example ru
+             */
+            locale?: string;
+        };
+        /** @description The test letter was queued. */
+        EventEmailNoteTestResponse: {
+            /**
+             * @description Always true on success.
+             * @example true
+             */
+            queued: boolean;
+            /**
+             * @description The address the letter goes to.
+             * @example manager@example.org
+             */
+            to: string;
         };
         /** @description Single-event response envelope. */
         EventEnvelope: {
@@ -23190,6 +23271,17 @@ export interface components {
              *     `import.invalid_promoter`.
              */
             promoterId?: string | null;
+            /**
+             * @description Arena event-bundle extension (source=arena only; EC-31, migration
+             *     0165): the organizer's own text that the ticket and session-change
+             *     e-mails print under "About the event". Absent or null keeps the
+             *     stored text, "" removes it, a string replaces it after the same
+             *     filter as PATCH `email_note` (plain text, at most 2000
+             *     characters, at most 5 `https://` links). A refused text answers
+             *     422 `import.invalid_email_note`. The event-bundle read answers
+             *     "" when the event has none.
+             */
+            emailNote?: string | null;
         };
         /**
          * @description Bil24 "actionEvent" block — becomes an arena session. This block's
@@ -55315,6 +55407,107 @@ export interface operations {
                 };
             };
             /** @description Internal server error (`contact.update_failed`, `contact.audit_failed`, `contact.commit_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdEventsEventIdEmailNoteTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["EventEmailNoteTestRequest"];
+            };
+        };
+        responses: {
+            /** @description The test letter is queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventEmailNoteTestResponse"];
+                };
+            };
+            /** @description Invalid body (`event.invalid_json`), a refused text (`event.invalid_email_note`), a missing or invalid address (`event.email_note_test_recipient_required`, `event.email_note_test_invalid_recipient`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The event has no text to preview (`event.email_note_empty`) or `to` is not a member of the organization (`event.email_note_test_recipient_not_member`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 5 test letters in an hour for this organization (`event.email_note_test_rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.email_note_test_failed`). */
             500: {
                 headers: {
                     [name: string]: unknown;

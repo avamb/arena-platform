@@ -235,6 +235,10 @@ var orgIsolationAuditedSafe = map[string]string{
 	// foreign session and expects 404.
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms": "seat layout",
 	"POST /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest":   "seat layout",
+	// hcatalog test letter of the event's own text (task 7-1,
+	// event_email_note.go): requireEventInOrg runs before anything is read or
+	// queued. event_email_note_integration_test.go drives a foreign event.
+	"POST /v1/organizations/{org_id}/events/{event_id}/email-note/test": "event email note",
 	// hbilling.ChargesHandler (task B2-6): eventInOrg compares events.org_id with the
 	// path organization (404 billing.event_not_found otherwise) and every charge query
 	// filters billable_events.org_id; billing_charges_integration_test.go drives a foreign event.

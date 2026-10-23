@@ -92,6 +92,8 @@ func catalogSnapshot(ctx context.Context, t *testing.T, pool *pgxpool.Pool, orgI
 		   FROM event_publications p JOIN events e ON e.id = p.event_id WHERE e.org_id = $1`,
 		`SELECT coalesce(jsonb_agg(to_jsonb(p) - 'updated_at' ORDER BY p.event_id), '[]')::text
 		   FROM event_promoters p WHERE p.org_id = $1`,
+		`SELECT coalesce(jsonb_agg(to_jsonb(n) - 'updated_at' ORDER BY n.event_id), '[]')::text
+		   FROM event_email_notes n WHERE n.org_id = $1`,
 		`SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.session_id), '[]')::text
 		   FROM session_external_refs r WHERE r.org_id = $1`,
 		`SELECT coalesce(jsonb_agg(to_jsonb(v) - 'updated_at' ORDER BY v.id), '[]')::text

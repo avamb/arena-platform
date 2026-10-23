@@ -151,6 +151,16 @@ func letterTicketNumbers(ctx context.Context, db emailstatus.DB, ids []uuid.UUID
 	return out
 }
 
+// templateVersionFor is templateVersion for a letter that may carry the
+// organizer's event note: the stored version then ends in
+// templates.NoteVersionSuffix.
+func templateVersionFor(r *templates.Renderer, kind, locale string, hasNote bool) string {
+	if r == nil {
+		return ""
+	}
+	return r.VersionFor(kind, locale, hasNote)
+}
+
 // templateVersion is the renderer's version of (kind, locale); empty
 // without a renderer.
 func templateVersion(r *templates.Renderer, kind, locale string) string {

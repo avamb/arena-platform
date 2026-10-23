@@ -48,6 +48,8 @@ func (s *Server) mountEventRoutes(r chi.Router) {
 			pr.Patch("/organizations/{org_id}/events/{id}", s.handleUpdateEvent)
 			// The organizer contact buyers answer to (promoter, else organization).
 			pr.Put("/organizations/{org_id}/events/{event_id}/contact", s.handleSetEventContact)
+			// A sample ticket letter with the event's own text, mailed to the organizer (EC-31).
+			pr.Post("/organizations/{org_id}/events/{event_id}/email-note/test", s.handleEventEmailNoteTest)
 		})
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "event.publish", "events")

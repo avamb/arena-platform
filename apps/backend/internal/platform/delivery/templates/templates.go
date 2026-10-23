@@ -37,6 +37,7 @@ import (
 	"strings"
 	texttemplate "text/template"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventnote"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 )
 
@@ -156,6 +157,12 @@ type Data struct {
 	// ticket e-mail. nil omits the block: an invitation, a free ticket or an
 	// order whose money is not known pays nothing to show.
 	Payment *PaymentData
+
+	// EventNote is the organizer's own text of the event (EC-31, migration
+	// 0161), printed as the "About the event" block of the ticket and change
+	// letters. Build it with eventnote.Parse; the zero value prints nothing.
+	// The other kinds ignore it.
+	EventNote eventnote.Block
 
 	// WithdrawalNotice prints the sentence that tickets for an event on a
 	// specific date carry no right of withdrawal (EU/EEA sellers, ticket
@@ -439,6 +446,22 @@ func (r *Renderer) Version(kind, locale string) string {
 	}
 	sum := sha256.Sum256(body)
 	return key + "@" + hex.EncodeToString(sum[:])[:12]
+}
+
+// NoteVersionSuffix is appended to a template version when the organizer's own
+// event text (Data.EventNote) is part of the letter. The letter's body then
+// differs from every other letter of the same template file, and the stored
+// version must say so (plan 3a, rule 5).
+const NoteVersionSuffix = "+note"
+
+// VersionFor is Version plus NoteVersionSuffix when the letter carries an
+// event note. Empty when the template does not exist.
+func (r *Renderer) VersionFor(kind, locale string, hasNote bool) string {
+	v := r.Version(kind, locale)
+	if v != "" && hasNote {
+		v += NoteVersionSuffix
+	}
+	return v
 }
 
 // ResolveLocale returns locale when a template for it exists, or
