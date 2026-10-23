@@ -2182,7 +2182,7 @@ export interface paths {
          *     seat-key list, per-outcome counts, and the actor.
          *
          *     Requires JWT authentication and the
-         *     `session.seats.manage` permission (migration 0157, separate
+         *     `session.seats.manage` permission (migration 0161, separate
          *     from binding a plan).
          */
         patch: operations["patchSessionSeats"];
