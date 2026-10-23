@@ -24,6 +24,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
+
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
@@ -420,6 +422,8 @@ type Handler struct {
 	// is exactly the pre-#491 behaviour every earlier unit test asserts.
 	// Its interface and setter live in cmd_promo.go.
 	promoQ PromoQuerier
+	// promoRec journals every promo-code check (migration 0161); nil = off.
+	promoRec *promoattempts.Recorder
 
 	// refundQ / refundTicket (feature #509, W1-B8, spec §7.13) back the
 	// REFUND_TICKET command: the querier resolves the wire bigint ticketId

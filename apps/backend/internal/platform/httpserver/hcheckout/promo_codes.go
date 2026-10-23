@@ -28,6 +28,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -775,10 +777,25 @@ func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Every verdict below is journaled (migration 0166); the write is
+	// asynchronous and never changes the answer.
+	journal := func(row *gen.PromoCodeRow, errCode string) {
+		a := promoattempts.Attempt{
+			OrgID: orgID, Surface: promoattempts.SurfaceOrgValidate, Code: req.Code,
+			SessionIDs: []string{strings.TrimSpace(req.SessionID)}, ErrCode: errCode,
+			ClientIP: httputil.TrustedClientIP(r, 0), CartKey: "validate:" + strings.TrimSpace(req.UserID),
+		}
+		if row != nil {
+			a.PromoCodeID = row.ID
+		}
+		h.promoRec.Record(ctx, a)
+	}
+
 	// Step 1: look up the promo code.
 	pc, err := h.promoQueries.GetPromoCodeByCode(ctx, orgID, req.Code)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			journal(nil, "promo.not_found")
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("promo.not_found", "promo code not found", r))
 			return
 		}
@@ -819,6 +836,7 @@ func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request
 		SessionID: strings.TrimSpace(req.SessionID), Currency: strings.ToUpper(strings.TrimSpace(req.Currency)),
 	}}, time.Now().UTC())
 	if errCode != "" {
+		journal(&pc, errCode)
 		var msg string
 		switch errCode {
 		case "promo.not_active":
@@ -856,6 +874,7 @@ func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request
 			return
 		}
 		if count >= *pc.MaxUses {
+			journal(&pc, "promo.exhausted")
 			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"promo.exhausted", "this promo code has reached its maximum number of uses", r,
 			))
@@ -877,6 +896,7 @@ func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request
 				return
 			}
 			if userCount >= *pc.MaxUsesPerCustomer {
+				journal(&pc, "promo.per_customer_limit")
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 					"promo.per_customer_limit",
 					"you have already used this promo code the maximum number of times",
@@ -889,6 +909,7 @@ func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request
 
 	// Step 5: return the validated discount.
 	finalAmount := req.OrderAmount - discountAmount
+	journal(&pc, "")
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"valid":           true,

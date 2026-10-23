@@ -4408,6 +4408,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/promo-code-attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The journal of promo-code checks of an organization
+         * @description Every check of a promo code in the organization, newest first: where
+         *     it was typed (surface, sales channel, gateway session or customer, a
+         *     short reference of the client address) and what the platform answered
+         *     (`applied`, or `rejected` with a machine reason). A code nobody
+         *     created has no promo-code row, so this organization view is the only
+         *     one that shows it: narrow it with `code`.
+         *
+         *     No e-mail, name or phone of the buyer is stored. Rows are kept 90
+         *     days. Repeats of the same check in the same cart within a minute are
+         *     stored once.
+         *
+         *     Requires JWT + the `promo.read` permission.
+         */
+        get: operations["listOrgPromoCodeAttempts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/promo-codes/{id}/attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The journal of checks of one promo code
+         * @description The checks that found this code, newest first (see
+         *     `listOrgPromoCodeAttempts` for the fields and the filters). A code of
+         *     another organization answers 404 `promo.not_found`.
+         *
+         *     Requires JWT + the `promo.read` permission.
+         */
+        get: operations["listPromoCodeAttempts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/promo-codes/{id}/attempts/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Roll-up of the checks of one promo code
+         * @description How many times the code was checked, how many were applied and
+         *     rejected, the most frequent rejection reasons and the first and last
+         *     attempt. `from` and `to` narrow the window.
+         *
+         *     Requires JWT + the `promo.read` permission.
+         */
+        get: operations["getPromoCodeAttemptSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/promo-code-redemptions": {
         parameters: {
             query?: never;
@@ -19879,6 +19958,106 @@ export interface components {
             channel_id: string | null;
             /** @description Display name of that channel (the selling site or the widget). */
             channel_name: string | null;
+        };
+        /**
+         * @description One check of a promo code. Holds no e-mail, name or phone of the
+         *     buyer; the client address is only a short reference of its salted hash.
+         */
+        PromoCodeAttempt: {
+            /**
+             * Format: uuid
+             * @description Id of the journal row.
+             */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When the code was checked (RFC 3339).
+             */
+            created_at: string;
+            /** @description Sales channel of the check (UUID), null when unknown. */
+            channel_id?: string | null;
+            /**
+             * @description Where the code was typed: `gateway_add_promo_codes`,
+             *     `gateway_check_kdp`, `gateway_create_order`, `widget_checkout`,
+             *     `widget_quote` or `org_validate`.
+             */
+            surface: string;
+            /** @description The code as the buyer typed it, cut to 64 characters. */
+            code_entered: string;
+            /** @description The promo code that was found (UUID), null when no code matched. */
+            promo_code_id?: string | null;
+            /** @description Event sessions (UUIDs) of the cart that was checked. */
+            session_ids: string[];
+            /** @description `applied` or `rejected`. */
+            result: string;
+            /**
+             * @description Machine reason of a rejection, null when applied: `unknown_code`,
+             *     `wrong_session`, `wrong_tier`, `outside_window`, `expired`,
+             *     `max_uses`, `max_uses_per_customer`, `min_order`, `currency`,
+             *     `paused` or `other`.
+             */
+            reason?: string | null;
+            /** @description The customer (UUID) of the gateway session, null when unknown. */
+            customer_id?: string | null;
+            /** @description The Bil24 gateway session (UUID) of the check, null for the widget. */
+            gateway_session_id?: string | null;
+            /** @description First 12 characters of the salted hash of the client address; groups attempts of one client. */
+            client_ref?: string | null;
+        };
+        /** @description One page of the promo-code attempt journal, newest first. */
+        PromoCodeAttemptListResponse: {
+            /** @description The attempts of this page. */
+            attempts: components["schemas"]["PromoCodeAttempt"][];
+            /**
+             * Format: int64
+             * @description Number of attempts that match the filters.
+             */
+            total: number;
+            /** @description Page size used. */
+            limit: number;
+            /** @description Rows skipped. */
+            offset: number;
+            /** @description True when another page follows. */
+            has_more: boolean;
+        };
+        /** @description One line of the most frequent rejection reasons. */
+        PromoCodeAttemptReasonCount: {
+            /** @description Machine reason (see `PromoCodeAttempt.reason`). */
+            reason: string;
+            /**
+             * Format: int64
+             * @description Number of rejected attempts with this reason.
+             */
+            count: number;
+        };
+        /** @description Roll-up of the checks of one promo code. */
+        PromoCodeAttemptSummary: {
+            /**
+             * Format: uuid
+             * @description The promo code.
+             */
+            promo_code_id: string;
+            /**
+             * Format: int64
+             * @description All attempts in the window.
+             */
+            total: number;
+            /**
+             * Format: int64
+             * @description Attempts the platform accepted.
+             */
+            applied: number;
+            /**
+             * Format: int64
+             * @description Attempts the platform refused.
+             */
+            rejected: number;
+            /** @description Up to five most frequent rejection reasons, most frequent first. */
+            top_reasons: components["schemas"]["PromoCodeAttemptReasonCount"][];
+            /** @description Time of the earliest attempt in the window (RFC 3339), null when none. */
+            first_attempt_at?: string | null;
+            /** @description Time of the latest attempt in the window (RFC 3339), null when none. */
+            last_attempt_at?: string | null;
         };
         /**
          * @description Envelope returned by
@@ -44277,6 +44456,267 @@ export interface operations {
              * @description Database pool or promo queries unavailable
              *     (`dependency.database_unavailable`).
              */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listOrgPromoCodeAttempts: {
+        parameters: {
+            query?: {
+                /** @description Narrow the journal to one promo code (UUID). */
+                promo_code_id?: string;
+                /** @description Narrow the journal to one typed code (case-insensitive, exact). */
+                code?: string;
+                /** @description `applied` or `rejected`. */
+                result?: string;
+                /** @description A machine reason of a rejected attempt (see `PromoCodeAttempt.reason`). */
+                reason?: string;
+                /** @description Only attempts at or after this RFC 3339 instant. */
+                from?: string;
+                /** @description Only attempts before this RFC 3339 instant. */
+                to?: string;
+                /** @description Page size, 1-200 (default 50). */
+                limit?: number;
+                /** @description Rows to skip (default 0). */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the journal. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoCodeAttemptListResponse"];
+                };
+            };
+            /** @description A filter is malformed (`promo_attempts.invalid_result`, `promo_attempts.invalid_reason`, `promo_attempts.invalid_date`, `promo_attempts.invalid_limit`, `promo_attempts.invalid_offset`, `promo_attempts.invalid_promo_code_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `promo.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`promo_attempts.list_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listPromoCodeAttempts: {
+        parameters: {
+            query?: {
+                /** @description `applied` or `rejected`. */
+                result?: string;
+                /** @description A machine reason of a rejected attempt. */
+                reason?: string;
+                /** @description Only attempts at or after this RFC 3339 instant. */
+                from?: string;
+                /** @description Only attempts before this RFC 3339 instant. */
+                to?: string;
+                /** @description Page size, 1-200 (default 50). */
+                limit?: number;
+                /** @description Rows to skip (default 0). */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+                /** @description UUIDv7 of the promo code. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the journal. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoCodeAttemptListResponse"];
+                };
+            };
+            /** @description A filter is malformed (`promo_attempts.invalid_*`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `promo.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Promo code not found in this organization (`promo.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`promo_attempts.list_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPromoCodeAttemptSummary: {
+        parameters: {
+            query?: {
+                /** @description Only attempts at or after this RFC 3339 instant. */
+                from?: string;
+                /** @description Only attempts before this RFC 3339 instant. */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+                /** @description UUIDv7 of the promo code. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The roll-up. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoCodeAttemptSummary"];
+                };
+            };
+            /** @description A date is malformed (`promo_attempts.invalid_date`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `promo.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Promo code not found in this organization (`promo.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`promo_attempts.summary_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;

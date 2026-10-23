@@ -46,6 +46,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
@@ -611,7 +613,7 @@ func (h *Handler) orderPromoDiscount(
 
 	now := time.Now().UTC()
 	for _, code := range codes {
-		v, err := h.evaluatePromoCode(ctx, promoCtx{cc: cc, snap: snap}, code, now)
+		v, err := h.evaluatePromoCode(ctx, promoCtx{cc: cc, snap: snap}, promoattempts.SurfaceGatewayCreateOrder, code, now)
 		if err != nil {
 			h.orderTransient(w, req, cc, "promo evaluation failed", err)
 			return 0, nil, false

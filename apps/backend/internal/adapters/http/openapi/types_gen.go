@@ -12648,6 +12648,102 @@ type PricingLineItem struct {
 	UnitPrice int64 `json:"unit_price"`
 }
 
+// PromoCodeAttempt One check of a promo code. Holds no e-mail, name or phone of the
+// buyer; the client address is only a short reference of its salted hash.
+type PromoCodeAttempt struct {
+	// ChannelId Sales channel of the check (UUID), null when unknown.
+	ChannelId *string `json:"channel_id"`
+
+	// ClientRef First 12 characters of the salted hash of the client address; groups attempts of one client.
+	ClientRef *string `json:"client_ref"`
+
+	// CodeEntered The code as the buyer typed it, cut to 64 characters.
+	CodeEntered string `json:"code_entered"`
+
+	// CreatedAt When the code was checked (RFC 3339).
+	CreatedAt time.Time `json:"created_at"`
+
+	// CustomerId The customer (UUID) of the gateway session, null when unknown.
+	CustomerId *string `json:"customer_id"`
+
+	// GatewaySessionId The Bil24 gateway session (UUID) of the check, null for the widget.
+	GatewaySessionId *string `json:"gateway_session_id"`
+
+	// Id Id of the journal row.
+	Id openapi_types.UUID `json:"id"`
+
+	// PromoCodeId The promo code that was found (UUID), null when no code matched.
+	PromoCodeId *string `json:"promo_code_id"`
+
+	// Reason Machine reason of a rejection, null when applied: `unknown_code`,
+	// `wrong_session`, `wrong_tier`, `outside_window`, `expired`,
+	// `max_uses`, `max_uses_per_customer`, `min_order`, `currency`,
+	// `paused` or `other`.
+	Reason *string `json:"reason"`
+
+	// Result `applied` or `rejected`.
+	Result string `json:"result"`
+
+	// SessionIds Event sessions (UUIDs) of the cart that was checked.
+	SessionIds []openapi_types.UUID `json:"session_ids"`
+
+	// Surface Where the code was typed: `gateway_add_promo_codes`,
+	// `gateway_check_kdp`, `gateway_create_order`, `widget_checkout`,
+	// `widget_quote` or `org_validate`.
+	Surface string `json:"surface"`
+}
+
+// PromoCodeAttemptListResponse One page of the promo-code attempt journal, newest first.
+type PromoCodeAttemptListResponse struct {
+	// Attempts The attempts of this page.
+	Attempts []PromoCodeAttempt `json:"attempts"`
+
+	// HasMore True when another page follows.
+	HasMore bool `json:"has_more"`
+
+	// Limit Page size used.
+	Limit int `json:"limit"`
+
+	// Offset Rows skipped.
+	Offset int `json:"offset"`
+
+	// Total Number of attempts that match the filters.
+	Total int64 `json:"total"`
+}
+
+// PromoCodeAttemptReasonCount One line of the most frequent rejection reasons.
+type PromoCodeAttemptReasonCount struct {
+	// Count Number of rejected attempts with this reason.
+	Count int64 `json:"count"`
+
+	// Reason Machine reason (see `PromoCodeAttempt.reason`).
+	Reason string `json:"reason"`
+}
+
+// PromoCodeAttemptSummary Roll-up of the checks of one promo code.
+type PromoCodeAttemptSummary struct {
+	// Applied Attempts the platform accepted.
+	Applied int64 `json:"applied"`
+
+	// FirstAttemptAt Time of the earliest attempt in the window (RFC 3339), null when none.
+	FirstAttemptAt *string `json:"first_attempt_at"`
+
+	// LastAttemptAt Time of the latest attempt in the window (RFC 3339), null when none.
+	LastAttemptAt *string `json:"last_attempt_at"`
+
+	// PromoCodeId The promo code.
+	PromoCodeId openapi_types.UUID `json:"promo_code_id"`
+
+	// Rejected Attempts the platform refused.
+	Rejected int64 `json:"rejected"`
+
+	// TopReasons Up to five most frequent rejection reasons, most frequent first.
+	TopReasons []PromoCodeAttemptReasonCount `json:"top_reasons"`
+
+	// Total All attempts in the window.
+	Total int64 `json:"total"`
+}
+
 // PromoCodeDeleteResponse Envelope returned by
 // `DELETE /v1/organizations/{org_id}/promo-codes/{id}`. The
 // delete is a soft-delete (sets `deleted_at`); the wrapped row
@@ -18409,6 +18505,33 @@ type PostV1OrganizationsOrgIdOrdersOrderIdRefundsParams struct {
 	IdempotencyKey string `json:"Idempotency-Key"`
 }
 
+// ListOrgPromoCodeAttemptsParams defines parameters for ListOrgPromoCodeAttempts.
+type ListOrgPromoCodeAttemptsParams struct {
+	// PromoCodeId Narrow the journal to one promo code (UUID).
+	PromoCodeId *openapi_types.UUID `form:"promo_code_id,omitempty" json:"promo_code_id,omitempty"`
+
+	// Code Narrow the journal to one typed code (case-insensitive, exact).
+	Code *string `form:"code,omitempty" json:"code,omitempty"`
+
+	// Result `applied` or `rejected`.
+	Result *string `form:"result,omitempty" json:"result,omitempty"`
+
+	// Reason A machine reason of a rejected attempt (see `PromoCodeAttempt.reason`).
+	Reason *string `form:"reason,omitempty" json:"reason,omitempty"`
+
+	// From Only attempts at or after this RFC 3339 instant.
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Only attempts before this RFC 3339 instant.
+	To *time.Time `form:"to,omitempty" json:"to,omitempty"`
+
+	// Limit Page size, 1-200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Rows to skip (default 0).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // ListPromoCodeRedemptionsParams defines parameters for ListPromoCodeRedemptions.
 type ListPromoCodeRedemptionsParams struct {
 	// PromoCodeId Narrow the report to one promo code (UUID).
@@ -18416,6 +18539,36 @@ type ListPromoCodeRedemptionsParams struct {
 
 	// Format `csv` for a text/csv attachment instead of JSON; any other value answers JSON.
 	Format *string `form:"format,omitempty" json:"format,omitempty"`
+}
+
+// ListPromoCodeAttemptsParams defines parameters for ListPromoCodeAttempts.
+type ListPromoCodeAttemptsParams struct {
+	// Result `applied` or `rejected`.
+	Result *string `form:"result,omitempty" json:"result,omitempty"`
+
+	// Reason A machine reason of a rejected attempt.
+	Reason *string `form:"reason,omitempty" json:"reason,omitempty"`
+
+	// From Only attempts at or after this RFC 3339 instant.
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Only attempts before this RFC 3339 instant.
+	To *time.Time `form:"to,omitempty" json:"to,omitempty"`
+
+	// Limit Page size, 1-200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Rows to skip (default 0).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetPromoCodeAttemptSummaryParams defines parameters for GetPromoCodeAttemptSummary.
+type GetPromoCodeAttemptSummaryParams struct {
+	// From Only attempts at or after this RFC 3339 instant.
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Only attempts before this RFC 3339 instant.
+	To *time.Time `form:"to,omitempty" json:"to,omitempty"`
 }
 
 // GetV1OrganizationsOrgIdPromoCodesPromoCodeIdRedemptionsCsvParams defines parameters for GetV1OrganizationsOrgIdPromoCodesPromoCodeIdRedemptionsCsv.

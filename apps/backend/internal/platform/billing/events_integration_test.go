@@ -1,6 +1,6 @@
 //go:build integration
 
-// events_integration_test.go — migration 0158 and gen/billing_events.sql.go
+// events_integration_test.go — migration 0161 and gen/billing_events.sql.go
 // against a live database (task B2-1). Connects to DATABASE_URL and skips when
 // it is unset; run it on a FRESH migrated database, never the shared dev
 // stand. Every row the tests write is keyed to a fixture organization and

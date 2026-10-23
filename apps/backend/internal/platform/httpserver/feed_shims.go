@@ -55,7 +55,8 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		WithContactForm(s.contactFormReady(), s.contactFormSiteKey(), s.contactFormPrivacyURL()).
 		WithCheckoutConsent(s.platformTermsURL(), s.contactFormPrivacyURL()).
 		WithLegalTerms(s.legalTermsAPIBase()).
-		WithMetrics(s.typedMetrics)
+		WithMetrics(s.typedMetrics).
+		WithPromoAttempts(s.promoAttemptRecorder())
 }
 
 // ─── type aliases ─────────────────────────────────────────────────────────────

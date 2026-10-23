@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
+
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -238,6 +240,8 @@ func ComputePricingLines(lines []PricingLineInput, discount int64, currency stri
 
 // Handler holds the shared dependencies for all checkout HTTP handlers.
 type Handler struct {
+	// promoRec journals every promo-code check (migration 0161); nil = off.
+	promoRec             *promoattempts.Recorder
 	checkoutQueries      *gen.Queries
 	reservationQueries   *gen.Queries
 	inventoryQueries     *gen.Queries

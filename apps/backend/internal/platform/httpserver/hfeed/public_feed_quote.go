@@ -32,6 +32,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -267,8 +269,10 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 	var discount int64
 	promoApplied := false
 	promoRow, lookupErr := h.findPromoCode(ctx, checkCtx.OrgID, derefOr(req.PromoCode))
+	pj := h.newPromoJournal(r, promoattempts.SurfaceWidgetQuote, checkCtx.OrgID, checkCtx.SalesChannelID, sessionID, derefOr(req.PromoCode))
 	if lookupErr != nil {
 		if errors.Is(lookupErr, pgx.ErrNoRows) {
+			pj.record(ctx, nil, "promo.not_found")
 			h.refusePromo(w, r, promoAttempt, "promo.not_found")
 			return
 		}
@@ -280,6 +284,7 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		var errCode string
 		discount, _, errCode = h.applyPromoDiscount(ctx, h.promoQueries, promoRow,
 			hcheckout.TierLinesForSession(lines, sessionID.String(), currency), "")
+		pj.record(ctx, promoRow, errCode)
 		if errCode != "" {
 			h.refusePromoFor(w, r, promoAttempt, errCode, promoRow)
 			return

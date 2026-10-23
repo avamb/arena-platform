@@ -134,6 +134,9 @@ type Options struct {
 	DoneRetention   time.Duration
 	FailedRetention time.Duration
 	Now             func() time.Time // defaults to time.Now
+	// Extra runs other housekeeping on the same cadence (for example the
+	// promo_code_attempts purge). A failure is logged and never fails the run.
+	Extra func(ctx context.Context, now time.Time) (string, int64, error)
 }
 
 // NewHandler returns the handler for job_type=JobType. Its signature matches
@@ -167,6 +170,14 @@ func NewHandler(opts Options) func(ctx context.Context, payload []byte) error {
 		failed, err := deleteOlder(ctx, opts.Store, StatusFailed, now.Add(-opts.FailedRetention), opts.BatchSize)
 		if err != nil {
 			return err
+		}
+
+		if opts.Extra != nil {
+			if what, n, err := opts.Extra(ctx, now); err != nil {
+				opts.Logger.Warn("worker jobs cleanup: extra housekeeping failed", "task", what, "error", err.Error())
+			} else {
+				opts.Logger.Info("worker jobs cleanup: extra housekeeping", "task", what, "deleted", n)
+			}
 		}
 
 		if opts.Scheduler != nil {

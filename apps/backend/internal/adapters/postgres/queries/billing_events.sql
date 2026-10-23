@@ -1,5 +1,5 @@
 -- billing_events.sql — queries over the billing event store (billing wave B-A,
--- task B2-1, migration 0158): billable_events, charges, charge_reversals,
+-- task B2-1, migration 0161): billable_events, charges, charge_reversals,
 -- charge_allocations and the collect/rate job cursors.
 --
 -- The Go side is the hand-maintained gen/billing_events.sql.go. Money is
