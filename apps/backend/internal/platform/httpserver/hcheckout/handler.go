@@ -240,7 +240,7 @@ func ComputePricingLines(lines []PricingLineInput, discount int64, currency stri
 
 // Handler holds the shared dependencies for all checkout HTTP handlers.
 type Handler struct {
-	// promoRec journals every promo-code check (migration 0161); nil = off.
+	// promoRec journals every promo-code check (migration 0166); nil = off.
 	promoRec             *promoattempts.Recorder
 	checkoutQueries      *gen.Queries
 	reservationQueries   *gen.Queries

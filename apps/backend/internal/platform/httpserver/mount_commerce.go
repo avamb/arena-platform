@@ -11,7 +11,7 @@ func (s *Server) mountPromoRoutes(r chi.Router) {
 			pr.Get("/organizations/{org_id}/promo-codes/{id}", s.handleGetPromoCode)
 			// The usage report, JSON or ?format=csv (plan 25 §3.1 A2/A9).
 			pr.Get("/organizations/{org_id}/promo-code-redemptions", s.handleListPromoRedemptions)
-			// The journal of promo-code checks (migration 0161).
+			// The journal of promo-code checks (migration 0166).
 			pr.Get("/organizations/{org_id}/promo-codes/{id}/attempts", s.handlePromoAttemptsForCode)
 			pr.Get("/organizations/{org_id}/promo-codes/{id}/attempts/summary", s.handlePromoAttemptsSummary)
 			pr.Get("/organizations/{org_id}/promo-code-attempts", s.handlePromoAttemptsForOrg)

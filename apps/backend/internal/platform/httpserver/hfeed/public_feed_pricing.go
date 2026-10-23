@@ -269,9 +269,14 @@ func (h *Handler) refusePromo(w http.ResponseWriter, r *http.Request, attempt *p
 // with sales still open are named (hcheckout.PromoScopeHint), and only the
 // organization's own codes ever get here (findPromoCode is org-scoped), so
 // nothing about a draft event or another organization is shown.
-func (h *Handler) refusePromoFor(w http.ResponseWriter, r *http.Request, attempt *promoAttempt, internal string, row *gen.PromoCodeRow) {
-	if internal == "promo.session_not_applicable" && row != nil && h.promoQueries != nil {
-		if hint := hcheckout.PromoScopeHint(r.Context(), h.promoQueries, *row, time.Now().UTC()); hint != "" {
+//
+// q is the handle the hint reads through: a caller that holds a transaction
+// passes the transaction-bound handle (never the pool, AGENTS.md: a pool
+// acquire while holding row locks is a distributed deadlock waiting for a
+// full pool), a caller without one passes h.promoQueries.
+func (h *Handler) refusePromoFor(w http.ResponseWriter, r *http.Request, attempt *promoAttempt, internal string, row *gen.PromoCodeRow, q *gen.Queries) {
+	if internal == "promo.session_not_applicable" && row != nil && q != nil {
+		if hint := hcheckout.PromoScopeHint(r.Context(), q, *row, time.Now().UTC()); hint != "" {
 			attempt.keep()
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 				promoNotApplicable, "This code works on: "+hint+". Choose tickets for that event to use it.", r,

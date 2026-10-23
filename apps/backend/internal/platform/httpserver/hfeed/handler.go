@@ -130,7 +130,7 @@ type Handler struct {
 	// metrics receives the page statistics beacon's counter (WithMetrics).
 	// Nil is fine: Metrics.RecordPageTrack is a no-op on a nil receiver.
 	metrics *observability.Metrics
-	// promoRec journals every promo-code check (migration 0161); nil = off.
+	// promoRec journals every promo-code check (migration 0166); nil = off.
 	promoRec *promoattempts.Recorder
 }
 

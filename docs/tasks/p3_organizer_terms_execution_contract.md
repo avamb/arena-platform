@@ -4,19 +4,19 @@
 
 P2 is already implemented in `master`: per-channel consent flag, buyer checkbox,
 server-side enforcement, and immutable checkout-consent evidence. Until P3 has an
-approved document rendering, the widget must keep linking to platform terms and
+published document rendering, the widget must keep linking to platform terms and
 must not label them as organizer-authored terms.
 
 ## Non-negotiable publication rule
 
 A public organizer terms page may exist only for an immutable rendering created
-from an approved template. Drafts, placeholders, generated legal prose and
+from a published template. Drafts, placeholders, generated legal prose and
 organizer free text are never public and never selectable at checkout.
 
 ## Data model
 
 1. `legal_documents`: superadmin-owned template version, locale, jurisdiction,
-   refund mode, content, status (`draft`, `approved`, `retired`), content hash,
+   refund mode, content, status (`draft`, `published`, `retired`), content hash,
    author and approval audit fields.
 2. `legal_renderings`: immutable rendered document bound to organization,
    optional promoter, channel, document version, locale, seller-data snapshot,
@@ -34,7 +34,7 @@ organizer free text are never public and never selectable at checkout.
 - `GET /v1/public/pages/{slug}/terms` returns the immutable rendering only.
   Missing, draft, retired or mismatched documents return 404 without legal text.
 - The public feed returns organizer `terms_url` and `terms_version` only when a
-  current approved rendering is available; otherwise it keeps the P2 platform
+  current published rendering is available; otherwise it keeps the P2 platform
   terms URL and version.
 
 ## Rendering inputs

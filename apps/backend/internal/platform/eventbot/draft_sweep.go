@@ -161,7 +161,8 @@ func (s *draftSweeper) sweep(ctx context.Context, now time.Time) draftSweepResul
 		n := draftDeletedNotice(s.texts, row)
 		// The draft is already deleted, so a failed notice is not retried:
 		// there is nothing left to key a retry on.
-		if err := s.send(ctx, n.ChatID, n.Text, n.Keyboard); err != nil {
+		// A person who blocked the bot cannot be told: not a fault.
+		if err := s.send(ctx, n.ChatID, n.Text, n.Keyboard); err != nil && !errors.Is(err, errChatUnreachable) {
 			s.warn(ctx, "eventbot: draft deleted notice failed", err, slog.Int64("telegram_user_id", row.TelegramUserID))
 		}
 	}
