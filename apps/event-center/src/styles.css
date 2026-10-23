@@ -737,3 +737,138 @@ fieldset legend {
   margin: 0;
   padding-inline-start: 1.25rem;
 }
+
+/* 6-1a: the event wizard. */
+.wizard {
+  max-width: 640px;
+}
+
+.wizard fieldset input,
+.wizard fieldset select,
+.wizard fieldset textarea {
+  width: 100%;
+}
+
+.suggestions {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.suggestions li + li {
+  border-top: 1px solid var(--border);
+}
+
+.suggestions .btn {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: start;
+}
+
+/* 6-1b: dates and tickets of the wizard. */
+.wizard .check input {
+  width: auto;
+}
+
+.wizard-date,
+.wizard-cat {
+  margin-block: 1rem;
+}
+
+.wizard-cat {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
+
+.wizard-day {
+  margin-block: 0.5rem;
+}
+
+/* 7-1: the poster. The picture keeps its own proportions (height:auto from the
+   width/height attributes) and never grows past the screen. */
+.poster-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+  margin-block: 0.75rem;
+  border-radius: var(--radius);
+  background: var(--neutral-bg);
+}
+
+.poster-picker .actions {
+  margin-block: 0.5rem;
+}
+/* 5-2: move or cancel a session. */
+.session-change {
+  margin-block: 1.5rem;
+}
+
+.session-change-panel {
+  max-width: 36rem;
+}
+
+.session-change-panel input[type="time"],
+.session-change-panel select,
+.session-contact input[type="email"],
+.session-contact input[type="tel"] {
+  width: 100%;
+}
+
+/* Sales page materials of an event (components/materials). */
+.mat-block {
+  margin: 1.5rem 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border, #d9dde3);
+}
+.mat-photos {
+  display: grid;
+  gap: 0.75rem;
+}
+.mat-photo {
+  display: grid;
+  grid-template-columns: minmax(0, 8rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+.mat-photo-body,
+.mat-row,
+.mat-form {
+  min-width: 0;
+}
+.mat-thumb {
+  display: block;
+  width: 100%;
+  max-width: 8rem;
+  height: 6rem;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #eef0f3;
+}
+.mat-thumb-empty {
+  min-height: 6rem;
+}
+.mat-url,
+.mat-seller {
+  margin: 0 0 0.25rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.mat-add {
+  margin: 0.75rem 0;
+}
+.btn-disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+@media (max-width: 560px) {
+  .mat-photo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

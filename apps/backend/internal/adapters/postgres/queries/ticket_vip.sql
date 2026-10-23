@@ -1,5 +1,5 @@
 -- ticket_vip.sql — the organizer's VIP mark of a ticket (task V1, migration
--- 0160). The mark is private: it is NOT part of GetTicketPresentationByID, so
+-- 0164). The mark is private: it is NOT part of GetTicketPresentationByID, so
 -- the PDF e-ticket and the buyer's letters never carry it.
 
 -- name: SetTicketVIP :one

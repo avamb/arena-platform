@@ -21,7 +21,7 @@ WHERE  id = $1
 RETURNING id`
 
 // SetTicketVIP sets or clears the organizer's VIP mark of one ticket and
-// stamps who changed it and when (V1, migration 0160). It reports whether the
+// stamps who changed it and when (V1, migration 0164). It reports whether the
 // row changed: false means the ticket already had that value (or does not
 // exist), so a repeated call writes nothing and the caller writes no audit
 // row either. The caller proves the ticket belongs to the organization first

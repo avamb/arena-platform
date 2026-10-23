@@ -1,7 +1,7 @@
 package htickets
 
 // ticket_vip.go — helpers for the organizer's VIP mark of a ticket (task V1,
-// migration 0160). The mark is private: it never reaches the PDF e-ticket or
+// migration 0164). The mark is private: it never reaches the PDF e-ticket or
 // a letter to the buyer, so nothing here touches GetTicketPresentationByID.
 
 import (

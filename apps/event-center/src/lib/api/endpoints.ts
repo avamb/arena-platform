@@ -3,21 +3,35 @@
  * from the API table (routes.ts), which the parity test checks against
  * openapi.yaml.
  */
-import { call, download, type DownloadedFile } from "@/lib/api/http";
+import { ApiError, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type {
   ComplimentaryListResponse,
+  CreateOrderRefundsRequest,
+  CreateOrderRefundsResponse,
   CreatePromoCodeRequest,
   BotInvitationCreateResponse,
   BotInvitationResendResponse,
   BotInvitationRevokeResponse,
   BotTeamResponse,
+  EventDeleteImpact,
+  EventEnvelope,
+  MediaObject,
+  PosterFactsResponse,
+  EventContactResponse,
   EventListResponse,
   EventSummary,
+  GeoCitiesResponse,
+  GeoCountriesResponse,
+  GeoCountryCurrencyResponse,
+  GeoCountryTimezonesResponse,
+  ImportBil24SessionResponse,
+  ImportEventBundleDryRunResponse,
   MeResponse,
   OrderDetail,
   OrderLetter,
   OrderListResponse,
+  OrderRefundOptions,
   OrderResendTicketsResponse,
   OrderSummary,
   OrganizationItem,
@@ -29,10 +43,18 @@ import type {
   PromoCodeEnvelope,
   PromoCodeListResponse,
   PromoRedemptionListResponse,
+  SessionChangeImpact,
+  SessionEnvelope,
   SessionListResponse,
   SessionSummary,
+  TicketTierEnvelope,
   TicketTierListResponse,
+  TierPriceScheduleEnvelope,
+  TierPriceWindowInput,
+  UpdateTicketTierRequest,
+  VenueItem,
 } from "@/lib/api/types";
+import type { SessionPatchBody } from "@/lib/sessionChange";
 
 export function fetchMe(): Promise<MeResponse> {
   return call<MeResponse>({ route: API.me });
@@ -257,6 +279,54 @@ export function cancelOrder(orgId: string, orderId: string, headers: Record<stri
   return call<OrderSummary>({ route: API.cancelOrder, params: { org_id: orgId, id: orderId }, body: {}, headers });
 }
 
+// ─── 8-1: refunds of an order ─────────────────────────────────────────────────
+
+/** What can be refunded on an order and how (`refund.read`). Changes nothing. */
+export function fetchRefundOptions(orgId: string, orderId: string): Promise<OrderRefundOptions> {
+  return call<OrderRefundOptions>({ route: API.refundOptions, params: { org_id: orgId, order_id: orderId } });
+}
+
+/**
+ * The server gives a refund up to two minutes for the provider's answer
+ * (refundWorkBudget); the web waits a little longer before it calls the
+ * outcome unknown and offers to check with the same key.
+ */
+export const REFUND_CREATE_TIMEOUT_MS = 130_000;
+
+/**
+ * Records one refund operation (202). `key` is the operation's Idempotency-Key:
+ * the same key with the same body answers the first operation and writes
+ * nothing. `headers` carries the step-up token (`withStepUp`).
+ */
+export async function createOrderRefunds(
+  orgId: string,
+  orderId: string,
+  body: CreateOrderRefundsRequest,
+  key: string,
+  headers: Record<string, string>,
+): Promise<CreateOrderRefundsResponse> {
+  const answer = await call<CreateOrderRefundsResponse>({
+    route: API.refundCreate,
+    params: { org_id: orgId, order_id: orderId },
+    body,
+    headers: { ...headers, "Idempotency-Key": key },
+    timeoutMs: REFUND_CREATE_TIMEOUT_MS,
+  });
+  // An HTTP success alone does not prove which refund operation was recorded.
+  // Keep the idempotency key if a proxy corrupts or truncates the response.
+  if (
+    answer === null || typeof answer !== "object" || answer.order_id !== orderId ||
+    typeof answer.batch_id !== "string" || answer.batch_id === "" || typeof answer.replayed !== "boolean" ||
+    !Array.isArray(answer.refunds) || answer.refunds.length === 0 ||
+    !answer.refunds.every((item) => item !== null && typeof item === "object" &&
+      typeof item.id === "string" && item.id !== "" && typeof item.state === "string" &&
+      typeof item.currency === "string" && Number.isSafeInteger(item.amount) && item.amount >= 0)
+  ) {
+    throw new ApiError(200, "refund.unconfirmed_response", "The refund response could not be verified.");
+  }
+  return answer;
+}
+
 // ─── 4-7: the owner's "Organization data" ────────────────────────────────────
 
 /** The organization with its legal data and contact (`org.read`). */
@@ -436,6 +506,228 @@ export function removeMember(orgId: string, userId: string, membershipRole: stri
     params: { org_id: orgId, user_id: userId },
     body: { role: membershipRole },
   });
+}
+
+// ─── 5-1: the status of an event ─────────────────────────────────────────────
+
+/**
+ * Moves an event along its lifecycle (`event.publish`). Re-applying the same
+ * status is a silent 200. 422: `event.invalid_transition`,
+ * `event.publish_requires_session`, `event.publish_requires_priced_tier`.
+ */
+export function updateEventStatus(orgId: string, eventId: string, status: string): Promise<EventEnvelope> {
+  return call<EventEnvelope>({ route: API.eventStatus, params: { org_id: orgId, id: eventId }, body: { status } });
+}
+
+/** The dry run of a delete: what it would touch and whether it is allowed. Writes nothing. */
+export function fetchEventDeleteImpact(orgId: string, eventId: string): Promise<EventDeleteImpact> {
+  return call<EventDeleteImpact>({ route: API.eventDeleteImpact, params: { org_id: orgId, event_id: eventId } });
+}
+
+/** Deletes an event that sold nothing. 409 `event.has_paid_orders` otherwise. */
+export function deleteEvent(orgId: string, eventId: string): Promise<unknown> {
+  return call<unknown>({ route: API.eventDelete, params: { org_id: orgId, id: eventId } });
+}
+
+// 5-3: the sales end and doors-open time of a session. One PATCH names ONE
+// of the two (the body builders are in lib/saleTimes.ts). No journal row and
+// no letter: neither time is a buyer-visible change.
+export function updateSessionSaleTimes(
+  orgId: string,
+  eventId: string,
+  sessionId: string,
+  body: { sales_end_at: string } | { doors_open_at: string | null },
+): Promise<SessionEnvelope> {
+  return call<SessionEnvelope>({
+    route: API.sessionUpdate,
+    params: { org_id: orgId, event_id: eventId, id: sessionId },
+    body,
+  });
+}
+
+// ─── 5-4: a date's categories ────────────────────────────────────────────────
+
+export interface TierRef {
+  orgId: string;
+  eventId: string;
+  sessionId: string;
+  tierId: string;
+}
+
+const tierParams = (r: TierRef) => ({
+  org_id: r.orgId,
+  event_id: r.eventId,
+  session_id: r.sessionId,
+  id: r.tierId,
+});
+
+/**
+ * Changes ONE thing of a category. The body is exactly the keys to change:
+ * an absent key keeps the stored value, an explicit null clears a sale-window
+ * edge (UpdateTicketTierRequest is tri-state for those two).
+ */
+export function updateTier(ref: TierRef, body: UpdateTicketTierRequest): Promise<TicketTierEnvelope> {
+  return call<TicketTierEnvelope>({ route: API.tierUpdate, params: tierParams(ref), body });
+}
+
+/** The category's price windows, to find the one in force now. */
+export function fetchTierSchedule(ref: TierRef): Promise<TierPriceScheduleEnvelope> {
+  return call<TierPriceScheduleEnvelope>({ route: API.tierSchedule, params: tierParams(ref) });
+}
+
+/** Replaces the whole schedule. Send every window back, the changed one included. */
+export function putTierSchedule(ref: TierRef, windows: TierPriceWindowInput[]): Promise<TierPriceScheduleEnvelope> {
+  return call<TierPriceScheduleEnvelope>({
+    route: API.tierSchedulePut,
+    params: tierParams(ref),
+    body: { windows },
+  });
+}
+
+// ─── 6-1a: the event wizard ──────────────────────────────────────────────────
+
+/** The organization's active venues (`venue.read`). */
+export function listVenues(orgId: string): Promise<{ venues: VenueItem[] }> {
+  return call<{ venues: VenueItem[] }>({ route: API.venues, params: { org_id: orgId } });
+}
+
+export function listCountries(lang?: string): Promise<GeoCountriesResponse> {
+  return call<GeoCountriesResponse>({ route: API.geoCountries, query: { lang } });
+}
+
+/** Cities of a country that start with `q`, and places of the GeoNames data as suggestions. */
+export function searchCities(iso2: string, q: string, lang?: string): Promise<GeoCitiesResponse> {
+  return call<GeoCitiesResponse>({ route: API.geoCities, query: { country: iso2, q, lang } });
+}
+
+/** The zones of a country. 404 `geo.country_not_found` for a country the data does not know. */
+export function countryTimezones(iso2: string): Promise<GeoCountryTimezonesResponse> {
+  return call<GeoCountryTimezonesResponse>({ route: API.geoTimezones, params: { iso2 } });
+}
+
+/** The currency of a country. 404 `geo.country_not_found` for a country the platform has no row for. */
+export function countryCurrency(iso2: string): Promise<GeoCountryCurrencyResponse> {
+  return call<GeoCountryCurrencyResponse>({ route: API.geoCurrency, params: { iso2 } });
+}
+
+/**
+ * Checks an event bundle with the import's own code and writes NOTHING
+ * (`?dry_run=true`, task 3-1). The answer lists every error with the JSON
+ * pointer of its field. It holds a transaction like an import, so a caller
+ * asks at most once a second (lib/wizard/validation.ts, createScheduler).
+ */
+export function checkEventBundle(orgId: string, bundle: unknown): Promise<ImportEventBundleDryRunResponse> {
+  return call<ImportEventBundleDryRunResponse>({
+    route: API.eventBundleCheck,
+    params: { org_id: orgId },
+    query: { dry_run: "true" },
+    body: bundle,
+  });
+}
+
+/**
+ * Creates the event: the SAME route as the check, without `dry_run`. The
+ * bundle's `externalRef` is the idempotency key (a repeat edits the session it
+ * made, 200 `created: false`), and `publish: false` keeps the event a draft.
+ * Never retried by the client on its own (lib/wizard/save.ts decides).
+ */
+export function createEventFromBundle(orgId: string, bundle: unknown): Promise<ImportBil24SessionResponse> {
+  return call<ImportBil24SessionResponse>({
+    route: API.eventBundleCheck,
+    params: { org_id: orgId },
+    body: bundle,
+  });
+}
+
+// ─── 7-1: the poster of an event ─────────────────────────────────────────────
+
+/**
+ * Uploads a picture as an event poster of the organization (`media.write`).
+ * Multipart, one `file` part, `owner_type=event_poster`, `org_id` and the
+ * `content_type` the web itself proved from the bytes. The answer is NOT flat:
+ * `{ media_object }`. The file is named `poster.jpg|png`, never with the
+ * person's own file name.
+ */
+export function uploadPosterMedia(
+  orgId: string,
+  file: Blob,
+  contentType: string,
+  signal?: AbortSignal,
+): Promise<{ media_object: MediaObject }> {
+  const form = new FormData();
+  form.append("owner_type", "event_poster");
+  form.append("org_id", orgId);
+  form.append("content_type", contentType);
+  form.append("file", file, contentType === "image/png" ? "poster.png" : "poster.jpg");
+  return call<{ media_object: MediaObject }>({ route: API.mediaUpload, form, signal, timeoutMs: UPLOAD_TIMEOUT_MS });
+}
+
+/**
+ * Asks the server to read the uploaded poster (`event.update` in this organization).
+ * ONE request on its own long timeout: the caller never repeats it by itself, because
+ * an answer that is lost may still have used one of the organization's daily readings.
+ * Nothing is stored by the server; the answer is only a set of hints.
+ */
+export function readPosterFacts(orgId: string, mediaId: string, signal?: AbortSignal): Promise<PosterFactsResponse> {
+  return call<PosterFactsResponse>({
+    route: API.posterFacts,
+    params: { org_id: orgId, media_id: mediaId },
+    signal,
+    timeoutMs: POSTER_READ_TIMEOUT_MS,
+  });
+}
+
+/** A media object with a signed address valid for about seven minutes (`media.read`). */
+export function fetchMediaObject(mediaId: string, signal?: AbortSignal): Promise<{ media_object: MediaObject }> {
+  return call<{ media_object: MediaObject }>({ route: API.mediaGet, params: { id: mediaId }, signal });
+}
+
+/**
+ * Makes an uploaded picture the event's poster: ONE field of the PATCH
+ * (`event.update`). `clear_session_overrides` is never sent: a date that has
+ * its own poster keeps it.
+ */
+export function attachEventPoster(
+  orgId: string,
+  eventId: string,
+  mediaId: string,
+  signal?: AbortSignal,
+): Promise<EventEnvelope> {
+  return call<EventEnvelope>({
+    route: API.eventUpdate,
+    params: { org_id: orgId, id: eventId },
+    body: { poster_media_id: mediaId },
+    signal,
+  });
+}
+
+// ─── 5-2: move or cancel a session ───────────────────────────────────────────
+
+/** The dry run of a move or a cancellation. Writes nothing. See impactQuery(). */
+export function fetchChangeImpact(
+  orgId: string,
+  sessionId: string,
+  query: Record<string, string>,
+): Promise<SessionChangeImpact> {
+  return call<SessionChangeImpact>({
+    route: API.sessionChangeImpact,
+    params: { org_id: orgId, session_id: sessionId },
+    query,
+  });
+}
+
+/** The ONE write of a move or a cancellation: a PATCH of the existing session. */
+export function patchSession(orgId: string, eventId: string, sessionId: string, body: SessionPatchBody): Promise<SessionEnvelope> {
+  return call<SessionEnvelope>({ route: API.sessionUpdate, params: { org_id: orgId, event_id: eventId, id: sessionId }, body });
+}
+
+/** The e-mail buyers answer to when a session changes (the event's promoter, else the organization). */
+export function setEventContact(
+  orgId: string,
+  eventId: string,
+  input: { email: string; phone: string | null; phone_hidden: boolean },
+): Promise<EventContactResponse> {
+  return call<EventContactResponse>({ route: API.eventContact, params: { org_id: orgId, event_id: eventId }, body: input });
 }
 
 // ─── V1: the VIP mark of a ticket ─────────────────────────────────────────────

@@ -1,7 +1,7 @@
 package httpserver
 
 // ticket_vip.go — PATCH /v1/organizations/{org_id}/tickets/{ticket_id}/vip
-// (task V1, migration 0160): the organizer's private VIP mark of one ticket,
+// (task V1, migration 0164): the organizer's private VIP mark of one ticket,
 // bought or an invitation. Right: ticket.update (owner and manager). The
 // ticket's organization comes from GetTicketOrgID (not from its session), so
 // a ticket of a cancelled session is still reachable, and a foreign ticket
@@ -71,6 +71,10 @@ func (s *Server) handleSetTicketVIP(w http.ResponseWriter, r *http.Request) {
 		if changed, err = q.WithTx(tx).SetTicketVIP(ctx, ticketID, *body.VIP, by); err != nil {
 			return err
 		}
+		// A repeat writes no audit event. A server built without an audit
+		// writer (tests, tools) skips it, exactly like the sibling mutations
+		// (review-hold clear, bank accounts, promoters): the writer is optional
+		// wiring, not a precondition of the change.
 		if !changed || s.audit == nil {
 			return nil
 		}

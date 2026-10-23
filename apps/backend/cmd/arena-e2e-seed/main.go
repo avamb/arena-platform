@@ -78,6 +78,8 @@ type output struct {
 	SessionID string   `json:"session_id"`
 	TierID    string   `json:"tier_id"`
 	People    []person `json:"people"`
+	// ForeignMediaID is a poster of the OTHER organization (poster_fixture.go, task 7-1).
+	ForeignMediaID string `json:"foreign_media_id"`
 }
 
 func main() {
@@ -96,9 +98,25 @@ func run(args []string) error {
 	invitationEmail := fs.String("invitation-email", "", "the guest --invitations-op deliver or fail works on")
 	teamOp := fs.String("team-op", "", "4-5 twin helper: reset, age, expire or inspect (see team_fixture.go)")
 	teamEmail := fs.String("team-email", "", "the address --team-op age, expire or inspect works on")
+	sessionChangeOp := fs.String("session-change-op", "", "5-2 twin helper: reset or inspect (see session_change_fixture.go)")
+	sessionChangeSession := fs.String("session-id", "", "the session --session-change-op inspect reads")
 	orgDataOp := fs.String("org-data-op", "", "4-7 twin helper: reset, inspect or hide (see org_data_fixture.go)")
+	// Independent live fixtures for the three release features.
+	eventStatusOp := fs.String("event-status-op", "", "5-1 twin helper: reset or inspect")
+	saleTimesOp := fs.String("sale-times-op", "", "5-3 twin helper: reset or inspect")
+	categoriesOp := fs.String("categories-op", "", "5-4 twin helper: reset or inspect")
+	refundOp := fs.String("refund-op", "", "8-1 twin helper: reset, inspect or scan (see refund_fixture.go)")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *eventStatusOp != "" {
+		return runEventStatusOp(*eventStatusOp)
+	}
+	if *categoriesOp != "" {
+		return runCategoriesOp(*categoriesOp)
+	}
+	if *sessionChangeOp != "" {
+		return runSessionChangeOp(*sessionChangeOp, *sessionChangeSession)
 	}
 	if *teamOp != "" {
 		return runTeamOp(*teamOp, *teamEmail)
@@ -106,8 +124,14 @@ func run(args []string) error {
 	if *cancelOp != "" {
 		return runCancelOrderOp(*cancelOp, *cancelOrder)
 	}
+	if *refundOp != "" {
+		return runRefundOp(*refundOp)
+	}
 	if *orgDataOp != "" {
 		return runOrgDataOp(*orgDataOp)
+	}
+	if *saleTimesOp != "" {
+		return runSaleTimesOp(*saleTimesOp)
 	}
 	if *invitationsOp != "" {
 		return runInvitationsOp(*invitationsOp, *invitationEmail)
@@ -138,7 +162,7 @@ func run(args []string) error {
 		return fmt.Errorf("commit: %w", err)
 	}
 
-	doc := output{OrgID: orgID, OrgName: orgName, EventID: eventID, EventName: eventName, SessionID: sessionID, TierID: tierID, People: people()}
+	doc := output{OrgID: orgID, OrgName: orgName, EventID: eventID, EventName: eventName, SessionID: sessionID, TierID: tierID, People: people(), ForeignMediaID: foreignMediaID}
 	for i := range doc.People {
 		doc.People[i].Password = seedPassword
 	}
@@ -229,6 +253,9 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applyOrgDataFixture(ctx, tx); err != nil {
 		return err
 	}
+	if err := applyMaterialsFixture(ctx, tx); err != nil {
+		return err
+	}
 	if err := applyCancelOrderFixture(ctx, tx); err != nil {
 		return err
 	}
@@ -247,6 +274,34 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	if err := applyInvitationsFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 5-1: the status twin test's events (event_status_fixture.go).
+	if err := applyEventStatusFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 5-3: the date of the sales end and doors-open twin test (sale_times_fixture.go).
+	if err := applySaleTimesFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 5-4: the categories twin test's date (categories_fixture.go).
+	if err := applyCategoriesFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 6-1a: a promoter and a seat count for the wizard's twin test.
+	if err := applyWizardFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 5-2: the session-change twin test's own event and sessions.
+	if err := applySessionChangeFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 8-1: the refund twin test's event and paid orders (refund_fixture.go).
+	if err := applyRefundFixture(ctx, tx); err != nil {
+		return err
+	}
+	// 7-1: a poster of the other organization (poster_fixture.go).
+	if err := applyForeignPoster(ctx, tx); err != nil {
 		return err
 	}
 	// V1: a paid two-ticket order for the VIP twin test (vip_fixture.go).
