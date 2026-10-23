@@ -95,7 +95,7 @@ func TestRecord_IgnoresEmptyCodeAndUnknownOrgAndNil(t *testing.T) {
 }
 
 // A journal that fails — an error or a panic — must never reach the caller.
-func TestRecord_FailureNeverReachesTheCaller(t *testing.T) {
+func TestRecord_FailureNeverReachesTheCaller(_ *testing.T) {
 	var rows []Row
 	var mu sync.Mutex
 	failing := recorderCapturing(&rows, &mu, errors.New("database is down"))
@@ -109,7 +109,7 @@ func TestRecord_FailureNeverReachesTheCaller(t *testing.T) {
 	async.Wait()
 }
 
-func TestRecord_BusyJournalDropsInsteadOfBlocking(t *testing.T) {
+func TestRecord_BusyJournalDropsInsteadOfBlocking(_ *testing.T) {
 	release := make(chan struct{})
 	r := New(nil, "s", nil).WithInsert(func(context.Context, Row) error { <-release; return nil })
 	for i := 0; i < maxInFlight+10; i++ {

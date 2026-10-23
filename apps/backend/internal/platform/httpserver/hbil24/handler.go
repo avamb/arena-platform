@@ -21,9 +21,10 @@ package hbil24
 
 import (
 	"context"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
 	"log/slog"
 	"time"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
 
 	"github.com/google/uuid"
 
