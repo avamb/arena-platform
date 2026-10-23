@@ -49,6 +49,10 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/backfill"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/bil24wire"
+	billingaccel "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/accel"
+	billingcollect "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/collect"
+	billingcredits "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/credits"
+	billingrate "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/rate"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/contactform"
@@ -203,11 +207,28 @@ func run() error {
 	// can neither delay nor re-trigger the webhooks (internal/platform/salesnotify).
 	salesNotifier := buildSalesNotifier(pool.Pool, cfg, logger)
 	go salesNotifier.Run(rootCtx)
+	// Billing: the collector and the rater are built once and shared by the two
+	// scheduled jobs (registered below) and the outbox accelerator, which only
+	// asks for an extra pass and never fails (internal/platform/billing/accel).
+	// All three stay off until the owner names the date X.
+	billingCollector, billingRater := buildBilling(pool.Pool, cfg, logger)
+	var billingAccel *billingaccel.Accelerator
+	if billingRater != nil {
+		billingAccel = billingaccel.New(func(ctx context.Context) error {
+			if _, err := billingCollector.Run(ctx); err != nil {
+				return err
+			}
+			_, err := billingRater.Run(ctx)
+			return err
+		}, 0, logger)
+		go billingAccel.Run(rootCtx)
+	}
 	outboxDispatcher := &multiDispatcher{dispatchers: outboxLegs(
 		salesNotifier,
 		baseOutboxDispatcher,
 		macsDispatcher,
 		bil24WPDispatcher,
+		billingAccelLeg(billingAccel),
 	)}
 	outboxStore := outbox.NewPGOutboxEventStore(pool.Pool)
 	outboxEventsDisp, outboxDispErr := outbox.NewOutboxEventsDispatcher(outbox.OutboxEventsDispatcherOptions{
@@ -259,6 +280,7 @@ func run() error {
 	registerContactFormHandler(registry, pool.Pool, cfg, salesNotifier, opsNotifier, logger)
 	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
+	registerBillingReconcileHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 	registerJobRetentionHandler(registry, pool.Pool, logger)
 
 	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
@@ -302,6 +324,22 @@ func run() error {
 		logger.Info("reservation expire sweep job scheduled at startup")
 	}
 	scheduleRefundSweep(rootCtx, pool.Pool, logger)
+
+	// billing.collect writes the billable events the rate job turns into
+	// charges. It runs only once the owner names the date X
+	// (BILLING_COLLECT_SINCE); without it nothing is seeded and the handler
+	// does nothing.
+	if !cfg.BillingCollectSince.IsZero() {
+		if err := billingcollect.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+			logger.Warn("could not schedule initial billing collect job", "error", err.Error())
+		} else {
+			logger.Info("billing collect job scheduled at startup", "since", cfg.BillingCollectSince.Format(time.RFC3339))
+		}
+		if err := billingrate.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+			logger.Warn("could not schedule initial billing rate job", "error", err.Error())
+		}
+	}
+	scheduleBillingReconcile(rootCtx, pool.Pool, cfg, logger)
 	scheduleJobRetention(rootCtx, pool.Pool, logger)
 	if err := tierchain.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the next category opens a little later than announced.
@@ -515,6 +553,20 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 			WithCheckoutQueries(reservationQueries),
 		Logger:    logger,
 		Scheduler: reservationexpiry.NewPGScheduler(pool),
+	}))
+
+	// billing.rate turns the collected events into charges; like collect it is
+	// off (no Rater, nothing seeded) until the date X is named.
+	billingCollector, billingRater := buildBilling(pool, cfg, logger)
+	reg.Register(billingrate.JobType, billingrate.NewHandler(billingrate.HandlerOptions{
+		Rater:     billingRater,
+		Scheduler: billingrate.NewPGScheduler(pool),
+		Logger:    logger,
+	}))
+	reg.Register(billingcollect.JobType, billingcollect.NewHandler(billingcollect.HandlerOptions{
+		Collector: billingCollector,
+		Scheduler: billingcollect.NewPGScheduler(pool),
+		Logger:    logger,
 	}))
 
 	// tier.chain_sweep hands the free places of a category whose sale window
@@ -950,6 +1002,24 @@ func coalesce(values ...string) string {
 // DisabledDispatcher would answer every event with ErrDispatchDisabled, the
 // row would stay unprocessed and be claimed again, and MACS and the selling
 // sites after it would never receive anything.
+// buildBilling makes the collect and rate workers. The rater is nil, and the
+// collector disabled, until the owner names the date X.
+func buildBilling(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) (*billingcollect.Collector, *billingrate.Rater) {
+	collector := billingcollect.New(gen.New(pool), billingcollect.Options{Since: cfg.BillingCollectSince, Logger: logger})
+	if cfg.BillingCollectSince.IsZero() {
+		return collector, nil
+	}
+	return collector, billingrate.New(pool, billingrate.Options{
+		Since:   cfg.BillingCollectSince,
+		Settler: billingcredits.NewSettler(billingcredits.Options{}),
+		Logger:  logger,
+	})
+}
+
+// billingAccelLeg turns a possibly nil accelerator into a leg; a nil one is
+// an inert no-op (Dispatch on a nil *Accelerator answers nil).
+func billingAccelLeg(a *billingaccel.Accelerator) outbox.Dispatcher { return a }
+
 func outboxLegs(legs ...outbox.Dispatcher) []outbox.Dispatcher {
 	out := make([]outbox.Dispatcher, 0, len(legs))
 	for _, d := range legs {
