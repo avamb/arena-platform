@@ -24,6 +24,9 @@ func (s *Server) mountSeatBatchRoutes(r chi.Router) {
 		pr.Get(base+"/seat-batches", s.seatBatchShim(func(w http.ResponseWriter, r *http.Request) {
 			s.seatingHandler().HandleListSeatBatches(w, r)
 		}))
+		pr.Get(base+"/seat-batches/{batch_id}", s.seatBatchShim(func(w http.ResponseWriter, r *http.Request) {
+			s.seatingHandler().HandleGetSeatBatch(w, r)
+		}))
 		pr.Post(base+"/seat-batches/{batch_id}/revert", s.seatBatchShim(func(w http.ResponseWriter, r *http.Request) {
 			s.seatingHandler().HandleRevertSeatBatch(w, r)
 		}))

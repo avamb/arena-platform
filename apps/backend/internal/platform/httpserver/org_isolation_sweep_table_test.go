@@ -333,6 +333,7 @@ var orgIsolationAuditedSafe = map[string]string{
 	// seatlayout / the batch queries are scoped by (session, path org)
 	// again (covered by TestSeatBatches_StayInsideTheOrganization).
 	"POST /v1/organizations/{org_id}/sessions/{session_id}/seat-batches":                   "hseating",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/seat-batches/{batch_id}":         "hseating",
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/seat-batches":                    "hseating",
 	"POST /v1/organizations/{org_id}/sessions/{session_id}/seat-batches/{batch_id}/revert": "hseating",
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/seats/{seat_key}/history":        "hseating",

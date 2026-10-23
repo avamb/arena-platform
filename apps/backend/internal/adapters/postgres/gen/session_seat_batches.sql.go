@@ -229,20 +229,68 @@ func (q *Queries) MarkSessionSeatBatchReverted(ctx context.Context, id, revertBa
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ListSessionSeatBatches / CountSessionSeatBatches
+// ListSessionSeatBatchSummaries / GetSessionSeatBatch / CountSessionSeatBatches
 // ─────────────────────────────────────────────────────────────────────────────
 
-const listSessionSeatBatches = `-- name: ListSessionSeatBatches :many
-SELECT ` + sessionSeatBatchColumns + `
+// SessionSeatBatchSummaryRow is a batch without its changes / skipped
+// arrays, only their lengths — what the batch list shows.
+type SessionSeatBatchSummaryRow struct {
+	ID                uuid.UUID
+	SessionID         uuid.UUID
+	ActorID           *uuid.UUID
+	ActorLabel        string
+	Kind              string
+	SeatStatusVersion int64
+	AppliedAt         time.Time
+	RevertedAt        *time.Time
+	RevertedByBatchID *uuid.UUID
+	RevertsBatchID    *uuid.UUID
+	ChangedCount      int32
+	SkippedCount      int32
+}
+
+const listSessionSeatBatchSummaries = `-- name: ListSessionSeatBatchSummaries :many
+SELECT id, session_id, actor_id, actor_label, kind, seat_status_version,
+       applied_at, reverted_at, reverted_by_batch_id, reverts_batch_id,
+       jsonb_array_length(changes), jsonb_array_length(skipped)
 FROM   session_seat_batches
 WHERE  session_id = $1
   AND  org_id     = $2
 ORDER  BY applied_at DESC, id DESC
 LIMIT  $3 OFFSET $4`
 
-// ListSessionSeatBatches pages the batches of one session, newest first.
-func (q *Queries) ListSessionSeatBatches(ctx context.Context, sessionID, orgID uuid.UUID, limit, offset int32) ([]SessionSeatBatchRow, error) {
-	return q.querySessionSeatBatches(ctx, listSessionSeatBatches, sessionID, orgID, limit, offset)
+// ListSessionSeatBatchSummaries pages the batches of one session, newest
+// first, without reading their changes / skipped arrays out of the row.
+func (q *Queries) ListSessionSeatBatchSummaries(ctx context.Context, sessionID, orgID uuid.UUID, limit, offset int32) ([]SessionSeatBatchSummaryRow, error) {
+	rows, err := q.db.Query(ctx, listSessionSeatBatchSummaries, sessionID, orgID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SessionSeatBatchSummaryRow
+	for rows.Next() {
+		var b SessionSeatBatchSummaryRow
+		if err := rows.Scan(&b.ID, &b.SessionID, &b.ActorID, &b.ActorLabel, &b.Kind, &b.SeatStatusVersion,
+			&b.AppliedAt, &b.RevertedAt, &b.RevertedByBatchID, &b.RevertsBatchID,
+			&b.ChangedCount, &b.SkippedCount); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+const getSessionSeatBatch = `-- name: GetSessionSeatBatch :one
+SELECT ` + sessionSeatBatchColumns + `
+FROM   session_seat_batches
+WHERE  id         = $1
+  AND  session_id = $2
+  AND  org_id     = $3`
+
+// GetSessionSeatBatch reads one batch of the session and organization;
+// pgx.ErrNoRows for an unknown id or one of another session or organization.
+func (q *Queries) GetSessionSeatBatch(ctx context.Context, id, sessionID, orgID uuid.UUID) (SessionSeatBatchRow, error) {
+	return scanSessionSeatBatchRow(q.db.QueryRow(ctx, getSessionSeatBatch, id, sessionID, orgID))
 }
 
 const countSessionSeatBatches = `-- name: CountSessionSeatBatches :one
@@ -294,14 +342,6 @@ func (q *Queries) CountSeatBatchHistory(ctx context.Context, sessionID, orgID uu
 	var n int64
 	err := q.db.QueryRow(ctx, countSeatBatchHistory, sessionID, orgID, string(probe)).Scan(&n)
 	return n, err
-}
-
-func (q *Queries) querySessionSeatBatches(ctx context.Context, sql string, sessionID, orgID uuid.UUID, limit, offset int32) ([]SessionSeatBatchRow, error) {
-	rows, err := q.db.Query(ctx, sql, sessionID, orgID, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-	return collectSessionSeatBatches(rows)
 }
 
 func collectSessionSeatBatches(rows interface {

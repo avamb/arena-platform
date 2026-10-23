@@ -205,6 +205,19 @@ func (h *Handler) HandlePatchSessionSeats(w http.ResponseWriter, r *http.Request
 	// responses are stable and easy to diff in operator UIs.
 	targetKeys, unknown := expandSeatSelectors(req, seatByKey, sectorIndex, rowIndex)
 
+	// One batch holds at most seatlayout.MaxChanges seats. A sector or row
+	// selector can expand past it on a big hall: refuse with a 422 naming
+	// the cap (the same code the category PATCH uses), never a 500.
+	if len(targetKeys) > seatlayout.MaxChanges {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			"seating.too_many_seat_keys",
+			"the selectors match more seats than one request may change; split the request",
+			r,
+			map[string]any{"max": seatlayout.MaxChanges, "received": len(targetKeys)},
+		))
+		return
+	}
+
 	// The write goes through seatlayout.ApplyBatch (task S1c): one
 	// transaction that bumps sessions.seat_status_version exactly once (the
 	// sessions row lock, first statement), locks the seats FOR UPDATE in
@@ -336,7 +349,14 @@ func (h *Handler) auditOnlySeatsPatch(
 // to this route's codes.
 func (h *Handler) writeSeatsBatchError(w http.ResponseWriter, r *http.Request, err error) {
 	var auditErr *seatlayout.AuditError
+	var inErr *seatlayout.InputError
 	switch {
+	case errors.As(err, &inErr):
+		// Unreachable from the handler's own checks; a refused shape is
+		// still the caller's 4xx, never a 500.
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			inErr.Code, inErr.Message, r, inErr.Details,
+		))
 	case errors.Is(err, seatlayout.ErrSessionNotFound):
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 			"session.not_found", "session not found", r,

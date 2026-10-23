@@ -186,6 +186,15 @@ func (e *ConflictError) Error() string {
 	return fmt.Sprintf("seatlayout: %d seat(s) cannot be changed", len(e.Skipped))
 }
 
+// NothingToRevertError is a revert in which no seat can be put back (every
+// seat is sold, held, changed again by a later batch, or its category is
+// gone). Nothing is written and the original batch stays revertable.
+type NothingToRevertError struct{ Skipped []SkippedSeat }
+
+func (e *NothingToRevertError) Error() string {
+	return fmt.Sprintf("seatlayout: nothing to revert, %d seat(s) skipped", len(e.Skipped))
+}
+
 // AuditError wraps a failure of the caller's AuditFunc.
 type AuditError struct{ Err error }
 
@@ -330,7 +339,10 @@ type RevertInput struct {
 // original batch changed back into its "from" state. A seat is put back
 // only while it is still exactly as the original left it, and the sold /
 // held rule applies again; every other seat goes to skipped. A batch is
-// reverted at most once, and a revert batch is never reverted.
+// reverted at most once, and a revert batch is never reverted. When not a
+// single seat can be put back the revert is refused with
+// *NothingToRevertError and writes nothing (no bump, no batch row), so the
+// original stays revertable once the later batch is reverted.
 func Revert(ctx context.Context, pool TxStarter, q *gen.Queries, in RevertInput) (Batch, error) {
 	if pool == nil || q == nil {
 		return Batch{}, errors.New("seatlayout: Revert requires a pool and queries")
@@ -485,6 +497,12 @@ func applyLocked(ctx context.Context, tx pgx.Tx, txq *gen.Queries, a applyArgs) 
 	}
 	if a.strict && len(skipped) > 0 {
 		return Batch{}, &ConflictError{Skipped: skipped}
+	}
+	if a.revertsBatchID != nil && len(ids) == 0 {
+		// A revert that would put nothing back writes nothing: the
+		// original stays revertable, so reverting the later batch that
+		// moved its seats first and then this one still works.
+		return Batch{}, &NothingToRevertError{Skipped: skipped}
 	}
 	if len(ids) > 0 {
 		n, err := txq.ApplySessionSeatBatchUpdates(ctx, a.sessionID, a.version, ids, tiers, statuses)

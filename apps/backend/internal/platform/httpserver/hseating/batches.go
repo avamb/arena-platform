@@ -143,18 +143,17 @@ func (h *Handler) HandleCreateSeatBatch(w http.ResponseWriter, r *http.Request) 
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, seatBatchBodyLimit))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"seat_batch.invalid_body", "request body is not valid JSON: "+err.Error(), r,
+		// The decoder's own text (a field name, an offset, "http: request
+		// body too large") goes to details, never into the message.
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"seat_batch.invalid_body", "request body is not a valid seat batch", r,
+			map[string]any{"reason": err.Error(), "max_bytes": seatBatchBodyLimit},
 		))
 		return
 	}
-	if len(req.NewTiers) > 0 {
-		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
-			"seat_batch.new_tiers_unsupported",
-			"creating a category inside a batch is not supported yet; create the category first", r,
-		))
-		return
-	}
+	// new_tiers is only counted here; seatlayout.Validate refuses a
+	// non-empty list (ErrNewTiersUnsupported, one place for the rule).
+	newTiers := make([]seatlayout.NewTier, len(req.NewTiers))
 	changes := make([]seatlayout.Change, 0, len(req.Changes))
 	for i, c := range req.Changes {
 		ch := seatlayout.Change{SeatKey: c.SeatKey, Status: c.Status}
@@ -174,6 +173,7 @@ func (h *Handler) HandleCreateSeatBatch(w http.ResponseWriter, r *http.Request) 
 	kind := seatlayout.Kind(req.Kind)
 	batch, err := seatlayout.ApplyBatch(r.Context(), h.pool, h.queries, seatlayout.BatchInput{
 		OrgID: orgID, SessionID: sessionID, Actor: batchActor(r.Context()), Kind: kind, Changes: changes,
+		NewTiers: newTiers,
 		Audit: func(ctx context.Context, tx pgx.Tx, b seatlayout.Batch) error {
 			return h.writeSessionAuditTx(ctx, tx, r, "v1.session.seat_batch.apply", sessionID, map[string]any{
 				"batch_id":            b.ID.String(),
@@ -225,7 +225,14 @@ func (h *Handler) writeBatchError(w http.ResponseWriter, r *http.Request, err er
 	var inErr *seatlayout.InputError
 	var tierErr *seatlayout.TierError
 	var auditErr *seatlayout.AuditError
+	var nothing *seatlayout.NothingToRevertError
 	switch {
+	case errors.As(err, &nothing):
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"seat_batch.nothing_to_revert",
+			"no seat of this batch can be put back; revert the later batch that changed them first", r,
+			map[string]any{"skipped": nothing.Skipped},
+		))
 	case errors.As(err, &inErr):
 		status := http.StatusBadRequest
 		if inErr.Code == "seat_batch.too_many_changes" {
@@ -300,13 +307,33 @@ func pageParams(w http.ResponseWriter, r *http.Request, def, max int32) (int32, 
 	return limit, offset, true
 }
 
+// SeatBatchSummaryResponse is one row of the batch list (openapi
+// SeatBatchSummary): the batch without its changes / skipped arrays, only
+// their sizes. The full batch is GET .../seat-batches/{batch_id}.
+type SeatBatchSummaryResponse struct {
+	ID                string  `json:"id"`
+	SessionID         string  `json:"session_id"`
+	Kind              string  `json:"kind"`
+	ActorID           *string `json:"actor_id"`
+	ActorLabel        string  `json:"actor_label"`
+	SeatStatusVersion int64   `json:"seat_status_version"`
+	AppliedAt         string  `json:"applied_at"`
+	RevertedAt        *string `json:"reverted_at"`
+	RevertedByBatchID *string `json:"reverted_by_batch_id"`
+	RevertsBatchID    *string `json:"reverts_batch_id"`
+	ChangedCount      int32   `json:"changed_count"`
+	SkippedCount      int32   `json:"skipped_count"`
+}
+
 type seatBatchListResponse struct {
-	Items   []SeatBatchResponse `json:"items"`
-	Total   int64               `json:"total"`
-	HasMore bool                `json:"has_more"`
+	Items   []SeatBatchSummaryResponse `json:"items"`
+	Total   int64                      `json:"total"`
+	HasMore bool                       `json:"has_more"`
 }
 
 // HandleListSeatBatches serves GET .../sessions/{session_id}/seat-batches.
+// The list never carries the per-seat arrays (a batch may hold 10 000
+// seats); the card of one batch does.
 func (h *Handler) HandleListSeatBatches(w http.ResponseWriter, r *http.Request) {
 	orgID, sessionID, ok := h.batchScope(w, r)
 	if !ok {
@@ -319,12 +346,18 @@ func (h *Handler) HandleListSeatBatches(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 	total, err := h.queries.CountSessionSeatBatches(ctx, sessionID, orgID)
 	if err == nil {
-		var rows []seatlayout.Batch
-		rows, err = h.listBatches(ctx, sessionID, orgID, limit, offset)
+		rows, lerr := h.queries.ListSessionSeatBatchSummaries(ctx, sessionID, orgID, limit, offset)
+		err = lerr
 		if err == nil {
-			items := make([]SeatBatchResponse, 0, len(rows))
+			items := make([]SeatBatchSummaryResponse, 0, len(rows))
 			for _, b := range rows {
-				items = append(items, seatBatchResponse(b, false))
+				items = append(items, SeatBatchSummaryResponse{
+					ID: b.ID.String(), SessionID: b.SessionID.String(), Kind: b.Kind,
+					ActorID: uuidStr(b.ActorID), ActorLabel: b.ActorLabel, SeatStatusVersion: b.SeatStatusVersion,
+					AppliedAt: b.AppliedAt.UTC().Format(time.RFC3339), RevertedAt: timeStr(b.RevertedAt),
+					RevertedByBatchID: uuidStr(b.RevertedByBatchID), RevertsBatchID: uuidStr(b.RevertsBatchID),
+					ChangedCount: b.ChangedCount, SkippedCount: b.SkippedCount,
+				})
 			}
 			httputil.WriteJSON(w, http.StatusOK, seatBatchListResponse{
 				Items: items, Total: total, HasMore: int64(offset)+int64(len(items)) < total,
@@ -338,20 +371,33 @@ func (h *Handler) HandleListSeatBatches(w http.ResponseWriter, r *http.Request) 
 	))
 }
 
-func (h *Handler) listBatches(ctx context.Context, sessionID, orgID uuid.UUID, limit, offset int32) ([]seatlayout.Batch, error) {
-	rows, err := h.queries.ListSessionSeatBatches(ctx, sessionID, orgID, limit, offset)
-	if err != nil {
-		return nil, err
+// HandleGetSeatBatch serves GET .../sessions/{session_id}/seat-batches/{batch_id}:
+// one batch with every changed and skipped seat.
+func (h *Handler) HandleGetSeatBatch(w http.ResponseWriter, r *http.Request) {
+	orgID, sessionID, ok := h.batchScope(w, r)
+	if !ok {
+		return
 	}
-	out := make([]seatlayout.Batch, 0, len(rows))
-	for _, row := range rows {
-		b, err := seatlayout.BatchFromRow(row)
-		if err != nil {
-			return nil, err
+	batchID, ok := httputil.UUIDPathParam(w, r, "batch_id")
+	if !ok {
+		return
+	}
+	row, err := h.queries.GetSessionSeatBatch(r.Context(), batchID, sessionID, orgID)
+	if err == nil {
+		b, derr := seatlayout.BatchFromRow(row)
+		if derr == nil {
+			httputil.WriteJSON(w, http.StatusOK, seatBatchResponse(b, false))
+			return
 		}
-		out = append(out, b)
+		err = derr
+	} else if errors.Is(err, pgx.ErrNoRows) {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("seat_batch.not_found", "seat batch not found", r))
+		return
 	}
-	return out, nil
+	h.logger.Error("seating: get seat batch failed", slog.String("error", err.Error()))
+	httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		"seat_batch.list_failed", "failed to load the seat batch", r,
+	))
 }
 
 // SeatHistoryEntry is one batch as seen from one seat (openapi SeatHistoryEntry).

@@ -50,11 +50,18 @@ UPDATE session_seat_batches
 SET    reverted_at = $3, reverted_by_batch_id = $2
 WHERE  id = $1 AND reverted_at IS NULL AND kind <> 'revert';
 
--- name: ListSessionSeatBatches :many
-SELECT * FROM session_seat_batches
+-- name: ListSessionSeatBatchSummaries :many
+SELECT id, session_id, actor_id, actor_label, kind, seat_status_version,
+       applied_at, reverted_at, reverted_by_batch_id, reverts_batch_id,
+       jsonb_array_length(changes), jsonb_array_length(skipped)
+FROM   session_seat_batches
 WHERE  session_id = $1 AND org_id = $2
 ORDER  BY applied_at DESC, id DESC
 LIMIT  $3 OFFSET $4;
+
+-- name: GetSessionSeatBatch :one
+SELECT * FROM session_seat_batches
+WHERE  id = $1 AND session_id = $2 AND org_id = $3;
 
 -- name: CountSessionSeatBatches :one
 SELECT count(*) FROM session_seat_batches WHERE session_id = $1 AND org_id = $2;
