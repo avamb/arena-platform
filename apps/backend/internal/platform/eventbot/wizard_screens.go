@@ -99,7 +99,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 			return Screen{}, err
 		}
 		rows := [][]Button{}
-		if ws.Defaults.PromoterID != "" && ws.Defaults.PromoterName != "" && !d.singleEdit() {
+		if ws.Defaults.PromoterID != "" && ws.Defaults.PromoterName != "" && !d.singleEdit() && hasRef(promoters, ws.Defaults.PromoterID) {
 			rows = append(rows, []Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": ws.Defaults.PromoterName}), Data: "keep"}})
 		}
 		orgLabel := t("bot.wz.promoter_org", nil)

@@ -40,6 +40,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
@@ -233,7 +235,7 @@ const promoNotFound = "promo.not_found"
 // evaluatePromoCode resolves the code in the cart's org and validates it
 // against the cart. See the file header for why an empty cart takes the
 // status/window-only path.
-func (h *Handler) evaluatePromoCode(ctx context.Context, pc promoCtx, code string, now time.Time) (promoVerdict, error) {
+func (h *Handler) evaluatePromoCodeRaw(ctx context.Context, pc promoCtx, code string, now time.Time) (promoVerdict, error) {
 	row, err := h.promoQ.GetPromoCodeByCodeCI(ctx, pc.cc.orgID, code)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -320,6 +322,32 @@ func (h *Handler) promoRefusalDescription(req bil24Request, cc cartCtx, errCode 
 	return h.localizeDesc(req.Locale, cc.locale, "bil24.promo_invalid", "promo code is not valid", nil)
 }
 
+// promoWrongSessionHintKey words the refusal of a code that exists but is
+// bound to other events: it names where the code does work.
+const promoWrongSessionHintKey = "bil24.promo_wrong_session_hint"
+
+// promoScopeLister is the optional read the "works on: ..." hint needs;
+// *gen.Queries has it, the narrow test fakes do not.
+type promoScopeLister interface {
+	ListPromoScopeSessions(ctx context.Context, orgID uuid.UUID, sessionIDs []string) ([]gen.PromoScopeSessionRow, error)
+}
+
+// promoRefusalForVerdict is promoRefusalDescription for a verdict that still
+// carries its code row: a session mismatch says which events the code is for
+// (only published events with sales still open, see hcheckout.PromoScopeHint).
+func (h *Handler) promoRefusalForVerdict(ctx context.Context, req bil24Request, cc cartCtx, v promoVerdict) string {
+	if v.errCode == "promo.session_not_applicable" {
+		if q, ok := h.promoQ.(promoScopeLister); ok {
+			if hint := hcheckout.PromoScopeHint(ctx, q, v.row, time.Now().UTC()); hint != "" {
+				return h.localizeDesc(req.Locale, cc.locale, promoWrongSessionHintKey,
+					"promo code is not valid for this event. The code works on: "+hint,
+					map[string]any{"events": hint})
+			}
+		}
+	}
+	return h.promoRefusalDescription(req, cc, v.errCode)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ADD_PROMO_CODES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -350,7 +378,7 @@ func (h *Handler) handleBil24AddPromoCodes(w http.ResponseWriter, r *http.Reques
 	existList := make([]string, 0, len(codes))
 	errList := make([]string, 0, len(codes))
 	accepted := make([]string, 0, len(codes))
-	firstErr := ""
+	var firstVerdict promoVerdict
 
 	for _, code := range codes {
 		// Already on the session: "exist", without re-validating. The plugin
@@ -361,15 +389,15 @@ func (h *Handler) handleBil24AddPromoCodes(w http.ResponseWriter, r *http.Reques
 			continue
 		}
 
-		v, err := h.evaluatePromoCode(ctx, pc, code, now)
+		v, err := h.evaluatePromoCode(ctx, pc, promoattempts.SurfaceGatewayAddPromoCodes, code, now)
 		if err != nil {
 			h.writeCartTransient(w, req, pc.cc)
 			return
 		}
 		if v.errCode != "" {
 			errList = append(errList, code)
-			if firstErr == "" {
-				firstErr = v.errCode
+			if firstVerdict.errCode == "" {
+				firstVerdict = v
 			}
 			continue
 		}
@@ -395,8 +423,8 @@ func (h *Handler) handleBil24AddPromoCodes(w http.ResponseWriter, r *http.Reques
 		"existPromoCodeList": existList,
 		"errorPromoCodeList": errList,
 	})
-	if firstErr != "" {
-		resp.Description = h.promoRefusalDescription(req, pc.cc, firstErr)
+	if firstVerdict.errCode != "" {
+		resp.Description = h.promoRefusalForVerdict(ctx, req, pc.cc, firstVerdict)
 	} else {
 		resp.Description = h.localizeDesc(req.Locale, pc.cc.locale, "bil24.ok", "OK", nil)
 	}
@@ -443,7 +471,7 @@ func (h *Handler) handleBil24CheckKDP(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 
-	v, err := h.evaluatePromoCode(ctx, pc, code, time.Now().UTC())
+	v, err := h.evaluatePromoCode(ctx, pc, promoattempts.SurfaceGatewayCheckKDP, code, time.Now().UTC())
 	if err != nil {
 		h.writeCartTransient(w, req, pc.cc)
 		return
@@ -451,7 +479,7 @@ func (h *Handler) handleBil24CheckKDP(w http.ResponseWriter, r *http.Request, re
 	if v.errCode != "" {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeUserVisible,
-			h.promoRefusalDescription(req, pc.cc, v.errCode),
+			h.promoRefusalForVerdict(ctx, req, pc.cc, v),
 		))
 		return
 	}
@@ -536,7 +564,7 @@ func (h *Handler) checkKDPQuote(ctx context.Context, w http.ResponseWriter, req 
 		}
 	}
 
-	v, err := h.evaluatePromoCode(ctx, promoCtx{cc: pc.cc, snap: snap}, code, time.Now().UTC())
+	v, err := h.evaluatePromoCode(ctx, promoCtx{cc: pc.cc, snap: snap}, promoattempts.SurfaceGatewayCheckKDP, code, time.Now().UTC())
 	if err != nil {
 		h.writeCartTransient(w, req, pc.cc)
 		return
@@ -578,7 +606,7 @@ func (h *Handler) checkKDPQuote(ctx context.Context, w http.ResponseWriter, req 
 		"lines":          lines,
 	})
 	if v.errCode != "" {
-		resp.Description = h.promoRefusalDescription(req, pc.cc, v.errCode)
+		resp.Description = h.promoRefusalForVerdict(ctx, req, pc.cc, v)
 	} else {
 		resp.Description = h.localizeDesc(req.Locale, pc.cc.locale, "bil24.ok", "OK", nil)
 	}
@@ -615,7 +643,7 @@ func (h *Handler) sessionCartDiscount(ctx context.Context, pc promoCtx) cartDisc
 		if code == "" {
 			continue
 		}
-		v, err := h.evaluatePromoCode(ctx, pc, code, now)
+		v, err := h.evaluatePromoCodeRaw(ctx, pc, code, now)
 		if err != nil {
 			// A lookup failure must not fail GET_CART: the cart itself is
 			// readable, so report it without a discount rather than -1.

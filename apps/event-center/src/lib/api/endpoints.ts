@@ -248,6 +248,15 @@ export function setPromoSessions(orgId: string, codeId: string, sessionIds: read
   });
 }
 
+/** Sets the last moment a code works (an RFC 3339 instant); nothing else changes. */
+export function setPromoValidUntil(orgId: string, codeId: string, validUntil: string): Promise<PromoCodeEnvelope> {
+  return call<PromoCodeEnvelope>({
+    route: API.promoCodeUpdate,
+    params: { org_id: orgId, id: codeId },
+    body: { valid_until: validUntil },
+  });
+}
+
 export function deletePromoCode(orgId: string, codeId: string): Promise<unknown> {
   return call<unknown>({ route: API.promoCodeDelete, params: { org_id: orgId, id: codeId } });
 }

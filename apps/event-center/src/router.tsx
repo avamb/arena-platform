@@ -33,6 +33,7 @@ import { PromoScreen } from "@/screens/PromoScreen";
 import { TeamScreen } from "@/screens/TeamScreen";
 import { EventWizardScreen } from "@/screens/EventWizardScreen";
 import { parsePromoCardSearch, parsePromoListSearch } from "@/lib/promo";
+import { parseCopyFrom } from "@/lib/promoScope";
 
 const rootRoute = createRootRoute({ component: RootLayout, notFoundComponent: NotFoundScreen });
 
@@ -184,6 +185,7 @@ const promoRoute = createRoute({
 const promoNewRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/promo/new",
+  validateSearch: parseCopyFrom,
   component: PromoCreateScreen,
 });
 

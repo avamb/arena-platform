@@ -80,6 +80,27 @@ export interface PromoCode {
   readonly status: PromoStatus;
   readonly created_at: string;
   readonly updated_at: string;
+  /** What the code is bound to, named (the API answers it with every code). */
+  readonly sessions?: readonly PromoScopeSession[];
+  /** Non-blocking findings about the scope and the validity window. */
+  readonly warnings?: readonly PromoWarning[];
+}
+
+export interface PromoScopeSession {
+  readonly session_id: string;
+  readonly event_id: string;
+  readonly event_name: string;
+  readonly start_at: string;
+  readonly sales_end_at: string;
+  readonly timezone: string;
+  readonly status: string;
+}
+
+export interface PromoWarning {
+  readonly code: string;
+  readonly session_id: string;
+  readonly event_name: string;
+  readonly start_at: string;
 }
 
 interface PromoCodeListEnvelope {
@@ -205,6 +226,38 @@ export function validityLabel(
 /** "5" or "∞" for a usage-cap field. */
 export function limitLabel(value: number | null): string {
   return value === null ? "∞" : String(value);
+}
+
+/** The text of one warning code, naming the event and the session start. */
+export function promoWarningText(w: PromoWarning): string {
+  const where = `${w.event_name} (${formatDateTime(w.start_at)})`;
+  switch (w.code) {
+    case "promo.warning.valid_until_before_sales_end":
+      return `${where}: the code ends before sales of this session end.`;
+    case "promo.warning.valid_from_after_sales_start":
+      return `${where}: the code starts after sales of this session began.`;
+    case "promo.warning.session_cancelled":
+      return `${where}: this session is canceled, the code cannot work on it.`;
+    case "promo.warning.session_past":
+      return `${where}: this session has already started.`;
+    default:
+      return `${where}: check the dates of this session.`;
+  }
+}
+
+/** The events a code works on ("White wines, Red wines"), "" when it has no named sessions. */
+export function promoEventsLabel(code: Pick<PromoCode, "sessions">): string {
+  return [...new Set((code.sessions ?? []).map((s) => s.event_name))].join(", ");
+}
+
+/** Hover title: event, start and sales end of every bound session, else the id fallback. */
+export function promoScopeTitle(code: PromoCode, labelsById: ReadonlyMap<string, string>): string {
+  if (code.sessions !== undefined && code.sessions.length > 0) {
+    return code.sessions
+      .map((s) => `${s.event_name} — starts ${formatDateTime(s.start_at)}, sales end ${formatDateTime(s.sales_end_at)}`)
+      .join("\n");
+  }
+  return sessionsCellTitle(code.applies_to_session_ids, labelsById);
 }
 
 /** "any" or "N sessions" for the table's Sessions column. */
@@ -1152,9 +1205,14 @@ export function PromoCodesTable({
                 <td style={tdStyle}>{discountLabel(code)}</td>
                 <td
                   style={tdStyle}
-                  title={sessionsCellTitle(code.applies_to_session_ids, sessionLabelsById)}
+                  title={promoScopeTitle(code, sessionLabelsById)}
                 >
                   {sessionsCellLabel(code.applies_to_session_ids)}
+                  {promoEventsLabel(code) !== "" ? (
+                    <div style={mutedStyle} data-testid={`promo-codes-events-${code.id}`}>
+                      {promoEventsLabel(code)}
+                    </div>
+                  ) : null}
                 </td>
                 <td style={tdStyle}>
                   {limitLabel(code.max_uses)} / {limitLabel(code.max_uses_per_customer)}
@@ -1197,6 +1255,18 @@ export function PromoCodesTable({
                   </button>
                 </td>
               </tr>
+              {(code.warnings ?? []).length > 0 ? (
+                <tr data-testid={`promo-codes-warnings-row-${code.id}`}>
+                  <td colSpan={10} style={warningCellStyle}>
+                    <strong>Check the code {code.code}</strong>
+                    <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                      {(code.warnings ?? []).map((w, i) => (
+                        <li key={`${w.code}-${w.session_id}-${i}`}>{promoWarningText(w)}</li>
+                      ))}
+                    </ul>
+                  </td>
+                </tr>
+              ) : null}
               {expandedId === code.id ? (
                 <tr data-testid={`promo-codes-usage-row-${code.id}`}>
                   <td colSpan={10} style={usageCellStyle}>
@@ -1472,6 +1542,7 @@ const tdMonoStyle: CSSProperties = {
 
 const tdActionsStyle: CSSProperties = { ...tdStyle, display: "flex", gap: 6, flexWrap: "wrap" };
 
+const warningCellStyle: CSSProperties = { padding: "8px 12px", background: "#fef3c7", color: "#78350f", borderBottom: "1px solid #fde68a", fontSize: 13 };
 const usageCellStyle: CSSProperties = { padding: 0, borderBottom: "1px solid #f1f5f9", background: "#f8fafc" };
 
 const usagePanelStyle: CSSProperties = { padding: 16, display: "flex", flexDirection: "column", gap: 8 };

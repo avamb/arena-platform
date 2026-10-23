@@ -17,6 +17,9 @@ import {
   localDatetimeToRFC3339,
   mapPromoError,
   promoCodesLink,
+  promoEventsLabel,
+  promoScopeTitle,
+  promoWarningText,
   redemptionsCsvFilename,
   rfc3339ToLocalDatetime,
   sessionsCellLabel,
@@ -354,5 +357,42 @@ describe("mapPromoError", () => {
     expect(mapPromoError(new ApiError(500, { code: "boom", message: "kaboom" }))).toBe(
       "kaboom (boom)",
     );
+  });
+});
+
+describe("promo scope clarity", () => {
+  const scoped = promoCode({
+    applies_to_session_ids: ["s1", "s2"],
+    sessions: [
+      { session_id: "s1", event_id: "e1", event_name: "White wines", start_at: "2026-11-05T19:00:00Z", sales_end_at: "2026-11-05T18:00:00Z", timezone: "Europe/Madrid", status: "scheduled" },
+      { session_id: "s2", event_id: "e1", event_name: "White wines", start_at: "2026-11-12T19:00:00Z", sales_end_at: "2026-11-12T18:00:00Z", timezone: "Europe/Madrid", status: "scheduled" },
+    ],
+  });
+
+  it("names the events instead of ids and lists start and sales end", () => {
+    expect(promoEventsLabel(scoped)).toBe("White wines");
+    const title = promoScopeTitle(scoped, new Map());
+    expect(title).toContain("White wines");
+    expect(title).toContain("sales end");
+    expect(title).not.toContain("s1");
+  });
+
+  it("falls back to the id labels for a code the API did not describe", () => {
+    const bare = promoCode({ applies_to_session_ids: ["s1"] });
+    expect(promoEventsLabel(bare)).toBe("");
+    expect(promoScopeTitle(bare, new Map([["s1", "Picked label"]]))).toBe("Picked label");
+  });
+
+  it("words every warning code and names the event", () => {
+    const base = { session_id: "s1", event_name: "Red wines", start_at: "2026-11-05T19:00:00Z" };
+    const texts = [
+      "promo.warning.valid_until_before_sales_end",
+      "promo.warning.valid_from_after_sales_start",
+      "promo.warning.session_cancelled",
+      "promo.warning.session_past",
+      "promo.warning.unknown",
+    ].map((code) => promoWarningText({ ...base, code }));
+    expect(new Set(texts).size).toBe(5);
+    for (const t of texts) expect(t).toContain("Red wines");
   });
 });

@@ -5,7 +5,7 @@
 // sources of billable events read from the sales tables, all in ONE row shape
 // so the collector treats them alike. Every query is a keyset page over
 // (occurred_at, subject_id) with a lower bound on the business time the
-// sales-table index serves (migration 0158), ordered the same way, so a
+// sales-table index serves (migration 0161), ordered the same way, so a
 // resumed pass never skips or repeats a row. Nothing here writes.
 
 package gen

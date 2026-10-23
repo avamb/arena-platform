@@ -75,6 +75,9 @@ other = "Částka objednávky je nižší než minimum pro tento slevový kód. 
 ["bil24.promo_wrong_session"]
 other = "Tento slevový kód neplatí pro tuto akci."
 
+["bil24.promo_wrong_session_hint"]
+other = "Tento slevový kód platí pro: {{.events}}. Vyberte vstupenky na tuto akci a sleva se použije."
+
 ["bil24.promo_currency_mismatch"]
 other = "Tento slevový kód platí v jiné měně."
 

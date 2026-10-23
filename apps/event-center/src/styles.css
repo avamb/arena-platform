@@ -245,6 +245,16 @@ label {
   color: var(--ok-text);
 }
 
+.notice-warn {
+  background: var(--wait-bg);
+  color: var(--wait-text);
+}
+
+.notice-warn ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
 .notice-bad {
   background: var(--bad-bg);
   color: var(--bad-text);

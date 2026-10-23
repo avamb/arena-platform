@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
@@ -128,6 +130,8 @@ type Handler struct {
 	// metrics receives the page statistics beacon's counter (WithMetrics).
 	// Nil is fine: Metrics.RecordPageTrack is a no-op on a nil receiver.
 	metrics *observability.Metrics
+	// promoRec journals every promo-code check (migration 0166); nil = off.
+	promoRec *promoattempts.Recorder
 }
 
 // WithContactForm configures the hosted page's "Write to the organizer" form:

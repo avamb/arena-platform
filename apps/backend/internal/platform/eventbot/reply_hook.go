@@ -56,5 +56,13 @@ type saveBeforeReplyClient struct {
 
 func (c saveBeforeReplyClient) Do(req *http.Request) (*http.Response, error) {
 	flushBeforeReply(req.Context())
-	return c.inner.Do(req)
+	resp, err := c.inner.Do(req)
+	if err != nil {
+		// net/http repeats the whole request URL inside its error, and every
+		// Bot API URL carries the bot token in its path (/bot<token>/getFile).
+		// The library wraps this error and the callers log it, so the URL is
+		// dropped here, once, for every call that goes through this client.
+		err = unwrapURLError(err)
+	}
+	return resp, err
 }

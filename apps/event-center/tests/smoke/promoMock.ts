@@ -20,6 +20,8 @@ interface Code {
   discount_value: number;
   currency: string | null;
   applies_to_session_ids: string[];
+  sessions: unknown[];
+  warnings: unknown[];
   status: "active" | "paused";
   uses: number;
   discount_total: number;
@@ -46,6 +48,8 @@ const base = (id: string, code: string, extra: Partial<Code>): Code => ({
   discount_value: 10,
   currency: null,
   applies_to_session_ids: [],
+  sessions: [],
+  warnings: [],
   status: "active",
   uses: 0,
   discount_total: 0,

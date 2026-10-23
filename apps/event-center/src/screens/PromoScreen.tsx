@@ -15,17 +15,20 @@ import {
   listPromoRedemptions,
   setPromoSessions,
   setPromoStatus,
+  setPromoValidUntil,
 } from "@/lib/api/endpoints";
 import type { PromoCodeItem, PromoRedemptionItem } from "@/lib/api/types";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { useI18n, type Params } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import { orderNumber } from "@/lib/orders";
 import { isClubCode, promoState } from "@/lib/promo";
+import { canExtend, extendTarget, promoZone } from "@/lib/promoScope";
 import { promoDiscountText, promoLimitsText, promoSessionsText, promoUsageText, promoValidText } from "@/lib/promoView";
 import { ConfirmWordDialog } from "@/components/ConfirmWordDialog";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { PromoSessionPicker } from "@/components/PromoSessionPicker";
+import { PromoScopeList, PromoWarnings } from "@/components/PromoScope";
 import { PromoStateBadge } from "@/components/PromoStateBadge";
 import { DownloadButton, Empty, ErrorBox, Loading } from "@/components/ui";
 import { NoPromoAccess } from "@/screens/PromoNoAccess";
@@ -195,6 +198,17 @@ export function PromoScreen() {
     },
   });
 
+  const extend = useMutation({
+    mutationFn: (until: string) => setPromoValidUntil(orgId, codeId, until),
+    onSuccess: (res) => {
+      remember(res.promo_code);
+      setNotice({
+        key: "promo.extended",
+        params: { code: res.promo_code.code, date: res.promo_code.valid_until === null ? "" : formatDateTime(res.promo_code.valid_until, promoZone(res.promo_code), locale) },
+      });
+    },
+  });
+
   if (!canRead) return <NoPromoAccess />;
   const back = (
     <p>
@@ -232,6 +246,7 @@ export function PromoScreen() {
       )}
       {paused && <p className="muted">{t("promo.pausedNote")}</p>}
       {state === "expired" && <p className="muted">{t("promo.expiredNote")}</p>}
+      <PromoWarnings item={item} />
 
       <dl className="facts-grid" data-testid="promo-facts">
         <dt>{t("promo.card.discount")}</dt>
@@ -265,12 +280,31 @@ export function PromoScreen() {
               {t(paused ? "promo.activate" : "promo.pause")}
             </button>
             <button type="button" className="btn" aria-expanded={editing} onClick={() => setEditing((v) => !v)} data-testid="promo-sessions-open">
-              {t("promo.sessions.open")}
+              {t("promo.sessions.attach")}
             </button>
+            {canExtend(item, new Date()) && (
+              <button
+                type="button"
+                className="btn"
+                disabled={extend.isPending}
+                onClick={() => {
+                  const until = extendTarget(item, new Date());
+                  if (until !== null) extend.mutate(until);
+                }}
+                data-testid="promo-extend"
+              >
+                {t("promo.extend")}
+              </button>
+            )}
           </>
         )}
         {canRead && (
           <DownloadButton label="promo.csv" testId="promo-csv" fetchFile={() => downloadPromoCsv(orgId, item.id, locale)} />
+        )}
+        {access.can("promo.create") && (
+          <Link to="/o/$orgId/promo/new" params={{ orgId }} search={{ copyFrom: item.id }} className="btn" data-testid="promo-copy">
+            {t("promo.copy")}
+          </Link>
         )}
         {access.can("promo.delete") && (
           <button type="button" className="btn" onClick={() => setDeleting(true)} data-testid="promo-delete">
@@ -279,6 +313,9 @@ export function PromoScreen() {
         )}
       </div>
       {toggle.error !== null && <ErrorNotice error={toggle.error} testId="promo-error" />}
+      {extend.error !== null && <ErrorNotice error={extend.error} testId="promo-extend-error" />}
+
+      <PromoScopeList item={item} />
 
       {editing && access.can("promo.update") && (
         <SessionsEditor

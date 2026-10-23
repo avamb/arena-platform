@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { listPromoCodes } from "@/lib/api/endpoints";
 import type { PromoCodeItem } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
+import { eventNames } from "@/lib/promoScope";
 import { promoDiscountText, promoLimitsText, promoSessionsText, promoUsageText, promoValidText } from "@/lib/promoView";
 import { Empty, ErrorBox, Loading } from "@/components/ui";
 import { PromoStateBadge } from "@/components/PromoStateBadge";
@@ -24,6 +25,16 @@ function PromoRow({ orgId, item }: { orgId: string; item: PromoCodeItem }) {
         <span className="muted">
           {promoSessionsText(item, t)} · {promoLimitsText(item, t)} · {promoValidText(item, t, locale)}
         </span>
+        {item.sessions.length > 0 && (
+          <span className="muted" data-testid="promo-events">
+            {t("promo.scope.eventsShort", { events: eventNames(item).join(", ") })}
+          </span>
+        )}
+        {item.warnings.length > 0 && (
+          <span className="notice notice-warn" data-testid="promo-row-warn">
+            {t("promo.warn.count", { count: item.warnings.length })}
+          </span>
+        )}
         <span className="muted" data-testid="promo-usage">
           {promoUsageText(item, t, locale)}
         </span>

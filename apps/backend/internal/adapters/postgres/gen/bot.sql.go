@@ -472,13 +472,18 @@ const deleteBotDraftsIdleBefore = `-- name: DeleteBotDraftsIdleBefore :many
 DELETE FROM bot_drafts d
 USING  bot_telegram_links l
 WHERE  l.telegram_user_id = d.telegram_user_id
-  AND  d.updated_at < $1
+  AND  d.id IN (SELECT x.id FROM bot_drafts x
+                JOIN   bot_telegram_links xl ON xl.telegram_user_id = x.telegram_user_id
+                WHERE  x.updated_at < $1
+                ORDER  BY x.updated_at
+                LIMIT  $2)
 RETURNING ` + botDraftReminderColumns
 
-// DeleteBotDraftsIdleBefore deletes every draft untouched since before
-// idleBefore and returns them, so their owners can be told the draft is gone.
-func (q *Queries) DeleteBotDraftsIdleBefore(ctx context.Context, idleBefore time.Time) ([]BotDraftReminderRow, error) {
-	rows, err := q.db.Query(ctx, deleteBotDraftsIdleBefore, idleBefore)
+// DeleteBotDraftsIdleBefore deletes up to limit drafts untouched since before
+// idleBefore (oldest first) and returns them, so their owners can be told the
+// draft is gone. The rest wait for the next pass.
+func (q *Queries) DeleteBotDraftsIdleBefore(ctx context.Context, idleBefore time.Time, limit int32) ([]BotDraftReminderRow, error) {
+	rows, err := q.db.Query(ctx, deleteBotDraftsIdleBefore, idleBefore, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -646,6 +651,23 @@ WHERE  telegram_user_id = $1
 func (q *Queries) DeleteBotDialog(ctx context.Context, telegramUserID int64, kind string) error {
 	_, err := q.db.Exec(ctx, deleteBotDialog, telegramUserID, kind)
 	return err
+}
+
+const deleteBotDialogIfExpired = `-- name: DeleteBotDialogIfExpired :execrows
+DELETE FROM bot_dialogs
+WHERE  telegram_user_id = $1
+  AND  kind = $2
+  AND  expires_at <= $3`
+
+// DeleteBotDialogIfExpired ends the dialog only while its expiry is still at
+// or before now, and reports how many rows went (0 or 1). A dialog a Save
+// revived meanwhile stays, and of two parallel callers only one sees 1.
+func (q *Queries) DeleteBotDialogIfExpired(ctx context.Context, telegramUserID int64, kind string, now time.Time) (int64, error) {
+	tag, err := q.db.Exec(ctx, deleteBotDialogIfExpired, telegramUserID, kind, now)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 const deleteExpiredBotDialogs = `-- name: DeleteExpiredBotDialogs :execrows

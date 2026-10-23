@@ -859,8 +859,19 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		case data == "prom:new":
 			d.goTo(stPromoterName)
 		case data == "keep":
-			d.Event.PromoterID, d.Event.PromoterName = ws.Defaults.PromoterID, ws.Defaults.PromoterName
-			d.next(stEvPoster)
+			// The remembered promoter belongs to the Telegram account, not to
+			// the organization: it is kept only when this organization has it.
+			promoters, err := w.refs.Promoters(ctx, ws.JWT, ws.OrgID)
+			if err != nil {
+				return "", err
+			}
+			for _, p := range promoters {
+				if p.ID == ws.Defaults.PromoterID {
+					d.Event.PromoterID, d.Event.PromoterName = p.ID, p.Name
+					d.next(stEvPoster)
+					return "", nil
+				}
+			}
 		case strings.HasPrefix(data, "prom:"):
 			id := strings.TrimPrefix(data, "prom:")
 			promoters, err := w.refs.Promoters(ctx, ws.JWT, ws.OrgID)
@@ -1701,6 +1712,16 @@ func contains(list []string, v string) bool {
 }
 
 // subset reports whether every remembered channel still exists.
+// hasRef reports whether the list holds an item with this id.
+func hasRef(list []RefItem, id string) bool {
+	for _, r := range list {
+		if r.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
 func subset(remembered, all []RefItem) bool {
 	for _, r := range remembered {
 		found := false

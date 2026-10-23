@@ -57,6 +57,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -480,8 +482,10 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// once the FULL platform-computed subtotal is known — for seated carts that
 	// includes the seat prices resolved inside the hold transaction.
 	promoRow, promoLookupErr := h.findPromoCode(ctx, checkCtx.OrgID, derefOr(req.PromoCode))
+	pj := h.newPromoJournal(r, promoattempts.SurfaceWidgetCheckout, checkCtx.OrgID, checkCtx.SalesChannelID, sessionID, derefOr(req.PromoCode))
 	if promoLookupErr != nil {
 		if errors.Is(promoLookupErr, pgx.ErrNoRows) {
+			pj.record(ctx, nil, "promo.not_found")
 			h.refusePromo(w, r, promoAttempt, "promo.not_found")
 			return
 		}
@@ -529,8 +533,9 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		gaPromoLines := hcheckout.TierLinesForSession(gaLines, sessionID.String(), cartCurrency(pricedGA, ""))
 		var promoErrCode string
 		gaDiscount, gaPromoCodeID, promoErrCode = h.applyPromoDiscount(ctx, h.promoQueries, promoRow, gaPromoLines, req.HolderEmail)
+		pj.record(ctx, promoRow, promoErrCode)
 		if promoErrCode != "" {
-			h.refusePromo(w, r, promoAttempt, promoErrCode)
+			h.refusePromoFor(w, r, promoAttempt, promoErrCode, promoRow, h.promoQueries)
 			return
 		}
 	}
@@ -793,11 +798,12 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		// deferred tx.Rollback.
 		promoLines := hcheckout.TierLinesForSession(lines, sessionID.String(), currency)
 		discount, promoCodeID, promoErrCode := h.applyPromoDiscount(ctx, promoQ, promoRow, promoLines, req.HolderEmail)
+		pj.record(ctx, promoRow, promoErrCode)
 		if promoErrCode != "" {
 			// Same neutral verdicts as the quote and the general-admission
 			// branch, and the refusal is counted against the refused-code
 			// budget. The deferred rollback releases the holds.
-			h.refusePromo(w, r, promoAttempt, promoErrCode)
+			h.refusePromoFor(w, r, promoAttempt, promoErrCode, promoRow, promoQ)
 			return
 		}
 

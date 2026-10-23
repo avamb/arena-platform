@@ -49,7 +49,7 @@ const (
 type draftQueries interface {
 	ListBotDraftsForReminder(ctx context.Context, idleBefore time.Time, limit int32) ([]gen.BotDraftReminderRow, error)
 	MarkBotDraftReminded(ctx context.Context, id uuid.UUID) error
-	DeleteBotDraftsIdleBefore(ctx context.Context, idleBefore time.Time) ([]gen.BotDraftReminderRow, error)
+	DeleteBotDraftsIdleBefore(ctx context.Context, idleBefore time.Time, limit int32) ([]gen.BotDraftReminderRow, error)
 }
 
 // draftSender delivers one message to a private chat (its id is the Telegram
@@ -144,16 +144,25 @@ type draftSweepResult struct {
 func (s *draftSweeper) sweep(ctx context.Context, now time.Time) draftSweepResult {
 	var res draftSweepResult
 
-	gone, err := s.q.DeleteBotDraftsIdleBefore(ctx, now.Add(-draftKeepFor))
+	// At most draftSweepBatch drafts go per pass (oldest first), so a bot that
+	// was down for days does not send a flood of notices that Telegram would
+	// answer with 429; the rest are deleted by the next passes.
+	gone, err := s.q.DeleteBotDraftsIdleBefore(ctx, now.Add(-draftKeepFor), draftSweepBatch)
 	if err != nil {
 		s.warn(ctx, "eventbot: draft expiry failed", err)
 	}
 	for _, row := range gone {
 		res.Deleted++
+		if ctx.Err() != nil {
+			// Shutting down: the drafts are already deleted, so the notices
+			// that did not go out are the price of the stop, not a retry.
+			continue
+		}
 		n := draftDeletedNotice(s.texts, row)
 		// The draft is already deleted, so a failed notice is not retried:
 		// there is nothing left to key a retry on.
-		if err := s.send(ctx, n.ChatID, n.Text, n.Keyboard); err != nil {
+		// A person who blocked the bot cannot be told: not a fault.
+		if err := s.send(ctx, n.ChatID, n.Text, n.Keyboard); err != nil && !errors.Is(err, errChatUnreachable) {
 			s.warn(ctx, "eventbot: draft deleted notice failed", err, slog.Int64("telegram_user_id", row.TelegramUserID))
 		}
 	}

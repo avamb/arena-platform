@@ -1,7 +1,7 @@
 // Hand-maintained typed query wrapper; follows sqlc output conventions.
 // source: billing_events.sql
 //
-// Billing event store (billing wave B-A, task B2-1, migration 0158):
+// Billing event store (billing wave B-A, task B2-1, migration 0161):
 // billable_events, charges, charge_reversals, charge_allocations and the
 // collect/rate job cursors. Money is int64 minor units with the currency
 // next to it, never a float. billable_events, charges and charge_reversals
