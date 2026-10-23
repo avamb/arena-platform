@@ -253,6 +253,9 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applyOrgDataFixture(ctx, tx); err != nil {
 		return err
 	}
+	if err := applyBillingFixture(ctx, tx); err != nil {
+		return err
+	}
 	if err := applyMaterialsFixture(ctx, tx); err != nil {
 		return err
 	}

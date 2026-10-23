@@ -11,6 +11,7 @@ import (
 // sale behind it.
 func TestMigrations_ForeignKeysOnBusyTablesSetALockTimeout(t *testing.T) {
 	for _, name := range []string{"sql/0143_refund_scan_blocks.sql", "sql/0145_refund_scan_exceptions.sql", "sql/0147_email_letters.sql", "sql/0149_email_letter_sources.sql", "sql/0150_refresh_token_sessions.sql", "sql/0151_web_login_codes.sql", "sql/0154_macs_scan_events.sql", "sql/0155_checkout_consents.sql", "sql/0156_letter_interaction_client.sql", "sql/0157_billing_foundation.sql", "sql/0164_ticket_vip.sql"} {
+	for _, name := range []string{"sql/0143_refund_scan_blocks.sql", "sql/0145_refund_scan_exceptions.sql", "sql/0147_email_letters.sql", "sql/0149_email_letter_sources.sql", "sql/0150_refresh_token_sessions.sql", "sql/0151_web_login_codes.sql", "sql/0154_macs_scan_events.sql", "sql/0155_checkout_consents.sql", "sql/0156_letter_interaction_client.sql", "sql/0157_billing_foundation.sql", "sql/0158_billing_events_charges.sql"} {
 		raw, err := FS.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)

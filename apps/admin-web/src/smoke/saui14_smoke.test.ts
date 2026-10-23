@@ -230,6 +230,9 @@ const ROUTE_REGISTRY: Readonly<
   },
   "/onboarding": { routeId: "OnboardingRoute", file: "onboarding.tsx" },
   "/billing/prices": { routeId: "BillingPricesRoute", file: "billingPrices.tsx" },
+  "/billing/invoices": { routeId: "BillingInvoicesRoute", file: "billingInvoices.tsx" },
+  "/billing/payment-fees": { routeId: "BillingPaymentFeesRoute", file: "billingPaymentFees.tsx" },
+  "/billing/bank": { routeId: "BillingBankRoute", file: "billingBank.tsx" },
 };
 
 /**

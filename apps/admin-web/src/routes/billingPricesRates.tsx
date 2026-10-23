@@ -11,6 +11,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import {
   BILLING_CYCLES,
+  FEE_MODES,
   PLAN_KINDS,
   SHORTFALL_POLICIES,
   canCloseRate,
@@ -250,7 +251,15 @@ export function AccountsTable({ accounts, onChangeTerms }: AccountsTableProps): 
                     {!a.flags.venue && !a.flags.existing_client && !a.flags.tools ? <span style={mutedStyle}>—</span> : null}
                   </span>
                 </td>
-                <td style={tdStyle}>{cur ? cur.price_list_code : "—"}</td>
+                <td style={tdStyle}>
+                  {cur ? cur.price_list_code : "—"}
+                  {cur?.fee_mode === "buyer_pays" ? (
+                    <>
+                      {" "}
+                      <Pill tone="info">Buyer pays</Pill>
+                    </>
+                  ) : null}
+                </td>
                 <td style={tdStyle}>{cur ? cur.billing_cycle : "—"}</td>
                 <td style={tdStyle}>
                   {upcoming.length === 0
@@ -353,6 +362,18 @@ export function TermsFormBody({ account, form, onChange, priceLists, errors, ser
           </select>
         </div>
         <div>
+          <label style={labelStyle} htmlFor="billing-terms-fee-mode">
+            Who pays the platform fee
+          </label>
+          <select id="billing-terms-fee-mode" style={inputStyle} value={form.feeMode} onChange={(e) => set({ feeMode: e.target.value === "buyer_pays" ? "buyer_pays" : "organizer_pays" })} data-testid="billing-terms-fee-mode">
+            {FEE_MODES.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
           <label style={labelStyle} htmlFor="billing-terms-delay">
             Invoice delay, days (empty: none)
           </label>
@@ -365,6 +386,9 @@ export function TermsFormBody({ account, form, onChange, priceLists, errors, ser
           <input id="billing-terms-due" style={inputStyle} inputMode="numeric" value={form.dueDays} onChange={(e) => set({ dueDays: e.target.value })} />
         </div>
       </div>
+      <p style={hintStyle} data-testid="billing-terms-fee-mode-hint">
+        {FEE_MODES.find((m) => m.value === form.feeMode)?.explanation}
+      </p>
       {errors.length > 0 ? (
         <ul style={{ ...warningStyle, margin: 0, paddingLeft: 28 }} data-testid="billing-form-errors">
           {errors.map((e) => (
