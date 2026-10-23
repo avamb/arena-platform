@@ -49,6 +49,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/backfill"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/bil24wire"
+	billingcollect "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/collect"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/contactform"
@@ -302,6 +303,18 @@ func run() error {
 		logger.Info("reservation expire sweep job scheduled at startup")
 	}
 	scheduleRefundSweep(rootCtx, pool.Pool, logger)
+
+	// billing.collect writes the billable events the rate job turns into
+	// charges. It runs only once the owner names the date X
+	// (BILLING_COLLECT_SINCE); without it nothing is seeded and the handler
+	// does nothing.
+	if !cfg.BillingCollectSince.IsZero() {
+		if err := billingcollect.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+			logger.Warn("could not schedule initial billing collect job", "error", err.Error())
+		} else {
+			logger.Info("billing collect job scheduled at startup", "since", cfg.BillingCollectSince.Format(time.RFC3339))
+		}
+	}
 	scheduleJobRetention(rootCtx, pool.Pool, logger)
 	if err := tierchain.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the next category opens a little later than announced.
@@ -515,6 +528,12 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 			WithCheckoutQueries(reservationQueries),
 		Logger:    logger,
 		Scheduler: reservationexpiry.NewPGScheduler(pool),
+	}))
+
+	reg.Register(billingcollect.JobType, billingcollect.NewHandler(billingcollect.HandlerOptions{
+		Collector: billingcollect.New(gen.New(pool), billingcollect.Options{Since: cfg.BillingCollectSince, Logger: logger}),
+		Scheduler: billingcollect.NewPGScheduler(pool),
+		Logger:    logger,
 	}))
 
 	// tier.chain_sweep hands the free places of a category whose sale window

@@ -307,6 +307,13 @@ type Config struct {
 	WorkerJobTimeout       time.Duration `env:"WORKER_JOB_TIMEOUT"        required:"false" default:"5m"`
 	WorkerRetryBackoffBase time.Duration `env:"WORKER_RETRY_BACKOFF_BASE" required:"false" default:"2s"`
 	WorkerRetryBackoffMax  time.Duration `env:"WORKER_RETRY_BACKOFF_MAX"  required:"false" default:"10m"`
+	// BillingCollectSince is the date X of billing collection
+	// (internal/platform/billing/collect, BILLING_COLLECT_SINCE, RFC 3339):
+	// the billing.collect job reads sales whose business time is at or after
+	// it and never earlier. Empty (the zero value) switches collection off, so
+	// a deployment that has not named the date writes no billing facts.
+	// Read only by arena-worker.
+	BillingCollectSince time.Time `env:"BILLING_COLLECT_SINCE" required:"false" default:""`
 
 	// -------------------------------------------------------------------------
 	// Outbox dispatcher
@@ -987,6 +994,14 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.WorkerRetryBackoffMax = d
+
+	if raw := strings.TrimSpace(getenv("BILLING_COLLECT_SINCE", "")); raw != "" {
+		since, perr := time.Parse(time.RFC3339, raw)
+		if perr != nil {
+			parseErrs = append(parseErrs, fmt.Errorf("BILLING_COLLECT_SINCE must be an RFC 3339 timestamp (got %q): %w", raw, perr))
+		}
+		cfg.BillingCollectSince = since.UTC()
+	}
 
 	// Outbox settings.
 	d, err = getenvDuration("OUTBOX_POLL_INTERVAL", 2*time.Second, false)
