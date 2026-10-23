@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbilling"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
@@ -59,6 +60,53 @@ func (s *Server) mountStripeBillingRoutes(r chi.Router) {
 	})
 	// Webhook is public (signature verification inside the handler).
 	r.Post("/billing/stripe/webhook", s.handleStripeBillingWebhook)
+}
+
+// billingAdminHandler builds the handler of the superadmin screen "Price
+// lists and rates" (task B1-5).
+func (s *Server) billingAdminHandler() *hbilling.AdminHandler {
+	return hbilling.NewAdmin(s.pgxPool, s.audit, s.logger)
+}
+
+// requireBillingSuperadmin lets only a platform superadmin through. The
+// billing.admin permission is also held by the platform admin role, but price
+// lists and individual rates are the owner's decision, so the gate is the
+// same marker the webhook registry uses.
+func (s *Server) requireBillingSuperadmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !auth.HasSuperadminOrgAccess(r.Context()) {
+			httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+				"billing.superadmin_only", "platform superadmin access is required for price lists and rates", r,
+			))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// mountBillingAdminRoutes mounts the routes of the superadmin screen "Price
+// lists and rates" under /v1/admin/billing. Every route needs billing.admin
+// AND a platform superadmin; writes need X-Admin-Reason and write an audit
+// row in their own transaction (hbilling/admin.go).
+func (s *Server) mountBillingAdminRoutes(r chi.Router) {
+	if !s.authEnabled() {
+		return
+	}
+	h := s.billingAdminHandler
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "billing.admin", "billing")
+		pr.Use(s.requireBillingSuperadmin)
+		pr.Get("/admin/billing/price-lists", func(w http.ResponseWriter, r *http.Request) { h().HandleListPriceLists(w, r) })
+		pr.Get("/admin/billing/price-lists/{id}", func(w http.ResponseWriter, r *http.Request) { h().HandleGetPriceList(w, r) })
+		pr.Post("/admin/billing/price-lists", func(w http.ResponseWriter, r *http.Request) { h().HandleCreatePriceList(w, r) })
+		pr.Post("/admin/billing/price-lists/{id}/revoke", func(w http.ResponseWriter, r *http.Request) { h().HandleRevokePriceList(w, r) })
+		pr.Get("/admin/billing/rate-overrides", func(w http.ResponseWriter, r *http.Request) { h().HandleListRateOverrides(w, r) })
+		pr.Post("/admin/billing/rate-overrides", func(w http.ResponseWriter, r *http.Request) { h().HandleCreateRateOverride(w, r) })
+		pr.Post("/admin/billing/rate-overrides/{id}/close", func(w http.ResponseWriter, r *http.Request) { h().HandleCloseRateOverride(w, r) })
+		pr.Delete("/admin/billing/rate-overrides/{id}", func(w http.ResponseWriter, r *http.Request) { h().HandleDeleteRateOverride(w, r) })
+		pr.Get("/admin/billing/accounts", func(w http.ResponseWriter, r *http.Request) { h().HandleListAccounts(w, r) })
+		pr.Post("/admin/billing/accounts/{account_id}/terms", func(w http.ResponseWriter, r *http.Request) { h().HandleCreateAccountTerms(w, r) })
+	})
 }
 
 // mountSuperadminRoutes mounts read-only cross-tenant superadmin endpoints

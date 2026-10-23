@@ -9,7 +9,7 @@ import (
 )
 
 // renderingDelete matches a DELETE or TRUNCATE aimed at legal_renderings
-// (migration 0159, P3a): the terms HTML a buyer accepted at checkout is
+// (migration 0163, P3a): the terms HTML a buyer accepted at checkout is
 // dispute evidence next to checkout_consents, which names it. No code may
 // delete it; only a migration's Down section and test fixtures (_test.go,
 // not scanned) may. UPDATE is refused by the table's own trigger.

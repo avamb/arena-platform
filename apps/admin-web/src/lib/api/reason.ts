@@ -63,6 +63,9 @@ const REASON_REQUIRED_PREFIXES: readonly string[] = [
 const REASON_REQUIRED_MUTATION_PREFIXES: readonly string[] = [
   "/v1/operator-networks",
   "/v1/admin/networks",
+  // Price lists, individual rates and account terms (B1-5): the server demands
+  // the header on every write and none on the reads.
+  "/v1/admin/billing",
 ];
 
 /**

@@ -25,6 +25,7 @@ Replace `YOUR_FEED_TOKEN` with the feed token obtained from the Arena platform.
 | `feed-token`  | Yes      | —       | Feed token from the Arena platform. Identifies the event catalog to display. |
 | `session-id`  | No       | —       | Pre-select a specific session. When omitted the user sees a session picker. |
 | `locale`      | No       | `en`    | UI locale. Supported: `en`, `ru`, `cs`, `he`. |
+| `materials`   | No       | shown   | `hidden` drops the event's photos, videos, map, "where else to buy" links and photo report. Anything else (or absent) shows them whenever the event has any. |
 
 ---
 
@@ -59,6 +60,22 @@ style-src  'unsafe-inline';
 The `style-src 'unsafe-inline'` allowance is required because the widget uses Shadow DOM with inline styles for encapsulation. No external stylesheets are loaded.
 
 If you self-host the widget (see below), replace `cdn.jsdelivr.net` with your own CDN domain.
+
+### Event photos and videos (strict CSP)
+
+When the organizer adds photos, videos, a map point or "where else to buy" links to an event, the widget shows them under the ticket picker. A site **without** a `Content-Security-Policy` needs no change. A site with a strict policy must allow:
+
+```
+img-src   https://YOUR_ARENA_API_HOST;
+frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://rutube.ru;
+```
+
+- `img-src`: photos come from the Arena API host (the same host as the poster), signed addresses under `/v1/media-files/`.
+- `frame-src` (or `child-src` / `default-src` when you set no `frame-src`): the three video hosts above and nothing else. The widget never contacts them before a visitor presses "Play video"; only then it creates the `<iframe>` (YouTube through the no-cookie domain, Vimeo with `dnt=1`). With a strict policy that omits these hosts the frame stays blank after the press; the "Open on YouTube" link under every video keeps working, so the visitor is never stuck. List the hosts to get the inline player.
+- The map is two ordinary links (OpenStreetMap, Google Maps) and the coordinates as text. It loads no map script and needs no CSP entry.
+- Links to other sellers open in a new tab with `rel="noopener nofollow"`.
+
+The `materials="hidden"` attribute removes the whole block. Use it when your page already shows the same photos and videos itself (the hosted tickets page does).
 
 ---
 

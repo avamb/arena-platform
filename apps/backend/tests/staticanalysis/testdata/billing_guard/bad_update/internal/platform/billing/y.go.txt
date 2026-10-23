@@ -1,0 +1,4 @@
+package billing
+
+// The billing package itself may not rewrite history either.
+const wipe = `TRUNCATE TABLE billable_events`

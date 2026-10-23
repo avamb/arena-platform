@@ -229,6 +229,7 @@ const ROUTE_REGISTRY: Readonly<
     file: "promoCodes.tsx",
   },
   "/onboarding": { routeId: "OnboardingRoute", file: "onboarding.tsx" },
+  "/billing/prices": { routeId: "BillingPricesRoute", file: "billingPrices.tsx" },
 };
 
 /**

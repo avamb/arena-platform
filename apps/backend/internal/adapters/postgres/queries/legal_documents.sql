@@ -1,4 +1,4 @@
--- Organizer terms of sale: templates and renderings (migration 0159, task
+-- Organizer terms of sale: templates and renderings (migration 0163, task
 -- P3a). Hand-maintained mirror of gen/legal_documents.sql.go.
 
 -- name: ListLegalDocuments :many

@@ -1,7 +1,7 @@
 // Package legaldocs holds the organizer's terms of sale (line P, task P3a,
 // plan docs/plans/hosted_page_legal_web_center_wave_plan_2026-10-13_ru.md
 // section 4): the vocabulary of the versioned templates (legal_documents,
-// migration 0159), the mini-parser that substitutes an organization's data
+// migration 0163), the mini-parser that substitutes an organization's data
 // into a template, and the renderer that stores what a buyer was shown
 // (legal_renderings).
 //

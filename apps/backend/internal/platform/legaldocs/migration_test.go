@@ -9,7 +9,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
 )
 
-const migrationFile = "0159_legal_documents.sql"
+const migrationFile = "0163_legal_documents.sql"
 
 func migrationUp(t *testing.T) string {
 	t.Helper()
@@ -52,9 +52,9 @@ func sameList(a, b []string) bool {
 	return true
 }
 
-// TestMigration0159_ChecksMatchGoConstants keeps every CHECK of the
+// TestMigration0163_ChecksMatchGoConstants keeps every CHECK of the
 // migration equal to its Go mirror (AGENTS.md: enum pairs drift silently).
-func TestMigration0159_ChecksMatchGoConstants(t *testing.T) {
+func TestMigration0163_ChecksMatchGoConstants(t *testing.T) {
 	up := migrationUp(t)
 	pairs := []struct {
 		constraint string
@@ -102,7 +102,7 @@ func TestSeededTemplates_Parse(t *testing.T) {
 	}
 }
 
-func TestMigration0159_GrantsLegalManageToTheSuperadminOnly(t *testing.T) {
+func TestMigration0163_GrantsLegalManageToTheSuperadminOnly(t *testing.T) {
 	up := migrationUp(t)
 	if !strings.Contains(up, "('legal.manage',") || !strings.Contains(up, "WHERE  r.name = 'platform_superadmin'") {
 		t.Fatal("legal.manage must be seeded and granted to platform_superadmin in the same migration")

@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// LegalDocumentRow is one version of a terms template (migration 0159,
+// LegalDocumentRow is one version of a terms template (migration 0163,
 // task P3a). A published or retired version never changes (trigger
 // legal_documents_guard).
 type LegalDocumentRow struct {
@@ -328,7 +328,7 @@ func (q *Queries) GetLegalTermsPromoter(ctx context.Context, orgID, promoterID u
 // ─────────────────────────────────────────────────────────────────────────────
 
 // LegalRenderingRow is the terms HTML one organization's buyers were shown
-// (migration 0159). Never updated; never deleted by code.
+// (migration 0163). Never updated; never deleted by code.
 type LegalRenderingRow struct {
 	ID              uuid.UUID
 	OrgID           uuid.UUID

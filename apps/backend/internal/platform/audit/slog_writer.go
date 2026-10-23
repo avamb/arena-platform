@@ -45,6 +45,10 @@ func (w *SlogWriter) WriteTx(ctx context.Context, _ pgx.Tx, ev Event) error {
 	return nil
 }
 
+// DurableInTx implements DurableWriter: a SlogWriter never writes to the
+// database, whatever the transaction.
+func (w *SlogWriter) DurableInTx() bool { return false }
+
 // logEvent emits the structured slog record common to Write and WriteTx.
 func (w *SlogWriter) logEvent(ctx context.Context, ev Event) {
 	if ev.Metadata == nil {

@@ -30,7 +30,7 @@ type CheckoutConsentRow struct {
 	TermsURL        *string
 	PrivacyURL      *string
 	CreatedAt       time.Time
-	// The rendering of the organizer terms accepted (migration 0159, P3a)
+	// The rendering of the organizer terms accepted (migration 0163, P3a)
 	// and the SHA-256 of its HTML; nil for a consent to the platform terms.
 	LegalRenderingID *uuid.UUID
 	TermsSHA256      *string
