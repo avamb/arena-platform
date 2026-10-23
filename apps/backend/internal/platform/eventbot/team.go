@@ -107,15 +107,25 @@ const (
 type teamDialog struct {
 	Email string `json:"email"`  // "" while the e-mail is awaited
 	MsgID int    `json:"msg_id"` // the one bot message the dialog lives in; each step edits it
+	// OrgID is the organization the dialog was opened in. A press or an
+	// address that arrives after the person switched organization is not
+	// theirs to send there ("" = a dialog stored before this field existed).
+	OrgID string `json:"org_id,omitempty"`
+}
+
+// belongsTo reports whether the dialog was opened in this organization.
+func (d teamDialog) belongsTo(orgID uuid.UUID) bool {
+	return d.OrgID == "" || d.OrgID == orgID.String()
 }
 
 // startTeamDialog opens (or restarts) the invite dialog in the organization.
 func (b *Bot) startTeamDialog(ctx context.Context, tg int64, orgID uuid.UUID, msgID int) error {
-	return b.dialogs.Save(ctx, tg, &orgID, teamDialogKind, teamStepEmail, teamDialog{MsgID: msgID}, dialogTTL)
+	return b.dialogs.Save(ctx, tg, &orgID, teamDialogKind, teamStepEmail, teamDialog{MsgID: msgID, OrgID: orgID.String()}, dialogTTL)
 }
 
 // setTeamDialogEmail records the address and moves the dialog to the role.
 func (b *Bot) setTeamDialogEmail(ctx context.Context, tg int64, orgID uuid.UUID, dlg teamDialog) error {
+	dlg.OrgID = orgID.String()
 	return b.dialogs.Save(ctx, tg, &orgID, teamDialogKind, teamStepRole, dlg, dialogTTL)
 }
 
@@ -325,6 +335,13 @@ func (b *Bot) teamCallback(ctx context.Context, chatID int64, msgID int, from *m
 			return
 		}
 		dlg, step, found, expired := b.loadTeamDialog(ctx, from.ID)
+		if found && !dlg.belongsTo(orgID) {
+			// Opened in another organization: the invitation would go to
+			// this one. The dialog ends and the person starts again here.
+			b.clearTeamDialog(ctx, from.ID)
+			b.showTeam(ctx, chatID, &msgID, from, b.texts.T(loc, "bot.team_dialog_expired", nil)+"\n\n")
+			return
+		}
 		if !found || step != teamStepRole || dlg.Email == "" {
 			prefix := ""
 			if expired {
@@ -414,7 +431,7 @@ func (b *Bot) teamText(ctx context.Context, chatID int64, from *models.User, tex
 		return false
 	}
 	id, _, err := b.resolveIdentity(ctx, from.ID)
-	if err != nil || !isOwner(id) || id.Current == nil {
+	if err != nil || !isOwner(id) || id.Current == nil || !dlg.belongsTo(id.Current.OrgID) {
 		b.clearTeamDialog(ctx, from.ID)
 		return false
 	}

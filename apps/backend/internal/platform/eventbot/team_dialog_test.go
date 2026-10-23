@@ -25,7 +25,7 @@ func TestTeamDialog_StepsAreKept(t *testing.T) {
 		t.Fatalf("start: %v", err)
 	}
 	dlg, step, found, expired := b.loadTeamDialog(ctx, 42)
-	if !found || expired || step != teamStepEmail || dlg != (teamDialog{MsgID: 5}) {
+	if !found || expired || step != teamStepEmail || dlg != (teamDialog{MsgID: 5, OrgID: org.String()}) {
 		t.Fatalf("after start: %+v step=%q found=%v expired=%v", dlg, step, found, expired)
 	}
 	dlg.Email = "colleague@example.test"
@@ -33,7 +33,7 @@ func TestTeamDialog_StepsAreKept(t *testing.T) {
 		t.Fatalf("set e-mail: %v", err)
 	}
 	dlg, step, found, _ = b.loadTeamDialog(ctx, 42)
-	if !found || step != teamStepRole || dlg != (teamDialog{Email: "colleague@example.test", MsgID: 5}) {
+	if !found || step != teamStepRole || dlg != (teamDialog{Email: "colleague@example.test", MsgID: 5, OrgID: org.String()}) {
 		t.Fatalf("after the e-mail: %+v step=%q found=%v", dlg, step, found)
 	}
 	b.clearTeamDialog(ctx, 42)
@@ -86,5 +86,24 @@ func TestTeamDialog_AnswerSlidesTheExpiry(t *testing.T) {
 	clock.advance(25 * time.Minute)
 	if _, step, found, _ := b.loadTeamDialog(ctx, 42); !found || step != teamStepRole {
 		t.Fatalf("the answer must have moved the expiry: found=%v step=%q", found, step)
+	}
+}
+
+// A dialog opened in organization A is not an answer for organization B: the
+// owner of both who switched in between must not invite into B by a button of
+// A's screen (audit 2026-10-23, P2-1).
+func TestTeamDialog_BelongsToTheOrganizationItWasOpenedIn(t *testing.T) {
+	ctx := context.Background()
+	b := newTeamDialogBot(&testClock{t: time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)})
+	orgA, orgB := uuid.New(), uuid.New()
+	if err := b.startTeamDialog(ctx, 42, orgA, 5); err != nil {
+		t.Fatal(err)
+	}
+	dlg, _, found, _ := b.loadTeamDialog(ctx, 42)
+	if !found || !dlg.belongsTo(orgA) || dlg.belongsTo(orgB) {
+		t.Fatalf("dialog %+v: want it to belong to A only", dlg)
+	}
+	if !(teamDialog{}).belongsTo(orgB) {
+		t.Fatal("a dialog stored before OrgID existed must keep working")
 	}
 }

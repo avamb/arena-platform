@@ -112,9 +112,13 @@ func (b *Bot) wizardOpenEvent(ctx context.Context, chatID int64, editMsgID *int,
 	note := b.texts.T(loc, "bot.wz.edit_intro", map[string]any{"Name": Esc(d.Event.Name)})
 	if copy {
 		d = CopyDraft(d)
-		d.Channels = ws.Defaults.Channels
-		if len(d.Channels) == 0 {
-			if channels, err := b.arena.Channels(ctx, jwt, ws.OrgID); err == nil && len(channels) == 1 {
+		// The remembered channels belong to the Telegram account, not to this
+		// organization: only those the organization has are kept.
+		if channels, err := b.arena.Channels(ctx, jwt, ws.OrgID); err == nil {
+			if subset(ws.Defaults.Channels, channels) {
+				d.Channels = ws.Defaults.Channels
+			}
+			if len(d.Channels) == 0 && len(channels) == 1 {
 				d.Channels = channels
 			}
 		}
@@ -420,9 +424,12 @@ func (b *Bot) downloadTelegramFile(ctx context.Context, fileID string) ([]byte, 
 	if err != nil {
 		return nil, err
 	}
+	// The file link carries the bot token in its path, and net/http repeats
+	// the whole URL inside its errors: they reach the log, so the token is
+	// dropped with the URL (unwrapURLError).
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.tg.FileDownloadLink(f), nil)
 	if err != nil {
-		return nil, err
+		return nil, unwrapURLError(err)
 	}
 	client := b.fileClient
 	if client == nil {
@@ -430,7 +437,7 @@ func (b *Bot) downloadTelegramFile(ctx context.Context, fileID string) ([]byte, 
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, unwrapURLError(err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {

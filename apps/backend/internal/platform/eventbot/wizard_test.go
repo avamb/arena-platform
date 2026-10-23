@@ -839,3 +839,30 @@ func TestWizard_BigCitiesAreOffered(t *testing.T) {
 		t.Fatalf("created = %v", refs.created)
 	}
 }
+
+// The remembered promoter belongs to the Telegram account, so in another
+// organization it may not exist: "keep" must not carry it over, and the
+// screen must not offer it (audit 2026-10-23, P2-2).
+func TestWizard_RememberedPromoterOfAnotherOrganizationIsNotKept(t *testing.T) {
+	refs := newFakeRefs() // this organization has only the promoter "lmp"
+	r := newWizardRun(t, refs)
+	r.ws.Defaults = Defaults{Age: "12+", PromoterID: "foreign", PromoterName: "Other org promoter"}
+	r.text("Опера", stEvAge)
+	r.press("keep", stEvPromoter)
+	screen, err := r.w.Render(context.Background(), r.ws, r.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range screen.Buttons {
+		for _, b := range row {
+			if b.Data == "keep" {
+				t.Fatalf("the screen offers a promoter of another organization: %+v", b)
+			}
+		}
+	}
+	// A stale "keep" press changes nothing and stays on the question.
+	r.press("keep", stEvPromoter)
+	if r.d.Event.PromoterID == "foreign" {
+		t.Fatalf("a promoter of another organization was kept: %+v", r.d.Event)
+	}
+}
