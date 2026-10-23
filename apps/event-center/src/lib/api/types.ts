@@ -102,6 +102,9 @@ export type SessionChangeImpact = S["SessionChangeImpact"];
 export type SessionChangeSummary = S["SessionChangeSummary"];
 export type OrganizerContact = S["OrganizerContact"];
 export type EventContactResponse = S["EventContactResponse"];
+// 2-3: statistics of the hosted page (beacon counters).
+export type PageStatsResponse = S["PageStatsResponse"];
+export type PageStatsCounts = S["PageStatsCounts"];
 // B2-7: the platform's charges to the organization (read-only).
 export type BillingChargeList = S["BillingChargeList"];
 export type BillingChargeItem = S["BillingChargeItem"];

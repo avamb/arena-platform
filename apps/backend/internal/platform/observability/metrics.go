@@ -288,6 +288,13 @@ type Metrics struct {
 	// Metric name: arena_email_webhook_rejected_total.
 	EmailWebhookRejectedTotal *prometheus.CounterVec
 
+	// PageTrackTotal counts hosted-page statistics beacon requests
+	// (POST /v1/public/pages/{slug}/{event_slug}/track) by bounded kind and
+	// outcome (counted, suspect, rate_limited, rejected). HP-2a.
+	//
+	// Metric name: arena_page_track_total.
+	PageTrackTotal *prometheus.CounterVec
+
 	// IdempotencyCleanupDeletedTotal counts idempotency_keys rows deleted by
 	// the scheduled maintenance job (job_type='idempotency.cleanup'). Each
 	// cleanup run adds the number of rows purged. A rising value confirms the
@@ -490,6 +497,16 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 			[]string{LabelReason},
 		),
 
+		PageTrackTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: MetricsNamespace,
+				Subsystem: subsystemPage,
+				Name:      "track_total",
+				Help:      "Total hosted-page statistics beacon requests, by kind and outcome (counted, suspect, rate_limited, rejected).",
+			},
+			[]string{LabelKind, LabelOutcome},
+		),
+
 		RefundProviderCallsTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: MetricsNamespace,
@@ -522,6 +539,7 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 		m.RefundProviderCallsTotal,
 		m.EmailWebhookEventsTotal,
 		m.EmailWebhookRejectedTotal,
+		m.PageTrackTotal,
 	} {
 		if err := reg.Register(c); err != nil {
 			// If a peer test already registered the same metric on the

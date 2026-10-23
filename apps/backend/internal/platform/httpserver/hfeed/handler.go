@@ -29,6 +29,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 )
 
 // pgUniqueViolation is the PostgreSQL error code for unique-constraint violations.
@@ -124,6 +125,9 @@ type Handler struct {
 	// legalTermsBase is the public API base URL the organizer's terms link
 	// is built on (P3a, WithLegalTerms); empty keeps the platform terms.
 	legalTermsBase string
+	// metrics receives the page statistics beacon's counter (WithMetrics).
+	// Nil is fine: Metrics.RecordPageTrack is a no-op on a nil receiver.
+	metrics *observability.Metrics
 }
 
 // WithContactForm configures the hosted page's "Write to the organizer" form:

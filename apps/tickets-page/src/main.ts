@@ -4,6 +4,7 @@ import { applyDocumentChrome, consumeCheckoutTokenFromURL, eventIDWithOpenChecko
 import { ApiError, fetchHostedPage, fetchPromoterPage } from './lib/api.ts';
 import { renderSellerFooter } from './lib/seller.ts';
 import { contactFallbackURL, openContactFromHash, renderContactFooter } from './lib/contact.ts';
+import { trackPageView, trackPartnerClick, trackVideoPlay } from './lib/track.ts';
 
 /** Resolved at build time by Vite from the VITE_API_BASE_URL build arg
  * (see Dockerfile / .env). Empty string falls back to same-origin relative
@@ -99,7 +100,15 @@ async function main(): Promise<void> {
     try {
       const data = await fetchHostedPage(API_BASE, route.orgSlug, route.eventSlug);
       applyDocumentChrome(locale, { title: data.event.title, description: data.event.short_description ?? data.event.description });
-      renderEvent(mainEl, data, locale, { apiBase: API_BASE, resumingCheckout });
+      // Page statistics (HP-2a): the video and partner-link hooks of the
+      // materials block count anonymous hits for this event.
+      const trackCtx = { apiBase: API_BASE, slug: route.orgSlug, eventSlug: route.eventSlug, search: window.location.search };
+      renderEvent(mainEl, data, locale, {
+        apiBase: API_BASE,
+        resumingCheckout,
+        onVideoPlay: () => trackVideoPlay(trackCtx),
+        onPartnerClick: () => trackPartnerClick(trackCtx),
+      });
       renderSellerFooter(data.seller, locale);
       const contactCtx = {
         apiBase: API_BASE,
@@ -112,6 +121,11 @@ async function main(): Promise<void> {
       };
       renderContactFooter(contactCtx);
       openContactFromHash(contactCtx);
+      // Page statistics (HP-2a): one anonymous page view per shown event page.
+      // Coming back from the payment page is not a new view.
+      if (!resumingCheckout) {
+        trackPageView(trackCtx);
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         // A letter's "Write to the organizer" link of an event that is gone:

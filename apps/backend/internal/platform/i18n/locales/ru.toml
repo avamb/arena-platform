@@ -4006,3 +4006,6 @@ other = "☐ Отметить как VIP"
 
 ["bot.inv.vip_off_btn"]
 other = "☑ VIP: нажмите, чтобы снять"
+
+["bot.ec.page_stats_line"]
+other = "Просмотры страницы: {{.Views}} за {{.Days}} дн.{{if .Suspect}} (из них подозрительных {{.Suspect}}){{end}}"

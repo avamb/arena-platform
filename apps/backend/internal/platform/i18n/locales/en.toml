@@ -4012,3 +4012,6 @@ other = "☐ Mark as VIP"
 
 ["bot.inv.vip_off_btn"]
 other = "☑ VIP: press to remove"
+
+["bot.ec.page_stats_line"]
+other = "Page views: {{.Views}} in {{.Days}} days{{if .Suspect}} ({{.Suspect}} of them look like bots){{end}}"

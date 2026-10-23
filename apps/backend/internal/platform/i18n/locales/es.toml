@@ -3867,3 +3867,6 @@ other = "☐ Marcar como VIP"
 
 ["bot.inv.vip_off_btn"]
 other = "☑ VIP: pulsa para quitar"
+
+["bot.ec.page_stats_line"]
+other = "Visitas a la página: {{.Views}} en {{.Days}} días{{if .Suspect}} (de ellas, {{.Suspect}} sospechosas){{end}}"

@@ -5,6 +5,7 @@
  */
 import { ApiError, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
+import type { PageStatsResponse } from "@/lib/api/types";
 import type {
   BillingAccountInvoice,
   BillingAccountInvoiceList,
@@ -752,6 +753,22 @@ export function setTicketVip(orgId: string, ticketId: string, vip: boolean): Pro
     route: API.ticketVip,
     params: { org_id: orgId, ticket_id: ticketId },
     body: { vip },
+  });
+}
+
+// 2-3: statistics of the event's hosted page. The window is the API's default
+// (the last 30 days, ending today in the venue's zone).
+export function fetchPageStats(orgId: string, eventId: string): Promise<PageStatsResponse> {
+  return call<PageStatsResponse>({ route: API.eventPageStats, params: { org_id: orgId, event_id: eventId } });
+}
+
+export function downloadPageStatsCsv(orgId: string, eventId: string, locale: string): Promise<DownloadedFile> {
+  return download({
+    route: API.eventPageStatsCsv,
+    params: { org_id: orgId, event_id: eventId },
+    query: { locale },
+    accept: "text/csv",
+    fallbackName: "page-stats.csv",
   });
 }
 // ─── B2-7: billing usage (read-only, preliminary) ───────────────────────────

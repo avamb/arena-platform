@@ -11776,6 +11776,99 @@ type OrganizerContactRequest struct {
 	TurnstileToken *string `json:"turnstile_token,omitempty"`
 }
 
+// PageStatsCounts A pair of counters of one kind.
+type PageStatsCounts struct {
+	// Hits Hits that looked like a person with a browser.
+	Hits int64 `json:"hits"`
+
+	// SuspectHits Hits counted apart because the browser looked like a bot (or sent no User-Agent).
+	SuspectHits int64 `json:"suspect_hits"`
+}
+
+// PageStatsDay The counters of one calendar day (in the venue's zone) that has data.
+type PageStatsDay struct {
+	// Day The day, `YYYY-MM-DD`.
+	Day string `json:"day"`
+
+	// PageView Opened the event page.
+	PageView PageStatsCounts `json:"page_view"`
+
+	// PartnerClick Followed a "where else to buy" link.
+	PartnerClick PageStatsCounts `json:"partner_click"`
+
+	// VideoPlay Pressed play on a video of the page.
+	VideoPlay PageStatsCounts `json:"video_play"`
+}
+
+// PageStatsKinds The counters of the three kinds.
+type PageStatsKinds struct {
+	// PageView Opened the event page.
+	PageView PageStatsCounts `json:"page_view"`
+
+	// PartnerClick Followed a "where else to buy" link.
+	PartnerClick PageStatsCounts `json:"partner_click"`
+
+	// VideoPlay Pressed play on a video of the page.
+	VideoPlay PageStatsCounts `json:"video_play"`
+}
+
+// PageStatsResponse The statistics of an event's hosted page for a window of days. A guide
+// for the organizer, not proof for an advertising account: a bot may look
+// like a person and a person may block the beacon.
+type PageStatsResponse struct {
+	// Days The days that have data, oldest first. A day without hits is absent.
+	Days []PageStatsDay `json:"days"`
+
+	// EventId The event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// From First day of the window, `YYYY-MM-DD`.
+	From string `json:"from"`
+
+	// Sources The utm pairs of the page views, biggest first, at most 20.
+	Sources []PageStatsSource `json:"sources"`
+
+	// Timezone IANA zone of the event's venue that decides which day a hit belongs to; null (UTC days) while the event has no session.
+	Timezone *string `json:"timezone"`
+
+	// To Last day of the window (inclusive), `YYYY-MM-DD`.
+	To string `json:"to"`
+
+	// Totals Sums over the whole window.
+	Totals PageStatsKinds `json:"totals"`
+}
+
+// PageStatsSource One utm pair of the page views. Visits that carried no utm are the pair of two empty strings.
+type PageStatsSource struct {
+	// Hits Page views that looked like a person.
+	Hits int64 `json:"hits"`
+
+	// SuspectHits Page views counted apart as probable bots.
+	SuspectHits int64 `json:"suspect_hits"`
+
+	// UtmCampaign The cleaned `utm_campaign`, empty when none.
+	UtmCampaign string `json:"utm_campaign"`
+
+	// UtmSource The cleaned `utm_source`, empty when none.
+	UtmSource string `json:"utm_source"`
+}
+
+// PageTrackRequest Body of POST /v1/public/pages/{org_slug}/{event_slug}/track, the hosted
+// page's statistics beacon (HP-2a). Unknown fields are ignored.
+type PageTrackRequest struct {
+	// Kind What happened: `page_view`, `video_play` or `partner_click`. Any
+	// other value is refused with 400 `track.invalid_kind`.
+	Kind string `json:"kind"`
+
+	// UtmCampaign Optional `utm_campaign` of the page address, cleaned like `utm_source`.
+	UtmCampaign *string `json:"utm_campaign,omitempty"`
+
+	// UtmSource Optional `utm_source` of the page address. Only the characters
+	// `A-Z a-z 0-9 . _ ~ -` are kept (a value with any other character is
+	// counted as empty) and it is cut to 64 characters.
+	UtmSource *string `json:"utm_source,omitempty"`
+}
+
 // PaginationMeta Standard pagination metadata returned by list endpoints.
 // Clients use this object to implement "load more" buttons or
 // paginator UI components. All fields are always present in list responses.
@@ -17749,6 +17842,27 @@ type GetV1OrganizationsOrgIdEventsSalesSummaryParams struct {
 	Ids string `form:"ids" json:"ids"`
 }
 
+// GetV1OrganizationsOrgIdEventsEventIdPageStatsParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdPageStats.
+type GetV1OrganizationsOrgIdEventsEventIdPageStatsParams struct {
+	// From First day, `YYYY-MM-DD`. Default 29 days before `to`.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdEventsEventIdPageStatsCsvParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdPageStatsCsv.
+type GetV1OrganizationsOrgIdEventsEventIdPageStatsCsvParams struct {
+	// From First day, `YYYY-MM-DD`. Default 29 days before `to`.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+
+	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdEventsEventIdSalesCsvParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdSalesCsv.
 type GetV1OrganizationsOrgIdEventsEventIdSalesCsvParams struct {
 	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
@@ -18713,6 +18827,9 @@ type PostPublicFeedFunnelEventsJSONRequestBody = WidgetFunnelEventsBatch
 
 // SendOrganizerContactJSONRequestBody defines body for SendOrganizerContact for application/json ContentType.
 type SendOrganizerContactJSONRequestBody = OrganizerContactRequest
+
+// PostPublicPageTrackJSONRequestBody defines body for PostPublicPageTrack for application/json ContentType.
+type PostPublicPageTrackJSONRequestBody = PageTrackRequest
 
 // SubmitReconciliationReportJSONRequestBody defines body for SubmitReconciliationReport for application/json ContentType.
 type SubmitReconciliationReportJSONRequestBody SubmitReconciliationReportJSONBody

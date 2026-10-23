@@ -54,7 +54,8 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		).
 		WithContactForm(s.contactFormReady(), s.contactFormSiteKey(), s.contactFormPrivacyURL()).
 		WithCheckoutConsent(s.platformTermsURL(), s.contactFormPrivacyURL()).
-		WithLegalTerms(s.legalTermsAPIBase())
+		WithLegalTerms(s.legalTermsAPIBase()).
+		WithMetrics(s.typedMetrics)
 }
 
 // ─── type aliases ─────────────────────────────────────────────────────────────
@@ -133,6 +134,11 @@ func (s *Server) handlePublicPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePublicPromoterPage(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePublicPromoterPage(w, r)
+}
+
+// handlePublicPageTrack counts one hit of the page statistics beacon (HP-2a).
+func (s *Server) handlePublicPageTrack(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicPageTrack(w, r)
 }
 
 // ─── public feed checkout handler shim ────────────────────────────────────────

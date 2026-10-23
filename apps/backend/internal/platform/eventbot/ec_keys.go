@@ -14,7 +14,7 @@ var ecKeys = []string{
 	"bot.ec.csv_caption", "bot.ec.csv_what_sales", "bot.ec.csv_what_summary", "bot.ec.csv_empty",
 	"bot.ec.csv_failed", "bot.ec.csv_too_big_event", "bot.ec.csv_too_big_session", "bot.ec.not_found",
 	"bot.ec.no_rights", "bot.ec.notif_btn", "bot.ec.notif_open_btn", "bot.ec.notif_owner",
-	"bot.ec.notif_manager",
+	"bot.ec.notif_manager", "bot.ec.page_stats_line",
 }
 
 func init() {

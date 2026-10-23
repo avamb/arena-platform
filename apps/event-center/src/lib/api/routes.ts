@@ -178,6 +178,9 @@ export const API = {
   eventContact: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/contact" },
   // V1: the organizer's private VIP mark of a ticket (never printed, never mailed).
   ticketVip: { method: "PATCH", path: "/v1/organizations/{org_id}/tickets/{ticket_id}/vip" },
+  // 2-3: statistics of the event's hosted page (page views, video plays, partner clicks).
+  eventPageStats: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/page-stats" },
+  eventPageStatsCsv: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/page-stats.csv" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;
