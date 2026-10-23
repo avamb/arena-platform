@@ -120,6 +120,13 @@ func PlanSlots(p Values, currency string) (SlotPlan, error) {
 		if len(prices) != n {
 			return SlotPlan{}, &ParamError{Param: ParamPrices, Reason: fmt.Sprintf("must have one price per category (%d)", n)}
 		}
+		// Slot 1 is the most wanted part of the hall, so the list goes from
+		// the dearest category down: a price may repeat but never rise.
+		for i := 1; i < n; i++ {
+			if prices[i] > prices[i-1] {
+				return SlotPlan{}, &ParamError{Param: ParamPrices, Reason: "must not increase: list the dearest category first"}
+			}
+		}
 		plan.Prices = append([]int64(nil), prices...)
 	} else {
 		hi, okHi := p.Int(ParamPriceMax)
@@ -373,6 +380,39 @@ func (a Annotations) Validate() error {
 	return nil
 }
 
+// matchGeometry refuses a section weight or an obstructed seat that the
+// plan does not have: a typo would otherwise be ignored silently and the
+// proposal would not be the one the operator asked for. Keys are compared
+// in sorted order so the first error does not depend on map order.
+func (a Annotations) matchGeometry(g seating.Geometry) error {
+	sections := make(map[string]bool, len(g.Sections))
+	for _, s := range g.Sections {
+		sections[s.Key] = true
+	}
+	keys := make([]string, 0, len(a.SectionWeights))
+	for k := range a.SectionWeights {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if !sections[k] {
+			return &AnnotationError{Annotation: "section_weights", Reason: fmt.Sprintf("the plan has no section %q", k)}
+		}
+	}
+	if len(a.ObstructedSeatKeys) > 0 {
+		seats := make(map[string]bool, g.SeatCount())
+		for _, s := range Seats(g) {
+			seats[s.Key] = true
+		}
+		for _, k := range a.ObstructedSeatKeys {
+			if !seats[k] {
+				return &AnnotationError{Annotation: "obstructed_seat_keys", Reason: fmt.Sprintf("the plan has no seat %q", k)}
+			}
+		}
+	}
+	return nil
+}
+
 func (a Annotations) has(name string) bool {
 	switch name {
 	case AnnotationFocalPoint:
@@ -394,6 +434,9 @@ func Run(alg Algorithm, g seating.Geometry, a Annotations, st SessionState, p Va
 	g = seating.Canonicalize(g)
 	if g.SeatCount() == 0 {
 		return Layout{}, Metrics{}, ErrNoSeats
+	}
+	if err := a.matchGeometry(g); err != nil {
+		return Layout{}, Metrics{}, err
 	}
 	for _, name := range alg.Params().RequiredAnnotations {
 		if !a.has(name) {

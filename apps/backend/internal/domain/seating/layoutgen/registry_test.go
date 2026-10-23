@@ -177,6 +177,7 @@ func TestPlanSlots_CrossFieldRules(t *testing.T) {
 		{`{"categories":3,"price_max":100}`, ParamPriceMin},
 		{`{"categories":3,"price_max":100,"price_min":200}`, ParamPriceMin},
 		{`{"categories":3,"prices":[3,2]}`, ParamPrices},
+		{`{"categories":3,"prices":[300,200,250]}`, ParamPrices}, // must not rise
 		{`{"categories":2,"prices":[3,2],"shares":[50,40]}`, ParamShares},
 		{`{"categories":2,"prices":[3,2],"shares":[100]}`, ParamShares},
 	}
@@ -187,6 +188,38 @@ func TestPlanSlots_CrossFieldRules(t *testing.T) {
 		if !errors.As(err, &pe) || pe.Param != c.param {
 			t.Fatalf("%s: err = %v, want a ParamError on %s", c.raw, err, c.param)
 		}
+	}
+}
+
+func TestPlanSlots_EqualExplicitPricesAreAllowed(t *testing.T) {
+	sp, err := PlanSlots(values(t, `{"categories":3,"prices":[500,500,300]}`), "EUR")
+	if err != nil || !reflect.DeepEqual(sp.Prices, []int64{500, 500, 300}) {
+		t.Fatalf("plan = %+v, err = %v", sp, err)
+	}
+}
+
+func TestRun_RefusesAnnotationsThePlanDoesNotHave(t *testing.T) {
+	g := loadAkropolis(t)
+	v := values(t, `{"price_max":1000,"price_min":500}`)
+	cases := []struct {
+		a     Annotations
+		field string
+	}{
+		{Annotations{FocalPoint: akropolisStage, SectionWeights: map[string]float64{"parter": 1, "stalls": 0.5}}, "section_weights"},
+		{Annotations{FocalPoint: akropolisStage, ObstructedSeatKeys: []string{"nope|1|1"}}, "obstructed_seat_keys"},
+	}
+	for _, c := range cases {
+		_, _, err := Run(Desirability{}, g, c.a, SessionState{Currency: "CZK"}, v)
+		var ae *AnnotationError
+		if !errors.As(err, &ae) || ae.Annotation != c.field {
+			t.Fatalf("%s: err = %v", c.field, err)
+		}
+	}
+	key := Seats(g)[0].Key
+	if _, _, err := Run(Desirability{}, g, Annotations{
+		FocalPoint: akropolisStage, SectionWeights: map[string]float64{"parter": 0.5}, ObstructedSeatKeys: []string{key},
+	}, SessionState{Currency: "CZK"}, v); err != nil {
+		t.Fatalf("known keys refused: %v", err)
 	}
 }
 

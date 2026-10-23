@@ -78,6 +78,9 @@ type s1eEnv struct {
 	soldWithOrder      []string
 	soldUpstream, held []string
 	closed             []string
+	// expiredHold is a seat still marked held whose reservation expired:
+	// the sweep has not released it yet, the allocator treats it as free.
+	expiredHold string
 }
 
 const (
@@ -221,6 +224,11 @@ func newS1eEnv(t *testing.T) *s1eEnv {
 		e.closed = append(e.closed, s.Key)
 		exec(`UPDATE session_seats SET status = 'unavailable' WHERE session_id = $1 AND seat_key = $2`, e.seated, s.Key)
 	}
+	deadRes := uuid.New()
+	exec(`INSERT INTO reservations (id, org_id, channel_id, session_id, quantity, state, expires_at)
+	      VALUES ($1, $2, $3, $4, 1, 'active', now() - interval '1 hour')`, deadRes, e.orgA, channel, e.seated)
+	e.expiredHold = seats[11].Key
+	exec(`UPDATE session_seats SET status = 'held', reservation_id = $3 WHERE session_id = $1 AND seat_key = $2`, e.seated, e.expiredHold, deadRes)
 	return e
 }
 
@@ -279,9 +287,9 @@ func TestS1e_SuggestOnPartlySoldSessionFreezesSalesAndWritesNothing(t *testing.T
 		if got, want := len(assignments), e.geometry.SeatCount()-len(frozen); got != want {
 			t.Fatalf("assigned %d seats, want %d", got, want)
 		}
-		for _, k := range e.closed {
+		for _, k := range append([]string{e.expiredHold}, e.closed...) {
 			if _, ok := assignments[k]; !ok {
-				t.Fatalf("closed seat %s has no slot", k)
+				t.Fatalf("seat %s (closed or on an expired hold) has no slot", k)
 			}
 		}
 		if n := len(layout["frozen_seat_keys"].([]any)); n != len(frozen) {
@@ -369,6 +377,11 @@ func TestS1e_Refusals(t *testing.T) {
 			`{"algorithm":"desirability","params":{"price_max":1000,"price_min":500}}`, 422, "seat_layout.annotation_required"},
 		{"bad weight", http.MethodPost, e.path(e.orgA, e.seated, "suggest"), e.owner,
 			`{"algorithm":"desirability","annotations":{"section_weights":{"parter":3}}}`, 400, "seat_layout.invalid_annotation"},
+		{"section the plan does not have", http.MethodPost, e.path(e.orgA, e.seated, "suggest"), e.owner,
+			`{"algorithm":"desirability","params":{"price_max":1000,"price_min":500},"annotations":{"focal_point":{"x":152,"y":20},"section_weights":{"stalls":0.5}}}`,
+			400, "seat_layout.invalid_annotation"},
+		{"decreasing prices only", http.MethodPost, e.path(e.orgA, e.seated, "suggest"), e.owner,
+			`{"algorithm":"desirability","params":{"categories":2,"prices":[500,900]},"annotations":` + s1eStage + `}`, 400, "seat_layout.invalid_param"},
 		{"unknown body field", http.MethodPost, e.path(e.orgA, e.seated, "suggest"), e.owner,
 			`{"algorithm":"desirability","apply":true}`, 400, "seat_layout.invalid_body"},
 	}

@@ -21,15 +21,22 @@ type SessionSeatLayoutStateRow struct {
 	Status     string `json:"status"`
 	OrderPrice *int64 `json:"order_price"`
 	TierPrice  *int64 `json:"tier_price"`
+	// HoldExpired is true for a held seat whose reservation is no longer
+	// live (not draft/active, or expires_at passed). The allocator treats
+	// it as free: reservation.expire_sweep releases it within ~30 s.
+	HoldExpired bool `json:"hold_expired"`
 }
 
 const listSessionSeatLayoutStates = `-- name: ListSessionSeatLayoutStates :many
 SELECT ss.seat_key,
        ss.status,
        p.total         AS order_price,
-       tt.price_amount AS tier_price
+       tt.price_amount AS tier_price,
+       (ss.status = 'held' AND r.id IS NOT NULL
+        AND (r.state NOT IN ('draft', 'active') OR r.expires_at <= now())) AS hold_expired
 FROM      session_seats ss
 LEFT JOIN ticket_tiers  tt ON tt.id = ss.tier_id
+LEFT JOIN reservations  r  ON r.id = ss.reservation_id
 LEFT JOIN (
     SELECT DISTINCT ON (oi.session_seat_id, o.reservation_id)
            oi.session_seat_id, o.reservation_id, oi.total
@@ -56,7 +63,7 @@ func (q *Queries) ListSessionSeatLayoutStates(ctx context.Context, sessionID uui
 	var out []SessionSeatLayoutStateRow
 	for rows.Next() {
 		var r SessionSeatLayoutStateRow
-		if err := rows.Scan(&r.SeatKey, &r.Status, &r.OrderPrice, &r.TierPrice); err != nil {
+		if err := rows.Scan(&r.SeatKey, &r.Status, &r.OrderPrice, &r.TierPrice, &r.HoldExpired); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

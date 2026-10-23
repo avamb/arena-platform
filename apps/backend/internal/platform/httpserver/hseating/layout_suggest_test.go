@@ -24,7 +24,11 @@ func TestSessionLayoutState_FreezesSoldAndHeldAtTheirPrice(t *testing.T) {
 		{SeatKey: "e", Status: "unavailable", TierPrice: ptr(700)},
 		{SeatKey: "f", Status: "available", TierPrice: ptr(700)},
 		{SeatKey: "g", Status: "sold"}, // no tier, no order
+		{SeatKey: "h", Status: "held", TierPrice: ptr(700), HoldExpired: true},
 	})
+	if _, frozen := st.SoldHeld["h"]; frozen || st.Closed["h"] {
+		t.Fatal("a held seat on an expired reservation must be free")
+	}
 	want := map[string]layoutgen.FrozenSeat{
 		"a": {Status: "sold", PriceMinor: 1234},
 		"b": {Status: "sold", PriceMinor: 1000},

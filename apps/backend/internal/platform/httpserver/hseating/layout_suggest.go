@@ -273,7 +273,8 @@ func (h *Handler) loadLayoutInput(ctx context.Context, sessionID uuid.UUID) (lay
 // SessionLayoutState turns the seat rows into the allocator's view: sold
 // and held seats are frozen at their order price (the list price when no
 // order line exists yet, or for a seat sold upstream), closed seats are
-// marked closed.
+// marked closed, and a held seat whose reservation is no longer live is
+// free (the expiry sweep is about to release it).
 func SessionLayoutState(currency string, rows []gen.SessionSeatLayoutStateRow) layoutgen.SessionState {
 	st := layoutgen.SessionState{
 		Currency: currency,
@@ -281,6 +282,10 @@ func SessionLayoutState(currency string, rows []gen.SessionSeatLayoutStateRow) l
 		Closed:   map[string]bool{},
 	}
 	for _, row := range rows {
+		if row.Status == layoutgen.StatusHeld && row.HoldExpired {
+			// A dead hold the expiry sweep has not reached yet: free.
+			continue
+		}
 		switch row.Status {
 		case layoutgen.StatusSold, layoutgen.StatusHeld:
 			var price int64

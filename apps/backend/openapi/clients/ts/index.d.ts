@@ -7203,9 +7203,17 @@ export interface paths {
          *     (spec 26 §4.1, task S1e). Writes NOTHING: applying a layout is a
          *     separate step. Sold and held seats are never moved; they count in the
          *     estimate at the price they were sold or held for ("sold by fact plus
-         *     the rest at the new prices"). Until the plan stores its annotations
-         *     (S1d), the stage and section weights travel in the body. Requires
-         *     `event_session.assign_seating_plan`.
+         *     the rest at the new prices"). A seat still marked held whose
+         *     reservation has expired (not draft/active, or past `expires_at`) is
+         *     treated as free: the expiry sweep is about to release it, so it gets a
+         *     category and counts at the proposed price. Until the plan stores its
+         *     annotations (S1d), the stage and section weights travel in the body;
+         *     a section weight or an obstructed seat the plan does not have is 400
+         *     `seat_layout.invalid_annotation`. An explicit `prices` list goes from
+         *     the dearest category down and must not increase. With
+         *     `cheaper_row_edges` the actual shares (`metrics.by_slot[].share`)
+         *     move away from the share template, because row edges are pushed into
+         *     cheaper categories. Requires `event_session.assign_seating_plan`.
          */
         post: operations["postV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest"];
         delete?: never;

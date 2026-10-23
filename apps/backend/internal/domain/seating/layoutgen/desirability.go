@@ -66,6 +66,10 @@ func (Desirability) ID() string { return DesirabilityID }
 // Params implements Algorithm.
 func (Desirability) Params() ParamSchema {
 	params := CommonParams()
+	// cheaper_row_edges moves the actual shares away from the template:
+	// an edge forced down to its middle's category or below lands in a
+	// cheaper slot than the share cut gave it. Metrics.BySlot[].Share
+	// reports the shares the operator really gets.
 	params = append(params, Param{
 		Name: ParamCheaperRowEdges, Type: TypeBoolean, Default: false,
 		LabelKey: "layoutgen.param.cheaper_row_edges", HintKey: "layoutgen.param.cheaper_row_edges.hint",
