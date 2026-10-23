@@ -50,6 +50,25 @@ type Writer interface {
 	WriteTx(ctx context.Context, tx pgx.Tx, ev Event) error
 }
 
+// DurableWriter is implemented by a Writer that can say whether WriteTx puts
+// the row into audit_events on the CALLER'S transaction. PGWriter does;
+// SlogWriter only logs and does not. A route whose contract is "the audit row
+// and the change commit together" (the billing price-list screen) refuses to
+// write unless IsDurableInTx is true, so a log-only writer wired by mistake
+// cannot silently drop the audit trail.
+type DurableWriter interface {
+	Writer
+	DurableInTx() bool
+}
+
+// IsDurableInTx reports whether w writes audit rows on the caller's
+// transaction. A nil Writer, and a Writer that does not implement
+// DurableWriter, are not durable.
+func IsDurableInTx(w Writer) bool {
+	d, ok := w.(DurableWriter)
+	return ok && d.DurableInTx()
+}
+
 // -----------------------------------------------------------------------------
 // PostgreSQL implementation
 // -----------------------------------------------------------------------------
@@ -61,6 +80,10 @@ type PGWriter struct {
 
 // NewPGWriter constructs a PGWriter around a live pgx pool.
 func NewPGWriter(pool *pgxpool.Pool) *PGWriter { return &PGWriter{pool: pool} }
+
+// DurableInTx implements DurableWriter: WriteTx inserts into audit_events on
+// the caller's transaction.
+func (w *PGWriter) DurableInTx() bool { return w != nil }
 
 // Write inserts ev outside any caller transaction.
 func (w *PGWriter) Write(ctx context.Context, ev Event) error {

@@ -84,6 +84,9 @@ func WithVia(inner Writer) Writer {
 	return &viaWriter{inner: inner}
 }
 
+// DurableInTx implements DurableWriter by asking the wrapped writer.
+func (w *viaWriter) DurableInTx() bool { return IsDurableInTx(w.inner) }
+
 // Write implements Writer.
 func (w *viaWriter) Write(ctx context.Context, ev Event) error {
 	return w.inner.Write(ctx, stampVia(ctx, ev))
