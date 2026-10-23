@@ -19658,6 +19658,21 @@ export interface components {
              */
             last_used_at: string | null;
             /**
+             * @description The sessions the code is bound to (`applies_to_session_ids`), with
+             *     the event name, the start, the end of sales and the venue's time
+             *     zone, oldest first. Empty when the code applies to every session
+             *     of the organization.
+             */
+            sessions: components["schemas"]["PromoCodeScopeSession"][];
+            /**
+             * @description Non-blocking findings about the code's scope and validity window,
+             *     recomputed on every read, create and update: the window ends
+             *     before sales of a bound session end, starts after sales have
+             *     begun, or a bound session is cancelled or already past. Empty
+             *     when nothing looks wrong.
+             */
+            warnings: components["schemas"]["PromoCodeWarning"][];
+            /**
              * Format: int32
              * @description Total redemption cap across all customers. `null` means
              *     unlimited. When the cap is reached, `promo-validate` returns
@@ -19719,6 +19734,61 @@ export interface components {
         PromoCodeEnvelope: {
             /** @description The promo-code row. */
             promo_code: components["schemas"]["PromoCodeItem"];
+        };
+        /** @description One session a promo code is bound to, as the organizer reads it. */
+        PromoCodeScopeSession: {
+            /**
+             * Format: uuid
+             * @description The session.
+             */
+            session_id: string;
+            /**
+             * Format: uuid
+             * @description The event the session belongs to.
+             */
+            event_id: string;
+            /** @description Name of that event. */
+            event_name: string;
+            /**
+             * Format: date-time
+             * @description When the session starts (UTC).
+             */
+            start_at: string;
+            /**
+             * Format: date-time
+             * @description The last moment tickets of the session are sold (UTC).
+             */
+            sales_end_at: string;
+            /** @description IANA time zone of the session's venue, for showing the two times above. */
+            timezone: string;
+            /** @description Session status; a deleted session reads `cancelled`. */
+            status: string;
+            /**
+             * Format: date-time
+             * @description Earliest sale-window start of the session's open categories; `null` when none has one.
+             */
+            sales_start_at: string | null;
+        };
+        /** @description One non-blocking finding about a promo code. */
+        PromoCodeWarning: {
+            /**
+             * @description One of `promo.warning.valid_until_before_sales_end`,
+             *     `promo.warning.valid_from_after_sales_start`,
+             *     `promo.warning.session_cancelled`, `promo.warning.session_past`.
+             */
+            code: string;
+            /**
+             * Format: uuid
+             * @description The bound session the finding is about.
+             */
+            session_id: string;
+            /** @description Name of that session's event. */
+            event_name: string;
+            /**
+             * Format: date-time
+             * @description Start of that session (UTC).
+             */
+            start_at: string;
         };
         /**
          * @description Envelope returned by `GET /v1/organizations/{org_id}/promo-codes`.

@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -259,6 +260,27 @@ func (h *Handler) refusePromo(w http.ResponseWriter, r *http.Request, attempt *p
 		attempt.keep()
 	}
 	writePublicPromoError(w, r, internal)
+}
+
+// refusePromoFor is refusePromo for a verdict that still has its code row.
+// A code that exists in the buyer's own organization but is bound to other
+// events answers the same stable 422 promo.not_applicable, now with the
+// events it does work on ("This code works on: A, B"). Only published events
+// with sales still open are named (hcheckout.PromoScopeHint), and only the
+// organization's own codes ever get here (findPromoCode is org-scoped), so
+// nothing about a draft event or another organization is shown.
+func (h *Handler) refusePromoFor(w http.ResponseWriter, r *http.Request, attempt *promoAttempt, internal string, row *gen.PromoCodeRow) {
+	if internal == "promo.session_not_applicable" && row != nil && h.promoQueries != nil {
+		if hint := hcheckout.PromoScopeHint(r.Context(), h.promoQueries, *row, time.Now().UTC()); hint != "" {
+			attempt.keep()
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+				promoNotApplicable, "This code works on: "+hint+". Choose tickets for that event to use it.", r,
+				map[string]any{"events": hint},
+			))
+			return
+		}
+	}
+	h.refusePromo(w, r, attempt, internal)
 }
 
 // writePublicPromoError answers a refused promo code on a public route: 422

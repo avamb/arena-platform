@@ -65,6 +65,11 @@ type promoCodeResponse struct {
 	LastUsedAt          *string  `json:"last_used_at"`
 	CreatedAt           string   `json:"created_at"`
 	UpdatedAt           string   `json:"updated_at"`
+	// Sessions names what AppliesToSessionIDs points at (events, dates, sales
+	// end); empty when the code applies to every session.
+	Sessions []promoScopeSession `json:"sessions"`
+	// Warnings are non-blocking findings about the scope and the window.
+	Warnings []promoWarning `json:"warnings"`
 }
 
 // promoCodeFromRow converts a PromoCodeRow to a promoCodeResponse. usage is
@@ -94,6 +99,8 @@ func promoCodeFromRow(pc gen.PromoCodeRow, usage *gen.PromoCodeUsageRow) promoCo
 		Status:              pc.Status,
 		CreatedAt:           pc.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:           pc.UpdatedAt.UTC().Format(time.RFC3339),
+		Sessions:            []promoScopeSession{},
+		Warnings:            []promoWarning{},
 	}
 	if pc.ValidFrom != nil {
 		s := pc.ValidFrom.UTC().Format(time.RFC3339)
@@ -411,7 +418,7 @@ func (h *Handler) HandleCreatePromoCode(w http.ResponseWriter, r *http.Request) 
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
-		"promo_code": promoCodeFromRow(pc, nil),
+		"promo_code": h.promoCodeWithScope(pc, nil, h.loadPromoScopeRows(ctx, orgID, []gen.PromoCodeRow{pc}), time.Now().UTC()),
 	})
 }
 
@@ -445,9 +452,11 @@ func (h *Handler) HandleListPromoCodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	usage := h.promoUsageByID(ctx, orgID)
+	scopeRows := h.loadPromoScopeRows(ctx, orgID, rows)
+	now := time.Now().UTC()
 	result := make([]promoCodeResponse, 0, len(rows))
 	for _, pc := range rows {
-		result = append(result, promoCodeFromRow(pc, usage[pc.ID]))
+		result = append(result, h.promoCodeWithScope(pc, usage[pc.ID], scopeRows, now))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"promo_codes": result})
 }
@@ -490,7 +499,8 @@ func (h *Handler) HandleGetPromoCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"promo_code": promoCodeFromRow(pc, h.promoUsageByID(ctx, orgID)[pc.ID]),
+		"promo_code": h.promoCodeWithScope(pc, h.promoUsageByID(ctx, orgID)[pc.ID],
+			h.loadPromoScopeRows(ctx, orgID, []gen.PromoCodeRow{pc}), time.Now().UTC()),
 	})
 }
 
@@ -644,7 +654,8 @@ func (h *Handler) HandleUpdatePromoCode(w http.ResponseWriter, r *http.Request) 
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"promo_code": promoCodeFromRow(updated, h.promoUsageByID(ctx, orgID)[updated.ID]),
+		"promo_code": h.promoCodeWithScope(updated, h.promoUsageByID(ctx, orgID)[updated.ID],
+			h.loadPromoScopeRows(ctx, orgID, []gen.PromoCodeRow{updated}), time.Now().UTC()),
 	})
 }
 
@@ -822,6 +833,9 @@ func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request
 			msg = "promo code is not applicable to the selected ticket tiers"
 		case "promo.session_not_applicable":
 			msg = "promo code is not valid for this event session"
+			if hint := PromoScopeHint(ctx, h.promoQueries, pc, time.Now().UTC()); hint != "" {
+				msg += ". The code works on: " + hint
+			}
 		case "promo.currency_mismatch":
 			msg = "promo code is in a different currency than this order"
 		default:

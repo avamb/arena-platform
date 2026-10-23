@@ -133,6 +133,7 @@ var Bil24DescriptionKeys = []string{
 	// Migration 0108: a code is for a session, worth a currency, and both
 	// usage caps are refused when the buyer types the code.
 	"bil24.promo_wrong_session",
+	"bil24.promo_wrong_session_hint",
 	"bil24.promo_currency_mismatch",
 	"bil24.promo_exhausted",
 	"bil24.promo_per_customer_limit",

@@ -320,6 +320,32 @@ func (h *Handler) promoRefusalDescription(req bil24Request, cc cartCtx, errCode 
 	return h.localizeDesc(req.Locale, cc.locale, "bil24.promo_invalid", "promo code is not valid", nil)
 }
 
+// promoWrongSessionHintKey words the refusal of a code that exists but is
+// bound to other events: it names where the code does work.
+const promoWrongSessionHintKey = "bil24.promo_wrong_session_hint"
+
+// promoScopeLister is the optional read the "works on: ..." hint needs;
+// *gen.Queries has it, the narrow test fakes do not.
+type promoScopeLister interface {
+	ListPromoScopeSessions(ctx context.Context, orgID uuid.UUID, sessionIDs []string) ([]gen.PromoScopeSessionRow, error)
+}
+
+// promoRefusalForVerdict is promoRefusalDescription for a verdict that still
+// carries its code row: a session mismatch says which events the code is for
+// (only published events with sales still open, see hcheckout.PromoScopeHint).
+func (h *Handler) promoRefusalForVerdict(ctx context.Context, req bil24Request, cc cartCtx, v promoVerdict) string {
+	if v.errCode == "promo.session_not_applicable" {
+		if q, ok := h.promoQ.(promoScopeLister); ok {
+			if hint := hcheckout.PromoScopeHint(ctx, q, v.row, time.Now().UTC()); hint != "" {
+				return h.localizeDesc(req.Locale, cc.locale, promoWrongSessionHintKey,
+					"promo code is not valid for this event. The code works on: "+hint,
+					map[string]any{"events": hint})
+			}
+		}
+	}
+	return h.promoRefusalDescription(req, cc, v.errCode)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ADD_PROMO_CODES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -350,7 +376,7 @@ func (h *Handler) handleBil24AddPromoCodes(w http.ResponseWriter, r *http.Reques
 	existList := make([]string, 0, len(codes))
 	errList := make([]string, 0, len(codes))
 	accepted := make([]string, 0, len(codes))
-	firstErr := ""
+	var firstVerdict promoVerdict
 
 	for _, code := range codes {
 		// Already on the session: "exist", without re-validating. The plugin
@@ -368,8 +394,8 @@ func (h *Handler) handleBil24AddPromoCodes(w http.ResponseWriter, r *http.Reques
 		}
 		if v.errCode != "" {
 			errList = append(errList, code)
-			if firstErr == "" {
-				firstErr = v.errCode
+			if firstVerdict.errCode == "" {
+				firstVerdict = v
 			}
 			continue
 		}
@@ -395,8 +421,8 @@ func (h *Handler) handleBil24AddPromoCodes(w http.ResponseWriter, r *http.Reques
 		"existPromoCodeList": existList,
 		"errorPromoCodeList": errList,
 	})
-	if firstErr != "" {
-		resp.Description = h.promoRefusalDescription(req, pc.cc, firstErr)
+	if firstVerdict.errCode != "" {
+		resp.Description = h.promoRefusalForVerdict(ctx, req, pc.cc, firstVerdict)
 	} else {
 		resp.Description = h.localizeDesc(req.Locale, pc.cc.locale, "bil24.ok", "OK", nil)
 	}
@@ -451,7 +477,7 @@ func (h *Handler) handleBil24CheckKDP(w http.ResponseWriter, r *http.Request, re
 	if v.errCode != "" {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeUserVisible,
-			h.promoRefusalDescription(req, pc.cc, v.errCode),
+			h.promoRefusalForVerdict(ctx, req, pc.cc, v),
 		))
 		return
 	}
@@ -578,7 +604,7 @@ func (h *Handler) checkKDPQuote(ctx context.Context, w http.ResponseWriter, req 
 		"lines":          lines,
 	})
 	if v.errCode != "" {
-		resp.Description = h.promoRefusalDescription(req, pc.cc, v.errCode)
+		resp.Description = h.promoRefusalForVerdict(ctx, req, pc.cc, v)
 	} else {
 		resp.Description = h.localizeDesc(req.Locale, pc.cc.locale, "bil24.ok", "OK", nil)
 	}
