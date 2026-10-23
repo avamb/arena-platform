@@ -1,0 +1,357 @@
+<title>Цены ArenaSoldOut</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one column, max 1080px; public view = marketing page in tickets and euros, admin view = operator sheet (to be rebuilt) */
+:root{
+  --bg:#f7f6fb; --fg:#1a1830; --muted:#5e5b78; --line:#dedcea; --card:#ffffff;
+  --accent:#4f46e5; --accent-ink:#ffffff; --accent-soft:#eceafd;
+  --ok:#157a4a; --ok-soft:#e3f5ea; --warn:#9a5b00; --warn-soft:#fff1d6; --crit:#b3261e; --crit-soft:#fde7e5;
+  --font:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#15141f; --fg:#ecebf5; --muted:#a8a5c2; --line:#2e2c42; --card:#1e1d2b;
+  --accent:#8b84ff; --accent-ink:#15141f; --accent-soft:#272546;
+  --ok:#5fcf93; --ok-soft:#173327; --warn:#f0b454; --warn-soft:#3a2b10; --crit:#f08a82; --crit-soft:#3d1c1a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#15141f; --fg:#ecebf5; --muted:#a8a5c2; --line:#2e2c42; --card:#1e1d2b;
+  --accent:#8b84ff; --accent-ink:#15141f; --accent-soft:#272546;
+  --ok:#5fcf93; --ok-soft:#173327; --warn:#f0b454; --warn-soft:#3a2b10; --crit:#f08a82; --crit-soft:#3d1c1a; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.5;margin:0;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px}
+.wrap{max-width:1080px;margin:0 auto}
+h1,h2,h3{text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(28px,4vw,40px);font-weight:800;letter-spacing:-.02em}
+h2{font-size:22px;font-weight:700;margin-top:40px;margin-bottom:12px}
+h3{font-size:16px;font-weight:700}
+p{margin:0 0 10px;max-width:70ch}
+.muted{color:var(--muted)}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line);
+  display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding-block:12px;margin-bottom:24px}
+.brand{font-weight:800;letter-spacing:-.01em;display:flex;gap:10px;align-items:center}
+.brand i{display:inline-block;width:14px;height:14px;border-radius:4px;background:var(--accent);transform:rotate(12deg)}
+.switch{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--card)}
+.switch button{border:0;background:transparent;color:var(--muted);font:inherit;font-weight:600;padding:7px 16px;border-radius:999px;cursor:pointer}
+.switch button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.switch button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.view[hidden]{display:none}
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0}
+.note.warn{border-color:var(--warn);background:var(--warn-soft)}
+.hero{padding-block:24px 8px}
+.hero p{font-size:17px}
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:20px}
+.plan{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.plan.featured{border-color:var(--accent);box-shadow:0 8px 30px rgba(79,70,229,.10)}
+.price{font-size:34px;font-weight:800;letter-spacing:-.02em}
+.price small{font-size:14px;font-weight:600;color:var(--muted);letter-spacing:0}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)} .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.crit{background:var(--crit-soft);color:var(--crit)}
+.pill.mute{background:var(--line);color:var(--muted)}
+.btn{display:inline-block;background:var(--accent);color:var(--accent-ink);font-weight:700;padding:10px 18px;border-radius:10px;text-decoration:none;align-self:flex-start}
+.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+table{border-collapse:collapse;width:100%;min-width:520px}
+th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700}
+tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}
+tr.proposal td{color:var(--muted)}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-width:0}
+ul,ol{margin:6px 0 10px;padding-left:20px} li{margin:3px 0}
+.faq details{border-bottom:1px solid var(--line);padding:10px 0} .faq summary{cursor:pointer;font-weight:600}
+.calc{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;align-items:end}
+.calc label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);font-weight:600}
+.calc input,.calc select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.result{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:14px}
+.result .box{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--bg)}
+.result .box b{display:block;font-size:24px;font-weight:800}
+.flag{color:var(--warn);font-weight:700}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:6px}
+.dot.ok{background:var(--ok)} .dot.no{background:var(--crit)} .dot.part{background:var(--warn)}
+.footer{margin-top:40px;font-size:13px;color:var(--muted)}
+small.fn{display:block;color:var(--muted);font-size:12px;margin-top:6px}
+@media (prefers-reduced-motion:no-preference){.plan{transition:transform .15s} .plan:hover{transform:translateY(-2px)}}
+</style>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand"><i></i> ArenaSoldOut · Цены</div>
+    <div class="switch" role="group" aria-label="Вид страницы">
+      <button id="btn-public" aria-pressed="true" onclick="setView('public')">Публичная страница</button>
+      <button id="btn-admin" aria-pressed="false" onclick="setView('admin')">Для суперадмина</button>
+    </div>
+  </div>
+
+  <!-- ============================ PUBLIC ============================ -->
+  <section id="view-public" class="view">
+    <div class="hero">
+      <div class="eyebrow">Макет публичной страницы · редакция 2 · 16.10.2026</div>
+      <h1>Комиссия за проданный билет, а не процент с выручки</h1>
+      <p>Билет за 15 € и билет за 150 € стоят вам одинаково. Без абонентской платы и минимального оборота. Платите по факту после мероприятия или дешевле — с предоплатой.</p>
+    </div>
+
+    <div class="plans">
+      <div class="plan">
+        <span class="pill mute">По факту</span>
+        <h3>Без предоплаты</h3>
+        <div class="price num">0,59 €<small> за билет</small></div>
+        <div class="num muted">1,09 € — билет с местом на схеме зала</div>
+        <ul>
+          <li>Счёт после мероприятия, оплата переводом</li>
+          <li>Мероприятия с долгим циклом продаж и постоянные площадки — счёт раз в месяц</li>
+        </ul>
+        <a class="btn ghost" href="#start">Начать</a>
+        <small class="fn">* Оплата по факту доступна подтверждённым организациям — см. условия.</small>
+      </div>
+      <div class="plan featured">
+        <span class="pill">Предоплата · на 7–36 % дешевле</span>
+        <h3>Пакеты предоплаты</h3>
+        <div class="price num">от 0,38 €<small> за билет</small></div>
+        <div class="num muted">билет с местом — на 0,35 € дороже</div>
+        <ul>
+          <li>Пакет на 30, 100, 300 … 50 000 билетов</li>
+          <li>Чем больше пакет, тем ниже комиссия</li>
+          <li>Предоплата не сгорает</li>
+        </ul>
+        <a class="btn" href="#packs">Выбрать пакет</a>
+      </div>
+    </div>
+
+    <h2 id="packs">Пакеты предоплаты</h2>
+    <p class="muted">Комиссия за билет привязана к пакету: пока расходуется пакет на 5 000 билетов, каждый билет из него стоит 0,38 €. Остаток переходит на следующие мероприятия и не сгорает.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Пакет</th><th class="r">Предоплата</th><th class="r">Билет без места</th><th class="r">Билет с местом</th><th class="r">Билетов без места</th><th class="r">или с местом</th><th class="r">Экономия</th></tr></thead>
+        <tbody class="num" id="packs-body"></tbody>
+      </table>
+    </div>
+    <small class="fn">Количество билетов — точное: предоплата делится на комиссию за билет. Ступени от 10 000 билетов — проект, ждут подтверждения.</small>
+    <p class="muted" style="margin-top:8px">Продаёте больше 25 000 билетов в год — <a href="#contact">напишите нам</a>, подготовим договор.</p>
+
+    <h2>Посчитайте своё мероприятие</h2>
+    <div class="card">
+      <p class="muted">Введите, сколько билетов рассчитываете продать. Цена билета на комиссию не влияет, кроме билетов стоимостью ниже 10 € и постоянных площадок — у них свои разделы ниже.</p>
+      <div class="calc">
+        <label>Билетов без места <input id="c-ga" type="number" min="0" value="1000" oninput="calc()"></label>
+        <label>Билетов с местом <input id="c-seat" type="number" min="0" value="0" oninput="calc()"></label>
+      </div>
+      <div class="result">
+        <div class="box"><div class="eyebrow">По факту</div><b id="r-flex" class="num">—</b><span class="muted" id="r-flex-note">0,59 / 1,09 за билет, счёт после мероприятия</span></div>
+        <div class="box"><div class="eyebrow">С предоплатой</div><b id="r-pre" class="num">—</b><span class="muted" id="r-pre-note"></span></div>
+        <div class="box"><div class="eyebrow">Разница</div><b id="r-diff" class="num">—</b><span class="muted">По факту дороже, но вы не платите вперёд за непроданные билеты</span></div>
+      </div>
+      <div class="tablewrap" style="margin-top:14px"><table id="c-table" style="min-width:0">
+        <thead><tr><th>Пакет</th><th class="r">Комиссия за ваши билеты</th><th class="r">Предоплата пакета</th><th class="r">Останется на следующие</th></tr></thead>
+        <tbody class="num" id="c-body"></tbody>
+      </table></div>
+    </div>
+
+    <h2>Билеты стоимостью ниже 10 €</h2>
+    <div class="card">
+      <p>Пробеги, марафоны, дискотеки, детские утренники, экскурсии. Если цена билета (до промокода) ниже 10 €, комиссия считается от цены: <b>4 %</b>, но не меньше 0,10 € и не больше 0,35 €. Билет с местом — ещё +0,20 €. Решается по каждому билету: в одном мероприятии могут быть билеты по 5 € и по 25 €.</p>
+      <div class="two">
+        <div class="tablewrap"><table style="min-width:0">
+          <thead><tr><th>Цена билета</th><th class="r">По факту</th><th class="r">С предоплатой*</th></tr></thead>
+          <tbody class="num"><tr><td>3 €</td><td class="r">0,12 €</td><td class="r">0,12 €</td></tr><tr><td>5 €</td><td class="r">0,20 €</td><td class="r">0,20 €</td></tr><tr><td>7 €</td><td class="r">0,28 €</td><td class="r">0,28 €</td></tr><tr><td>9 €</td><td class="r">0,35 €</td><td class="r">0,30 €</td></tr><tr><td>10 € и выше</td><td class="r">0,59 €</td><td class="r">по пакету</td></tr></tbody>
+        </table></div>
+        <div>
+          <div class="calc">
+            <label>Билетов <input id="lp-n" type="number" min="0" value="400" oninput="calcLP()"></label>
+            <label>Цена билета, € <input id="lp-p" type="number" min="0" step="0.5" value="5" oninput="calcLP()"></label>
+            <label>С местом? <select id="lp-s" onchange="calcLP()"><option value="0">нет</option><option value="1">да</option></select></label>
+          </div>
+          <div class="result"><div class="box"><div class="eyebrow">По факту</div><b id="lp-flex" class="num">—</b></div><div class="box"><div class="eyebrow">С предоплатой*</div><b id="lp-pre" class="num">—</b></div></div>
+          <small class="fn">* Предоплатная ветка — проект: потолок 0,30 € вместо 0,35 €.</small>
+        </div>
+      </div>
+    </div>
+
+    <h2>Постоянные площадки</h2>
+    <div class="card">
+      <p>Площадки, которые проводят мероприятия у себя — круглый год или сезонами. Комиссия <b>2 % от цены билета</b>, но не больше <b>3 € за билет</b>, одинаково для билетов с местом и без. Счёт раз в месяц.</p>
+      <div class="two">
+        <div class="tablewrap"><table style="min-width:0">
+          <thead><tr><th>Цена билета</th><th class="r">Комиссия</th></tr></thead>
+          <tbody class="num"><tr><td>8 €</td><td class="r">0,16 €</td></tr><tr><td>25 €</td><td class="r">0,50 €</td></tr><tr><td>80 €</td><td class="r">1,60 €</td></tr><tr><td>150 €</td><td class="r">3,00 €</td></tr><tr><td>350 €</td><td class="r">3,00 €</td></tr></tbody>
+        </table></div>
+        <div><p class="muted">Пример: зал на 500 мест, 20 мероприятий в месяц, билет 25 € — 3 500 € в месяц за 7 000 проданных билетов. Статус площадки подключает наша команда — <a href="#contact">напишите нам</a>.</p></div>
+      </div>
+    </div>
+
+    <h2>Приглашения, возвраты, отмены</h2>
+    <div class="two">
+      <div class="card"><h3>Приглашения</h3><p>Приглашения и бесплатные билеты к платным мероприятиям — без комиссии.</p></div>
+      <div class="card"><h3>Возвраты и отмены</h3><p>Комиссия платформы берётся за проданный билет и не возвращается, если покупатель сдаёт билет. Если вы отменяете мероприятие и возвращаете покупателям деньги, мы начисляем вам бонус на комиссию следующих мероприятий — до 30 % комиссии каждого, в течение 12 месяцев. Возвраты, письма покупателям и перенос дат — без дополнительной платы.</p></div>
+    </div>
+
+    <h2>Вопросы</h2>
+    <div class="faq">
+      <details><summary>Что такое предоплата и куда она попадает?</summary><p>Это деньги на вашем счёте в ArenaSoldOut. Они расходуются по комиссии вашего пакета при каждой продаже, не сгорают и тратятся только на услуги платформы. В кабинете вы видите остаток в деньгах и в билетах.</p></details>
+      <details><summary>Предоплата кончилась посреди продаж?</summary><p>Продажи не останавливаются. Непокрытые билеты попадут в обычный счёт по комиссии «по факту». Можно включить автопополнение: когда остаток опускается ниже порога, следующий пакет докупается сам.</p></details>
+      <details><summary>В какой валюте?</summary><p>По стране площадки: евро для Европы, доллары для США и Латинской Америки. Все суммы без НДС.</p></details>
+      <details><summary>Как платить?</summary><p>Банковским переводом по счёту. Картой тоже можно, тогда к счёту добавляется комиссия платёжной системы.</p></details>
+      <details><summary>Что входит в платформу?</summary><p>Виджет продаж, страница мероприятия, схемы залов, приглашения, Telegram-бот, письма покупателям, сканирование на входе — всё без доплат. Полный список на странице «Возможности».</p></details>
+    </div>
+    <p class="footer" id="contact">Макет. Цены ждут подтверждения основателями. Бонусная программа для новых организаторов на публичной странице не показывается.</p>
+  </section>
+
+  <!-- ============================ ADMIN ============================ -->
+  <section id="view-admin" class="view" hidden>
+    <div class="hero">
+      <div class="eyebrow">Внутренний вид · суперадмин · не для публикации</div>
+      <h1>Кому что предлагаем</h1>
+      <div class="note warn">Этот вид пересобирается после утверждения публичной страницы (решение основателей 16.10). Ниже — данные редакции 2, структура прежняя. В новую версию войдёт модель дохода по профилям организаторов (30 … 100 000 билетов).</div>
+    </div>
+
+    <h2>Сегменты и предложения</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Сегмент</th><th>По факту 0,59 / 1,09</th><th>Пакеты</th><th>Welcome-бонусы</th><th>Билеты ниже 10 €</th><th>Площадка 2 %</th><th>Договор</th></tr></thead>
+        <tbody>
+          <tr><td><b>Новая организация</b>, не подтверждена</td><td><span class="dot no"></span>нет — только предоплата</td><td><span class="dot ok"></span>да</td><td><span class="dot ok"></span>оффер 21/90/180</td><td><span class="dot ok"></span>да, обе ветки</td><td><span class="dot part"></span>по решению оператора</td><td><span class="dot no"></span>нет</td></tr>
+          <tr><td><b>Новая организация</b>, подтверждена</td><td><span class="dot ok"></span>да</td><td><span class="dot ok"></span>да</td><td><span class="dot ok"></span>да</td><td><span class="dot ok"></span>да</td><td><span class="dot part"></span>по решению оператора</td><td><span class="dot part"></span>от 25 000 билетов в год</td></tr>
+          <tr><td><b>Действующий клиент</b> (до даты X)</td><td><span class="dot part"></span>индивидуальная комиссия</td><td><span class="dot part"></span>по номиналу, без ярусной скидки <span class="flag">⚑</span></td><td><span class="dot no"></span>нет</td><td><span class="dot ok"></span>да</td><td><span class="dot part"></span>если площадка</td><td><span class="dot ok"></span>по запросу</td></tr>
+          <tr><td><b>Постоянная площадка</b></td><td><span class="dot no"></span>заменено процентом</td><td><span class="dot part"></span>можно пополнять баланс</td><td><span class="dot no"></span>обычно нет</td><td><span class="dot part"></span>процент и так ниже</td><td><span class="dot ok"></span>2 %, потолок 3 € <span class="flag">⚑</span></td><td><span class="dot ok"></span>часто</td></tr>
+          <tr><td><b>Организация-инструмент</b> (генератор схем)</td><td><span class="dot no"></span>нет</td><td><span class="dot ok"></span>только предоплата</td><td><span class="dot no"></span>нет</td><td>—</td><td>—</td><td><span class="dot no"></span>нет</td></tr>
+          <tr><td><b>Бесплатные мероприятия</b> <span class="flag">⚑ вопрос основателей</span></td><td colspan="6"><span class="dot part"></span>вариант Б из исследования: принимать с условиями (упоминание платформы, лимит регистраций, модерация), метрика через 90 дней</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Индивидуальные комиссии действующих клиентов</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Организация</th><th class="r">Без места</th><th class="r">С местом</th><th>Валюта</th><th>Цикл</th><th>Бонусы</th></tr></thead>
+        <tbody class="num">
+          <tr><td>Lampyris</td><td class="r">0,50</td><td class="r">1,00</td><td>EUR</td><td>ежемесячно</td><td><span class="pill crit">нет</span></td></tr>
+          <tr><td>Vino&amp;Co</td><td class="r">0,50</td><td class="r">1,00</td><td>EUR / ILS позже</td><td>ежемесячно</td><td><span class="pill crit">нет</span></td></tr>
+          <tr><td>Учебный театр</td><td class="r">1,00</td><td class="r">1,00</td><td>EUR</td><td>по мероприятию</td><td><span class="pill crit">нет</span></td></tr>
+          <tr><td>Театр «Колыбель»</td><td class="r">1,00</td><td class="r">1,00</td><td>EUR</td><td>по мероприятию</td><td><span class="pill crit">нет</span></td></tr>
+          <tr><td>Остальные до даты X <span class="flag">⚑</span></td><td class="r">?</td><td class="r">?</td><td></td><td></td><td></td></tr>
+          <tr><td><i>Любая другая организация</i></td><td class="r">0,59</td><td class="r">1,09</td><td>по стране площадки</td><td>по выбору</td><td><span class="pill ok">новым</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Доход платформы с билета без места</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Способ</th><th class="r">Доход с билета</th><th class="r">К «по факту» 0,59</th><th class="r">К действующим 0,50</th><th>Рынок (исследования r1/r2)</th></tr></thead>
+        <tbody class="num">
+          <tr><td>По факту</td><td class="r">0,59</td><td class="r">—</td><td class="r">+18 %</td><td>Ticket Tailor 0,70 € PAYG</td></tr>
+          <tr><td>Пакеты S–M</td><td class="r">0,55–0,52</td><td class="r">−7…−12 %</td><td class="r">+10…+4 %</td><td>TT минимум 100 кредитов</td></tr>
+          <tr><td>Пакеты L–XL</td><td class="r">0,49–0,46</td><td class="r">−17…−22 %</td><td class="r">−2…−8 %</td><td>TT 500 кредитов ≈ 0,41 £</td></tr>
+          <tr><td>Пакеты 1K–5K</td><td class="r">0,43–0,38</td><td class="r">−27…−36 %</td><td class="r">−14…−24 %</td><td>TT крупные ≈ 0,22 £; Tikzet 0,25 $</td></tr>
+          <tr class="proposal"><td>Пакеты 10K–50K (проект)</td><td class="r">0,36–0,30</td><td class="r">−39…−49 %</td><td class="r">−28…−40 %</td><td></td></tr>
+          <tr><td>Билет ниже 10 € (цена 5 €)</td><td class="r">0,20</td><td class="r">−66 %</td><td class="r">−60 %</td><td>TT −50 % ниже 5 €; Eventim.Light 3,5 % + 0,49</td></tr>
+          <tr><td>Площадка, билет 25 €</td><td class="r">0,50</td><td class="r">−15 %</td><td class="r">0 %</td><td>CZ 5–8 %, Entradium 1–2,5 %</td></tr>
+          <tr><td>Площадка, билет 150 €</td><td class="r">3,00</td><td class="r">+408 %</td><td class="r">+500 %</td><td>потолков у европейских систем нет; США 4,99–39 $</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">Пакеты от L и выше дают платформе меньше, чем действующие клиенты платят сегодня — поэтому действующим пакетная скидка не предлагается или даётся только на прирост объёма.</div>
+
+    <h2>Закрытая бонусная программа (новым клиентам)</h2>
+    <div class="two">
+      <div class="card">
+        <h3>Лестница Welcome</h3>
+        <div class="tablewrap"><table style="min-width:0">
+          <thead><tr><th class="r">Продано</th><th class="r">На рубеже</th><th class="r">Всего</th><th class="r">В € при 0,59</th></tr></thead>
+          <tbody class="num"><tr><td class="r">30</td><td class="r">+3</td><td class="r">3</td><td class="r">1,77</td></tr><tr><td class="r">100</td><td class="r">+7</td><td class="r">10</td><td class="r">5,90</td></tr><tr><td class="r">300</td><td class="r">+20</td><td class="r">30</td><td class="r">17,70</td></tr><tr><td class="r">500</td><td class="r">+20</td><td class="r">50</td><td class="r">29,50</td></tr><tr><td class="r">1 000</td><td class="r">+50</td><td class="r">100</td><td class="r">59,00</td></tr><tr><td class="r">5 000</td><td class="r">+200</td><td class="r">300</td><td class="r">177,00</td></tr></tbody>
+        </table></div>
+        <p class="muted" style="margin-top:8px">Окно 90 дней после первой продажи, старт — первая продажа в 21 день, быстрый старт ×1,25.</p>
+      </div>
+      <div class="card">
+        <h3>Правила погашения и бонус за отмену</h3>
+        <ul>
+          <li>Бонус — скидка в валюте счёта, один баланс с пометкой «из них N бонусных»</li>
+          <li>Не больше <b>30 %</b> комиссии за каждый билет; доплату за место бонусом не покрывать</li>
+          <li>Только на следующих мероприятиях; сгорает через 180 дней, одно продление</li>
+          <li><b>Отмена мероприятия организатором:</b> комиссия отменённых билетов → бонус с теми же 30 %, срок 12 месяцев <span class="flag">⚑</span>; не один к одному</li>
+          <li>Не на билеты ниже 10 €, не на билеты, оплаченные бонусом; возврат откатывает рубеж</li>
+          <li>Пол выручки на билет (параметр) уменьшает долю бонуса на дешёвых пакетах</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2>Ждёт подтверждения <span class="flag">⚑</span></h2>
+    <div class="card"><ol>
+      <li>Бесплатные мероприятия: принимать ли, с какими условиями, афиша.</li>
+      <li>Площадки: потолок 3 € оставить; минимум 0,15 € для кинотеатров.</li>
+      <li>Бонус за отмену: 12 месяцев против 180 дней у приветственных.</li>
+      <li>Ступени пакетов 10K–50K и их комиссии.</li>
+      <li>Предоплатная ветка для билетов ниже 10 € (потолок 0,30).</li>
+      <li>Доплата за место: 0,50 по факту против 0,35 в пакетах.</li>
+      <li>Пакеты организациям с индивидуальной комиссией; полный список действующих.</li>
+    </ol></div>
+    <p class="footer">Источники: docs/pricing/pricing_policy_2026-10-16_ru.md (редакция 2), 08_architecture/41 §8.1, исследования ops/claude-sdk-runner/runs/r1…r4.</p>
+  </section>
+</div>
+
+<script>
+const PACKS=[
+  ['S',16.5,0.55,false],['M',52,0.52,false],['L',147,0.49,false],['XL',230,0.46,false],['1K',430,0.43,false],
+  ['2.5K',1000,0.40,false],['5K',1900,0.38,false],
+  ['10K',3600,0.36,true],['15K',5250,0.35,true],['20K',6800,0.34,true],['25K',8250,0.33,true],['30K',9600,0.32,true],['50K',15000,0.30,true]
+];
+const SEAT=0.35, FLEX_GA=0.59, FLEX_SEAT=1.09;
+function money(x){return x.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'}
+function int(x){return Math.floor(x).toLocaleString('ru-RU')}
+function renderPacks(){
+  const tb=document.getElementById('packs-body'); tb.innerHTML='';
+  for(const [name,amt,rate,prop] of PACKS){
+    const tr=document.createElement('tr'); if(prop) tr.className='proposal';
+    const save=Math.round((1-rate/FLEX_GA)*100);
+    tr.innerHTML=`<td>${name}${prop?' <span class="pill mute">проект</span>':''}</td><td class="r">${money(amt)}</td><td class="r">${money(rate)}</td><td class="r">${money(rate+SEAT)}</td><td class="r">${int(amt/rate)}</td><td class="r">${int(amt/(rate+SEAT))}</td><td class="r">${save} %</td>`;
+    tb.appendChild(tr);
+  }
+}
+function calc(){
+  const ga=Math.max(0,+document.getElementById('c-ga').value||0), seat=Math.max(0,+document.getElementById('c-seat').value||0);
+  const flex=ga*FLEX_GA+seat*FLEX_SEAT;
+  document.getElementById('r-flex').textContent=money(flex);
+  const tb=document.getElementById('c-body'); tb.innerHTML='';
+  let best=null;
+  for(const [name,amt,rate,prop] of PACKS){
+    const need=ga*rate+seat*(rate+SEAT);
+    const covers=amt>=need;
+    if(covers && !best) best={name,amt,rate,need,rest:amt-need};
+    const tr=document.createElement('tr'); if(prop) tr.className='proposal';
+    tr.innerHTML=`<td>${name}</td><td class="r">${money(need)}</td><td class="r">${money(amt)}</td><td class="r">${covers?money(amt-need):'<span class="muted">не хватит, нужно несколько пакетов</span>'}</td>`;
+    tb.appendChild(tr);
+  }
+  if(best){
+    document.getElementById('r-pre').textContent=money(best.need);
+    document.getElementById('r-pre-note').textContent=`Пакет ${best.name} (${money(best.amt)}) покрывает; ${money(best.rest)} останется на следующие мероприятия`;
+    document.getElementById('r-diff').textContent=money(flex-best.need);
+  } else {
+    document.getElementById('r-pre').textContent='—';
+    document.getElementById('r-pre-note').textContent='Для такого объёма — индивидуальный договор';
+    document.getElementById('r-diff').textContent='—';
+  }
+}
+function lpFee(price,seat,pre){ if(price<=0) return 0; const cap=pre?0.30:0.35; return Math.min(cap,Math.max(0.10,0.04*price))+(seat?0.20:0); }
+function calcLP(){
+  const n=Math.max(0,+document.getElementById('lp-n').value||0), p=+document.getElementById('lp-p').value||0, s=document.getElementById('lp-s').value==='1';
+  if(p>=10){ document.getElementById('lp-flex').textContent=money(n*(s?FLEX_SEAT:FLEX_GA)); document.getElementById('lp-pre').textContent='по пакету'; return; }
+  document.getElementById('lp-flex').textContent=money(n*lpFee(p,s,false));
+  document.getElementById('lp-pre').textContent=money(n*lpFee(p,s,true));
+}
+function setView(v){
+  document.getElementById('view-public').hidden = v!=='public';
+  document.getElementById('view-admin').hidden = v!=='admin';
+  document.getElementById('btn-public').setAttribute('aria-pressed', String(v==='public'));
+  document.getElementById('btn-admin').setAttribute('aria-pressed', String(v==='admin'));
+  try{localStorage.setItem('aso-pricing-view', v)}catch(e){}
+}
+(function(){
+  let v='public';
+  try{ if(location.hash==='#admin') v='admin'; else { const s=localStorage.getItem('aso-pricing-view'); if(s==='admin'||s==='public') v=s; } }catch(e){}
+  setView(v); renderPacks(); calc(); calcLP();
+})();
+</script>

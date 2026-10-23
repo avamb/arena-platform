@@ -353,11 +353,12 @@ const setOrgRateOverrideEnd = `-- name: SetOrgRateOverrideEnd :one
 UPDATE org_rate_overrides
 SET    effective_to = $2::timestamptz
 WHERE  id = $1 AND $2::timestamptz > effective_from AND $2::timestamptz > $3::timestamptz
-  AND  (effective_to IS NULL OR effective_to > $3::timestamptz)
+  AND  (effective_to IS NULL OR (effective_to > $3::timestamptz AND $2::timestamptz < effective_to))
 RETURNING id, org_id, currency, unseated_minor, seated_minor, effective_from, effective_to, note, created_by, created_at`
 
 // SetOrgRateOverrideEnd closes an individual rate for the future: the new end
-// must be after the start and after now, and the rate must not have ended.
+// must be after the start and after now, earlier than the current end (closing
+// never extends a period), and the rate must not have ended.
 // pgx.ErrNoRows means one of those did not hold.
 func (q *Queries) SetOrgRateOverrideEnd(ctx context.Context, id uuid.UUID, end, now time.Time) (OrgRateOverrideRow, error) {
 	return scanOrgRateOverrideRow(q.db.QueryRow(ctx, setOrgRateOverrideEnd, id, end, now))
