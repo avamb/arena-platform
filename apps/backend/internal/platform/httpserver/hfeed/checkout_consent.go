@@ -42,7 +42,8 @@ import (
 )
 
 // PlatformTermsVersion names the platform terms a buyer accepts at checkout
-// until the organizer's rendered terms exist (task P3, legal_renderings).
+// when no organizer terms rendering can be named (P3a: no API base URL is
+// configured, or no terms version is published).
 // Change it whenever the text behind PLATFORM_TERMS_URL changes.
 const PlatformTermsVersion = "2026-10-15"
 
@@ -162,6 +163,10 @@ type pendingConsent struct {
 	sellerName   *string
 	termsURL     *string
 	privacyURL   *string
+	// renderingID / termsSHA256: the organizer terms rendering the buyer
+	// accepted (P3a, attachTermsRendering); nil for the platform terms.
+	renderingID *uuid.UUID
+	termsSHA256 *string
 }
 
 // newPendingConsent builds the row from the request. clientIP comes from
@@ -266,5 +271,7 @@ func (p *pendingConsent) params(orgID, checkoutSessionID uuid.UUID) gen.InsertCh
 		SellerLegalName:       p.sellerName,
 		TermsURL:              p.termsURL,
 		PrivacyURL:            p.privacyURL,
+		LegalRenderingID:      p.renderingID,
+		TermsSHA256:           p.termsSHA256,
 	}
 }

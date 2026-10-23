@@ -77,6 +77,9 @@ var ForbiddenScopeExact = map[string]bool{
 	// wave B-A, run decision R-B8): an API key may never spend money.
 	"billing.purchase":     true,
 	"billing.payer_manage": true,
+	// legal.manage writes the terms template every organization's buyers
+	// accept (migration 0163, P3a): platform superadmin only.
+	"legal.manage": true,
 }
 
 // IsForbiddenScope reports whether scope may never be carried by an API key.

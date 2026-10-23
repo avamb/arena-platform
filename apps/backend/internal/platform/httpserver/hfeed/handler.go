@@ -121,6 +121,9 @@ type Handler struct {
 	// consent checkbox links to (P2, WithCheckoutConsent).
 	consentTermsURL   string
 	consentPrivacyURL string
+	// legalTermsBase is the public API base URL the organizer's terms link
+	// is built on (P3a, WithLegalTerms); empty keeps the platform terms.
+	legalTermsBase string
 }
 
 // WithContactForm configures the hosted page's "Write to the organizer" form:

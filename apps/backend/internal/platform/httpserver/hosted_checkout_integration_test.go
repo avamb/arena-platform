@@ -387,6 +387,8 @@ func (f *hostedOrgFixture) cleanup() {
 		   (SELECT id::text FROM reservations WHERE session_id = $1)`, f.sessionID},
 		// P2: a buyer consent references its checkout session.
 		{`DELETE FROM checkout_consents WHERE org_id = $1`, f.orgID},
+		// P3a: the terms renderings a consent names (they reference the org).
+		{`DELETE FROM legal_renderings WHERE org_id = $1`, f.orgID},
 		{`DELETE FROM checkout_sessions WHERE org_id = $1`, f.orgID},
 		{`DELETE FROM reservation_ga_items WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`, f.sessionID},
 		{`DELETE FROM reservation_seats WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`, f.sessionID},
