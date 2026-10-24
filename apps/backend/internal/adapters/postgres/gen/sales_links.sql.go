@@ -319,34 +319,45 @@ func (q *Queries) UpsertSalesLinkHit(ctx context.Context, id uuid.UUID, day time
 
 const salesLinkOrdersAggregate = `-- name: SalesLinkOrdersAggregate :many
 WITH link_orders AS (
-    SELECT o.id, o.currency, o.total, o.checkout_session_id
+    SELECT o.id, o.currency, o.total
     FROM   orders o
     JOIN   sales_links sl ON sl.id = o.sales_link_id AND sl.org_id = $2
     WHERE  o.sales_link_id = $1
       AND  o.org_id        = $2
       AND  o.status IN ('paid', 'partially_refunded', 'refunded')
-)
-SELECT lo.currency,
-       count(*)::bigint AS orders,
-       COALESCE(sum(tk.cnt), 0)::bigint AS tickets,
-       (COALESCE(sum(lo.total), 0) - COALESCE(sum(rf.amount), 0))::bigint AS revenue_minor
-FROM   link_orders lo
-LEFT JOIN LATERAL (
-    SELECT count(*) AS cnt FROM tickets t WHERE t.order_id = lo.id
-) tk ON true
-LEFT JOIN LATERAL (
-    SELECT COALESCE(sum(r.amount), 0) AS amount
+),
+refunded AS (
+    SELECT r.currency, sum(r.amount)::bigint AS amount
     FROM   refunds r
+    JOIN   link_orders lo ON lo.id = COALESCE(
+               r.order_id,
+               (SELECT t.order_id FROM tickets t WHERE t.id = r.ticket_id),
+               (SELECT po.id FROM payment_intents pi
+                JOIN   orders po ON po.checkout_session_id = pi.checkout_session_id
+                WHERE  pi.id = r.payment_intent_id
+                ORDER  BY po.created_at, po.id
+                LIMIT  1))
     WHERE  r.state  = 'succeeded'
       AND  r.org_id = $2
-      AND  COALESCE(r.order_id,
-                    (SELECT t.order_id FROM tickets t WHERE t.id = r.ticket_id),
-                    (SELECT po.id FROM payment_intents pi
-                     JOIN   orders po ON po.checkout_session_id = pi.checkout_session_id
-                     WHERE  pi.id = r.payment_intent_id)) = lo.id
-) rf ON true
-GROUP  BY lo.currency
-ORDER  BY lo.currency`
+    GROUP  BY r.currency
+),
+lines AS (
+    SELECT lo.currency,
+           1::bigint AS orders,
+           (SELECT count(*) FROM tickets t WHERE t.order_id = lo.id)::bigint AS tickets,
+           lo.total::bigint AS amount
+    FROM   link_orders lo
+    UNION ALL
+    SELECT rf.currency, 0::bigint, 0::bigint, -rf.amount
+    FROM   refunded rf
+)
+SELECT l.currency,
+       sum(l.orders)::bigint  AS orders,
+       sum(l.tickets)::bigint AS tickets,
+       sum(l.amount)::bigint  AS revenue_minor
+FROM   lines l
+GROUP  BY l.currency
+ORDER  BY l.currency`
 
 // SalesLinkCurrencyTotals is the sales of one link in one currency.
 type SalesLinkCurrencyTotals struct {
@@ -359,7 +370,8 @@ type SalesLinkCurrencyTotals struct {
 // SalesLinkOrdersAggregate sums the orders that came through the link and
 // were ever paid, per currency: their count, their tickets, and the revenue =
 // sum of orders.total minus the SUCCEEDED refunds of those orders (minor
-// units). A link of another organization gives no rows.
+// units). A refund is subtracted in its own currency. A link of another
+// organization gives no rows.
 func (q *Queries) SalesLinkOrdersAggregate(ctx context.Context, id, orgID uuid.UUID) ([]SalesLinkCurrencyTotals, error) {
 	rows, err := q.db.Query(ctx, salesLinkOrdersAggregate, id, orgID)
 	if err != nil {
