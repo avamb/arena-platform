@@ -73,6 +73,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/go/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Follow a printed sales link (QR code) to its page
+         * @description The public short-link redirect of the organizer sales links (spec 43,
+         *     section 4.1). No JWT, no cookie, outside `/v1`; `go.arenasoldout.com/<code>`
+         *     reaches it through a proxy rule, and it answers the same way on any host.
+         *
+         *     The destination is resolved at the moment of the scan by the fall chain of
+         *     spec 43 section 4.3 (session, event, promoter page, organization page; an
+         *     archived link goes to the organization page), so a printed code keeps
+         *     working after a sell-out, a cancellation or a renamed slug. A malformed or
+         *     unknown code goes to the platform's fallback page (`SHORT_LINK_FALLBACK_URL`)
+         *     and is not counted.
+         *
+         *     A scan of a known code is counted AFTER the redirect was sent and never
+         *     delays or breaks it: one per client and code per UTC day (in-memory
+         *     de-duplication), an obvious bot (by User-Agent, or none) in the suspect
+         *     counter instead. Only the day and the two-letter country of a trusted
+         *     proxy (`CF-IPCountry`, when `TRUSTED_PROXY_COUNT` > 0) are stored; the
+         *     address and the User-Agent are never stored or logged.
+         *
+         *     Rate limited per client IP (`PUBLIC_API_IP_RATE_LIMIT`) before any
+         *     database read.
+         */
+        get: operations["getShortLinkRedirect"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /**
+         * Check a printed sales link without counting a scan
+         * @description Answers exactly like `GET /go/{code}` (same `Location`, same limits) but
+         *     never counts a scan: link previews and checkers send HEAD.
+         */
+        head: operations["headShortLinkRedirect"];
+        patch?: never;
+        trace?: never;
+    };
     "/compat/bil24/json": {
         parameters: {
             query?: never;
@@ -28006,6 +28050,98 @@ export interface operations {
                      *     arena_http_request_duration_seconds_bucket{method="GET",route="/v1/info",status="200",le="0.005"} 1
                      */
                     "text/plain": string;
+                };
+            };
+        };
+    };
+    getShortLinkRedirect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The 7-character code of the sales link, read case-insensitively; anything after the 7th character is ignored. */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Redirect. `Location` is the link's destination with its utm labels
+             *     and `ref=<code>` added, or the platform's fallback page for a
+             *     malformed or unknown code. The body is empty; `Cache-Control:
+             *     no-store` and `Referrer-Policy: no-referrer-when-downgrade` are set.
+             */
+            302: {
+                headers: {
+                    /** @description Where the scanner goes next. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests from this client address (`short_link.rate_limited`, with Retry-After). Nothing was read or counted. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The link could not be looked up right now (`short_link.unavailable`). Never 502. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    headShortLinkRedirect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The 7-character code of the sales link, read case-insensitively; anything after the 7th character is ignored. */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Redirect. `Location` is the link's destination with its utm labels
+             *     and `ref=<code>` added, or the platform's fallback page for a
+             *     malformed or unknown code. The body is empty; `Cache-Control:
+             *     no-store` and `Referrer-Policy: no-referrer-when-downgrade` are set.
+             */
+            302: {
+                headers: {
+                    /** @description Where the scanner goes next. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests from this client address (`short_link.rate_limited`, with Retry-After). Nothing was read or counted. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The link could not be looked up right now (`short_link.unavailable`). Never 502. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

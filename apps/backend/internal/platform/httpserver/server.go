@@ -135,6 +135,8 @@ func (s *Server) mountOperationalRoutes() {
 	if s.metrics != nil {
 		s.router.Method(http.MethodGet, "/metrics", RequireMetricsBearerToken(s.cfg.MetricsBearerToken, s.metrics))
 	}
+	// The public short-link redirect GET|HEAD /go/{code} (spec 43, QL-3).
+	s.mountShortLinkRoutes()
 	// Custom 404/405 handlers return the standard JSON error envelope
 	// instead of chi's default plain-text responses (features #12, #13).
 	s.router.NotFound(handleNotFound)

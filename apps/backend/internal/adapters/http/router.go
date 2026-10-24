@@ -833,8 +833,9 @@ func requestLogMiddleware(base *slog.Logger) func(http.Handler) http.Handler {
 			}
 			// The page statistics beacon promises that the visitor's address
 			// and browser are never stored or logged (HP-2a): its request
-			// records leave out remote_addr and user_agent.
-			beacon := isPageTrackBeacon(r)
+			// records leave out remote_addr and user_agent. The short-link
+			// redirect makes the same promise (spec 43, ST-QL1).
+			beacon := isPageTrackBeacon(r) || isShortLinkRedirect(r)
 			if !beacon {
 				args = append(args, "remote_addr", r.RemoteAddr)
 			}
@@ -883,6 +884,12 @@ func requestLogMiddleware(base *slog.Logger) func(http.Handler) http.Handler {
 			logger.Info("http.request.completed", doneArgs...)
 		})
 	}
+}
+
+// isShortLinkRedirect reports whether r is the public short-link redirect
+// GET|HEAD /go/{code} (spec 43). A literal path test, like isPageTrackBeacon.
+func isShortLinkRedirect(r *http.Request) bool {
+	return strings.HasPrefix(r.URL.Path, "/go/")
 }
 
 // isPageTrackBeacon reports whether r is the hosted page's statistics beacon,
