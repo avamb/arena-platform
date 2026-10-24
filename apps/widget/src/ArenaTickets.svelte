@@ -34,6 +34,7 @@
   import { getPromoStrings } from './lib/promoI18n.js';
   import { MAX_CART_SEATS, cartLimitMessage, seatCapMessage } from './lib/cartLimits.js';
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
+  import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
   import {
@@ -229,6 +230,9 @@
   // session did not ask for it (the switch was turned on after the page
   // loaded). The checkbox is shown for it instead of a dead end.
   let consentForcedFor = $state<string | null>(null);
+  // Spec 43: the sales link / utm touch that brought the buyer, read from the
+  // page address on mount (kept 7 days per feed token). Sent with checkout/start.
+  let attribution: AttributionPayload | null = null;
   /** Why the last tap on a seat was refused (the order is at the seat cap), or null. */
   let cartLimitNotice = $state<string | null>(null);
   /**
@@ -342,6 +346,10 @@
         // Non-browser or URL parse failure — keep empty (relative URLs).
       }
     }
+
+    // Spec 43: remember which sales link or utm label brought the buyer. The
+    // address is only read, never changed (its query also carries checkout_token).
+    attribution = captureAttribution(normFeedToken, window.location.search);
 
     // Check for checkout_token in URL or sessionStorage first.
     const urlToken = getCheckoutTokenFromSearch(window.location.search);
@@ -632,6 +640,9 @@
       // string or hash we sent along would be dropped or would collide.
       const returnUrl = buildReturnUrl();
       if (returnUrl) payload.return_url = returnUrl;
+      // Spec 43: the sales link / utm touch, when there is one. The platform
+      // cleans it and never refuses a purchase over it.
+      if (attribution) payload.attribution = attribution;
       // Language for the buyer's ticket e-mail / PDF — the same resolved
       // locale the widget renders its own copy in. The backend ignores a
       // locale it has no e-mail template for, so sending it is always safe.
