@@ -73,6 +73,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/go/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Follow a printed sales link (QR code) to its page
+         * @description The public short-link redirect of the organizer sales links (spec 43,
+         *     section 4.1). No JWT, no cookie, outside `/v1`; `go.arenasoldout.com/<code>`
+         *     reaches it through a proxy rule, and it answers the same way on any host.
+         *
+         *     The destination is resolved at the moment of the scan by the fall chain of
+         *     spec 43 section 4.3 (session, event, promoter page, organization page; an
+         *     archived link goes to the organization page), so a printed code keeps
+         *     working after a sell-out, a cancellation or a renamed slug. A malformed or
+         *     unknown code goes to the platform's fallback page (`SHORT_LINK_FALLBACK_URL`)
+         *     and is not counted.
+         *
+         *     A scan of a known code is counted AFTER the redirect was sent and never
+         *     delays or breaks it: one per client and code per UTC day (in-memory
+         *     de-duplication, an IPv6 client by its /64), an obvious bot (by User-Agent,
+         *     or none) in the suspect counter instead. Only the day and the two-letter
+         *     country of a trusted proxy (`CF-IPCountry`, when `TRUSTED_PROXY_COUNT` > 0)
+         *     are stored; the address and the User-Agent are never stored or logged.
+         *
+         *     Rate limited per client IP (`PUBLIC_API_IP_RATE_LIMIT`) before any
+         *     database read; a refused scan is redirected to the fallback page, never
+         *     answered with an error body.
+         */
+        get: operations["getShortLinkRedirect"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /**
+         * Check a printed sales link without counting a scan
+         * @description Answers exactly like `GET /go/{code}` (same `Location`, same limits) but
+         *     never counts a scan: link previews and checkers send HEAD.
+         */
+        head: operations["headShortLinkRedirect"];
+        patch?: never;
+        trace?: never;
+    };
+    "/go/{code}/*": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Follow a printed sales link that carries a trailing part
+         * @description A printed address with a trailing slash or any trailing part
+         *     (`/go/<code>/`, `/go/<code>/anything`) is answered exactly like
+         *     `/go/{code}`: the part after the code is ignored.
+         */
+        get: operations["getShortLinkRedirectTail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /**
+         * Check a printed sales link that carries a trailing part, without counting
+         * @description A printed address with a trailing slash or any trailing part
+         *     (`/go/<code>/`, `/go/<code>/anything`) is answered exactly like
+         *     `/go/{code}`: the part after the code is ignored.
+         */
+        head: operations["headShortLinkRedirectTail"];
+        patch?: never;
+        trace?: never;
+    };
+    "/go": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Short-link host without a code
+         * @description The short-link host without a code (`go.arenasoldout.com/` arrives as
+         *     `/go/` after the proxy prefix): a redirect to the platform's fallback page.
+         */
+        get: operations["getShortLinkRoot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /**
+         * Short-link host without a code (HEAD)
+         * @description The short-link host without a code (`go.arenasoldout.com/` arrives as
+         *     `/go/` after the proxy prefix): a redirect to the platform's fallback page.
+         */
+        head: operations["headShortLinkRoot"];
+        patch?: never;
+        trace?: never;
+    };
+    "/go/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Short-link host without a code
+         * @description The short-link host without a code (`go.arenasoldout.com/` arrives as
+         *     `/go/` after the proxy prefix): a redirect to the platform's fallback page.
+         */
+        get: operations["getShortLinkRootSlash"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /**
+         * Short-link host without a code (HEAD)
+         * @description The short-link host without a code (`go.arenasoldout.com/` arrives as
+         *     `/go/` after the proxy prefix): a redirect to the platform's fallback page.
+         */
+        head: operations["headShortLinkRootSlash"];
+        patch?: never;
+        trace?: never;
+    };
     "/compat/bil24/json": {
         parameters: {
             query?: never;
@@ -28007,6 +28132,238 @@ export interface operations {
                      */
                     "text/plain": string;
                 };
+            };
+        };
+    };
+    getShortLinkRedirect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The 7-character code of the sales link, read case-insensitively; anything after the 7th character is ignored. */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Redirect. `Location` is the link's destination with its utm labels
+             *     and `ref=<code>` added; or the platform's fallback page for a
+             *     malformed or unknown code and for a client over the per-IP limit
+             *     (nothing is counted then). The body is empty; `Cache-Control:
+             *     no-store` and `Referrer-Policy: no-referrer-when-downgrade` are set.
+             */
+            302: {
+                headers: {
+                    /** @description Where the scanner goes next. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The link could not be looked up right now (`short_link.unavailable`). Never 502. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    headShortLinkRedirect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The 7-character code of the sales link, read case-insensitively; anything after the 7th character is ignored. */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Redirect. `Location` is the link's destination with its utm labels
+             *     and `ref=<code>` added; or the platform's fallback page for a
+             *     malformed or unknown code and for a client over the per-IP limit
+             *     (nothing is counted then). The body is empty; `Cache-Control:
+             *     no-store` and `Referrer-Policy: no-referrer-when-downgrade` are set.
+             */
+            302: {
+                headers: {
+                    /** @description Where the scanner goes next. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The link could not be looked up right now (`short_link.unavailable`). Never 502. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getShortLinkRedirectTail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The 7-character code of the sales link, read case-insensitively; anything after the 7th character is ignored. */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Redirect. `Location` is the link's destination with its utm labels
+             *     and `ref=<code>` added; or the platform's fallback page for a
+             *     malformed or unknown code and for a client over the per-IP limit
+             *     (nothing is counted then). The body is empty; `Cache-Control:
+             *     no-store` and `Referrer-Policy: no-referrer-when-downgrade` are set.
+             */
+            302: {
+                headers: {
+                    /** @description Where the scanner goes next. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The link could not be looked up right now (`short_link.unavailable`). Never 502. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    headShortLinkRedirectTail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The 7-character code of the sales link, read case-insensitively; anything after the 7th character is ignored. */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Redirect. `Location` is the link's destination with its utm labels
+             *     and `ref=<code>` added; or the platform's fallback page for a
+             *     malformed or unknown code and for a client over the per-IP limit
+             *     (nothing is counted then). The body is empty; `Cache-Control:
+             *     no-store` and `Referrer-Policy: no-referrer-when-downgrade` are set.
+             */
+            302: {
+                headers: {
+                    /** @description Where the scanner goes next. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The link could not be looked up right now (`short_link.unavailable`). Never 502. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getShortLinkRoot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the platform's fallback page (`SHORT_LINK_FALLBACK_URL`). Nothing is counted. */
+            302: {
+                headers: {
+                    /** @description The fallback page. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    headShortLinkRoot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the platform's fallback page (`SHORT_LINK_FALLBACK_URL`). Nothing is counted. */
+            302: {
+                headers: {
+                    /** @description The fallback page. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getShortLinkRootSlash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the platform's fallback page (`SHORT_LINK_FALLBACK_URL`). Nothing is counted. */
+            302: {
+                headers: {
+                    /** @description The fallback page. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    headShortLinkRootSlash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the platform's fallback page (`SHORT_LINK_FALLBACK_URL`). Nothing is counted. */
+            302: {
+                headers: {
+                    /** @description The fallback page. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

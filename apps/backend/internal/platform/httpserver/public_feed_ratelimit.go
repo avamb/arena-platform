@@ -9,12 +9,11 @@
 package httpserver
 
 import (
-	"net/netip"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // ─── in-memory rate limiter (kept in package httpserver for tests) ────────────
@@ -199,20 +198,11 @@ func (rl *publicFeedRateLimiter) checkIP(ip string) (bool, int) {
 // normally given a whole /64, so counting single addresses would let one client
 // step through 2^64 addresses and never meet a per-IP limit. An address that
 // does not parse is returned unchanged.
+//
+// The rule lives in httputil.ClientKey, shared with the short-link scan
+// de-duplication (hgo), so the two can never key one client differently.
 func ipRateKey(ip string) string {
-	addr, err := netip.ParseAddr(strings.TrimSpace(ip))
-	if err != nil {
-		return ip
-	}
-	addr = addr.Unmap()
-	if addr.Is4() {
-		return addr.String()
-	}
-	prefix, err := addr.Prefix(64)
-	if err != nil {
-		return ip
-	}
-	return prefix.String()
+	return httputil.ClientKey(ip)
 }
 
 // windowFull reports whether key's window is already at limit, without

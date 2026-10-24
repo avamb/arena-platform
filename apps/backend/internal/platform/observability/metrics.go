@@ -295,6 +295,13 @@ type Metrics struct {
 	// Metric name: arena_page_track_total.
 	PageTrackTotal *prometheus.CounterVec
 
+	// ShortLinkTotal counts requests of the public short-link redirect
+	// GET /go/{code} by a closed outcome set (redirect, fallback, suspect,
+	// dedup, dropped, rate_limited, error). Spec 43, task QL-3.
+	//
+	// Metric name: arena_short_link_total.
+	ShortLinkTotal *prometheus.CounterVec
+
 	// IdempotencyCleanupDeletedTotal counts idempotency_keys rows deleted by
 	// the scheduled maintenance job (job_type='idempotency.cleanup'). Each
 	// cleanup run adds the number of rows purged. A rising value confirms the
@@ -507,6 +514,15 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 			[]string{LabelKind, LabelOutcome},
 		),
 
+		ShortLinkTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: MetricsNamespace,
+				Name:      subsystemShortLink + "_total",
+				Help:      "Total short-link redirect requests (GET /go/{code}), by outcome (redirect, fallback, suspect, dedup, dropped, rate_limited, error).",
+			},
+			[]string{LabelOutcome},
+		),
+
 		RefundProviderCallsTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: MetricsNamespace,
@@ -540,6 +556,7 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 		m.EmailWebhookEventsTotal,
 		m.EmailWebhookRejectedTotal,
 		m.PageTrackTotal,
+		m.ShortLinkTotal,
 	} {
 		if err := reg.Register(c); err != nil {
 			// If a peer test already registered the same metric on the
