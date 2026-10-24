@@ -16,7 +16,10 @@ package eventbot
 // chat holds) and works after the dialog ran out; a list of choices (events,
 // dates) names a row by its INDEX on the stored page (paging.go):
 //
-//	ql:menu | ql:list   the main menu entry     ql:e:<event>   from an event card
+//	ql:menu             the main menu entry (the list, filters reset)
+//	ql:list             back to the list as it was    ql:new  a new link
+//	ql:e:<event>        from an event card
+//	ql:le:<event>       the list narrowed to one event (sales_link_list.go)
 //	ql:s:<session>      from a date's card      ql:x           cancel
 //	ql:t:<ev|ss|pg|oe|url>  the target choice   ql:tb          back to the target choice
 //	ql:ep:<n> ql:eo:<i> events page / event     ql:sp:<n> ql:so:<i>  dates page / date
@@ -27,7 +30,7 @@ package eventbot
 //
 // A retarget is confirmed with ONE press: it moves a printed code but touches
 // no money and cancels nothing (spec 43 §5.2), so no typed word is asked.
-// QL-9 puts the list of links behind "ql:list"; until then it starts a new one.
+// The list of links (QL-9) has its own presses, listed in sales_link_list.go.
 
 import (
 	"bytes"
@@ -132,6 +135,15 @@ type salesLinkDialog struct {
 	Page     int         `json:"page,omitempty"`
 	IDs      []uuid.UUID `json:"ids,omitempty"`
 	Sessions []slSess    `json:"sessions,omitempty"`
+	// The list of links on screen (QL-9, sales_link_list.go): the status
+	// filter, the event it is narrowed to, the page and the keyset cursors
+	// that lead to it, and the ids of its rows.
+	LFilter  string      `json:"lf,omitempty"`
+	LEvent   *slEvent    `json:"le,omitempty"`
+	LPage    int         `json:"lp,omitempty"`
+	LCursors []string    `json:"lc,omitempty"`
+	LNext    string      `json:"ln,omitempty"`
+	LIDs     []uuid.UUID `json:"li,omitempty"`
 }
 
 func newSalesLinkDialog(orgID uuid.UUID) salesLinkDialog {
@@ -223,8 +235,19 @@ func (b *Bot) salesLinkCallback(ctx context.Context, chatID int64, msgID int, fr
 	switch kind {
 	case "noop": // the position button of a pager
 		return
-	case "menu", "list": // QL-9 puts the list behind "list"
-		b.slRenderTarget(ctx, chatID, &msgID, id, newSalesLinkDialog(orgID), "")
+	case "menu": // the main menu's entry: the list, filters reset
+		b.slRenderList(ctx, chatID, &msgID, id, jwt, newSalesLinkDialog(orgID), 1, "", "")
+		return
+	case "list": // back to the list as the person left it
+		b.slListBack(ctx, chatID, &msgID, from, id, jwt)
+		return
+	case "new":
+		b.slListNew(ctx, chatID, &msgID, from, id)
+		return
+	case "le":
+		if eventID, err := uuid.Parse(arg); err == nil {
+			b.slListForEvent(ctx, chatID, &msgID, from, id, jwt, eventID)
+		}
 		return
 	case "e":
 		if eventID, err := uuid.Parse(arg); err == nil {
@@ -280,6 +303,8 @@ func (b *Bot) salesLinkCallback(ctx context.Context, chatID int64, msgID int, fr
 			return
 		}
 		b.slRenderPlacement(ctx, chatID, &msgID, id, st, "")
+	case "lf", "lp", "lx", "lev", "o", "fp", "fo":
+		b.slListPress(ctx, chatID, &msgID, id, jwt, st, step, kind, arg)
 	}
 }
 
@@ -474,12 +499,7 @@ func (b *Bot) slRenderEvents(ctx context.Context, chatID int64, editMsgID *int, 
 		b.ecError(ctx, chatID, editMsgID, id, err, "home")
 		return
 	}
-	var events []openapi.EventItem
-	for _, e := range all {
-		if s := string(e.Status); s != "archived" && s != "cancelled" {
-			events = append(events, e)
-		}
-	}
+	events := slSellableEvents(all)
 	pages := PagesFor(int64(len(events)), slPageSize)
 	if st.Page < 1 {
 		st.Page = 1
@@ -528,6 +548,17 @@ func (b *Bot) slPager(loc string, p Pager) []models.InlineKeyboardButton {
 		}
 	}
 	return row
+}
+
+// slSellableEvents drops the events that can no longer be sold.
+func slSellableEvents(all []openapi.EventItem) []openapi.EventItem {
+	var events []openapi.EventItem
+	for _, e := range all {
+		if s := string(e.Status); s != "archived" && s != "cancelled" {
+			events = append(events, e)
+		}
+	}
+	return events
 }
 
 // slEventChosen takes the event the person pressed and goes back to the
@@ -887,12 +918,21 @@ func (b *Bot) slCardKeyboard(loc string, l openapi.SalesLink) *models.InlineKeyb
 	if l.Status == slStatusArchived {
 		archive = models.InlineKeyboardButton{Text: b.texts.T(loc, "bot.ql.unarchive_btn", nil), CallbackData: "ql:ua:" + lid}
 	}
-	return &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+	rows := [][]models.InlineKeyboardButton{
 		{{Text: b.texts.T(loc, "bot.ql.stats_btn", nil), CallbackData: "ql:st:" + lid}},
 		{{Text: b.texts.T(loc, "bot.ql.retarget_btn", nil), CallbackData: "ql:rt:" + lid}, archive},
 		{{Text: b.texts.T(loc, "bot.ql.qr_again_btn", nil), CallbackData: "ql:qr:" + lid}},
-		{{Text: b.texts.T(loc, "bot.ql.menu_btn", nil), CallbackData: "ql:menu"}, {Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}},
-	}}
+	}
+	if l.Target.EventId != nil {
+		rows = append(rows, []models.InlineKeyboardButton{
+			{Text: b.texts.T(loc, "bot.ql.list_event_btn", nil), CallbackData: "ql:le:" + l.Target.EventId.String()},
+		})
+	}
+	rows = append(rows, []models.InlineKeyboardButton{
+		{Text: b.texts.T(loc, "bot.ql.list_btn", nil), CallbackData: "ql:list"},
+		{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"},
+	})
+	return &models.InlineKeyboardMarkup{InlineKeyboard: rows}
 }
 
 // slShowCard reads the link afresh and draws its card. A link that is not the
@@ -1052,6 +1092,9 @@ func (b *Bot) slRetargetStart(ctx context.Context, chatID int64, editMsgID *int,
 		return
 	}
 	st := newSalesLinkDialog(orgID)
+	if prev, _, found, _ := b.loadSalesLinkState(ctx, id.Link.TelegramUserID, orgID); found {
+		st.carryList(prev) // "back to the list" lands where the person left
+	}
 	st.Mode, st.LinkID, st.LinkLabel = slModeRetarget, &link.Id, link.Label
 	if link.Target.EventId != nil {
 		if ev, found, err := b.slFindEvent(ctx, jwt, orgID, *link.Target.EventId); err == nil && found {

@@ -4242,3 +4242,69 @@ other = "Done. The link is active again."
 
 ["bot.ql.gone"]
 other = "This link is not in the list any more. Open the links menu and choose another one."
+
+["bot.ql.list_head"]
+other = "🔗 <b>Links and QR</b>\nFilter: {{.Filter}}. Page {{.Page}}."
+
+["bot.ql.list_event"]
+other = "Only the event: <b>{{.Name}}</b>"
+
+["bot.ql.list_hint"]
+other = "Press a number to open a link."
+
+["bot.ql.list_row"]
+other = "{{.N}}. <b>{{.Label}}</b> · {{.Where}} · scans {{.Scans}} · orders {{.Orders}}"
+
+["bot.ql.list_mark_archived"]
+other = "(archived)"
+
+["bot.ql.list_empty"]
+other = "No links yet. Press “+ New” to get a short link and a QR code."
+
+["bot.ql.list_empty_archived"]
+other = "The archive is empty. A link lands here when you press “Archive” on its card."
+
+["bot.ql.list_empty_event"]
+other = "This event has no links with this filter. Change the filter or press “+ New”."
+
+["bot.ql.w_event"]
+other = "event “{{.Name}}”"
+
+["bot.ql.w_session"]
+other = "a date of the event “{{.Name}}”"
+
+["bot.ql.w_promoter"]
+other = "promoter page"
+
+["bot.ql.w_org"]
+other = "organization page"
+
+["bot.ql.w_url"]
+other = "address {{.URL}}"
+
+["bot.ql.f_active"]
+other = "Active"
+
+["bot.ql.f_archived"]
+other = "Archive"
+
+["bot.ql.f_all"]
+other = "All"
+
+["bot.ql.list_new_btn"]
+other = "+ New"
+
+["bot.ql.list_pick_btn"]
+other = "Only one event…"
+
+["bot.ql.list_all_events_btn"]
+other = "Show all events"
+
+["bot.ql.list_btn"]
+other = "Back to the list"
+
+["bot.ql.list_event_btn"]
+other = "Back to this event’s list"
+
+["bot.ql.list_pick_event"]
+other = "Choose an event to see only its links. Page {{.Page}} of {{.Pages}}."

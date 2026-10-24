@@ -20,6 +20,12 @@ var qlKeys = []string{
 	"bot.ql.stats_orders", "bot.ql.stats_revenue", "bot.ql.stats_no_revenue", "bot.ql.rt_head",
 	"bot.ql.rt_archived", "bot.ql.rt_confirm", "bot.ql.rt_yes_btn", "bot.ql.rt_done", "bot.ql.archived_done",
 	"bot.ql.unarchived_done", "bot.ql.gone",
+	// the list of links (QL-9)
+	"bot.ql.list_head", "bot.ql.list_event", "bot.ql.list_hint", "bot.ql.list_row", "bot.ql.list_mark_archived",
+	"bot.ql.list_empty", "bot.ql.list_empty_archived", "bot.ql.list_empty_event", "bot.ql.w_event",
+	"bot.ql.w_session", "bot.ql.w_promoter", "bot.ql.w_org", "bot.ql.w_url", "bot.ql.f_active",
+	"bot.ql.f_archived", "bot.ql.f_all", "bot.ql.list_new_btn", "bot.ql.list_pick_btn",
+	"bot.ql.list_all_events_btn", "bot.ql.list_btn", "bot.ql.list_event_btn", "bot.ql.list_pick_event",
 }
 
 func init() {
