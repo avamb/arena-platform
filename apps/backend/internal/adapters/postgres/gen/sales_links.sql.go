@@ -15,7 +15,7 @@ import (
 
 // DefaultSalesLinkShortHost is the host new sales links are issued under
 // (migration 0167 default for sales_links.short_host).
-const DefaultSalesLinkShortHost = "go.arenasoldout.com"
+const DefaultSalesLinkShortHost = "go.arenasoldout.com" // allow:shortlink stored default, mirrors the column default of migration 0167
 
 // SalesLinkRow is one tracked sales link (migration 0167, spec 43 section 3).
 //
