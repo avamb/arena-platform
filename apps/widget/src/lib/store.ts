@@ -1,7 +1,7 @@
 /**
  * store.ts — Pure wiring helpers for the WID-R1 purchase-loop integration.
  */
-import type { Geometry, CategoryPrice, Tier, FeedSession } from '../types.js';
+import type { Geometry, CategoryPrice, Tier, FeedSession, FeedEvent } from '../types.js';
 import type { PublicGAItem } from './checkout.js';
 import { buildSeatedLines, buildGaLine, emptyCart, type CartState } from './cart.js';
 
@@ -48,6 +48,26 @@ export function clearCheckoutToken(
   scope?: string | null,
 ): void {
   try { storage.removeItem(checkoutTokenKey(scope)); } catch { /* ignore */ }
+}
+
+/**
+ * Pick the session the picker opens on when the event loads.
+ *
+ * Prefers the deep-linked session id (`session-id`, `?session=` of a QR for
+ * one date), then the first non-cancelled session by start time. A deep link to
+ * a cancelled date is not honoured: a buyer who scanned an old poster lands on
+ * the next date that can be bought, not on a date that cannot. Unknown or
+ * foreign ids fall through to the same choice.
+ */
+export function pickInitialSession(ev: FeedEvent, deepLinkId: string): FeedSession | null {
+  if (deepLinkId) {
+    const found = ev.sessions.find((s) => s.id === deepLinkId);
+    if (found && found.status !== 'cancelled') return found;
+  }
+  const upcoming = ev.sessions
+    .filter((s) => s.status !== 'cancelled')
+    .sort((a, b) => a.start_at.localeCompare(b.start_at));
+  return upcoming[0] ?? ev.sessions[0] ?? null;
 }
 
 export function getCheckoutTokenFromSearch(search: string): string | null {
