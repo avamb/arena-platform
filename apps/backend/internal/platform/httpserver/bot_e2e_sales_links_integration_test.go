@@ -26,6 +26,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
@@ -33,6 +34,7 @@ const (
 	qlOwnerTG    = int64(7851)
 	qlManagerTG  = int64(7852)
 	qlOutsiderTG = int64(7853)
+	qlAgentTG    = int64(7854)
 
 	qlShortBase   = "https://go.ql8.test"
 	qlTicketsBase = "https://tickets.ql8.test"
@@ -120,11 +122,35 @@ func TestBotE2E_SalesLinks(t *testing.T) {
 	linkECBotUser(t, f, srv, qlManagerTG, "manager")
 	linkECBotUser(t, other, srv, qlOutsiderTG, "owner")
 
+	// A date of event A that already happened sits FIRST in the list the API
+	// returns (oldest first): the date choice must skip it.
+	seed.exec(`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, status, currency, currency_source)
+	        VALUES ($1, $2, $3, now() - interval '3 days', now() - interval '3 days' + interval '2 hours', 50, 'scheduled', 'EUR', 'override')`,
+		uuid.New(), seed.eventA, seed.venue)
+
+	// An agent, linked to Telegram directly (the bot invitation never makes one).
+	ctx := context.Background()
+	q := gen.New(pool)
+	agent, err := q.InsertUser(ctx, f.newEmail("agent"), "x", "ru")
+	if err != nil {
+		t.Fatalf("InsertUser agent: %v", err)
+	}
+	if _, err := q.InsertMembership(ctx, agent.ID, f.orgID, "agent"); err != nil {
+		t.Fatalf("InsertMembership agent: %v", err)
+	}
+	if _, err := q.UpsertBotTelegramLink(ctx, qlAgentTG, agent.ID, nil, "ru", &f.orgID); err != nil {
+		t.Fatalf("link agent: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM bot_telegram_links WHERE telegram_user_id = $1`, qlAgentTG)
+	})
+
 	tg := newStubTelegram(t)
 	startPromoTestBot(t, pool, api, tg)
 	owner := ecDriver{t, tg, qlOwnerTG}
 	manager := ecDriver{t, tg, qlManagerTG}
 	outsider := ecDriver{t, tg, qlOutsiderTG}
+	agentD := ecDriver{t, tg, qlAgentTG}
 
 	// ── from the event card: the poster at the entrance ───────────────────────
 	owner.press("ql:e:"+seed.eventA.String(), "Где вы разместите код")
@@ -166,8 +192,8 @@ func TestBotE2E_SalesLinks(t *testing.T) {
 	}
 	var dialogs int
 	_ = pool.QueryRow(context.Background(), `SELECT count(*) FROM bot_dialogs WHERE telegram_user_id = $1 AND kind = 'sales_link'`, qlOwnerTG).Scan(&dialogs)
-	if dialogs != 1 {
-		t.Errorf("sales_link dialogs stored = %d, want 1", dialogs)
+	if dialogs != 0 {
+		t.Errorf("sales_link dialogs stored after the card = %d, want 0 (the card keeps no state)", dialogs)
 	}
 
 	// ── one real scan, then the statistics ────────────────────────────────────
@@ -278,6 +304,48 @@ func TestBotE2E_SalesLinks(t *testing.T) {
 	outsider.press("ql:e:"+seed.eventA.String(), "Не найдено")
 	if got := qlOne(t, pool, f.orgID, "Афиша у входа").Status; got != "active" {
 		t.Errorf("a stranger changed the link: status = %s", got)
+	}
+
+	// ── cancel, and a text after leaving is nobody's answer ───────────────────
+	before := len(qlLinks(t, pool, f.orgID))
+	owner.press("ql:e:"+seed.eventA.String(), "Где вы разместите код")
+	owner.press("ql:x", "Что будем делать")
+	owner.say("Афиша, которой не будет", "Я не понял")
+
+	// A retarget cancelled while it waits for an address returns to the card,
+	// and the next text is not taken for the address.
+	owner.press("ql:rt:"+link.ID.String(), "Куда должна вести ссылка")
+	owner.press("ql:t:url", "Напечатайте адрес страницы")
+	owner.press("ql:x", "Ничего не изменилось")
+	owner.say("https://evil.example/x", "Я не понял")
+	if got := qlOne(t, pool, f.orgID, "Афиша у входа"); got.Kind != "session" || got.URL != nil {
+		t.Errorf("a text after the cancel moved the link: %+v", got)
+	}
+
+	// A card press while the name of a place is asked ends that question.
+	owner.press("ql:e:"+seed.eventA.String(), "Где вы разместите код")
+	owner.press("ql:pk:poster", "Напечатайте короткое название места")
+	owner.press("ql:v:"+link.ID.String(), "Короткий адрес")
+	owner.say("Название после карточки", "Я не понял")
+	if n := len(qlLinks(t, pool, f.orgID)); n != before {
+		t.Errorf("links = %d after the cancels, want %d", n, before)
+	}
+
+	// A lapsed dialog that was NOT waiting for text does not swallow one.
+	owner.press("ql:e:"+seed.eventA.String(), "Где вы разместите код")
+	if _, err := pool.Exec(context.Background(), `UPDATE bot_dialogs SET expires_at = now() - interval '1 minute' WHERE telegram_user_id = $1 AND kind = 'sales_link'`, qlOwnerTG); err != nil {
+		t.Fatal(err)
+	}
+	if text := owner.say("просто текст", "Я не понял"); strings.Contains(text, "устарел") {
+		t.Errorf("a lapsed placement screen answered a text with the lapse notice:\n%s", text)
+	}
+
+	// ── an agent holds neither button, and a forged press changes nothing ─────
+	for _, data := range []string{"ql:menu", "ql:e:" + seed.eventA.String(), "ql:v:" + link.ID.String(), "ql:ar:" + link.ID.String(), "ql:rt:ok:" + link.ID.String()} {
+		agentD.press(data, "Ваша роль")
+	}
+	if got := qlOne(t, pool, f.orgID, "Афиша у входа"); got.Status != "active" || got.Kind != "session" {
+		t.Errorf("an agent changed the link: %+v", got)
 	}
 
 	// ── a dialog that ran out is reported, not guessed at ─────────────────────
