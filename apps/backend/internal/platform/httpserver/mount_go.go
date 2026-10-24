@@ -22,8 +22,13 @@ func (s *Server) mountShortLinkRoutes() {
 		return
 	}
 	h := s.shortLinkHandler()
-	s.router.Method(http.MethodGet, "/go/{code}", h)
-	s.router.Method(http.MethodHead, "/go/{code}", h)
+	// "/go" and "/go/" are the bare short-link host after the proxy's prefix
+	// (no code: the storefront); "/go/{code}/*" takes a trailing slash or any
+	// sloppy tail of a printed address, which NormalizeCode cuts off.
+	for _, p := range []string{"/go", "/go/", "/go/{code}", "/go/{code}/*"} {
+		s.router.Method(http.MethodGet, p, h)
+		s.router.Method(http.MethodHead, p, h)
+	}
 }
 
 // shortLinkHandler builds the one hgo.Handler of this Server.

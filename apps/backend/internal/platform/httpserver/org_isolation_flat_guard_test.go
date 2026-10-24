@@ -72,8 +72,10 @@ var flatRouteFamilies = []flatFamily{
 	// ── operations and diagnostics ──────────────────────────────────────────
 	{"GET", "/healthz", flatPublic, "liveness probe"},
 	{"GET", "/readyz", flatPublic, "readiness probe"},
-	{"GET", "/go/{code}", flatPublic, "short-link redirect of a printed QR code; reveals only the public page address"},
-	{"HEAD", "/go/{code}", flatPublic, "short-link redirect of a printed QR code, never counted"},
+	{"GET", "/go", flatPublic, "short-link host root: redirect to the storefront"},
+	{"HEAD", "/go", flatPublic, "short-link host root: redirect to the storefront"},
+	{"GET", "/go/*", flatPublic, "short-link redirect of a printed QR code; reveals only the public page address"},
+	{"HEAD", "/go/*", flatPublic, "short-link redirect of a printed QR code, never counted"},
 	{"GET", "/metrics", flatPlatform, "scrape token"},
 	{"*", "/v1/info", flatPublic, "build information"},
 	{"*", "/v1/info-slow", flatPublic, "graceful-shutdown probe"},

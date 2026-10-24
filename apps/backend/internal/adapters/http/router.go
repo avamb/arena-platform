@@ -887,9 +887,12 @@ func requestLogMiddleware(base *slog.Logger) func(http.Handler) http.Handler {
 }
 
 // isShortLinkRedirect reports whether r is the public short-link redirect
-// GET|HEAD /go/{code} (spec 43). A literal path test, like isPageTrackBeacon.
+// GET|HEAD /go, /go/... (spec 43). A literal path test, like isPageTrackBeacon.
 func isShortLinkRedirect(r *http.Request) bool {
-	return strings.HasPrefix(r.URL.Path, "/go/")
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	return r.URL.Path == "/go" || strings.HasPrefix(r.URL.Path, "/go/")
 }
 
 // isPageTrackBeacon reports whether r is the hosted page's statistics beacon,
