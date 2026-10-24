@@ -20,6 +20,19 @@ const NBSP = String.fromCharCode(0xa0);
 const ZWSP = String.fromCharCode(0x200b);
 const REPLACEMENT = String.fromCharCode(0xfffd);
 
+// tagless drops everything between "<" and ">" with a character scan. It is a
+// test helper that only compares visible text; it never sanitizes markup.
+function tagless(src: string): string {
+  let out = "";
+  let inTag = false;
+  for (const ch of src) {
+    if (ch === "<") inTag = true;
+    else if (ch === ">" && inTag) inTag = false;
+    else if (!inTag) out += ch;
+  }
+  return out;
+}
+
 function html(src: string): string {
   return renderToStaticMarkup(createElement("div", null, ...artToReact(src)));
 }
@@ -117,7 +130,7 @@ describe("artToReact: the whitelisted subset", () => {
   it("flattens a very deep tree instead of nesting without limit", () => {
     const deep = "<blockquote>".repeat(200) + "bottom" + "</blockquote>".repeat(200);
     const out = inner(deep);
-    expect(out.replace(/<[^>]*>/g, "")).toBe("bottom");
+    expect(tagless(out)).toBe("bottom");
     expect((out.match(/<blockquote>/g) ?? []).length).toBeLessThanOrEqual(33);
   });
 
@@ -157,8 +170,8 @@ describe("the shared golden corpus renders without losing text", () => {
     it(c.name, () => {
       // the visible text of the ART (tags removed, entities decoded) equals
       // that of the rebuilt React tree
-      const expected = decodeEntities(c.art.replace(/<[^>]*>/g, ""));
-      const rendered = decodeEntities(inner(c.art).replace(/<[^>]*>/g, ""));
+      const expected = decodeEntities(tagless(c.art));
+      const rendered = decodeEntities(tagless(inner(c.art)));
       expect(rendered).toBe(expected);
     });
   }
