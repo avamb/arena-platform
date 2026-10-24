@@ -16,7 +16,10 @@ package eventbot
 // chat holds) and works after the dialog ran out; a list of choices (events,
 // dates) names a row by its INDEX on the stored page (paging.go):
 //
-//	ql:menu | ql:list   the main menu entry     ql:e:<event>   from an event card
+//	ql:menu             the main menu entry (the list, filters reset)
+//	ql:list             back to the list as it was    ql:new  a new link
+//	ql:e:<event>        from an event card
+//	ql:le:<event>       the list narrowed to one event (sales_link_list.go)
 //	ql:s:<session>      from a date's card      ql:x           cancel
 //	ql:t:<ev|ss|pg|oe|url>  the target choice   ql:tb          back to the target choice
 //	ql:ep:<n> ql:eo:<i> events page / event     ql:sp:<n> ql:so:<i>  dates page / date
@@ -27,7 +30,7 @@ package eventbot
 //
 // A retarget is confirmed with ONE press: it moves a printed code but touches
 // no money and cancels nothing (spec 43 §5.2), so no typed word is asked.
-// QL-9 puts the list of links behind "ql:list"; until then it starts a new one.
+// The list of links (QL-9) has its own presses, listed in sales_link_list.go.
 
 import (
 	"bytes"
@@ -222,8 +225,9 @@ func (b *Bot) salesLinkCallback(ctx context.Context, chatID int64, msgID int, fr
 	switch kind {
 	case "noop": // the position button of a pager
 		return
-	case "menu", "list": // QL-9 puts the list behind "list"
-		b.slRenderTarget(ctx, chatID, &msgID, id, newSalesLinkDialog(orgID), "")
+	case "menu", "list", "new", "le", "lf", "lp", "lx", "lev", "o", "fp", "fo":
+		// The list of links keeps its own dialog (sales_link_list.go).
+		b.slListCallback(ctx, chatID, &msgID, from, id, jwt, kind, arg)
 		return
 	case "e":
 		if eventID, err := uuid.Parse(arg); err == nil {
@@ -475,12 +479,7 @@ func (b *Bot) slRenderEvents(ctx context.Context, chatID int64, editMsgID *int, 
 		b.ecError(ctx, chatID, editMsgID, id, err, "home")
 		return
 	}
-	var events []openapi.EventItem
-	for _, e := range all {
-		if s := string(e.Status); s != "archived" && s != "cancelled" {
-			events = append(events, e)
-		}
-	}
+	events := slSellableEvents(all)
 	pages := PagesFor(int64(len(events)), slPageSize)
 	if st.Page < 1 {
 		st.Page = 1
@@ -529,6 +528,17 @@ func (b *Bot) slPager(loc string, p Pager) []models.InlineKeyboardButton {
 		}
 	}
 	return row
+}
+
+// slSellableEvents drops the events that can no longer be sold.
+func slSellableEvents(all []openapi.EventItem) []openapi.EventItem {
+	var events []openapi.EventItem
+	for _, e := range all {
+		if s := string(e.Status); s != "archived" && s != "cancelled" {
+			events = append(events, e)
+		}
+	}
+	return events
 }
 
 // slEventChosen takes the event the person pressed and goes back to the
@@ -905,12 +915,21 @@ func (b *Bot) slCardKeyboard(loc string, l openapi.SalesLink) *models.InlineKeyb
 	if l.Status == slStatusArchived {
 		archive = models.InlineKeyboardButton{Text: b.texts.T(loc, "bot.ql.unarchive_btn", nil), CallbackData: "ql:ua:" + lid}
 	}
-	return &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+	rows := [][]models.InlineKeyboardButton{
 		{{Text: b.texts.T(loc, "bot.ql.stats_btn", nil), CallbackData: "ql:st:" + lid}},
 		{{Text: b.texts.T(loc, "bot.ql.retarget_btn", nil), CallbackData: "ql:rt:" + lid}, archive},
 		{{Text: b.texts.T(loc, "bot.ql.qr_again_btn", nil), CallbackData: "ql:qr:" + lid}},
-		{{Text: b.texts.T(loc, "bot.ql.menu_btn", nil), CallbackData: "ql:menu"}, {Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}},
-	}}
+	}
+	if l.Target.EventId != nil {
+		rows = append(rows, []models.InlineKeyboardButton{
+			{Text: b.texts.T(loc, "bot.ql.list_event_btn", nil), CallbackData: "ql:le:" + l.Target.EventId.String()},
+		})
+	}
+	rows = append(rows, []models.InlineKeyboardButton{
+		{Text: b.texts.T(loc, "bot.ql.list_btn", nil), CallbackData: "ql:list"},
+		{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"},
+	})
+	return &models.InlineKeyboardMarkup{InlineKeyboard: rows}
 }
 
 // slShowCard reads the link afresh and draws its card. A link that is not the

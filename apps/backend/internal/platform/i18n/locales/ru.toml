@@ -4239,6 +4239,72 @@ other = "Готово. Ссылка снова работает."
 
 ["bot.ql.gone"]
 other = "Этой ссылки больше нет в списке. Откройте меню ссылок и выберите другую."
+
+["bot.ql.list_head"]
+other = "🔗 <b>Ссылки и QR</b>\nФильтр: {{.Filter}}. Страница {{.Page}}."
+
+["bot.ql.list_event"]
+other = "Только мероприятие: <b>{{.Name}}</b>"
+
+["bot.ql.list_hint"]
+other = "Нажмите на номер, чтобы открыть ссылку."
+
+["bot.ql.list_row"]
+other = "{{.N}}. <b>{{.Label}}</b> · {{.Where}} · сканов {{.Scans}} · заказов {{.Orders}}"
+
+["bot.ql.list_mark_archived"]
+other = "(в архиве)"
+
+["bot.ql.list_empty"]
+other = "Пока нет ссылок. Нажмите «+ Новая»: вы получите короткую ссылку и QR-код."
+
+["bot.ql.list_empty_archived"]
+other = "В архиве пока пусто. Ссылка попадает сюда, когда вы нажмёте «В архив» на её карточке."
+
+["bot.ql.list_empty_event"]
+other = "У этого мероприятия нет ссылок с таким фильтром. Смените фильтр или нажмите «+ Новая»."
+
+["bot.ql.w_event"]
+other = "мероприятие «{{.Name}}»"
+
+["bot.ql.w_session"]
+other = "сеанс мероприятия «{{.Name}}»"
+
+["bot.ql.w_promoter"]
+other = "страница промоутера"
+
+["bot.ql.w_org"]
+other = "страница организации"
+
+["bot.ql.w_url"]
+other = "адрес {{.URL}}"
+
+["bot.ql.f_active"]
+other = "Активные"
+
+["bot.ql.f_archived"]
+other = "Архив"
+
+["bot.ql.f_all"]
+other = "Все"
+
+["bot.ql.list_new_btn"]
+other = "+ Новая"
+
+["bot.ql.list_pick_btn"]
+other = "Только одно мероприятие…"
+
+["bot.ql.list_all_events_btn"]
+other = "Показать все мероприятия"
+
+["bot.ql.list_btn"]
+other = "К списку"
+
+["bot.ql.list_event_btn"]
+other = "К списку этого мероприятия"
+
+["bot.ql.list_pick_event"]
+other = "Выберите мероприятие, чтобы увидеть только его ссылки. Страница {{.Page}} из {{.Pages}}."
 ["bot.wz.err_description"]
 other = "Описание не принято. Измените текст и отправьте его снова."
 

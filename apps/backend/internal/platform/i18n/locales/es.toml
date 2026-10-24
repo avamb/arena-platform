@@ -4097,6 +4097,72 @@ other = "Listo. El enlace vuelve a estar activo."
 
 ["bot.ql.gone"]
 other = "Este enlace ya no está en la lista. Abre el menú de enlaces y elige otro."
+
+["bot.ql.list_head"]
+other = "🔗 <b>Enlaces y QR</b>\nFiltro: {{.Filter}}. Página {{.Page}}."
+
+["bot.ql.list_event"]
+other = "Solo el evento: <b>{{.Name}}</b>"
+
+["bot.ql.list_hint"]
+other = "Pulsa un número para abrir un enlace."
+
+["bot.ql.list_row"]
+other = "{{.N}}. <b>{{.Label}}</b> · {{.Where}} · escaneos {{.Scans}} · pedidos {{.Orders}}"
+
+["bot.ql.list_mark_archived"]
+other = "(archivado)"
+
+["bot.ql.list_empty"]
+other = "Aún no hay enlaces. Pulsa «+ Nuevo» y recibirás un enlace corto y un código QR."
+
+["bot.ql.list_empty_archived"]
+other = "El archivo está vacío. Un enlace llega aquí cuando pulsas «Archivar» en su tarjeta."
+
+["bot.ql.list_empty_event"]
+other = "Este evento no tiene enlaces con este filtro. Cambia el filtro o pulsa «+ Nuevo»."
+
+["bot.ql.w_event"]
+other = "evento «{{.Name}}»"
+
+["bot.ql.w_session"]
+other = "una sesión del evento «{{.Name}}»"
+
+["bot.ql.w_promoter"]
+other = "página del promotor"
+
+["bot.ql.w_org"]
+other = "página de la organización"
+
+["bot.ql.w_url"]
+other = "dirección {{.URL}}"
+
+["bot.ql.f_active"]
+other = "Activos"
+
+["bot.ql.f_archived"]
+other = "Archivo"
+
+["bot.ql.f_all"]
+other = "Todos"
+
+["bot.ql.list_new_btn"]
+other = "+ Nuevo"
+
+["bot.ql.list_pick_btn"]
+other = "Solo un evento…"
+
+["bot.ql.list_all_events_btn"]
+other = "Mostrar todos los eventos"
+
+["bot.ql.list_btn"]
+other = "Volver a la lista"
+
+["bot.ql.list_event_btn"]
+other = "Volver a la lista de este evento"
+
+["bot.ql.list_pick_event"]
+other = "Elige un evento para ver solo sus enlaces. Página {{.Page}} de {{.Pages}}."
 ["bot.wz.err_description"]
 other = "No se aceptó la descripción. Cambia el texto y envíalo de nuevo."
 
