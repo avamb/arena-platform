@@ -72,7 +72,7 @@ func newPageStatsFixture(t *testing.T) *pageStatsFixture {
 	if err != nil {
 		t.Fatalf("InsertOrganization: %v", err)
 	}
-	ev, err := q.InsertEvent(ctx, org.ID, "PageStats Event "+run, nil, "published", "public", nil)
+	ev, err := q.InsertEvent(ctx, org.ID, "PageStats Event "+run, nil, "published", "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent: %v", err)
 	}

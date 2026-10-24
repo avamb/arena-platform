@@ -71,6 +71,7 @@ var dialogOwners = map[string]dialogOwner{
 	teamDialogKind:          {owns: prefixIs("team"), leave: (*Bot).clearTeamDialog},
 	salesLinkDialogKind:     {owns: prefixIs("ql"), leave: (*Bot).leaveSalesLink},
 	salesLinkListDialogKind: {owns: prefixIs("ql"), leave: (*Bot).leaveSalesLinkList},
+	tfDialogKind:            {owns: prefixIs("tf"), leave: (*Bot).clearTextFmtDialog},
 }
 
 // dialogTexts maps every dialog kind that takes typed text to its handler.
@@ -92,6 +93,7 @@ var dialogTexts = map[string]dialogTextHandler{
 	teamDialogKind:          (*Bot).teamText,
 	salesLinkDialogKind:     (*Bot).salesLinkText,
 	salesLinkListDialogKind: (*Bot).salesLinkListText,
+	tfDialogKind:            (*Bot).tfText,
 }
 
 // leaveForeignDialogs ends every dialog the press does not belong to. A press
@@ -136,7 +138,7 @@ var dialogOwnerOrder = []string{
 	eventsDialogKind, ordersDialogKind, refundDialogKind, scanExcDialogKind,
 	resendDialogKind, evsDialogKind, inviteDialogKind, promoDialogKind,
 	promoterDialogKind, categoryDialogKind, orgDataDialogKind, sesDialogKind,
-	materialsDialogKind, teamDialogKind, salesLinkDialogKind, salesLinkListDialogKind,
+	materialsDialogKind, teamDialogKind, salesLinkDialogKind, salesLinkListDialogKind, tfDialogKind,
 }
 
 // leaveSessions ends the "Sessions" dialog (move, cancel, contact question).

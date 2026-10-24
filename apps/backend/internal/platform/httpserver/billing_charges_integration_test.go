@@ -99,7 +99,7 @@ func newChargesEnv(t *testing.T) *chargesEnv {
 	e.keyB = rawKey
 
 	mkEvent := func(org uuid.UUID, name string) uuid.UUID {
-		ev, err := q.InsertEvent(ctx, org, name, nil, "published", "public", nil)
+		ev, err := q.InsertEvent(ctx, org, name, nil, "published", "public", nil, "text")
 		if err != nil {
 			t.Fatalf("InsertEvent: %v", err)
 		}

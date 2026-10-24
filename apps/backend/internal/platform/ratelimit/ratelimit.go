@@ -158,6 +158,29 @@ func (sw *SlidingWindow) Count(key string) int {
 	return count
 }
 
+// Release gives back the slot a successful Take (or Allow) recorded last for
+// key: the most recent record is removed, expired ones are pruned. It is for
+// a caller that took a slot and then could not use it (a second quota
+// refused), so the slot is not burnt. A key with no record is left alone.
+func (sw *SlidingWindow) Release(key string) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+
+	cutoff := sw.nowFn().Add(-sw.window)
+	hits := sw.windows[key]
+	valid := hits[:0]
+	for _, t := range hits {
+		if t.After(cutoff) {
+			valid = append(valid, t)
+		}
+	}
+	if len(valid) == 0 {
+		delete(sw.windows, key)
+		return
+	}
+	sw.windows[key] = valid[:len(valid)-1]
+}
+
 // Reset removes all recorded attempts for the given key. Call this after a
 // successful login to give the caller a fresh window.
 func (sw *SlidingWindow) Reset(key string) {

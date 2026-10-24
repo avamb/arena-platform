@@ -74,7 +74,7 @@ func newSellerFixture(t *testing.T, pool *pgxpool.Pool, legalName, country strin
 		t.Fatalf("update organization: %v", err)
 	}
 	desc := "seller test event"
-	event, err := q.InsertEvent(ctx, org.ID, "Seller Event "+run, &desc, "published", "public", nil)
+	event, err := q.InsertEvent(ctx, org.ID, "Seller Event "+run, &desc, "published", "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent: %v", err)
 	}

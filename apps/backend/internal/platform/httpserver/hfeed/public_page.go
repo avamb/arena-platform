@@ -39,6 +39,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
@@ -63,10 +64,15 @@ type hostedPageOrgResponse struct {
 // has always been, so the field is omitted there rather than duplicated —
 // see hostedPromoterPageResponse.
 type hostedPageEventResponse struct {
-	ID               string   `json:"id"`
-	Slug             string   `json:"slug"`
-	Title            string   `json:"title"`
-	Description      *string  `json:"description"`
+	ID          string  `json:"id"`
+	Slug        string  `json:"slug"`
+	Title       string  `json:"title"`
+	Description *string `json:"description"`
+	// DescriptionHTML and DescriptionText are the safe HTML and the plain text of
+	// Description (spec 44, RT-03a): the page shows the first and puts the
+	// second into <title> and <meta>. Description stays the raw stored value.
+	DescriptionHTML  *string  `json:"description_html"`
+	DescriptionText  *string  `json:"description_text"`
 	ShortDescription *string  `json:"short_description"`
 	ImageURL         *string  `json:"image_url"`
 	PosterURL        *string  `json:"poster_url"`
@@ -209,6 +215,7 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 		FeedToken:     resolved.FeedToken,
 		DefaultLocale: resolved.OrgDefaultLocale,
 	}
+	resp.Event.setDescriptionViews(resolved.EventDescriptionFormat)
 	if resolved.EventSlug != nil {
 		resp.Event.Slug = *resolved.EventSlug
 	}
@@ -440,4 +447,14 @@ func rfc3339UTC(t *time.Time) *string {
 	}
 	v := t.UTC().Format(time.RFC3339)
 	return &v
+}
+
+// setDescriptionViews fills DescriptionHTML/Text of a page event from its raw
+// description and the event's format flag (spec 44, RT-03a).
+func (e *hostedPageEventResponse) setDescriptionViews(format string) {
+	if e.Description == nil || format == "" {
+		return
+	}
+	v := eventtext.ViewDescription(*e.Description, format)
+	e.DescriptionHTML, e.DescriptionText = &v.HTML, &v.Text
 }

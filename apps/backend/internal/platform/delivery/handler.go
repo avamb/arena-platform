@@ -151,10 +151,14 @@ type Payload struct {
 	PriceMinor *int64 `json:"price_minor,omitempty"`
 	Currency   string `json:"currency,omitempty"`
 	// EventEmailNote is the organizer's own text of the event (EC-31,
-	// event_email_notes), stored already filtered by eventnote.Normalize. The
+	// event_email_notes), stored already filtered by richtext.Normalize. The
 	// ticket and change letters print it as "About the event". Resolved at
 	// render time like the other hints; empty prints nothing.
 	EventEmailNote string `json:"event_email_note,omitempty"`
+	// EventEmailNoteFormat is the format EventEmailNote is stored in: "art"
+	// or "text" (RT-02). A job queued before the release carries none, which
+	// reads as "text".
+	EventEmailNoteFormat string `json:"event_email_note_format,omitempty"`
 	// PosterMediaID is the media_objects id of the event/session poster
 	// drawn beside the date block — sessions.poster_media_id when the
 	// session overrides it, events.poster_media_id otherwise. Resolved at
@@ -597,7 +601,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				Payment:        payment,
 
 				WithdrawalNotice: withdrawalNotice,
-				EventNote:        ticketEventNote(kind, p.EventEmailNote),
+				EventNote:        ticketEventNote(kind, p.EventEmailNote, p.EventEmailNoteFormat),
 			})
 			if rErr != nil {
 				return fail(fmt.Errorf("delivery: render templates for ticket %s: %w",
@@ -638,7 +642,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		// delivery status can follow from the provider's webhook.
 		var letterDB emailstatus.DB
 		letter := emailstatus.NewLetter{Kind: emailstatus.KindTicket, Recipient: recipientEmail,
-			TemplateVersion: templateVersionFor(renderer, kind, p.Locale, !ticketEventNote(kind, p.EventEmailNote).Empty())}
+			TemplateVersion: templateVersionFor(renderer, kind, p.Locale, !ticketEventNote(kind, p.EventEmailNote, p.EventEmailNoteFormat).Empty())}
 		if kind == templates.TemplateKindInvitation {
 			letter.Kind = emailstatus.KindInvitation
 		}

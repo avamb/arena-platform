@@ -31,7 +31,8 @@ func TestEventBundleEmailNote_ImportReadAndRoundTrip(t *testing.T) {
 	defer f.cleanup()
 	h := newBundle525Handler(t, pool)
 
-	// Create with a note: <b> is filtered out, paragraphs are kept.
+	// Create with a note: the old text becomes ART (a literal <b> is visible
+	// text, never a tag), paragraphs are kept, links are made.
 	body := f.payload()
 	text := "Come <b>early</b>.\n\nMap: https://example.com/map"
 	body.Action.EmailNote = &text
@@ -39,7 +40,7 @@ func TestEventBundleEmailNote_ImportReadAndRoundTrip(t *testing.T) {
 	if rec.Code != http.StatusOK || !created.Created {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
 	}
-	const want = "Come early.\n\nMap: https://example.com/map"
+	const want = `<p>Come &lt;b&gt;early&lt;/b&gt;.</p><p>Map: <a href="https://example.com/map">https://example.com/map</a></p>`
 	if got, ok := f.storedNote(ctx, t, created.EventID); !ok || got != want {
 		t.Fatalf("stored = %q (%v), want %q", got, ok, want)
 	}
@@ -54,7 +55,7 @@ func TestEventBundleEmailNote_ImportReadAndRoundTrip(t *testing.T) {
 	// changes no row (the notes table is part of the snapshot) and a second
 	// read equals the first.
 	before := catalogSnapshot(ctx, t, pool, f.orgID)
-	if !strings.Contains(before, "Come early.") {
+	if !strings.Contains(before, "https://example.com/map") {
 		t.Fatal("the snapshot does not include the event notes")
 	}
 	if dry := dryRun(t, f, h, first.Bundles[0]); !dry.Valid {
