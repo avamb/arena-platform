@@ -8,6 +8,7 @@ package httpserver
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -47,6 +48,8 @@ type sl4Fixture struct {
 	eventSlug, promoterSlug         string
 	eventB, sessionB, promoterB     uuid.UUID
 	channel                         uuid.UUID
+	keyA                            string // an API key of org A holding sales_link.read and .manage
+	users                           []uuid.UUID
 }
 
 func newSL4Fixture(t *testing.T) *sl4Fixture {
@@ -77,6 +80,7 @@ func newSL4Fixture(t *testing.T) *sl4Fixture {
 		if err != nil {
 			t.Fatalf("InsertUser: %v", err)
 		}
+		f.users = append(f.users, u.ID)
 		if _, err := f.q.InsertMembership(ctx, u.ID, org, role); err != nil {
 			t.Fatalf("InsertMembership(%s): %v", role, err)
 		}
@@ -88,6 +92,18 @@ func newSL4Fixture(t *testing.T) *sl4Fixture {
 	}
 	f.ownerA, f.managerA, f.agentA = mkUser(f.orgA, "org_admin"), mkUser(f.orgA, "organizer"), mkUser(f.orgA, "agent")
 	f.ownerB = mkUser(f.orgB, "org_admin")
+
+	keyOwner, err := f.q.InsertUser(ctx, "sl4-keyowner-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatalf("InsertUser: %v", err)
+	}
+	f.users = append(f.users, keyOwner.ID)
+	_, f.keyA, err = apikeys.Issue(ctx, apikeys.NewStoreFromQueries(f.q), apikeys.IssueInput{
+		OrgID: f.orgA, Name: "sl4-" + uuid.NewString()[:6], Scopes: []string{"sales_link.manage", "sales_link.read"}, CreatedBy: keyOwner.ID,
+	})
+	if err != nil {
+		t.Fatalf("apikeys.Issue: %v", err)
+	}
 
 	f.venue, f.event, f.session, f.promoter = uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	f.eventB, f.sessionB, f.promoterB, f.channel = uuid.New(), uuid.New(), uuid.New(), uuid.New()
@@ -133,6 +149,9 @@ func (f *sl4Fixture) cleanup() {
 			fmt.Printf("sl4 cleanup %q: %v\n", st, err)
 		}
 	}
+	if _, err := f.pool.Exec(c, `DELETE FROM users WHERE id = ANY($1)`, f.users); err != nil {
+		fmt.Printf("sl4 cleanup users: %v\n", err)
+	}
 }
 
 func (f *sl4Fixture) exec(t *testing.T, sql string, args ...any) {
@@ -150,6 +169,29 @@ func (f *sl4Fixture) do(t *testing.T, method, path, token, body string) (int, ma
 	if strings.TrimSpace(raw) != "" {
 		_ = json.Unmarshal([]byte(raw), &out)
 	}
+	return resp.StatusCode, out
+}
+
+// doHeader is do with extra request headers.
+func (f *sl4Fixture) doHeader(t *testing.T, method, path, token string, hdr map[string]string, body string) (int, map[string]any) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), method, f.ts.URL+path, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range hdr {
+		req.Header.Set(k, v)
+	}
+	resp, err := f.ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	out := map[string]any{}
+	_ = json.Unmarshal([]byte(integReadBody(t, resp)), &out)
 	return resp.StatusCode, out
 }
 
@@ -201,11 +243,21 @@ func TestSalesLinks_CreateOnEveryTargetKind(t *testing.T) {
 	if ev["destination_degraded"] != false {
 		t.Errorf("destination_degraded = %v, want false", ev["destination_degraded"])
 	}
+	var host string
+	if err := f.pool.QueryRow(context.Background(), `SELECT short_host FROM sales_links WHERE id = $1`, slStr(ev, "id")).Scan(&host); err != nil || host != "go.sl4.example.test" {
+		t.Errorf("stored short_host = %q (%v), want the host of SHORT_LINK_BASE_URL", host, err)
+	}
 	if slStr(ev, "status") != "active" || slStr(ev, "placement_kind") != "poster" {
 		t.Errorf("status/placement = %v/%v", ev["status"], ev["placement_kind"])
 	}
 	if ev["created_by"] == nil {
 		t.Error("created_by must be the acting user for a JWT caller")
+	}
+	// A declared client channel is recorded.
+	st, viaOut := f.doHeader(t, http.MethodPost, f.base(), f.ownerA, map[string]string{"X-Client-Channel": "telegram_bot"},
+		`{"target":{"kind":"org_page"},"label":"From the bot"}`)
+	if st != http.StatusCreated || slStr(viaOut, "created_via") != "telegram_bot" {
+		t.Errorf("created_via with X-Client-Channel: status %d via %v, want telegram_bot", st, viaOut["created_via"])
 	}
 	if slStr(ev, "created_via") != "api" {
 		t.Errorf("created_via = %v, want api", ev["created_via"])
@@ -245,17 +297,7 @@ func TestSalesLinks_CreateOnEveryTargetKind(t *testing.T) {
 	}
 
 	// An API key creates links too, and has no created_by.
-	creator, err := f.q.InsertUser(context.Background(), "sl4-keyowner-"+uuid.NewString()+"@example.test", "x", "en")
-	if err != nil {
-		t.Fatalf("InsertUser: %v", err)
-	}
-	_, raw, err := apikeys.Issue(context.Background(), apikeys.NewStoreFromQueries(f.q), apikeys.IssueInput{
-		OrgID: f.orgA, Name: "sl4-" + uuid.NewString()[:6], Scopes: []string{"sales_link.manage", "sales_link.read"}, CreatedBy: creator.ID,
-	})
-	if err != nil {
-		t.Fatalf("apikeys.Issue: %v", err)
-	}
-	if st, out := f.do(t, http.MethodPost, f.base(), raw, `{"target":{"kind":"org_page"},"label":"By key"}`); st != http.StatusCreated || out["created_by"] != nil {
+	if st, out := f.do(t, http.MethodPost, f.base(), f.keyA, `{"target":{"kind":"org_page"},"label":"By key"}`); st != http.StatusCreated || out["created_by"] != nil {
 		t.Errorf("api key create: status %d created_by %v", st, out["created_by"])
 	}
 
@@ -593,5 +635,83 @@ func TestSalesLinks_RolesAndPermissions(t *testing.T) {
 	// No token at all.
 	if st, _ := f.do(t, http.MethodGet, f.base(), "", ""); st != http.StatusUnauthorized {
 		t.Errorf("anonymous list: %d, want 401", st)
+	}
+}
+
+func TestSalesLinks_SoftDeletedTargetsAreInvalid(t *testing.T) {
+	f := newSL4Fixture(t)
+	f.exec(t, `UPDATE sessions SET deleted_at = now() WHERE id = $1`, f.session)
+	st, out := f.do(t, http.MethodPost, f.base(), f.ownerA, fmt.Sprintf(`{"target":{"kind":"session","session_id":%q},"label":"x"}`, f.session))
+	if st != 422 || slErrCode(out) != "sales_link.invalid_target" {
+		t.Errorf("deleted session: %d %q, want 422 sales_link.invalid_target", st, slErrCode(out))
+	}
+	f.exec(t, `UPDATE events SET deleted_at = now() WHERE id = $1`, f.event)
+	st, out = f.do(t, http.MethodPost, f.base(), f.ownerA, fmt.Sprintf(`{"target":{"kind":"event","event_id":%q},"label":"x"}`, f.event))
+	if st != 422 || slErrCode(out) != "sales_link.invalid_target" {
+		t.Errorf("deleted event: %d %q, want 422 sales_link.invalid_target", st, slErrCode(out))
+	}
+}
+
+func TestSalesLinks_PatchRefusalsAndRoles(t *testing.T) {
+	f := newSL4Fixture(t)
+	ev := f.create(t, fmt.Sprintf(`{"target":{"kind":"event","event_id":%q},"label":"Poster"}`, f.event))
+	id := slStr(ev, "id")
+	one := f.base() + "/" + id
+
+	for _, c := range []struct{ body, code string }{
+		{`{"status":"deleted"}`, "sales_link.invalid_status"},
+		{`{"status":null}`, "sales_link.invalid_status"},
+		{`{"placement_kind":"billboard"}`, "sales_link.invalid_placement"},
+		{`{"placement_kind":null}`, "sales_link.invalid_placement"},
+		{`{"utm":{"utm_source":"a b"}}`, "sales_link.invalid_utm"},
+		{`{"target":{"kind":"org_page","bogus":1}}`, "sales_link.invalid_body"},
+		{`{"target":null}`, "sales_link.invalid_target"},
+	} {
+		st, out := f.do(t, http.MethodPatch, one, f.ownerA, c.body)
+		want := 400
+		if c.code == "sales_link.invalid_target" {
+			want = 422
+		}
+		if st != want || slErrCode(out) != c.code {
+			t.Errorf("PATCH %s: %d %q, want %d %s", c.body, st, slErrCode(out), want, c.code)
+		}
+	}
+
+	// Repeating the stored label writes no update audit row.
+	for i := 0; i < 2; i++ {
+		if st, _ := f.do(t, http.MethodPatch, one, f.ownerA, `{"label":"Poster"}`); st != http.StatusOK {
+			t.Fatalf("same label patch: %d", st)
+		}
+	}
+	var n int
+	_ = f.pool.QueryRow(context.Background(), `SELECT count(*) FROM audit_events WHERE action = 'v1.sales_link.update' AND resource_id = $1`, id).Scan(&n)
+	if n != 0 {
+		t.Errorf("unchanged label wrote %d update audit rows, want 0", n)
+	}
+
+	// An agent holds neither permission: PATCH and stats are 403.
+	if st, _ := f.do(t, http.MethodPatch, one, f.agentA, `{"label":"Hack"}`); st != http.StatusForbidden {
+		t.Errorf("agent PATCH: %d, want 403", st)
+	}
+	if st, _ := f.do(t, http.MethodGet, one+"/stats", f.agentA, ""); st != http.StatusForbidden {
+		t.Errorf("agent stats: %d, want 403", st)
+	}
+	// An API key with the scopes reads the card and the stats and patches.
+	if st, out := f.do(t, http.MethodGet, one, f.keyA, ""); st != http.StatusOK || slStr(out, "id") != id {
+		t.Errorf("api key GET: %d %v", st, out)
+	}
+	if st, out := f.do(t, http.MethodGet, one+"/stats", f.keyA, ""); st != http.StatusOK || out["scans_total"] != float64(0) {
+		t.Errorf("api key stats: %d %v", st, out)
+	}
+	if st, out := f.do(t, http.MethodPatch, one, f.keyA, `{"label":"By key"}`); st != http.StatusOK || slStr(out, "label") != "By key" {
+		t.Errorf("api key PATCH: %d %v", st, out)
+	}
+
+	// A cursor that is valid base64url with a bad inner part is 400.
+	for _, raw := range []string{"garbage", "2026-10-24T12:00:00Z|not-a-uuid", "not-a-time|" + uuid.NewString()} {
+		cur := base64.RawURLEncoding.EncodeToString([]byte(raw))
+		if st, out := f.do(t, http.MethodGet, f.base()+"?cursor="+cur, f.ownerA, ""); st != 400 || slErrCode(out) != "sales_link.invalid_cursor" {
+			t.Errorf("cursor %q: %d %q", raw, st, slErrCode(out))
+		}
 	}
 }
