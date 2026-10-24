@@ -579,3 +579,4 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 ### 12.4 Хроника
 
 - 24.10 — CI master на `5d8cf40`: Lint, OpenAPI Check, Widget, Widget Acceptance, Tickets page, Admin, Event center (unit/smoke), Venue SVG generator зелёные; Unit/Race, Integration и Event center live — в работе на момент старта исполнителей (код этапа 1 проверен интеграционными воротами §11.4, стартовать можно). Чистка этапа 1 выполнена. Запущены QL-7 и QL-8 параллельно.
+- 24.10 — CI master `5d8cf40` завершён: все job зелёные (Unit/Race, Integration, Event center live включительно).
