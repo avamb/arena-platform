@@ -182,7 +182,7 @@ type EventResponse struct {
 	// SalesState / NextSessionAt / SessionCount are computed from the
 	// event's active sessions (EC-02, sales_state.go) and hydrated by
 	// hydrateEvents, never by EventFromRow. SalesState is one of on_sale,
-	// upcoming, sold_out, archived; "" only when the hydration failed.
+	// upcoming, sold_out, archived, draft; "" only when the hydration failed.
 	SalesState    string  `json:"sales_state"`
 	NextSessionAt *string `json:"next_session_at"`
 	SessionCount  int     `json:"session_count"`

@@ -120,7 +120,7 @@ export function EventScreen() {
       </p>
       <h1 id="event-title">{event.name}</h1>
       <p className="card-meta">
-        <SalesStateBadge state={event.sales_state} />
+        <SalesStateBadge event={event} />
         {event.status === "draft" && <Badge tone="neutral">{t("events.draft")}</Badge>}
         {event.promoter_name !== null && event.promoter_name !== undefined && (
           <span>{t("event.promoter", { name: event.promoter_name })}</span>

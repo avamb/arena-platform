@@ -46,6 +46,7 @@ const (
 	salesStateUpcoming = "upcoming"
 	salesStateSoldOut  = "sold_out"
 	salesStateArchived = "archived"
+	salesStateDraft    = "draft" // not published: nobody can buy, whatever the sessions say
 )
 
 // eventsDialog is the list's state, stored as the bot_dialogs row's JSON.
@@ -77,6 +78,8 @@ func EventChip(salesState string) string {
 		return "✕"
 	case salesStateArchived:
 		return "✓"
+	case salesStateDraft:
+		return "📝"
 	default:
 		return "·"
 	}
@@ -360,7 +363,9 @@ func (b *Bot) emptyListText(loc string, st eventsDialog) string {
 // the date the event is listed by, the name, and "×N" for several dates.
 func eventRowLabel(e openapi.EventItem, filter string) string {
 	label := EventChip(e.SalesState) + " "
-	if e.Status == openapi.EventItemStatusDraft {
+	// A draft with future sessions already wears 📝 as its chip; the extra
+	// mark is for a draft the chip does not name (an archived one).
+	if e.Status == openapi.EventItemStatusDraft && e.SalesState != salesStateDraft {
 		label += "📝 "
 	}
 	date := nextDate(e)

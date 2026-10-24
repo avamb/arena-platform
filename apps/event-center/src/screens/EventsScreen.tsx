@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { fetchEventSummary, listEvents } from "@/lib/api/endpoints";
 import type { EventItem, EventSummary } from "@/lib/api/types";
-import { filterEvents, isKnownSalesState, searchEvents, type EventFilter } from "@/lib/events";
+import { filterEvents, searchEvents, visibleSalesState, type EventFilter } from "@/lib/events";
 import { wizardGate } from "@/lib/features";
 import { formatDate } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -21,9 +21,10 @@ export function useEventsList(orgId: string) {
   return useQuery({ queryKey: ["events", orgId, locale], queryFn: () => listEvents(orgId, locale) });
 }
 
-export function SalesStateBadge({ state }: { state: string }) {
+export function SalesStateBadge({ event }: { event: Pick<EventItem, "status" | "sales_state"> }) {
   const { t } = useI18n();
-  if (!isKnownSalesState(state)) return null;
+  const state = visibleSalesState(event);
+  if (state === null) return null;
   return <Badge tone={STATE_TONE[state] ?? "neutral"}>{t(`state.${state}`)}</Badge>;
 }
 
@@ -42,7 +43,7 @@ function EventRow({ orgId, event, summary }: { orgId: string; event: EventItem; 
       <Link to="/o/$orgId/events/$eventId" params={{ orgId, eventId: event.id }} className="card-link">
         <span className="card-title">{event.name}</span>
         <span className="card-meta">
-          <SalesStateBadge state={event.sales_state} />
+          <SalesStateBadge event={event} />
           {event.status === "draft" && <Badge tone="neutral">{t("events.draft")}</Badge>}
           <span>
             {date !== null

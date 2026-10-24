@@ -60,7 +60,7 @@ export async function mockStatus(
     venue_names: ["Palác Akropolis"],
     promoter_id: null,
     promoter_name: null,
-    sales_state: state.status === "published" ? "on_sale" : "archived",
+    sales_state: state.status === "published" ? "on_sale" : state.status === "draft" ? "draft" : "archived",
     next_session_at: "2026-11-20T19:00:00Z",
     session_count: 1,
     visibility: "public",

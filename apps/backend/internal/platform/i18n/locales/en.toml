@@ -545,6 +545,9 @@ other = "Description and sales"
 ["bot.wz.title_summary"]
 other = "Check and publish"
 
+["bot.wz.title_summary_draft"]
+other = "Check and save the draft"
+
 ["bot.wz.resume"]
 other = "You have an unfinished event, “{{.Name}}”. Continue where you stopped, or start over?"
 
@@ -883,6 +886,9 @@ other = "Selling on: {{.List}}."
 
 ["bot.wz.summary_footer"]
 other = "After “Publish” the event appears on your sales page. I will send the link here."
+
+["bot.wz.summary_footer_draft"]
+other = "The event is saved as a draft: buyers do not see it and cannot buy tickets. You can publish it later from the event card."
 
 ["bot.wz.publish_btn"]
 other = "Publish"

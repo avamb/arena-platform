@@ -398,6 +398,9 @@ other = "Descripción y ventas"
 ["bot.wz.title_summary"]
 other = "Revisar y publicar"
 
+["bot.wz.title_summary_draft"]
+other = "Revisa y guarda el borrador"
+
 ["bot.wz.resume"]
 other = "Tienes un evento sin terminar, «{{.Name}}». ¿Continúas donde lo dejaste o empiezas de nuevo?"
 
@@ -736,6 +739,9 @@ other = "Se vende en: {{.List}}."
 
 ["bot.wz.summary_footer"]
 other = "Tras pulsar “Publicar”, el evento aparece en tu página de ventas; te enviaré el enlace aquí."
+
+["bot.wz.summary_footer_draft"]
+other = "El evento se guardará como borrador: los compradores no lo verán ni podrán comprar entradas. Puedes publicarlo más tarde desde la ficha del evento."
 
 ["bot.wz.publish_btn"]
 other = "Publicar"

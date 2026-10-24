@@ -16013,9 +16013,11 @@ export interface components {
              *     place is left in any live category of any of them), `upcoming`
              *     (future sessions exist but none is selling: the sale has not
              *     opened yet, only a closed category has places, or sales ended
-             *     before the start) and `archived` (every session has ended, the
-             *     event has no session, or the event is cancelled/archived). Empty
-             *     only when the lookup failed.
+             *     before the start), `draft` (future sessions exist but the event
+             *     is not published, so nobody can buy, whatever its sessions say)
+             *     and `archived` (every session has ended, the event has no
+             *     session, or the event is cancelled/archived). Empty only when
+             *     the lookup failed.
              * @example on_sale
              */
             sales_state: string;

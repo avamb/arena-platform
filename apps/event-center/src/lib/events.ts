@@ -79,3 +79,17 @@ export type SalesState = (typeof SALES_STATES)[number];
 export function isKnownSalesState(s: string): s is SalesState {
   return (SALES_STATES as readonly string[]).includes(s);
 }
+
+/**
+ * The sales chip to show next to an event, or null for none. A draft that
+ * has not finished is never "on sale" (nobody can buy an unpublished event),
+ * so it shows only its "Draft" badge; the server says `draft` for it since
+ * UXH-01, and an older server's `on_sale` / `upcoming` / `sold_out` for a
+ * draft is hidden here too. A finished draft still shows "Finished".
+ */
+export function visibleSalesState(event: Pick<EventItem, "status" | "sales_state">): SalesState | null {
+  const state = event.sales_state;
+  if (!isKnownSalesState(state)) return null;
+  if (event.status === "draft" && state !== "archived") return null;
+  return state;
+}
