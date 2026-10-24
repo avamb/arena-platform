@@ -4024,10 +4024,10 @@ other = "🔗 <b>{{.Label}}</b>\n{{.Place}}"
 other = "Dirección corta: {{.URL}}"
 
 ["bot.ql.card_dest"]
-other = "El código lleva a: {{.URL}}"
+other = "Ahora lleva a: {{.URL}}"
 
 ["bot.ql.card_no_dest"]
-other = "Todavía no se conoce la dirección de la página. Pulsa «Redirigir» y elige otro destino."
+other = "Ahora lleva a la página de reserva de la plataforma: no se pudo construir la dirección de la página de venta."
 
 ["bot.ql.card_degraded"]
 other = "El código lleva a una página superior a su destino. El motivo: el evento está fuera de venta, la sesión ya no vende o el destino ya no existe. Vuelve a poner el evento a la venta o pulsa «Redirigir»."
@@ -4037,6 +4037,21 @@ other = "El enlace está en el archivo. El código lleva a la página con todos 
 
 ["bot.ql.card_counts"]
 other = "Escaneos: {{.Scans}}. Pedidos: {{.Orders}}."
+
+["bot.ql.card_why_event_unpublished"]
+other = "El evento no está publicado, por eso el código lleva a la página general (la dirección de arriba). Publica el evento y el código llevará a su página por sí solo. No hace falta redirigir."
+
+["bot.ql.card_why_event_no_page"]
+other = "El evento todavía no tiene página de venta, por eso el código lleva a la página general (la dirección de arriba). Redirigir no ayudará. Escribe a soporte y añadiremos la página."
+
+["bot.ql.card_why_session"]
+other = "La sesión está cancelada o eliminada, por eso el código lleva a la página del evento (la dirección de arriba). Para que el código lleve a otra sesión, pulsa «Redirigir»."
+
+["bot.ql.card_why_promoter"]
+other = "El promotor está en el archivo o no tiene página, por eso el código lleva a la página de la organización (la dirección de arriba). Restaura el promotor o pulsa «Redirigir»."
+
+["bot.ql.card_why_no_address"]
+other = "No se pudo construir la dirección de la página de venta: la plataforma o la organización no tiene configurada la dirección de las páginas de venta. Redirigir no ayudará. Escribe a soporte."
 
 ["bot.ql.stats_btn"]
 other = "Estadísticas"
@@ -4088,6 +4103,15 @@ other = "Sí, redirigir"
 
 ["bot.ql.rt_done"]
 other = "Listo. El código <b>{{.Label}}</b> lleva ahora a la nueva página."
+
+["bot.ql.rt_same"]
+other = "El destino no cambió: el código <b>{{.Label}}</b> lleva al mismo sitio. No se cambió nada."
+
+["bot.ql.rt_done_same_dest"]
+other = "El destino ha cambiado. La dirección a la que lleva el código <b>{{.Label}}</b> sigue siendo la misma. El motivo está abajo."
+
+["bot.ql.rt_done_no_dest"]
+other = "El destino ha cambiado. El código <b>{{.Label}}</b> sigue llevando a la página de reserva de la plataforma. El motivo está abajo."
 
 ["bot.ql.archived_done"]
 other = "Listo. El enlace está en el archivo. Su código lleva a la página con todos los eventos."

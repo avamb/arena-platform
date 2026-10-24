@@ -15,6 +15,10 @@ var qlKeys = []string{
 	"bot.ql.err_label_empty", "bot.ql.err_label_long", "bot.ql.created", "bot.ql.qr_caption",
 	"bot.ql.svg_caption", "bot.ql.qr_failed", "bot.ql.card_head", "bot.ql.card_short", "bot.ql.card_dest",
 	"bot.ql.card_no_dest", "bot.ql.card_degraded", "bot.ql.card_archived", "bot.ql.card_counts",
+	// why the code does not lead to its target (QL-8b, the server's destination_reason)
+	"bot.ql.card_why_event_unpublished", "bot.ql.card_why_event_no_page", "bot.ql.card_why_session",
+	"bot.ql.card_why_promoter", "bot.ql.card_why_no_address", "bot.ql.rt_same", "bot.ql.rt_done_same_dest",
+	"bot.ql.rt_done_no_dest",
 	"bot.ql.stats_btn", "bot.ql.retarget_btn", "bot.ql.archive_btn", "bot.ql.unarchive_btn",
 	"bot.ql.qr_again_btn", "bot.ql.stats_head", "bot.ql.stats_scans", "bot.ql.stats_utc", "bot.ql.stats_bots",
 	"bot.ql.stats_orders", "bot.ql.stats_revenue", "bot.ql.stats_no_revenue", "bot.ql.rt_head",

@@ -109,6 +109,7 @@ type salesLinkJSON struct {
 	OrdersCount         int64             `json:"orders_count"`
 	DestinationURL      string            `json:"destination_url"`
 	DestinationDegraded bool              `json:"destination_degraded"`
+	DestinationReason   string            `json:"destination_reason"`
 	CreatedBy           *uuid.UUID        `json:"created_by"`
 	CreatedVia          *string           `json:"created_via"`
 	CreatedAt           string            `json:"created_at"`
@@ -158,9 +159,13 @@ func (c *factsCache) GetSalesLinkTargetFacts(ctx context.Context, orgID uuid.UUI
 	return row, nil
 }
 
-// present builds the SalesLink answer: the row, its short address and the
-// destination the code leads to right now (spec 43 section 4.3). A destination
-// that cannot be worked out is logged and left empty (and flagged degraded).
+// present builds the SalesLink answer: the row, its short address, the
+// destination the code leads to right now (spec 43 section 4.3) and the reason
+// it is not the target (destination_reason, one of the salelinks.Reason*
+// codes; empty when the code leads to its target). A destination that cannot
+// be worked out is logged and left empty (flagged degraded, reason
+// no_page_address unless the organization itself is gone): the redirect sends
+// such a scan to the platform's fallback page.
 func (h *Handler) present(ctx context.Context, facts salelinks.FactsQuerier, row gen.SalesLinkRow) salesLinkJSON {
 	utm := map[string]string{}
 	if len(row.UTM) > 0 {
@@ -182,12 +187,16 @@ func (h *Handler) present(ctx context.Context, facts salelinks.FactsQuerier, row
 		s := rfc3339(*row.LastScannedAt)
 		out.LastScannedAt = &s
 	}
-	dest, degraded, err := salelinks.Resolve(ctx, facts, h.ticketsBase, salelinks.Link{
+	res, err := salelinks.ResolveFull(ctx, facts, h.ticketsBase, salelinks.Link{
 		OrgID: row.OrgID, Code: row.Code, Target: linkTarget(row), Archived: row.Status == "archived",
 	})
 	if err != nil {
 		h.logger.Warn("sales links: destination not resolved", "link_id", row.ID.String(), "error", err.Error())
 	}
-	out.DestinationURL, out.DestinationDegraded = dest, degraded
+	if res.Destination == "" && res.Reason == "" && row.TargetKind != salelinks.KindURL {
+		// A lookup that failed still sends the buyer to the fallback page.
+		res.Reason = salelinks.ReasonNoPageAddress
+	}
+	out.DestinationURL, out.DestinationDegraded, out.DestinationReason = res.Destination, res.Degraded, res.Reason
 	return out
 }

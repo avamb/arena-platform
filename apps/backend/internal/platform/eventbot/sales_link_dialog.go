@@ -127,9 +127,14 @@ type salesLinkDialog struct {
 	// LinkID/LinkLabel name the link a retarget is about, or the one just made.
 	LinkID    *uuid.UUID `json:"link_id,omitempty"`
 	LinkLabel string     `json:"link_label,omitempty"`
-	Event     *slEvent   `json:"event,omitempty"`
-	Target    *slTarget  `json:"target,omitempty"`
-	Placement string     `json:"placement,omitempty"`
+	// PrevTarget/PrevDest are the target and the page of the link when the
+	// retarget began: the same target again is "nothing changed", and the
+	// answer says "a new page" only when the page really changed.
+	PrevTarget *slTarget `json:"prev_target,omitempty"`
+	PrevDest   string    `json:"prev_dest,omitempty"`
+	Event      *slEvent  `json:"event,omitempty"`
+	Target     *slTarget `json:"target,omitempty"`
+	Placement  string    `json:"placement,omitempty"`
 	// Page/IDs/Sessions are the choice on screen (events or dates).
 	Page     int         `json:"page,omitempty"`
 	IDs      []uuid.UUID `json:"ids,omitempty"`
@@ -274,7 +279,7 @@ func (b *Bot) salesLinkCallback(ctx context.Context, chatID int64, msgID int, fr
 		st.Page = ParsePage(arg)
 		b.slRenderSessions(ctx, chatID, &msgID, id, st, "")
 	case "so":
-		b.slSessionChosen(ctx, chatID, &msgID, id, st, arg)
+		b.slSessionChosen(ctx, chatID, &msgID, id, jwt, st, arg)
 	case "pk":
 		b.slPlacementChosen(ctx, chatID, &msgID, id, st, step, arg)
 	case "pb":
@@ -414,7 +419,7 @@ func (b *Bot) slTargetPress(ctx context.Context, chatID int64, msgID *int, id *I
 			return
 		}
 		st.Target = &slTarget{Kind: slKindEvent, EventID: &st.Event.ID, Name: st.Event.Name}
-		b.slTargetChosen(ctx, chatID, msgID, id, st)
+		b.slTargetChosen(ctx, chatID, msgID, id, jwt, st)
 	case "ss":
 		if st.Event == nil {
 			b.slRenderTarget(ctx, chatID, msgID, id, st, "")
@@ -427,7 +432,7 @@ func (b *Bot) slTargetPress(ctx context.Context, chatID int64, msgID *int, id *I
 			t = &slTarget{Kind: slKindPromoterPage, PromoterID: st.Event.PromoterID, Name: st.Event.PromoterName}
 		}
 		st.Target = t
-		b.slTargetChosen(ctx, chatID, msgID, id, st)
+		b.slTargetChosen(ctx, chatID, msgID, id, jwt, st)
 	case "oe":
 		st.Page = 1
 		b.slRenderEvents(ctx, chatID, msgID, id, jwt, st)
@@ -446,9 +451,9 @@ func (b *Bot) slTargetPress(ctx context.Context, chatID int64, msgID *int, id *I
 
 // slTargetChosen goes on from a chosen target: a new link asks where it will
 // be placed, a retarget asks for its confirmation.
-func (b *Bot) slTargetChosen(ctx context.Context, chatID int64, editMsgID *int, id *Identity, st salesLinkDialog) {
+func (b *Bot) slTargetChosen(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, st salesLinkDialog) {
 	if st.Mode == slModeRetarget {
-		b.slRenderConfirm(ctx, chatID, editMsgID, id, st)
+		b.slRenderConfirm(ctx, chatID, editMsgID, id, jwt, st)
 		return
 	}
 	b.slRenderPlacement(ctx, chatID, editMsgID, id, st, "")
@@ -642,7 +647,7 @@ func (b *Bot) slRenderSessions(ctx context.Context, chatID int64, editMsgID *int
 
 // slSessionChosen takes the date the person pressed (its index in the whole
 // stored list).
-func (b *Bot) slSessionChosen(ctx context.Context, chatID int64, msgID *int, id *Identity, st salesLinkDialog, arg string) {
+func (b *Bot) slSessionChosen(ctx context.Context, chatID int64, msgID *int, id *Identity, jwt string, st salesLinkDialog, arg string) {
 	i, ok := ParseIndex(arg, len(st.Sessions))
 	if !ok || st.Event == nil {
 		b.slRenderSessions(ctx, chatID, msgID, id, st, "")
@@ -651,7 +656,7 @@ func (b *Bot) slSessionChosen(ctx context.Context, chatID int64, msgID *int, id 
 	s := st.Sessions[i]
 	sid := s.ID
 	st.Target = &slTarget{Kind: slKindSession, SessionID: &sid, EventID: &st.Event.ID, Name: st.Event.Name, When: s.Label}
-	b.slTargetChosen(ctx, chatID, msgID, id, st)
+	b.slTargetChosen(ctx, chatID, msgID, id, jwt, st)
 }
 
 // ─── the placement and the name ───────────────────────────────────────────────
@@ -797,7 +802,7 @@ func (b *Bot) salesLinkText(ctx context.Context, chatID int64, from *models.User
 			return true
 		}
 		st.Target = &slTarget{Kind: slKindURL, URL: url}
-		b.slTargetChosen(ctx, chatID, edit, id, st)
+		b.slTargetChosen(ctx, chatID, edit, id, jwt, st)
 		return true
 	}
 	label, errKey := parseSalesLinkLabel(text)
@@ -886,7 +891,9 @@ func (b *Bot) slSendQR(ctx context.Context, chatID int64, jwt string, orgID uuid
 // ─── the card ─────────────────────────────────────────────────────────────────
 
 // slCardText is the card of a link: its name and place, the short address to
-// print, and the page the code leads to right now.
+// print, where the code leads RIGHT NOW (always said: the real address, or the
+// platform's fallback page when no address can be built), and, when that is
+// not the target, why (slWhyKey) with the one step that brings the code back.
 func (b *Bot) slCardText(loc string, l openapi.SalesLink) string {
 	var sb strings.Builder
 	place := b.texts.T(loc, "bot.ql.pl_"+l.PlacementKind, nil)
@@ -897,14 +904,75 @@ func (b *Bot) slCardText(loc string, l openapi.SalesLink) string {
 	} else {
 		sb.WriteString("\n" + b.texts.T(loc, "bot.ql.card_no_dest", nil))
 	}
-	switch {
-	case l.Status == slStatusArchived:
-		sb.WriteString("\n\n" + b.texts.T(loc, "bot.ql.card_archived", nil))
-	case l.DestinationDegraded:
-		sb.WriteString("\n\n" + b.texts.T(loc, "bot.ql.card_degraded", nil))
+	if key := slWhyKey(l); key != "" {
+		sb.WriteString("\n\n" + b.texts.T(loc, key, nil))
 	}
 	sb.WriteString("\n\n" + b.texts.T(loc, "bot.ql.card_counts", map[string]any{"Scans": l.ScanCount, "Orders": l.OrdersCount}))
 	return sb.String()
+}
+
+// slWhyKey picks the explanation of a code that does not lead to its target
+// from the server's destination_reason. Only a reason the organizer can mend
+// by choosing ANOTHER target (a cancelled date, an archived promoter) names
+// the Retarget button: an unpublished event or a missing page address is not
+// mended by a retarget, so those texts never suggest one. Empty when the
+// code leads to its target; an unknown reason falls back to the generic text.
+func slWhyKey(l openapi.SalesLink) string {
+	if l.Status == slStatusArchived {
+		return "bot.ql.card_archived"
+	}
+	switch l.DestinationReason {
+	case "":
+		if l.DestinationDegraded {
+			return "bot.ql.card_degraded"
+		}
+		return ""
+	case "event_not_published":
+		return "bot.ql.card_why_event_unpublished"
+	case "event_no_slug":
+		return "bot.ql.card_why_event_no_page"
+	case "session_not_live":
+		return "bot.ql.card_why_session"
+	case "promoter_unavailable":
+		return "bot.ql.card_why_promoter"
+	case "no_page_address", "org_not_found":
+		return "bot.ql.card_why_no_address"
+	case "archived":
+		return "bot.ql.card_archived"
+	}
+	return "bot.ql.card_degraded"
+}
+
+// slSameTarget says whether two targets name the same page: the kind and the
+// one id (or address) of that kind. A retarget to the same target changes
+// nothing and is answered so, without a call.
+func slSameTarget(a, b slTarget) bool {
+	if a.Kind != b.Kind {
+		return false
+	}
+	same := func(x, y *uuid.UUID) bool {
+		return (x == nil && y == nil) || (x != nil && y != nil && *x == *y)
+	}
+	switch a.Kind {
+	case slKindEvent:
+		return same(a.EventID, b.EventID)
+	case slKindSession:
+		return same(a.SessionID, b.SessionID)
+	case slKindPromoterPage:
+		return same(a.PromoterID, b.PromoterID)
+	case slKindURL:
+		return a.URL == b.URL
+	}
+	return true // org_page
+}
+
+// slTargetOf is the stored target of a link as the dialog keeps one.
+func slTargetOf(t openapi.SalesLinkTarget) slTarget {
+	out := slTarget{Kind: t.Kind, EventID: t.EventId, SessionID: t.SessionId, PromoterID: t.PromoterId}
+	if t.Url != nil {
+		out.URL = *t.Url
+	}
+	return out
 }
 
 // slCardKeyboard is the card's buttons. Every one carries the link's UUID, so
@@ -1096,6 +1164,8 @@ func (b *Bot) slRetargetStart(ctx context.Context, chatID int64, editMsgID *int,
 	}
 	st := newSalesLinkDialog(orgID)
 	st.Mode, st.LinkID, st.LinkLabel = slModeRetarget, &link.Id, link.Label
+	prev := slTargetOf(link.Target)
+	st.PrevTarget, st.PrevDest = &prev, link.DestinationUrl
 	if link.Target.EventId != nil {
 		if ev, found, err := b.slFindEvent(ctx, jwt, orgID, *link.Target.EventId); err == nil && found {
 			st.Event = &ev
@@ -1104,11 +1174,19 @@ func (b *Bot) slRetargetStart(ctx context.Context, chatID int64, editMsgID *int,
 	b.slRenderTarget(ctx, chatID, editMsgID, id, st, b.texts.T(loc, "bot.ql.rt_head", map[string]any{"Label": Esc(link.Label)})+"\n\n")
 }
 
-// slRenderConfirm asks the one press that moves the code.
-func (b *Bot) slRenderConfirm(ctx context.Context, chatID int64, editMsgID *int, id *Identity, st salesLinkDialog) {
+// slRenderConfirm asks the one press that moves the code. The target the link
+// already has is answered at once ("nothing changed"), without the press and
+// without a call: a retarget to the same page would only write an audit row
+// and tell the organizer about a new page that is not new.
+func (b *Bot) slRenderConfirm(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, st salesLinkDialog) {
 	loc := id.Locale()
 	if st.LinkID == nil || st.Target == nil {
 		b.slRenderTarget(ctx, chatID, editMsgID, id, st, "")
+		return
+	}
+	if st.PrevTarget != nil && slSameTarget(*st.PrevTarget, *st.Target) {
+		b.leaveSalesLink(ctx, id.Link.TelegramUserID)
+		b.slShowCard(ctx, chatID, editMsgID, id, jwt, *st.LinkID, b.texts.T(loc, "bot.ql.rt_same", map[string]any{"Label": Esc(st.LinkLabel)})+"\n\n")
 		return
 	}
 	if editMsgID != nil {
@@ -1153,5 +1231,16 @@ func (b *Bot) slRetargetConfirmed(ctx context.Context, chatID int64, editMsgID *
 		return
 	}
 	b.leaveSalesLink(ctx, from.ID)
-	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.ql.rt_done", map[string]any{"Label": Esc(link.Label)})+"\n\n"+b.slCardText(loc, link), b.slCardKeyboard(loc, link))
+	// "A new page" only when the page really appeared or changed; a target
+	// that changed while the code still lands on the same page (both fall to
+	// the same higher page, or no address can be built) is said so, and the
+	// card below explains why.
+	done := "bot.ql.rt_done"
+	switch link.DestinationUrl {
+	case "":
+		done = "bot.ql.rt_done_no_dest"
+	case st.PrevDest:
+		done = "bot.ql.rt_done_same_dest"
+	}
+	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, done, map[string]any{"Label": Esc(link.Label)})+"\n\n"+b.slCardText(loc, link), b.slCardKeyboard(loc, link))
 }

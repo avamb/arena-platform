@@ -12549,7 +12549,7 @@ components:
 
     SalesLink:
       type: object
-      required: [id, org_id, code, short_url, target, label, placement_kind, utm, status, scan_count, suspect_scan_count, orders_count, destination_url, destination_degraded, created_at, updated_at]
+      required: [id, org_id, code, short_url, target, label, placement_kind, utm, status, scan_count, suspect_scan_count, orders_count, destination_url, destination_degraded, destination_reason, created_at, updated_at]
       description: A tracked sales link (spec 43).
       properties:
         id:
@@ -12605,6 +12605,17 @@ components:
         destination_degraded:
           type: boolean
           description: True when the code leads to a higher page than its target (event off sale, date cancelled, link archived).
+        destination_reason:
+          type: string
+          description: |
+            Why the code does not lead to the page its target names; empty when it does.
+            Names what decided the final page, so a client can say what brings the code back and
+            offers a retarget only where it changes the address: `event_not_published` (publish the
+            event), `event_no_slug` (the event has no page address), `session_not_live` (the date is
+            cancelled or deleted, another date would change the address), `promoter_unavailable`
+            (the promoter is archived or has no page address), `archived` (the link is in the
+            archive), `no_page_address` (no page address can be built at all, the scan goes to the
+            platform's fallback page), `org_not_found`.
         created_by:
           type: [string, "null"]
           format: uuid

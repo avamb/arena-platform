@@ -14110,6 +14110,16 @@ type SalesLink struct {
 	// DestinationDegraded True when the code leads to a higher page than its target (event off sale, date cancelled, link archived).
 	DestinationDegraded bool `json:"destination_degraded"`
 
+	// DestinationReason Why the code does not lead to the page its target names; empty when it does.
+	// Names what decided the final page, so a client can say what brings the code back and
+	// offers a retarget only where it changes the address: `event_not_published` (publish the
+	// event), `event_no_slug` (the event has no page address), `session_not_live` (the date is
+	// cancelled or deleted, another date would change the address), `promoter_unavailable`
+	// (the promoter is archived or has no page address), `archived` (the link is in the
+	// archive), `no_page_address` (no page address can be built at all, the scan goes to the
+	// platform's fallback page), `org_not_found`.
+	DestinationReason string `json:"destination_reason"`
+
 	// DestinationUrl The page the code leads to right now, without utm. Empty when no page address can be built.
 	DestinationUrl string `json:"destination_url"`
 
