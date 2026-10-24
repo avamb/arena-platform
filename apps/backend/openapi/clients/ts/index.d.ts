@@ -5741,6 +5741,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/texts/format": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add markup to an organizer's text with the model
+         * @description A model adds markup (paragraphs, bold, italic, underline, links, lists
+         *     and, in descriptions, headings and quotes) to a text the organizer
+         *     typed, and the server proves that nothing else changed: the words,
+         *     numbers, punctuation and symbols of the answer must be exactly those of
+         *     the text (the `**bold**` and `- ` list markers of the old notation read
+         *     as markup), every link must point to an address written in the text and
+         *     show that address, a paragraph keeps at most 3 emphasised fragments, and
+         *     the result must pass the same cleaning as every stored text. The model
+         *     sees only this text, never buyer data.
+         *
+         *     **The route never fails because of the model.** Every other problem (no
+         *     model key, the daily caps, a timeout, an error of the model, an answer
+         *     that fails the check) is a 200 whose `html` is the plain conversion of
+         *     the text and whose `ai_applied` is false, with a `reason`. A client
+         *     always gets text it can save. Only a bad request is refused: an unknown
+         *     `kind` is a 400, a text longer than the limit of its kind is a 422
+         *     `text.too_long` before any model call, and a text with forbidden
+         *     characters is a 422 `text.invalid`.
+         *
+         *     Each call to the model costs money: a person gets at most
+         *     `TEXT_FORMATS_PER_USER_PER_DAY` (default 100) and an organization
+         *     `TEXT_FORMATS_PER_ORG_PER_DAY` (default 500) in a sliding 24 hours,
+         *     counted in the memory of one arena-api process. A slot is taken only
+         *     right before the model call, so a refused request never takes one. The
+         *     call may take up to 25 seconds. Logs hold the reason, the prompt
+         *     version, the lengths, the kind and the organization, never the text.
+         *
+         *     Requires the `event.update` permission in the path organization (the
+         *     owner and the manager hold it). An organization the caller does not
+         *     belong to is a 404.
+         */
+        post: operations["postV1OrganizationsOrgIdTextsFormat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/media-files/{id}": {
         parameters: {
             query?: never;
@@ -9680,6 +9729,58 @@ export interface components {
         PosterFactsResponse: {
             /** @description What the model read from the poster. */
             facts: components["schemas"]["PosterFacts"];
+        };
+        /**
+         * @description Which text is formatted. It picks the tags the model may add and the
+         *     longest text: `description` (an event description, 4000 characters, with
+         *     headings, quotes and links to `https` and `mailto`), `email_note` (the
+         *     organizer's own text of the buyer letters, 2000 characters) and
+         *     `session_message` (the message about a moved or cancelled session, 1000
+         *     characters). The last two have no headings or quotes and link only to
+         *     `https`.
+         * @enum {string}
+         */
+        TextFormatKind: "description" | "email_note" | "session_message";
+        /** @description A text the organizer typed, to be marked up. */
+        TextFormatRequest: {
+            /**
+             * @description The organizer's text in the plain notation (`**bold**`, `_italic_`,
+             *     `- ` lists, a blank line between paragraphs). At most 4000, 2000 or
+             *     1000 characters by `kind`; a longer text is a 422 `text.too_long`
+             *     and the model is not called.
+             */
+            text: string;
+            /** @description Which text this is. */
+            kind: components["schemas"]["TextFormatKind"];
+            /**
+             * @description Optional language tag of the text (`ru`, `he`, `en-GB`), only a hint
+             *     for the model.
+             */
+            locale?: string;
+        };
+        /**
+         * @description The text to use. `html` is always safe, ready to store as the `art`
+         *     format: the model's markup when `ai_applied` is true, the plain
+         *     conversion of the text otherwise.
+         */
+        TextFormatResponse: {
+            /** @description The text as ART, the platform's small HTML subset (`p`, `br`, `strong`, `em`, `u`, `a`, lists, and `h3`, `h4`, `blockquote` for descriptions). */
+            html: string;
+            /**
+             * @description True when the model's markup was kept, because the code proved that
+             *     not one word, number or sign changed. False when `html` is the plain
+             *     conversion of the text. Clients look at this field only.
+             */
+            ai_applied: boolean;
+            /**
+             * @description Why the model was not used, present only when `ai_applied` is false:
+             *     `not_configured`, `quota`, `timeout`, `model_error`, `no_text`,
+             *     `empty_output`, `invalid_markup`, `text_changed` or `limits`. The
+             *     list may grow; do not branch on it.
+             */
+            reason?: string;
+            /** @description Version of the prompt the route uses (for example `rt04-v1`). */
+            prompt_version: string;
         };
         /**
          * @description A registered binary media object (org logo, event poster, artist
@@ -49117,6 +49218,87 @@ export interface operations {
                 };
             };
             /** @description Poster reading is not configured (`media.poster_reader_not_configured`), the model could not be reached (`media.poster_read_failed`), or media storage is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdTextsFormat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TextFormatRequest"];
+            };
+        };
+        responses: {
+            /** @description The text to use, formatted by the model or, when `ai_applied` is false, converted without it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextFormatResponse"];
+                };
+            };
+            /** @description org_id is not a valid UUID, the body is not valid JSON (`text.invalid_request`), `kind` is unknown (`text.unknown_kind`) or `locale` is not a language tag (`text.invalid_locale`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization does not exist or the caller does not belong to it (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The text is longer than the limit of its kind (`text.too_long`) or holds characters that are not allowed (`text.invalid`, `details.reason` names why). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization access guard is not configured (`dependency.org_access_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;

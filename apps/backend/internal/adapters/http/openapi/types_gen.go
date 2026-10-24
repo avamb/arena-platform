@@ -792,6 +792,13 @@ const (
 	SessionMediaReplaceRequestItemsKindVideo  SessionMediaReplaceRequestItemsKind = "video"
 )
 
+// Defines values for TextFormatKind.
+const (
+	Description    TextFormatKind = "description"
+	EmailNote      TextFormatKind = "email_note"
+	SessionMessage TextFormatKind = "session_message"
+)
+
 // Defines values for TicketCredentialItemType.
 const (
 	Pdf      TicketCredentialItemType = "pdf"
@@ -15981,6 +15988,53 @@ type SummaryTierItem struct {
 	PriceAmount int64 `json:"price_amount"`
 }
 
+// TextFormatKind Which text is formatted. It picks the tags the model may add and the
+// longest text: `description` (an event description, 4000 characters, with
+// headings, quotes and links to `https` and `mailto`), `email_note` (the
+// organizer's own text of the buyer letters, 2000 characters) and
+// `session_message` (the message about a moved or cancelled session, 1000
+// characters). The last two have no headings or quotes and link only to
+// `https`.
+type TextFormatKind string
+
+// TextFormatRequest A text the organizer typed, to be marked up.
+type TextFormatRequest struct {
+	// Kind Which text this is.
+	Kind TextFormatKind `json:"kind"`
+
+	// Locale Optional language tag of the text (`ru`, `he`, `en-GB`), only a hint
+	// for the model.
+	Locale *string `json:"locale,omitempty"`
+
+	// Text The organizer's text in the plain notation (`**bold**`, `_italic_`,
+	// `- ` lists, a blank line between paragraphs). At most 4000, 2000 or
+	// 1000 characters by `kind`; a longer text is a 422 `text.too_long`
+	// and the model is not called.
+	Text string `json:"text"`
+}
+
+// TextFormatResponse The text to use. `html` is always safe, ready to store as the `art`
+// format: the model's markup when `ai_applied` is true, the plain
+// conversion of the text otherwise.
+type TextFormatResponse struct {
+	// AiApplied True when the model's markup was kept, because the code proved that
+	// not one word, number or sign changed. False when `html` is the plain
+	// conversion of the text. Clients look at this field only.
+	AiApplied bool `json:"ai_applied"`
+
+	// Html The text as ART, the platform's small HTML subset (`p`, `br`, `strong`, `em`, `u`, `a`, lists, and `h3`, `h4`, `blockquote` for descriptions).
+	Html string `json:"html"`
+
+	// PromptVersion Version of the prompt the route uses (for example `rt04-v1`).
+	PromptVersion string `json:"prompt_version"`
+
+	// Reason Why the model was not used, present only when `ai_applied` is false:
+	// `not_configured`, `quota`, `timeout`, `model_error`, `no_text`,
+	// `empty_output`, `invalid_markup`, `text_changed` or `limits`. The
+	// list may grow; do not branch on it.
+	Reason *string `json:"reason,omitempty"`
+}
+
 // TicketCredentialItem A bearer credential issued for a single ticket. There is at most
 // one row per `(ticket_id, type)` pair, enforced by the
 // `ticket_credentials_ticket_type_unique` UNIQUE constraint in
@@ -19454,6 +19508,9 @@ type PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody = SeatB
 
 // PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody = SeatLayoutSuggestRequest
+
+// PostV1OrganizationsOrgIdTextsFormatJSONRequestBody defines body for PostV1OrganizationsOrgIdTextsFormat for application/json ContentType.
+type PostV1OrganizationsOrgIdTextsFormatJSONRequestBody = TextFormatRequest
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody

@@ -89,6 +89,7 @@ func (s *Server) mountV1Routes() {
 		s.mountReconciliationRoutes(r)
 		s.mountOperatorNetworkRoutes(r)
 		s.mountMediaRoutes(r)
+		s.mountTextRoutes(r)
 		s.mountSeatingRoutes(r)
 		s.mountImportRoutes(r)
 		s.mountCustomerImportRoutes(r)

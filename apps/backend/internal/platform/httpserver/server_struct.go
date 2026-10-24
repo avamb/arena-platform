@@ -29,6 +29,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ratelimit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/redissession"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/textformat"
 )
 
 // Server is the long-lived HTTP listener that hosts the arena-api.
@@ -183,6 +184,10 @@ type Server struct {
 	// Options.PosterReader stub, else the Anthropic reader built from
 	// POSTER_LLM_API_KEY, else nil (the route answers 503). See poster_facts_shims.go.
 	posterReader PosterReader
+	// textFormatter formats texts for POST .../texts/format: the Anthropic client
+	// built from the poster key, else nil (the route answers the plain
+	// conversion). Set when the route is mounted, see text_format_shims.go.
+	textFormatter textformat.Formatter
 	// emailNoteTestQ caps the test letters of an event's own letter text per
 	// organization (EC-31). Built on first use: per-process state cannot live
 	// on the per-request catalog Handler. See event_email_note_shims.go.
