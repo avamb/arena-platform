@@ -206,12 +206,17 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write(data)
-	case "sendDocument":
-		// A document arrives as multipart; it is recorded as a sent line
-		// "[document <filename>] <caption>" so waitFor can see it.
+	case "sendDocument", "sendPhoto":
+		// A document (or a photo) arrives as multipart; it is recorded as a
+		// sent line "[document <filename>] <caption>" (or "[photo ...]") so
+		// waitFor can see it.
+		kind := "document"
+		if method == "sendPhoto" {
+			kind = "photo"
+		}
 		name, caption := "", field("caption")
 		if r.MultipartForm != nil {
-			if files := r.MultipartForm.File["document"]; len(files) > 0 {
+			if files := r.MultipartForm.File[kind]; len(files) > 0 {
 				name = files[0].Filename
 				if fh, err := files[0].Open(); err == nil {
 					body, _ := io.ReadAll(fh)
@@ -231,7 +236,7 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		s.mu.Lock()
-		s.sent = append(s.sent, "[document "+name+"] "+caption)
+		s.sent = append(s.sent, "["+kind+" "+name+"] "+caption)
 		s.sentIDs = append(s.sentIDs, 0)
 		s.msgSeq++
 		seq := s.msgSeq

@@ -27,6 +27,8 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"Warnings": "", "URL": "u", "State": "s", "Text": "tx", "Until": "d", "Limit": "5", "Raw": "r", "Tickets": "t", "Letter": "l", "TicketRule": "tr", "Issued": 2, "Cancelled": 1, "Active": 1, "Min": "01.01.2026", "Max": "02.01.2026",
 		"Old": "o", "New": "n", "Contact": "c", "Letters": "", "Time": "19:30", "Now": "now", "Hours": 1, "Start": "19:30", "SalesEnd": "21:00", "Doors": "19:00", "Word": "CANCEL", "Subject": "s", "Zone": "Europe/Madrid",
 		"Message": "m", "Pct": 40, "Links": "l", "Url": "https://x.test/a",
+		// the Links and QR dialog (ql_keys.go)
+		"Target": "t", "Place": "p", "Scans": 3, "Week": 2, "Today": 1,
 		// the page statistics line (page_stats.go)
 		"Views": 12, "Days": 30, "Suspect": 2,
 		// the event-center screens (ec_keys.go)
