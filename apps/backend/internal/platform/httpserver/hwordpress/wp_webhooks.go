@@ -31,6 +31,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -38,6 +39,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/egress"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbarcode"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
@@ -125,9 +127,15 @@ func (h *Handler) HandleRegisterWebhookSubscriber(w http.ResponseWriter, r *http
 		return
 	}
 
+	req.CallbackURL = strings.TrimSpace(req.CallbackURL)
 	if req.CallbackURL == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("validation_error",
 			"callback_url is required", r))
+		return
+	}
+	if err := h.egress.CheckURL(r.Context(), req.CallbackURL); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("validation_error",
+			"callback_url must be an absolute https:// address on the public internet", r))
 		return
 	}
 
@@ -174,8 +182,8 @@ func (h *Handler) HandleRegisterWebhookSubscriber(w http.ResponseWriter, r *http
 
 	h.logger.Info("webhook subscriber registered",
 		slog.String("subscriber_id", row.ID.String()),
-		slog.String("callback_url", row.CallbackURL),
-		slog.String("site_url", row.SiteURL),
+		slog.String("callback_origin", egress.Origin(row.CallbackURL)),
+		slog.String("site_origin", egress.Origin(row.SiteURL)),
 	)
 
 	httputil.WriteJSON(w, http.StatusCreated, registerSubscriberResponse{

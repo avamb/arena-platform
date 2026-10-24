@@ -36,6 +36,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/egress"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
 
@@ -181,7 +182,9 @@ type Dispatcher struct {
 func NewDispatcherWithLoader(l Loader) *Dispatcher {
 	return &Dispatcher{
 		loader: l,
-		client: &http.Client{Timeout: 10 * time.Second},
+		// User-supplied callback URLs: the egress policy keeps every dial on
+		// the public internet and never follows a redirect.
+		client: egress.Webhook.Client(10 * time.Second),
 	}
 }
 
@@ -391,12 +394,12 @@ func (d *Dispatcher) deliver(ctx context.Context, sub Subscriber, env Envelope) 
 
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("bil24wire dispatcher: post to %s: %w", sub.CallbackURL, err)
+		return fmt.Errorf("bil24wire dispatcher: post to %s: %w", egress.Origin(sub.CallbackURL), egress.StripURL(err))
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("bil24wire dispatcher: %s returned %d", sub.CallbackURL, resp.StatusCode)
+		return fmt.Errorf("bil24wire dispatcher: %s returned %d", egress.Origin(sub.CallbackURL), resp.StatusCode)
 	}
 	return nil
 }

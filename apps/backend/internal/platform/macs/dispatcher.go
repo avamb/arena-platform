@@ -27,6 +27,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/egress"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
 
@@ -107,9 +108,11 @@ func WithLogger(logger *slog.Logger) DispatcherOption {
 // NewDispatcher creates a new MACS Dispatcher backed by the given pool.
 // Uses a 10-second HTTP client timeout for delivery.
 func NewDispatcher(pool *pgxpool.Pool, opts ...DispatcherOption) *Dispatcher {
+	// User-supplied callback URLs: the egress policy keeps every dial on the
+	// public internet and never follows a redirect.
 	d := &Dispatcher{
 		pool:   pool,
-		client: &http.Client{Timeout: 10 * time.Second},
+		client: egress.Webhook.Client(10 * time.Second),
 		logger: slog.Default(),
 	}
 	for _, opt := range opts {
@@ -426,13 +429,13 @@ func (d *Dispatcher) post(ctx context.Context, callbackURL string, signingSecret
 
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("macs dispatcher: http post to %s: %w", callbackURL, err)
+		return fmt.Errorf("macs dispatcher: http post to %s: %w", egress.Origin(callbackURL), egress.StripURL(err))
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// Contract: success is HTTP 200 (2xx); a redirect is not a delivery.
-		return fmt.Errorf("macs dispatcher: server returned %d for %s", resp.StatusCode, callbackURL)
+		return fmt.Errorf("macs dispatcher: server returned %d for %s", resp.StatusCode, egress.Origin(callbackURL))
 	}
 	// Spec §10 M2: 2xx alone is NOT a delivery. MACS answers 200 with a body
 	// {"status":"OK"} on success and {"status":"Error"} when it refused the
@@ -440,9 +443,9 @@ func (d *Dispatcher) post(ctx context.Context, callbackURL string, signingSecret
 	// error so the outbox retries instead of silently dropping the event.
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxAckBodyBytes))
 	if err != nil {
-		return fmt.Errorf("macs dispatcher: read ack body from %s: %w", callbackURL, err)
+		return fmt.Errorf("macs dispatcher: read ack body from %s: %w", egress.Origin(callbackURL), err)
 	}
-	return checkAck(callbackURL, respBody)
+	return checkAck(egress.Origin(callbackURL), respBody)
 }
 
 // maxAckBodyBytes caps how much of the receiver's answer is read before the
@@ -455,13 +458,17 @@ func checkAck(callbackURL string, body []byte) error {
 	var ack struct {
 		Status string `json:"status"`
 	}
+	// The receiver's body is never copied into the error: the error becomes
+	// outbox_events.last_error and an ops alert, and a misdirected callback
+	// would otherwise echo whatever the other side answered. Only the JSON
+	// status value (when there is one) is kept, cut to a few characters.
 	if err := json.Unmarshal(body, &ack); err != nil {
-		return fmt.Errorf("macs dispatcher: %s answered 2xx with a non-JSON body %q; want {\"status\":\"OK\"}",
-			callbackURL, truncateForError(body))
+		return fmt.Errorf("macs dispatcher: %s answered 2xx with a non-JSON body (%d bytes); want {\"status\":\"OK\"}",
+			callbackURL, len(body))
 	}
 	if !strings.EqualFold(ack.Status, "OK") {
-		return fmt.Errorf("macs dispatcher: %s answered 2xx with body %q; want {\"status\":\"OK\"}",
-			callbackURL, truncateForError(body))
+		return fmt.Errorf("macs dispatcher: %s answered 2xx with status %q; want {\"status\":\"OK\"}",
+			callbackURL, truncateForError([]byte(ack.Status)))
 	}
 	return nil
 }
@@ -469,7 +476,7 @@ func checkAck(callbackURL string, body []byte) error {
 // truncateForError keeps error messages (and therefore outbox last_error
 // rows) bounded.
 func truncateForError(body []byte) string {
-	const limit = 256
+	const limit = 32
 	if len(body) <= limit {
 		return string(body)
 	}

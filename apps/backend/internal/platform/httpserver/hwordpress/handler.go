@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/egress"
 )
 
 // RowQuerier is the narrow subset of PoolDB that hwordpress requires: the
@@ -35,6 +36,9 @@ type Handler struct {
 	queries *gen.Queries
 	pool    RowQuerier
 	logger  *slog.Logger
+	// egress checks a registered callback URL. The zero value is
+	// egress.Webhook; tests pin egress.PrivateDeny to prove a refusal.
+	egress egress.Policy
 }
 
 // New constructs a Handler from the caller's dependencies. Nil queries and a

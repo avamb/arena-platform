@@ -300,6 +300,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `APP_ENV` (`production` / `staging`) | ✅ | ✅ | ✅ | ✅ |
 | `DATABASE_URL` (`sslmode=require`, or `ALLOW_PRIVATE_DB_PLAINTEXT`) | ✅ | ✅ | ✅ | ✅ |
 | `ALLOW_PRIVATE_DB_PLAINTEXT` | ● | ● | ● | ● |
+| `EGRESS_ALLOW_PRIVATE_TARGETS` (local stand only, refused in production) | ● | ● | — | — |
 | `APP_NAME`, `APP_VERSION`, `APP_COMMIT`, `LOG_LEVEL` | ● | ● | ● | ● |
 | `LOG_FORMAT` (`json` in production) | ● | ● | ● | ● |
 | `DB_POOL_MIN_CONNS`, `DB_POOL_MAX_CONNS`, `DB_POOL_MAX_CONN_LIFETIME`, `DB_POOL_MAX_CONN_IDLE_TIME` | ● | ● | ● | ● |

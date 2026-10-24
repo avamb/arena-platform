@@ -10,6 +10,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/egress"
 )
 
 // SessionCancelledPublisher is the callback the session PATCH handler fires
@@ -87,6 +88,10 @@ type Handler struct {
 	// text per organization (EC-31). Wired by WithEmailNoteTestLimiter; nil
 	// means no cap.
 	emailNoteTestLimiter EmailNoteTestQuota
+	// webhookEgress is the outbound policy for the callback URLs of the
+	// WordPress and MACS webhooks. The zero value is egress.Webhook; tests
+	// pin egress.PrivateDeny through WithWebhookEgress to prove a refusal.
+	webhookEgress egress.Policy
 }
 
 // New constructs a Handler from the caller's dependencies.
@@ -151,5 +156,11 @@ func (h *Handler) WithPublicBaseURL(u string) *Handler {
 // public_url is then empty.
 func (h *Handler) WithTicketsBaseURL(u string) *Handler {
 	h.ticketsBaseURL = u
+	return h
+}
+
+// WithWebhookEgress overrides the outbound policy for webhook callback URLs.
+func (h *Handler) WithWebhookEgress(p egress.Policy) *Handler {
+	h.webhookEgress = p
 	return h
 }

@@ -61,6 +61,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/mediaresolver"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/egress"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventnote"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventwatch"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver"
@@ -98,6 +99,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	egress.SetAllowPrivate(cfg.EgressAllowPrivateTargets)
 
 	// 2. Logger ---------------------------------------------------------------
 	logger := logging.NewWithOptions(logging.Options{

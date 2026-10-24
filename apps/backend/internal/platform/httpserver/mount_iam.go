@@ -89,8 +89,13 @@ func (s *Server) mountChannelRoutes(r chi.Router) {
 		pr.Get("/organizations/{org_id}/channels/{id}/gateway-credential", s.handleGetChannelGatewayCredential)
 		pr.Put("/organizations/{org_id}/channels/{id}/gateway-credential", s.handlePutChannelGatewayCredential)
 		pr.Delete("/organizations/{org_id}/channels/{id}/gateway-credential", s.handleDeleteChannelGatewayCredential)
+	})
+	r.Group(func(pr chi.Router) {
 		// Bil24-compat WordPress webhook admin surface (feature #507, spec
-		// §9.2). Same permission group + X-Admin-Reason convention as above.
+		// §9.2). The server POSTs to the registered URL, so only a platform
+		// superadmin may set it; every verb also needs X-Admin-Reason.
+		s.applyAuth(pr, "channel.update", "channels")
+		pr.Use(s.requirePlatformSuperadmin)
 		pr.Get("/organizations/{org_id}/channels/{id}/wp-webhook", s.handleGetChannelWPWebhook)
 		pr.Put("/organizations/{org_id}/channels/{id}/wp-webhook", s.handlePutChannelWPWebhook)
 		pr.Delete("/organizations/{org_id}/channels/{id}/wp-webhook", s.handleDeleteChannelWPWebhook)

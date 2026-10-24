@@ -262,6 +262,11 @@ type Config struct {
 	// AllowPrivateDBPlaintext is an explicit, limited exception for a PostgreSQL
 	// service on the same private Docker network that does not have TLS enabled.
 	AllowPrivateDBPlaintext bool `env:"ALLOW_PRIVATE_DB_PLAINTEXT" required:"false" default:"false"`
+	// EgressAllowPrivateTargets lets outbound requests to user-supplied URLs
+	// (webhook callbacks, poster downloads) reach loopback and private
+	// addresses, over plain http too. TEST AND DEVELOPMENT ONLY: the local stand's receivers run on
+	// the docker network. Validate() refuses it in production.
+	EgressAllowPrivateTargets bool `env:"EGRESS_ALLOW_PRIVATE_TARGETS" required:"false" default:"false"`
 
 	// -------------------------------------------------------------------------
 	// Redis
@@ -958,6 +963,13 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.AllowPrivateDBPlaintext = b
+
+	// Test/dev only, rejected in production by Validate.
+	b, err = getenvBool("EGRESS_ALLOW_PRIVATE_TARGETS", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.EgressAllowPrivateTargets = b
 
 	// Stub auth defaults to on in development so /v1/echo is testable without
 	// wiring a real IdP, and off otherwise so a forgotten variable in
@@ -1685,6 +1697,16 @@ func (c *Config) validateProduction() []error {
 				seam.name, v, seam.def,
 			))
 		}
+	}
+
+	// 17c. EGRESS_ALLOW_PRIVATE_TARGETS would let a webhook callback or a
+	// poster URL typed by an organization reach the platform's own network.
+	if c.EgressAllowPrivateTargets {
+		errs = append(errs, errors.New(
+			"EGRESS_ALLOW_PRIVATE_TARGETS must not be set in production;"+
+				" it lets user-supplied URLs reach private addresses"+
+				" and is for tests and local development only",
+		))
 	}
 
 	// 18. BREVO_WEBHOOK_TOKEN is the only thing that authenticates the

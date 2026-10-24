@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/egress"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
@@ -32,11 +34,17 @@ import (
 // registration time instead of losing sales to a typo.
 const macsCallbackPathSuffix = "/api/_wh/tickets"
 
-// validMACSCallbackURL reports whether u addresses a MACS receiver. A
-// trailing slash is tolerated (a site owner pasting from a browser bar
-// usually carries one); anything else pointing elsewhere is not.
+// validMACSCallbackURL reports whether u addresses a MACS receiver. The
+// PATH is judged, not the whole string, so the suffix cannot be smuggled in
+// through a query or fragment. A trailing slash is tolerated (a site owner
+// pasting from a browser bar usually carries one); a query or fragment is not.
+// Whether the address may be reached at all is egress.Policy.CheckURL's job.
 func validMACSCallbackURL(u string) bool {
-	return strings.HasSuffix(strings.TrimRight(u, "/"), macsCallbackPathSuffix)
+	parsed, err := url.Parse(strings.TrimSpace(u))
+	if err != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || strings.Contains(u, "#") {
+		return false
+	}
+	return strings.HasSuffix(strings.TrimRight(parsed.Path, "/"), macsCallbackPathSuffix)
 }
 
 // MACSWebhookResponse is the response body for MACS webhook subscriber endpoints.
@@ -117,6 +125,11 @@ type macsWebhookUpsertRequest struct {
 // HandleUpsertMACSWebhook handles PUT /v1/organizations/{org_id}/macs-webhook.
 // Deactivates any existing MACS subscriber for the org and creates a new one.
 func (h *Handler) HandleUpsertMACSWebhook(pool *pgxpool.Pool, w http.ResponseWriter, r *http.Request) {
+	// Platform-superadmin route (mount_catalog.go): the reason is part of
+	// the request, so it is checked before anything else.
+	if _, ok := httputil.RequireAdminReason(w, r); !ok {
+		return
+	}
 	if pool == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"macs.pool_unavailable", "database pool unavailable", r,
@@ -140,6 +153,7 @@ func (h *Handler) HandleUpsertMACSWebhook(pool *pgxpool.Pool, w http.ResponseWri
 		))
 		return
 	}
+	req.CallbackURL = strings.TrimSpace(req.CallbackURL)
 	if req.CallbackURL == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"macs.missing_callback_url", "callback_url is required", r,
@@ -151,6 +165,13 @@ func (h *Handler) HandleUpsertMACSWebhook(pool *pgxpool.Pool, w http.ResponseWri
 			"macs.invalid_callback_url",
 			"callback_url must end with "+macsCallbackPathSuffix,
 			r,
+		))
+		return
+	}
+	if err := h.webhookEgress.CheckURL(r.Context(), req.CallbackURL); err != nil {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			"macs.invalid_callback_url",
+			"callback_url must be an absolute https:// address on the public internet", r,
 		))
 		return
 	}
@@ -193,8 +214,8 @@ func (h *Handler) HandleUpsertMACSWebhook(pool *pgxpool.Pool, w http.ResponseWri
 			TraceID:      logging.TraceID(r.Context()),
 			IP:           httputil.ExtractClientIP(r),
 			Metadata: map[string]any{
-				"org_id":       orgID.String(),
-				"callback_url": req.CallbackURL,
+				"org_id":          orgID.String(),
+				"callback_origin": egress.Origin(req.CallbackURL),
 			},
 		}); err != nil {
 			h.logger.Error("macs-webhook: audit write failed", "error", err.Error())
@@ -207,6 +228,11 @@ func (h *Handler) HandleUpsertMACSWebhook(pool *pgxpool.Pool, w http.ResponseWri
 
 // HandleDeleteMACSWebhook handles DELETE /v1/organizations/{org_id}/macs-webhook.
 func (h *Handler) HandleDeleteMACSWebhook(pool *pgxpool.Pool, w http.ResponseWriter, r *http.Request) {
+	// Platform-superadmin route (mount_catalog.go): the reason is part of
+	// the request, so it is checked before anything else.
+	if _, ok := httputil.RequireAdminReason(w, r); !ok {
+		return
+	}
 	if pool == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"macs.pool_unavailable", "database pool unavailable", r,

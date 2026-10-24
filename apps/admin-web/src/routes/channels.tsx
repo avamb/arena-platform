@@ -1520,7 +1520,7 @@ function GatewayCredentialSection({
 // Surfaces the WordPress-plugin-facing webhook subscriber for a sales
 // channel: GET/PUT/DELETE
 //   /v1/organizations/{org_id}/channels/{id}/wp-webhook
-// All three verbs require `channel.update` + `X-Admin-Reason` (injected
+// All three verbs are platform-superadmin only and need `X-Admin-Reason` (injected
 // automatically by authedFetch()). GET/DELETE never return signing_secret;
 // only the PUT response echoes it back once, alongside the outcome of the
 // synchronous `test` delivery the backend performs against callback_url
