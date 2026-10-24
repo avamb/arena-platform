@@ -185,6 +185,12 @@ func TestBotE2E_SalesLinks(t *testing.T) {
 	if svg, ok := tg.document(link.Code + ".svg"); !ok || !strings.Contains(string(svg), "<svg") {
 		t.Errorf("the document is not an SVG (stored=%v)", ok)
 	}
+	if got := qlSentSince(tg, mark, "[document "+link.Code+"-a6.pdf]"); len(got) != 1 {
+		t.Errorf("the PDF insert did not arrive as a document once (QL-13): %v", got)
+	}
+	if insert, ok := tg.document(link.Code + "-a6.pdf"); !ok || !strings.HasPrefix(string(insert), "%PDF-") {
+		t.Errorf("the insert is not a PDF (stored=%v)", ok)
+	}
 	var via string
 	if err := pool.QueryRow(context.Background(),
 		`SELECT metadata->>'via' FROM audit_events WHERE action = 'v1.sales_link.create' AND resource_id = $1`, link.ID.String()).Scan(&via); err != nil || via != "telegram_bot" {
@@ -224,6 +230,9 @@ func TestBotE2E_SalesLinks(t *testing.T) {
 	owner.press("ql:qr:"+link.ID.String(), "Короткий адрес")
 	if got := qlSentSince(tg, mark, "[photo "+link.Code+".png]"); len(got) != 1 {
 		t.Errorf("the code did not arrive again as a photo: %v", got)
+	}
+	if got := qlSentSince(tg, mark, "[document "+link.Code+"-a6.pdf]"); len(got) != 1 {
+		t.Errorf("the insert did not arrive again as a document: %v", got)
 	}
 
 	// ── retarget to the first date: one press, an audit row, no typed word ────

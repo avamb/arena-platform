@@ -3,7 +3,7 @@ package eventbot
 // sales_link_dialog.go — the "Links and QR" dialog of the bot (spec 43 §5.2,
 // QL-8): the organizer picks where a link leads, where the code will be
 // printed or posted, names the place in one message, and the bot answers with
-// the QR image (PNG as a photo, SVG as a document), the short address and the
+// the QR image (PNG as a photo, SVG and the printable PDF insert as documents), the short address and the
 // page the code leads to. The rules (the target must belong to the
 // organization, the address alphabet, the default utm labels, the page a code
 // falls back to) are arena-api's (hsalelinks, salelinks): the bot checks only
@@ -852,9 +852,10 @@ func (b *Bot) slCreate(ctx context.Context, chatID int64, editMsgID *int, id *Id
 
 // ─── the code itself ──────────────────────────────────────────────────────────
 
-// slSendQR sends the code: the PNG as a photo (what a phone shows at once) and
-// the SVG as a document (what a printer wants). A failure is told in one line
-// with the way out and never blocks the card.
+// slSendQR sends the code: the PNG as a photo (what a phone shows at once),
+// the SVG as a document (what a designer wants) and the A6 PDF insert as a
+// second document (what goes straight to a printer, QL-13). A failure is told
+// in one line with the way out and never blocks the card.
 func (b *Bot) slSendQR(ctx context.Context, chatID int64, jwt string, orgID uuid.UUID, loc string, link openapi.SalesLink) {
 	failed := false
 	png, err := b.arena.SalesLinkQR(ctx, jwt, orgID, link.Id, "png", 1024)
@@ -881,6 +882,19 @@ func (b *Bot) slSendQR(ctx context.Context, chatID int64, jwt string, orgID uuid
 		ParseMode: models.ParseModeHTML,
 	}); err != nil {
 		b.logger.Warn("eventbot: send sales link svg failed", slog.Int64("chat_id", chatID), slog.String("error", unwrapURLError(err).Error()))
+		failed = true
+	}
+	insert, err := b.arena.SalesLinkQR(ctx, jwt, orgID, link.Id, "pdf", 0)
+	if err != nil {
+		b.logger.Warn("eventbot: sales link insert (pdf) failed", slog.String("link_id", link.Id.String()), slog.String("error", err.Error()))
+		failed = true
+	} else if _, err := b.tg.SendDocument(ctx, &tgbot.SendDocumentParams{
+		ChatID:    chatID,
+		Document:  &models.InputFileUpload{Filename: link.Code + "-" + slInsertPaper + ".pdf", Data: bytes.NewReader(insert)},
+		Caption:   b.texts.T(loc, "bot.ql.pdf_caption", nil),
+		ParseMode: models.ParseModeHTML,
+	}); err != nil {
+		b.logger.Warn("eventbot: send sales link insert failed", slog.Int64("chat_id", chatID), slog.String("error", unwrapURLError(err).Error()))
 		failed = true
 	}
 	if failed {

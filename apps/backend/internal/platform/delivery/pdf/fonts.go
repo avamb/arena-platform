@@ -56,3 +56,20 @@ func registerFonts(pdf *gofpdf.Fpdf) {
 	pdf.AddUTF8FontFromBytes(fontFamily, "B", dejaVuBoldTTF)
 	pdf.AddUTF8FontFromBytes(fontFamily, "I", dejaVuObliqueTTF)
 }
+
+// Fonts is the embedded DejaVu Sans Condensed family as raw TrueType bytes,
+// for another renderer that must print the same scripts the e-ticket prints
+// (the sales-link PDF insert, spec 43 QL-13). Register them with
+// gofpdf's AddUTF8FontFromBytes under Family; the bytes are shared, never
+// copied into another package, so the license file and the glyph coverage
+// stay in one place.
+type Fonts struct {
+	Family                 string
+	Regular, Bold, Oblique []byte
+}
+
+// DejaVuFonts returns the embedded family. The slices are the embedded
+// bytes themselves: callers must treat them as read-only.
+func DejaVuFonts() Fonts {
+	return Fonts{Family: fontFamily, Regular: dejaVuRegularTTF, Bold: dejaVuBoldTTF, Oblique: dejaVuObliqueTTF}
+}

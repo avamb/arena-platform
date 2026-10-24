@@ -13,7 +13,7 @@ var qlKeys = []string{
 	"bot.ql.pl_poster", "bot.ql.pl_flyer", "bot.ql.pl_sign", "bot.ql.pl_social", "bot.ql.pl_email",
 	"bot.ql.pl_messenger", "bot.ql.pl_other", "bot.ql.change_target_btn", "bot.ql.label_q",
 	"bot.ql.err_label_empty", "bot.ql.err_label_long", "bot.ql.created", "bot.ql.qr_caption",
-	"bot.ql.svg_caption", "bot.ql.qr_failed", "bot.ql.card_head", "bot.ql.card_short", "bot.ql.card_dest",
+	"bot.ql.svg_caption", "bot.ql.pdf_caption", "bot.ql.qr_failed", "bot.ql.card_head", "bot.ql.card_short", "bot.ql.card_dest",
 	"bot.ql.card_no_dest", "bot.ql.card_degraded", "bot.ql.card_archived", "bot.ql.card_counts",
 	// why the code does not lead to its target (QL-8b, the server's destination_reason)
 	"bot.ql.card_why_event_unpublished", "bot.ql.card_why_event_no_page", "bot.ql.card_why_session",
