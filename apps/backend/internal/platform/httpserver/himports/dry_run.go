@@ -206,8 +206,11 @@ func checkBundleFields(plan importPlan, issues *issueSink) {
 	if _, _, err := importDoorsOpen(req.ActionEvent, time.Time{}); err != nil {
 		issues.add(err)
 	}
+	if _, err := importDescription(plan.Source, req.Action); err != nil {
+		issues.add(err)
+	}
 	if arena {
-		if _, _, err := importEmailNote(req.Action); err != nil {
+		if _, _, err := importEmailNote(plan.Source, req.Action); err != nil {
 			issues.add(err)
 		}
 	}
@@ -484,6 +487,7 @@ func normalizeBundle(prep preparedImport) bil24compat.ImportSessionRequest {
 	a := &n.Action
 	a.ActionName, a.FullActionName = trimSpace(a.ActionName), trimSpace(a.FullActionName)
 	a.Description, a.BigPosterURL = trimSpace(a.Description), trimSpace(a.BigPosterURL)
+	a.DescriptionFormat, a.EmailNoteFormat = trimSpace(a.DescriptionFormat), trimSpace(a.EmailNoteFormat)
 	a.Age, a.OrganizerName, a.ArenaEventID = trimSpace(a.Age), trimSpace(a.OrganizerName), trimSpace(a.ArenaEventID)
 	a.PromoterID = trimPtr(a.PromoterID)
 

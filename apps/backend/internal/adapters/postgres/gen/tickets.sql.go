@@ -446,7 +446,8 @@ SELECT t.system_ticket_id,
        COALESCE(s.poster_media_id, e.poster_media_id) AS poster_media_id,
        epr.name                      AS promoter_name,
        s.doors_open_at               AS doors_open_at,
-       een.note                      AS email_note
+       een.note                      AS email_note,
+       een.note_format               AS email_note_format
 FROM       tickets t
 LEFT JOIN  sessions      s  ON s.id  = t.session_id
 LEFT JOIN  events        e  ON e.id  = s.event_id
@@ -529,6 +530,9 @@ type TicketPresentationRow struct {
 	// EmailNote is the organizer's own text of the event (event_email_notes,
 	// migration 0161) that the ticket letter prints. NULL when there is none.
 	EmailNote *string `json:"email_note"`
+	// EmailNoteFormat is the format the note is stored in ("art" or "text", RT-02).
+	// NULL when there is no note.
+	EmailNoteFormat *string `json:"email_note_format"`
 }
 
 // GetTicketPresentationByID resolves the presentation values for one
@@ -558,6 +562,7 @@ func (q *Queries) GetTicketPresentationByID(ctx context.Context, ticketID uuid.U
 		&p.PromoterName,
 		&p.DoorsOpenAt,
 		&p.EmailNote,
+		&p.EmailNoteFormat,
 	)
 	return p, err
 }

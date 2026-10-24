@@ -82,7 +82,7 @@ func TestEventPublicURL_PromoterOrganizationAndNoSlug(t *testing.T) {
 	key := f.key(t, orgID, "event.read", "event.update", "promoter.read", "promoter.manage")
 	base := "/v1/organizations/" + orgID.String()
 
-	ev, err := f.q.InsertEvent(context.Background(), orgID, "Public URL Event", nil, "draft", "public", nil)
+	ev, err := f.q.InsertEvent(context.Background(), orgID, "Public URL Event", nil, "draft", "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestEventPublicURL_EmptyWithoutTicketsBase(t *testing.T) {
 	f := newEventPublicURLFixture(t, "")
 	orgID := f.org(t, "N")
 	key := f.key(t, orgID, "event.read")
-	ev, err := f.q.InsertEvent(context.Background(), orgID, "Public URL No Base", nil, "draft", "public", nil)
+	ev, err := f.q.InsertEvent(context.Background(), orgID, "Public URL No Base", nil, "draft", "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent: %v", err)
 	}

@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -436,4 +437,68 @@ func hasWarning(warnings []Warning, code string) bool {
 		}
 	}
 	return false
+}
+
+// WordPress sites send HTML in action.description. On the Bil24 route an
+// absent descriptionFormat means ART, so the HTML is sanitised and kept as
+// markup, not turned into visible text with tags.
+func TestBil24Session_HTMLDescriptionFromASiteIsStoredAsART(t *testing.T) {
+	pool := import517Pool(t)
+	ctx := context.Background()
+	f := newImport517Fixture(t, ctx, pool)
+	defer f.cleanup()
+	h := New(gen.New(pool), pool, nil, nil).WithMembershipQueries(gen.New(pool))
+
+	body := f.payload()
+	body.Action.Description = `<p>Concert &amp; <b>more</b></p><p onclick="x()">Tickets <a href="https://example.com/t">here</a></p><script>bad()</script>`
+	rec, created := f.call(h, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("import: %d %s", rec.Code, rec.Body.String())
+	}
+	var desc, format string
+	if err := pool.QueryRow(ctx, `SELECT description, description_format FROM events WHERE id = $1`, created.EventID).Scan(&desc, &format); err != nil {
+		t.Fatal(err)
+	}
+	want := `<p>Concert &amp; <strong>more</strong></p><p>Tickets <a href="https://example.com/t">here</a></p>`
+	if format != "art" || desc != want {
+		t.Fatalf("stored %q / %q, want %q", desc, format, want)
+	}
+
+	// An explicit format still wins: as text the tags are literal words.
+	explicit := f.payload()
+	explicit.Action.Description, explicit.Action.DescriptionFormat = "<p>x</p>", "text"
+	if rec, _ := f.call(h, explicit); rec.Code != http.StatusOK {
+		t.Fatalf("explicit text: %d %s", rec.Code, rec.Body.String())
+	}
+	if err := pool.QueryRow(ctx, `SELECT description FROM events WHERE id = $1`, created.EventID).Scan(&desc); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(desc, "&lt;p&gt;x&lt;/p&gt;") {
+		t.Fatalf("explicit text stored %q", desc)
+	}
+}
+
+// WordPress post_content has blank-line paragraphs and no <p>: the stored ART
+// keeps the paragraphs and the line breaks.
+func TestBil24Session_WordPressParagraphsAreKept(t *testing.T) {
+	pool := import517Pool(t)
+	ctx := context.Background()
+	f := newImport517Fixture(t, ctx, pool)
+	defer f.cleanup()
+	h := New(gen.New(pool), pool, nil, nil).WithMembershipQueries(gen.New(pool))
+
+	body := f.payload()
+	body.Action.Description = "First <b>paragraph</b>.\r\n\r\nSecond,\r\nsame paragraph.\r\n\r\nThird."
+	rec, created := f.call(h, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("import: %d %s", rec.Code, rec.Body.String())
+	}
+	var desc, format string
+	if err := pool.QueryRow(ctx, `SELECT description, description_format FROM events WHERE id = $1`, created.EventID).Scan(&desc, &format); err != nil {
+		t.Fatal(err)
+	}
+	want := `<p>First <strong>paragraph</strong>.</p><p>Second,<br>same paragraph.</p><p>Third.</p>`
+	if format != "art" || desc != want {
+		t.Fatalf("stored %q / %q, want %q", desc, format, want)
+	}
 }

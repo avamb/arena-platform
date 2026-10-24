@@ -33,9 +33,9 @@
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Mensaje del organizador:</strong></p>
     <p style="margin:0;white-space:pre-line">{{.}}</p>
   </div>{{end}}
-  {{with .EventNote.Paragraphs}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid {{$.Accent}};background:#f8f9fa;">
+  {{with .EventNote.HTML}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid {{$.Accent}};background:#f8f9fa;">
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Sobre el evento:</strong></p>
-    {{range .}}<p style="margin:0 0 8px 0;color:#46555f;font-size:14px;line-height:1.6;white-space:pre-line;">{{range .}}{{if .URL}}<a href="{{.URL}}" rel="noopener" style="color:#1a73e8;">{{.Text}}</a>{{else}}{{.Text}}{{end}}{{end}}</p>{{end}}
+    <div style="color:#46555f;font-size:14px;line-height:1.6;">{{.}}</div>
   </div>{{end}}
   {{if or .Change.ContactEmail .Change.ContactFormURL}}<p style="margin:0 0 12px 0;">Si el cambio no te conviene, escribe al organizador{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}a <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else if .Change.ContactFormURL}}con el <a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">formulario de la página de venta</a>{{end}}{{with .Change.ContactPhone}}, teléfono {{.}}{{end}} y cuéntale qué te gustaría hacer. El organizador lee todos los mensajes.</p>{{end}}
   <p style="font-size:12px;color:#666">ID de entrada: {{.TicketID}}</p>

@@ -18,11 +18,13 @@ import (
 	catalogdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/catalog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgread"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/publicurl"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -143,27 +145,40 @@ type eventResponse = EventResponse
 // venue_names lists the distinct venues of those sessions (empty for an
 // event with no sessions; more than one entry for a tour).
 type EventResponse struct {
-	ID               string   `json:"id"`
-	DisplayNumber    int64    `json:"display_number"`
-	OrgID            string   `json:"org_id"`
-	Name             string   `json:"name"`
-	Description      *string  `json:"description"`
-	Status           string   `json:"status"`
-	FirstSessionAt   *string  `json:"first_session_at"`
-	LastSessionAt    *string  `json:"last_session_at"`
-	VenueNames       []string `json:"venue_names"`
-	Visibility       string   `json:"visibility"`
-	ImageURL         *string  `json:"image_url"`
-	PosterMediaID    *string  `json:"poster_media_id"`
-	Slug             *string  `json:"slug"`
-	ShortDescription *string  `json:"short_description"`
-	Genre            *string  `json:"genre"`
-	AgeRating        *string  `json:"age_rating"`
-	DurationMinutes  *int32   `json:"duration_minutes"`
-	TeaserURL        *string  `json:"teaser_url"`
-	TrailerURL       *string  `json:"trailer_url"`
-	MetaDescription  *string  `json:"meta_description"`
-	MetaKeywords     *string  `json:"meta_keywords"`
+	ID            string  `json:"id"`
+	DisplayNumber int64   `json:"display_number"`
+	OrgID         string  `json:"org_id"`
+	Name          string  `json:"name"`
+	Description   *string `json:"description"`
+	// DescriptionFormat says how Description is stored: "art" (the HTML subset
+	// of internal/platform/richtext) or "text" (the old plain text with marks,
+	// not converted yet). Hydrated by hydrateEvents, never by EventFromRow.
+	DescriptionFormat string `json:"description_format"`
+	// DescriptionHTML, DescriptionText and DescriptionLegacy are the readers'
+	// views of Description (spec 44, RT-03a), resolved with the same locale and
+	// read with the event's format flag: safe HTML (richtext.Render), the plain
+	// text of that HTML, and the old "**bold**, - list" text for forms that
+	// cannot show markup. nil when Description is nil or the format is unknown.
+	// Hydrated by hydrateEvents, never by EventFromRow.
+	DescriptionHTML   *string  `json:"description_html"`
+	DescriptionText   *string  `json:"description_text"`
+	DescriptionLegacy *string  `json:"description_legacy"`
+	Status            string   `json:"status"`
+	FirstSessionAt    *string  `json:"first_session_at"`
+	LastSessionAt     *string  `json:"last_session_at"`
+	VenueNames        []string `json:"venue_names"`
+	Visibility        string   `json:"visibility"`
+	ImageURL          *string  `json:"image_url"`
+	PosterMediaID     *string  `json:"poster_media_id"`
+	Slug              *string  `json:"slug"`
+	ShortDescription  *string  `json:"short_description"`
+	Genre             *string  `json:"genre"`
+	AgeRating         *string  `json:"age_rating"`
+	DurationMinutes   *int32   `json:"duration_minutes"`
+	TeaserURL         *string  `json:"teaser_url"`
+	TrailerURL        *string  `json:"trailer_url"`
+	MetaDescription   *string  `json:"meta_description"`
+	MetaKeywords      *string  `json:"meta_keywords"`
 	// PromoterID / PromoterName name the event's promoter (migration 0113,
 	// event_promoters). Both nil means the organization itself is the
 	// promoter. Hydrated by hydrateEvents, never by EventFromRow.
@@ -190,8 +205,11 @@ type EventResponse struct {
 	// session-change letters print (EC-31, event_email_notes). nil when the
 	// event has none. Hydrated by hydrateEvents, never by EventFromRow.
 	EmailNote *string `json:"email_note"`
-	CreatedAt string  `json:"created_at"`
-	UpdatedAt string  `json:"updated_at"`
+	// EmailNoteFormat is how EmailNote is stored ("art" or "text"); nil when
+	// the event has no note.
+	EmailNoteFormat *string `json:"email_note_format"`
+	CreatedAt       string  `json:"created_at"`
+	UpdatedAt       string  `json:"updated_at"`
 }
 
 func eventFromRow(e gen.EventRow) eventResponse {
@@ -248,6 +266,7 @@ func (h *Handler) hydrateEvents(ctx context.Context, responses []eventResponse) 
 	h.hydratePublicURLs(ctx, responses)
 	h.hydrateSalesStates(ctx, responses)
 	h.hydrateEmailNotes(ctx, responses)
+	h.hydrateDescriptionFormats(ctx, responses)
 }
 
 // hydratedEvent is EventFromRow plus hydrateEvents for a single event.
@@ -369,15 +388,15 @@ func (h *Handler) hydrateVenueNames(ctx context.Context, responses []eventRespon
 // belong to sessions (AB-36/AB-37): event create no longer collects them —
 // they are set when sessions are created (step 2 of the event wizard).
 type createEventRequest struct {
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	Status       string `json:"status"`
-	Visibility   string `json:"visibility"`
-	ImageURL     string `json:"image_url"`
-	Translations map[string]struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	} `json:"translations"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	// DescriptionFormat says how description and the translated descriptions
+	// are written: "text" (default, the old marks) or "art" (HTML, spec 44).
+	DescriptionFormat string                      `json:"description_format"`
+	Status            string                      `json:"status"`
+	Visibility        string                      `json:"visibility"`
+	ImageURL          string                      `json:"image_url"`
+	Translations      map[string]eventTranslation `json:"translations"`
 }
 
 func (h *Handler) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
@@ -445,10 +464,26 @@ func (h *Handler) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The description and its translations are checked BEFORE anything is
+	// written (spec 44, RT-02): richtext.Normalize is the single write path.
+	descFormat, ok := parseTextFormat(w, r, req.DescriptionFormat, "description_format", "event.invalid_description_format")
+	if !ok {
+		return
+	}
 	var description *string
 	if req.Description != "" {
-		desc := req.Description
-		description = &desc
+		clean, nErr := eventtext.NormalizeDescription(req.Description, descFormat)
+		if nErr != nil {
+			writeInvalidDescription(w, r, "description", "", nErr)
+			return
+		}
+		if clean != "" {
+			description = &clean
+		}
+	}
+	descTranslations, ok := normalizeTranslationDescriptions(w, r, req.Translations, descFormat)
+	if !ok {
+		return
 	}
 
 	var imageURL *string
@@ -457,7 +492,7 @@ func (h *Handler) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
 		imageURL = &iu
 	}
 
-	e, err := h.eventQueries.InsertEvent(ctx, orgID, req.Name, description, req.Status, req.Visibility, imageURL)
+	e, err := h.eventQueries.InsertEvent(ctx, orgID, req.Name, description, req.Status, req.Visibility, imageURL, richtext.FormatART)
 	if err != nil {
 		h.logger.Error("event: insert failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -481,7 +516,7 @@ func (h *Handler) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
 				)
 			}
 		}
-		if desc := strings.TrimSpace(trans.Description); desc != "" {
+		if desc, has := descTranslations[locale]; has {
 			if err := h.eventQueries.UpsertEventI18nDescription(ctx, eventIDStr, locale, desc); err != nil {
 				h.logger.Warn("event: upsert i18n description failed",
 					slog.String("event_id", eventIDStr),
@@ -493,7 +528,7 @@ func (h *Handler) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
-		"event": eventFromRow(e),
+		"event": h.hydratedEvent(ctx, e),
 	})
 }
 
@@ -657,16 +692,16 @@ func (h *Handler) HandleListEventsByOrg(w http.ResponseWriter, r *http.Request) 
 // clears the session-level poster overrides so the event poster becomes
 // effective for all sessions.
 type updateEventRequest struct {
-	Name                  string  `json:"name"`
-	Description           *string `json:"description"`
-	Visibility            string  `json:"visibility"`
-	ImageURL              *string `json:"image_url"`
-	PosterMediaID         *string `json:"poster_media_id"`
-	ClearSessionOverrides bool    `json:"clear_session_overrides"`
-	Translations          map[string]struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	} `json:"translations"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	// DescriptionFormat says how description and the translated descriptions
+	// are written: "text" (default, the old marks) or "art" (HTML, spec 44).
+	DescriptionFormat     string                      `json:"description_format"`
+	Visibility            string                      `json:"visibility"`
+	ImageURL              *string                     `json:"image_url"`
+	PosterMediaID         *string                     `json:"poster_media_id"`
+	ClearSessionOverrides bool                        `json:"clear_session_overrides"`
+	Translations          map[string]eventTranslation `json:"translations"`
 	// AB-45c: content-management metadata fields (migration 0051).
 	// These use tri-state optional types: absent=keep, null=clear, value=set.
 	Slug             optionalString `json:"slug"`
@@ -679,8 +714,11 @@ type updateEventRequest struct {
 	MetaDescription  optionalString `json:"meta_description"`
 	MetaKeywords     optionalString `json:"meta_keywords"`
 	// EmailNote is the organizer's own letter text (EC-31): absent keeps,
-	// null or "" clears, a string sets it after eventnote.Normalize.
+	// null or "" clears, a string sets it after richtext.Normalize.
 	EmailNote optionalString `json:"email_note"`
+	// EmailNoteFormat says how email_note is written: "text" (default) or
+	// "art" (HTML, spec 44).
+	EmailNoteFormat string `json:"email_note_format"`
 }
 
 func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
@@ -734,15 +772,37 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 
 	// email_note (EC-31) is checked BEFORE anything is written, so a refused
 	// text leaves the event as it was.
-	emailNote, emailNoteSet, ok := parseEmailNote(w, r, req.EmailNote)
+	emailNoteFormat, ok := parseTextFormat(w, r, req.EmailNoteFormat, "email_note_format", "event.invalid_email_note_format")
+	if !ok {
+		return
+	}
+	emailNote, emailNoteSet, ok := parseEmailNote(w, r, req.EmailNote, emailNoteFormat)
 	if !ok {
 		return
 	}
 
+	// The description and its translations go through richtext.Normalize
+	// too, before anything is written (spec 44, RT-02).
+	descFormat, ok := parseTextFormat(w, r, req.DescriptionFormat, "description_format", "event.invalid_description_format")
+	if !ok {
+		return
+	}
 	var description *string
 	if req.Description != nil {
 		trimmed := strings.TrimSpace(*req.Description)
+		if trimmed != "" {
+			clean, nErr := eventtext.NormalizeDescription(trimmed, descFormat)
+			if nErr != nil {
+				writeInvalidDescription(w, r, "description", "", nErr)
+				return
+			}
+			trimmed = clean
+		}
 		description = &trimmed
+	}
+	descTranslations, ok := normalizeTranslationDescriptions(w, r, req.Translations, descFormat)
+	if !ok {
+		return
 	}
 
 	var imageURL *string
@@ -774,7 +834,7 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	// the request keeps its old, untransacted shape.
 	q := h.eventQueries
 	var tx pgx.Tx
-	if emailNoteSet {
+	if emailNoteSet || description != nil || len(descTranslations) > 0 {
 		var beginErr error
 		if tx, beginErr = h.pool.BeginTx(ctx, pgx.TxOptions{}); beginErr != nil {
 			h.logger.Error("event: update begin failed", slog.String("error", beginErr.Error()))
@@ -787,7 +847,28 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		q = h.eventQueries.WithTx(tx)
 	}
 
-	updated, err := q.UpdateEvent(ctx, eventID, orgID, req.Name, description, req.Visibility, imageURL, posterMediaID)
+	// The flag of an event covers its translations: a description written
+	// as ART into an event that still holds plain texts converts the rest of
+	// them first (the rows this request overwrites excepted).
+	if description != nil || len(descTranslations) > 0 {
+		if upErr := eventtext.UpgradeDescriptions(ctx, q, eventID, orgID, description != nil, localesOf(descTranslations)...); upErr != nil {
+			if errors.Is(upErr, pgx.ErrNoRows) {
+				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("event.not_found", "event not found", r))
+				return
+			}
+			if ue, isUE := eventtext.AsUpgradeError(upErr); isUE {
+				writeInvalidDescription(w, r, "description", ue.Locale, ue)
+				return
+			}
+			h.logger.Error("event: description upgrade failed", slog.String("error", upErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.update_failed", "failed to update event", r,
+			))
+			return
+		}
+	}
+
+	updated, err := q.UpdateEvent(ctx, eventID, orgID, req.Name, description, req.Visibility, imageURL, posterMediaID, richtext.FormatART)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("event.not_found", "event not found", r))
@@ -813,7 +894,19 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	// clear_session_overrides (AB-47): when requested, null out the session-level
 	// poster overrides so the event-level poster becomes effective for all sessions.
 	if req.ClearSessionOverrides && h.eventQueries != nil {
-		if err := h.eventQueries.ClearSessionPosterOverrides(ctx, eventID); err != nil {
+		if err := q.ClearSessionPosterOverrides(ctx, eventID); err != nil {
+			if tx != nil {
+				// A failed statement aborts the open transaction, so it
+				// cannot be "non-fatal" here.
+				h.logger.Error("event: clear session poster overrides failed",
+					slog.String("event_id", eventID.String()),
+					slog.String("error", err.Error()),
+				)
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"event.update_failed", "failed to update event", r,
+				))
+				return
+			}
 			h.logger.Warn("event: clear session poster overrides failed (non-fatal)",
 				slog.String("event_id", eventID.String()),
 				slog.String("error", err.Error()),
@@ -828,7 +921,19 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if name := strings.TrimSpace(trans.Name); name != "" {
-			if err := h.eventQueries.UpsertEventI18nName(ctx, eventIDStr, locale, name); err != nil {
+			if err := q.UpsertEventI18nName(ctx, eventIDStr, locale, name); err != nil {
+				if tx != nil {
+					// A failed statement aborts the open transaction.
+					h.logger.Error("event: upsert i18n name failed",
+						slog.String("event_id", eventIDStr),
+						slog.String("locale", locale),
+						slog.String("error", err.Error()),
+					)
+					httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+						"event.update_failed", "failed to update event", r,
+					))
+					return
+				}
 				h.logger.Warn("event: upsert i18n name failed",
 					slog.String("event_id", eventIDStr),
 					slog.String("locale", locale),
@@ -836,23 +941,29 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 				)
 			}
 		}
-		if desc := strings.TrimSpace(trans.Description); desc != "" {
-			if err := h.eventQueries.UpsertEventI18nDescription(ctx, eventIDStr, locale, desc); err != nil {
-				h.logger.Warn("event: upsert i18n description failed",
+		if desc, has := descTranslations[locale]; has {
+			// Inside the transaction: the flag and the text change together.
+			if err := q.UpsertEventI18nDescription(ctx, eventIDStr, locale, desc); err != nil {
+				h.logger.Error("event: upsert i18n description failed",
 					slog.String("event_id", eventIDStr),
 					slog.String("locale", locale),
 					slog.String("error", err.Error()),
 				)
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"event.update_failed", "failed to update event", r,
+				))
+				return
 			}
 		}
 	}
 
+	metadataUpdated := false
 	// AB-45c: update metadata fields if any were provided (tri-state: absent=keep, null=clear, value=set)
 	if req.Slug.Present || req.ShortDescription.Present || req.Genre.Present || req.AgeRating.Present ||
 		req.DurationMinutes.Present || req.TeaserURL.Present || req.TrailerURL.Present ||
 		req.MetaDescription.Present || req.MetaKeywords.Present {
 		// Read the current event to resolve absent fields (keep existing value).
-		existing, existErr := h.eventQueries.GetEventByID(ctx, eventID, "ru")
+		existing, existErr := q.GetEventByID(ctx, eventID, "ru")
 		if existErr != nil {
 			if errors.Is(existErr, pgx.ErrNoRows) {
 				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("event.not_found", "event not found", r))
@@ -892,24 +1003,11 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		updated = meta
+		// The audit row is written after the commit (below): it goes through
+		// the pool, outside this transaction, and a commit that fails must not
+		// leave an "update_metadata" behind.
+		metadataUpdated = true
 
-		if h.audit != nil {
-			actor, _ := auth.ActorFromContext(r.Context())
-			if auditErr := h.audit.Write(r.Context(), audit.Event{
-				OccurredAt:   time.Now().UTC(),
-				ActorType:    "user",
-				ActorID:      actor.ID,
-				Action:       "v1.event.update_metadata",
-				ResourceType: "event",
-				ResourceID:   eventID.String(),
-				RequestID:    logging.RequestID(r.Context()),
-				TraceID:      logging.TraceID(r.Context()),
-				IP:           httputil.ExtractClientIP(r),
-				Metadata:     map[string]any{"org_id": orgID.String()},
-			}); auditErr != nil {
-				h.logger.Warn("event: audit write failed", "error", auditErr.Error())
-			}
-		}
 	}
 
 	if tx != nil {
@@ -920,7 +1018,14 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 			))
 			return
 		}
-		h.auditEmailNote(r, eventID, orgID, emailNote)
+		// Only a note that was in the request is audited: a description
+		// edit also opens the transaction but never touches the note.
+		if emailNoteSet {
+			h.auditEmailNote(r, eventID, orgID, emailNote)
+		}
+	}
+	if metadataUpdated {
+		h.auditMetadataUpdate(r, eventID, orgID)
 	}
 
 	// W1-B7c (#506): a subscribed mirror re-reads the event on notification, so
@@ -1217,4 +1322,27 @@ func (h *Handler) HandleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 		"event":   eventFromRow(deleted),
 		"deleted": true,
 	})
+}
+
+// auditMetadataUpdate writes the audit row of a metadata edit. Call it after
+// the edit is committed. A failed write is logged and never fails the request.
+func (h *Handler) auditMetadataUpdate(r *http.Request, eventID, orgID uuid.UUID) {
+	if h.audit == nil {
+		return
+	}
+	actor, _ := auth.ActorFromContext(r.Context())
+	if auditErr := h.audit.Write(r.Context(), audit.Event{
+		OccurredAt:   time.Now().UTC(),
+		ActorType:    "user",
+		ActorID:      actor.ID,
+		Action:       "v1.event.update_metadata",
+		ResourceType: "event",
+		ResourceID:   eventID.String(),
+		RequestID:    logging.RequestID(r.Context()),
+		TraceID:      logging.TraceID(r.Context()),
+		IP:           httputil.ExtractClientIP(r),
+		Metadata:     map[string]any{"org_id": orgID.String()},
+	}); auditErr != nil {
+		h.logger.Warn("event: audit write failed", "error", auditErr.Error())
+	}
 }

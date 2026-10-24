@@ -118,7 +118,14 @@ func applyPresentation(p *Payload, row gen.TicketPresentationRow) {
 	fillString(&p.TierName, row.TierName)
 	fillString(&p.HolderName, row.HolderName)
 	fillString(&p.PromoterName, row.PromoterName)
-	fillString(&p.EventEmailNote, row.EmailNote)
+	// The format belongs to the note it describes: it is taken from the row
+	// only together with the note, never next to a note the enqueuer gave.
+	if strings.TrimSpace(p.EventEmailNote) == "" {
+		fillString(&p.EventEmailNote, row.EmailNote)
+		if p.EventEmailNote != "" {
+			fillString(&p.EventEmailNoteFormat, row.EmailNoteFormat)
+		}
+	}
 
 	if p.DoorsOpenAt == nil && row.DoorsOpenAt != nil {
 		d := *row.DoorsOpenAt

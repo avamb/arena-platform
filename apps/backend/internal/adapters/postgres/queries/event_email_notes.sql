@@ -9,18 +9,24 @@ WHERE  event_id = $1
   AND  org_id   = $2;
 
 -- name: ListEventEmailNotes :many
-SELECT event_id, note
+SELECT event_id, note, note_format
 FROM   event_email_notes
 WHERE  event_id = ANY($1::uuid[]);
 
 -- name: UpsertEventEmailNote :exec
-INSERT INTO event_email_notes (event_id, org_id, note)
-VALUES ($1, $2, $3)
+INSERT INTO event_email_notes (event_id, org_id, note, note_format)
+VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'text'))
 ON CONFLICT (event_id) DO UPDATE
-   SET note = EXCLUDED.note, updated_at = now()
+   SET note = EXCLUDED.note, note_format = EXCLUDED.note_format, updated_at = now()
  WHERE event_email_notes.org_id = EXCLUDED.org_id;
 
 -- name: DeleteEventEmailNote :exec
 DELETE FROM event_email_notes
+WHERE  event_id = $1
+  AND  org_id   = $2;
+
+-- name: GetEventEmailNoteWithFormat :one
+SELECT note, note_format
+FROM   event_email_notes
 WHERE  event_id = $1
   AND  org_id   = $2;

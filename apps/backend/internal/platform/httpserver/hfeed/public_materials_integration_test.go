@@ -353,14 +353,14 @@ func TestPublicMaterials_ExistingFieldsUnchanged(t *testing.T) {
 	if got, want := strings.Join(sortedKeys(org), ","), "logo_url,name,slug"; got != want {
 		t.Errorf("page org keys = %s, want %s", got, want)
 	}
-	const wantEvent = "age_rating,description,first_session_at,first_session_doors_at,first_session_timezone,id,image_url," +
+	const wantEvent = "age_rating,description,description_html,description_text,first_session_at,first_session_doors_at,first_session_timezone,id,image_url," +
 		"last_session_at,poster_url,session_count,short_description,slug,title,venue_names,venues"
 	if got := strings.Join(sortedKeys(event), ","); got != wantEvent {
 		t.Errorf("page event keys = %s, want %s", got, wantEvent)
 	}
 
 	feed := f.feedBody(t)
-	const wantFeed = "created_at,description,display_number,first_session_at,id,image_url,last_session_at,materials,name,org_id," +
+	const wantFeed = "created_at,description,description_html,description_text,display_number,first_session_at,id,image_url,last_session_at,materials,name,org_id," +
 		"poster_media_id,poster_url,sessions,status,updated_at,venue_names,venues,visibility"
 	if got := strings.Join(sortedKeys(feed), ","); got != wantFeed {
 		t.Errorf("feed event keys = %s, want %s", got, wantFeed)
