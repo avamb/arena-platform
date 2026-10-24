@@ -265,6 +265,13 @@ func (b *Bot) wizardText(ctx context.Context, chatID int64, from *models.User, t
 		d.Step == stPreview || d.Step == stSConfirm {
 		return false
 	}
+	if d.Step == stXDescription {
+		// The description is formatted and shown first; the wizard gets it
+		// only when the organizer presses a button under the preview
+		// (textfmt_dialog.go, RT-05).
+		b.descriptionTyped(ctx, chatID, from, id, jwt, text)
+		return true
+	}
 	b.wizardApply(ctx, chatID, nil, from, ws, d, WizInput{Text: text})
 	return true
 }

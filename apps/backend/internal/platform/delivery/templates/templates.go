@@ -160,7 +160,7 @@ type Data struct {
 
 	// EventNote is the organizer's own text of the event (EC-31, migration
 	// 0161), printed as the "About the event" block of the ticket and change
-	// letters. Build it with eventnote.Parse; the zero value prints nothing.
+	// letters. Build it with eventnote.Build; the zero value prints nothing.
 	// The other kinds ignore it.
 	EventNote eventnote.Block
 

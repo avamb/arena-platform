@@ -80,6 +80,7 @@ WHERE  id     = $1
 UPDATE events
 SET    name        = COALESCE(NULLIF($3::text, ''), name),
        description = COALESCE($4::text, description),
+       description_format = CASE WHEN $4::text IS NOT NULL THEN COALESCE(NULLIF($6::text, ''), 'text') ELSE description_format END,
        age_rating  = COALESCE($5::text, age_rating),
        updated_at  = now()
 WHERE  id     = $1

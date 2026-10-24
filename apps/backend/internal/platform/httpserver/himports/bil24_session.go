@@ -519,13 +519,17 @@ func noteArenaIgnoredFields(req bil24compat.ImportSessionRequest, warnings *warn
 //
 // field is the RFC 6901 JSON pointer of the bundle field the error is about
 // ("/categoryList/2/price"), "" when it concerns the bundle as a whole. Only
-// the dry run reports it (errors[].field); the import's error envelope is
-// unchanged.
+// the dry run reports it (errors[].field); the import's error envelope does not.
+//
+// reason is the short stable word of a refused text (richtext.Reason, for
+// example "too_long"): the error envelope names it in error.details.reason, so
+// a client can show its own words instead of the English message.
 type importError struct {
 	status  int
 	code    string
 	message string
 	field   string
+	reason  string
 }
 
 func (e *importError) Error() string { return e.code + ": " + e.message }
@@ -539,12 +543,22 @@ func failImportAt(status int, code, field, message string) error {
 	return &importError{status: status, code: code, message: message, field: field}
 }
 
+// failImportReason is failImportAt for a refused text: reason is richtext's
+// word for it and goes to error.details.reason.
+func failImportReason(status int, code, field, reason, message string) error {
+	return &importError{status: status, code: code, message: message, field: field, reason: reason}
+}
+
 // writeImportError maps an executeImport failure onto the error envelope.
 // Anything that is not an explicit *importError is an infrastructure fault
 // and is logged before answering a generic 500.
 func (h *Handler) writeImportError(w http.ResponseWriter, r *http.Request, err error) {
 	var ie *importError
 	if errors.As(err, &ie) {
+		if ie.reason != "" {
+			httputil.WriteJSON(w, ie.status, httputil.ErrorEnvelopeWithDetails(ie.code, ie.message, r, map[string]any{"reason": ie.reason}))
+			return
+		}
 		httputil.WriteJSON(w, ie.status, httputil.ErrorEnvelope(ie.code, ie.message, r))
 		return
 	}

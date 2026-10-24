@@ -819,7 +819,7 @@ other = "Done →"
 other = "Several categories need at least two. If there is only one, choose “One category”."
 
 ["bot.wz.ask_description"]
-other = "Description of the event for buyers, in one message, up to 4000 characters. You can skip this.\n\nFormatting: a blank line starts a new paragraph, **bold**, _italic_, lines starting with “- ” make a list."
+other = "Write the text as usual — I will format it and show you the result.\n\nThe description of the event for buyers, in one message, up to 4000 characters. You can skip this step."
 
 ["bot.wz.ask_currency"]
 other = "Currency of the prices?"
@@ -1069,7 +1069,7 @@ other = "set"
 other = "none"
 
 ["bot.wz.edit_ask_description"]
-other = "Send the new description in one message, up to 4000 characters.\n\nFormatting: a blank line starts a new paragraph, **bold**, _italic_, lines starting with “- ” make a list."
+other = "Write the new text as usual — I will format it and show you the result.\n\nIn one message, up to 4000 characters."
 
 ["bot.wz.edit_desc_now"]
 other = "Now:\n<i>{{.Text}}</i>\n\n"
@@ -4041,3 +4041,111 @@ other = "Everyone with a valid ticket has come in."
 
 ["bot.ses.not_entered_invite"]
 other = "invitation"
+
+["bot.wz.err_description"]
+other = "The description was not accepted. Change the text and send it again."
+
+["bot.wz.err_description_too_long"]
+other = "The description is too long. Shorten the text and send it again."
+
+["bot.wz.err_description_chars"]
+other = "The description has a hidden or control character. Type the text again, or paste it as plain text."
+
+["bot.tf.formatting"]
+other = "Formatting your text…"
+
+["bot.tf.preview_ask"]
+other = "Here is how it looks. Save it like this?"
+
+["bot.tf.not_applied_note"]
+other = "This is your text without highlights, as you wrote it.\n\n"
+
+["bot.tf.save_btn"]
+other = "Save like this"
+
+["bot.tf.plain_btn"]
+other = "Without formatting"
+
+["bot.tf.again_btn"]
+other = "Format again"
+
+["bot.tf.cancel_btn"]
+other = "Cancel"
+
+["bot.tf.expired"]
+other = "Time is up. Send the text again."
+
+["bot.tf.cancelled"]
+other = "OK, the text stays as it was."
+
+["bot.tf.err_too_long"]
+other = "The text is too long: up to {{.Limit}} characters. Shorten it and send it again."
+
+["bot.tf.err_links"]
+other = "The text has too many links: up to {{.Max}}. Remove some and send it again."
+
+["bot.tf.err_scheme"]
+other = "The text has an address that does not start with https://. Change it and send the text again."
+
+["bot.tf.err_chars"]
+other = "The text has a hidden character. Type the text again or paste it as plain text."
+
+["bot.tf.err_generic"]
+other = "This text did not fit. Check it and send it again."
+
+["bot.tf.event_btn"]
+other = "✉ Text in the letter"
+
+["bot.tf.note_title"]
+other = "<b>Text in the letter</b> · {{.Name}}"
+
+["bot.tf.note_about"]
+other = "Buyers see this text in the ticket letter and in the letter about a moved or canceled date. The letter adds the greeting and the date itself, so do not write them."
+
+["bot.tf.note_none"]
+other = "There is no text now."
+
+["bot.tf.note_now"]
+other = "Now in the letter:\n\n{{.Text}}"
+
+["bot.tf.note_add_btn"]
+other = "Add text"
+
+["bot.tf.note_edit_btn"]
+other = "Change"
+
+["bot.tf.note_delete_btn"]
+other = "Delete the text"
+
+["bot.tf.note_test_btn"]
+other = "Send a test letter to me"
+
+["bot.tf.note_ask"]
+other = "Write the text as usual. I will format it and show you the result. The letter adds the greeting and the date itself.\n\nUp to {{.Limit}} characters and {{.Max}} links."
+
+["bot.tf.note_saved"]
+other = "Done, I saved the new text for the letters."
+
+["bot.tf.note_save_failed"]
+other = "The text was not saved. Try again."
+
+["bot.tf.note_delete_ask"]
+other = "Delete the text from the letters of this event?"
+
+["bot.tf.note_delete_yes_btn"]
+other = "Yes, delete"
+
+["bot.tf.note_delete_no_btn"]
+other = "No, keep it"
+
+["bot.tf.note_deleted"]
+other = "The text is gone from the letters."
+
+["bot.tf.note_test_sent"]
+other = "The test letter is on its way to {{.Email}}. It arrives within a minute."
+
+["bot.tf.note_test_empty"]
+other = "Write the text first. A test letter has nothing to show without it."
+
+["bot.tf.note_test_limit"]
+other = "Too many test letters in the last hour. Try again later."

@@ -132,7 +132,8 @@ func keysOf(t *testing.T, v any) []string {
 
 // TestHostedPageResponse_ExistingFieldsUnchanged is the snapshot of task 1-2c:
 // the hosted page answer keeps every field it had; `materials` is the only
-// addition. A fully populated response is marshalled so that the omitempty
+// addition (RT-03a then added description_html and description_text, the
+// raw description stays). A fully populated response is marshalled so that the omitempty
 // blocks (seller, promoter, contact_form) show up too.
 func TestHostedPageResponse_ExistingFieldsUnchanged(t *testing.T) {
 	full := hostedPageResponse{
@@ -155,7 +156,7 @@ func TestHostedPageResponse_ExistingFieldsUnchanged(t *testing.T) {
 	if got, want := strings.Join(keysOf(t, hostedPageOrgResponse{}), ","), "logo_url,name,slug"; got != want {
 		t.Errorf("org keys = %s, want %s", got, want)
 	}
-	const wantEvent = "age_rating,description,feed_token,first_session_at,first_session_doors_at,first_session_timezone," +
+	const wantEvent = "age_rating,description,description_html,description_text,feed_token,first_session_at,first_session_doors_at,first_session_timezone," +
 		"id,image_url,last_session_at,poster_url,session_count,short_description,slug,title,venue_names,venues"
 	ev := hostedPageEventResponse{FeedToken: "x"}
 	if got := strings.Join(keysOf(t, ev), ","); got != wantEvent {
@@ -166,7 +167,7 @@ func TestHostedPageResponse_ExistingFieldsUnchanged(t *testing.T) {
 // TestPublicFeedEventResponse_ExistingFieldsUnchanged: the event of the widget
 // feed keeps its fields (the detail adds sessions, since 1-2c materials, and venues).
 func TestPublicFeedEventResponse_ExistingFieldsUnchanged(t *testing.T) {
-	const want = "created_at,description,display_number,first_session_at,id,image_url,last_session_at,name,org_id," +
+	const want = "created_at,description,description_html,description_text,display_number,first_session_at,id,image_url,last_session_at,name,org_id," +
 		"poster_media_id,poster_url,status,updated_at,venue_names,visibility"
 	if got := strings.Join(keysOf(t, publicFeedEventResponse{}), ","); got != want {
 		t.Errorf("feed event keys = %s, want %s", got, want)

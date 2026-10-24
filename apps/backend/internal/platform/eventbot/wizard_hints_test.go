@@ -131,7 +131,7 @@ func TestWizard_PosterHintsAreButtonsThePersonConfirms(t *testing.T) {
 		t.Fatalf("description hint = %q", l)
 	}
 	r.press(hintButtonData, stXCurrency)
-	if r.d.Event.Description != "Открытый микрофон." {
+	if r.d.Event.Description != "<p>Открытый микрофон.</p>" || r.d.Event.DescriptionFormat != "art" {
 		t.Fatalf("description = %q", r.d.Event.Description)
 	}
 	if l := hintLabel(stXCurrency); !strings.Contains(l, "EUR") {

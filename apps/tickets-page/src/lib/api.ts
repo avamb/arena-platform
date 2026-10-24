@@ -19,7 +19,12 @@ export interface HostedPageEvent {
   id: string;
   slug: string;
   title: string;
+  /** The raw stored description (ART or the old marked-up text). */
   description: string | null;
+  /** description as safe HTML (RT-03a); absent on an older backend. */
+  description_html?: string | null;
+  /** The visible text of description_html, for <title> and <meta>. */
+  description_text?: string | null;
   short_description: string | null;
   image_url: string | null;
   poster_url: string | null;

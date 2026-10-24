@@ -99,7 +99,7 @@ func (d *Draft) fieldChanged(field string) bool {
 	case "name":
 		return d.Event.Name != l.Event.Name
 	case "description":
-		return d.Event.Description != l.Event.Description
+		return d.descriptionChanged()
 	case "poster":
 		return d.Event.PosterMediaID != l.Event.PosterMediaID
 	case "age":
@@ -213,6 +213,7 @@ func (d *Draft) recordSaved(i int, posterSent bool) {
 	}
 	l := d.Loaded
 	l.Event.Name, l.Event.Description, l.Event.Age = d.Event.Name, d.Event.Description, d.Event.Age
+	l.Event.DescriptionFormat = d.Event.DescriptionFormat
 	l.Event.PromoterID, l.Event.PromoterName = d.Event.PromoterID, d.Event.PromoterName
 	if posterSent {
 		l.Event.PosterMediaID, l.Event.PosterW, l.Event.PosterH = d.Event.PosterMediaID, d.Event.PosterW, d.Event.PosterH
@@ -319,7 +320,7 @@ func (d *Draft) undo(key string) bool {
 	case "name":
 		d.Event.Name = l.Event.Name
 	case "description":
-		d.Event.Description = l.Event.Description
+		d.Event.Description, d.Event.DescriptionFormat = l.Event.Description, l.Event.DescriptionFormat
 	case "poster":
 		d.Event.PosterMediaID, d.Event.PosterW, d.Event.PosterH = l.Event.PosterMediaID, l.Event.PosterW, l.Event.PosterH
 	case "age":

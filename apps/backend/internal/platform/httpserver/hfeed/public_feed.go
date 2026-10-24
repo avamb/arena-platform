@@ -41,6 +41,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
@@ -59,17 +60,22 @@ import (
 // window cache and are null for an event with no sessions; venue data lives
 // on the sessions (widgets render per-session dates already).
 type publicFeedEventResponse struct {
-	ID             string   `json:"id"`
-	DisplayNumber  int64    `json:"display_number"`
-	OrgID          string   `json:"org_id"`
-	Name           string   `json:"name"`
-	Description    *string  `json:"description"`
-	Status         string   `json:"status"`
-	FirstSessionAt *string  `json:"first_session_at"`
-	LastSessionAt  *string  `json:"last_session_at"`
-	VenueNames     []string `json:"venue_names"`
-	Visibility     string   `json:"visibility"`
-	ImageURL       *string  `json:"image_url"`
+	ID            string  `json:"id"`
+	DisplayNumber int64   `json:"display_number"`
+	OrgID         string  `json:"org_id"`
+	Name          string  `json:"name"`
+	Description   *string `json:"description"`
+	// DescriptionHTML and DescriptionText are the safe HTML and the plain text of
+	// Description, read with the event's format flag (spec 44, RT-03a). nil when
+	// there is no description. Description itself stays the raw stored value.
+	DescriptionHTML *string  `json:"description_html"`
+	DescriptionText *string  `json:"description_text"`
+	Status          string   `json:"status"`
+	FirstSessionAt  *string  `json:"first_session_at"`
+	LastSessionAt   *string  `json:"last_session_at"`
+	VenueNames      []string `json:"venue_names"`
+	Visibility      string   `json:"visibility"`
+	ImageURL        *string  `json:"image_url"`
 	// PosterMediaID is the event-level default poster (AB-47/AB-47c). Sessions
 	// fall back to this cover when they don't set their own poster_media_id.
 	PosterMediaID *string `json:"poster_media_id"`
@@ -629,6 +635,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 		events = append(events, h.publicFeedEventFromRow(ctx, row))
 	}
 	h.hydrateFeedVenueNames(ctx, events)
+	h.hydrateFeedDescriptions(ctx, events)
 
 	totalPages := int(total) / perPage
 	if int(total)%perPage != 0 {
@@ -715,6 +722,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	{
 		hydrated := []publicFeedEventResponse{eventResp}
 		h.hydrateFeedVenueNames(ctx, hydrated)
+		h.hydrateFeedDescriptions(ctx, hydrated)
 		eventResp = hydrated[0]
 	}
 
@@ -876,4 +884,46 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"event": detail,
 	})
+}
+
+// hydrateFeedDescriptions fills DescriptionHTML/Text from one batched read of
+// the events' description_format flags (spec 44, RT-03a). Non-fatal like the
+// venue names: without the flag the views stay nil (the server never guesses a
+// format) and the raw description is still there.
+//
+// The format is read by a second statement, not by the query that read the
+// description (the format is not in the shared event SELECTs, and this batch
+// costs one round trip for the whole list). A PATCH or a backfill that
+// converts this event between the two statements can give ONE response the
+// old text with the new format, or the reverse. For display that is harmless:
+// the views are rebuilt by the sanitiser from whatever it gets, so nothing
+// unsafe can come out of it, the worst case is tags shown as words (or marks
+// lost) in that one response, and the next request is right. Nothing is
+// written back from these views. A reader that WRITES back what it read (the
+// event-bundle export) reads both in one RepeatableRead snapshot instead.
+func (h *Handler) hydrateFeedDescriptions(ctx context.Context, responses []publicFeedEventResponse) {
+	if h.publicFeedQueries == nil || len(responses) == 0 {
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(responses))
+	for _, resp := range responses {
+		if id, err := uuid.Parse(resp.ID); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	formats, err := h.publicFeedQueries.ListEventDescriptionFormats(ctx, ids)
+	if err != nil {
+		h.logger.Warn("public_feed: description format hydration failed", slog.String("error", err.Error()))
+		return
+	}
+	for i := range responses {
+		id, err := uuid.Parse(responses[i].ID)
+		if err != nil || responses[i].Description == nil {
+			continue
+		}
+		if format := formats[id]; format != "" {
+			v := eventtext.ViewDescription(*responses[i].Description, format)
+			responses[i].DescriptionHTML, responses[i].DescriptionText = &v.HTML, &v.Text
+		}
+	}
 }

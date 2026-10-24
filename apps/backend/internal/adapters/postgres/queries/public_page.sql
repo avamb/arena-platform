@@ -32,7 +32,7 @@
 -- event has no sessions yet or the venue has no timezone set.
 SELECT
     o.id, o.slug, o.name, o.logo_media_id, o.default_locale,
-    e.id, e.slug, e.name, e.description, e.short_description,
+    e.id, e.slug, e.name, e.description, e.description_format, e.short_description,
     e.image_url, e.poster_media_id, e.age_rating,
     e.first_session_at, e.last_session_at,
     (
@@ -192,7 +192,7 @@ LIMIT 200;
 -- organization; the logo and default locale stay the organization's.
 SELECT
     o.id, p.slug, p.name, o.logo_media_id, o.default_locale,
-    e.id, e.slug, e.name, e.description, e.short_description,
+    e.id, e.slug, e.name, e.description, e.description_format, e.short_description,
     e.image_url, e.poster_media_id, e.age_rating,
     e.first_session_at, e.last_session_at,
     (
