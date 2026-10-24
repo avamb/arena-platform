@@ -57,39 +57,41 @@ var dialogOwners = map[string]dialogOwner{
 	},
 	// A refund already with the server, or one that may have started, is
 	// kept or parked with its key by leaveIdleRefund, never dropped.
-	refundDialogKind:    {owns: dataHasPrefix("or:f:"), leave: (*Bot).leaveIdleRefund},
-	scanExcDialogKind:   {owns: dataHasPrefix("or:f:x"), leave: (*Bot).leaveScanExc},
-	resendDialogKind:    {owns: dataHasPrefix("or:r:"), leave: (*Bot).leaveResend},
-	evsDialogKind:       {owns: prefixIs("ec"), leave: (*Bot).leaveEvStatus},
-	inviteDialogKind:    {owns: prefixIs("iv"), leave: (*Bot).leaveInvite},
-	promoDialogKind:     {owns: prefixIs("pm"), leave: (*Bot).leavePromo},
-	promoterDialogKind:  {owns: prefixIs("pr"), leave: (*Bot).leavePromoter},
-	categoryDialogKind:  {owns: prefixIs("ct"), leave: (*Bot).leaveCategories},
-	orgDataDialogKind:   {owns: prefixIs("og"), leave: (*Bot).leaveOrgData},
-	sesDialogKind:       {owns: prefixIs("ses"), leave: (*Bot).leaveSessions},
-	materialsDialogKind: {owns: prefixIs("mt"), leave: (*Bot).leaveMaterials},
-	teamDialogKind:      {owns: prefixIs("team"), leave: (*Bot).clearTeamDialog},
-	salesLinkDialogKind: {owns: prefixIs("ql"), leave: (*Bot).leaveSalesLink},
+	refundDialogKind:        {owns: dataHasPrefix("or:f:"), leave: (*Bot).leaveIdleRefund},
+	scanExcDialogKind:       {owns: dataHasPrefix("or:f:x"), leave: (*Bot).leaveScanExc},
+	resendDialogKind:        {owns: dataHasPrefix("or:r:"), leave: (*Bot).leaveResend},
+	evsDialogKind:           {owns: prefixIs("ec"), leave: (*Bot).leaveEvStatus},
+	inviteDialogKind:        {owns: prefixIs("iv"), leave: (*Bot).leaveInvite},
+	promoDialogKind:         {owns: prefixIs("pm"), leave: (*Bot).leavePromo},
+	promoterDialogKind:      {owns: prefixIs("pr"), leave: (*Bot).leavePromoter},
+	categoryDialogKind:      {owns: prefixIs("ct"), leave: (*Bot).leaveCategories},
+	orgDataDialogKind:       {owns: prefixIs("og"), leave: (*Bot).leaveOrgData},
+	sesDialogKind:           {owns: prefixIs("ses"), leave: (*Bot).leaveSessions},
+	materialsDialogKind:     {owns: prefixIs("mt"), leave: (*Bot).leaveMaterials},
+	teamDialogKind:          {owns: prefixIs("team"), leave: (*Bot).clearTeamDialog},
+	salesLinkDialogKind:     {owns: prefixIs("ql"), leave: (*Bot).leaveSalesLink},
+	salesLinkListDialogKind: {owns: prefixIs("ql"), leave: (*Bot).leaveSalesLinkList},
 }
 
 // dialogTexts maps every dialog kind that takes typed text to its handler.
 // A handler reports whether it took the text.
 var dialogTexts = map[string]dialogTextHandler{
-	eventsDialogKind:    (*Bot).eventsText,
-	ordersDialogKind:    (*Bot).ordersText,
-	refundDialogKind:    (*Bot).refundText,
-	scanExcDialogKind:   (*Bot).scanExcText,
-	resendDialogKind:    (*Bot).resendText,
-	evsDialogKind:       (*Bot).evStatusText,
-	inviteDialogKind:    (*Bot).inviteText,
-	promoDialogKind:     (*Bot).promoText,
-	promoterDialogKind:  (*Bot).promoterText,
-	categoryDialogKind:  (*Bot).categoryText,
-	orgDataDialogKind:   (*Bot).orgDataText,
-	sesDialogKind:       (*Bot).sessionsText,
-	materialsDialogKind: (*Bot).materialsText,
-	teamDialogKind:      (*Bot).teamText,
-	salesLinkDialogKind: (*Bot).salesLinkText,
+	eventsDialogKind:        (*Bot).eventsText,
+	ordersDialogKind:        (*Bot).ordersText,
+	refundDialogKind:        (*Bot).refundText,
+	scanExcDialogKind:       (*Bot).scanExcText,
+	resendDialogKind:        (*Bot).resendText,
+	evsDialogKind:           (*Bot).evStatusText,
+	inviteDialogKind:        (*Bot).inviteText,
+	promoDialogKind:         (*Bot).promoText,
+	promoterDialogKind:      (*Bot).promoterText,
+	categoryDialogKind:      (*Bot).categoryText,
+	orgDataDialogKind:       (*Bot).orgDataText,
+	sesDialogKind:           (*Bot).sessionsText,
+	materialsDialogKind:     (*Bot).materialsText,
+	teamDialogKind:          (*Bot).teamText,
+	salesLinkDialogKind:     (*Bot).salesLinkText,
+	salesLinkListDialogKind: (*Bot).salesLinkListText,
 }
 
 // leaveForeignDialogs ends every dialog the press does not belong to. A press
@@ -134,7 +136,7 @@ var dialogOwnerOrder = []string{
 	eventsDialogKind, ordersDialogKind, refundDialogKind, scanExcDialogKind,
 	resendDialogKind, evsDialogKind, inviteDialogKind, promoDialogKind,
 	promoterDialogKind, categoryDialogKind, orgDataDialogKind, sesDialogKind,
-	materialsDialogKind, teamDialogKind, salesLinkDialogKind,
+	materialsDialogKind, teamDialogKind, salesLinkDialogKind, salesLinkListDialogKind,
 }
 
 // leaveSessions ends the "Sessions" dialog (move, cancel, contact question).

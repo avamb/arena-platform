@@ -134,15 +134,6 @@ type salesLinkDialog struct {
 	Page     int         `json:"page,omitempty"`
 	IDs      []uuid.UUID `json:"ids,omitempty"`
 	Sessions []slSess    `json:"sessions,omitempty"`
-	// The list of links on screen (QL-9, sales_link_list.go): the status
-	// filter, the event it is narrowed to, the page and the keyset cursors
-	// that lead to it, and the ids of its rows.
-	LFilter  string      `json:"lf,omitempty"`
-	LEvent   *slEvent    `json:"le,omitempty"`
-	LPage    int         `json:"lp,omitempty"`
-	LCursors []string    `json:"lc,omitempty"`
-	LNext    string      `json:"ln,omitempty"`
-	LIDs     []uuid.UUID `json:"li,omitempty"`
 }
 
 func newSalesLinkDialog(orgID uuid.UUID) salesLinkDialog {
@@ -234,19 +225,9 @@ func (b *Bot) salesLinkCallback(ctx context.Context, chatID int64, msgID int, fr
 	switch kind {
 	case "noop": // the position button of a pager
 		return
-	case "menu": // the main menu's entry: the list, filters reset
-		b.slRenderList(ctx, chatID, &msgID, id, jwt, newSalesLinkDialog(orgID), 1, "", "")
-		return
-	case "list": // back to the list as the person left it
-		b.slListBack(ctx, chatID, &msgID, from, id, jwt)
-		return
-	case "new":
-		b.slListNew(ctx, chatID, &msgID, from, id)
-		return
-	case "le":
-		if eventID, err := uuid.Parse(arg); err == nil {
-			b.slListForEvent(ctx, chatID, &msgID, from, id, jwt, eventID)
-		}
+	case "menu", "list", "new", "le", "lf", "lp", "lx", "lev", "o", "fp", "fo":
+		// The list of links keeps its own dialog (sales_link_list.go).
+		b.slListCallback(ctx, chatID, &msgID, from, id, jwt, kind, arg)
 		return
 	case "e":
 		if eventID, err := uuid.Parse(arg); err == nil {
@@ -302,8 +283,6 @@ func (b *Bot) salesLinkCallback(ctx context.Context, chatID int64, msgID int, fr
 			return
 		}
 		b.slRenderPlacement(ctx, chatID, &msgID, id, st, "")
-	case "lf", "lp", "lx", "lev", "o", "fp", "fo":
-		b.slListPress(ctx, chatID, &msgID, id, jwt, st, step, kind, arg)
 	}
 }
 
@@ -1116,9 +1095,6 @@ func (b *Bot) slRetargetStart(ctx context.Context, chatID int64, editMsgID *int,
 		return
 	}
 	st := newSalesLinkDialog(orgID)
-	if prev, _, found, _ := b.loadSalesLinkState(ctx, id.Link.TelegramUserID, orgID); found {
-		st.carryList(prev) // "back to the list" lands where the person left
-	}
 	st.Mode, st.LinkID, st.LinkLabel = slModeRetarget, &link.Id, link.Label
 	if link.Target.EventId != nil {
 		if ev, found, err := b.slFindEvent(ctx, jwt, orgID, *link.Target.EventId); err == nil && found {

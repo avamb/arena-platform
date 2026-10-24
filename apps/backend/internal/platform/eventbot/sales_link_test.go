@@ -100,14 +100,14 @@ func TestSlListPosition(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name       string
-		st         salesLinkDialog
+		st         salesLinkListState
 		wantPage   int
 		wantCursor string
 	}{
-		{"fresh", salesLinkDialog{}, 1, ""},
-		{"first page", salesLinkDialog{LPage: 1, LCursors: []string{""}}, 1, ""},
-		{"second page", salesLinkDialog{LPage: 2, LCursors: []string{"", "c2"}}, 2, "c2"},
-		{"cursor lost", salesLinkDialog{LPage: 3, LCursors: []string{"", "c2"}}, 1, ""},
+		{"fresh", salesLinkListState{}, 1, ""},
+		{"first page", salesLinkListState{Page: 1, Cursors: []string{""}}, 1, ""},
+		{"second page", salesLinkListState{Page: 2, Cursors: []string{"", "c2"}}, 2, "c2"},
+		{"cursor lost", salesLinkListState{Page: 3, Cursors: []string{"", "c2"}}, 1, ""},
 	}
 	for _, c := range cases {
 		page, cursor := slListPosition(c.st)
