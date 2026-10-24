@@ -38136,6 +38136,104 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/sales-links/{id}/qr:
+    get:
+      operationId: getSalesLinkQr
+      summary: QR image of a sales link
+      description: |
+        The QR code of the link's short address (`short_url`, exactly the string
+        the link answers carry), as a PNG or an SVG. The image is square, black
+        modules on white, error correction level Medium. `size` is the side in
+        pixels (PNG only, the SVG scales to any size), `margin` the quiet zone in
+        modules. The answer carries an `ETag` and `Cache-Control: private,
+        max-age=3600`; a repeated request with `If-None-Match` gets 304.
+
+        Requires JWT or API key + the `sales_link.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the sales link.
+          schema:
+            type: string
+            format: uuid
+        - name: format
+          in: query
+          required: false
+          description: Image format, `png` (default) or `svg`.
+          schema:
+            type: string
+        - name: size
+          in: query
+          required: false
+          description: Side of the PNG in pixels, 256 to 2048 (default 1024). Ignored for SVG.
+          schema:
+            type: integer
+        - name: margin
+          in: query
+          required: false
+          description: Quiet zone around the code in modules, 2 to 8 (default 4).
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: The image.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/svg+xml:
+              schema:
+                type: string
+        "304":
+          description: The image has not changed since the `If-None-Match` ETag.
+        "400":
+          description: A query parameter is out of range (`sales_link.invalid_qr_params`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `sales_link.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Link not found in this organization (`sales_link.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`sales_link.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/promo-code-redemptions:
     get:
       operationId: listPromoCodeRedemptions

@@ -13,7 +13,9 @@
 // sales_link.not_found, and a target (event, session, promoter) of another
 // organization is a 422 sales_link.invalid_target, never a 404.
 //
-// The QR image route of QL-5 belongs to this package too and is not here yet.
+//	GET   /v1/organizations/{org_id}/sales-links/{id}/qr   (QL-5, PNG or SVG)
+//
+// The QR route encodes the link's short address and needs sales_link.read.
 package hsalelinks
 
 import (

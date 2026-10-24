@@ -207,6 +207,8 @@ func sweepRows() []sweepRow {
 			path: func(id sweepIDs) string { return orgPath(id) + "/sales-links/" + id.SalesLink.String() }},
 		{hole: "QL4", name: "sales link stats", route: "GET /v1/organizations/{org_id}/sales-links/{id}/stats", perm: "sales_link.read",
 			path: func(id sweepIDs) string { return orgPath(id) + "/sales-links/" + id.SalesLink.String() + "/stats" }},
+		{hole: "QL5", name: "sales link qr", route: "GET /v1/organizations/{org_id}/sales-links/{id}/qr", perm: "sales_link.read",
+			path: func(id sweepIDs) string { return orgPath(id) + "/sales-links/" + id.SalesLink.String() + "/qr" }},
 		{hole: "QL4", name: "sales link archive (patch)", route: "PATCH /v1/organizations/{org_id}/sales-links/{id}", perm: "sales_link.manage",
 			path: func(id sweepIDs) string { return orgPath(id) + "/sales-links/" + id.SalesLink.String() },
 			body: func(_ sweepIDs) string { return `{"status":"archived"}` }},
