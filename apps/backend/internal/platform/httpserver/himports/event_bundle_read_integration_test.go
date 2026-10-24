@@ -44,6 +44,14 @@ func (f *bundle525Fixture) getEventBundle(h *Handler, orgID, eventID uuid.UUID, 
 		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 			f.t.Fatalf("decode event bundle: %v; body=%s", err, rec.Body.String())
 		}
+		// Spec 43, RT-02: the event is written as ART now, and the bundle read
+		// does not say so yet (descriptionFormat in the export is RT-03b). A
+		// client that re-posts what it read must name the format, as RT-03b's
+		// export will do for it; the raw body is left as the server sent it.
+		for i := range out.Bundles {
+			out.Bundles[i].Action.DescriptionFormat = "art"
+			out.Bundles[i].Action.EmailNoteFormat = "art"
+		}
 	}
 	return rec, out
 }

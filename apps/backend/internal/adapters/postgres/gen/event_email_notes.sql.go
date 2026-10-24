@@ -2,7 +2,8 @@
 // source: event_email_notes.sql
 //
 // The organizer's own text of an event for the buyer letters (migration 0165,
-// EC-31). The text is filtered by eventnote.Normalize before it gets here; a
+// EC-31). The text is filtered by richtext.Normalize (eventtext.NormalizeNote)
+// before it gets here and stored as ART with note_format (migration 0167); a
 // row exists only while the event has a note.
 
 package gen
@@ -56,17 +57,18 @@ func (q *Queries) ListEventEmailNotes(ctx context.Context, eventIDs []uuid.UUID)
 }
 
 const upsertEventEmailNote = `-- name: UpsertEventEmailNote :exec
-INSERT INTO event_email_notes (event_id, org_id, note)
-VALUES ($1, $2, $3)
+INSERT INTO event_email_notes (event_id, org_id, note, note_format)
+VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'text'))
 ON CONFLICT (event_id) DO UPDATE
-   SET note = EXCLUDED.note, updated_at = now()
+   SET note = EXCLUDED.note, note_format = EXCLUDED.note_format, updated_at = now()
  WHERE event_email_notes.org_id = EXCLUDED.org_id`
 
 // UpsertEventEmailNote stores the (already normalized, non-empty) note of an
 // event of the organization. The composite foreign key refuses an event of
-// another organization.
-func (q *Queries) UpsertEventEmailNote(ctx context.Context, eventID, orgID uuid.UUID, note string) error {
-	_, err := q.db.Exec(ctx, upsertEventEmailNote, eventID, orgID, note)
+// another organization. noteFormat is "text" or "art" (empty means "text"):
+// a writer that has passed the note through richtext.Normalize passes "art".
+func (q *Queries) UpsertEventEmailNote(ctx context.Context, eventID, orgID uuid.UUID, note, noteFormat string) error {
+	_, err := q.db.Exec(ctx, upsertEventEmailNote, eventID, orgID, note, noteFormat)
 	return err
 }
 

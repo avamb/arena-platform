@@ -25,6 +25,8 @@ var cmdConfigRole = map[string]string{
 	"arena-bot":     "config.RoleBot",
 	"arena-migrate": "config.RoleMigrate",
 	"arena-seed":    "config.RoleMigrate",
+	// One-shot database tool of the rich-text rollout (spec 43, RT-02).
+	"arena-richtext-backfill": "config.RoleMigrate",
 	// The web event center's live twin tests fixture (a one-shot database tool).
 	"arena-e2e-seed": "config.RoleMigrate",
 }

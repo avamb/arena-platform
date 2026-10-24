@@ -18,11 +18,13 @@ import (
 	catalogdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/catalog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgread"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/publicurl"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -369,15 +371,15 @@ func (h *Handler) hydrateVenueNames(ctx context.Context, responses []eventRespon
 // belong to sessions (AB-36/AB-37): event create no longer collects them —
 // they are set when sessions are created (step 2 of the event wizard).
 type createEventRequest struct {
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	Status       string `json:"status"`
-	Visibility   string `json:"visibility"`
-	ImageURL     string `json:"image_url"`
-	Translations map[string]struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	} `json:"translations"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	// DescriptionFormat says how description and the translated descriptions
+	// are written: "text" (default, the old marks) or "art" (HTML, spec 43).
+	DescriptionFormat string                      `json:"description_format"`
+	Status            string                      `json:"status"`
+	Visibility        string                      `json:"visibility"`
+	ImageURL          string                      `json:"image_url"`
+	Translations      map[string]eventTranslation `json:"translations"`
 }
 
 func (h *Handler) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
@@ -445,10 +447,26 @@ func (h *Handler) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The description and its translations are checked BEFORE anything is
+	// written (spec 43, RT-02): richtext.Normalize is the single write path.
+	descFormat, ok := parseTextFormat(w, r, req.DescriptionFormat, "description_format", "event.invalid_description_format")
+	if !ok {
+		return
+	}
 	var description *string
 	if req.Description != "" {
-		desc := req.Description
-		description = &desc
+		clean, nErr := eventtext.NormalizeDescription(req.Description, descFormat)
+		if nErr != nil {
+			writeInvalidDescription(w, r, "description", "", nErr)
+			return
+		}
+		if clean != "" {
+			description = &clean
+		}
+	}
+	descTranslations, ok := normalizeTranslationDescriptions(w, r, req.Translations, descFormat)
+	if !ok {
+		return
 	}
 
 	var imageURL *string
@@ -457,7 +475,7 @@ func (h *Handler) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
 		imageURL = &iu
 	}
 
-	e, err := h.eventQueries.InsertEvent(ctx, orgID, req.Name, description, req.Status, req.Visibility, imageURL)
+	e, err := h.eventQueries.InsertEvent(ctx, orgID, req.Name, description, req.Status, req.Visibility, imageURL, richtext.FormatART)
 	if err != nil {
 		h.logger.Error("event: insert failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -481,7 +499,7 @@ func (h *Handler) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
 				)
 			}
 		}
-		if desc := strings.TrimSpace(trans.Description); desc != "" {
+		if desc, has := descTranslations[locale]; has {
 			if err := h.eventQueries.UpsertEventI18nDescription(ctx, eventIDStr, locale, desc); err != nil {
 				h.logger.Warn("event: upsert i18n description failed",
 					slog.String("event_id", eventIDStr),
@@ -657,16 +675,16 @@ func (h *Handler) HandleListEventsByOrg(w http.ResponseWriter, r *http.Request) 
 // clears the session-level poster overrides so the event poster becomes
 // effective for all sessions.
 type updateEventRequest struct {
-	Name                  string  `json:"name"`
-	Description           *string `json:"description"`
-	Visibility            string  `json:"visibility"`
-	ImageURL              *string `json:"image_url"`
-	PosterMediaID         *string `json:"poster_media_id"`
-	ClearSessionOverrides bool    `json:"clear_session_overrides"`
-	Translations          map[string]struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	} `json:"translations"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	// DescriptionFormat says how description and the translated descriptions
+	// are written: "text" (default, the old marks) or "art" (HTML, spec 43).
+	DescriptionFormat     string                      `json:"description_format"`
+	Visibility            string                      `json:"visibility"`
+	ImageURL              *string                     `json:"image_url"`
+	PosterMediaID         *string                     `json:"poster_media_id"`
+	ClearSessionOverrides bool                        `json:"clear_session_overrides"`
+	Translations          map[string]eventTranslation `json:"translations"`
 	// AB-45c: content-management metadata fields (migration 0051).
 	// These use tri-state optional types: absent=keep, null=clear, value=set.
 	Slug             optionalString `json:"slug"`
@@ -679,8 +697,11 @@ type updateEventRequest struct {
 	MetaDescription  optionalString `json:"meta_description"`
 	MetaKeywords     optionalString `json:"meta_keywords"`
 	// EmailNote is the organizer's own letter text (EC-31): absent keeps,
-	// null or "" clears, a string sets it after eventnote.Normalize.
+	// null or "" clears, a string sets it after richtext.Normalize.
 	EmailNote optionalString `json:"email_note"`
+	// EmailNoteFormat says how email_note is written: "text" (default) or
+	// "art" (HTML, spec 43).
+	EmailNoteFormat string `json:"email_note_format"`
 }
 
 func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
@@ -734,15 +755,37 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 
 	// email_note (EC-31) is checked BEFORE anything is written, so a refused
 	// text leaves the event as it was.
-	emailNote, emailNoteSet, ok := parseEmailNote(w, r, req.EmailNote)
+	emailNoteFormat, ok := parseTextFormat(w, r, req.EmailNoteFormat, "email_note_format", "event.invalid_email_note_format")
+	if !ok {
+		return
+	}
+	emailNote, emailNoteSet, ok := parseEmailNote(w, r, req.EmailNote, emailNoteFormat)
 	if !ok {
 		return
 	}
 
+	// The description and its translations go through richtext.Normalize
+	// too, before anything is written (spec 43, RT-02).
+	descFormat, ok := parseTextFormat(w, r, req.DescriptionFormat, "description_format", "event.invalid_description_format")
+	if !ok {
+		return
+	}
 	var description *string
 	if req.Description != nil {
 		trimmed := strings.TrimSpace(*req.Description)
+		if trimmed != "" {
+			clean, nErr := eventtext.NormalizeDescription(trimmed, descFormat)
+			if nErr != nil {
+				writeInvalidDescription(w, r, "description", "", nErr)
+				return
+			}
+			trimmed = clean
+		}
 		description = &trimmed
+	}
+	descTranslations, ok := normalizeTranslationDescriptions(w, r, req.Translations, descFormat)
+	if !ok {
+		return
 	}
 
 	var imageURL *string
@@ -774,7 +817,7 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	// the request keeps its old, untransacted shape.
 	q := h.eventQueries
 	var tx pgx.Tx
-	if emailNoteSet {
+	if emailNoteSet || description != nil || len(descTranslations) > 0 {
 		var beginErr error
 		if tx, beginErr = h.pool.BeginTx(ctx, pgx.TxOptions{}); beginErr != nil {
 			h.logger.Error("event: update begin failed", slog.String("error", beginErr.Error()))
@@ -787,7 +830,28 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		q = h.eventQueries.WithTx(tx)
 	}
 
-	updated, err := q.UpdateEvent(ctx, eventID, orgID, req.Name, description, req.Visibility, imageURL, posterMediaID)
+	// The flag of an event covers its translations: a description written
+	// as ART into an event that still holds plain texts converts the rest of
+	// them first (the rows this request overwrites excepted).
+	if description != nil || len(descTranslations) > 0 {
+		if upErr := eventtext.UpgradeDescriptions(ctx, q, eventID, orgID, description != nil, localesOf(descTranslations)...); upErr != nil {
+			if errors.Is(upErr, pgx.ErrNoRows) {
+				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("event.not_found", "event not found", r))
+				return
+			}
+			if ue, isUE := eventtext.AsUpgradeError(upErr); isUE {
+				writeInvalidDescription(w, r, "description", ue.Locale, ue)
+				return
+			}
+			h.logger.Error("event: description upgrade failed", slog.String("error", upErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.update_failed", "failed to update event", r,
+			))
+			return
+		}
+	}
+
+	updated, err := q.UpdateEvent(ctx, eventID, orgID, req.Name, description, req.Visibility, imageURL, posterMediaID, richtext.FormatART)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("event.not_found", "event not found", r))
@@ -836,13 +900,18 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 				)
 			}
 		}
-		if desc := strings.TrimSpace(trans.Description); desc != "" {
-			if err := h.eventQueries.UpsertEventI18nDescription(ctx, eventIDStr, locale, desc); err != nil {
-				h.logger.Warn("event: upsert i18n description failed",
+		if desc, has := descTranslations[locale]; has {
+			// Inside the transaction: the flag and the text change together.
+			if err := q.UpsertEventI18nDescription(ctx, eventIDStr, locale, desc); err != nil {
+				h.logger.Error("event: upsert i18n description failed",
 					slog.String("event_id", eventIDStr),
 					slog.String("locale", locale),
 					slog.String("error", err.Error()),
 				)
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"event.update_failed", "failed to update event", r,
+				))
+				return
 			}
 		}
 	}

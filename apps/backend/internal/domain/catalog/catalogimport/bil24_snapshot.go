@@ -17,6 +17,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 )
 
 // DefaultEventDuration is the fallback duration added to StartsAt when a
@@ -106,6 +108,12 @@ func (e *Bil24SnapshotEvent) Validate() error {
 		}
 	}
 
+	// The description is stored as ART (spec 43, RT-02): a row whose text the
+	// filter refuses is reported with the others and not imported.
+	if _, err := e.DescriptionART(); err != nil {
+		errs = append(errs, "description: "+err.Error())
+	}
+
 	if len(errs) > 0 {
 		return errors.New(strings.Join(errs, "; "))
 	}
@@ -119,6 +127,14 @@ func (e *Bil24SnapshotEvent) ResolvedEndsAt() time.Time {
 		return *e.EndsAt
 	}
 	return e.StartsAt.Add(DefaultEventDuration)
+}
+
+// DescriptionART is ResolvedDescription passed through richtext.Normalize as
+// the old plain text ("**bold**", "- list" marks): the text to store in
+// events.description together with the format flag "art". It is the single
+// write path of the importer (spec 43, RT-02).
+func (e *Bil24SnapshotEvent) DescriptionART() (string, error) {
+	return richtext.Normalize(e.ResolvedDescription(), richtext.FormatText, richtext.ProfileDescription)
 }
 
 // ResolvedDescription merges Description and VenueName into the single

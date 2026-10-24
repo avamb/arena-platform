@@ -12,8 +12,8 @@
 -- InsertEvent creates a new event row owned by the given org.
 -- Returns the created row including the uuidv7 PK assigned by the database.
 -- first_session_at / last_session_at start NULL — a new event has no sessions.
-INSERT INTO events (org_id, name, description, status, visibility, image_url)
-VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'draft'), COALESCE(NULLIF($5, ''), 'public'), $6)
+INSERT INTO events (org_id, name, description, status, visibility, image_url, description_format)
+VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'draft'), COALESCE(NULLIF($5, ''), 'public'), $6, COALESCE(NULLIF($7, ''), 'text'))
 RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at;
 
 -- name: GetEventByID :one
@@ -175,6 +175,7 @@ GROUP BY s.event_id;
 UPDATE events
 SET    name        = COALESCE(NULLIF($3, ''), name),
        description = CASE WHEN $4::text IS NOT NULL THEN $4::text ELSE description END,
+       description_format = CASE WHEN $4::text IS NOT NULL THEN COALESCE(NULLIF($7::text, ''), 'text') ELSE description_format END,
        visibility  = COALESCE(NULLIF($5, ''), visibility),
        image_url   = CASE WHEN $6::text IS NOT NULL THEN $6::text ELSE image_url END,
        updated_at  = now()
@@ -293,3 +294,29 @@ WHERE  id = $1
   AND  org_id = $2
   AND  slug IS NULL
   AND  deleted_at IS NULL;
+
+-- name: LockEventDescription :one
+-- LockEventDescription reads (and, inside a transaction, locks) the base
+-- description and its format flag of an active event of the organization.
+SELECT description, description_format
+FROM   events
+WHERE  id = $1
+  AND  org_id = $2
+  AND  deleted_at IS NULL
+FOR UPDATE;
+
+-- name: ListEventI18nDescriptions :many
+-- ListEventI18nDescriptions returns every translated description of an event.
+SELECT locale, value
+FROM   i18n_text
+WHERE  namespace = 'event.description'
+  AND  key = $1;
+
+-- name: SetEventDescriptionART :exec
+-- SetEventDescriptionART stores an already normalized base description and
+-- marks the event's descriptions (base and translations) as ART.
+UPDATE events
+SET    description = $2,
+       description_format = 'art',
+       updated_at = now()
+WHERE  id = $1;

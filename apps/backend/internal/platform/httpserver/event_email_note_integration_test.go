@@ -51,7 +51,7 @@ func uuidStrings(ids []uuid.UUID) []string {
 
 func (e *enEnv) event(t *testing.T, org uuid.UUID) uuid.UUID {
 	t.Helper()
-	ev, err := e.q.InsertEvent(context.Background(), org, "Note Event "+uuid.NewString()[:6], nil, "draft", "public", nil)
+	ev, err := e.q.InsertEvent(context.Background(), org, "Note Event "+uuid.NewString()[:6], nil, "draft", "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestEventEmailNote_PatchSetClearKeepAndFilter(t *testing.T) {
 	// A text with markup: tags are removed, the paragraphs stay.
 	out := e.expect(t, http.StatusOK, http.MethodPatch, path, tok, "",
 		`{"email_note":`+jsonString("Come <b>early</b>\r\n\r\n\r\n\r\nSee https://example.com/x")+`}`)
-	want := "Come early\n\nSee https://example.com/x"
+	want := `<p>Come &lt;b&gt;early&lt;/b&gt;</p><p>See <a href="https://example.com/x">https://example.com/x</a></p>` // plain text: a literal <b> is visible text, never a tag
 	if got, _ := decodeEvent(t, out)["email_note"].(string); got != want {
 		t.Fatalf("patch answer email_note = %q, want %q", got, want)
 	}
@@ -139,18 +139,21 @@ func TestEventEmailNote_PatchSetClearKeepAndFilter(t *testing.T) {
 		t.Fatalf("GET event email_note = %q", got)
 	}
 	list := e.expect(t, http.StatusOK, http.MethodGet, "/v1/organizations/"+org.String()+"/events", tok, "", "")
-	if !strings.Contains(list, `"email_note":"Come early\n\nSee https://example.com/x"`) {
+	esc := func(code string) string { return "\\" + "u00" + code }
+	unescape := strings.NewReplacer(esc("3c"), "<", esc("3e"), ">", esc("26"), "&")
+	wantJSON, _ := json.Marshal(want)
+	if !strings.Contains(unescape.Replace(list), `"email_note":`+unescape.Replace(string(wantJSON))) {
 		t.Fatalf("org list lacks the note: %s", list)
 	}
 
 	// A refused text is a 400 with the reason, and NOTHING else of the same
 	// request is applied (the name stays).
 	for body, reason := range map[string]string{
-		`{"name":"Renamed","email_note":` + jsonString("go javascript:alert(1)") + `}`:              "scheme_not_allowed",
-		`{"name":"Renamed","email_note":` + jsonString("visit http://example.com") + `}`:            "scheme_not_allowed",
-		`{"name":"Renamed","email_note":` + jsonString("bad\u0000byte") + `}`:                       "control_characters",
-		`{"name":"Renamed","email_note":` + jsonString(strings.Repeat("x", 2001)) + `}`:             "too_long",
-		`{"name":"Renamed","email_note":` + jsonString(strings.Repeat("https://a.test/ ", 6)) + `}`: "too_many_links",
+		`{"name":"Renamed","email_note":` + jsonString("go javascript:alert(1)") + `}`:                                                                     "scheme_not_allowed",
+		`{"name":"Renamed","email_note":` + jsonString("visit http://example.com") + `}`:                                                                   "scheme_not_allowed",
+		`{"name":"Renamed","email_note":` + jsonString("bad\u0000byte") + `}`:                                                                              "control_characters",
+		`{"name":"Renamed","email_note":` + jsonString(strings.Repeat("x", 2001)) + `}`:                                                                    "too_long",
+		`{"name":"Renamed","email_note_format":"art","email_note":` + jsonString("<p>"+strings.Repeat(`<a href="https://a.test/">x</a> `, 6)+"</p>") + `}`: "too_many_links",
 	} {
 		raw := e.expect(t, http.StatusBadRequest, http.MethodPatch, path, tok, "", body)
 		if sec1Code(raw) != "event.invalid_email_note" || errReason(raw) != reason {
@@ -205,7 +208,7 @@ func TestEventEmailNote_StaysInsideTheOrganization(t *testing.T) {
 	pathA := "/v1/organizations/" + orgA.String() + "/events/" + evA.String()
 	e.expect(t, http.StatusForbidden, http.MethodPatch, pathA, tokB, "", `{"email_note":"hijacked"}`)
 	e.expect(t, http.StatusForbidden, http.MethodPost, pathA+"/email-note/test", tokB, "", `{}`)
-	if got, _ := e.noteOf(t, evA); got != "secret of A" {
+	if got, _ := e.noteOf(t, evA); got != "<p>secret of A</p>" {
 		t.Fatalf("A's note = %q", got)
 	}
 	// And B's note can never be written for A's event by id.
@@ -349,7 +352,7 @@ func TestEventEmailNote_PatchIsAtomicWithTheEventRow(t *testing.T) {
 	if st < 400 {
 		t.Fatalf("a duplicate slug was accepted: %d %s", st, out)
 	}
-	if got, _ := e.noteOf(t, ev); got != "first text" {
+	if got, _ := e.noteOf(t, ev); got != "<p>first text</p>" {
 		t.Fatalf("the note of a failed PATCH is %q, want the old text", got)
 	}
 	if n := e.count(t, `SELECT count(*) FROM events WHERE id = $1 AND name = 'Half applied'`, ev); n != 0 {

@@ -129,7 +129,7 @@ type Querier interface {
 	GetEventByBil24ExternalID(ctx context.Context, externalID string) (EventRow, error)
 	SetEventBil24ExternalID(ctx context.Context, id, orgID uuid.UUID, externalID string) error
 	SetEventPosterMediaID(ctx context.Context, id, orgID uuid.UUID, posterMediaID *uuid.UUID) error
-	SetEventImportMetadata(ctx context.Context, id, orgID uuid.UUID, name string, description, ageRating *string) error
+	SetEventImportMetadata(ctx context.Context, id, orgID uuid.UUID, name string, description, ageRating *string, descriptionFormat string) error
 	GetSessionImportContext(ctx context.Context, id uuid.UUID) (SessionImportContextRow, error)
 
 	// Arena-native event bundle — POST /v1/organizations/{org_id}/imports/event-bundle
@@ -164,18 +164,22 @@ type Querier interface {
 	UpdateCity(ctx context.Context, id uuid.UUID, slug string) (CityRow, error)
 
 	// Events — catalog occurrences; dates and venues live on sessions (AB-36/AB-37)
-	InsertEvent(ctx context.Context, orgID uuid.UUID, name string, description *string, status, visibility string, imageURL *string) (EventRow, error)
+	InsertEvent(ctx context.Context, orgID uuid.UUID, name string, description *string, status, visibility string, imageURL *string, descriptionFormat string) (EventRow, error)
 	GetEventByID(ctx context.Context, id uuid.UUID, locale string) (EventRow, error)
 	GetEventRaw(ctx context.Context, id uuid.UUID) (EventRow, error)
 	ListEvents(ctx context.Context, locale, visibilityFilter string) ([]EventRow, error)
 	ListEventsByOrg(ctx context.Context, orgID uuid.UUID, locale string) ([]EventRow, error)
 	ListEventVenueNames(ctx context.Context, eventIDs []uuid.UUID) (map[uuid.UUID][]string, error)
-	UpdateEvent(ctx context.Context, id, orgID uuid.UUID, name string, description *string, visibility string, imageURL *string, posterMediaID *uuid.UUID) (EventRow, error)
+	UpdateEvent(ctx context.Context, id, orgID uuid.UUID, name string, description *string, visibility string, imageURL *string, posterMediaID *uuid.UUID, descriptionFormat string) (EventRow, error)
 	ClearSessionPosterOverrides(ctx context.Context, eventID uuid.UUID) error
 	UpdateEventStatus(ctx context.Context, id, orgID uuid.UUID, status string) (EventRow, error)
 	SoftDeleteEvent(ctx context.Context, id, orgID uuid.UUID) (EventRow, error)
 	UpsertEventI18nName(ctx context.Context, eventIDStr, locale, value string) error
 	UpsertEventI18nDescription(ctx context.Context, eventIDStr, locale, value string) error
+	// Description format flag (spec 43, RT-02): the flag of an event covers its translations
+	LockEventDescription(ctx context.Context, eventID, orgID uuid.UUID) (EventDescriptionState, error)
+	ListEventI18nDescriptions(ctx context.Context, eventIDStr string) ([]EventI18nDescription, error)
+	SetEventDescriptionART(ctx context.Context, eventID uuid.UUID, description *string) error
 	// Event metadata fields (AB-45, migration 0051)
 	UpdateEventMetadata(ctx context.Context, id, orgID uuid.UUID, slug, shortDescription, genre, ageRating *string, durationMinutes *int32, teaserURL, trailerURL, metaDescription, metaKeywords *string) (EventRow, error)
 	// Event artists — child table (AB-45, migration 0051)

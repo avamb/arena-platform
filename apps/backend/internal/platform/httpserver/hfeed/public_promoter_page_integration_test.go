@@ -124,7 +124,7 @@ func strPtr(s string) *string { return &s }
 func (f *promoterPageFixture) addEvent(ctx context.Context, t *testing.T, name, status string, sessionStartOffset *time.Duration) (uuid.UUID, string) {
 	t.Helper()
 	desc := "integration test event"
-	event, err := f.q.InsertEvent(ctx, f.orgID, name, &desc, status, "public", nil)
+	event, err := f.q.InsertEvent(ctx, f.orgID, name, &desc, status, "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent: %v", err)
 	}

@@ -74,7 +74,7 @@ func TestEventNote_TicketLetterPrintsItAndVersionSaysSo(t *testing.T) {
 		seed.TicketIDs); err != nil {
 		t.Fatal(err)
 	}
-	if err := queries.UpsertEventEmailNote(ctx, seed.EventID, orgID, letterNote); err != nil {
+	if err := queries.UpsertEventEmailNote(ctx, seed.EventID, orgID, letterNote, "text"); err != nil {
 		t.Fatal(err)
 	}
 	with, withVersion := send(seed.TicketIDs[0])
@@ -101,7 +101,7 @@ func TestEventNote_ChangeLetterPrintsItCancelDoesNot(t *testing.T) {
 		_, _ = f.pool.Exec(ctx, `DELETE FROM event_email_notes WHERE event_id = $1`, f.EventID)
 		_, _ = f.pool.Exec(ctx, `DELETE FROM email_letters WHERE order_id = $1`, f.OrderID)
 	}()
-	if err := gen.New(f.pool).UpsertEventEmailNote(ctx, f.EventID, f.orgID, letterNote); err != nil {
+	if err := gen.New(f.pool).UpsertEventEmailNote(ctx, f.EventID, f.orgID, letterNote, "text"); err != nil {
 		t.Fatal(err)
 	}
 

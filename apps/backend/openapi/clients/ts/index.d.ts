@@ -16860,8 +16860,25 @@ export interface components {
              * @example Summer Festival 2026
              */
             name: string;
-            /** @description Optional long-form description. */
+            /**
+             * @description Optional long-form description, at most 4000 visible characters.
+             *     Read as `description_format`; stored as filtered HTML. A refused
+             *     text answers 422 `event.invalid_description` with
+             *     `error.details.reason`.
+             */
             description?: string;
+            /**
+             * @description How `description` (and the translated descriptions) is written: `text` (default) is the old plain text
+             *     with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+             *     "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+             *     `a[href]`, `ul`, `ol`, `li`, `h3`, `h4`, `blockquote`). The server never guesses the
+             *     format from the tags: it passes the text through one filter,
+             *     stores ART and marks it `art`, so old clients keep working.
+             *     Values: `text`, `art`. Anything else answers 400
+             *     `event.invalid_description_format`.
+             * @example text
+             */
+            description_format?: string;
             /**
              * @description Initial lifecycle status. Defaults to `draft` on the server when
              *     omitted.
@@ -16891,8 +16908,24 @@ export interface components {
         UpdateEventRequest: {
             /** @description New canonical event name. Empty leaves the value unchanged. */
             name?: string;
-            /** @description New long-form description. */
+            /**
+             * @description New long-form description, at most 4000 visible characters. Read
+             *     as `description_format`; stored as filtered HTML. A refused text
+             *     answers 422 `event.invalid_description` with `error.details.reason`.
+             */
             description?: string | null;
+            /**
+             * @description How `description` (and the translated descriptions) is written: `text` (default) is the old plain text
+             *     with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+             *     "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+             *     `a[href]`, `ul`, `ol`, `li`, `h3`, `h4`, `blockquote`). The server never guesses the
+             *     format from the tags: it passes the text through one filter,
+             *     stores ART and marks it `art`, so old clients keep working.
+             *     Values: `text`, `art`. Anything else answers 400
+             *     `event.invalid_description_format`.
+             * @example art
+             */
+            description_format?: string;
             /**
              * @description New discovery visibility for the event.
              * @enum {string}
@@ -16980,14 +17013,26 @@ export interface components {
             /**
              * @description Tri-state (absent=keep, null or "" = clear, value=set). The
              *     organizer's own text that the ticket and session-change e-mails
-             *     print under "About the event". Plain text of at most 2000
-             *     characters: HTML tags are removed, control characters are
-             *     refused, at most 5 links and every link must be `https://`. A
-             *     refused text answers 400 `event.invalid_email_note` with
+             *     print under "About the event". At most 2000 visible characters
+             *     and 5 links, every link `https://`, control characters are
+             *     refused. Read as `email_note_format` and stored as filtered HTML.
+             *     A refused text answers 400 `event.invalid_email_note` with
              *     `error.details.reason`.
              * @example Come 30 minutes early. The cloakroom is free.
              */
             email_note?: string | null;
+            /**
+             * @description How `email_note` is written: `text` (default) is the old plain text
+             *     with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+             *     "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+             *     `a[href]`, `ul`, `ol`, `li`). The server never guesses the
+             *     format from the tags: it passes the text through one filter,
+             *     stores ART and marks it `art`, so old clients keep working.
+             *     Values: `text`, `art`. Anything else answers 400
+             *     `event.invalid_email_note_format`.
+             * @example text
+             */
+            email_note_format?: string;
         };
         /**
          * @description Status-transition body for POST
@@ -23804,8 +23849,25 @@ export interface components {
              * @example Vino & Co Grand Tasting 2026
              */
             fullActionName?: string;
-            /** @description Free-form action description copied into the event description. */
+            /**
+             * @description Free-form action description copied into the event description,
+             *     at most 4000 visible characters. Read as `descriptionFormat` and
+             *     stored as filtered HTML. A refused text answers 422
+             *     `import.invalid_description`. Empty keeps the stored text.
+             */
             description?: string;
+            /**
+             * @description How `description` is written: `text` (default) is the old plain text
+             *     with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+             *     "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+             *     `a[href]`, `ul`, `ol`, `li`, `h3`, `h4`, `blockquote`). The server never guesses the
+             *     format from the tags: it passes the text through one filter,
+             *     stores ART and marks it `art`, so old clients keep working.
+             *     Values: `text`, `art`. Anything else answers 422
+             *     `import.invalid_description`.
+             * @example text
+             */
+            descriptionFormat?: string;
             /**
              * @description Absolute URL of the Bil24 poster image. Side-loaded into arena media
              *     storage outside the import transaction; a fetch failure is reported
@@ -23832,12 +23894,24 @@ export interface components {
              *     0165): the organizer's own text that the ticket and session-change
              *     e-mails print under "About the event". Absent or null keeps the
              *     stored text, "" removes it, a string replaces it after the same
-             *     filter as PATCH `email_note` (plain text, at most 2000
-             *     characters, at most 5 `https://` links). A refused text answers
-             *     422 `import.invalid_email_note`. The event-bundle read answers
-             *     "" when the event has none.
+             *     filter as PATCH `email_note` (at most 2000 visible characters, at
+             *     most 5 `https://` links), read as `emailNoteFormat`. A refused
+             *     text answers 422 `import.invalid_email_note`. The event-bundle
+             *     read answers "" when the event has none.
              */
             emailNote?: string | null;
+            /**
+             * @description How `emailNote` is written: `text` (default) is the old plain text
+             *     with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+             *     "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+             *     `a[href]`, `ul`, `ol`, `li`). The server never guesses the
+             *     format from the tags: it passes the text through one filter,
+             *     stores ART and marks it `art`, so old clients keep working.
+             *     Values: `text`, `art`. Anything else answers 422
+             *     `import.invalid_email_note`.
+             * @example text
+             */
+            emailNoteFormat?: string;
         };
         /**
          * @description Bil24 "actionEvent" block — becomes an arena session. This block's
@@ -38178,7 +38252,7 @@ export interface operations {
              * @description Body missing/invalid. Possible error codes:
              *     `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
              *     `event.invalid_name`, `event.invalid_status`,
-             *     `event.invalid_visibility`.
+             *     `event.invalid_visibility`, `event.invalid_description_format`.
              */
             400: {
                 headers: {
@@ -38199,6 +38273,20 @@ export interface operations {
             };
             /** @description Caller lacks `event.create`. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The description or a translated description is refused
+             *     (`event.invalid_description`, `error.details.reason` names why:
+             *     `too_long`, `html_too_long`, `too_many_links`,
+             *     `control_characters`, `bad_encoding`, `too_deep`).
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -38348,7 +38436,8 @@ export interface operations {
             /**
              * @description Body invalid. Possible error codes:
              *     `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
-             *     `event.invalid_visibility`.
+             *     `event.invalid_visibility`, `event.invalid_description_format`,
+             *     `event.invalid_email_note_format`.
              */
             400: {
                 headers: {
@@ -38390,7 +38479,10 @@ export interface operations {
             };
             /**
              * @description `poster_media_id` does not name a media object of this organization
-             *     (`event.invalid_poster_media_id`).
+             *     (`event.invalid_poster_media_id`), or the description, a translated
+             *     description or a description stored earlier that must be converted
+             *     with it is refused (`event.invalid_description`,
+             *     `error.details.reason` names why).
              */
             422: {
                 headers: {

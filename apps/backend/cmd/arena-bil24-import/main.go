@@ -382,6 +382,10 @@ func importBatch(ctx context.Context, pool *pgxpool.Pool, events []catalogimport
 		// importer does not materialize (sessions require a venue binding,
 		// AB-36). Operators create the sessions — and with them the dates —
 		// after the import; until then the event renders with no date.
+		description, err := e.DescriptionART()
+		if err != nil {
+			return stats, fmt.Errorf("event %q (index %d): description: %w", e.ExternalBil24ID, i, err)
+		}
 		tag, err := tx.Exec(ctx, `
 			INSERT INTO events (
 				org_id,
@@ -390,16 +394,17 @@ func importBatch(ctx context.Context, pool *pgxpool.Pool, events []catalogimport
 				status,
 				visibility,
 				image_url,
-				external_bil24_id
+				external_bil24_id,
+				description_format
 			)
-			VALUES ($1, $2, $3, 'draft', 'public', $4, $5)
+			VALUES ($1, $2, $3, 'draft', 'public', $4, $5, 'art')
 			ON CONFLICT (external_bil24_id)
 			WHERE external_bil24_id IS NOT NULL
 			DO NOTHING
 		`,
 			orgID,
 			e.Title,
-			e.ResolvedDescription(),
+			description,
 			nilIfEmpty(e.PosterURL),
 			e.ExternalBil24ID,
 		)

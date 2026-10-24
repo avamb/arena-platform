@@ -5731,8 +5731,21 @@ type CreateEventPartnerLinkRequest struct {
 // they belong to the event's sessions and are supplied when sessions
 // are created.
 type CreateEventRequest struct {
-	// Description Optional long-form description.
+	// Description Optional long-form description, at most 4000 visible characters.
+	// Read as `description_format`; stored as filtered HTML. A refused
+	// text answers 422 `event.invalid_description` with
+	// `error.details.reason`.
 	Description *string `json:"description,omitempty"`
+
+	// DescriptionFormat How `description` (and the translated descriptions) is written: `text` (default) is the old plain text
+	// with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+	// "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+	// `a[href]`, `ul`, `ol`, `li`, `h3`, `h4`, `blockquote`). The server never guesses the
+	// format from the tags: it passes the text through one filter,
+	// stores ART and marks it `art`, so old clients keep working.
+	// Values: `text`, `art`. Anything else answers 400
+	// `event.invalid_description_format`.
+	DescriptionFormat *string `json:"description_format,omitempty"`
 
 	// ImageUrl Optional poster / cover image URL.
 	ImageUrl *string `json:"image_url,omitempty"`
@@ -8464,18 +8477,41 @@ type ImportBil24SessionAction struct {
 	// as a warning and never fails the import.
 	BigPosterUrl *string `json:"bigPosterUrl,omitempty"`
 
-	// Description Free-form action description copied into the event description.
+	// Description Free-form action description copied into the event description,
+	// at most 4000 visible characters. Read as `descriptionFormat` and
+	// stored as filtered HTML. A refused text answers 422
+	// `import.invalid_description`. Empty keeps the stored text.
 	Description *string `json:"description,omitempty"`
+
+	// DescriptionFormat How `description` is written: `text` (default) is the old plain text
+	// with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+	// "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+	// `a[href]`, `ul`, `ol`, `li`, `h3`, `h4`, `blockquote`). The server never guesses the
+	// format from the tags: it passes the text through one filter,
+	// stores ART and marks it `art`, so old clients keep working.
+	// Values: `text`, `art`. Anything else answers 422
+	// `import.invalid_description`.
+	DescriptionFormat *string `json:"descriptionFormat,omitempty"`
 
 	// EmailNote Arena event-bundle extension (source=arena only; EC-31, migration
 	// 0165): the organizer's own text that the ticket and session-change
 	// e-mails print under "About the event". Absent or null keeps the
 	// stored text, "" removes it, a string replaces it after the same
-	// filter as PATCH `email_note` (plain text, at most 2000
-	// characters, at most 5 `https://` links). A refused text answers
-	// 422 `import.invalid_email_note`. The event-bundle read answers
-	// "" when the event has none.
+	// filter as PATCH `email_note` (at most 2000 visible characters, at
+	// most 5 `https://` links), read as `emailNoteFormat`. A refused
+	// text answers 422 `import.invalid_email_note`. The event-bundle
+	// read answers "" when the event has none.
 	EmailNote *string `json:"emailNote"`
+
+	// EmailNoteFormat How `emailNote` is written: `text` (default) is the old plain text
+	// with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+	// "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+	// `a[href]`, `ul`, `ol`, `li`). The server never guesses the
+	// format from the tags: it passes the text through one filter,
+	// stores ART and marks it `art`, so old clients keep working.
+	// Values: `text`, `art`. Anything else answers 422
+	// `import.invalid_email_note`.
+	EmailNoteFormat *string `json:"emailNoteFormat,omitempty"`
 
 	// FullActionName Full action name. Preferred over actionName as the event title.
 	FullActionName *string `json:"fullActionName,omitempty"`
@@ -16466,8 +16502,20 @@ type UpdateEventRequest struct {
 	// every session (AB-47). No-op when false or omitted.
 	ClearSessionOverrides *bool `json:"clear_session_overrides,omitempty"`
 
-	// Description New long-form description.
+	// Description New long-form description, at most 4000 visible characters. Read
+	// as `description_format`; stored as filtered HTML. A refused text
+	// answers 422 `event.invalid_description` with `error.details.reason`.
 	Description *string `json:"description"`
+
+	// DescriptionFormat How `description` (and the translated descriptions) is written: `text` (default) is the old plain text
+	// with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+	// "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+	// `a[href]`, `ul`, `ol`, `li`, `h3`, `h4`, `blockquote`). The server never guesses the
+	// format from the tags: it passes the text through one filter,
+	// stores ART and marks it `art`, so old clients keep working.
+	// Values: `text`, `art`. Anything else answers 400
+	// `event.invalid_description_format`.
+	DescriptionFormat *string `json:"description_format,omitempty"`
 
 	// DurationMinutes Tri-state (absent=keep, null=clear, value=set).
 	// Event runtime in minutes (AB-45c).
@@ -16475,12 +16523,22 @@ type UpdateEventRequest struct {
 
 	// EmailNote Tri-state (absent=keep, null or "" = clear, value=set). The
 	// organizer's own text that the ticket and session-change e-mails
-	// print under "About the event". Plain text of at most 2000
-	// characters: HTML tags are removed, control characters are
-	// refused, at most 5 links and every link must be `https://`. A
-	// refused text answers 400 `event.invalid_email_note` with
+	// print under "About the event". At most 2000 visible characters
+	// and 5 links, every link `https://`, control characters are
+	// refused. Read as `email_note_format` and stored as filtered HTML.
+	// A refused text answers 400 `event.invalid_email_note` with
 	// `error.details.reason`.
 	EmailNote *string `json:"email_note"`
+
+	// EmailNoteFormat How `email_note` is written: `text` (default) is the old plain text
+	// with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+	// "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+	// `a[href]`, `ul`, `ol`, `li`). The server never guesses the
+	// format from the tags: it passes the text through one filter,
+	// stores ART and marks it `art`, so old clients keep working.
+	// Values: `text`, `art`. Anything else answers 400
+	// `event.invalid_email_note_format`.
+	EmailNoteFormat *string `json:"email_note_format,omitempty"`
 
 	// Genre Tri-state (absent=keep, null=clear, value=set).
 	// Event genre/category string (AB-45c).

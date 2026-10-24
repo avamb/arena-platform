@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 )
 
 func TestNormalize_PlainTextPasses(t *testing.T) {
@@ -155,18 +157,27 @@ func TestParse_QuoteClosingLinkKeepsMultibyteText(t *testing.T) {
 	}
 }
 
-// The table's CHECK and the Go limit are the same number.
+// The table's CHECK is the HTML limit of the letter-text profile (spec 43,
+// RT-02: migration 0167 widened the 2000 of 0165 to the 8000 characters of the
+// stored HTML; the visible 2000 are checked by Go).
 func TestLimitMatchesMigration(t *testing.T) {
-	body, err := os.ReadFile("../../migrations/sql/0165_event_email_notes.sql")
+	body, err := os.ReadFile("../../migrations/sql/0167_rich_text.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := regexp.MustCompile(`char_length\(note\)\s+BETWEEN\s+1\s+AND\s+(\d+)`).FindSubmatch(body)
-	if m == nil {
-		t.Fatal("note length CHECK not found in 0165")
+	up := string(body)
+	if i := strings.Index(up, "-- +goose Down"); i >= 0 {
+		up = up[:i]
 	}
-	n, _ := strconv.Atoi(string(m[1]))
-	if n != MaxRunes {
-		t.Fatalf("migration allows %d characters, eventnote.MaxRunes is %d", n, MaxRunes)
+	m := regexp.MustCompile(`char_length\(note\)\s+BETWEEN\s+1\s+AND\s+(\d+)`).FindStringSubmatch(up)
+	if m == nil {
+		t.Fatal("note length CHECK not found in the Up block of 0167")
+	}
+	n, _ := strconv.Atoi(m[1])
+	if n != richtext.ProfileEmailNote.MaxHTML {
+		t.Fatalf("migration allows %d characters, richtext.ProfileEmailNote.MaxHTML is %d", n, richtext.ProfileEmailNote.MaxHTML)
+	}
+	if richtext.ProfileEmailNote.MaxVisible != MaxRunes {
+		t.Fatalf("richtext.ProfileEmailNote.MaxVisible is %d, eventnote.MaxRunes is %d", richtext.ProfileEmailNote.MaxVisible, MaxRunes)
 	}
 }

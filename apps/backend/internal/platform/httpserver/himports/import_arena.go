@@ -30,6 +30,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/seatmint"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 )
 
@@ -308,12 +309,16 @@ func arenaRefInsertError(err error, ref string) error {
 // folding them together would be unrecoverable.
 func (h *Handler) resolveArenaEvent(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, m arenaMatch) (uuid.UUID, error) {
 	a := plan.Request.Action
+	desc, err := importDescription(a)
+	if err != nil {
+		return uuid.Nil, err
+	}
 	eventID, err := h.findArenaEvent(ctx, q, tx, plan, m)
 	if err != nil {
 		return uuid.Nil, err
 	}
 	if eventID == uuid.Nil {
-		created, err := q.InsertEvent(ctx, plan.OrgID, a.Name(), optString(a.Description), "draft", "public", nil)
+		created, err := q.InsertEvent(ctx, plan.OrgID, a.Name(), desc, "draft", "public", nil, richtext.FormatART)
 		if err != nil {
 			return uuid.Nil, fmt.Errorf("insert event: %w", err)
 		}
@@ -323,7 +328,10 @@ func (h *Handler) resolveArenaEvent(ctx context.Context, q *gen.Queries, tx pgx.
 		}
 	}
 
-	if err := q.SetEventImportMetadata(ctx, eventID, plan.OrgID, a.Name(), optString(a.Description), optString(a.Age)); err != nil {
+	if err := upgradeEventDescriptions(ctx, q, plan.OrgID, eventID, desc); err != nil {
+		return uuid.Nil, err
+	}
+	if err := q.SetEventImportMetadata(ctx, eventID, plan.OrgID, a.Name(), desc, optString(a.Age), richtext.FormatART); err != nil {
 		return uuid.Nil, fmt.Errorf("update event metadata: %w", err)
 	}
 	if plan.PosterMediaID != nil {
