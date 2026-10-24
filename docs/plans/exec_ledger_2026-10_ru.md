@@ -496,6 +496,8 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 | Р-QL8 | QL-3 | лог запроса на `/go/{code}` | `requestLogMiddleware` оставляем как есть (он пишет `remote_addr`/`user_agent` на каждый запрос, как для `checkout/start`); ST-QL1 касается ХРАНЕНИЯ — в таблицах только агрегаты по дню и стране | та же честная оговорка, что у согласия P2 в AGENTS.md |
 | Р-QL10 | QL-2 | ждать ли QL-1 | QL-2 стартует от `origin/master` параллельно QL-1 и целится в master: пакеты `attribution` и `salelinks` чистые, таблицы `sales_links` не читают (вставка кода — через узкий интерфейс `Inserter`, факты цели — своим запросом по существующим таблицам `GetSalesLinkTargetFacts`); алфавит кода и `IsCode` живут в `attribution`, `salelinks` их импортирует | экономит сутки ожидания и не создаёт конфликтов файлов; зависимость QL-2 от QL-1 в спеке — по смыслу, не по коду |
 | Р-QL11 | QL-2 | проверять ли в `Resolve` достижимость hosted-страницы (канал с `hosted_page.enabled`, живой feed token, публикация), а не только `published` + slug | нет: цепочка §4.3 как написана (`published` и slug). Организация без hosted-канала получит адрес страницы, которая отвечает 404, но у неё и страница организации отвечает 404 — проверка ничего не спасает, а усложняет запрос и фикстуры | §4.3 — решение спеки; предупреждение «у вас нет страницы продаж» — дело клиентов (этапы 2–3) |
+| Р-QL12 | QL-2 | UTM для размещений `email` и `messenger` | `email` → `utm_source=email`, `utm_medium=email`; `messenger` → `utm_source=messenger`, `utm_medium=social`; остальные — умолчание `qr`/`offline` | решение 3 спеки называло только умолчание и `social`; письмо и мессенджер как «qr/offline» лгали бы в отчёте |
+| Р-QL6a | QL-2 | уточнение Р-QL6 | поля конфига `SHORT_LINK_BASE_URL` / `SHORT_LINK_FALLBACK_URL`, их разбор, `Config.ShortLinkFallback()` и строки DOKPLOY §2.6 добавлены на ветку QL-2 (а не QL-3), чтобы QL-3 и QL-4 шли параллельно от одной ветки; QL-14 — только production-правило, юнит-тест, документ и статическая защита «`/go/` форматируется только в `salelinks.ShortURL`» | два параллельных PR не должны оба править `config.go` |
 | Р-QL9 | QL-6 | `sources` в сводке события и в батче | блок `sources` — только в сводке СЕАНСА (§4.5); `summaryCore` (общий со сводкой события и батчем `events/sales-summary`) не трогать, иначе ломается `TestEventSalesSummary_BatchEqualsPerEventSummary` | §4.5 говорит о сводке сеанса; расширение на событие — вопрос этапа веб |
 
 ### 11.2 Вопросы владельцу
@@ -508,9 +510,9 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 | Задача | Класс / модель | Ветка | PR | Состояние |
 |---|---|---|---|---|
 | QL-R | R / haiku | — | — | выполнена 24.10; анкоры вписаны в карточки 6.1 спеки 43 |
-| QL-1 | M / sonnet | `feat/ql-1-migration-queries` | — | в работе |
+| QL-1 | M / sonnet | `feat/ql-1-migration-queries` | [#228](https://github.com/avamb/arena-platform/pull/228) | PR открыт; миграция **0167**; ворота: build 0, vet 0, юнит 0, свежая `arena_ci_ql1` up/down/up 0, seed 0, интеграция migrations+gen+ordering+horders+hcheckout+hfeed+hcustomers+refunds+bil24 0, парность 532 0, staticanalysis 0, gofmt пусто, golangci-lint 0; красным остался только нагрузочный флак `TestInfoP99Latency_ThroughputSanity` (по отдельности зелёный); не проверено: миграция на копии дев-стенда, полный интеграционный httpserver, eventbot/htickets; sonnet-ревью идёт |
 | QL-2 | M / sonnet | `feat/ql-2-attribution-salelinks` | [#227](https://github.com/avamb/arena-platform/pull/227) | PR открыт; ворота: build 0, vet 0, юнит 0, интеграция на `arena_ci_ql2` 0, gofmt пусто, golangci-lint 0, staticanalysis 0; не проверено: `-race` (нет cgo); sonnet-ревью идёт |
-| QL-3 | L / opus + opus-ревью | `feat/ql-3-go-redirect` | — | ждёт QL-2 |
+| QL-3 | L / opus + opus-ревью | `feat/ql-3-go-redirect` | — | ждёт правок ревью QL-2 |
 | QL-4 | M / sonnet | `feat/ql-4-org-routes` | — | ждёт QL-2 |
 | QL-5 | S / sonnet | `feat/ql-5-qr-render` | — | ждёт QL-4 |
 | QL-6 | L / opus + opus-ревью | `feat/ql-6-attribution-checkout` | — | ждёт QL-2 |
@@ -521,3 +523,4 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 
 - 24.10 — старт. Спека 43 и этот раздел журнала — ветка `docs/ql-run-stage1`. QL-R (haiku) собрала анкоры; решения Р-QL1…Р-QL9 записаны. QL-1 запущена, следом QL-2 параллельно (Р-QL10). Документный PR [#226](https://github.com/avamb/arena-platform/pull/226).
 - 24.10 — QL-2 готова (#227), 14 файлов, без миграции и HTTP; развилка исполнителя о достижимости страницы закрыта Р-QL11; запущено sonnet-ревью.
+- 24.10 — QL-1 готова (#228). Стопка: QL-1 влита в ветку QL-2, #227 перенацелен на `feat/ql-1-migration-queries`. Ревью QL-2: 0 блокеров, 4 should-fix (пустой base у сеанса, нестроковый `landed_at`, потеря параметров `url`, достижимость страницы — закрыто Р-QL11); правки отданы исполнителю вместе с полями конфига (Р-QL6a). Запущено ревью QL-1.

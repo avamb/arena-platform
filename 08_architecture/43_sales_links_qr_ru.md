@@ -44,7 +44,7 @@ INSERT … ON CONFLICT DO NOTHING, перерисуй» для уникальн�
 |---|---|---|
 | 1 | Домен редиректа `go.arenasoldout.com`; адрес печатается под QR текстом | владелец 24.10 |
 | 2 | Последнее касание, окно 7 дней; первое касание хранится в json | владелец 24.10 |
-| 3 | Умолчания UTM: `utm_source=qr`, `utm_medium=offline`, `utm_campaign=<slug мероприятия или организации>`, `utm_content=<code>`; для размещения `social` — `utm_source=social`, `utm_medium=social`; организатор может переписать любое поле | предложение принято 24.10 |
+| 3 | Умолчания UTM: `utm_source=qr`, `utm_medium=offline`, `utm_campaign=<slug мероприятия или организации>`, `utm_content=<code>`; для размещения `social` — `utm_source=social`, `utm_medium=social`; для `email` — `utm_source=email`, `utm_medium=email`; для `messenger` — `utm_source=messenger`, `utm_medium=social` (Р-QL12); организатор может переписать любое поле | предложение принято 24.10 |
 | 4 | Архивная ссылка, удалённая/неопубликованная цель — редирект на страницу всех мероприятий организации (цепочка §4.3), никогда не 404 на бумаге | принято 24.10 |
 | 5 | Первая версия: PNG и SVG; PDF-вкладыш для печати — этап 5 | принято 24.10 |
 | 6 | Плагины WordPress на протоколе Bil24 — отдельный этап 4 после hosted-страницы; до него сканы считаются, заказы с таких сайтов остаются без привязки к ссылке | принято 24.10 |
@@ -71,7 +71,7 @@ CREATE TABLE sales_links (
     label           text NOT NULL CHECK (length(label) BETWEEN 1 AND 120),  -- «Афиша у входа в театр»
     placement_kind  text NOT NULL DEFAULT 'poster'
                     CHECK (placement_kind IN ('poster','flyer','sign','social','email','messenger','other')),
-    utm             jsonb NOT NULL DEFAULT '{}'::jsonb,  -- source/medium/campaign/content/term, ≤64 символа каждое
+    utm             jsonb NOT NULL DEFAULT '{}'::jsonb,  -- ключи utm_source/utm_medium/utm_campaign/utm_content/utm_term, ≤64 символа каждое
     status          text NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
     scan_count      bigint NOT NULL DEFAULT 0,
     suspect_scan_count bigint NOT NULL DEFAULT 0,
@@ -195,7 +195,10 @@ url           → как есть (без проверок доступност�
 archived      → сразу org_page
 ```
 
-`promoter` в `publicurl.Page` — промоутер МЕРОПРИЯТИЯ (как в `hcatalog/events.go`), не произвольный. Функция
+`promoter` в `publicurl.Page` — промоутер МЕРОПРИЯТИЯ (как в `hcatalog/events.go`), не произвольный. Ступень
+`promoter_page` при падении с `event`/`session` берёт промоутера ссылки, если он задан (у ссылок `event`/`session` его нет),
+иначе промоутера мероприятия; без промоутера — сразу `org_page`. Достижимость hosted-страницы (канал с
+`hosted_page.enabled`, живой feed token) цепочка НЕ проверяет — только `published` и slug (Р-QL11). Функция
 `salelinks.Resolve(ctx, q, link) (destination string, degraded bool)` — чистая по данным, с юнит-тестами на каждую
 ступень; `degraded` отдаётся в `destination_url` карточки флагом `destination_degraded`, чтобы бот и веб показали
 «ведёт на страницу организации: мероприятие снято с продажи».
