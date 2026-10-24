@@ -10,6 +10,7 @@
 package bil24compat
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -161,6 +162,14 @@ type Request struct {
 	// amount — is 0. Not part of the Bil24 protocol: an arena extension the
 	// site opts into. Decoded flexibly (true / 1 / "1" / "true").
 	Complimentary bool
+	// Attribution is CREATE_ORDER_EXT's sales link and utm labels that
+	// brought the buyer to the selling site (spec 43 section 4.4, the same
+	// object as the widget's checkout/start). Not part of the Bil24 protocol:
+	// an arena extension the site opts into. A JSON object is kept as sent, a
+	// JSON string holding an object (a PHP client that stored the cookie as
+	// text) is unwrapped, anything else is nil. The gateway cleans it with
+	// attribution.Clean; a bad value never fails the order.
+	Attribution json.RawMessage `json:"attribution,omitempty"`
 
 	// ── REFUND_TICKET fields (feature #509, spec §7.13) ──────────────────
 
@@ -244,6 +253,7 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 		Amount          json.RawMessage `json:"amount"`
 		TicketIDList    json.RawMessage `json:"ticketIdList"`
 		Complimentary   json.RawMessage `json:"complimentary"`
+		Attribution     json.RawMessage `json:"attribution"`
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -280,7 +290,29 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	// PHP clients serialise booleans as true, 1, "1" or "true" depending on
 	// where the value came from; all of them mean yes.
 	r.Complimentary = flexWireBool(aux.Complimentary)
+	r.Attribution = flexWireObject(aux.Attribution)
 	return nil
+}
+
+// flexWireObject keeps a raw JSON object as it is and unwraps a JSON string
+// whose content is an object. Anything else (absent, null, a number, an
+// array, a string that is not an object) is nil.
+func flexWireObject(raw json.RawMessage) json.RawMessage {
+	b := bytes.TrimSpace(raw)
+	if len(b) == 0 {
+		return nil
+	}
+	if b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return nil
+		}
+		b = bytes.TrimSpace([]byte(s))
+	}
+	if len(b) == 0 || b[0] != '{' || !json.Valid(b) {
+		return nil
+	}
+	return json.RawMessage(b)
 }
 
 // flexWireBool renders a raw JSON scalar as a bool: JSON true/false, the

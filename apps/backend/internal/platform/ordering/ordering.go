@@ -151,6 +151,8 @@ type CreateStore interface {
 		buyerName, buyerEmail, buyerPhone, paymentMethod *string,
 		expiresAt *time.Time,
 		metadata json.RawMessage,
+		salesLinkID *uuid.UUID,
+		attribution json.RawMessage,
 	) (gen.OrderRow, error)
 	InsertOrderItem(
 		ctx context.Context,

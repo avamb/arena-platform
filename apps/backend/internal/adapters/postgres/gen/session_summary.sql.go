@@ -588,3 +588,102 @@ func (q *Queries) ListSessionSummaryAdmissions(ctx context.Context, sessionIDs [
 	}
 	return items, rows.Err()
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListSessionSummarySources
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listSessionSummarySources = `-- name: ListSessionSummarySources :many
+-- The paid orders of one session grouped by where the buyer came from (spec
+-- 43 section 4.5): the sales link the order is attributed to; else, for an
+-- order without a link, the utm_source and utm_campaign of its attribution
+-- when utm_source is set; else nothing (direct). One row per group and
+-- currency: orders and tickets count the orders of that currency, amount is
+-- sum(orders.total) minus the SUCCEEDED refunds of those orders in that
+-- currency (minor units). A refund belongs to the order it names, else the
+-- order of the ticket it names, else the order of its payment intent's
+-- checkout session — the rule of SalesLinkOrdersAggregate.
+WITH paid AS (
+    SELECT o.id, o.currency, o.total, o.sales_link_id,
+           CASE WHEN o.sales_link_id IS NULL
+                THEN COALESCE(o.attribution->>'utm_source', '') ELSE '' END AS utm_source,
+           CASE WHEN o.sales_link_id IS NULL
+                 AND COALESCE(o.attribution->>'utm_source', '') <> ''
+                THEN COALESCE(o.attribution->>'utm_campaign', '') ELSE '' END AS utm_campaign
+    FROM   orders o
+    WHERE  o.session_id = $1
+      AND  o.org_id     = $2
+      AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+),
+refunded AS (
+    SELECT p.id AS order_id, r.currency, sum(r.amount)::bigint AS amount
+    FROM   refunds r
+    JOIN   paid p ON p.id = COALESCE(
+               r.order_id,
+               (SELECT t.order_id FROM tickets t WHERE t.id = r.ticket_id),
+               (SELECT po.id FROM payment_intents pi
+                JOIN   orders po ON po.checkout_session_id = pi.checkout_session_id
+                WHERE  pi.id = r.payment_intent_id
+                ORDER  BY po.created_at, po.id
+                LIMIT  1))
+    WHERE  r.state  = 'succeeded'
+      AND  r.org_id = $2
+    GROUP  BY p.id, r.currency
+),
+lines AS (
+    SELECT p.sales_link_id, p.utm_source, p.utm_campaign, p.currency,
+           1::bigint AS orders,
+           (SELECT count(*) FROM tickets t WHERE t.order_id = p.id)::bigint AS tickets,
+           p.total::bigint AS amount
+    FROM   paid p
+    UNION ALL
+    SELECT p.sales_link_id, p.utm_source, p.utm_campaign, rf.currency,
+           0::bigint, 0::bigint, -rf.amount
+    FROM   refunded rf
+    JOIN   paid p ON p.id = rf.order_id
+)
+SELECT l.sales_link_id, COALESCE(sl.label, '') AS label,
+       l.utm_source, l.utm_campaign, l.currency,
+       sum(l.orders)::bigint  AS orders,
+       sum(l.tickets)::bigint AS tickets,
+       sum(l.amount)::bigint  AS amount
+FROM   lines l
+LEFT JOIN sales_links sl ON sl.id = l.sales_link_id
+GROUP  BY l.sales_link_id, sl.label, l.utm_source, l.utm_campaign, l.currency
+ORDER  BY l.sales_link_id NULLS LAST, l.utm_source, l.utm_campaign, l.currency`
+
+// SessionSummarySourceRow is one source of a session's paid orders in one
+// currency (spec 43 section 4.5). SalesLinkID is set for orders attributed to
+// a sales link (Label is that link's label); otherwise UTMSource and
+// UTMCampaign come from the order's attribution and both are "" for direct
+// orders. Amount is sum(orders.total) minus succeeded refunds, minor units.
+type SessionSummarySourceRow struct {
+	SalesLinkID *uuid.UUID `json:"sales_link_id"`
+	Label       string     `json:"label"`
+	UTMSource   string     `json:"utm_source"`
+	UTMCampaign string     `json:"utm_campaign"`
+	Currency    string     `json:"currency"`
+	Orders      int64      `json:"orders"`
+	Tickets     int64      `json:"tickets"`
+	Amount      int64      `json:"amount"`
+}
+
+// ListSessionSummarySources returns the paid orders of one session of the
+// organization grouped by source and currency.
+func (q *Queries) ListSessionSummarySources(ctx context.Context, sessionID, orgID uuid.UUID) ([]SessionSummarySourceRow, error) {
+	rows, err := q.db.Query(ctx, listSessionSummarySources, sessionID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SessionSummarySourceRow
+	for rows.Next() {
+		var i SessionSummarySourceRow
+		if err := rows.Scan(&i.SalesLinkID, &i.Label, &i.UTMSource, &i.UTMCampaign, &i.Currency,
+			&i.Orders, &i.Tickets, &i.Amount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	return items, rows.Err()
+}
