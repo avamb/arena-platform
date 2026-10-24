@@ -51,6 +51,7 @@
     identifyGaAreas,
     buildGaItems,
     totalSelectionCount,
+    pickInitialSession,
     type WidgetStage,
     type GaArea,
   } from './lib/store.js';
@@ -310,21 +311,6 @@
   });
 
   // ── Helpers ────────────────────────────────────────────────────────────────
-
-  /**
-   * Pick the initial session when the event loads.
-   * Prefers the deep-linked sessionId, then the first non-cancelled upcoming session.
-   */
-  function pickInitialSession(ev: FeedEvent, deepLinkId: string): FeedSession | null {
-    if (deepLinkId) {
-      const found = ev.sessions.find((s) => s.id === deepLinkId);
-      if (found) return found;
-    }
-    const upcoming = ev.sessions
-      .filter((s) => s.status !== 'cancelled')
-      .sort((a, b) => a.start_at.localeCompare(b.start_at));
-    return upcoming[0] ?? ev.sessions[0] ?? null;
-  }
 
   // ── Feed loading ────────────────────────────────────────────────────────────
 

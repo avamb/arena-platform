@@ -52,6 +52,7 @@ function eventDetail(): object {
           admission_mode: 'general_admission',
           buyer_fields: [],
           service_fee_percent: '0',
+          promo_codes_available: true,
           tiers: [
             {
               id: TIER_ID,
@@ -71,8 +72,67 @@ function eventDetail(): object {
   };
 }
 
-async function mockPlatform(page: Page): Promise<Array<Record<string, unknown>>> {
+/** What the platform received, call by call. */
+interface Seen {
+  starts: Array<Record<string, unknown>>;
+  /** Raw bodies of checkout/quote requests. */
+  quotes: string[];
+  /** Raw bodies (possibly empty) of checkout/recover requests. */
+  recovers: string[];
+}
+
+const RETURN_TOKEN = 'ckout-return-001';
+const RETURN_TOKEN_REFRESHED = 'ckout-return-001-refreshed';
+
+async function mockPlatform(page: Page): Promise<Seen> {
   const starts: Array<Record<string, unknown>> = [];
+  const quotes: string[] = [];
+  const recovers: string[] = [];
+  await page.route(`**/v1/public/feeds/${FEED_TOKEN}/checkout/quote`, (route) => {
+    quotes.push(route.request().postData() ?? '');
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        pricing: { subtotal: 5000, discount: 0, platform_fee: 0, total: 5000, currency: 'EUR' },
+        promo_applied: false,
+      }),
+    });
+  });
+  // Coming back from the payment page: the status answers 401 once, the widget
+  // recovers silently and reads the refreshed token.
+  await page.route(`**/v1/public/checkout/${RETURN_TOKEN}`, (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 'checkout.expired', message: 'Token expired' } }),
+    }),
+  );
+  await page.route(`**/v1/public/checkout/${RETURN_TOKEN}/recover`, (route) => {
+    recovers.push(route.request().postData() ?? '');
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        checkout_session: {},
+        checkout_token: RETURN_TOKEN_REFRESHED,
+        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      }),
+    });
+  });
+  await page.route(`**/v1/public/checkout/${RETURN_TOKEN_REFRESHED}`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: 'pending',
+        checkout_token: RETURN_TOKEN_REFRESHED,
+        checkout_session_id: 'cs-return-001',
+        items: [],
+        tickets: [],
+      }),
+    }),
+  );
   await page.route(`**/v1/public/feeds/${FEED_TOKEN}/events`, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ events: [eventSummary()] }) }),
   );
@@ -105,7 +165,7 @@ async function mockPlatform(page: Page): Promise<Array<Record<string, unknown>>>
       }),
     }),
   );
-  return starts;
+  return { starts, quotes, recovers };
 }
 
 /** Open the page at `query`, pick two tickets and press through to the pay call. */
@@ -126,7 +186,7 @@ async function buyTwoTickets(page: Page, query: string): Promise<void> {
 
 test.describe('sales-link attribution', () => {
   test('an address with ref and utm labels reaches checkout/start', async ({ page }) => {
-    const starts = await mockPlatform(page);
+    const { starts } = await mockPlatform(page);
     await buyTwoTickets(page, '?ref=x7k2qpm&utm_source=qr&utm_medium=poster&utm_campaign=autumn');
 
     await expect.poll(() => starts.length).toBe(1);
@@ -146,7 +206,7 @@ test.describe('sales-link attribution', () => {
   });
 
   test('a later visit without labels still carries the stored touch', async ({ page }) => {
-    const starts = await mockPlatform(page);
+    const { starts } = await mockPlatform(page);
     await page.goto('/demo/promo-code.html?ref=x7k2qpm&utm_source=qr');
     await expect(page.locator('#widget-promo').getByRole('button', { name: 'Increase quantity for Standard' })).toBeVisible({ timeout: 15_000 });
 
@@ -156,7 +216,7 @@ test.describe('sales-link attribution', () => {
   });
 
   test('a new source keeps the old touch as first', async ({ page }) => {
-    const starts = await mockPlatform(page);
+    const { starts } = await mockPlatform(page);
     await page.goto('/demo/promo-code.html?ref=aaaaaaa&utm_source=qr');
     await expect(page.locator('#widget-promo').getByRole('button', { name: 'Increase quantity for Standard' })).toBeVisible({ timeout: 15_000 });
 
@@ -169,8 +229,54 @@ test.describe('sales-link attribution', () => {
     });
   });
 
+  test('coming back from payment without labels keeps the stored touch, and recover carries none', async ({ page }) => {
+    const { starts, recovers } = await mockPlatform(page);
+    await page.goto('/demo/promo-code.html?ref=x7k2qpm&utm_source=qr');
+    await expect(page.locator('#widget-promo').getByRole('button', { name: 'Increase quantity for Standard' })).toBeVisible({ timeout: 15_000 });
+
+    // The payment page sends the buyer back with only the checkout token.
+    await page.goto(`/demo/promo-code.html?checkout_token=${RETURN_TOKEN}`);
+    await expect.poll(() => recovers.length, { timeout: 15_000 }).toBe(1);
+    expect(recovers[0]).toBe('');
+    const stored = await page.evaluate((k) => localStorage.getItem(k), STORAGE_KEY);
+    expect(JSON.parse(stored!)).toMatchObject({ ref: 'x7k2qpm', utm_source: 'qr' });
+
+    // A later purchase from a clean address still carries that touch.
+    await page.evaluate(() => sessionStorage.clear());
+    await buyTwoTickets(page, '');
+    await expect.poll(() => starts.length).toBe(1);
+    expect(starts[0]!['attribution']).toMatchObject({ ref: 'x7k2qpm', utm_source: 'qr' });
+  });
+
+  test('checkout/quote carries no attribution, checkout/start does', async ({ page }) => {
+    const { starts, quotes } = await mockPlatform(page);
+    await page.goto('/demo/promo-code.html?ref=x7k2qpm&utm_source=qr');
+    const widget = page.locator('#widget-promo');
+    const plus = widget.getByRole('button', { name: 'Increase quantity for Standard' });
+    await plus.waitFor({ timeout: 15_000 });
+    await plus.click();
+    await plus.click();
+    await widget.locator('.mini-cart-btn').click();
+    const sheet = widget.locator('.sheet');
+    await expect(sheet).toBeVisible();
+    await sheet.getByRole('button', { name: 'Have a promo code?' }).click();
+    await sheet.getByLabel('Promo code').fill('TEN');
+    await sheet.getByRole('button', { name: 'Apply' }).click();
+    await expect.poll(() => quotes.length).toBeGreaterThanOrEqual(1);
+    for (const body of quotes) {
+      expect(body).not.toContain('attribution');
+      expect(body).not.toContain('x7k2qpm');
+    }
+
+    await sheet.locator('.cta-btn').click();
+    await sheet.locator('input[type="email"]').fill('buyer@example.com');
+    await sheet.locator('button[type="submit"]').click();
+    await expect.poll(() => starts.length).toBe(1);
+    expect(starts[0]!['attribution']).toMatchObject({ ref: 'x7k2qpm' });
+  });
+
   test('an address with no labels sends no attribution', async ({ page }) => {
-    const starts = await mockPlatform(page);
+    const { starts } = await mockPlatform(page);
     await buyTwoTickets(page, '');
     await expect.poll(() => starts.length).toBe(1);
     expect(starts[0]).not.toHaveProperty('attribution');

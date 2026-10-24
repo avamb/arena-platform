@@ -100,9 +100,12 @@ function readFirst(raw: unknown): AttributionFirst | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const r = raw as Record<string, unknown>;
   const f: AttributionFirst = {};
-  if (str(r['ref'])) f.ref = str(r['ref']);
-  if (str(r['utm_source'])) f.utm_source = str(r['utm_source']);
-  if (str(r['utm_campaign'])) f.utm_campaign = str(r['utm_campaign']);
+  const ref = cleanValue(str(r['ref'])).toLowerCase();
+  const source = cleanValue(str(r['utm_source']));
+  const campaign = cleanValue(str(r['utm_campaign']));
+  if (ref) f.ref = ref;
+  if (source) f.utm_source = source;
+  if (campaign) f.utm_campaign = campaign;
   if (str(r['landed_at'])) f.landed_at = str(r['landed_at']);
   return f.ref || f.utm_source || f.utm_campaign ? f : undefined;
 }
@@ -122,9 +125,13 @@ export function parseStored(raw: string | null, now: Date): StoredAttribution | 
   if (!Number.isFinite(expires) || expires <= now.getTime()) return null;
   if (!Number.isFinite(Date.parse(str(r['landed_at'])))) return null;
   const out: StoredAttribution = { landed_at: str(r['landed_at']), expires_at: str(r['expires_at']) };
-  if (str(r['ref'])) out.ref = str(r['ref']);
+  // The record lives in storage anyone can edit: the same value rules as for
+  // the address apply to what is read back.
+  const ref = cleanValue(str(r['ref'])).toLowerCase();
+  if (ref) out.ref = ref;
   for (const k of UTM_KEYS) {
-    if (str(r[k])) out[k as UtmKey] = str(r[k]);
+    const v = cleanValue(str(r[k]));
+    if (v) out[k as UtmKey] = v;
   }
   if (!out.ref && !out.utm_source && !out.utm_campaign) return null;
   const first = readFirst(r['first']);
@@ -196,7 +203,11 @@ export function captureAttribution(
     expires_at: new Date(now.getTime() + ATTRIBUTION_WINDOW_MS).toISOString(),
   };
   if (stored) {
-    const otherSource = stored.ref !== touch.ref || stored.utm_source !== touch.utm_source;
+    // The same three fields the server's MergeTouch compares (spec 43 section 3).
+    const otherSource =
+      stored.ref !== touch.ref ||
+      stored.utm_source !== touch.utm_source ||
+      stored.utm_campaign !== touch.utm_campaign;
     if (otherSource) next.first = stored.first ?? firstOf(stored);
     else if (stored.first) next.first = stored.first;
   }

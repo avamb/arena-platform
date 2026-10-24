@@ -3,7 +3,7 @@
  * (spec 43 section 5.1). Runs in node: storage is a mock.
  */
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import {
   ATTRIBUTION_WINDOW_MS,
   attributionKey,
@@ -136,6 +136,19 @@ describe('captureAttribution', () => {
     expect(captureAttribution(TOKEN, '?ref=aaaaaaa', { storage: fresh, now: t2 })).not.toHaveProperty('first');
   });
 
+  it('moves the touch into first when only utm_campaign changes', () => {
+    const storage = mockStorage();
+    captureAttribution(TOKEN, '?utm_source=facebook&utm_campaign=spring', { storage, now: T0 });
+    const t1 = new Date(T0.getTime() + DAY);
+    const a = captureAttribution(TOKEN, '?utm_source=facebook&utm_campaign=autumn', { storage, now: t1 });
+    expect(a).toEqual({
+      utm_source: 'facebook',
+      utm_campaign: 'autumn',
+      landed_at: t1.toISOString(),
+      first: { utm_source: 'facebook', utm_campaign: 'spring', landed_at: T0.toISOString() },
+    });
+  });
+
   it('forgets an expired stored touch before it can become first', () => {
     const storage = mockStorage();
     captureAttribution(TOKEN, '?ref=aaaaaaa', { storage, now: T0 });
@@ -189,8 +202,54 @@ describe('captureAttribution', () => {
 });
 
 describe('parseStored', () => {
+  const stored = (extra: Record<string, unknown>): string =>
+    JSON.stringify({
+      landed_at: T0.toISOString(),
+      expires_at: new Date(T0.getTime() + DAY).toISOString(),
+      ...extra,
+    });
+
   it('is null for an empty value', () => {
     expect(parseStored(null, T0)).toBeNull();
     expect(parseStored('', T0)).toBeNull();
+  });
+
+  it('checks the stored values by the same rules as the address', () => {
+    expect(parseStored(stored({ ref: 'bad value!' }), T0)).toBeNull();
+    const p = parseStored(stored({ ref: 'ABCDEFG', utm_source: 'qr', utm_medium: 'x'.repeat(65) }), T0);
+    expect(p?.ref).toBe('abcdefg');
+    expect(p?.utm_source).toBe('qr');
+    expect(p).not.toHaveProperty('utm_medium');
+    const f = parseStored(stored({ ref: 'aaaaaaa', first: { ref: '<b>', utm_source: 'qr' } }), T0);
+    expect(f?.first).toEqual({ utm_source: 'qr' });
+  });
+});
+
+describe('default storage', () => {
+  const desc = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+
+  afterEach(() => {
+    if (desc) Object.defineProperty(globalThis, 'localStorage', desc);
+    else delete (globalThis as Record<string, unknown>)['localStorage'];
+  });
+
+  it('survives a localStorage that throws on access', () => {
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new Error('SecurityError');
+      },
+    });
+    const a = captureAttribution(TOKEN, '?ref=x7k2qpm', { now: T0 });
+    expect(a).toEqual({ ref: 'x7k2qpm', landed_at: T0.toISOString() });
+    expect(captureAttribution(TOKEN, '', { now: T0 })).toBeNull();
+  });
+
+  it('uses the global localStorage when there is one', () => {
+    const storage = mockStorage();
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage });
+    captureAttribution(TOKEN, '?ref=x7k2qpm', { now: T0 });
+    expect(storage.dump()[attributionKey(TOKEN)]).toBeDefined();
+    expect(captureAttribution(TOKEN, '', { now: T0 })?.ref).toBe('x7k2qpm');
   });
 });
