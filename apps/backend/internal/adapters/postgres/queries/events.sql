@@ -172,17 +172,20 @@ GROUP BY s.event_id;
 -- UpdateEvent applies a partial update to an active event (non-status fields).
 -- Scoped by org_id to enforce owner-gated mutation policy.
 -- Empty string for name keeps the existing value; nil optional fields keep existing.
+-- posterMediaID ($7) is the optional event-level poster artwork (AB-47); descriptionFormat ($8)
+-- is stored together with a non-nil description (empty means 'text').
 UPDATE events
 SET    name        = COALESCE(NULLIF($3, ''), name),
        description = CASE WHEN $4::text IS NOT NULL THEN $4::text ELSE description END,
-       description_format = CASE WHEN $4::text IS NOT NULL THEN COALESCE(NULLIF($7::text, ''), 'text') ELSE description_format END,
+       description_format = CASE WHEN $4::text IS NOT NULL THEN COALESCE(NULLIF($8::text, ''), 'text') ELSE description_format END,
        visibility  = COALESCE(NULLIF($5, ''), visibility),
        image_url   = CASE WHEN $6::text IS NOT NULL THEN $6::text ELSE image_url END,
+       poster_media_id = CASE WHEN $7::uuid IS NOT NULL THEN $7::uuid ELSE poster_media_id END,
        updated_at  = now()
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at;
 
 -- name: UpdateEventStatus :one
 -- UpdateEventStatus transitions an event to a new status.
@@ -320,3 +323,17 @@ SET    description = $2,
        description_format = 'art',
        updated_at = now()
 WHERE  id = $1;
+
+-- name: GetEventDescriptionFormat :one
+-- GetEventDescriptionFormat reads the format flag of the event's descriptions
+-- ('text' or 'art') without locking the row.
+SELECT description_format
+FROM   events
+WHERE  id = $1;
+
+-- name: ListEventDescriptionFormats :many
+-- ListEventDescriptionFormats returns the format flag ('text' or 'art') of the
+-- descriptions of the given events, one batched read for the REST responses.
+SELECT id, description_format
+FROM   events
+WHERE  id = ANY($1::uuid[]);

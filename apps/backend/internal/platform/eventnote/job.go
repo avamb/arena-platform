@@ -9,8 +9,11 @@ package eventnote
 // what buyers received (plan 3a, rule 3).
 const JobTypeTestEmail = "event.email_note_test"
 
-// TestPayload is the job payload. Note is already filtered by Normalize and
-// may be the text of an unsaved draft; To has been checked by the API to be
+// TestPayload is the job payload. Note is already filtered by
+// eventtext.NormalizeNote (stored form, ART) and may be the text of an unsaved draft;
+// NoteFormat says how it is stored ("art" for a draft the API has normalised, "text" for
+// a stored legacy note) and is empty only in jobs queued before the release, which
+// means "text". To has been checked by the API to be
 // the caller's own address or that of an active member of the organization.
 type TestPayload struct {
 	OrgID   string `json:"org_id"`
@@ -18,6 +21,8 @@ type TestPayload struct {
 	To      string `json:"to"`
 	Locale  string `json:"locale,omitempty"`
 	Note    string `json:"note"`
+	// NoteFormat is the format of Note: "art" or "text"; empty reads as "text".
+	NoteFormat string `json:"note_format,omitempty"`
 }
 
 // TestEmailsPerHour is the cap of test letters per organization per hour.

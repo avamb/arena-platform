@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -78,7 +79,7 @@ func TestEventDescription_CreateTextAndArt(t *testing.T) {
 	// The old text (the default format): marks become ART.
 	out := e.expect(t, http.StatusCreated, http.MethodPost, base, tok, "",
 		`{"name":"Text `+tag+`","description":`+jsonString("**Big** night\n\n- one\n- two")+`,
-		  "translations":{"ru":{"description":`+jsonString("Первый абзац\n\nВторой")+`},"he":{"description":`+jsonString("שלום‏ עולם")+`}}}`)
+		  "translations":{"ru":{"description":`+jsonString("Первый абзац\n\nВторой")+`},"he":{"description":`+jsonString("שלום\u200f עולם")+`}}}`)
 	ev := e.created(t, out)
 	desc, format := e.descriptionOf(t, ev)
 	if format != "art" || desc == nil || *desc != "<p><strong>Big</strong> night</p><ul><li>one</li><li>two</li></ul>" {
@@ -88,7 +89,7 @@ func TestEventDescription_CreateTextAndArt(t *testing.T) {
 		t.Fatalf("ru = %q", v)
 	}
 	// The Hebrew text keeps its right-to-left mark.
-	if v, ok := e.i18nDescription(t, ev, "he"); !ok || !strings.Contains(v, "‏") {
+	if v, ok := e.i18nDescription(t, ev, "he"); !ok || !strings.Contains(v, "\u200f") {
 		t.Fatalf("he = %q (%v)", v, ok)
 	}
 
@@ -121,7 +122,7 @@ func TestEventDescription_CreateRefusals(t *testing.T) {
 	}{
 		"too long":           {`{"name":"R1 ` + tag + `","description":` + jsonString(strings.Repeat("x", 4001)) + `}`, http.StatusUnprocessableEntity, "event.invalid_description", "too_long"},
 		"control":            {`{"name":"R2 ` + tag + `","description":` + jsonString("bad\u0000byte") + `}`, http.StatusUnprocessableEntity, "event.invalid_description", "control_characters"},
-		"bidi override":      {`{"name":"R3 ` + tag + `","description":` + jsonString("evil ‮ text") + `}`, http.StatusUnprocessableEntity, "event.invalid_description", "control_characters"},
+		"bidi override":      {`{"name":"R3 ` + tag + `","description":` + jsonString("evil \u202e text") + `}`, http.StatusUnprocessableEntity, "event.invalid_description", "control_characters"},
 		"translation":        {`{"name":"R4 ` + tag + `","description":"ok","translations":{"cs":{"description":` + jsonString(strings.Repeat("y", 4001)) + `}}}`, http.StatusUnprocessableEntity, "event.invalid_description", "too_long"},
 		"unknown format":     {`{"name":"R5 ` + tag + `","description":"ok","description_format":"html"}`, http.StatusBadRequest, "event.invalid_description_format", ""},
 		"art too many links": {`{"name":"R6 ` + tag + `","description_format":"art","description":` + jsonString(strings.Repeat(`<a href="https://a.test/">x</a> `, 21)) + `}`, http.StatusUnprocessableEntity, "event.invalid_description", "too_many_links"},
@@ -196,7 +197,7 @@ func TestEventDescription_PatchConvertsTheLegacyTextsOfTheEvent(t *testing.T) {
 	if err := e.q.UpsertEventI18nDescription(ctx, ev.String(), "ru", "**Старый** перевод"); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.q.UpsertEventI18nDescription(ctx, ev.String(), "he", "שלום‏ עולם"); err != nil {
+	if err := e.q.UpsertEventI18nDescription(ctx, ev.String(), "he", "שלום\u200f עולם"); err != nil {
 		t.Fatal(err)
 	}
 	e.events = append(e.events, ev)
@@ -211,7 +212,7 @@ func TestEventDescription_PatchConvertsTheLegacyTextsOfTheEvent(t *testing.T) {
 	if v, _ := e.i18nDescription(t, ev, "ru"); v != "<p><strong>Старый</strong> перевод</p>" {
 		t.Fatalf("ru was not converted: %q", v)
 	}
-	if v, _ := e.i18nDescription(t, ev, "he"); !strings.Contains(v, "<p>") || !strings.Contains(v, "‏") {
+	if v, _ := e.i18nDescription(t, ev, "he"); !strings.Contains(v, "<p>") || !strings.Contains(v, "\u200f") {
 		t.Fatalf("he was not converted: %q", v)
 	}
 
@@ -298,12 +299,88 @@ func TestEventEmailNote_WriteWithArtAndText(t *testing.T) {
 	long := strings.Repeat("<p>"+strings.Repeat("word ", 40)+"</p>", 9) // 1800 visible, over 1800 html
 	e.expect(t, http.StatusOK, http.MethodPatch, path, tok, "", `{"email_note_format":"art","email_note":`+jsonString(long)+`}`)
 	over := strings.Repeat("<p>"+strings.Repeat("word ", 100)+"</p>", 5) // 2500 visible
-	raw := e.expect(t, http.StatusBadRequest, http.MethodPatch, path, tok, "", `{"email_note_format":"art","email_note":`+jsonString(over)+`}`)
+	raw := e.expect(t, http.StatusUnprocessableEntity, http.MethodPatch, path, tok, "", `{"email_note_format":"art","email_note":`+jsonString(over)+`}`)
 	if sec1Code(raw) != "event.invalid_email_note" || errReason(raw) != "too_long" {
 		t.Fatalf("over the visible limit: %q %q", sec1Code(raw), errReason(raw))
 	}
 	raw = e.expect(t, http.StatusBadRequest, http.MethodPatch, path, tok, "", `{"email_note_format":"rtf","email_note":"x"}`)
 	if sec1Code(raw) != "event.invalid_email_note_format" {
 		t.Fatalf("bad format: %q", sec1Code(raw))
+	}
+}
+
+// The PATCH writes the event row inside a transaction. The session poster
+// reset updates sessions, whose trigger updates the SAME event row: through
+// the pool it would wait for the PATCH's own transaction for ever. With a
+// deadline the request must complete, and both changes must persist.
+func TestEventDescription_PatchWithClearSessionOverridesCompletes(t *testing.T) {
+	e, org, tok := descEnv(t)
+	ev := e.event(t, org)
+	venue, session := uuid.New(), uuid.New()
+	ctx := context.Background()
+	if _, err := e.srv.pgxPool.Exec(ctx, `INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`,
+		venue, org, "Clear Hall "+uuid.NewString()[:6]); err != nil {
+		t.Fatalf("venue: %v", err)
+	}
+	if _, err := e.srv.pgxPool.Exec(ctx, `INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, status, currency, currency_source)
+		VALUES ($1, $2, $3, now() + interval '30 days', now() + interval '30 days 2 hours', 5, 'scheduled', 'EUR', 'override')`,
+		session, ev, venue); err != nil {
+		t.Fatalf("session: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = e.srv.pgxPool.Exec(ctx, `DELETE FROM sessions WHERE id = $1`, session)
+		_, _ = e.srv.pgxPool.Exec(ctx, `DELETE FROM venues WHERE id = $1`, venue)
+	})
+
+	reqCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	path := "/v1/organizations/" + org.String() + "/events/" + ev.String()
+	body := `{"description":` + jsonString("**Kept** text") + `,"clear_session_overrides":true,"translations":{"ru":{"name":"Имя ` + uuid.NewString()[:6] + `"}}}`
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPatch, e.ts.URL+path, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := e.ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("PATCH with description and clear_session_overrides did not complete: %v", err)
+	}
+	if out := integReadBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH: %d %s", resp.StatusCode, out)
+	}
+	desc, format := e.descriptionOf(t, ev)
+	if format != "art" || desc == nil || *desc != "<p><strong>Kept</strong> text</p>" {
+		t.Fatalf("description stored %v / %q", desc, format)
+	}
+	if n := e.count(t, `SELECT count(*) FROM sessions WHERE id = $1 AND poster_media_id IS NULL`, session); n != 1 {
+		t.Fatal("the session poster override was not cleared")
+	}
+	if n := e.count(t, `SELECT count(*) FROM i18n_text WHERE namespace = 'event.name' AND key = $1 AND locale = 'ru'`, ev.String()); n != 1 {
+		t.Fatal("the translated name was not stored")
+	}
+}
+
+// A description edit opens the PATCH transaction but never touches the note,
+// so the note audit row is written only when email_note was in the request.
+func TestEventDescription_PatchAuditsTheNoteOnlyWhenItWasSent(t *testing.T) {
+	e, org, tok := descEnv(t)
+	ev := e.event(t, org)
+	path := "/v1/organizations/" + org.String() + "/events/" + ev.String()
+	audits := func() int {
+		return e.count(t, `SELECT count(*) FROM audit_events WHERE action = 'v1.event.email_note.update' AND resource_id = $1`, ev.String())
+	}
+
+	e.expect(t, http.StatusOK, http.MethodPatch, path, tok, "", `{"description":"only the description"}`)
+	if n := audits(); n != 0 {
+		t.Fatalf("a description-only PATCH wrote %d note audit rows", n)
+	}
+	e.expect(t, http.StatusOK, http.MethodPatch, path, tok, "", `{"description":"again","email_note":"a note"}`)
+	if n := audits(); n != 1 {
+		t.Fatalf("a PATCH with the note wrote %d note audit rows, want 1", n)
+	}
+	e.expect(t, http.StatusOK, http.MethodPatch, path, tok, "", `{"description":"third","email_note":null}`)
+	if n := audits(); n != 2 {
+		t.Fatalf("clearing the note wrote %d note audit rows in total, want 2", n)
 	}
 }

@@ -403,7 +403,7 @@ func (h *Handler) resolveEvent(ctx context.Context, q *gen.Queries, tx pgx.Tx, p
 	a := plan.Request.Action
 	ext := externalIDString(a.ActionID)
 
-	desc, err := importDescription(a)
+	desc, err := importDescription(plan.Source, a)
 	if err != nil {
 		return uuid.Nil, err
 	}

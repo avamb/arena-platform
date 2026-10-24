@@ -309,7 +309,7 @@ func arenaRefInsertError(err error, ref string) error {
 // folding them together would be unrecoverable.
 func (h *Handler) resolveArenaEvent(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, m arenaMatch) (uuid.UUID, error) {
 	a := plan.Request.Action
-	desc, err := importDescription(a)
+	desc, err := importDescription(plan.Source, a)
 	if err != nil {
 		return uuid.Nil, err
 	}

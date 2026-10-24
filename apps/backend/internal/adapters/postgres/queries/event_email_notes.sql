@@ -24,3 +24,9 @@ ON CONFLICT (event_id) DO UPDATE
 DELETE FROM event_email_notes
 WHERE  event_id = $1
   AND  org_id   = $2;
+
+-- name: GetEventEmailNoteWithFormat :one
+SELECT note, note_format
+FROM   event_email_notes
+WHERE  event_id = $1
+  AND  org_id   = $2;

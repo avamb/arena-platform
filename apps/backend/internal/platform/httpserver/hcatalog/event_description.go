@@ -7,8 +7,12 @@
 package hcatalog
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
@@ -75,4 +79,29 @@ func localesOf(m map[string]string) []string {
 		out = append(out, l)
 	}
 	return out
+}
+
+// hydrateDescriptionFormats fills DescriptionFormat from one batched query.
+// Like the other hydrations it is presentational: a failure logs and leaves
+// the field empty, which a reader must treat as unknown.
+func (h *Handler) hydrateDescriptionFormats(ctx context.Context, responses []eventResponse) {
+	if h.eventQueries == nil || len(responses) == 0 {
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(responses))
+	for _, r := range responses {
+		if id, err := uuid.Parse(r.ID); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	formats, err := h.eventQueries.ListEventDescriptionFormats(ctx, ids)
+	if err != nil {
+		h.logger.Warn("event: description format hydration failed", slog.String("error", err.Error()))
+		return
+	}
+	for i := range responses {
+		if id, err := uuid.Parse(responses[i].ID); err == nil {
+			responses[i].DescriptionFormat = formats[id]
+		}
+	}
 }

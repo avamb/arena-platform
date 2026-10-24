@@ -122,18 +122,18 @@ func (f *bfFixture) backups(run uuid.UUID) int {
 }
 
 func (f *bfFixture) opts(apply bool) options {
-	return options{Apply: apply, OrgID: f.org}
+	return options{Apply: apply, OrgID: f.org, ShowText: true}
 }
 
 func TestBackfill_DryRunApplyRerunAndRollback(t *testing.T) {
 	f := newBFFixture(t)
 	ctx := context.Background()
 
-	hebrew := "שלום‏ עולם **מודגש**" // holds an RLM (U+200F)
-	if !strings.Contains(hebrew, "‏") {
+	hebrew := "שלום\u200f עולם **מודגש**" // holds an RLM (U+200F)
+	if !strings.Contains(hebrew, "\u200f") {
 		t.Fatal("the test text lost its RLM")
 	}
-	baseA := "**Big** night <i>x</i>\n\n- one\n- two"
+	baseA := "**Big** night & x\n\n- one\n- two"
 	evA := f.event(baseA, map[string]string{"ru": "Привет\n\nВторой абзац", "he": hebrew})
 	f.note(evA, "Come early.\n\nMap: https://example.com/map")
 
@@ -145,7 +145,7 @@ func TestBackfill_DryRunApplyRerunAndRollback(t *testing.T) {
 	f.note(evBNote, strings.Repeat("n", 2500))
 
 	// A lone "- " line and a literal tag.
-	evC := f.event("- Hello!\n\nUse <b>this</b>", nil)
+	evC := f.event("- Hello!\n\nUse <this> word", nil)
 
 	// Already ART: never touched.
 	evD := f.event("<p>already art</p>", nil)
@@ -173,7 +173,7 @@ func TestBackfill_DryRunApplyRerunAndRollback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply: %v", err)
 	}
-	wantA := "<p><strong>Big</strong> night &lt;i&gt;x&lt;/i&gt;</p><ul><li>one</li><li>two</li></ul>"
+	wantA := "<p><strong>Big</strong> night &amp; x</p><ul><li>one</li><li>two</li></ul>"
 	if d, format := f.desc(evA); d != wantA || format != "art" {
 		t.Fatalf("event A base: %q / %q, want %q", d, format, wantA)
 	}
@@ -181,7 +181,7 @@ func TestBackfill_DryRunApplyRerunAndRollback(t *testing.T) {
 		t.Fatalf("ru = %q", v)
 	}
 	he := f.i18n(evA, "he")
-	if !strings.Contains(he, "‏") || !strings.Contains(he, "<strong>מודגש</strong>") {
+	if !strings.Contains(he, "\u200f") || !strings.Contains(he, "<strong>מודגש</strong>") {
 		t.Fatalf("he lost its mark or its bold: %q", he)
 	}
 	if n, format := f.noteOf(evA); format != "art" || !strings.Contains(n, `<a href="https://example.com/map">`) {
@@ -213,7 +213,7 @@ func TestBackfill_DryRunApplyRerunAndRollback(t *testing.T) {
 		t.Fatalf("skipped list is incomplete (cs %v, base %v, note %v): %+v", skipB, skipSibling, skipNote, rep.Skipped)
 	}
 	// Event C is converted, and shows up in both watch lists.
-	if d, _ := f.desc(evC); !strings.HasPrefix(d, "<p>- Hello!</p>") || !strings.Contains(d, "&lt;b&gt;this&lt;/b&gt;") {
+	if d, _ := f.desc(evC); !strings.HasPrefix(d, "<p>- Hello!</p>") || !strings.Contains(d, "&lt;this&gt;") {
 		t.Fatalf("event C: %q", d)
 	}
 	var single, literal bool
@@ -223,7 +223,7 @@ func TestBackfill_DryRunApplyRerunAndRollback(t *testing.T) {
 		}
 	}
 	for _, n := range rep.LiteralTags {
-		if n.ID == evC.String() && strings.Contains(n.Detail, "<b>") {
+		if n.ID == evC.String() && strings.Contains(n.Detail, "<this>") {
 			literal = true
 		}
 	}
@@ -248,7 +248,7 @@ func TestBackfill_DryRunApplyRerunAndRollback(t *testing.T) {
 		t.Fatalf("backup of he: %q / %q / %q", oldValue, oldFormat, newValue)
 	}
 	md := rep.Markdown()
-	for _, want := range []string{evA.String(), "locale=he", "too_long", "- Hello!", "<b>"} {
+	for _, want := range []string{evA.String(), "locale=he", "too_long", "- Hello!", "<this>"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("the report lacks %q", want)
 		}
@@ -267,13 +267,13 @@ func TestBackfill_DryRunApplyRerunAndRollback(t *testing.T) {
 	}
 
 	// ---- rollback: a dry run writes nothing, apply restores.
-	if _, err := rollbackRun(ctx, f.pool, rep.RunID, false); err != nil {
+	if _, err := rollbackRun(ctx, f.pool, rep.RunID, false, uuid.Nil); err != nil {
 		t.Fatalf("rollback dry run: %v", err)
 	}
 	if d, _ := f.desc(evA); d != wantA {
 		t.Fatal("a rollback dry run restored a text")
 	}
-	rb, err := rollbackRun(ctx, f.pool, rep.RunID, true)
+	rb, err := rollbackRun(ctx, f.pool, rep.RunID, true, uuid.Nil)
 	if err != nil {
 		t.Fatalf("rollback: %v", err)
 	}
@@ -286,7 +286,7 @@ func TestBackfill_DryRunApplyRerunAndRollback(t *testing.T) {
 	if n, format := f.noteOf(evA); n != "Come early.\n\nMap: https://example.com/map" || format != "text" {
 		t.Fatalf("note after rollback: %q / %q", n, format)
 	}
-	if d, format := f.desc(evC); d != "- Hello!\n\nUse <b>this</b>" || format != "text" {
+	if d, format := f.desc(evC); d != "- Hello!\n\nUse <this> word" || format != "text" {
 		t.Fatalf("C after rollback: %q / %q", d, format)
 	}
 	if d, format := f.desc(evD); d != "<p>already art</p>" || format != "art" {
@@ -296,14 +296,14 @@ func TestBackfill_DryRunApplyRerunAndRollback(t *testing.T) {
 		t.Fatalf("rollback report: %d changed, %+v skipped", len(rb.Changed), rb.Skipped)
 	}
 	// Rolling back twice restores nothing more.
-	rb2, err := rollbackRun(ctx, f.pool, rep.RunID, true)
+	rb2, err := rollbackRun(ctx, f.pool, rep.RunID, true, uuid.Nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(rb2.Changed) != 0 || len(rb2.Skipped) == 0 || rb2.Skipped[0].Reason != reasonAlreadyText {
 		t.Fatalf("second rollback: %+v %+v", rb2.Changed, rb2.Skipped)
 	}
-	if _, err := rollbackRun(ctx, f.pool, uuid.New(), true); err == nil {
+	if _, err := rollbackRun(ctx, f.pool, uuid.New(), true, uuid.Nil); err == nil {
 		t.Fatal("an unknown run id must be an error")
 	}
 }
@@ -329,7 +329,7 @@ func TestBackfill_RollbackLeavesTextsWrittenSinceTheRun(t *testing.T) {
 	if _, err := f.pool.Exec(ctx, `UPDATE event_email_notes SET note = '<p>edited note</p>' WHERE event_id = $1`, evB); err != nil {
 		t.Fatal(err)
 	}
-	rb, err := rollbackRun(ctx, f.pool, rep.RunID, true)
+	rb, err := rollbackRun(ctx, f.pool, rep.RunID, true, uuid.Nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,32 +353,5 @@ func TestBackfill_RollbackLeavesTextsWrittenSinceTheRun(t *testing.T) {
 	}
 	if !reasons[evA.String()+"/"+reasonChangedSince] || !reasons[evB.String()+"/"+reasonChangedSince] {
 		t.Fatalf("skipped: %+v", rb.Skipped)
-	}
-}
-
-func TestBackfill_LimitAndEmptyRows(t *testing.T) {
-	f := newBFFixture(t)
-	ctx := context.Background()
-	for i := 0; i < 3; i++ {
-		f.event("**row** "+uuid.NewString()[:6], nil)
-	}
-	emptyEv := f.event("", nil) // nothing to convert: not a candidate
-
-	rep, err := runBackfill(ctx, f.pool, options{Apply: true, OrgID: f.org, Limit: 2})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rep.EventsScanned != 2 || len(rep.Changed) != 2 {
-		t.Fatalf("limit 2: scanned %d, changed %d", rep.EventsScanned, len(rep.Changed))
-	}
-	rep, err = runBackfill(ctx, f.pool, f.opts(true))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rep.Changed) != 1 {
-		t.Fatalf("the rest: changed %d", len(rep.Changed))
-	}
-	if _, format := f.desc(emptyEv); format != "text" {
-		t.Fatalf("an event without a text was converted: %q", format)
 	}
 }

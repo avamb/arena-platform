@@ -18,11 +18,11 @@ import (
 // bundle asks to remove it, else it is ART made by richtext.Normalize from the
 // text in action.emailNoteFormat ("text" by default). A text the filter
 // refuses is 422 import.invalid_email_note, found by the dry run as well.
-func importEmailNote(a bil24compat.ImportSessionAction) (note string, set bool, err error) {
+func importEmailNote(source string, a bil24compat.ImportSessionAction) (note string, set bool, err error) {
 	if a.EmailNote == nil {
 		return "", false, nil
 	}
-	format, ok := eventtext.ParseFormat(a.EmailNoteFormat)
+	format, ok := importTextFormat(source, a.EmailNoteFormat)
 	if !ok {
 		return "", false, failImportAt(http.StatusUnprocessableEntity, "import.invalid_email_note",
 			"/action/emailNoteFormat", "action.emailNoteFormat must be one of: text, art")
@@ -38,7 +38,7 @@ func importEmailNote(a bil24compat.ImportSessionAction) (note string, set bool, 
 // applyArenaEmailNote stores action.emailNote inside the import transaction:
 // absent keeps the event's text, "" removes it, a string replaces it.
 func applyArenaEmailNote(ctx context.Context, q *gen.Queries, plan importPlan, eventID uuid.UUID) error {
-	note, set, err := importEmailNote(plan.Request.Action)
+	note, set, err := importEmailNote(plan.Source, plan.Request.Action)
 	if err != nil || !set {
 		return err
 	}

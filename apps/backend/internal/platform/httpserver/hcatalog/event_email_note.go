@@ -58,7 +58,7 @@ func (h *Handler) WithEmailNoteTestLimiter(q EmailNoteTestQuota) *Handler {
 // parseEmailNote checks the PATCH field. set is false when the key is absent;
 // note is "" when the field asks to clear. format is the request's
 // email_note_format. A refused text has been answered
-// (400 event.invalid_email_note) and ok is false.
+// (422 event.invalid_email_note) and ok is false.
 func parseEmailNote(w http.ResponseWriter, r *http.Request, opt optionalString, format string) (note string, set, ok bool) {
 	if !opt.Present {
 		return "", false, true
@@ -75,7 +75,7 @@ func parseEmailNote(w http.ResponseWriter, r *http.Request, opt optionalString, 
 }
 
 func writeInvalidEmailNote(w http.ResponseWriter, r *http.Request, err error, reason string) {
-	httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+	httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 		"event.invalid_email_note", "the event letter text is not allowed: "+err.Error(), r,
 		map[string]any{"field": "email_note", "reason": reason},
 	))
@@ -147,6 +147,8 @@ type emailNoteTestRequest struct {
 	To string `json:"to"`
 	// Note previews an unsaved text. Absent means the stored note.
 	Note *string `json:"note"`
+	// NoteFormat is the format of Note: "text" (default) or "art".
+	NoteFormat string `json:"note_format"`
 	// Locale picks the language of the letter; empty means the caller's.
 	Locale string `json:"locale"`
 }
@@ -196,27 +198,31 @@ func (h *Handler) HandleEmailNoteTest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// The text to preview: the draft in the body, else the stored note. The
-	// preview letter is still rendered by the old plain-text reader of the
-	// delivery package (reading is RT-03b), so a draft is checked by the old
-	// filter and nothing here is stored.
-	var note string
+	// The text to preview: the draft in the body, else the stored note. A
+	// draft is validated exactly like the save (eventtext.NormalizeNote, the
+	// same profile and limits) and becomes ART, so the letter is the one the
+	// buyer would get from that text. Nothing here is stored.
+	var note, noteFormat string
 	if req.Note != nil {
-		clean, nerr := eventnote.Normalize(*req.Note)
-		if nerr != nil {
-			writeInvalidEmailNote(w, r, nerr, eventnote.Reason(nerr))
+		draftFormat, fok := parseTextFormat(w, r, req.NoteFormat, "note_format", "event.invalid_email_note_format")
+		if !fok {
 			return
 		}
-		note = clean
+		clean, nerr := eventtext.NormalizeNote(*req.Note, draftFormat)
+		if nerr != nil {
+			writeInvalidEmailNote(w, r, nerr, eventtext.Reason(nerr))
+			return
+		}
+		note, noteFormat = clean, richtext.FormatART
 	} else {
-		stored, gerr := h.eventQueries.GetEventEmailNote(ctx, eventID, orgID)
+		stored, storedFormat, gerr := h.eventQueries.GetEventEmailNoteWithFormat(ctx, eventID, orgID)
 		if gerr != nil && !errors.Is(gerr, pgx.ErrNoRows) {
 			h.logger.Error("event: email note test read failed", slog.String("error", gerr.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"event.email_note_test_failed", "failed to queue the test letter", r))
 			return
 		}
-		note = stored
+		note, noteFormat = stored, storedFormat
 	}
 	if note == "" {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
@@ -251,7 +257,7 @@ func (h *Handler) HandleEmailNoteTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := worker.EnqueueInTx(ctx, tx, eventnote.JobTypeTestEmail, eventnote.TestPayload{
-		OrgID: orgID.String(), EventID: eventID.String(), To: to, Locale: locale, Note: note,
+		OrgID: orgID.String(), EventID: eventID.String(), To: to, Locale: locale, Note: note, NoteFormat: noteFormat,
 	}, 3); err != nil {
 		h.logger.Error("event: email note test enqueue failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(

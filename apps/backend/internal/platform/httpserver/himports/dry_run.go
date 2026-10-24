@@ -206,11 +206,11 @@ func checkBundleFields(plan importPlan, issues *issueSink) {
 	if _, _, err := importDoorsOpen(req.ActionEvent, time.Time{}); err != nil {
 		issues.add(err)
 	}
-	if _, err := importDescription(req.Action); err != nil {
+	if _, err := importDescription(plan.Source, req.Action); err != nil {
 		issues.add(err)
 	}
 	if arena {
-		if _, _, err := importEmailNote(req.Action); err != nil {
+		if _, _, err := importEmailNote(plan.Source, req.Action); err != nil {
 			issues.add(err)
 		}
 	}

@@ -79,7 +79,7 @@ func TestNormalizeTranslationDescriptions(t *testing.T) {
 	out, ok := normalizeTranslationDescriptions(rec, r, map[string]eventTranslation{
 		"ru":  {Name: "n", Description: "**Привет**\n\n- раз\n- два"},
 		"en":  {Description: "   "}, // blank: left out as before
-		" he": {Description: "שלום‏"},
+		" he": {Description: "שלום\u200f"},
 		"":    {Description: "no locale"},
 	}, "text")
 	if !ok {
@@ -91,7 +91,7 @@ func TestNormalizeTranslationDescriptions(t *testing.T) {
 	if out["ru"] != "<p><strong>Привет</strong></p><ul><li>раз</li><li>два</li></ul>" {
 		t.Fatalf("ru = %q", out["ru"])
 	}
-	if !strings.Contains(out["he"], "‏") {
+	if !strings.Contains(out["he"], "\u200f") {
 		t.Fatalf("he lost its direction mark: %q", out["he"])
 	}
 
@@ -180,7 +180,7 @@ func TestParseEmailNote_RefusalIsA400WithTheRichtextReason(t *testing.T) {
 			continue
 		}
 		code, details := decodeErr(t, rec)
-		if rec.Code != http.StatusBadRequest || code != "event.invalid_email_note" || details["reason"] != reason || details["field"] != "email_note" {
+		if rec.Code != http.StatusUnprocessableEntity || code != "event.invalid_email_note" || details["reason"] != reason || details["field"] != "email_note" {
 			t.Errorf("%.20q: %d %q %v", in, rec.Code, code, details)
 		}
 	}

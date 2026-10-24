@@ -155,7 +155,7 @@ func TestEventEmailNote_PatchSetClearKeepAndFilter(t *testing.T) {
 		`{"name":"Renamed","email_note":` + jsonString(strings.Repeat("x", 2001)) + `}`:                                                                    "too_long",
 		`{"name":"Renamed","email_note_format":"art","email_note":` + jsonString("<p>"+strings.Repeat(`<a href="https://a.test/">x</a> `, 6)+"</p>") + `}`: "too_many_links",
 	} {
-		raw := e.expect(t, http.StatusBadRequest, http.MethodPatch, path, tok, "", body)
+		raw := e.expect(t, http.StatusUnprocessableEntity, http.MethodPatch, path, tok, "", body)
 		if sec1Code(raw) != "event.invalid_email_note" || errReason(raw) != reason {
 			t.Errorf("%s: code %q reason %q, want event.invalid_email_note / %s", body, sec1Code(raw), errReason(raw), reason)
 		}
@@ -250,7 +250,7 @@ func TestEventEmailNote_TestLetterRouteAndWorker(t *testing.T) {
 		t.Errorf("empty: code %q", sec1Code(raw))
 	}
 	// A refused draft.
-	raw = e.expect(t, http.StatusBadRequest, http.MethodPost, test, tok, "", `{"note":"javascript:alert(1)"}`)
+	raw = e.expect(t, http.StatusUnprocessableEntity, http.MethodPost, test, tok, "", `{"note":"javascript:alert(1)"}`)
 	if sec1Code(raw) != "event.invalid_email_note" {
 		t.Errorf("bad draft: code %q", sec1Code(raw))
 	}
@@ -360,5 +360,93 @@ func TestEventEmailNote_PatchIsAtomicWithTheEventRow(t *testing.T) {
 	}
 	if n := e.count(t, `SELECT count(*) FROM audit_events WHERE action = 'v1.event.email_note.update' AND resource_id = $1`, ev.String()); n != 1 {
 		t.Errorf("audit rows = %d: a rolled back change must not be audited", n)
+	}
+}
+
+// The draft of the test letter passes through the same validation as the save
+// (eventtext.NormalizeNote), so the preview is the letter the buyer gets from
+// that text, and the job carries the format with it.
+func TestEventEmailNote_TestLetterDraftEqualsTheSavedLetter(t *testing.T) {
+	e := newENEnv(t)
+	org := e.org(t, "A")
+	owner := e.user(t, "owner")
+	e.member(t, owner, org, "org_admin")
+	tok := e.token(t, owner)
+	ev := e.event(t, org)
+	base := "/v1/organizations/" + org.String() + "/events/" + ev.String()
+	test := base + "/email-note/test"
+	ownerMail := e.emailOf(t, owner)
+	const draft = `<h3>Head</h3><p>Come <b>early</b> <a href="https://example.com/m">map</a><script>x()</script></p>`
+
+	// The filter is the save's: a refusal is 422 with the reason, a bad format 400.
+	raw := e.expect(t, http.StatusUnprocessableEntity, http.MethodPost, test, tok, "", `{"note_format":"art","note":`+jsonString(strings.Repeat("<p>"+strings.Repeat("w ", 600)+"</p>", 3))+`}`)
+	if sec1Code(raw) != "event.invalid_email_note" || errReason(raw) != "too_long" {
+		t.Errorf("long draft: %q %q", sec1Code(raw), errReason(raw))
+	}
+	raw = e.expect(t, http.StatusBadRequest, http.MethodPost, test, tok, "", `{"note_format":"rtf","note":"x"}`)
+	if sec1Code(raw) != "event.invalid_email_note_format" {
+		t.Errorf("bad format: %q", sec1Code(raw))
+	}
+
+	e.expect(t, http.StatusAccepted, http.MethodPost, test, tok, "", `{"note_format":"art","note":`+jsonString(draft)+`}`)
+	var payload []byte
+	if err := e.srv.pgxPool.QueryRow(context.Background(),
+		`SELECT payload FROM worker_jobs WHERE job_type = $1 AND payload->>'org_id' = $2 ORDER BY created_at DESC LIMIT 1`,
+		eventnote.JobTypeTestEmail, org.String()).Scan(&payload); err != nil {
+		t.Fatalf("read job: %v", err)
+	}
+	var job eventnote.TestPayload
+	if err := json.Unmarshal(payload, &job); err != nil {
+		t.Fatal(err)
+	}
+	if job.NoteFormat != "art" {
+		t.Fatalf("job note_format = %q", job.NoteFormat)
+	}
+
+	// Saving the very same text stores what the job carries.
+	e.expect(t, http.StatusOK, http.MethodPatch, base, tok, "", `{"email_note_format":"art","email_note":`+jsonString(draft)+`}`)
+	if saved, _ := e.noteOf(t, ev); saved != job.Note {
+		t.Fatalf("the preview text %q differs from the saved text %q", job.Note, saved)
+	}
+
+	sender := &fakeSender{}
+	h := delivery.NewEventNoteTestHandler(delivery.EventNoteTestOptions{Sender: sender, DB: e.srv.pgxPool})
+	if err := h(context.Background(), payload); err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if len(sender.sent) != 1 {
+		t.Fatalf("sent %d letters", len(sender.sent))
+	}
+	m := sender.sent[0]
+	if !strings.Contains(m.HTMLBody, "<strong>early</strong>") || !strings.Contains(m.HTMLBody, `href="https://example.com/m"`) {
+		t.Errorf("the formatted note is missing from the html part:\n%s", m.HTMLBody)
+	}
+	if strings.Contains(m.HTMLBody, "&lt;p&gt;") || strings.Contains(m.HTMLBody, "&lt;strong&gt;") || strings.Contains(m.HTMLBody, "<script") {
+		t.Errorf("escaped or unsafe markup in the html part:\n%s", m.HTMLBody)
+	}
+	if strings.Contains(m.TextBody, "<p>") || strings.Contains(m.TextBody, "<strong>") || strings.Contains(m.TextBody, "<a ") ||
+		!strings.Contains(m.TextBody, "Come early") {
+		t.Errorf("the text part:\n%s", m.TextBody)
+	}
+
+	// A stored legacy text note previews as text, not as ART.
+	if _, err := e.srv.pgxPool.Exec(context.Background(),
+		`UPDATE event_email_notes SET note = 'Old **note** https://example.com/old', note_format = 'text' WHERE event_id = $1`, ev); err != nil {
+		t.Fatal(err)
+	}
+	e.expect(t, http.StatusAccepted, http.MethodPost, test, tok, "", `{"to":`+jsonString(ownerMail)+`}`)
+	if err := e.srv.pgxPool.QueryRow(context.Background(),
+		`SELECT payload FROM worker_jobs WHERE job_type = $1 AND payload->>'org_id' = $2 ORDER BY created_at DESC LIMIT 1`,
+		eventnote.JobTypeTestEmail, org.String()).Scan(&payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(payload, &job); err != nil || job.NoteFormat != "text" || job.Note != "Old **note** https://example.com/old" {
+		t.Fatalf("legacy job: %+v (%v)", job, err)
+	}
+	if err := h(context.Background(), payload); err != nil || len(sender.sent) != 2 {
+		t.Fatalf("legacy handler: %v (%d letters)", err, len(sender.sent))
+	}
+	if !strings.Contains(sender.sent[1].HTMLBody, "<strong>note</strong>") || !strings.Contains(sender.sent[1].HTMLBody, `href="https://example.com/old"`) {
+		t.Errorf("legacy note html:\n%s", sender.sent[1].HTMLBody)
 	}
 }

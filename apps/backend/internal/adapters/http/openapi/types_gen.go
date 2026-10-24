@@ -426,6 +426,12 @@ const (
 	DeliveryJobStatusSent       DeliveryJobStatus = "sent"
 )
 
+// Defines values for EventItemDescriptionFormat.
+const (
+	Art  EventItemDescriptionFormat = "art"
+	Text EventItemDescriptionFormat = "text"
+)
+
 // Defines values for EventItemStatus.
 const (
 	EventItemStatusArchived  EventItemStatus = "archived"
@@ -7141,6 +7147,11 @@ type EventEmailNoteTestRequest struct {
 	// Absent means the stored text.
 	Note *string `json:"note,omitempty"`
 
+	// NoteFormat How the draft `note` is written: `text` (default, the old marks)
+	// or `art`, as `email_note_format` of PATCH. Anything else answers
+	// 400 `event.invalid_email_note_format`.
+	NoteFormat *string `json:"note_format,omitempty"`
+
 	// To Address to send to: the caller's own, or that of an active member
 	// of the organization. Empty means the caller's own address.
 	To *string `json:"to,omitempty"`
@@ -7244,6 +7255,14 @@ type EventItem struct {
 
 	// Description Optional long-form description. Locale-resolved like `name`.
 	Description *string `json:"description"`
+
+	// DescriptionFormat How `description` is stored: `art` is "text Arena", the small HTML
+	// subset (`p`, `br`, `strong`, `em`, `u`, `a[href]`, `ul`, `ol`, `li`,
+	// headings and quotes), `text` is the old plain text with the marks
+	// `**bold**`, `_italic_` and `- ` list lines that the backfill has not
+	// converted yet. The flag covers the translations too. Empty only when
+	// the server could not read it; a reader treats that as `text`.
+	DescriptionFormat *EventItemDescriptionFormat `json:"description_format,omitempty"`
 
 	// DisplayNumber Short operator-facing event number; UUID remains the API key.
 	DisplayNumber int64 `json:"display_number"`
@@ -7378,6 +7397,14 @@ type EventItem struct {
 	// `?visibility=` filter.
 	Visibility EventItemVisibility `json:"visibility"`
 }
+
+// EventItemDescriptionFormat How `description` is stored: `art` is "text Arena", the small HTML
+// subset (`p`, `br`, `strong`, `em`, `u`, `a[href]`, `ul`, `ol`, `li`,
+// headings and quotes), `text` is the old plain text with the marks
+// `**bold**`, `_italic_` and `- ` list lines that the backfill has not
+// converted yet. The flag covers the translations too. Empty only when
+// the server could not read it; a reader treats that as `text`.
+type EventItemDescriptionFormat string
 
 // EventItemStatus Lifecycle status.
 type EventItemStatus string
@@ -16526,7 +16553,7 @@ type UpdateEventRequest struct {
 	// print under "About the event". At most 2000 visible characters
 	// and 5 links, every link `https://`, control characters are
 	// refused. Read as `email_note_format` and stored as filtered HTML.
-	// A refused text answers 400 `event.invalid_email_note` with
+	// A refused text answers 422 `event.invalid_email_note` with
 	// `error.details.reason`.
 	EmailNote *string `json:"email_note"`
 

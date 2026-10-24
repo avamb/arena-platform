@@ -46,17 +46,19 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
 	}
 	promoter := d.Event.PromoterID // "" = the organization itself
+	descText, descFormat := d.bundleDescription()
 	req := bil24compat.ImportSessionRequest{
 		Source:      bil24compat.SourceArena,
 		ExternalRef: externalRef,
 		Action: bil24compat.ImportSessionAction{
-			ActionID:     actionID,
-			ArenaEventID: d.Event.EventID,
-			ActionName:   d.Event.Name,
-			Age:          d.Event.Age,
-			Description:  d.Event.Description,
-			BigPosterURL: posterURL,
-			PromoterID:   &promoter,
+			ActionID:          actionID,
+			ArenaEventID:      d.Event.EventID,
+			ActionName:        d.Event.Name,
+			Age:               d.Event.Age,
+			Description:       descText,
+			DescriptionFormat: descFormat,
+			BigPosterURL:      posterURL,
+			PromoterID:        &promoter,
 		},
 		ActionEvent: bil24compat.ImportSessionActionEvent{
 			ArenaSessionID: s.SessionID,

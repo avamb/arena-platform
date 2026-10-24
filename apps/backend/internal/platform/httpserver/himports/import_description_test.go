@@ -20,7 +20,7 @@ func importErr(t *testing.T, err error) *importError {
 }
 
 func TestImportDescription_TextAndArt(t *testing.T) {
-	got, err := importDescription(bil24compat.ImportSessionAction{Description: "**Big** night\n\n- one\n- two"})
+	got, err := importDescription(bil24compat.SourceArena, bil24compat.ImportSessionAction{Description: "**Big** night\n\n- one\n- two"})
 	if err != nil || got == nil {
 		t.Fatalf("text: %v %v", got, err)
 	}
@@ -28,7 +28,7 @@ func TestImportDescription_TextAndArt(t *testing.T) {
 		t.Fatalf("text: %q want %q", *got, want)
 	}
 
-	got, err = importDescription(bil24compat.ImportSessionAction{
+	got, err = importDescription(bil24compat.SourceArena, bil24compat.ImportSessionAction{
 		Description: `<h1>T</h1><p>Hi <b>x</b></p><img src=x onerror=y()>`, DescriptionFormat: "art"})
 	if err != nil || got == nil {
 		t.Fatalf("art: %v %v", got, err)
@@ -40,13 +40,13 @@ func TestImportDescription_TextAndArt(t *testing.T) {
 
 func TestImportDescription_AbsentKeepsTheStoredText(t *testing.T) {
 	for _, d := range []string{"", "   ", "\n"} {
-		got, err := importDescription(bil24compat.ImportSessionAction{Description: d})
+		got, err := importDescription(bil24compat.SourceArena, bil24compat.ImportSessionAction{Description: d})
 		if err != nil || got != nil {
 			t.Errorf("%q: %v %v", d, got, err)
 		}
 	}
 	// A tag-only text normalizes to nothing: nothing to store either.
-	if got, err := importDescription(bil24compat.ImportSessionAction{Description: "<script>x</script>", DescriptionFormat: "art"}); err != nil || got != nil {
+	if got, err := importDescription(bil24compat.SourceArena, bil24compat.ImportSessionAction{Description: "<script>x</script>", DescriptionFormat: "art"}); err != nil || got != nil {
 		t.Errorf("script only: %v %v", got, err)
 	}
 }
@@ -58,13 +58,13 @@ func TestImportDescription_Refusals(t *testing.T) {
 		"unknown format": {Description: "x", DescriptionFormat: "html"},
 		"format alone":   {DescriptionFormat: "markdown"},
 	} {
-		_, err := importDescription(a)
+		_, err := importDescription(bil24compat.SourceArena, a)
 		ie := importErr(t, err)
 		if ie.status != http.StatusUnprocessableEntity || ie.code != "import.invalid_description" {
 			t.Errorf("%s: %d %s", name, ie.status, ie.code)
 		}
 	}
-	_, err := importDescription(bil24compat.ImportSessionAction{Description: strings.Repeat("x", 4001)})
+	_, err := importDescription(bil24compat.SourceArena, bil24compat.ImportSessionAction{Description: strings.Repeat("x", 4001)})
 	if ie := importErr(t, err); ie.field != "/action/description" || !strings.Contains(ie.message, "too_long") {
 		t.Errorf("field %q message %q", ie.field, ie.message)
 	}
@@ -72,7 +72,7 @@ func TestImportDescription_Refusals(t *testing.T) {
 
 func TestImportEmailNote_FormatAndReason(t *testing.T) {
 	note := "Come early\n\nSee https://example.com/x"
-	got, set, err := importEmailNote(bil24compat.ImportSessionAction{EmailNote: &note})
+	got, set, err := importEmailNote(bil24compat.SourceArena, bil24compat.ImportSessionAction{EmailNote: &note})
 	if err != nil || !set {
 		t.Fatalf("%v %v", set, err)
 	}
@@ -80,25 +80,25 @@ func TestImportEmailNote_FormatAndReason(t *testing.T) {
 		t.Fatalf("text: %q", got)
 	}
 	art := `<p>Hi <i>x</i></p>`
-	got, set, err = importEmailNote(bil24compat.ImportSessionAction{EmailNote: &art, EmailNoteFormat: "art"})
+	got, set, err = importEmailNote(bil24compat.SourceArena, bil24compat.ImportSessionAction{EmailNote: &art, EmailNoteFormat: "art"})
 	if err != nil || !set || got != "<p>Hi <em>x</em></p>" {
 		t.Fatalf("art: %q %v %v", got, set, err)
 	}
-	if _, set, err := importEmailNote(bil24compat.ImportSessionAction{}); set || err != nil {
+	if _, set, err := importEmailNote(bil24compat.SourceArena, bil24compat.ImportSessionAction{}); set || err != nil {
 		t.Fatal("absent must keep")
 	}
 	empty := ""
-	if got, set, err := importEmailNote(bil24compat.ImportSessionAction{EmailNote: &empty}); got != "" || !set || err != nil {
+	if got, set, err := importEmailNote(bil24compat.SourceArena, bil24compat.ImportSessionAction{EmailNote: &empty}); got != "" || !set || err != nil {
 		t.Fatal(`"" must clear`)
 	}
 
 	bad := "go javascript:alert(1)"
-	_, _, err = importEmailNote(bil24compat.ImportSessionAction{EmailNote: &bad})
+	_, _, err = importEmailNote(bil24compat.SourceArena, bil24compat.ImportSessionAction{EmailNote: &bad})
 	ie := importErr(t, err)
 	if ie.code != "import.invalid_email_note" || ie.field != "/action/emailNote" || !strings.Contains(ie.message, "scheme_not_allowed") {
 		t.Fatalf("%s %s %s", ie.code, ie.field, ie.message)
 	}
-	_, _, err = importEmailNote(bil24compat.ImportSessionAction{EmailNote: &note, EmailNoteFormat: "html"})
+	_, _, err = importEmailNote(bil24compat.SourceArena, bil24compat.ImportSessionAction{EmailNote: &note, EmailNoteFormat: "html"})
 	if ie := importErr(t, err); ie.code != "import.invalid_email_note" || ie.field != "/action/emailNoteFormat" {
 		t.Fatalf("%s %s", ie.code, ie.field)
 	}
@@ -112,5 +112,40 @@ func TestImportAction_FormatFieldsDecodeCamelCase(t *testing.T) {
 	}
 	if a.DescriptionFormat != "art" || a.EmailNoteFormat != "art" || a.EmailNote == nil {
 		t.Fatalf("%+v", a)
+	}
+}
+
+// WordPress sites (source=bil24) send HTML. With no descriptionFormat it is
+// read as ART and sanitised, not shown as text with visible tags; source=arena
+// keeps "text" as the default; an explicit format wins in both.
+func TestImportDescription_Bil24DefaultsToART(t *testing.T) {
+	const html = `<p>Concert &amp; <b>more</b></p><p>Tickets: <a href="https://example.com/t" onclick="x()">here</a></p><script>bad()</script>`
+	got, err := importDescription(bil24compat.SourceBil24, bil24compat.ImportSessionAction{Description: html})
+	if err != nil || got == nil {
+		t.Fatalf("%v %v", got, err)
+	}
+	if want := `<p>Concert &amp; <strong>more</strong></p><p>Tickets: <a href="https://example.com/t">here</a></p>`; *got != want {
+		t.Fatalf("bil24 html: %q want %q", *got, want)
+	}
+
+	// source=arena: the same text is the old plain text, so the tags are literal.
+	got, err = importDescription(bil24compat.SourceArena, bil24compat.ImportSessionAction{Description: "<p>x</p>"})
+	if err != nil || got == nil || !strings.Contains(*got, "&lt;p&gt;x&lt;/p&gt;") {
+		t.Fatalf("arena default: %v %v", got, err)
+	}
+
+	// An explicit format wins on the bil24 route too.
+	got, err = importDescription(bil24compat.SourceBil24, bil24compat.ImportSessionAction{Description: "**b**", DescriptionFormat: "text"})
+	if err != nil || got == nil || *got != "<p><strong>b</strong></p>" {
+		t.Fatalf("explicit text: %v %v", got, err)
+	}
+	if _, err := importDescription(bil24compat.SourceBil24, bil24compat.ImportSessionAction{Description: "x", DescriptionFormat: "html"}); err == nil {
+		t.Fatal("an unknown explicit format must be refused")
+	}
+
+	note := "<p>Doors <b>19:00</b></p>"
+	nout, set, err := importEmailNote(bil24compat.SourceBil24, bil24compat.ImportSessionAction{EmailNote: &note})
+	if err != nil || !set || nout != "<p>Doors <strong>19:00</strong></p>" {
+		t.Fatalf("bil24 note: %q %v %v", nout, set, err)
 	}
 }

@@ -736,3 +736,44 @@ func (q *Queries) SetEventDescriptionART(ctx context.Context, eventID uuid.UUID,
 	_, err := q.db.Exec(ctx, setEventDescriptionART, eventID, description)
 	return err
 }
+
+const getEventDescriptionFormat = `-- name: GetEventDescriptionFormat :one
+SELECT description_format
+FROM   events
+WHERE  id = $1`
+
+// GetEventDescriptionFormat reads the format flag of the event's descriptions
+// ("text" or "art") without locking the row.
+func (q *Queries) GetEventDescriptionFormat(ctx context.Context, eventID uuid.UUID) (string, error) {
+	var f string
+	err := q.db.QueryRow(ctx, getEventDescriptionFormat, eventID).Scan(&f)
+	return f, err
+}
+
+const listEventDescriptionFormats = `-- name: ListEventDescriptionFormats :many
+SELECT id, description_format
+FROM   events
+WHERE  id = ANY($1::uuid[])`
+
+// ListEventDescriptionFormats returns the format flag ("text" or "art") of the
+// descriptions of the given events, keyed by event id.
+func (q *Queries) ListEventDescriptionFormats(ctx context.Context, eventIDs []uuid.UUID) (map[uuid.UUID]string, error) {
+	out := make(map[uuid.UUID]string, len(eventIDs))
+	if len(eventIDs) == 0 {
+		return out, nil
+	}
+	rows, err := q.db.Query(ctx, listEventDescriptionFormats, eventIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var f string
+		if err := rows.Scan(&id, &f); err != nil {
+			return nil, err
+		}
+		out[id] = f
+	}
+	return out, rows.Err()
+}

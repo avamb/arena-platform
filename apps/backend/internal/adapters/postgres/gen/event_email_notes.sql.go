@@ -82,3 +82,17 @@ func (q *Queries) DeleteEventEmailNote(ctx context.Context, eventID, orgID uuid.
 	_, err := q.db.Exec(ctx, deleteEventEmailNote, eventID, orgID)
 	return err
 }
+
+const getEventEmailNoteWithFormat = `-- name: GetEventEmailNoteWithFormat :one
+SELECT note, note_format
+FROM   event_email_notes
+WHERE  event_id = $1
+  AND  org_id   = $2`
+
+// GetEventEmailNoteWithFormat returns the event's note together with the
+// format it is stored in ("art" or "text"). pgx.ErrNoRows means the event has
+// none (or belongs to another organization).
+func (q *Queries) GetEventEmailNoteWithFormat(ctx context.Context, eventID, orgID uuid.UUID) (note, format string, err error) {
+	err = q.db.QueryRow(ctx, getEventEmailNoteWithFormat, eventID, orgID).Scan(&note, &format)
+	return note, format, err
+}

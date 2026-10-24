@@ -9,15 +9,17 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventtext"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 )
 
 // importDescription reads action.description (spec 43, RT-02) and returns the
 // ART to store: richtext.Normalize of the text in action.descriptionFormat
-// ("text" by default). nil means the bundle carries no description (the stored
+// ("text" by default for source=arena, "art" for source=bil24, see
+// importTextFormat). nil means the bundle carries no description (the stored
 // one stays). A refused text or an unknown format is 422
 // import.invalid_description, found by the dry run as well.
-func importDescription(a bil24compat.ImportSessionAction) (*string, error) {
-	format, ok := eventtext.ParseFormat(a.DescriptionFormat)
+func importDescription(source string, a bil24compat.ImportSessionAction) (*string, error) {
+	format, ok := importTextFormat(source, a.DescriptionFormat)
 	if !ok {
 		return nil, failImportAt(http.StatusUnprocessableEntity, "import.invalid_description",
 			"/action/descriptionFormat", "action.descriptionFormat must be one of: text, art")
@@ -50,4 +52,16 @@ func upgradeEventDescriptions(ctx context.Context, q *gen.Queries, orgID, eventI
 			"/action/description", "a stored description of the event cannot be converted: "+eventtext.Reason(ue.Err))
 	}
 	return err
+}
+
+// importTextFormat reads a descriptionFormat / emailNoteFormat field of a
+// bundle. An absent format means "text" (the old marks) for source=arena, but
+// "art" for source=bil24: the WordPress sites that use that route send HTML,
+// and reading it as plain text would show the tags as words. The text is
+// sanitised either way; an explicit format always wins.
+func importTextFormat(source, raw string) (string, bool) {
+	if raw == "" && source == bil24compat.SourceBil24 {
+		return richtext.FormatART, true
+	}
+	return eventtext.ParseFormat(raw)
 }

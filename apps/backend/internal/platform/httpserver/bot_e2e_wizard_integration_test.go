@@ -352,6 +352,13 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	// stub does not record; the rows were verified above).
 	press("events:1", "Страница 1 из 1")
 
+	// The event holds a description stored as ART (spec 43, RT-02): the edit
+	// below must show it without tags and give it back byte for byte.
+	const artDescription = `<p>Концерт &amp; <strong>вечер</strong></p><ul><li>раз</li><li>два</li></ul>`
+	if _, err := pool.Exec(ctx, `UPDATE events SET description = $2, description_format = 'art' WHERE id = $1`, eventID, artDescription); err != nil {
+		t.Fatal(err)
+	}
+
 	// ── Step 4: "Edit" reads the event back from arena, renames it and
 	// re-prices the category; a change made elsewhere meanwhile is noticed.
 	renamed := eventName + " (ред.)"
@@ -363,6 +370,11 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	}
 	// Every part is one short screen and the answer returns to the card; the
 	// poster of the event is never asked about, it stays as it is.
+	descScreen := press("wz:e:desc", "Сейчас")
+	if strings.Contains(descScreen, "<p>") || strings.Contains(descScreen, "<ul>") || strings.Contains(descScreen, "&lt;p&gt;") || !strings.Contains(descScreen, "<b>вечер</b>") {
+		t.Fatalf("the description screen shows tags or lost the text:\n%s", descScreen)
+	}
+	press("wz:e:home", "Правка мероприятия")
 	press("wz:e:name", "Сейчас")
 	say(renamed, "Правка мероприятия")
 	press("wz:e:age", "Сейчас")
@@ -406,6 +418,13 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	        (SELECT count(*) FROM ticket_tier_prices w JOIN ticket_tiers tt ON tt.id = w.tier_id JOIN sessions s ON s.id = tt.session_id WHERE s.event_id = e.id)
 	        FROM events e WHERE e.id = $1`, eventID).Scan(&nameAfter, &ageAfter, &sessionsAfter, &tiersAfter, &priceAfter, &windowsAfter); err != nil {
 		t.Fatalf("event after edit: %v", err)
+	}
+	var descAfter, descFormatAfter string
+	if err := pool.QueryRow(ctx, `SELECT description, description_format FROM events WHERE id = $1`, eventID).Scan(&descAfter, &descFormatAfter); err != nil {
+		t.Fatal(err)
+	}
+	if descAfter != artDescription || descFormatAfter != "art" {
+		t.Fatalf("the edit changed the description: %q / %q", descAfter, descFormatAfter)
 	}
 	if nameAfter != renamed || ageAfter != "18+" || sessionsAfter != 1 || tiersAfter != 1 || priceAfter != 2750 || windowsAfter != 0 {
 		t.Fatalf("after edit: name=%q age=%q sessions=%d tiers=%d price=%d windows=%d", nameAfter, ageAfter, sessionsAfter, tiersAfter, priceAfter, windowsAfter)

@@ -228,7 +228,8 @@ SELECT t.system_ticket_id,
        COALESCE(s.poster_media_id, e.poster_media_id) AS poster_media_id,
        epr.name                      AS promoter_name,
        s.doors_open_at               AS doors_open_at,
-       een.note                      AS email_note
+       een.note                      AS email_note,
+       een.note_format               AS email_note_format
 FROM       tickets t
 LEFT JOIN  sessions      s  ON s.id  = t.session_id
 LEFT JOIN  events        e  ON e.id  = s.event_id

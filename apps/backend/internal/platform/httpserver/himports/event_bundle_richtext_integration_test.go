@@ -233,3 +233,70 @@ func TestEventBundleEmailNote_FormatArtAndText(t *testing.T) {
 		t.Fatalf("a refused import changed the note to %q", got2)
 	}
 }
+
+// The export names the stored format next to the stored text, so what a client
+// reads and posts back lands in the database byte for byte: text, format and
+// note stay as they were, round after round (the old export gave ART without a
+// format, and each round turned <p> into &lt;p&gt;).
+func TestEventBundleRoundTrip_ArtTextAndFormatAreByteIdentical(t *testing.T) {
+	pool := import517Pool(t)
+	ctx := context.Background()
+	f := newBundle525Fixture(t, ctx, pool)
+	defer f.cleanup()
+	h := newBundle525Handler(t, pool)
+
+	body := f.payload()
+	body.Action.DescriptionFormat = "art"
+	body.Action.Description = `<h3>Evening</h3><p>Hi <strong>there</strong> &amp; <em>you</em> <a href="https://example.com/e">site</a></p><ul><li>one</li><li>two</li></ul>`
+	note := `<p>Come <strong>early</strong>, bring &lt;ID&gt;.</p><p>Map: <a href="https://example.com/map">map</a></p>`
+	body.Action.EmailNote, body.Action.EmailNoteFormat = &note, "art"
+	rec, created := f.call(h, body)
+	if rec.Code != http.StatusOK || !created.Created {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	wantDesc, wantFormat := f.storedDescription(ctx, t, created.EventID)
+	wantNote, _ := f.storedNote(ctx, t, created.EventID)
+	wantNoteFormat := f.storedNoteFormat(ctx, t, created.EventID)
+	if wantFormat != "art" || wantNoteFormat != "art" || !strings.Contains(wantDesc, "<ul><li>one</li>") {
+		t.Fatalf("setup stored %q / %q, note %q / %q", wantDesc, wantFormat, wantNote, wantNoteFormat)
+	}
+
+	for round := 1; round <= 3; round++ {
+		out, raw := f.readBundles(h, created.EventID)
+		a := out.Bundles[0].Action
+		if a.Description != wantDesc || a.DescriptionFormat != "art" || a.EmailNote == nil || *a.EmailNote != wantNote || a.EmailNoteFormat != "art" {
+			t.Fatalf("round %d: the export is not the stored text with its format: %s", round, raw)
+		}
+		if !strings.Contains(raw, `"descriptionFormat":"art"`) || !strings.Contains(raw, `"emailNoteFormat":"art"`) {
+			t.Fatalf("round %d: the formats are not in the raw body: %s", round, raw)
+		}
+		if dry := dryRun(t, f, h, out.Bundles[0]); !dry.Valid {
+			t.Fatalf("round %d: dry run refuses the export: %+v", round, dry.Errors)
+		}
+		f.reimport(h, out)
+		gotDesc, gotFormat := f.storedDescription(ctx, t, created.EventID)
+		gotNote, _ := f.storedNote(ctx, t, created.EventID)
+		if gotDesc != wantDesc || gotFormat != wantFormat || gotNote != wantNote || f.storedNoteFormat(ctx, t, created.EventID) != wantNoteFormat {
+			t.Fatalf("round %d changed the stored texts:\ndescription %q / %q\nnote %q", round, gotDesc, gotFormat, gotNote)
+		}
+	}
+
+	// A legacy event (still format text) exports its text with format "text",
+	// and posting it back converts it exactly as the first import would.
+	legacy := "Old **text** <b>x</b>"
+	if _, err := pool.Exec(ctx, `UPDATE events SET description = $2, description_format = 'text' WHERE id = $1`, created.EventID, legacy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM i18n_text WHERE namespace = 'event.description' AND key = $1`, created.EventID.String()); err != nil {
+		t.Fatal(err)
+	}
+	out, raw := f.readBundles(h, created.EventID)
+	if a := out.Bundles[0].Action; a.Description != legacy || a.DescriptionFormat != "text" {
+		t.Fatalf("legacy export: %s", raw)
+	}
+	f.reimport(h, out)
+	got, format := f.storedDescription(ctx, t, created.EventID)
+	if format != "art" || got != "<p>Old <strong>text</strong> &lt;b&gt;x&lt;/b&gt;</p>" {
+		t.Fatalf("legacy re-import stored %q / %q", got, format)
+	}
+}

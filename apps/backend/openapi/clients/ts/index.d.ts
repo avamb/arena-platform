@@ -15631,6 +15631,17 @@ export interface components {
              */
             description?: string | null;
             /**
+             * @description How `description` is stored: `art` is "text Arena", the small HTML
+             *     subset (`p`, `br`, `strong`, `em`, `u`, `a[href]`, `ul`, `ol`, `li`,
+             *     headings and quotes), `text` is the old plain text with the marks
+             *     `**bold**`, `_italic_` and `- ` list lines that the backfill has not
+             *     converted yet. The flag covers the translations too. Empty only when
+             *     the server could not read it; a reader treats that as `text`.
+             * @example art
+             * @enum {string}
+             */
+            description_format?: "text" | "art";
+            /**
              * @description Lifecycle status.
              * @example published
              * @enum {string}
@@ -17016,7 +17027,7 @@ export interface components {
              *     print under "About the event". At most 2000 visible characters
              *     and 5 links, every link `https://`, control characters are
              *     refused. Read as `email_note_format` and stored as filtered HTML.
-             *     A refused text answers 400 `event.invalid_email_note` with
+             *     A refused text answers 422 `event.invalid_email_note` with
              *     `error.details.reason`.
              * @example Come 30 minutes early. The cloakroom is free.
              */
@@ -17068,6 +17079,13 @@ export interface components {
              * @example Come 30 minutes early.
              */
             note?: string;
+            /**
+             * @description How the draft `note` is written: `text` (default, the old marks)
+             *     or `art`, as `email_note_format` of PATCH. Anything else answers
+             *     400 `event.invalid_email_note_format`.
+             * @example art
+             */
+            note_format?: string;
             /**
              * @description Language of the letter (en, ru, cs, de, es, fr, he). Empty means the caller's language.
              * @example ru
@@ -38482,7 +38500,8 @@ export interface operations {
              *     (`event.invalid_poster_media_id`), or the description, a translated
              *     description or a description stored earlier that must be converted
              *     with it is refused (`event.invalid_description`,
-             *     `error.details.reason` names why).
+             *     `error.details.reason` names why), or the letter text `email_note`
+             *     is refused (`event.invalid_email_note`, same details).
              */
             422: {
                 headers: {
@@ -56730,7 +56749,7 @@ export interface operations {
                     "application/json": components["schemas"]["EventEmailNoteTestResponse"];
                 };
             };
-            /** @description Invalid body (`event.invalid_json`), a refused text (`event.invalid_email_note`), a missing or invalid address (`event.email_note_test_recipient_required`, `event.email_note_test_invalid_recipient`). */
+            /** @description Invalid body (`event.invalid_json`), an unknown `note_format` (`event.invalid_email_note_format`), a missing or invalid address (`event.email_note_test_recipient_required`, `event.email_note_test_invalid_recipient`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -56766,7 +56785,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The event has no text to preview (`event.email_note_empty`) or `to` is not a member of the organization (`event.email_note_test_recipient_not_member`). */
+            /** @description The draft `note` is refused (`event.invalid_email_note`), the event has no text to preview (`event.email_note_empty`) or `to` is not a member of the organization (`event.email_note_test_recipient_not_member`). */
             422: {
                 headers: {
                     [name: string]: unknown;

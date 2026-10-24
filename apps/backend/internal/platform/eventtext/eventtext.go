@@ -73,7 +73,13 @@ func (e *UpgradeError) Unwrap() error { return e.Err }
 // "art" is left alone. Run it inside the writer's transaction: the event row
 // is locked. pgx.ErrNoRows means no such active event of the organization;
 // a *UpgradeError means a stored text cannot be converted (too long, rejected
-// characters) and nothing was changed.
+// characters).
+//
+// On ANY error the caller MUST roll its transaction back: translations that
+// were converted before the failing one are written in that transaction, and
+// "nothing was changed" holds only once it is rolled back (both callers, the
+// REST PATCH and the event-bundle import, do so on every error path). Never
+// call it outside a transaction.
 func UpgradeDescriptions(ctx context.Context, q *gen.Queries, eventID, orgID uuid.UUID, skipBase bool, skipLocales ...string) error {
 	state, err := q.LockEventDescription(ctx, eventID, orgID)
 	if err != nil {

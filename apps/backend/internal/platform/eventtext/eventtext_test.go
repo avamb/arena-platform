@@ -65,7 +65,7 @@ func TestNormalizeDescription_Reasons(t *testing.T) {
 		{"visible limit", strings.Repeat("x", 4001), "text", "too_long"},
 		{"html limit", strings.Repeat("x", 16001), "text", "html_too_long"},
 		{"control char", "bad\x00byte", "text", "control_characters"},
-		{"bidi override", "evil ‮ text", "text", "control_characters"},
+		{"bidi override", "evil \u202e text", "text", "control_characters"},
 		{"too many links", strings.Repeat(`<a href="https://a.test/">x</a> `, 21), "art", "too_many_links"},
 		{"bad encoding", "bad \xff byte", "text", "bad_encoding"},
 		{"unknown format", "x", "html", "invalid_format"},
@@ -83,12 +83,12 @@ func TestNormalizeDescription_Reasons(t *testing.T) {
 }
 
 func TestNormalizeDescription_HebrewDirectionMarksSurvive(t *testing.T) {
-	in := "שלום‏ עולם"
+	in := "שלום\u200f עולם"
 	got, err := NormalizeDescription(in, "text")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got, "‏") {
+	if !strings.Contains(got, "\u200f") {
 		t.Fatalf("the RLM was dropped: %q", got)
 	}
 }
