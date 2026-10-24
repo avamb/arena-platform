@@ -1050,6 +1050,54 @@ func TestLoad_JWTFieldsWiredFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoad_ShortLinkSettings(t *testing.T) {
+	base := func(es *envSetter) {
+		es.set("APP_ENV", "development")
+		es.set("DATABASE_URL", "postgres://arena:arena@localhost:5432/arena?sslmode=disable")
+		es.set("JWT_SIGNING_SECRET", "dev-secret")
+		es.set("ENABLE_DEV_AUTH", "true")
+	}
+	t.Run("defaults and fallback order", func(t *testing.T) {
+		es := newEnvSetter(t)
+		base(es)
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.ShortLinkBaseURL != "https://go.arenasoldout.com" || cfg.ShortLinkFallbackURL != "" {
+			t.Errorf("defaults: %q %q", cfg.ShortLinkBaseURL, cfg.ShortLinkFallbackURL)
+		}
+		if got := cfg.ShortLinkFallback(); got != "" {
+			t.Errorf("nothing set: %q", got)
+		}
+		cfg.AppPublicURL = "https://app.example/"
+		if got := cfg.ShortLinkFallback(); got != "https://app.example" {
+			t.Errorf("APP_PUBLIC_URL: %q", got)
+		}
+		cfg.PublicTicketsBaseURL = "https://tickets.example"
+		if got := cfg.ShortLinkFallback(); got != "https://tickets.example" {
+			t.Errorf("PUBLIC_TICKETS_BASE_URL: %q", got)
+		}
+		cfg.ShortLinkFallbackURL = " https://fallback.example/ "
+		if got := cfg.ShortLinkFallback(); got != "https://fallback.example" {
+			t.Errorf("SHORT_LINK_FALLBACK_URL: %q", got)
+		}
+	})
+	t.Run("parsing trims", func(t *testing.T) {
+		es := newEnvSetter(t)
+		base(es)
+		es.set("SHORT_LINK_BASE_URL", " https://go.example/ ")
+		es.set("SHORT_LINK_FALLBACK_URL", " https://home.example/ ")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.ShortLinkBaseURL != "https://go.example" || cfg.ShortLinkFallbackURL != "https://home.example" {
+			t.Errorf("got %q %q", cfg.ShortLinkBaseURL, cfg.ShortLinkFallbackURL)
+		}
+	})
+}
+
 func TestLoad_EmailAndSMTPFieldsWiredFromEnv(t *testing.T) {
 	es := newEnvSetter(t)
 	es.set("APP_ENV", "development")

@@ -210,6 +210,16 @@ type Config struct {
 	// carry a valid return_url is refused with checkout.invalid_return_url.
 	PublicTicketsBaseURL string `env:"PUBLIC_TICKETS_BASE_URL" required:"false" default:""`
 
+	// ShortLinkBaseURL is the host printed under a QR code of a sales link and
+	// encoded in it (spec 43). The redirect itself is host-independent: any host
+	// that reaches arena-api resolves a code.
+	ShortLinkBaseURL string `env:"SHORT_LINK_BASE_URL" required:"false" default:"https://go.arenasoldout.com"`
+
+	// ShortLinkFallbackURL is where GET /go/{code} sends an unknown or malformed
+	// code. Empty falls back to PUBLIC_TICKETS_BASE_URL, then APP_PUBLIC_URL
+	// (see ShortLinkFallback).
+	ShortLinkFallbackURL string `env:"SHORT_LINK_FALLBACK_URL" required:"false" default:""`
+
 	// WidgetPaymentWindowSeconds is how long a buyer has to pay on the
 	// provider-hosted page, and is the hosted session's own expires_at.
 	// Stripe refuses a Checkout Session expiry closer than 30 minutes, so the
@@ -668,6 +678,18 @@ func (c *Config) LogAttrs() []slog.Attr {
 	}
 }
 
+// ShortLinkFallback returns where GET /go/{code} sends a code that is unknown or
+// malformed, with any trailing slash removed: SHORT_LINK_FALLBACK_URL when set,
+// otherwise PUBLIC_TICKETS_BASE_URL, otherwise APP_PUBLIC_URL, otherwise "".
+func (c *Config) ShortLinkFallback() string {
+	for _, v := range []string{c.ShortLinkFallbackURL, c.PublicTicketsBaseURL, c.AppPublicURL} {
+		if v = strings.TrimRight(strings.TrimSpace(v), "/"); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // APIPublicBaseURL returns the canonical public origin of the HTTP API with
 // any trailing slash removed: API_PUBLIC_URL when set, otherwise the
 // APP_PUBLIC_URL fallback for single-host deployments, otherwise "".
@@ -895,6 +917,8 @@ func LoadFor(role Role) (*Config, error) {
 	// PUBLIC_TICKETS_BASE_URL / WIDGET_PAYMENT_WINDOW_SECONDS /
 	// WIDGET_PAYMENT_GRACE_SECONDS — widget hosted-payment redirect flow.
 	cfg.PublicTicketsBaseURL = strings.TrimRight(strings.TrimSpace(getenv("PUBLIC_TICKETS_BASE_URL", "")), "/")
+	cfg.ShortLinkBaseURL = strings.TrimRight(strings.TrimSpace(getenv("SHORT_LINK_BASE_URL", "https://go.arenasoldout.com")), "/")
+	cfg.ShortLinkFallbackURL = strings.TrimRight(strings.TrimSpace(getenv("SHORT_LINK_FALLBACK_URL", "")), "/")
 
 	iPayWindow, err := getenvInt("WIDGET_PAYMENT_WINDOW_SECONDS", 1860)
 	if err != nil {
