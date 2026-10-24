@@ -111,9 +111,9 @@ ON CONFLICT (sales_link_id, day, country) DO UPDATE
 -- name: SalesLinkOrdersAggregate :many
 -- Per currency: orders that were ever paid, their tickets, and the revenue =
 -- sum of orders.total minus the SUCCEEDED refunds of those orders. A refund
--- reaches its order by order_id, else through its ticket or its payment
--- intent (the same reach as ListSessionSummaryRefunds). The link must belong
--- to the organization or the answer is empty.
+-- reaches exactly ONE order: order_id, else its ticket's order, else the order
+-- of its payment intent (the COALESCE order of ListSessionSummaryRefunds). The
+-- link must belong to the organization or the answer is empty.
 WITH link_orders AS (
     SELECT o.id, o.currency, o.total, o.checkout_session_id
     FROM   orders o
@@ -135,11 +135,11 @@ LEFT JOIN LATERAL (
     FROM   refunds r
     WHERE  r.state  = 'succeeded'
       AND  r.org_id = $2
-      AND  (r.order_id = lo.id
-            OR (r.order_id IS NULL AND (
-                   r.ticket_id IN (SELECT t.id FROM tickets t WHERE t.order_id = lo.id)
-                OR r.payment_intent_id IN (SELECT pi.id FROM payment_intents pi
-                                           WHERE pi.checkout_session_id = lo.checkout_session_id))))
+      AND  COALESCE(r.order_id,
+                    (SELECT t.order_id FROM tickets t WHERE t.id = r.ticket_id),
+                    (SELECT po.id FROM payment_intents pi
+                     JOIN   orders po ON po.checkout_session_id = pi.checkout_session_id
+                     WHERE  pi.id = r.payment_intent_id)) = lo.id
 ) rf ON true
 GROUP  BY lo.currency
 ORDER  BY lo.currency;

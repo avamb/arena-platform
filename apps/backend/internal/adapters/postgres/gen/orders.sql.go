@@ -124,7 +124,7 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
           paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution`
+          sales_link_id, attribution`
 
 // InsertOrder creates a new order row. system_id defaults to the next value
 // of compatibility_system_id_seq (>= 1e9), matching customers/tickets, so
@@ -413,7 +413,7 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
           paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution`
+          sales_link_id, attribution`
 
 // UpdateOrderStatus transitions status and stamps the matching lifecycle
 // timestamp. Pass nil for paidAt/cancelledAt to leave the existing column
@@ -459,7 +459,7 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
           paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution`
+          sales_link_id, attribution`
 
 // UpdateOrderCheckout re-points a still-open order at a freshly priced
 // checkout session and rewrites its money columns (spec §7.7 step 5: a repeat
@@ -772,7 +772,7 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
           paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution`
+          sales_link_id, attribution`
 
 // ExpireOrderIfStillPending flips one order to 'expired' only while it is
 // still pending_payment. The status guard is what makes the sweep safe to run

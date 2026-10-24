@@ -39,7 +39,7 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
           paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution;
+          sales_link_id, attribution;
 
 -- name: GetOrderByID :one
 -- Loads an order scoped to its organization. Returns pgx.ErrNoRows when
@@ -181,7 +181,7 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
           paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution;
+          sales_link_id, attribution;
 
 -- name: SetOrderPaymentMethod :exec
 -- Records how the order was paid (spec §7.9: the Bil24 compat gateway's
@@ -298,7 +298,7 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
           paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution;
+          sales_link_id, attribution;
 
 -- name: SearchOrdersByOrg :many
 -- EC-04 (spec 35 §5.5): the event-center order search. One page of an
