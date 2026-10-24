@@ -13926,6 +13926,191 @@ type RevokeMembershipRequest struct {
 // RevokeMembershipRequestRole The specific role binding to revoke. org_admin is the organization owner; the last active owner cannot be revoked (409 `membership.last_owner`).
 type RevokeMembershipRequestRole string
 
+// SalesLink A tracked sales link (spec 43).
+type SalesLink struct {
+	// Code The seven-character code in the short address.
+	Code string `json:"code"`
+
+	// CreatedAt When the link was created (RFC 3339).
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy The user who created the link, null for an API key.
+	CreatedBy *openapi_types.UUID `json:"created_by"`
+
+	// CreatedVia The client that created it, `telegram_bot`, `admin_web`, `site_plugin`, `event_center_web` or `api`.
+	CreatedVia *string `json:"created_via"`
+
+	// DestinationDegraded True when the code leads to a higher page than its target (event off sale, date cancelled, link archived).
+	DestinationDegraded bool `json:"destination_degraded"`
+
+	// DestinationUrl The page the code leads to right now, without utm. Empty when no page address can be built.
+	DestinationUrl string `json:"destination_url"`
+
+	// Id Id of the link.
+	Id openapi_types.UUID `json:"id"`
+
+	// Label Where the link is placed.
+	Label string `json:"label"`
+
+	// LastScannedAt Time of the latest scan (RFC 3339), null when never scanned.
+	LastScannedAt *string `json:"last_scanned_at"`
+
+	// OrdersCount Orders that came through the link and were ever paid.
+	OrdersCount int64 `json:"orders_count"`
+
+	// OrgId The organization the link belongs to.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PlacementKind `poster`, `flyer`, `sign`, `social`, `email`, `messenger` or `other`.
+	PlacementKind string `json:"placement_kind"`
+
+	// ScanCount Scans counted so far, bots excluded.
+	ScanCount int64 `json:"scan_count"`
+
+	// ShortUrl The address to print or turn into a QR code, the short-link host plus the code.
+	ShortUrl string `json:"short_url"`
+
+	// Status `active` or `archived`.
+	Status string `json:"status"`
+
+	// SuspectScanCount Scans by clients that look like bots.
+	SuspectScanCount int64 `json:"suspect_scan_count"`
+
+	// Target Where the link leads.
+	Target SalesLinkTarget `json:"target"`
+
+	// UpdatedAt When the link was last changed (RFC 3339).
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Utm The utm labels added to the destination when a buyer scans the code.
+	Utm map[string]string `json:"utm"`
+}
+
+// SalesLinkCountryStats Scans from one country.
+type SalesLinkCountryStats struct {
+	// Country Two-letter country code, empty when unknown.
+	Country string `json:"country"`
+
+	// Hits Scans counted from that country.
+	Hits int64 `json:"hits"`
+}
+
+// SalesLinkCreateRequest Body of `POST /v1/organizations/{org_id}/sales-links`.
+type SalesLinkCreateRequest struct {
+	// Label Where the link is placed, 1 to 120 characters, for example "Poster at the theatre entrance".
+	Label string `json:"label"`
+
+	// PlacementKind `poster` (default), `flyer`, `sign`, `social`, `email`, `messenger`
+	// or `other`.
+	PlacementKind *string `json:"placement_kind,omitempty"`
+
+	// Target Where the link leads. It must belong to the organization.
+	Target SalesLinkTarget `json:"target"`
+
+	// Utm utm_source, utm_medium, utm_campaign, utm_content and utm_term; each
+	// value is up to 64 characters of letters, digits and . _ ~ - . When
+	// left out or empty the link gets the defaults described on the route.
+	Utm *map[string]string `json:"utm,omitempty"`
+}
+
+// SalesLinkDayStats Scans of one day.
+type SalesLinkDayStats struct {
+	// Day The day, `YYYY-MM-DD` (UTC).
+	Day string `json:"day"`
+
+	// Hits Scans counted that day.
+	Hits int64 `json:"hits"`
+
+	// SuspectHits Scans that day by clients that look like bots.
+	SuspectHits int64 `json:"suspect_hits"`
+}
+
+// SalesLinkList One page of sales links, newest first.
+type SalesLinkList struct {
+	// Items The links of this page.
+	Items []SalesLink `json:"items"`
+
+	// NextCursor Pass as `cursor` to get the next page. Empty on the last page.
+	NextCursor string `json:"next_cursor"`
+}
+
+// SalesLinkOrderStats The orders that came through a sales link and were ever paid.
+type SalesLinkOrderStats struct {
+	// Count Number of orders.
+	Count int64 `json:"count"`
+
+	// Revenue Revenue per currency.
+	Revenue []SalesLinkRevenue `json:"revenue"`
+
+	// Tickets Number of tickets in those orders.
+	Tickets int64 `json:"tickets"`
+}
+
+// SalesLinkRevenue Revenue of a sales link in one currency.
+type SalesLinkRevenue struct {
+	// AmountMinor Paid totals minus succeeded refunds, in minor units.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
+}
+
+// SalesLinkStats Scans and sales of one sales link.
+type SalesLinkStats struct {
+	// ByCountry Scans per country in the asked range, the biggest first.
+	ByCountry []SalesLinkCountryStats `json:"by_country"`
+
+	// ByDay Scans per day in the asked range, oldest first.
+	ByDay []SalesLinkDayStats `json:"by_day"`
+
+	// Orders The orders that came through the link.
+	Orders SalesLinkOrderStats `json:"orders"`
+
+	// ScansTotal All scans counted since the link was created, bots excluded.
+	ScansTotal int64 `json:"scans_total"`
+
+	// SuspectTotal All scans by clients that look like bots.
+	SuspectTotal int64 `json:"suspect_total"`
+}
+
+// SalesLinkTarget Where a sales link leads.
+type SalesLinkTarget struct {
+	// EventId The event, for `event` and `session` targets.
+	EventId *openapi_types.UUID `json:"event_id"`
+
+	// Kind `org_page` (the organization page), `promoter_page`, `event`,
+	// `session` (one date of an event) or `url` (any http or https address).
+	Kind string `json:"kind"`
+
+	// PromoterId The promoter, for `promoter_page` targets.
+	PromoterId *openapi_types.UUID `json:"promoter_id"`
+
+	// SessionId The date, for `session` targets.
+	SessionId *openapi_types.UUID `json:"session_id"`
+
+	// Url The address, for `url` targets (http or https, no user name or password, at most 2048 characters).
+	Url *string `json:"url"`
+}
+
+// SalesLinkUpdateRequest Body of `PATCH /v1/organizations/{org_id}/sales-links/{id}`. Send at
+// least one key; an absent key keeps the stored value.
+type SalesLinkUpdateRequest struct {
+	// Label New label, 1 to 120 characters.
+	Label *string `json:"label,omitempty"`
+
+	// PlacementKind New placement, one of the values of the create request.
+	PlacementKind *string `json:"placement_kind,omitempty"`
+
+	// Status `active` or `archived`.
+	Status *string `json:"status,omitempty"`
+
+	// Target The new target. Moving a printed code is written to the audit log.
+	Target *SalesLinkTarget `json:"target,omitempty"`
+
+	// Utm The whole new set of utm labels. `{}` or null removes them.
+	Utm *map[string]string `json:"utm"`
+}
+
 // ScanRequest Request body for `POST /v1/scan`. The scan flow resolves the
 // authority by `authority_type`, looks up the barcode by
 // `(authority_id, external_ref)`, and atomically transitions
@@ -18598,6 +18783,33 @@ type GetV1OrganizationsOrgIdRefundsParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListSalesLinksParams defines parameters for ListSalesLinks.
+type ListSalesLinksParams struct {
+	// EventId Only links of this event (a session link carries its event).
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
+
+	// SessionId Only links to this date.
+	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
+
+	// Status `active` (default), `archived` or `all`.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// Limit Page size, 1-100 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The `next_cursor` of the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// GetSalesLinkStatsParams defines parameters for GetSalesLinkStats.
+type GetSalesLinkStatsParams struct {
+	// From First day of the series, `YYYY-MM-DD`.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day of the series, `YYYY-MM-DD` (default today, UTC).
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdChangeImpact.
 type GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams struct {
 	// StartAt Proposed start (RFC 3339).
@@ -19317,6 +19529,12 @@ type UpdatePromoterJSONRequestBody = UpdatePromoterRequest
 
 // PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody defines body for PostV1OrganizationsOrgIdRefundsRefundIdResolve for application/json ContentType.
 type PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody = ResolveOrderRefundRequest
+
+// CreateSalesLinkJSONRequestBody defines body for CreateSalesLink for application/json ContentType.
+type CreateSalesLinkJSONRequestBody = SalesLinkCreateRequest
+
+// UpdateSalesLinkJSONRequestBody defines body for UpdateSalesLink for application/json ContentType.
+type UpdateSalesLinkJSONRequestBody = SalesLinkUpdateRequest
 
 // UpdateSellerProfileJSONRequestBody defines body for UpdateSellerProfile for application/json ContentType.
 type UpdateSellerProfileJSONRequestBody = UpdateSellerProfileRequest
