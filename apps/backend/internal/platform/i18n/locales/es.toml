@@ -672,7 +672,7 @@ other = "Listo →"
 other = "Varias categorías necesitan al menos dos. Si solo hay una, elige “Una categoría”."
 
 ["bot.wz.ask_description"]
-other = "Descripción del evento para los compradores, en un solo mensaje, de hasta 4000 caracteres. Puedes omitirla.\n\nFormato: una línea en blanco empieza un párrafo nuevo, **negrita**, _cursiva_, las líneas que empiezan por “- ” forman una lista."
+other = "Escribe el texto como siempre: le daré formato y te enseñaré el resultado.\n\nLa descripción del evento para los compradores, en un solo mensaje, de hasta 4000 caracteres. Puedes omitir este paso."
 
 ["bot.wz.ask_currency"]
 other = "¿Moneda de los precios?"
@@ -921,7 +921,7 @@ other = "cargado"
 other = "ninguno"
 
 ["bot.wz.edit_ask_description"]
-other = "Envía la nueva descripción en un solo mensaje, de hasta 4000 caracteres.\n\nFormato: una línea en blanco empieza un párrafo nuevo, **negrita**, _cursiva_, las líneas que empiezan por “- ” forman una lista."
+other = "Escribe el nuevo texto como siempre: le daré formato y te enseñaré el resultado.\n\nEn un solo mensaje, de hasta 4000 caracteres."
 
 ["bot.wz.edit_desc_now"]
 other = "Ahora:\n<i>{{.Text}}</i>\n\n"
@@ -3902,3 +3902,45 @@ other = "La descripción es demasiado larga. Acorta el texto y envíalo de nuevo
 
 ["bot.wz.err_description_chars"]
 other = "La descripción tiene un carácter oculto o de control. Escribe el texto de nuevo o pégalo como texto sin formato."
+
+["bot.tf.formatting"]
+other = "Dando formato al texto…"
+
+["bot.tf.preview_ask"]
+other = "Así queda el texto. ¿Lo guardo así?"
+
+["bot.tf.not_applied_note"]
+other = "Aquí tienes el texto sin resaltados, tal como lo escribiste.\n\n"
+
+["bot.tf.save_btn"]
+other = "Guardar así"
+
+["bot.tf.plain_btn"]
+other = "Sin formato"
+
+["bot.tf.again_btn"]
+other = "Dar formato otra vez"
+
+["bot.tf.cancel_btn"]
+other = "Cancelar"
+
+["bot.tf.expired"]
+other = "Se acabó el tiempo. Envía el texto otra vez."
+
+["bot.tf.cancelled"]
+other = "De acuerdo, el texto se queda como estaba."
+
+["bot.tf.err_too_long"]
+other = "El texto es demasiado largo: hasta {{.Limit}} caracteres. Acórtalo y envíalo otra vez."
+
+["bot.tf.err_links"]
+other = "El texto tiene demasiados enlaces: hasta {{.Max}}. Quita algunos y envíalo otra vez."
+
+["bot.tf.err_scheme"]
+other = "El texto tiene una dirección que no empieza por https://. Cámbiala y envía el texto otra vez."
+
+["bot.tf.err_chars"]
+other = "El texto tiene un carácter oculto. Escríbelo de nuevo o pégalo como texto sin formato."
+
+["bot.tf.err_generic"]
+other = "Este texto no sirvió. Revísalo y envíalo otra vez."

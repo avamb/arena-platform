@@ -367,6 +367,10 @@ type WizInput struct {
 	Text   string
 	Data   string // callback payload without the "wz:" prefix
 	Poster *PosterAccepted
+	// Art is a description the organizer approved in the preview (RT-05):
+	// ART that already went through the server's filter. It answers the
+	// description question.
+	Art string
 }
 
 // PosterAccepted is a poster the bot already validated and uploaded.
@@ -1408,6 +1412,8 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 
 	case stXDescription:
 		switch {
+		case in.Art != "":
+			d.setApprovedDescription(in.Art)
 		case data == "clear":
 			d.Event.Description, d.Event.DescriptionFormat = "", ""
 		case data != "skip":

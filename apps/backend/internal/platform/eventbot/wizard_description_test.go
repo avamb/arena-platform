@@ -10,6 +10,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 )
 
 // artDescription is a description as RT-02 stores it.
@@ -147,11 +148,12 @@ func TestDescription_UntouchedOldOrUnknownTextIsNotResent(t *testing.T) {
 
 // What the organizer types is plain text: it replaces the stored one and goes
 // out as the default format, never as ART.
-func TestDescription_TypedTextIsPlainTextAndReplacesART(t *testing.T) {
+func TestDescription_TypedTextEntersAsARTAndReplacesART(t *testing.T) {
 	r, d := loadedWith(t, artDescription, "art")
 	r.press("e:desc", stXDescription)
 	r.text("Новый текст <b>без разметки</b>", stEditMenu)
-	if d.Event.Description != "Новый текст <b>без разметки</b>" || d.Event.DescriptionFormat != "text" {
+	const want = "<p>Новый текст &lt;b&gt;без разметки&lt;/b&gt;</p>"
+	if d.Event.Description != want || d.Event.DescriptionFormat != "art" {
 		t.Fatalf("draft = %q / %q", d.Event.Description, d.Event.DescriptionFormat)
 	}
 	if !d.fieldChanged("description") {
@@ -163,7 +165,7 @@ func TestDescription_TypedTextIsPlainTextAndReplacesART(t *testing.T) {
 		t.Fatalf("save = %+v", out)
 	}
 	for _, p := range io.posts {
-		if p.Action.Description != "Новый текст <b>без разметки</b>" || p.Action.DescriptionFormat != "" {
+		if p.Action.Description != want || p.Action.DescriptionFormat != "art" {
 			t.Fatalf("typed text went out as %q / %q", p.Action.Description, p.Action.DescriptionFormat)
 		}
 	}
@@ -184,8 +186,8 @@ func TestDescription_UndoRestoresTheTextAndItsFormat(t *testing.T) {
 func TestDescription_TypedTextLimitIs4000(t *testing.T) {
 	d := &Draft{}
 	d.setTypedDescription(strings.Repeat("я", 4100))
-	if n := len([]rune(d.Event.Description)); n != 4000 {
-		t.Fatalf("%d characters kept", n)
+	if n := richtext.VisibleLen(d.Event.Description); n != 4000 || d.Event.DescriptionFormat != "art" {
+		t.Fatalf("%d visible characters kept, format %q", n, d.Event.DescriptionFormat)
 	}
 }
 
@@ -243,7 +245,7 @@ func TestDescription_TypedAfterARTIsSent(t *testing.T) {
 	r, d := loadedWith(t, artDescription, "art")
 	r.press("e:desc", stXDescription)
 	r.text("Свежий текст", stEditMenu)
-	if text, format := d.bundleDescription(); text != "Свежий текст" || format != "" {
+	if text, format := d.bundleDescription(); text != "<p>Свежий текст</p>" || format != "art" {
 		t.Fatalf("bundleDescription = %q / %q", text, format)
 	}
 }
@@ -254,13 +256,13 @@ func TestDescription_TypedTextLosesBidiEmbeddingMarks(t *testing.T) {
 	r := func(cp ...rune) string { return string(cp) }
 	d := &Draft{}
 	d.setTypedDescription(r(0x202b) + "שלום עולם" + r(0x202c) + " and " + r(0x202a, 0x202d, 0x202e) + "text" + r(0x202c))
-	if d.Event.Description != "שלום עולם and text" || d.Event.DescriptionFormat != "text" {
+	if d.Event.Description != "<p>שלום עולם and text</p>" || d.Event.DescriptionFormat != "art" {
 		t.Fatalf("description = %q / %q", d.Event.Description, d.Event.DescriptionFormat)
 	}
 	// The direction marks the server keeps (U+200E, U+200F) stay.
 	keep := "a" + r(0x200f) + "b" + r(0x200e)
 	d.setTypedDescription(keep)
-	if d.Event.Description != keep {
+	if richtext.PlainText(d.Event.Description) != keep {
 		t.Fatalf("direction marks lost: %q", d.Event.Description)
 	}
 }

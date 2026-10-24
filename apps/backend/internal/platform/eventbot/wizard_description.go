@@ -3,8 +3,10 @@ package eventbot
 // wizard_description.go — the description of an event in the draft keeps the
 // format it is stored in (spec 44, RT-02). The description of a loaded event is
 // ART ("art"), or the old plain text with marks ("text", not converted yet),
-// or unknown ("", an old draft). What the organizer types in the bot is plain
-// text ("text"). The screens never show ART tags, and a description the
+// or unknown ("", an old draft). What the organizer types in the bot is shown
+// back formatted (textfmt_dialog.go, RT-05) and enters the draft as ART; a
+// description that comes without that loop (a poster hint) enters through
+// richtext.FromLegacy. The screens never show ART tags, and a description the
 // organizer did not touch goes back to the server as it was read.
 
 import (
@@ -46,24 +48,52 @@ func descriptionPreview(e DraftEvent, limit int) string {
 	return Esc(truncate(richtext.PlainText(e.Description), limit))
 }
 
-// setTypedDescription stores what the organizer typed: plain text, which the
-// server reads as the old text format. The 4000-character limit of the
-// description counts visible text, and a typed text has no markup, so its
-// characters are its visible characters.
-func (d *Draft) setTypedDescription(text string) {
-	// The server refuses the bidi embedding marks U+202A to U+202E (a Hebrew
-	// organizer pastes them without seeing them), so they are dropped here.
-	text = strings.Map(func(r rune) rune {
+// stripBidiEmbedding drops the bidi embedding marks U+202A to U+202E. The
+// server refuses them, and a Hebrew organizer pastes them without seeing them.
+func stripBidiEmbedding(text string) string {
+	return strings.Map(func(r rune) rune {
 		if r >= 0x202a && r <= 0x202e {
 			return -1
 		}
 		return r
 	}, text)
-	if r := []rune(text); len(r) > 4000 {
-		text = string(r[:4000])
+}
+
+// setTypedDescription stores a description that came as plain text without a
+// preview: a hint read off the poster, or an answer given where the model is
+// not asked. It enters the draft the way the server would read it
+// (richtext.FromLegacy through Normalize), as ART marked "art", so a draft
+// never holds the old notation (spec 44, RT-05). The 4000-character limit of
+// the description counts VISIBLE text. A text the converter cannot take at
+// all stays plain text marked "text", and the server then judges it.
+func (d *Draft) setTypedDescription(text string) {
+	text = stripBidiEmbedding(text)
+	art, err := richtext.Normalize(text, richtext.FormatText, richtext.ProfileDescription)
+	if err != nil {
+		// Too long: cut as before, then convert again.
+		if r := []rune(text); len(r) > richtext.ProfileDescription.MaxVisible {
+			text = string(r[:richtext.ProfileDescription.MaxVisible])
+		}
+		art, err = richtext.Normalize(text, richtext.FormatText, richtext.ProfileDescription)
 	}
-	d.Event.Description = text
-	d.Event.DescriptionFormat = richtext.FormatText
+	if err != nil {
+		d.Event.Description = text
+		d.Event.DescriptionFormat = richtext.FormatText
+		return
+	}
+	if art == "" {
+		d.Event.Description, d.Event.DescriptionFormat = "", ""
+		return
+	}
+	d.Event.Description = art
+	d.Event.DescriptionFormat = richtext.FormatART
+}
+
+// setApprovedDescription stores a description the organizer approved in the
+// preview: ART that already went through the filter.
+func (d *Draft) setApprovedDescription(art string) {
+	d.Event.Description = art
+	d.Event.DescriptionFormat = richtext.FormatART
 }
 
 // descriptionChanged reports whether the draft's description differs from the
@@ -80,10 +110,10 @@ func (d *Draft) descriptionChanged() bool {
 //     base): re-sending it would write that translation over the base text.
 //     Re-sending an old text under a guessed format could also turn tags into
 //     words.
-//   - art that the organizer did change (only a typed text changes it, so this
-//     is a new draft with ART in it): sent as it is, format "art".
-//   - what the organizer typed: plain text, format "text" (the default, so no
-//     format is named).
+//   - ART (what the organizer approved in the preview, or typed text turned
+//     into ART): sent as it is, format "art".
+//   - plain text in the old notation (only a draft the converter could not
+//     take): format "text", the wire default, so no format is named.
 func (d *Draft) bundleDescription() (text, format string) {
 	switch {
 	case strings.TrimSpace(d.Event.Description) == "":
@@ -93,9 +123,6 @@ func (d *Draft) bundleDescription() (text, format string) {
 	case d.Event.DescriptionFormat == richtext.FormatART:
 		return d.Event.Description, richtext.FormatART
 	}
-	// Typed text: "text" is the wire default of source=arena, so it is left
-	// implicit (and the bundles of the shared wizard golden files stay as
-	// they are).
 	return d.Event.Description, ""
 }
 

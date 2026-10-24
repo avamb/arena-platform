@@ -629,6 +629,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.onbCallback(ctx, chatID, msgID, from, cq.Data)
 	case "ses":
 		b.sessionsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ses:"))
+	case "tf":
+		b.tfCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "tf:"))
 	case "team":
 		b.teamCallback(ctx, chatID, msgID, from, strings.TrimPrefix(strings.TrimPrefix(cq.Data, "team"), ":"))
 	}

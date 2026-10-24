@@ -92,7 +92,7 @@ func TestEdit_EachPartIsOneScreenAndReturnsToTheCard(t *testing.T) {
 		t.Fatalf("description screen = %q %v", screen.Text, screen.Buttons)
 	}
 	r.text("Свежий текст", stEditMenu)
-	if d.Event.Description != "Свежий текст" {
+	if d.Event.Description != "<p>Свежий текст</p>" || d.Event.DescriptionFormat != "art" {
 		t.Fatalf("description = %q", d.Event.Description)
 	}
 	r.press("e:desc", stXDescription)

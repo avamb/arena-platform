@@ -819,7 +819,7 @@ other = "Done →"
 other = "Several categories need at least two. If there is only one, choose “One category”."
 
 ["bot.wz.ask_description"]
-other = "Description of the event for buyers, in one message, up to 4000 characters. You can skip this.\n\nFormatting: a blank line starts a new paragraph, **bold**, _italic_, lines starting with “- ” make a list."
+other = "Write the text as usual — I will format it and show you the result.\n\nThe description of the event for buyers, in one message, up to 4000 characters. You can skip this step."
 
 ["bot.wz.ask_currency"]
 other = "Currency of the prices?"
@@ -1069,7 +1069,7 @@ other = "set"
 other = "none"
 
 ["bot.wz.edit_ask_description"]
-other = "Send the new description in one message, up to 4000 characters.\n\nFormatting: a blank line starts a new paragraph, **bold**, _italic_, lines starting with “- ” make a list."
+other = "Write the new text as usual — I will format it and show you the result.\n\nIn one message, up to 4000 characters."
 
 ["bot.wz.edit_desc_now"]
 other = "Now:\n<i>{{.Text}}</i>\n\n"
@@ -4050,3 +4050,45 @@ other = "The description is too long. Shorten the text and send it again."
 
 ["bot.wz.err_description_chars"]
 other = "The description has a hidden or control character. Type the text again, or paste it as plain text."
+
+["bot.tf.formatting"]
+other = "Formatting your text…"
+
+["bot.tf.preview_ask"]
+other = "Here is how it looks. Save it like this?"
+
+["bot.tf.not_applied_note"]
+other = "This is your text without highlights, as you wrote it.\n\n"
+
+["bot.tf.save_btn"]
+other = "Save like this"
+
+["bot.tf.plain_btn"]
+other = "Without formatting"
+
+["bot.tf.again_btn"]
+other = "Format again"
+
+["bot.tf.cancel_btn"]
+other = "Cancel"
+
+["bot.tf.expired"]
+other = "Time is up. Send the text again."
+
+["bot.tf.cancelled"]
+other = "OK, the text stays as it was."
+
+["bot.tf.err_too_long"]
+other = "The text is too long: up to {{.Limit}} characters. Shorten it and send it again."
+
+["bot.tf.err_links"]
+other = "The text has too many links: up to {{.Max}}. Remove some and send it again."
+
+["bot.tf.err_scheme"]
+other = "The text has an address that does not start with https://. Change it and send the text again."
+
+["bot.tf.err_chars"]
+other = "The text has a hidden character. Type the text again or paste it as plain text."
+
+["bot.tf.err_generic"]
+other = "This text did not fit. Check it and send it again."
