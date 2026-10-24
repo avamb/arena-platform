@@ -27,6 +27,8 @@ type ArenaClient struct {
 	baseURL      string
 	serviceToken string
 	http         *http.Client
+	// formatTimeout is how long FormatText waits (default formatCallTimeout).
+	formatTimeout time.Duration
 }
 
 // NewArenaClient builds a client for baseURL (http://api:8080 in compose).
