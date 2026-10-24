@@ -576,6 +576,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.categoryCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ct:"))
 	case "og":
 		b.orgDataCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "og:"))
+	case "ql":
+		b.salesLinkCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ql:"))
 	case "home":
 		b.showHome(ctx, chatID, &msgID, from, "")
 	case menuCallback:
@@ -775,6 +777,9 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 		rows = append(rows, row)
 	}
 	if row := b.promoterMenuRow(loc, id); row != nil { // promoters (EC-14)
+		rows = append(rows, row)
+	}
+	if row := b.salesLinkMenuRow(loc, id); row != nil { // links and QR codes (spec 43, QL-8)
 		rows = append(rows, row)
 	}
 	if row := b.orgDataMenuRow(loc, id); row != nil { // organization data (HP-4a)

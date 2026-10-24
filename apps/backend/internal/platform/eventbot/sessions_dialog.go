@@ -225,7 +225,11 @@ func sesKeyboard(rows [][]Button) *models.InlineKeyboardMarkup {
 	for _, r := range rows {
 		line := make([]models.InlineKeyboardButton, 0, len(r))
 		for _, b := range r {
-			line = append(line, models.InlineKeyboardButton{Text: b.Label, CallbackData: "ses:" + b.Data})
+			data := "ses:" + b.Data
+			if strings.HasPrefix(b.Data, "ql:") {
+				data = b.Data // hands the press over to the Links and QR dialog (spec 43)
+			}
+			line = append(line, models.InlineKeyboardButton{Text: b.Label, CallbackData: data})
 		}
 		out = append(out, line)
 	}
@@ -448,6 +452,9 @@ func (b *Bot) sesShowCard(ctx context.Context, chatID int64, msgID *int, jwt, lo
 		text += "\n\n" + b.sesT(loc, "bot.ses.card_hint", nil)
 		if dlg.CanSales {
 			rows = append(rows, []Button{b.sesBtn(loc, "bot.cat.btn", "ct", nil)}) // categories of the date (EC-15)
+		}
+		if dlg.CanSales {
+			rows = append(rows, []Button{b.salesLinkSessionButton(loc, it.ID)}) // QR / link of the date (spec 43)
 		}
 		rows = append(rows,
 			[]Button{b.sesBtn(loc, "bot.ses.move_btn", "mv", nil)},

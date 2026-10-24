@@ -69,6 +69,7 @@ var dialogOwners = map[string]dialogOwner{
 	sesDialogKind:       {owns: prefixIs("ses"), leave: (*Bot).leaveSessions},
 	materialsDialogKind: {owns: prefixIs("mt"), leave: (*Bot).leaveMaterials},
 	teamDialogKind:      {owns: prefixIs("team"), leave: (*Bot).clearTeamDialog},
+	salesLinkDialogKind: {owns: prefixIs("ql"), leave: (*Bot).leaveSalesLink},
 	tfDialogKind:        {owns: prefixIs("tf"), leave: (*Bot).clearTextFmtDialog},
 }
 
@@ -89,6 +90,7 @@ var dialogTexts = map[string]dialogTextHandler{
 	sesDialogKind:       (*Bot).sessionsText,
 	materialsDialogKind: (*Bot).materialsText,
 	teamDialogKind:      (*Bot).teamText,
+	salesLinkDialogKind: (*Bot).salesLinkText,
 	tfDialogKind:        (*Bot).tfText,
 }
 
@@ -134,7 +136,7 @@ var dialogOwnerOrder = []string{
 	eventsDialogKind, ordersDialogKind, refundDialogKind, scanExcDialogKind,
 	resendDialogKind, evsDialogKind, inviteDialogKind, promoDialogKind,
 	promoterDialogKind, categoryDialogKind, orgDataDialogKind, sesDialogKind,
-	materialsDialogKind, teamDialogKind, tfDialogKind,
+	materialsDialogKind, teamDialogKind, salesLinkDialogKind, tfDialogKind,
 }
 
 // leaveSessions ends the "Sessions" dialog (move, cancel, contact question).
