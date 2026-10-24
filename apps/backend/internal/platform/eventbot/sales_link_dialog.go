@@ -711,7 +711,8 @@ func parseSalesLinkLabel(raw string) (string, string) {
 func parseSalesLinkURL(raw string) (string, string) {
 	s := strings.TrimSpace(raw)
 	low := strings.ToLower(s)
-	if !(strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://")) || strings.ContainsAny(s, " \t\r\n") || len(s) < 11 {
+	hasScheme := strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://")
+	if !hasScheme || strings.ContainsAny(s, " \t\r\n") || len(s) < 11 {
 		return "", "bot.ql.err_url"
 	}
 	if utf8.RuneCountInString(s) > maxURLRunes {
