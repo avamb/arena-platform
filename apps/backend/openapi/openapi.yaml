@@ -12226,6 +12226,261 @@ components:
           type: [string, "null"]
           description: Time of the latest attempt in the window (RFC 3339), null when none.
 
+    SalesLinkTarget:
+      type: object
+      required: [kind]
+      description: Where a sales link leads.
+      properties:
+        kind:
+          type: string
+          description: |
+            `org_page` (the organization page), `promoter_page`, `event`,
+            `session` (one date of an event) or `url` (any http or https address).
+        event_id:
+          type: [string, "null"]
+          format: uuid
+          description: The event, for `event` and `session` targets.
+        session_id:
+          type: [string, "null"]
+          format: uuid
+          description: The date, for `session` targets.
+        promoter_id:
+          type: [string, "null"]
+          format: uuid
+          description: The promoter, for `promoter_page` targets.
+        url:
+          type: [string, "null"]
+          description: The address, for `url` targets (http or https, no user name or password, at most 2048 characters).
+
+    SalesLinkCreateRequest:
+      type: object
+      required: [target, label]
+      description: Body of `POST /v1/organizations/{org_id}/sales-links`.
+      properties:
+        target:
+          allOf:
+            - $ref: "#/components/schemas/SalesLinkTarget"
+          description: Where the link leads. It must belong to the organization.
+        label:
+          type: string
+          description: Where the link is placed, 1 to 120 characters, for example "Poster at the theatre entrance".
+        placement_kind:
+          type: string
+          description: |
+            `poster` (default), `flyer`, `sign`, `social`, `email`, `messenger`
+            or `other`.
+        utm:
+          type: object
+          description: |
+            utm_source, utm_medium, utm_campaign, utm_content and utm_term; each
+            value is up to 64 characters of letters, digits and . _ ~ - . When
+            left out or empty the link gets the defaults described on the route.
+          additionalProperties:
+            type: string
+
+    SalesLinkUpdateRequest:
+      type: object
+      description: |
+        Body of `PATCH /v1/organizations/{org_id}/sales-links/{id}`. Send at
+        least one key; an absent key keeps the stored value.
+      properties:
+        label:
+          type: string
+          description: New label, 1 to 120 characters.
+        placement_kind:
+          type: string
+          description: New placement, one of the values of the create request.
+        utm:
+          type: [object, "null"]
+          description: The whole new set of utm labels. `{}` or null removes them.
+          additionalProperties:
+            type: string
+        target:
+          allOf:
+            - $ref: "#/components/schemas/SalesLinkTarget"
+          description: The new target. Moving a printed code is written to the audit log.
+        status:
+          type: string
+          description: "`active` or `archived`."
+
+    SalesLink:
+      type: object
+      required: [id, org_id, code, short_url, target, label, placement_kind, utm, status, scan_count, suspect_scan_count, orders_count, destination_url, destination_degraded, created_at, updated_at]
+      description: A tracked sales link (spec 43).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the link.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization the link belongs to.
+        code:
+          type: string
+          description: The seven-character code in the short address.
+        short_url:
+          type: string
+          description: The address to print or turn into a QR code, the short-link host plus the code.
+        target:
+          allOf:
+            - $ref: "#/components/schemas/SalesLinkTarget"
+          description: Where the link leads.
+        label:
+          type: string
+          description: Where the link is placed.
+        placement_kind:
+          type: string
+          description: "`poster`, `flyer`, `sign`, `social`, `email`, `messenger` or `other`."
+        utm:
+          type: object
+          description: The utm labels added to the destination when a buyer scans the code.
+          additionalProperties:
+            type: string
+        status:
+          type: string
+          description: "`active` or `archived`."
+        scan_count:
+          type: integer
+          format: int64
+          description: Scans counted so far, bots excluded.
+        suspect_scan_count:
+          type: integer
+          format: int64
+          description: Scans by clients that look like bots.
+        last_scanned_at:
+          type: [string, "null"]
+          description: Time of the latest scan (RFC 3339), null when never scanned.
+        orders_count:
+          type: integer
+          format: int64
+          description: Orders that came through the link and were ever paid.
+        destination_url:
+          type: string
+          description: The page the code leads to right now, without utm. Empty when no page address can be built.
+        destination_degraded:
+          type: boolean
+          description: True when the code leads to a higher page than its target (event off sale, date cancelled, link archived).
+        created_by:
+          type: [string, "null"]
+          format: uuid
+          description: The user who created the link, null for an API key.
+        created_via:
+          type: [string, "null"]
+          description: The client that created it, `telegram_bot`, `admin_web`, `site_plugin`, `event_center_web` or `api`.
+        created_at:
+          type: string
+          format: date-time
+          description: When the link was created (RFC 3339).
+        updated_at:
+          type: string
+          format: date-time
+          description: When the link was last changed (RFC 3339).
+
+    SalesLinkList:
+      type: object
+      required: [items, next_cursor]
+      description: One page of sales links, newest first.
+      properties:
+        items:
+          type: array
+          description: The links of this page.
+          items:
+            $ref: "#/components/schemas/SalesLink"
+        next_cursor:
+          type: string
+          description: Pass as `cursor` to get the next page. Empty on the last page.
+
+    SalesLinkDayStats:
+      type: object
+      required: [day, hits, suspect_hits]
+      description: Scans of one day.
+      properties:
+        day:
+          type: string
+          description: The day, `YYYY-MM-DD` (UTC).
+        hits:
+          type: integer
+          format: int64
+          description: Scans counted that day.
+        suspect_hits:
+          type: integer
+          format: int64
+          description: Scans that day by clients that look like bots.
+
+    SalesLinkCountryStats:
+      type: object
+      required: [country, hits]
+      description: Scans from one country.
+      properties:
+        country:
+          type: string
+          description: Two-letter country code, empty when unknown.
+        hits:
+          type: integer
+          format: int64
+          description: Scans counted from that country.
+
+    SalesLinkRevenue:
+      type: object
+      required: [currency, amount_minor]
+      description: Revenue of a sales link in one currency.
+      properties:
+        currency:
+          type: string
+          description: ISO 4217 currency code.
+        amount_minor:
+          type: integer
+          format: int64
+          description: Paid totals minus succeeded refunds, in minor units.
+
+    SalesLinkOrderStats:
+      type: object
+      required: [count, tickets, revenue]
+      description: The orders that came through a sales link and were ever paid.
+      properties:
+        count:
+          type: integer
+          format: int64
+          description: Number of orders.
+        tickets:
+          type: integer
+          format: int64
+          description: Number of tickets in those orders.
+        revenue:
+          type: array
+          description: Revenue per currency.
+          items:
+            $ref: "#/components/schemas/SalesLinkRevenue"
+
+    SalesLinkStats:
+      type: object
+      required: [scans_total, suspect_total, by_day, by_country, orders]
+      description: Scans and sales of one sales link.
+      properties:
+        scans_total:
+          type: integer
+          format: int64
+          description: All scans counted since the link was created, bots excluded.
+        suspect_total:
+          type: integer
+          format: int64
+          description: All scans by clients that look like bots.
+        by_day:
+          type: array
+          description: Scans per day in the asked range, oldest first.
+          items:
+            $ref: "#/components/schemas/SalesLinkDayStats"
+        by_country:
+          type: array
+          description: Scans per country in the asked range, the biggest first.
+          items:
+            $ref: "#/components/schemas/SalesLinkCountryStats"
+        orders:
+          allOf:
+            - $ref: "#/components/schemas/SalesLinkOrderStats"
+          description: The orders that came through the link.
+
     PromoRedemptionListResponse:
       type: object
       required: [redemptions]
@@ -37685,6 +37940,413 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: Internal server error (`promo_attempts.summary_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/sales-links:
+    post:
+      operationId: createSalesLink
+      summary: Create a tracked sales link
+      description: |
+        Mints a short code that leads buyers to an event, a date, a promoter
+        page, the organization page or any http(s) address, and remembers where
+        the link is placed (a poster, a flyer, a post). The short address is
+        `short_url`; print it, or have it drawn as a QR code. When `utm` is
+        left out the link gets `utm_source=qr`, `utm_medium=offline`,
+        `utm_campaign` = the slug of the event (else of the promoter, else of the
+        organization) and `utm_content` = the code; the placements `social`,
+        `email` and `messenger` start with their own source and medium.
+
+        The target must belong to the organization: an event, session or
+        promoter of another organization answers 422 `sales_link.invalid_target`.
+        A `session` target also fills `event_id` from the session.
+
+        Requires JWT or API key + the `sales_link.manage` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesLinkCreateRequest"
+      responses:
+        "201":
+          description: The new link.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesLink"
+        "400":
+          description: A field is malformed (`sales_link.invalid_body`, `sales_link.invalid_label`, `sales_link.invalid_placement`, `sales_link.invalid_utm`, `sales_link.invalid_url`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The target is missing, does not match its kind, or belongs to another organization (`sales_link.invalid_target`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `sales_link.manage` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`sales_link.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    get:
+      operationId: listSalesLinks
+      summary: List the sales links of an organization
+      description: |
+        Newest first. `status` defaults to `active`; `all` lists archived links
+        too. A page carries at most `limit` links and `next_cursor`, an opaque
+        string to pass as `cursor` for the next page (empty on the last page).
+
+        Requires JWT or API key + the `sales_link.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: query
+          required: false
+          description: Only links of this event (a session link carries its event).
+          schema:
+            type: string
+            format: uuid
+        - name: session_id
+          in: query
+          required: false
+          description: Only links to this date.
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          description: "`active` (default), `archived` or `all`."
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1-100 (default 50).
+          schema:
+            type: integer
+        - name: cursor
+          in: query
+          required: false
+          description: The `next_cursor` of the previous page.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One page of links.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesLinkList"
+        "400":
+          description: A filter is malformed (`sales_link.invalid_filter`, `sales_link.invalid_status`, `sales_link.invalid_limit`, `sales_link.invalid_cursor`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `sales_link.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`sales_link.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/sales-links/{id}:
+    get:
+      operationId: getSalesLink
+      summary: Read one sales link
+      description: |
+        The link with its short address, the page it leads to right now
+        (`destination_url`, without utm) and `destination_degraded`, true when
+        the target cannot be shown (the event is off sale or deleted, the
+        session is cancelled, the link is archived) and the code leads to a
+        higher page instead. A link of another organization answers 404.
+
+        Requires JWT or API key + the `sales_link.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the sales link.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The link.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesLink"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `sales_link.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Link not found in this organization (`sales_link.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`sales_link.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updateSalesLink
+      summary: Change a sales link
+      description: |
+        A key that is absent keeps the stored value. `target` moves a code that
+        may already be printed: the link then leads to the new page, and the old
+        and the new target are written to the audit log
+        (`v1.sales_link.retarget`). `utm` replaces the whole set (`{}` or null
+        removes it). `status` `archived` stops the link leading to its target:
+        buyers who scan it land on the organization page. There is no delete.
+
+        Requires JWT or API key + the `sales_link.manage` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the sales link.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesLinkUpdateRequest"
+      responses:
+        "200":
+          description: The link after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesLink"
+        "400":
+          description: A field is malformed (`sales_link.invalid_body`, `sales_link.invalid_label`, `sales_link.invalid_placement`, `sales_link.invalid_utm`, `sales_link.invalid_url`, `sales_link.invalid_status`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The new target does not match its kind or belongs to another organization (`sales_link.invalid_target`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `sales_link.manage` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Link not found in this organization (`sales_link.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`sales_link.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/sales-links/{id}/stats:
+    get:
+      operationId: getSalesLinkStats
+      summary: Scans and sales of one sales link
+      description: |
+        `scans_total` and `suspect_total` are the all-time scan counters of the
+        link (a scan by an obvious bot counts as suspect). `by_day` and
+        `by_country` cover the days from `from` to `to`, both inclusive, UTC
+        (default: the last 30 days ending today, at most 366 days). `orders`
+        counts the orders that came through the link and were ever paid, their
+        tickets, and the revenue per currency in minor units after succeeded
+        refunds.
+
+        Requires JWT or API key + the `sales_link.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the sales link.
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: false
+          description: First day of the series, `YYYY-MM-DD`.
+          schema:
+            type: string
+        - name: to
+          in: query
+          required: false
+          description: Last day of the series, `YYYY-MM-DD` (default today, UTC).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The numbers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesLinkStats"
+        "400":
+          description: The range is malformed (`sales_link.invalid_range`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `sales_link.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Link not found in this organization (`sales_link.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`sales_link.failed`).
           content:
             application/json:
               schema:
