@@ -6,6 +6,7 @@ package gen
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -53,6 +54,9 @@ type CheckoutSessionRow struct {
 	// stored. NULL means not stated — a gateway sale, or a caller that sent
 	// nothing — and ticket delivery then falls back to English.
 	BuyerLocale *string `json:"buyer_locale"`
+	// Attribution is the cleaned touch json (migration 0167, spec 43 section 3):
+	// the sales-link ref and utm fields the buyer arrived with. '{}' when none.
+	Attribution json.RawMessage `json:"attribution"`
 }
 
 // scanCheckoutSessionRow scans a single checkout_sessions row.
@@ -84,6 +88,7 @@ func scanCheckoutSessionRow(row interface {
 		&cs.UpdatedAt,
 		&cs.CheckoutToken,
 		&cs.BuyerLocale,
+		&cs.Attribution,
 	)
 	return cs, err
 }
@@ -92,7 +97,7 @@ const selectCheckoutSessionColumns = `id, org_id, channel_id, reservation_id, us
        state, subtotal, discount, platform_fee, provider_fee, tax, total, currency,
        promo_code_id, payment_intent_id, payment_provider,
        completed_at, abandoned_at, expired_at, created_at, updated_at,
-       checkout_token, buyer_locale`
+       checkout_token, buyer_locale, attribution`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // InsertCheckoutSession
