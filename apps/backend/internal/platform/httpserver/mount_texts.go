@@ -2,7 +2,7 @@ package httpserver
 
 import "github.com/go-chi/chi/v5"
 
-// mountTextRoutes wires the organizer-text surface of spec 43:
+// mountTextRoutes wires the organizer-text surface of spec 44:
 //
 //	POST /v1/organizations/{org_id}/texts/format
 //	                               event.update — a model adds markup to a text,

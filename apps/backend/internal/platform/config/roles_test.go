@@ -519,7 +519,7 @@ func TestLoadFor_BillingCollectSince(t *testing.T) {
 	}
 }
 
-// The text-formatting route (spec 43, RT-04) uses the poster key and base URL
+// The text-formatting route (spec 44, RT-04) uses the poster key and base URL
 // and has its own model and daily caps.
 func TestLoadFor_TextFormatSettings(t *testing.T) {
 	clearConfigEnv(t)

@@ -564,7 +564,7 @@ type Config struct {
 	// replicas the ceiling is this value times the replica count.
 	PosterReadsPerOrgPerDay int `env:"POSTER_READS_PER_ORG_PER_DAY" required:"false" default:"50"`
 	// TextFormatLLMModel is the model that adds markup to an organizer's text
-	// (internal/platform/textformat, POST .../texts/format, spec 43 RT-04). It
+	// (internal/platform/textformat, POST .../texts/format, spec 44 RT-04). It
 	// uses the same key and base URL as the poster reading (POSTER_LLM_API_KEY,
 	// POSTER_LLM_BASE_URL); without the key the route answers 200 with the
 	// plain conversion of the text and ai_applied=false.

@@ -2,7 +2,7 @@ package richtext
 
 import "sort"
 
-// ConstrainOptions say what Constrain takes out of an ART (spec 43, RT-04:
+// ConstrainOptions say what Constrain takes out of an ART (spec 44, RT-04:
 // the code that checks the answer of the formatting model).
 type ConstrainOptions struct {
 	// MaxMarksPerUnit is the most emphasised fragments (strong, em and u runs

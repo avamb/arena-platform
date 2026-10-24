@@ -127,7 +127,7 @@ var roleSecrets = []roleSecret{
 	{"OPS_TELEGRAM_BOT_TOKEN", []Role{RoleWorker}, func(c *Config) string { return c.OpsTelegramBotToken }},
 	{"SALES_TELEGRAM_BOT_TOKEN", []Role{RoleWorker}, func(c *Config) string { return c.SalesTelegramBotToken }},
 	{"EVENTS_TELEGRAM_BOT_TOKEN", []Role{RoleBot}, func(c *Config) string { return c.EventsTelegramBotToken }},
-	// POSTER_LLM_API_KEY also serves the text-formatting route (spec 43 RT-04,
+	// POSTER_LLM_API_KEY also serves the text-formatting route (spec 44 RT-04,
 	// TEXT_FORMAT_LLM_MODEL and TEXT_FORMATS_PER_*_PER_DAY are plain settings of
 	// the api, not secrets): the model key stays on arena-api only.
 	{"POSTER_LLM_API_KEY", []Role{RoleAPI}, func(c *Config) string { return c.PosterLLMAPIKey }},

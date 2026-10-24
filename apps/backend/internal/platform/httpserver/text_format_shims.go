@@ -1,5 +1,5 @@
 // text_format_shims.go wires the text-formatting route
-// (POST /v1/organizations/{org_id}/texts/format, spec 43 RT-04) to the model.
+// (POST /v1/organizations/{org_id}/texts/format, spec 44 RT-04) to the model.
 // The key is the poster one (POSTER_LLM_API_KEY) and lives on arena-api only.
 package httpserver
 

@@ -2,7 +2,7 @@
 
 package httpserver
 
-// POST /v1/organizations/{org_id}/texts/format (spec 43, RT-04) through the
+// POST /v1/organizations/{org_id}/texts/format (spec 44, RT-04) through the
 // real router, the real auth and permission gates, the real organization
 // guard and the real textformat client against a stub Messages API. Run on a
 // migrated database:

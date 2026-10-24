@@ -1,6 +1,6 @@
 // Package textformat asks a language model to add markup to a text an
 // organizer typed, and proves by code that the model changed nothing else
-// (spec 43, RT-04).
+// (spec 44, RT-04).
 //
 // The model only ever sees the organizer's own text (an event description, the
 // organizer's text of the buyer letters, the message about a moved or

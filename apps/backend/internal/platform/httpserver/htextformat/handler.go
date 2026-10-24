@@ -1,5 +1,5 @@
 // Package htextformat serves POST /v1/organizations/{org_id}/texts/format
-// (spec 43, RT-04): a model adds markup to a text an organizer typed, and the
+// (spec 44, RT-04): a model adds markup to a text an organizer typed, and the
 // code proves that no word was changed before the answer is used.
 package htextformat
 
