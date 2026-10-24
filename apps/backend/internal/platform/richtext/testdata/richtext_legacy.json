@@ -63,5 +63,17 @@
   {"name": "email note link budget is shared by paragraphs", "profile": "email_note", "legacy": "https://a.com https://b.com https://c.com\n\nhttps://d.com https://e.com https://f.com", "art": "<p><a href=\"https://a.com\">https://a.com</a> <a href=\"https://b.com\">https://b.com</a> <a href=\"https://c.com\">https://c.com</a></p><p><a href=\"https://d.com\">https://d.com</a> <a href=\"https://e.com\">https://e.com</a> https://f.com</p>"},
   {"name": "session message bold", "profile": "session_message", "legacy": "The concert is **moved** to 8 pm", "art": "<p>The concert is <strong>moved</strong> to 8 pm</p>"},
   {"name": "session message does not link", "profile": "session_message", "legacy": "See https://example.com/new", "art": "<p>See https://example.com/new</p>"},
-  {"name": "session message list", "profile": "session_message", "legacy": "New plan:\n1. doors\n2. show", "art": "<p>New plan:</p><ol><li>doors</li><li>show</li></ol>"}
+  {"name": "session message list", "profile": "session_message", "legacy": "New plan:\n1. doors\n2. show", "art": "<p>New plan:</p><ol><li>doors</li><li>show</li></ol>"},
+  {"name": "numbers with a gap are plain lines", "profile": "description", "legacy": "1. Иванов\n15. Петров", "art": "<p>1. Иванов<br>15. Петров</p>"},
+  {"name": "numbers that are all ones are plain lines", "profile": "description", "legacy": "1. a\n1. b\n1. c", "art": "<p>1. a<br>1. b<br>1. c</p>"},
+  {"name": "one and three are plain lines", "profile": "description", "legacy": "1. a\n3. b", "art": "<p>1. a<br>3. b</p>"},
+  {"name": "descending numbers are plain lines", "profile": "description", "legacy": "3. a\n2. b\n1. c", "art": "<p>3. a<br>2. b<br>1. c</p>"},
+  {"name": "numbered list stops at the first gap", "profile": "description", "legacy": "1. a\n2. b\n4. c", "art": "<ol><li>a</li><li>b</li></ol><p>4. c</p>"},
+  {"name": "numbered list stops at a repeated number", "profile": "description", "legacy": "1. a\n2. b\n2. c", "art": "<ol><li>a</li><li>b</li></ol><p>2. c</p>"},
+  {"name": "two numbered lists", "profile": "description", "legacy": "1. a\n2. b\n1. c\n2. d", "art": "<ol><li>a</li><li>b</li></ol><ol><li>c</li><li>d</li></ol>"},
+  {"name": "numbers with a leading zero are plain lines", "profile": "description", "legacy": "01. a\n02. b", "art": "<p>01. a<br>02. b</p>"},
+  {"name": "email note numbers with a gap", "profile": "email_note", "legacy": "1. doors\n3. show", "art": "<p>1. doors<br>3. show</p>"},
+  {"name": "direction marks are kept", "profile": "description", "legacy": "שלום\u200f עולם\u200e (Vino&Co)", "art": "<p>שלום\u200f עולם\u200e (Vino&amp;Co)</p>"},
+  {"name": "isolates and zero-width characters are removed", "profile": "description", "legacy": "a\u2066b\u2069 c\u200bd\ufeffe\u2060f", "art": "<p>ab cdef</p>"},
+  {"name": "line and paragraph separators", "profile": "description", "legacy": "a\u2028b\u2029c", "art": "<p>a<br>b</p><p>c</p>"}
 ]

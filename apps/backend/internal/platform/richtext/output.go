@@ -6,17 +6,25 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 	"golang.org/x/text/unicode/norm"
 )
 
 // Normalize is the single write point: it returns the ART to store for input
 // in the given format. "text" (and an empty format) is the old plain text and
 // goes through FromLegacy, "art" is HTML and goes through Sanitize, anything
-// else is an error. The server never guesses the format from the tags.
+// else is an error. The server never guesses the format from the tags. A
+// "text" longer (in characters) than the profile's HTML limit is refused
+// before any work is done, because it cannot fit; Sanitize does the same for
+// "art" at four times the limit.
 // Normalize(Normalize(x, f, p), "art", p) == Normalize(x, f, p).
 func Normalize(input, format string, p Profile) (string, error) {
 	switch format {
 	case "", FormatText:
+		if p.MaxHTML > 0 && utf8.RuneCountInString(input) > p.MaxHTML {
+			return "", ErrHTMLTooLong
+		}
 		if !utf8.ValidString(input) {
 			return "", ErrBadEncoding
 		}
@@ -35,18 +43,93 @@ func Normalize(input, format string, p Profile) (string, error) {
 // and every link gets rel="noopener noreferrer" target="_blank". Limits are
 // not enforced (a text stored under an older limit must still show) and
 // forbidden characters are dropped. It never returns unsafe HTML, even if
-// stored is hostile: on any failure it returns "".
-func Render(stored, format string, p Profile) string {
+// stored is hostile, and never an empty string for a text that has content:
+// when the text cannot be read (too large, nested too deeply) it returns its
+// visible text, escaped, together with the error, so the caller can count or
+// log the failure and the reader still sees the words.
+func Render(stored, format string, p Profile) (string, error) {
+	if len(stored) > maxInputBytes {
+		return fallbackHTML(stored, format), ErrHTMLTooLong
+	}
 	src := stored
 	if format != FormatART {
 		src = FromLegacy(stored, p)
 	}
 	d, err := convert(src, p.readOnly(), false)
 	if err != nil {
-		return ""
+		return fallbackHTML(stored, format), err
 	}
 	out, _ := d.html(writeOpts{blank: true})
-	return out
+	return out, nil
+}
+
+// fallbackHTML is the escaped visible text of a stored text that could not be
+// converted: the text nodes of ART (or the plain text itself), forbidden
+// characters removed, lines kept as <br>. It holds no markup of the author's.
+func fallbackHTML(stored, format string) string {
+	if len(stored) > maxInputBytes {
+		stored = stored[:maxInputBytes]
+	}
+	stored = strings.ToValidUTF8(stored, "")
+	text := stored
+	if format == FormatART {
+		text = markupText(stored)
+		if strings.TrimSpace(text) == "" {
+			text = stored // nothing readable: show the source as it is
+		}
+	}
+	var lines []string
+	var sb strings.Builder
+	for _, r := range text {
+		switch charPolicy(r) {
+		case charRefuse, charStrip:
+			continue
+		case charLineSep, charParaSep:
+			r = '\n'
+		}
+		sb.WriteRune(r)
+	}
+	for _, line := range strings.Split(strings.ReplaceAll(sb.String(), "\r", "\n"), "\n") {
+		if line = strings.TrimFunc(line, isWS); line != "" {
+			lines = append(lines, escapeText(line))
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "<p>" + strings.Join(lines, "<br>") + "</p>"
+}
+
+// markupText is the text of the text nodes of markup: a <br> or a block tag
+// becomes a line break and the content of dropped elements (script, style ...)
+// is skipped. It uses the tokenizer, so it has no nesting limit.
+func markupText(s string) string {
+	z := html.NewTokenizer(strings.NewReader(s))
+	var sb strings.Builder
+	skip := "" // the dropped element whose content is being skipped
+	for {
+		switch z.Next() {
+		case html.ErrorToken:
+			return sb.String()
+		case html.TextToken:
+			if skip == "" {
+				sb.Write(z.Text())
+			}
+		case html.StartTagToken, html.EndTagToken, html.SelfClosingTagToken:
+			tt := z.Token()
+			a := atom.Lookup([]byte(tt.Data))
+			switch {
+			case skip != "":
+				if tt.Type == html.EndTagToken && tt.Data == skip {
+					skip = ""
+				}
+			case dropTags[a] && tt.Type == html.StartTagToken:
+				skip = tt.Data
+			case a == atom.Br || boundaryTags[a]:
+				sb.WriteByte('\n')
+			}
+		}
+	}
 }
 
 // parseART reads a stored ART for the outputs below. They take no profile, so
@@ -360,14 +443,23 @@ func ToTelegramHTML(art string) string {
 	return strings.Join(parts, "\n\n")
 }
 
-// Words is the sequence of words of the visible text of art: NFC-normalised
-// and split on Unicode spaces and punctuation, so list markers, empty items
-// and the markup itself add nothing. It is what the AI check compares to
-// prove that no word changed.
+// Words is the sequence of tokens of the visible text of art, what the AI
+// check compares to prove that no word and no sign changed. The text is
+// NFC-normalised, then a token is a maximal run of letters, numbers and
+// marks, and EVERY other character that is not a space (punctuation and
+// symbols alike) is a token of its own, so "-20%" and "20%", "10,5" and "10 5"
+// or a moved comma differ. Spaces, line breaks and the markup add nothing,
+// except that an item of an ordered list adds the number and the dot it is
+// shown with ("N", "."), so numbering cannot appear or vanish unseen. The
+// items of a bulleted list add nothing.
 func Words(art string) []string {
 	d := parseART(art)
 	var sb strings.Builder
-	d.units(func(chunks []chunk) {
+	d.numberedUnits(func(num int, chunks []chunk) {
+		if num > 0 {
+			sb.WriteString(strconv.Itoa(num))
+			sb.WriteString(". ")
+		}
 		for _, c := range chunks {
 			if c.br {
 				sb.WriteByte(' ')
@@ -378,5 +470,30 @@ func Words(art string) []string {
 		sb.WriteByte(' ')
 	})
 	s := norm.NFC.String(sb.String())
-	return strings.FieldsFunc(s, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsPunct(r) })
+	words := []string{}
+	start := -1 // start of the current run of letters, numbers and marks
+	for i, r := range s {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsNumber(r) || unicode.IsMark(r):
+			if start < 0 {
+				start = i
+			}
+			continue
+		case unicode.IsSpace(r):
+			if start >= 0 {
+				words = append(words, s[start:i])
+				start = -1
+			}
+		default:
+			if start >= 0 {
+				words = append(words, s[start:i])
+				start = -1
+			}
+			words = append(words, string(r))
+		}
+	}
+	if start >= 0 {
+		words = append(words, s[start:])
+	}
+	return words
 }

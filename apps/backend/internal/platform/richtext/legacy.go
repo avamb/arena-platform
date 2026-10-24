@@ -30,7 +30,7 @@ type legacyConv struct {
 }
 
 func legacyDoc(text string, p Profile) *doc {
-	text = strings.ToValidUTF8(text, "")
+	text = legacyChars(strings.ToValidUTF8(text, ""))
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
 	lc := &legacyConv{p: p}
@@ -57,6 +57,38 @@ func legacyDoc(text string, p Profile) *doc {
 	return d
 }
 
+// legacyChars applies the character policy to a plain text the way Sanitize
+// applies it to ART, so that FromLegacy and Sanitize agree on the words:
+// invisible characters that only hide things are removed, U+2028 is a line
+// break and U+2029 a blank line. The characters Sanitize refuses stay, so
+// Sanitize refuses the text.
+func legacyChars(s string) string {
+	clean := true
+	for _, r := range s {
+		if a := charPolicy(r); a == charStrip || a == charLineSep || a == charParaSep {
+			clean = false
+			break
+		}
+	}
+	if clean {
+		return s
+	}
+	var sb strings.Builder
+	sb.Grow(len(s))
+	for _, r := range s {
+		switch charPolicy(r) {
+		case charStrip:
+		case charLineSep:
+			sb.WriteByte('\n')
+		case charParaSep:
+			sb.WriteString("\n\n")
+		default:
+			sb.WriteRune(r)
+		}
+	}
+	return sb.String()
+}
+
 type lineKind int
 
 const (
@@ -76,7 +108,8 @@ func classify(line string) (lineKind, string, int) {
 		}
 	}
 	n := 0
-	for n < len(line) && n < 3 && line[n] >= '0' && line[n] <= '9' {
+	// A number with a leading zero ("01.") is text: the list would show "1.".
+	for n < len(line) && n < 3 && line[0] != '0' && line[n] >= '0' && line[n] <= '9' {
 		n++
 	}
 	if n > 0 && n+1 < len(line) && line[n] == '.' && startsWithWS(line[n+1:]) {
@@ -115,8 +148,10 @@ func (lc *legacyConv) block(d *doc, lines []string) {
 	for i := 0; i < len(lines); {
 		k := kinds[i]
 		if k == lBullet || (k == lNumber && nums[i] == 1) {
+			// A numbered list needs the numbers to be 1, 2, 3 ...: the list
+			// shows its own numbers, so other numbers would be renumbered.
 			j := i + 1
-			for j < len(lines) && kinds[j] == k {
+			for j < len(lines) && kinds[j] == k && (k != lNumber || nums[j] == 1+(j-i)) {
 				j++
 			}
 			if j-i >= 2 {
@@ -141,11 +176,16 @@ func (lc *legacyConv) block(d *doc, lines []string) {
 func (lc *legacyConv) inline(s string) []chunk {
 	var out []chunk
 	last := 0
+	var closers []int
+	if strings.Contains(s, "**") {
+		closers = boldClosers(s)
+	}
+	next := 0 // the first closer that can still close
 	for i := 0; i < len(s); i++ {
 		if s[i] != '*' || i+1 >= len(s) || s[i+1] != '*' {
 			continue
 		}
-		j, ok := boldEnd(s, i)
+		j, ok := boldEnd(s, i, closers, &next)
 		if !ok {
 			continue
 		}
@@ -157,9 +197,25 @@ func (lc *legacyConv) inline(s string) []chunk {
 	return append(out, lc.italics(s[last:], false)...)
 }
 
+// boldClosers lists, in one pass, the positions of every "**" that follows a
+// non-space: the places where a bold part may end.
+func boldClosers(s string) []int {
+	var out []int
+	for j := 1; j+1 < len(s); j++ {
+		if s[j] == '*' && s[j+1] == '*' {
+			if r, _ := utf8.DecodeLastRuneInString(s[:j]); !unicode.IsSpace(r) {
+				out = append(out, j)
+			}
+		}
+	}
+	return out
+}
+
 // boldEnd finds the "**" that closes the one opened at s[i:i+2]: the text
-// between starts and ends on a non-space.
-func boldEnd(s string, i int) (int, bool) {
+// between starts and ends on a non-space. closers is boldClosers(s), and
+// *next is where the search in it goes on: openers come in increasing order,
+// so all the searches of a line cost one pass.
+func boldEnd(s string, i int, closers []int, next *int) (int, bool) {
 	c := i + 2
 	if c >= len(s) {
 		return 0, false
@@ -167,12 +223,11 @@ func boldEnd(s string, i int) (int, bool) {
 	if r, _ := utf8.DecodeRuneInString(s[c:]); unicode.IsSpace(r) {
 		return 0, false
 	}
-	for j := c + 1; j+1 < len(s); j++ {
-		if s[j] == '*' && s[j+1] == '*' {
-			if r, _ := utf8.DecodeLastRuneInString(s[:j]); !unicode.IsSpace(r) {
-				return j, true
-			}
-		}
+	for *next < len(closers) && closers[*next] < c+1 {
+		*next++
+	}
+	if *next < len(closers) {
+		return closers[*next], true
 	}
 	return 0, false
 }
@@ -256,6 +311,7 @@ func (lc *legacyConv) links(s string, strong, em bool) []chunk {
 			}
 			end += size
 		}
+		scanEnd := end
 		for end > i {
 			r, size := utf8.DecodeLastRuneInString(s[i:end])
 			if r == utf8.RuneError || !strings.ContainsRune(trailingPunct, r) {
@@ -265,7 +321,7 @@ func (lc *legacyConv) links(s string, strong, em bool) []chunk {
 		}
 		href, ok := cleanHref(s[i:end], lc.p)
 		if !ok {
-			i += 8
+			i = scanEnd // the whole run is not a link: do not scan it again
 			continue
 		}
 		if i > last {

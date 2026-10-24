@@ -11,8 +11,9 @@ import (
 
 // schemeWordRE finds a scheme that can run code or load a local or opaque
 // resource, or the plain-http scheme, as a word of the text: the strictness
-// of the old email note (eventnote.go).
-var schemeWordRE = regexp.MustCompile(`(?i)\b(?:javascript|vbscript|data|file|blob|about|http):\S`)
+// of the old email note (eventnote.go). The word border is Unicode-aware: RE2's
+// \b knows ASCII only, so "_http://" and "x_javascript:" would slip through.
+var schemeWordRE = regexp.MustCompile(`(?i)(?:^|[^\p{L}\p{N}])(?:javascript|vbscript|data|file|blob|about|http):\S`)
 
 // dropTags are removed together with their content.
 var dropTags = map[atom.Atom]bool{
@@ -46,8 +47,13 @@ var boundaryTags = map[atom.Atom]bool{
 // serialisation of the white-listed tags, so that
 // Sanitize(Sanitize(x, p), p) == Sanitize(x, p). An empty result means "no
 // text". It refuses control, bidi and zero-width characters and texts over
-// the profile's limits, with a typed *Error.
+// the profile's limits, with a typed *Error. Characters follow the one policy
+// of charPolicy. An input of more than four times the profile's HTML limit
+// (characters) is refused before anything is parsed.
 func Sanitize(input string, p Profile) (string, error) {
+	if p.MaxHTML > 0 && utf8.RuneCountInString(input) > 4*p.MaxHTML {
+		return "", ErrHTMLTooLong
+	}
 	d, err := convert(input, p, true)
 	if err != nil {
 		return "", err
@@ -116,7 +122,7 @@ func convert(input string, p Profile, strict bool) (*doc, error) {
 	}
 	if strict {
 		for _, r := range input {
-			if isForbidden(r) {
+			if charPolicy(r) == charRefuse {
 				return nil, ErrControlChars
 			}
 		}
@@ -177,14 +183,16 @@ func (c *conv) text(s string, m marks) {
 	}
 	var sb strings.Builder
 	for _, r := range s {
-		if isForbidden(r) {
+		switch charPolicy(r) {
+		case charRefuse:
 			if c.strict {
 				c.fail(ErrControlChars)
 				return
 			}
-			continue
+		case charStrip:
+		default:
+			sb.WriteRune(r)
 		}
-		sb.WriteRune(r)
 	}
 	c.cur = append(c.cur, chunk{
 		text: sb.String(), strong: m.strong, em: m.em, u: m.u,

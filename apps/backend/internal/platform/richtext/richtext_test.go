@@ -152,10 +152,10 @@ func sanitizeCases() []sanitizeCase {
 		{"too long href", `<a href="` + long + `a">x</a>`, descr, `<p>x</p>`},
 		{"empty href", `<a href="">x</a>`, descr, `<p>x</p>`},
 		{"anchor without href", `<a name="x">x</a>`, descr, `<p>x</p>`},
-		{"idn host", `<a href="https://пример.рф/путь">x</a>`, descr, `<p><a href="https://пример.рф/путь">x</a></p>`},
+		{"idn host is stored as punycode", `<a href="https://пример.рф/путь">x</a>`, descr, `<p><a href="https://xn--e1afmkfd.xn--p1ai/путь">x</a></p>`},
 
 		// schemes per profile
-		{"mailto in description", `<a href="mailto:Org@Example.com?subject=Hi">m</a>`, descr, `<p><a href="mailto:Org@example.com?subject=Hi">m</a></p>`},
+		{"mailto in description drops the query", `<a href="mailto:Org@Example.com?subject=Hi">m</a>`, descr, `<p><a href="mailto:Org@example.com">m</a></p>`},
 		{"mailto uppercase scheme", `<a href="MAILTO:a@b.com">m</a>`, descr, `<p><a href="mailto:a@b.com">m</a></p>`},
 		{"mailto in email note", `<a href="mailto:a@b.com">m</a>`, email, `<p>m</p>`},
 		{"mailto in session message", `<a href="mailto:a@b.com">m</a>`, sess, `<p>m</p>`},
@@ -257,13 +257,24 @@ func TestSanitizeRejects(t *testing.T) {
 		{"numeric entity control", "<p>a&#1;b</p>", descr, ReasonControlChars},
 		{"bidi override", "a\u202eb", descr, ReasonControlChars},
 		{"bidi override entity", "a&#x202E;b", descr, ReasonControlChars},
-		{"bidi isolate", "a\u2066b", descr, ReasonControlChars},
-		{"right-to-left mark", "a\u200fb", descr, ReasonControlChars},
-		{"bom", "a\ufeffb", descr, ReasonControlChars},
-		{"zero-width space", "a\u200bb", descr, ReasonControlChars},
-		{"zero-width space entity", "a&#8203;b", descr, ReasonControlChars},
-		{"word joiner", "a\u2060b", descr, ReasonControlChars},
-		{"line separator", "a\u2028b", descr, ReasonControlChars},
+		{"embedding", "a\u202ab", descr, ReasonControlChars},
+		{"pop directional formatting", "a\u202cb", descr, ReasonControlChars},
+		{"tag character", "a\U000E0041b", descr, ReasonControlChars},
+		{"tag character entity", "a&#xE0041;b", descr, ReasonControlChars},
+		{"invisible times", "a\u2062b", descr, ReasonControlChars},
+		{"function application", "a\u2061b", descr, ReasonControlChars},
+		{"mongolian vowel separator", "a\u180eb", descr, ReasonControlChars},
+		{"interlinear annotation", "a\ufff9b", descr, ReasonControlChars},
+		{"del", "a\x7fb", descr, ReasonControlChars},
+		// allowed or removed silently by the policy, never refused
+		{"bidi isolate is removed", "a\u2066b", descr, ""},
+		{"right-to-left mark is kept", "a\u200fb", descr, ""},
+		{"bom is removed", "a\ufeffb", descr, ""},
+		{"zero-width space is removed", "a\u200bb", descr, ""},
+		{"zero-width space entity is removed", "a&#8203;b", descr, ""},
+		{"word joiner is removed", "a\u2060b", descr, ""},
+		{"line separator is a space", "a\u2028b", descr, ""},
+		{"oversized art is refused first", "\xff" + strings.Repeat("a", 64001), descr, ReasonHTMLTooLong},
 		{"bidi in an attribute", `<a href="https://e.com/` + "\u202e" + `">x</a>`, descr, ReasonControlChars},
 		{"bidi inside a dropped element", "<script>\u202e</script>", descr, ReasonControlChars},
 		{"invalid utf-8", "a\xffb", descr, ReasonBadEncoding},
@@ -287,6 +298,10 @@ func TestSanitizeRejects(t *testing.T) {
 		{"https is not a scheme word", "<p>https://example.com</p>", email, ""},
 		{"metadata is not a scheme word", "<p>Metadata: bring a pass</p>", email, ""},
 		{"scheme word in description is text", "<p>data:foo and http://x</p>", descr, ""},
+		{"scheme word after an underscore", "<p>x_javascript:alert(1)</p>", email, ReasonSchemeWord},
+		{"scheme word right after an underscore", "<p>_http://example.com</p>", email, ReasonSchemeWord},
+		{"scheme word hidden by a zero-width space", "<p>java\u200bscript:alert(1)</p>", email, ReasonSchemeWord},
+		{"scheme word in the middle of a word is not one", "<p>metadata:x and Привет</p>", email, ""},
 		{"too deep", strings.Repeat("<div>", 300) + "x", descr, ReasonTooDeep},
 	}
 	for _, c := range cases {
@@ -327,13 +342,24 @@ func FuzzSanitize(f *testing.F) {
 	f.Add("<p>a</p>\x00<b")
 	f.Fuzz(func(t *testing.T, in string) {
 		for _, p := range []Profile{descr, email, sess} {
+			// Whatever the input and the format, what Render returns parses
+			// into the white list and nothing else.
+			for _, format := range []string{FormatART, FormatText, ""} {
+				out, _ := Render(in, format, p)
+				assertSafeHTML(t, "Render "+format, out)
+			}
 			out, err := Sanitize(in, p)
 			if err != nil {
 				continue
 			}
+			assertSafeHTML(t, "Sanitize", out)
 			again, err := Sanitize(out, p)
 			if err != nil || again != out {
 				t.Fatalf("not idempotent for %q: %q -> %q (%v)", in, out, again, err)
+			}
+			// What was stored is what is shown, and the same words.
+			if shown, err := Render(out, FormatART, p); err != nil || !slices.Equal(Words(shown), Words(out)) {
+				t.Fatalf("Render changes the words of %q: %q (%v)", out, shown, err)
 			}
 			for _, bad := range []string{"<script", "<img", "<iframe", "<svg", "<style", "<a href=\"javascript", "<a href=\"data"} {
 				if strings.Contains(strings.ToLower(out), bad) {
@@ -401,8 +427,8 @@ func TestCorpusIsCanonicalAndStable(t *testing.T) {
 				t.Fatalf("Normalize(Normalize(x,text),art) = %q (%v), want %q", twice, err, once)
 			}
 			// Reading never changes a stored text either.
-			if got := Render(c.Legacy, "text", p); got != renderARTForTest(c.Art, p) {
-				t.Fatalf("Render(text) = %q, Render(art) = %q", got, renderARTForTest(c.Art, p))
+			if got, want := mustRender(t, c.Legacy, "text", p), renderARTForTest(t, c.Art, p); got != want {
+				t.Fatalf("Render(text) = %q, Render(art) = %q", got, want)
 			}
 			// The legacy form of the ART keeps the words.
 			if !slices.Equal(Words(FromLegacy(ToLegacy(c.Art), p)), Words(c.Art)) {
@@ -412,7 +438,24 @@ func TestCorpusIsCanonicalAndStable(t *testing.T) {
 	}
 }
 
-func renderARTForTest(art string, p Profile) string { return Render(art, "art", p) }
+func renderARTForTest(t *testing.T, art string, p Profile) string {
+	t.Helper()
+	out, err := Render(art, "art", p)
+	if err != nil {
+		t.Fatalf("Render(art): %v", err)
+	}
+	return out
+}
+
+// mustRender is Render for a text that must be readable.
+func mustRender(t *testing.T, stored, format string, p Profile) string {
+	t.Helper()
+	out, err := Render(stored, format, p)
+	if err != nil {
+		t.Fatalf("Render(%q, %q): %v", stored, format, err)
+	}
+	return out
+}
 
 func TestNormalize(t *testing.T) {
 	cases := []struct {
@@ -498,23 +541,22 @@ func TestRender(t *testing.T) {
 			`<p>see <a href="https://e.com/x"` + blank + `>https://e.com/x</a></p>`},
 		{"art profile restricts headings", `<h3>t</h3>`, "art", email, `<p><strong>t</strong></p>`},
 		{"art profile restricts schemes", `<a href="mailto:a@b.com">m</a>`, "art", sess, `<p>m</p>`},
-		{"direction marks in old text are dropped not refused", "שלום\u200f עולם", "text", descr, `<p>שלום עולם</p>`},
 		{"invalid utf-8 is dropped", "a\xffb", "text", descr, `<p>ab</p>`},
 		{"empty", "", "art", descr, ``},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := Render(c.stored, c.format, c.p); got != c.want {
+			if got := mustRender(t, c.stored, c.format, c.p); got != c.want {
 				t.Fatalf("Render = %q, want %q", got, c.want)
 			}
 		})
 	}
 	t.Run("limits are not enforced when reading", func(t *testing.T) {
 		long := strings.Repeat("a", 5000)
-		if got := Render(long, "text", descr); got != "<p>"+long+"</p>" {
+		if got := mustRender(t, long, "text", descr); got != "<p>"+long+"</p>" {
 			t.Fatalf("a long stored text was cut: %d", len(got))
 		}
-		if got := Render("<p>"+long+"</p>", "art", sess); got != "<p>"+long+"</p>" {
+		if got := mustRender(t, "<p>"+long+"</p>", "art", sess); got != "<p>"+long+"</p>" {
 			t.Fatalf("a long stored art was cut: %d", len(got))
 		}
 	})
@@ -523,14 +565,15 @@ func TestRender(t *testing.T) {
 		for i := 0; i < 8; i++ {
 			sb.WriteString(`<a href="https://e.com/` + string(rune('a'+i)) + `">x</a> `)
 		}
-		if got := Render(sb.String(), "art", sess); strings.Count(got, "<a ") != 8 {
+		if got := mustRender(t, sb.String(), "art", sess); strings.Count(got, "<a ") != 8 {
 			t.Fatalf("links lost: %q", got)
 		}
 	})
 	t.Run("a hostile stored value never yields unsafe html", func(t *testing.T) {
 		for _, c := range sanitizeCases() {
 			for _, f := range []string{"art", "text", ""} {
-				assertSafeHTML(t, c.name+"/"+f, Render(c.in, f, c.p))
+				out, _ := Render(c.in, f, c.p)
+				assertSafeHTML(t, c.name+"/"+f, out)
 			}
 		}
 	})
@@ -703,11 +746,11 @@ func TestWords(t *testing.T) {
 		name, art string
 		want      []string
 	}{
-		{"marks and punctuation", `<p>Hello, <strong>wor</strong>ld! It's 5-3.</p>`, []string{"Hello", "world", "It", "s", "5", "3"}},
-		{"lists and empty items", `<ul><li>a</li><li></li><li>b c</li></ul><ol><li>d</li></ol>`, []string{"a", "b", "c", "d"}},
+		{"marks and punctuation", `<p>Hello, <strong>wor</strong>ld! It's 5-3.</p>`, []string{"Hello", ",", "world", "!", "It", "'", "s", "5", "-", "3", "."}},
+		{"lists and empty items", `<ul><li>a</li><li></li><li>b c</li></ul><ol><li>d</li></ol>`, []string{"a", "b", "c", "1", ".", "d"}},
 		{"breaks and paragraphs", `<p>a<br>b</p><p>c</p>`, []string{"a", "b", "c"}},
 		{"nfc", "<p>e\u0301 \u00e9</p>", []string{"\u00e9", "\u00e9"}},
-		{"hebrew", `<p>שָׁלוֹם עולם־טוב</p>`, []string{"שָׁלוֹם", "עולם", "טוב"}},
+		{"hebrew", `<p>שָׁלוֹם עולם־טוב</p>`, []string{"שָׁלוֹם", "עולם", "־", "טוב"}},
 		{"links count text only", `<p><a href="https://e.com">site</a></p>`, []string{"site"}},
 		{"headings and quotes", `<h3>T t</h3><blockquote><p>q</p></blockquote>`, []string{"T", "t", "q"}},
 		{"empty", ``, []string{}},
@@ -798,6 +841,15 @@ func FuzzFromLegacy(f *testing.F) {
 			}
 			if clean != out {
 				t.Fatalf("FromLegacy(%q) = %q, Sanitize changes it to %q", in, out, clean)
+			}
+			assertSafeHTML(t, "FromLegacy", out)
+			// Both sides agree on the words, which is what the AI check relies on.
+			if !slices.Equal(Words(clean), Words(out)) {
+				t.Fatalf("Words(Sanitize(FromLegacy(%q))) = %q, Words(FromLegacy) = %q", in, Words(clean), Words(out))
+			}
+			for _, format := range []string{FormatART, FormatText} {
+				shown, _ := Render(in, format, p)
+				assertSafeHTML(t, "Render "+format, shown)
 			}
 		}
 	})

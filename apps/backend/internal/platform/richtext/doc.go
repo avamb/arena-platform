@@ -1,6 +1,7 @@
 package richtext
 
 import (
+	"bytes"
 	"strings"
 	"unicode/utf8"
 )
@@ -71,19 +72,23 @@ func finish(in []chunk) []chunk {
 			linkText[c.linkID] = true
 		}
 	}
+	// Merging appends to the text of the last chunk, so the texts are kept in
+	// byte buffers beside out and turned into strings at the end: a text of
+	// many small nodes costs linear time.
 	out := make([]chunk, 0, len(in))
+	bufs := make([][]byte, 0, len(in))
 	lastSpace := true // at the start and after a break a space is dropped
 	trimTail := func() {
 		for len(out) > 0 {
-			l := &out[len(out)-1]
-			if l.br {
+			n := len(out) - 1
+			if out[n].br {
 				return
 			}
-			l.text = strings.TrimRight(l.text, " ")
-			if l.text != "" {
+			bufs[n] = bytes.TrimRight(bufs[n], " ")
+			if len(bufs[n]) > 0 {
 				return
 			}
-			out = out[:len(out)-1]
+			out, bufs = out[:n], bufs[:n]
 		}
 	}
 	for _, c := range in {
@@ -91,6 +96,7 @@ func finish(in []chunk) []chunk {
 			trimTail()
 			if len(out) > 0 { // a break at the start is dropped
 				out = append(out, chunk{br: true})
+				bufs = append(bufs, nil)
 			}
 			lastSpace = true
 			continue
@@ -98,35 +104,48 @@ func finish(in []chunk) []chunk {
 		if c.href != "" && !linkText[c.linkID] {
 			c.href, c.linkID = "", 0
 		}
-		var sb strings.Builder
+		var text []byte
+		n := len(out)
+		merge := n > 0 && !out[n-1].br && sameMarks(out[n-1], c)
+		if merge {
+			text = bufs[n-1]
+		}
+		before := len(text)
 		for _, r := range c.text {
 			if isWS(r) {
 				if lastSpace {
 					continue
 				}
-				sb.WriteByte(' ')
+				text = append(text, ' ')
 				lastSpace = true
 				continue
 			}
-			sb.WriteRune(r)
+			text = utf8.AppendRune(text, r)
 			lastSpace = false
 		}
-		if sb.Len() == 0 {
+		if len(text) == before {
 			continue
 		}
-		c.text = sb.String()
-		if n := len(out); n > 0 && !out[n-1].br && sameMarks(out[n-1], c) {
-			out[n-1].text += c.text
+		if merge {
+			bufs[n-1] = text
 			continue
 		}
+		c.text = ""
 		out = append(out, c)
+		bufs = append(bufs, text)
 	}
 	trimTail()
 	for len(out) > 0 && out[len(out)-1].br {
 		out = out[:len(out)-1]
+		bufs = bufs[:len(bufs)-1]
 	}
 	if len(out) == 0 {
 		return nil
+	}
+	for i := range out {
+		if !out[i].br {
+			out[i].text = string(bufs[i])
+		}
 	}
 	return out
 }
@@ -323,14 +342,26 @@ func (d *doc) html(o writeOpts) (string, int) {
 // units calls fn for every line-like unit of the text in reading order:
 // paragraphs, headings, quote paragraphs and list items.
 func (d *doc) units(fn func(chunks []chunk)) {
+	d.numberedUnits(func(_ int, chunks []chunk) { fn(chunks) })
+}
+
+// numberedUnits is units that also tells the visible number of an item of an
+// ordered list (1, 2, ... as PlainText writes it), and 0 for every other unit.
+func (d *doc) numberedUnits(fn func(num int, chunks []chunk)) {
 	var walkList func(l *list)
 	walkList = func(l *list) {
+		n := 0
 		for _, it := range l.items {
 			if itemEmpty(it) {
 				continue
 			}
 			if len(it.inl) > 0 {
-				fn(it.inl)
+				n++
+				if l.ordered {
+					fn(n, it.inl)
+				} else {
+					fn(0, it.inl)
+				}
 			}
 			for _, s := range it.subs {
 				walkList(s)
@@ -341,11 +372,11 @@ func (d *doc) units(fn func(chunks []chunk)) {
 		switch b.kind {
 		case bPara, bH3, bH4:
 			if len(b.inl) > 0 {
-				fn(b.inl)
+				fn(0, b.inl)
 			}
 		case bQuote:
 			for _, p := range b.paras {
-				fn(p)
+				fn(0, p)
 			}
 		case bList:
 			walkList(b.list)
