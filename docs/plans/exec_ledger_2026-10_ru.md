@@ -494,6 +494,7 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 | Р-QL6 | QL-3/QL-14 | кому принадлежат переменные `SHORT_LINK_BASE_URL` / `SHORT_LINK_FALLBACK_URL` | поля конфига, разбор и строки в `deploy/DOKPLOY.md` §2.6 добавляет QL-3 (ему нужен fallback); QL-14 добавляет production-правило `Validate` (https), юнит-тест и документ `docs/ops/sales_links_ru.md` | один PR не должен ждать другого ради двух полей; правило production — отдельная проверка, её удобно тестировать отдельно |
 | Р-QL7 | QL-1/QL-6 | новый параметр `InsertCheckoutSessionWithToken` | QL-1 только добавляет колонку `attribution` в сканер и `CheckoutSessionRow` (INSERT без неё, работает DEFAULT); сигнатуру и запись json меняет QL-6 | у `InsertCheckoutSessionWithToken` два боевых вызова (hfeed, hbil24) и тесты — менять их должен тот, кто меняет поведение (opus, QL-6) |
 | Р-QL8 | QL-3 | лог запроса на `/go/{code}` | `requestLogMiddleware` оставляем как есть (он пишет `remote_addr`/`user_agent` на каждый запрос, как для `checkout/start`); ST-QL1 касается ХРАНЕНИЯ — в таблицах только агрегаты по дню и стране | та же честная оговорка, что у согласия P2 в AGENTS.md |
+| Р-QL10 | QL-2 | ждать ли QL-1 | QL-2 стартует от  параллельно QL-1 и целится в master: пакеты  и  чистые, таблицы  не читают (вставка кода — через узкий интерфейс , факты цели — своим запросом по существующим таблицам ); алфавит кода и  живут в ,  их импортирует | экономит сутки ожидания и не создаёт конфликтов файлов; зависимость QL-2 от QL-1 в спеке — по смыслу, не по коду |
 | Р-QL9 | QL-6 | `sources` в сводке события и в батче | блок `sources` — только в сводке СЕАНСА (§4.5); `summaryCore` (общий со сводкой события и батчем `events/sales-summary`) не трогать, иначе ломается `TestEventSalesSummary_BatchEqualsPerEventSummary` | §4.5 говорит о сводке сеанса; расширение на событие — вопрос этапа веб |
 
 ### 11.2 Вопросы владельцу
@@ -517,4 +518,4 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 
 ### 11.4 Хроника
 
-- 24.10 — старт. Спека 43 и этот раздел журнала — ветка `docs/ql-run-stage1`. QL-R (haiku) собрала анкоры; решения Р-QL1…Р-QL9 записаны. QL-1 запущена.
+- 24.10 — старт. Спека 43 и этот раздел журнала — ветка `docs/ql-run-stage1`. QL-R (haiku) собрала анкоры; решения Р-QL1…Р-QL9 записаны. QL-1 запущена, следом QL-2 параллельно (Р-QL10). Документный PR [#226](https://github.com/avamb/arena-platform/pull/226).
