@@ -3887,7 +3887,8 @@ export interface paths {
          * Get active MACS webhook subscriber for an org
          * @description Returns the currently active MACS webhook subscriber for the organization.
          *     Returns 404 when no active MACS subscriber is registered.
-         *     Requires JWT + org membership. AB-50c (feature #439).
+         *     Platform superadmin only; PUT and DELETE also need `X-Admin-Reason`.
+         *     AB-50c (feature #439).
          */
         get: operations["getMACSWebhook"];
         /**
@@ -3896,7 +3897,8 @@ export interface paths {
          *     a new one with the supplied callback_url and signing_secret.
          *     The signing_secret is returned in the response body (only on this call)
          *     and should be stored securely by the caller.
-         *     Requires JWT + org membership. AB-50c (feature #439).
+         *     Platform superadmin only; PUT and DELETE also need `X-Admin-Reason`.
+         *     AB-50c (feature #439).
          */
         put: operations["upsertMACSWebhook"];
         post?: never;
@@ -3904,7 +3906,8 @@ export interface paths {
          * Deactivate the MACS webhook subscriber for an org
          * @description Soft-deletes the active MACS webhook subscriber for the organization.
          *     Returns 404 when no active subscriber exists.
-         *     Requires JWT + org membership. AB-50c (feature #439).
+         *     Platform superadmin only; PUT and DELETE also need `X-Admin-Reason`.
+         *     AB-50c (feature #439).
          */
         delete: operations["deleteMACSWebhook"];
         options?: never;
@@ -42078,7 +42081,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller is not an org member. */
+            /** @description Caller is not a platform superadmin (`webhook.superadmin_only`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -42132,7 +42135,10 @@ export interface operations {
                     "application/json": components["schemas"]["MACSWebhookSubscriber"];
                 };
             };
-            /** @description Missing or invalid request body. */
+            /**
+             * @description Missing or invalid request body, or no `X-Admin-Reason` header
+             *     (`superadmin.missing_reason`).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -42150,7 +42156,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller is not an org member. */
+            /** @description Caller is not a platform superadmin (`webhook.superadmin_only`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -42160,10 +42166,11 @@ export interface operations {
                 };
             };
             /**
-             * @description callback_url does not address a MACS receiver: it must end with
-             *     `/api/_wh/tickets` (error code `macs.invalid_callback_url`).
-             *     Any other path answers 200 with an HTML page, which the outbox
-             *     would read as a successful delivery.
+             * @description callback_url is refused (error code `macs.invalid_callback_url`):
+             *     its path must end with `/api/_wh/tickets` (no query or fragment),
+             *     and it must be an absolute `https://` address on the public
+             *     internet. Any other path answers 200 with an HTML page, which the
+             *     outbox would read as a successful delivery.
              */
             422: {
                 headers: {
@@ -42205,6 +42212,15 @@ export interface operations {
                     "application/json": components["schemas"]["MACSWebhookSubscriber"];
                 };
             };
+            /** @description No `X-Admin-Reason` header (`superadmin.missing_reason`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Missing or invalid JWT. */
             401: {
                 headers: {
@@ -42214,7 +42230,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller is not an org member. */
+            /** @description Caller is not a platform superadmin (`webhook.superadmin_only`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -47932,7 +47948,8 @@ export interface operations {
             /**
              * @description Invalid body or missing required field. Possible error
              *     codes: `bad_request` (invalid JSON), `validation_error`
-             *     (callback_url is required).
+             *     (callback_url is missing, or is not an absolute `https://`
+             *     address on the public internet).
              */
             400: {
                 headers: {
@@ -51094,7 +51111,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor is not a member of the target organization or lacks `channel.update`. */
+            /** @description Caller is not a platform superadmin (`webhook.superadmin_only`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -51182,7 +51199,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor is not a member of the target organization or lacks `channel.update`. */
+            /** @description Caller is not a platform superadmin (`webhook.superadmin_only`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -51193,6 +51210,20 @@ export interface operations {
             };
             /** @description Sales channel not found in the given organization. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description callback_url is refused (`wp_webhook.invalid_callback_url`): it
+             *     must be an absolute `https://` address on the public internet,
+             *     without user info or a fragment. Nothing is written and the
+             *     previous subscriber stays active.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -51255,7 +51286,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor is not a member of the target organization or lacks `channel.update`. */
+            /** @description Caller is not a platform superadmin (`webhook.superadmin_only`). */
             403: {
                 headers: {
                     [name: string]: unknown;

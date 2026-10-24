@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,6 +39,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/bil24wire"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/egress"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
@@ -223,9 +225,18 @@ func (h *Handler) HandlePutChannelWPWebhook(pool *pgxpool.Pool, w http.ResponseW
 		))
 		return
 	}
+	req.CallbackURL = strings.TrimSpace(req.CallbackURL)
 	if req.CallbackURL == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"wp_webhook.missing_callback_url", "callback_url is required", r,
+		))
+		return
+	}
+	// Refused before anything is written: the previous subscriber stays active.
+	if err := h.webhookEgress.CheckURL(ctx, req.CallbackURL); err != nil {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			"wp_webhook.invalid_callback_url",
+			"callback_url must be an absolute https:// address on the public internet", r,
 		))
 		return
 	}
@@ -260,7 +271,7 @@ func (h *Handler) HandlePutChannelWPWebhook(pool *pgxpool.Pool, w http.ResponseW
 		return
 	}
 
-	delivery := sendWPWebhookTest(ctx, row.CallbackURL, row.SigningSecret)
+	delivery := sendWPWebhookTest(ctx, h.webhookEgress, row.CallbackURL, row.SigningSecret)
 
 	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(ctx)
@@ -276,7 +287,7 @@ func (h *Handler) HandlePutChannelWPWebhook(pool *pgxpool.Pool, w http.ResponseW
 			IP:           httputil.ExtractClientIP(r),
 			Metadata: map[string]any{
 				"org_id":                orgID.String(),
-				"callback_url":          req.CallbackURL,
+				"callback_origin":       egress.Origin(req.CallbackURL),
 				"reason":                reason,
 				"test_delivery_ok":      delivery.OK,
 				"test_http_status":      delivery.HTTPStatus,
@@ -299,11 +310,13 @@ func (h *Handler) HandlePutChannelWPWebhook(pool *pgxpool.Pool, w http.ResponseW
 }
 
 // sendWPWebhookTest POSTs a `{type:"test", data:null}` envelope to callbackURL
-// with a 10s timeout, signing the body when signingSecret is non-empty.
+// with a 10s timeout, signing the body when signingSecret is non-empty. The
+// request goes through the egress policy, so a callback that points inward is
+// never dialed and reports OK=false with status 0, like any transport failure.
 // Never returns an error: transport failures and non-2xx statuses both
 // collapse into wpWebhookTestDelivery{OK:false}, since the caller must not
 // fail the PUT on a delivery problem (spec §9.2).
-func sendWPWebhookTest(ctx context.Context, callbackURL, signingSecret string) wpWebhookTestDelivery {
+func sendWPWebhookTest(ctx context.Context, policy egress.Policy, callbackURL, signingSecret string) wpWebhookTestDelivery {
 	env := bil24wire.Envelope{
 		ID:      time.Now().UTC().UnixNano() & 0x7fffffffffffffff,
 		Created: time.Now().UTC().Format(time.RFC3339),
@@ -328,7 +341,7 @@ func sendWPWebhookTest(ctx context.Context, callbackURL, signingSecret string) w
 		req.Header.Set("X-Arena-Signature", bil24wire.Sign(body, signingSecret))
 	}
 
-	client := &http.Client{Timeout: wpWebhookTestTimeout}
+	client := policy.Client(wpWebhookTestTimeout)
 	resp, err := client.Do(req)
 	if err != nil {
 		return wpWebhookTestDelivery{OK: false, HTTPStatus: 0}

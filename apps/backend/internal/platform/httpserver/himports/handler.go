@@ -31,6 +31,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/egress"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 )
 
@@ -78,8 +79,11 @@ type Handler struct {
 	pool              TxStarter
 	media             *mediastore.Repo
 	http              Doer
-	audit             audit.Writer
-	logger            *slog.Logger
+	// posterEgress checks a poster URL before the fetch; the fetch client
+	// itself is built from the same policy (egress.Fetch).
+	posterEgress egress.Policy
+	audit        audit.Writer
+	logger       *slog.Logger
 	// publishCatalogEvent notifies mirrors of a catalog change (event-bundle
 	// spec: publish:true on import must reach the same wp/MACS dispatch path
 	// a manual PATCH .../events/{id} status=published triggers). Nil is a
@@ -103,8 +107,11 @@ func New(q *gen.Queries, pool TxStarter, auditWriter audit.Writer, logger *slog.
 		pool:    pool,
 		audit:   auditWriter,
 		logger:  logger,
-		http:    &http.Client{Timeout: posterFetchTimeout},
-		now:     func() time.Time { return time.Now().UTC() },
+		// A poster URL comes from the caller: the egress client never dials
+		// a private, loopback or metadata address, redirects included.
+		http:         egress.Fetch.Client(posterFetchTimeout),
+		posterEgress: egress.Fetch,
+		now:          func() time.Time { return time.Now().UTC() },
 	}
 }
 

@@ -34668,7 +34668,8 @@ paths:
       description: |
         Returns the currently active MACS webhook subscriber for the organization.
         Returns 404 when no active MACS subscriber is registered.
-        Requires JWT + org membership. AB-50c (feature #439).
+        Platform superadmin only; PUT and DELETE also need `X-Admin-Reason`.
+        AB-50c (feature #439).
       tags: [v1]
       security:
         - bearerAuth: []
@@ -34694,7 +34695,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Caller is not an org member.
+          description: Caller is not a platform superadmin (`webhook.superadmin_only`).
           content:
             application/json:
               schema:
@@ -34719,7 +34720,8 @@ paths:
         a new one with the supplied callback_url and signing_secret.
         The signing_secret is returned in the response body (only on this call)
         and should be stored securely by the caller.
-        Requires JWT + org membership. AB-50c (feature #439).
+        Platform superadmin only; PUT and DELETE also need `X-Admin-Reason`.
+        AB-50c (feature #439).
       tags: [v1]
       security:
         - bearerAuth: []
@@ -34745,7 +34747,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/MACSWebhookSubscriber"
         "400":
-          description: Missing or invalid request body.
+          description: |
+            Missing or invalid request body, or no `X-Admin-Reason` header
+            (`superadmin.missing_reason`).
           content:
             application/json:
               schema:
@@ -34757,17 +34761,18 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Caller is not an org member.
+          description: Caller is not a platform superadmin (`webhook.superadmin_only`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "422":
           description: |
-            callback_url does not address a MACS receiver: it must end with
-            `/api/_wh/tickets` (error code `macs.invalid_callback_url`).
-            Any other path answers 200 with an HTML page, which the outbox
-            would read as a successful delivery.
+            callback_url is refused (error code `macs.invalid_callback_url`):
+            its path must end with `/api/_wh/tickets` (no query or fragment),
+            and it must be an absolute `https://` address on the public
+            internet. Any other path answers 200 with an HTML page, which the
+            outbox would read as a successful delivery.
           content:
             application/json:
               schema:
@@ -34784,7 +34789,8 @@ paths:
       description: |
         Soft-deletes the active MACS webhook subscriber for the organization.
         Returns 404 when no active subscriber exists.
-        Requires JWT + org membership. AB-50c (feature #439).
+        Platform superadmin only; PUT and DELETE also need `X-Admin-Reason`.
+        AB-50c (feature #439).
       tags: [v1]
       security:
         - bearerAuth: []
@@ -34803,6 +34809,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MACSWebhookSubscriber"
+        "400":
+          description: No `X-Admin-Reason` header (`superadmin.missing_reason`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Missing or invalid JWT.
           content:
@@ -34810,7 +34822,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Caller is not an org member.
+          description: Caller is not a platform superadmin (`webhook.superadmin_only`).
           content:
             application/json:
               schema:
@@ -40837,7 +40849,8 @@ paths:
           description: |
             Invalid body or missing required field. Possible error
             codes: `bad_request` (invalid JSON), `validation_error`
-            (callback_url is required).
+            (callback_url is missing, or is not an absolute `https://`
+            address on the public internet).
           content:
             application/json:
               schema:
@@ -44408,7 +44421,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor is not a member of the target organization or lacks `channel.update`.
+          description: Caller is not a platform superadmin (`webhook.superadmin_only`).
           content:
             application/json:
               schema:
@@ -44495,13 +44508,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor is not a member of the target organization or lacks `channel.update`.
+          description: Caller is not a platform superadmin (`webhook.superadmin_only`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Sales channel not found in the given organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            callback_url is refused (`wp_webhook.invalid_callback_url`): it
+            must be an absolute `https://` address on the public internet,
+            without user info or a fragment. Nothing is written and the
+            previous subscriber stays active.
           content:
             application/json:
               schema:
@@ -44559,7 +44582,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor is not a member of the target organization or lacks `channel.update`.
+          description: Caller is not a platform superadmin (`webhook.superadmin_only`).
           content:
             application/json:
               schema:

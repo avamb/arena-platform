@@ -23,6 +23,11 @@ func TestValidMACSCallbackURL(t *testing.T) {
 		{"https://macs.example.com/api/_wh/tickets/import", false},
 		{"https://macs.example.com/", false},
 		{"", false},
+		// The suffix must be the PATH: a query or fragment cannot carry it.
+		{"https://169.254.169.254/latest/meta-data?x=/api/_wh/tickets", false},
+		{"https://internal.example/admin#/api/_wh/tickets", false},
+		{"https://vinoandco.hu/api/_wh/tickets?debug=1", false},
+		{"https://vinoandco.hu/api/_wh/tickets?", false},
 	}
 	for _, tc := range tests {
 		if got := validMACSCallbackURL(tc.url); got != tc.want {

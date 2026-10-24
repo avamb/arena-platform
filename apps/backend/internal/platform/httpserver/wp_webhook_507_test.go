@@ -7,8 +7,10 @@
 //   - route mount: all three verbs answer under the expected path, neither
 //     404 nor 405.
 //   - 401 without JWT.
-//   - 400 without the X-Admin-Reason header, even when authenticated.
-//   - 403 for a JWT actor who is not a member of the target org.
+//   - 403 webhook.superadmin_only for an org member who is not a platform
+//     superadmin: the server POSTs to the registered URL, so only the
+//     platform operator may set it.
+//   - 400 without the X-Admin-Reason header, even for a superadmin.
 //   - 503 when channelQueries is nil (the handler's own nil-dep guard).
 //
 // The synchronous test-delivery flow (PUT against a live callback URL,
@@ -18,6 +20,7 @@
 package httpserver
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -77,37 +80,20 @@ func buildWPWebhookServer(t *testing.T) *Server {
 	})
 }
 
-// buildWPWebhookDenialServer is the sibling factory that plugs in
-// emptyMembershipDBTX so the actor is a non-member of every org. Requests to
-// wp-webhook routes should return 403 org.access_denied.
-func buildWPWebhookDenialServer(t *testing.T) *Server {
+// mintWPSuperadminJWT mints a token carrying the platform_superadmin role,
+// which the server turns into the superadmin org-access marker.
+func mintWPSuperadminJWT(t *testing.T, s *Server) string {
 	t.Helper()
-	cfg := &config.Config{
-		AppEnv:         config.EnvDevelopment,
-		RequestTimeout: 5 * time.Second,
-		BodyLimitBytes: 1 << 20,
-		JWTSecretStub:  "test-secret-which-is-long-enough-for-hs256",
-		EnableStubAuth: true,
-		DefaultLocale:  "en",
-		ActiveLocales:  []string{"en", "ru"},
-	}
-	stub, err := auth.NewStubProvider(auth.StubConfig{
-		Secret:  cfg.JWTSecretStub,
-		Issuer:  "arena-test",
-		Enabled: true,
+	tok, _, err := s.stub.IssueToken(context.Background(), auth.IssueRequest{
+		ActorID:   wpWebhookTestActorID,
+		ActorType: auth.ActorTypeStubUser,
+		Roles:     []string{"platform_superadmin"},
+		TTL:       time.Hour,
 	})
 	if err != nil {
-		t.Fatalf("buildWPWebhookDenialServer: NewStubProvider: %v", err)
+		t.Fatalf("IssueToken: %v", err)
 	}
-	return New(Options{
-		Config:            cfg,
-		Auth:              stub,
-		Pool:              &dbDownPool{},
-		ChannelQueries:    gen.New(nil),
-		OrgQueries:        gen.New(nil),
-		MembershipQueries: gen.New(&emptyMembershipDBTX{}),
-		Audit:             &captureAuditWriter{},
-	})
+	return tok
 }
 
 // wpWebhookCases enumerates the three verbs so route-shape assertions stay DRY.
@@ -171,7 +157,7 @@ func TestWPWebhook507_RequiresAuth(t *testing.T) {
 func TestWPWebhook507_RequiresAdminReason(t *testing.T) {
 	t.Parallel()
 	s := buildWPWebhookServer(t)
-	token := mintJWT(t, s.stub, wpWebhookTestActorID)
+	token := mintWPSuperadminJWT(t, s)
 	orgID := uuid.New()
 	chID := uuid.New()
 	for _, c := range wpWebhookCases(orgID, chID) {
@@ -188,28 +174,29 @@ func TestWPWebhook507_RequiresAdminReason(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Membership gate — 403 org.access_denied for non-members
+// Superadmin gate — 403 webhook.superadmin_only for an ordinary org member
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestWPWebhook507_NonMemberGets403(t *testing.T) {
+func TestWPWebhook507_OrgMemberWhoIsNotSuperadminGets403(t *testing.T) {
 	t.Parallel()
-	s := buildWPWebhookDenialServer(t)
+	s := buildWPWebhookServer(t) // admits the actor as a member of any org
 	token := mintJWT(t, s.stub, wpWebhookTestActorID)
 	orgID := uuid.New()
 	chID := uuid.New()
 	for _, c := range wpWebhookCases(orgID, chID) {
-		req := httptest.NewRequest(c.method, c.path, nil)
+		req := httptest.NewRequest(c.method, c.path, strings.NewReader(`{"callback_url":"https://site.example/hook"}`))
 		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Admin-Reason", "compliance test")
 		w := httptest.NewRecorder()
 		s.router.ServeHTTP(w, req)
 		if w.Code != http.StatusForbidden {
-			t.Errorf("%s %s: expected 403 for non-member, got %d (body=%s)",
+			t.Errorf("%s %s: expected 403 for a non-superadmin, got %d (body=%s)",
 				c.method, c.path, w.Code, w.Body.String())
 			continue
 		}
-		if !strings.Contains(w.Body.String(), "org.access_denied") {
-			t.Errorf("%s %s: expected org.access_denied in body, got: %s",
+		if !strings.Contains(w.Body.String(), "webhook.superadmin_only") {
+			t.Errorf("%s %s: expected webhook.superadmin_only in body, got: %s",
 				c.method, c.path, w.Body.String())
 		}
 	}

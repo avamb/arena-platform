@@ -25,6 +25,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	catalogdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/catalog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/egress"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/geoslug"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
@@ -843,7 +844,7 @@ func (h *Handler) sideLoadPoster(ctx context.Context, orgID uuid.UUID, req bil24
 		warnings.add(WarnPosterSkipped, "poster "+raw+" was not imported: "+reason)
 		return nil
 	}
-	if reason := h.posterPrecheck(raw); reason != "" {
+	if reason := h.posterPrecheck(ctx, raw); reason != "" {
 		return skip(reason)
 	}
 
@@ -856,7 +857,12 @@ func (h *Handler) sideLoadPoster(ctx context.Context, orgID uuid.UUID, req bil24
 	}
 	resp, err := h.http.Do(httpReq)
 	if err != nil {
-		return skip(err.Error())
+		// Never the transport error itself: it would tell the caller which
+		// hosts and ports answer from inside the platform's network.
+		if errors.Is(err, egress.ErrDestinationNotAllowed) {
+			return skip(posterNotPublic)
+		}
+		return skip("the poster could not be downloaded")
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
@@ -925,17 +931,30 @@ func (h *Handler) sideLoadPoster(ctx context.Context, orgID uuid.UUID, req bil24
 	return &id
 }
 
-// posterPrecheck is the part of the poster side-load that needs no network:
+// posterNotPublic is the reason a poster on a private, loopback or otherwise
+// non-public address is skipped. Deliberately one sentence for every such
+// address, so the answer reveals nothing about the platform's network.
+const posterNotPublic = "the poster address is not on the public internet"
+
+// posterPrecheck is the part of the poster side-load that fetches nothing:
 // why the poster at raw cannot be fetched at all, "" when it can be tried.
-// The dry run reports exactly these reasons and fetches nothing.
-func (h *Handler) posterPrecheck(raw string) string {
+// The dry run reports exactly these reasons. It may resolve the host name
+// (egress.Policy.CheckURL); the real guard is the fetch client's dialer.
+func (h *Handler) posterPrecheck(ctx context.Context, raw string) string {
 	if h.media == nil || h.http == nil {
 		return "media storage is not configured on this deployment"
 	}
 	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
 		return "only http(s) poster urls are supported"
 	}
-	return ""
+	switch err := h.posterEgress.CheckURL(ctx, raw); {
+	case err == nil:
+		return ""
+	case errors.Is(err, egress.ErrDestinationNotAllowed):
+		return posterNotPublic
+	default:
+		return "the poster url is not a valid absolute address"
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

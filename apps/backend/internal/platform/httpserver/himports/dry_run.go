@@ -151,7 +151,7 @@ func (h *Handler) runDryImport(w http.ResponseWriter, r *http.Request, prep prep
 	var facts dryFacts
 	if prep.sourceOK {
 		if raw := trimSpace(prep.plan.Request.Action.BigPosterURL); raw != "" {
-			if reason := h.posterPrecheck(raw); reason != "" {
+			if reason := h.posterPrecheck(ctx, raw); reason != "" {
 				warnings.add(WarnPosterSkipped, "poster "+raw+" was not imported: "+reason)
 			}
 		}

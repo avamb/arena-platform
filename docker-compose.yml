@@ -120,6 +120,8 @@ services:
         condition: service_healthy
     environment:
       APP_ENV: development
+      # Local receivers (WordPress, MACS, the API itself) live on the docker network.
+      EGRESS_ALLOW_PRIVATE_TARGETS: "true"
       APP_NAME: arena-api
       APP_VERSION: 0.1.0-dev
       APP_COMMIT: local
@@ -214,6 +216,8 @@ services:
     entrypoint: ["/app/arena-worker"]
     environment:
       APP_ENV: development
+      # Local receivers (WordPress, MACS, the API itself) live on the docker network.
+      EGRESS_ALLOW_PRIVATE_TARGETS: "true"
       APP_NAME: arena-worker
       APP_VERSION: 0.1.0-dev
       APP_COMMIT: local
