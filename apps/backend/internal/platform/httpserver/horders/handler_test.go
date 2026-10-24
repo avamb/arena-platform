@@ -217,6 +217,7 @@ func newOrderVals(
 		(*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil),
 		(*time.Time)(nil), (*time.Time)(nil), (*time.Time)(nil),
 		json.RawMessage("{}"), created, created,
+		(*uuid.UUID)(nil), json.RawMessage("{}"),
 	}
 }
 
