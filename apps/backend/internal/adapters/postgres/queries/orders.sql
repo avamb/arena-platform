@@ -14,6 +14,25 @@
 -- file only provides the typed data-access primitives it and the future
 -- orders HTTP handlers will compose.
 
+-- name: SetOrderAttribution :one
+-- Rewrites the attribution of a still-open order (migration 0167, spec 43
+-- section 4.4): a repeat CREATE_ORDER_EXT of the same cart with another
+-- attribution updates the order, last touch wins. A no-op once the order
+-- left pending_payment.
+UPDATE orders
+SET    sales_link_id = $3,
+       attribution   = COALESCE($4::jsonb, '{}'::jsonb),
+       updated_at    = now()
+WHERE  id = $1
+  AND  org_id = $2
+  AND  status = 'pending_payment'
+RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
+          checkout_session_id, reservation_id, external_ref, source, status,
+          currency, subtotal, discount, charge, total, charge_percent_bp,
+          promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
+          paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
+          sales_link_id, attribution;
+
 -- name: InsertOrder :one
 -- Creates a new order row. system_id defaults to the next value of
 -- compatibility_system_id_seq (>= 1e9), matching customers/tickets so
@@ -25,14 +44,14 @@ INSERT INTO orders (
     checkout_session_id, reservation_id, external_ref, source, status,
     currency, subtotal, discount, charge, total, charge_percent_bp,
     promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-    expires_at, metadata
+    expires_at, metadata, sales_link_id, attribution
 )
 VALUES (
     $1, $2, $3, $4, $5,
     $6, $7, $8, $9, $10,
     $11, $12, $13, $14, $15, $16,
     $17, $18, $19, $20, $21,
-    $22, $23
+    $22, $23, $24, COALESCE($25::jsonb, '{}'::jsonb)
 )
 RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           checkout_session_id, reservation_id, external_ref, source, status,

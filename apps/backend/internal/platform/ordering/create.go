@@ -62,6 +62,17 @@ type CreateInput struct {
 
 	// Metadata lands on orders.metadata; nil means '{}'.
 	Metadata json.RawMessage
+
+	// SalesLinkID and Attribution are the order's attribution (migration
+	// 0167, spec 43 section 4.4). The caller cleans the client's object with
+	// attribution.Clean and resolves the link with attribution.ResolveLink on
+	// the POOL before its transaction opens; here they are only written.
+	// SalesLinkID nil means no link; an empty Attribution means '{}'.
+	// UpdateOrderFromCheckout rewrites them only when Attribution is
+	// non-empty, so a repeat request without an attribution keeps the stored
+	// one.
+	SalesLinkID *uuid.UUID
+	Attribution json.RawMessage
 }
 
 // CreateResult is the freshly written aggregate.
@@ -131,6 +142,8 @@ func CreateOrderFromCheckout(ctx context.Context, q CreateStore, in CreateInput)
 		in.BuyerName, in.BuyerEmail, in.BuyerPhone, in.PaymentMethod,
 		&expiresAt,
 		metadata,
+		in.SalesLinkID,
+		in.Attribution,
 	)
 	if err != nil {
 		return CreateResult{}, fmt.Errorf("ordering: insert order: %w", err)

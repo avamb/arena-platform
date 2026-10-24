@@ -4944,6 +4944,52 @@ type ChannelWPWebhookTestDelivery struct {
 	Ok bool `json:"ok"`
 }
 
+// CheckoutAttribution Where the buyer came from (spec 43): the last touch, optionally with
+// the first one. Every utm value is at most 64 characters from
+// A-Z a-z 0-9 . _ ~ - (a value with any other character is dropped). A
+// touch older than 7 days or more than 5 minutes ahead of the server
+// clock is dropped whole. A touch with no ref, utm_source or utm_campaign is ignored.
+type CheckoutAttribution struct {
+	// First The buyer's first touch, when it differs from the last one.
+	First *CheckoutAttributionFirst `json:"first,omitempty"`
+
+	// LandedAt When the buyer arrived, RFC 3339. Absent means now.
+	LandedAt *time.Time `json:"landed_at,omitempty"`
+
+	// Ref The 7-character code of the sales link the buyer arrived through.
+	Ref *string `json:"ref,omitempty"`
+
+	// UtmCampaign utm_campaign of the visit.
+	UtmCampaign *string `json:"utm_campaign,omitempty"`
+
+	// UtmContent utm_content of the visit.
+	UtmContent *string `json:"utm_content,omitempty"`
+
+	// UtmMedium utm_medium of the visit.
+	UtmMedium *string `json:"utm_medium,omitempty"`
+
+	// UtmSource utm_source of the visit.
+	UtmSource *string `json:"utm_source,omitempty"`
+
+	// UtmTerm utm_term of the visit.
+	UtmTerm *string `json:"utm_term,omitempty"`
+}
+
+// CheckoutAttributionFirst The first touch of a buyer, kept beside the last one.
+type CheckoutAttributionFirst struct {
+	// LandedAt When the first touch happened, RFC 3339.
+	LandedAt *time.Time `json:"landed_at,omitempty"`
+
+	// Ref The sales-link code of the first touch.
+	Ref *string `json:"ref,omitempty"`
+
+	// UtmCampaign utm_campaign of the first touch.
+	UtmCampaign *string `json:"utm_campaign,omitempty"`
+
+	// UtmSource utm_source of the first touch.
+	UtmSource *string `json:"utm_source,omitempty"`
+}
+
 // CheckoutRecoverResponse Response body for `POST /v1/public/checkout/{checkout_token}/recover`
 // (feature #320 WID-0c).  Returned when a fresh reservation was
 // successfully created for the same seats/zones.
@@ -13201,6 +13247,14 @@ type PublicFeedCheckoutQuoteResponse struct {
 
 // PublicFeedCheckoutStartRequest defines model for PublicFeedCheckoutStartRequest.
 type PublicFeedCheckoutStartRequest struct {
+	// Attribution The sales link and utm labels that brought the buyer (spec 43),
+	// optional. The server cleans it and, when `ref` is the code of a
+	// sales link of this organization, attributes the order to that
+	// link. An empty, invalid or too old object is not an error: the
+	// order is created without attribution, because a purchase must
+	// never fail over a label.
+	Attribution *CheckoutAttribution `json:"attribution,omitempty"`
+
 	// Buyer Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
 	// `email` supersedes the top-level `holder_email` when both are present.
 	// `name` and `phone` are optional unless the channel's `buyer_fields`
@@ -15719,6 +15773,16 @@ type SessionSummary struct {
 		VenueTimezone *string `json:"venue_timezone"`
 	} `json:"session"`
 
+	// Sources The paid orders of the session (paid, partially refunded or
+	// refunded) grouped by where the buyer came from (spec 43): first
+	// one entry per sales link the orders are attributed to, then one
+	// per utm_source and utm_campaign pair of the orders without a
+	// link (either label alone is enough), then the rest as one direct
+	// entry. Present only on the
+	// session summary, never on the event summary. An empty list when
+	// the session has no paid orders.
+	Sources []SessionSummarySource `json:"sources"`
+
 	// Tickets Tickets of the session by status.
 	Tickets struct {
 		// Active Valid tickets.
@@ -15766,6 +15830,46 @@ type SessionSummary struct {
 		// PriceAmount Current list price in minor units.
 		PriceAmount int64 `json:"price_amount"`
 	} `json:"tiers"`
+}
+
+// SessionSummarySource One source of a session's paid orders. Carries no buyer data.
+type SessionSummarySource struct {
+	// Kind sales_link when the orders are attributed to a sales link, utm
+	// when they have no link but their attribution names a utm_source
+	// or a utm_campaign, direct otherwise.
+	Kind string `json:"kind"`
+
+	// Label The label of that sales link (where it is placed). Only for kind sales_link.
+	Label *string `json:"label,omitempty"`
+
+	// Orders Number of paid orders from this source.
+	Orders int64 `json:"orders"`
+
+	// Revenue Revenue per currency: the totals of those orders minus their
+	// succeeded refunds, in minor units. One entry per currency, by
+	// currency code.
+	Revenue []SessionSummarySourceRevenue `json:"revenue"`
+
+	// SalesLinkId The sales link of the orders. Only for kind sales_link.
+	SalesLinkId *openapi_types.UUID `json:"sales_link_id,omitempty"`
+
+	// Tickets Number of tickets of those orders, whatever their status.
+	Tickets int64 `json:"tickets"`
+
+	// UtmCampaign The utm_campaign of the orders' attribution. Only for kind utm, absent when the orders named none.
+	UtmCampaign *string `json:"utm_campaign,omitempty"`
+
+	// UtmSource The utm_source of the orders' attribution. Only for kind utm, absent when the orders named only a campaign.
+	UtmSource *string `json:"utm_source,omitempty"`
+}
+
+// SessionSummarySourceRevenue The revenue of one source in one currency.
+type SessionSummarySourceRevenue struct {
+	// AmountMinor Order totals minus succeeded refunds, in minor units.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
 }
 
 // SessionTicketItem One ticket of a session with its order, buyer and entry at the door (M2).

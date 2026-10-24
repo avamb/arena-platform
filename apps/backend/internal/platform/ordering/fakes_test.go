@@ -81,6 +81,8 @@ func (f *fakeStore) InsertOrder(
 	buyerName, buyerEmail, buyerPhone, paymentMethod *string,
 	expiresAt *time.Time,
 	metadata json.RawMessage,
+	salesLinkID *uuid.UUID,
+	attribution json.RawMessage,
 ) (gen.OrderRow, error) {
 	if f.insertOrderErr != nil {
 		return gen.OrderRow{}, f.insertOrderErr
@@ -111,6 +113,8 @@ func (f *fakeStore) InsertOrder(
 		PaymentMethod:     paymentMethod,
 		ExpiresAt:         expiresAt,
 		Metadata:          metadata,
+		SalesLinkID:       salesLinkID,
+		Attribution:       attribution,
 	}
 	f.insertedOrders = append(f.insertedOrders, row)
 	f.orders[row.ID] = row

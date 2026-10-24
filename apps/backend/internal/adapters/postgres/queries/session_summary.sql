@@ -190,3 +190,62 @@ WHERE  se.session_id = ANY($1::uuid[])
   AND  se.result = 'admitted'
   AND  se.org_id = e.org_id
 GROUP  BY se.session_id, se.source;
+
+-- name: ListSessionSummarySources :many
+-- The paid orders of one session grouped by where the buyer came from (spec
+-- 43 section 4.5): the sales link the order is attributed to; else, for an
+-- order without a link, the utm_source and utm_campaign of its attribution
+-- when either is set (a campaign-only touch is a touch); else nothing
+-- (direct). One row per group and
+-- currency: orders and tickets count the orders of that currency, amount is
+-- sum(orders.total) minus the SUCCEEDED refunds of those orders in that
+-- currency (minor units). A refund belongs to the order it names, else the
+-- order of the ticket it names, else the order of its payment intent's
+-- checkout session — the rule of SalesLinkOrdersAggregate.
+WITH paid AS (
+    SELECT o.id, o.currency, o.total, o.sales_link_id,
+           CASE WHEN o.sales_link_id IS NULL
+                THEN COALESCE(o.attribution->>'utm_source', '') ELSE '' END AS utm_source,
+           CASE WHEN o.sales_link_id IS NULL
+                THEN COALESCE(o.attribution->>'utm_campaign', '') ELSE '' END AS utm_campaign
+    FROM   orders o
+    WHERE  o.session_id = $1
+      AND  o.org_id     = $2
+      AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+),
+refunded AS (
+    SELECT p.id AS order_id, r.currency, sum(r.amount)::bigint AS amount
+    FROM   refunds r
+    JOIN   paid p ON p.id = COALESCE(
+               r.order_id,
+               (SELECT t.order_id FROM tickets t WHERE t.id = r.ticket_id),
+               (SELECT po.id FROM payment_intents pi
+                JOIN   orders po ON po.checkout_session_id = pi.checkout_session_id
+                WHERE  pi.id = r.payment_intent_id
+                ORDER  BY po.created_at, po.id
+                LIMIT  1))
+    WHERE  r.state  = 'succeeded'
+      AND  r.org_id = $2
+    GROUP  BY p.id, r.currency
+),
+lines AS (
+    SELECT p.sales_link_id, p.utm_source, p.utm_campaign, p.currency,
+           1::bigint AS orders,
+           (SELECT count(*) FROM tickets t WHERE t.order_id = p.id)::bigint AS tickets,
+           p.total::bigint AS amount
+    FROM   paid p
+    UNION ALL
+    SELECT p.sales_link_id, p.utm_source, p.utm_campaign, rf.currency,
+           0::bigint, 0::bigint, -rf.amount
+    FROM   refunded rf
+    JOIN   paid p ON p.id = rf.order_id
+)
+SELECT l.sales_link_id, COALESCE(sl.label, '') AS label,
+       l.utm_source, l.utm_campaign, l.currency,
+       sum(l.orders)::bigint  AS orders,
+       sum(l.tickets)::bigint AS tickets,
+       sum(l.amount)::bigint  AS amount
+FROM   lines l
+LEFT JOIN sales_links sl ON sl.id = l.sales_link_id AND sl.org_id = $2
+GROUP  BY l.sales_link_id, sl.label, l.utm_source, l.utm_campaign, l.currency
+ORDER  BY l.sales_link_id NULLS LAST, l.utm_source, l.utm_campaign, l.currency;

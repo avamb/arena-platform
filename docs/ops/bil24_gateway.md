@@ -331,6 +331,26 @@ is cancelled automatically rather than parked for a human. A `manual_review` ord
 database predates this change; nothing new will ever create one, and PAY_ORDER's terminal-status
 handling for it is kept only so a stale row does not retry-loop.
 
+### 9.3 Расширения арены в CREATE_ORDER_EXT: `complimentary` и `attribution`
+
+Оба поля не входят в протокол Bil24. Сайт передаёт их по желанию.
+
+- `complimentary` — заказ-приглашение. Принимаются `true`, `1`, `"1"`, `"true"`. Номинал билетов сохраняется,
+  скидка равна всей сумме, сервисного сбора нет, итог 0, источник заказа `complimentary`. Повторная отправка
+  той же корзины не может сменить вид заказа: ответ `-2` `bil24.order_kind_changed`.
+- `attribution` — откуда пришёл покупатель (спецификация 43, §3). Тот же объект, что виджет шлёт в
+  `checkout/start`: `ref` (код ссылки продаж), `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`,
+  `utm_term`, `landed_at` (RFC 3339), `first`.
+  - Принимается объект или строка, внутри которой JSON-объект (PHP-клиент, хранящий cookie как текст).
+    Всё остальное игнорируется.
+  - Неверный или устаревший объект (касание старше 7 дней) не ошибка: заказ создаётся без атрибуции.
+  - `ref` привязывает заказ к ссылке (`orders.sales_link_id`) только если ссылка принадлежит организации
+    канала. Чужой или неизвестный код остаётся в JSON без привязки.
+  - Повторная отправка той же корзины с другим `attribution` обновляет заказ: побеждает последнее касание,
+    прежнее сохраняется в `first`. Ответ `0`, не `-2`.
+  - Повторная отправка без поля оставляет атрибуцию заказа как есть.
+  - Проверка: `SELECT sales_link_id, attribution FROM orders WHERE system_id = <orderId>`.
+
 ## 10. Category quotas and availability after migration 0101
 
 Since migration 0101 a GA (General Admission) category owns its places

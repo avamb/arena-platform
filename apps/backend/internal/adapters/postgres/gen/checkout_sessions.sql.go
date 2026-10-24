@@ -125,8 +125,8 @@ func (q *Queries) InsertCheckoutSession(
 // ─────────────────────────────────────────────────────────────────────────────
 
 const insertCheckoutSessionWithToken = `-- name: InsertCheckoutSessionWithToken :one
-INSERT INTO checkout_sessions (org_id, channel_id, reservation_id, user_id, checkout_token, buyer_locale)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO checkout_sessions (org_id, channel_id, reservation_id, user_id, checkout_token, buyer_locale, attribution)
+VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::jsonb, '{}'::jsonb))
 RETURNING ` + selectCheckoutSessionColumns
 
 // InsertCheckoutSessionWithToken creates a new checkout session in state 'created'
@@ -138,16 +138,48 @@ RETURNING ` + selectCheckoutSessionColumns
 // already validated against the shipped template locales. Pass nil when the
 // caller has none — a Bil24 gateway sale, for instance — and ticket delivery
 // falls back to English.
+//
+// attribution (migration 0167, spec 43 section 4.4) is the cleaned
+// attribution object of the buyer (attribution.Attribution.JSON()). Pass nil
+// or an empty slice when there is none: the column then holds '{}'.
 func (q *Queries) InsertCheckoutSessionWithToken(
 	ctx context.Context,
 	orgID, channelID, reservationID uuid.UUID,
 	userID *uuid.UUID,
 	checkoutToken string,
 	buyerLocale *string,
+	attribution []byte,
 ) (CheckoutSessionRow, error) {
+	var attr any
+	if len(attribution) > 0 {
+		attr = attribution
+	}
 	row := q.db.QueryRow(ctx, insertCheckoutSessionWithToken,
-		orgID, channelID, reservationID, userID, checkoutToken, buyerLocale)
+		orgID, channelID, reservationID, userID, checkoutToken, buyerLocale, attr)
 	return scanCheckoutSessionRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SetCheckoutSessionAttribution
+// ─────────────────────────────────────────────────────────────────────────────
+
+const setCheckoutSessionAttribution = `-- name: SetCheckoutSessionAttribution :exec
+UPDATE checkout_sessions
+SET    attribution = COALESCE($2::jsonb, '{}'::jsonb),
+       updated_at  = now()
+WHERE  id = $1`
+
+// SetCheckoutSessionAttribution rewrites the attribution of one checkout
+// session (spec 43 section 4.4). The Bil24 gateway calls it on a same-cart
+// CREATE_ORDER_EXT re-send so the new checkout session carries the order's
+// final, merged attribution. An empty attribution stores '{}'.
+func (q *Queries) SetCheckoutSessionAttribution(ctx context.Context, id uuid.UUID, attribution []byte) error {
+	var attr any
+	if len(attribution) > 0 {
+		attr = attribution
+	}
+	_, err := q.db.Exec(ctx, setCheckoutSessionAttribution, id, attr)
+	return err
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

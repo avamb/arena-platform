@@ -14414,6 +14414,63 @@ export interface components {
             entered: components["schemas"]["SummaryEntered"];
             /** @description Invitations of the session, whichever way they were issued. */
             complimentary: components["schemas"]["SummaryComplimentary"];
+            /**
+             * @description The paid orders of the session (paid, partially refunded or
+             *     refunded) grouped by where the buyer came from (spec 43): first
+             *     one entry per sales link the orders are attributed to, then one
+             *     per utm_source and utm_campaign pair of the orders without a
+             *     link (either label alone is enough), then the rest as one direct
+             *     entry. Present only on the
+             *     session summary, never on the event summary. An empty list when
+             *     the session has no paid orders.
+             */
+            sources: components["schemas"]["SessionSummarySource"][];
+        };
+        /** @description One source of a session's paid orders. Carries no buyer data. */
+        SessionSummarySource: {
+            /**
+             * @description sales_link when the orders are attributed to a sales link, utm
+             *     when they have no link but their attribution names a utm_source
+             *     or a utm_campaign, direct otherwise.
+             */
+            kind: string;
+            /**
+             * Format: uuid
+             * @description The sales link of the orders. Only for kind sales_link.
+             */
+            sales_link_id?: string;
+            /** @description The label of that sales link (where it is placed). Only for kind sales_link. */
+            label?: string;
+            /** @description The utm_source of the orders' attribution. Only for kind utm, absent when the orders named only a campaign. */
+            utm_source?: string;
+            /** @description The utm_campaign of the orders' attribution. Only for kind utm, absent when the orders named none. */
+            utm_campaign?: string;
+            /**
+             * Format: int64
+             * @description Number of paid orders from this source.
+             */
+            orders: number;
+            /**
+             * Format: int64
+             * @description Number of tickets of those orders, whatever their status.
+             */
+            tickets: number;
+            /**
+             * @description Revenue per currency: the totals of those orders minus their
+             *     succeeded refunds, in minor units. One entry per currency, by
+             *     currency code.
+             */
+            revenue: components["schemas"]["SessionSummarySourceRevenue"][];
+        };
+        /** @description The revenue of one source in one currency. */
+        SessionSummarySourceRevenue: {
+            /** @description ISO 4217 currency code. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Order totals minus succeeded refunds, in minor units.
+             */
+            amount_minor: number;
         };
         /** @description How many valid tickets were scanned at the door ("entered N of M"). */
         SummaryEntered: {
@@ -21209,6 +21266,57 @@ export interface components {
              *     that does not ask for it, it is ignored and nothing is stored.
              */
             consent?: components["schemas"]["PublicCheckoutConsent"];
+            /**
+             * @description The sales link and utm labels that brought the buyer (spec 43),
+             *     optional. The server cleans it and, when `ref` is the code of a
+             *     sales link of this organization, attributes the order to that
+             *     link. An empty, invalid or too old object is not an error: the
+             *     order is created without attribution, because a purchase must
+             *     never fail over a label.
+             */
+            attribution?: components["schemas"]["CheckoutAttribution"];
+        };
+        /**
+         * @description Where the buyer came from (spec 43): the last touch, optionally with
+         *     the first one. Every utm value is at most 64 characters from
+         *     A-Z a-z 0-9 . _ ~ - (a value with any other character is dropped). A
+         *     touch older than 7 days or more than 5 minutes ahead of the server
+         *     clock is dropped whole. A touch with no ref, utm_source or utm_campaign is ignored.
+         */
+        CheckoutAttribution: {
+            /** @description The 7-character code of the sales link the buyer arrived through. */
+            ref?: string;
+            /** @description utm_source of the visit. */
+            utm_source?: string;
+            /** @description utm_medium of the visit. */
+            utm_medium?: string;
+            /** @description utm_campaign of the visit. */
+            utm_campaign?: string;
+            /** @description utm_content of the visit. */
+            utm_content?: string;
+            /** @description utm_term of the visit. */
+            utm_term?: string;
+            /**
+             * Format: date-time
+             * @description When the buyer arrived, RFC 3339. Absent means now.
+             */
+            landed_at?: string;
+            /** @description The buyer's first touch, when it differs from the last one. */
+            first?: components["schemas"]["CheckoutAttributionFirst"];
+        };
+        /** @description The first touch of a buyer, kept beside the last one. */
+        CheckoutAttributionFirst: {
+            /** @description The sales-link code of the first touch. */
+            ref?: string;
+            /** @description utm_source of the first touch. */
+            utm_source?: string;
+            /** @description utm_campaign of the first touch. */
+            utm_campaign?: string;
+            /**
+             * Format: date-time
+             * @description When the first touch happened, RFC 3339.
+             */
+            landed_at?: string;
         };
         /** @description The buyer's answer to the checkout consent checkbox (P2). */
         PublicCheckoutConsent: {
