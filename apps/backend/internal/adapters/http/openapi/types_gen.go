@@ -18905,6 +18905,18 @@ type ListSalesLinksParams struct {
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// GetSalesLinkQrParams defines parameters for GetSalesLinkQr.
+type GetSalesLinkQrParams struct {
+	// Format Image format, `png` (default) or `svg`.
+	Format *string `form:"format,omitempty" json:"format,omitempty"`
+
+	// Size Side of the PNG in pixels, 256 to 2048 (default 1024). Ignored for SVG.
+	Size *int `form:"size,omitempty" json:"size,omitempty"`
+
+	// Margin Quiet zone around the code in modules, 2 to 8 (default 4).
+	Margin *int `form:"margin,omitempty" json:"margin,omitempty"`
+}
+
 // GetSalesLinkStatsParams defines parameters for GetSalesLinkStats.
 type GetSalesLinkStatsParams struct {
 	// From First day of the series, `YYYY-MM-DD`.

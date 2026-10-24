@@ -4,7 +4,7 @@ package httpserver
 // of tracked sales links. Reads need sales_link.read, writes sales_link.manage;
 // every route also needs membership of {org_id}, and the handlers load each
 // link by (id, org_id), so another organization's link is the route's own 404.
-// The QR image route of QL-5 will join this mount.
+// The QR image route (QL-5) is in the read group.
 
 import (
 	"github.com/go-chi/chi/v5"
@@ -33,6 +33,7 @@ func (s *Server) mountSalesLinkRoutes(r chi.Router) {
 		pr.Get(base, s.orgGated(h.HandleList))
 		pr.Get(base+"/{id}", s.orgGated(h.HandleGet))
 		pr.Get(base+"/{id}/stats", s.orgGated(h.HandleStats))
+		pr.Get(base+"/{id}/qr", s.orgGated(h.HandleQR))
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "sales_link.manage", "sales_links")

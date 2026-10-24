@@ -4721,6 +4721,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/sales-links/{id}/qr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * QR image of a sales link
+         * @description The QR code of the link's short address (`short_url`, exactly the string
+         *     the link answers carry), as a PNG or an SVG. The image is square, black
+         *     modules on white, error correction level Medium. `size` is the side in
+         *     pixels (PNG only, the SVG scales to any size), `margin` the quiet zone in
+         *     modules. The answer carries an `ETag` and `Cache-Control: private,
+         *     max-age=3600`; a repeated request with `If-None-Match` gets 304.
+         *
+         *     Requires JWT or API key + the `sales_link.read` permission.
+         */
+        get: operations["getSalesLinkQr"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/promo-code-redemptions": {
         parameters: {
             query?: never;
@@ -45871,6 +45898,100 @@ export interface operations {
                 };
             };
             /** @description The range is malformed (`sales_link.invalid_range`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `sales_link.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Link not found in this organization (`sales_link.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_link.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSalesLinkQr: {
+        parameters: {
+            query?: {
+                /** @description Image format, `png` (default) or `svg`. */
+                format?: string;
+                /** @description Side of the PNG in pixels, 256 to 2048 (default 1024). Ignored for SVG. */
+                size?: number;
+                /** @description Quiet zone around the code in modules, 2 to 8 (default 4). */
+                margin?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+                /** @description UUIDv7 of the sales link. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/svg+xml": string;
+                };
+            };
+            /** @description The image has not changed since the `If-None-Match` ETag. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A query parameter is out of range (`sales_link.invalid_qr_params`). */
             400: {
                 headers: {
                     [name: string]: unknown;
