@@ -48,6 +48,9 @@ type APIError struct {
 	Message string
 	// Fields is error.details.fields of a 422: field key -> reason.
 	Fields map[string]string
+	// Reason is error.details.reason: the short word of a refused text
+	// (richtext reason, for example "too_long").
+	Reason string
 	// OwnersNotice is error.details.owners_notice of a refund refused for a
 	// scanned ticket: queued, throttled, no_recipient, or empty.
 	OwnersNotice string
@@ -125,6 +128,7 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 				Message string `json:"message"`
 				Details struct {
 					Fields       map[string]string `json:"fields"`
+					Reason       string            `json:"reason"`
 					OwnersNotice string            `json:"owners_notice"`
 					TicketID     string            `json:"ticket_id"`
 				} `json:"details"`
@@ -134,6 +138,7 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 			ae.Code = env.Error.Code
 			ae.Message = env.Error.Message
 			ae.Fields = env.Error.Details.Fields
+			ae.Reason = env.Error.Details.Reason
 			ae.OwnersNotice = env.Error.Details.OwnersNotice
 			ae.TicketID = env.Error.Details.TicketID
 		}

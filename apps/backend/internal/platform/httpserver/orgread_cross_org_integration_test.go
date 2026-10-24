@@ -26,11 +26,11 @@ func TestOrgRead_EventRoutesStayInsideTheOrganization(t *testing.T) {
 	orgA, orgB := f.org(t, "A"), f.org(t, "B")
 	keyA := f.key(t, orgA, "event.read", "publication.read", "publication.create", "publication.delete", "report.read", "report.generate")
 
-	evA, err := f.q.InsertEvent(ctx, orgA, "OrgRead A Event", nil, "draft", "public", nil)
+	evA, err := f.q.InsertEvent(ctx, orgA, "OrgRead A Event", nil, "draft", "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent A: %v", err)
 	}
-	evB, err := f.q.InsertEvent(ctx, orgB, "OrgRead B Event", nil, "draft", "public", nil)
+	evB, err := f.q.InsertEvent(ctx, orgB, "OrgRead B Event", nil, "draft", "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent B: %v", err)
 	}

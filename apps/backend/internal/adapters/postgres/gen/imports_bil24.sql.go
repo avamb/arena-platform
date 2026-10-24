@@ -210,6 +210,7 @@ const setEventImportMetadata = `-- name: SetEventImportMetadata :exec
 UPDATE events
 SET    name        = COALESCE(NULLIF($3::text, ''), name),
        description = COALESCE($4::text, description),
+       description_format = CASE WHEN $4::text IS NOT NULL THEN COALESCE(NULLIF($6::text, ''), 'text') ELSE description_format END,
        age_rating  = COALESCE($5::text, age_rating),
        updated_at  = now()
 WHERE  id     = $1
@@ -218,8 +219,10 @@ WHERE  id     = $1
 
 // SetEventImportMetadata refreshes the descriptive fields a repeat Bil24
 // import can carry. Empty/nil values leave the stored value untouched.
-func (q *Queries) SetEventImportMetadata(ctx context.Context, id, orgID uuid.UUID, name string, description, ageRating *string) error {
-	_, err := q.db.Exec(ctx, setEventImportMetadata, id, orgID, name, description, ageRating)
+// descriptionFormat ("text" or "art", empty means "text") is stored together
+// with a non-nil description.
+func (q *Queries) SetEventImportMetadata(ctx context.Context, id, orgID uuid.UUID, name string, description, ageRating *string, descriptionFormat string) error {
+	_, err := q.db.Exec(ctx, setEventImportMetadata, id, orgID, name, description, ageRating, descriptionFormat)
 	return err
 }
 

@@ -154,11 +154,17 @@ type bundleSource struct {
 	PromoterID       *uuid.UUID
 	PromoterArchived bool
 	// EmailNote is the event's own letter text, "" when it has none.
-	EmailNote  string
-	ChannelIDs []uuid.UUID
-	Sessions   []bundleSessionSource
-	Windows    map[uuid.UUID][]gen.TicketTierPriceRow
-	Materials  EventBundleMaterials
+	EmailNote string
+	// EmailNoteFormat is the format the note is stored in ("art" or "text"),
+	// "" when the event has no note. DescriptionFormat is the format flag of
+	// the event's description. The export names both next to the texts, so a
+	// client that posts what it read gets the same stored texts back.
+	EmailNoteFormat   string
+	DescriptionFormat string
+	ChannelIDs        []uuid.UUID
+	Sessions          []bundleSessionSource
+	Windows           map[uuid.UUID][]gen.TicketTierPriceRow
+	Materials         EventBundleMaterials
 }
 
 // HandleEventBundleRead serves GET .../events/{event_id}/event-bundle.
@@ -213,6 +219,11 @@ var errBundleEventNotFound = errors.New("event not found")
 // loadBundleSource reads the event of orgID and everything its bundles need.
 // A deleted event, an unknown one and another organization's all answer
 // errBundleEventNotFound.
+//
+// It MUST run inside one snapshot (HandleEventBundleRead opens a RepeatableRead
+// read-only transaction): the description and its format are two statements,
+// and a bundle that is posted back stores what it holds, so a text read with
+// the other format would be stored wrongly ("**x**" kept as literal stars).
 func loadBundleSource(ctx context.Context, q *gen.Queries, orgID, eventID uuid.UUID) (bundleSource, error) {
 	ev, err := q.GetEventRaw(ctx, eventID)
 	switch {
@@ -222,6 +233,9 @@ func loadBundleSource(ctx context.Context, q *gen.Queries, orgID, eventID uuid.U
 		return bundleSource{}, fmt.Errorf("read event: %w", err)
 	}
 	src := bundleSource{Event: ev, Windows: map[uuid.UUID][]gen.TicketTierPriceRow{}}
+	if src.DescriptionFormat, err = q.GetEventDescriptionFormat(ctx, eventID); err != nil {
+		return bundleSource{}, fmt.Errorf("read event description format: %w", err)
+	}
 
 	links, err := q.ListEventPromoters(ctx, []uuid.UUID{eventID})
 	if err != nil {
@@ -241,9 +255,9 @@ func loadBundleSource(ctx context.Context, q *gen.Queries, orgID, eventID uuid.U
 		}
 	}
 
-	switch note, nErr := q.GetEventEmailNote(ctx, eventID, orgID); {
+	switch note, noteFormat, nErr := q.GetEventEmailNoteWithFormat(ctx, eventID, orgID); {
 	case nErr == nil:
-		src.EmailNote = note
+		src.EmailNote, src.EmailNoteFormat = note, noteFormat
 	case !errors.Is(nErr, pgx.ErrNoRows):
 		return bundleSource{}, fmt.Errorf("read event email note: %w", nErr)
 	}
@@ -430,12 +444,14 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 		req := bil24compat.ImportSessionRequest{
 			Source: bil24compat.SourceArena,
 			Action: bil24compat.ImportSessionAction{
-				ArenaEventID: src.Event.ID.String(),
-				ActionName:   src.Event.Name,
-				Description:  derefString(src.Event.Description),
-				Age:          derefString(src.Event.AgeRating),
-				PromoterID:   promoter,
-				EmailNote:    &emailNote,
+				ArenaEventID:      src.Event.ID.String(),
+				ActionName:        src.Event.Name,
+				Description:       derefString(src.Event.Description),
+				DescriptionFormat: src.DescriptionFormat,
+				Age:               derefString(src.Event.AgeRating),
+				PromoterID:        promoter,
+				EmailNote:         &emailNote,
+				EmailNoteFormat:   src.EmailNoteFormat,
 			},
 			ActionEvent: ae,
 			Venue: bil24compat.ImportSessionVenue{

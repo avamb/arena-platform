@@ -33,7 +33,7 @@ func (f *sellerAccessFixture) publishThroughChannel(t *testing.T) string {
 		t.Fatalf("org slug: %v", err)
 	}
 	desc := "default-on seller test"
-	event, err := q.InsertEvent(ctx, f.org, "Default On "+run, &desc, "published", "public", nil)
+	event, err := q.InsertEvent(ctx, f.org, "Default On "+run, &desc, "published", "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent: %v", err)
 	}

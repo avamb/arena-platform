@@ -17,7 +17,8 @@ import (
 // else is an error. The server never guesses the format from the tags. A
 // "text" longer (in characters) than the profile's HTML limit is refused
 // before any work is done, because it cannot fit; Sanitize does the same for
-// "art" at four times the limit.
+// "art" at four times the limit. An "art" input that has no block tag and no
+// <br> first gets its paragraphs from AutoParagraph (WordPress texts).
 // Normalize(Normalize(x, f, p), "art", p) == Normalize(x, f, p).
 func Normalize(input, format string, p Profile) (string, error) {
 	switch format {
@@ -33,6 +34,10 @@ func Normalize(input, format string, p Profile) (string, error) {
 		}
 		return Sanitize(FromLegacy(input, p), p)
 	case FormatART:
+		if len(input) <= maxInputBytes {
+			// WordPress texts have no <p>: blank lines are the paragraphs.
+			input = AutoParagraph(input)
+		}
 		return Sanitize(input, p)
 	}
 	return "", ErrInvalidFormat
@@ -51,8 +56,10 @@ func Render(stored, format string, p Profile) (string, error) {
 	if len(stored) > maxInputBytes {
 		return fallbackHTML(stored, format), ErrHTMLTooLong
 	}
-	src := stored
-	if format != FormatART {
+	var src string
+	if format == FormatART {
+		src = AutoParagraph(stored)
+	} else {
 		src = FromLegacy(stored, p)
 	}
 	d, err := convert(src, p.readOnly(), false)

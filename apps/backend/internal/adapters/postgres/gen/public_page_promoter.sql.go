@@ -19,7 +19,7 @@ import (
 const getHostedPageResolutionByPromoter = `-- name: GetHostedPageResolutionByPromoter :one
 SELECT
     o.id, p.slug, p.name, o.logo_media_id, o.default_locale,
-    e.id, e.slug, e.name, e.description, e.short_description,
+    e.id, e.slug, e.name, e.description, e.description_format, e.short_description,
     e.image_url, e.poster_media_id, e.age_rating,
     e.first_session_at, e.last_session_at,
     (
@@ -80,7 +80,7 @@ func (q *Queries) GetHostedPageResolutionByPromoter(ctx context.Context, promote
 	var r HostedPageResolutionRow
 	err := row.Scan(
 		&r.OrgID, &r.OrgSlug, &r.OrgName, &r.OrgLogoMediaID, &r.OrgDefaultLocale,
-		&r.EventID, &r.EventSlug, &r.EventName, &r.EventDescription, &r.EventShortDescription,
+		&r.EventID, &r.EventSlug, &r.EventName, &r.EventDescription, &r.EventDescriptionFormat, &r.EventShortDescription,
 		&r.EventImageURL, &r.EventPosterMediaID, &r.EventAgeRating,
 		&r.FirstSessionAt, &r.LastSessionAt, &r.FirstSessionTimezone, &r.FirstSessionDoorsAt,
 		&r.SessionCount, &r.FeedToken,

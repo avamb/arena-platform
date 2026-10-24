@@ -4041,3 +4041,12 @@ other = "Everyone with a valid ticket has come in."
 
 ["bot.ses.not_entered_invite"]
 other = "invitation"
+
+["bot.wz.err_description"]
+other = "The description was not accepted. Change the text and send it again."
+
+["bot.wz.err_description_too_long"]
+other = "The description is too long. Shorten the text and send it again."
+
+["bot.wz.err_description_chars"]
+other = "The description has a hidden or control character. Type the text again, or paste it as plain text."

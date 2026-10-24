@@ -70,9 +70,14 @@ type ImportSessionAction struct {
 	ActionName     string `json:"actionName"`
 	FullActionName string `json:"fullActionName"`
 	Description    string `json:"description"`
-	BigPosterURL   string `json:"bigPosterUrl"`
-	Age            string `json:"age"`
-	OrganizerName  string `json:"organizerName"`
+	// DescriptionFormat (arena extension, spec 44) says how description is
+	// written: "text" (default, the old marks) or "art" (HTML). The server
+	// passes the text through richtext.Normalize and stores ART either way
+	// (422 import.invalid_description when refused).
+	DescriptionFormat string `json:"descriptionFormat,omitempty"`
+	BigPosterURL      string `json:"bigPosterUrl"`
+	Age               string `json:"age"`
+	OrganizerName     string `json:"organizerName"`
 	// PromoterID is an arena-native event-bundle extension (migration 0113):
 	// absent or null keeps the event's promoter as it is, "" removes the link
 	// (the organization itself is the promoter), a UUID names one of the
@@ -82,8 +87,12 @@ type ImportSessionAction struct {
 	// 0161, source=arena only): the organizer's own text that the ticket and
 	// session-change letters print under "About the event". Absent or null
 	// keeps the stored text, "" removes it, a string is filtered by
-	// eventnote.Normalize (422 import.invalid_email_note when refused).
+	// richtext.Normalize with the letter-text profile (422
+	// import.invalid_email_note when refused).
 	EmailNote *string `json:"emailNote,omitempty"`
+	// EmailNoteFormat (arena extension, spec 44) says how emailNote is
+	// written: "text" (default, the old marks) or "art" (HTML).
+	EmailNoteFormat string `json:"emailNoteFormat,omitempty"`
 	// ArenaEventID (arena extension, source=arena only) addresses an existing
 	// event of the organization by its arena UUID — what an event center
 	// reads from GET /v1/organizations/{org_id}/events. It plays the role
