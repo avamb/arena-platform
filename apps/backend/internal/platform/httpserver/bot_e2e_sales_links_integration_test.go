@@ -262,7 +262,8 @@ func TestBotE2E_SalesLinks(t *testing.T) {
 	}
 
 	// ── the menu: an address of one's own, typed ──────────────────────────────
-	owner.press("ql:menu", "Куда должна вести ссылка")
+	owner.press("ql:menu", "Фильтр: Активные")
+	owner.press("ql:new", "Куда должна вести ссылка")
 	owner.press("ql:t:url", "Напечатайте адрес страницы")
 	owner.say("example.com/shop", "должен начинаться с https://")
 	owner.say("https://example.com/shop", "Где вы разместите код")
@@ -274,7 +275,8 @@ func TestBotE2E_SalesLinks(t *testing.T) {
 	}
 
 	// ── the menu: pick another event from the list, then the page of all ──────
-	owner.press("ql:menu", "Куда должна вести ссылка")
+	owner.press("ql:menu", "Фильтр: Активные")
+	owner.press("ql:new", "Куда должна вести ссылка")
 	text := owner.press("ql:t:oe", "Выберите мероприятие")
 	if !strings.Contains(text, "Страница 1 из 1") {
 		t.Errorf("events choice:\n%s", text)

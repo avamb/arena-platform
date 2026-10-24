@@ -95,3 +95,46 @@ func TestSalesLinkButtonsFollowTheRole(t *testing.T) {
 		t.Error("nobody must see nothing")
 	}
 }
+
+func TestSlListPosition(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name       string
+		st         salesLinkListState
+		wantPage   int
+		wantCursor string
+	}{
+		{"fresh", salesLinkListState{}, 1, ""},
+		{"first page", salesLinkListState{Page: 1, Cursors: []string{""}}, 1, ""},
+		{"second page", salesLinkListState{Page: 2, Cursors: []string{"", "c2"}}, 2, "c2"},
+		{"cursor lost", salesLinkListState{Page: 3, Cursors: []string{"", "c2"}}, 1, ""},
+	}
+	for _, c := range cases {
+		page, cursor := slListPosition(c.st)
+		if page != c.wantPage || cursor != c.wantCursor {
+			t.Errorf("%s: got page %d cursor %q, want %d %q", c.name, page, cursor, c.wantPage, c.wantCursor)
+		}
+	}
+}
+
+func TestSlListPager(t *testing.T) {
+	t.Parallel()
+	b := &Bot{}
+	if row := b.slListPager("en", 1, false); row != nil {
+		t.Errorf("a single page has no pager: %v", row)
+	}
+	var data []string
+	for _, btn := range b.slListPager("en", 2, true) {
+		data = append(data, btn.CallbackData)
+	}
+	if strings.Join(data, " ") != "ql:lp:1 ql:noop ql:lp:3" {
+		t.Errorf("middle page buttons = %v", data)
+	}
+	data = nil
+	for _, btn := range b.slListPager("en", 1, true) {
+		data = append(data, btn.CallbackData)
+	}
+	if strings.Join(data, " ") != "ql:noop ql:lp:2" {
+		t.Errorf("first page buttons = %v", data)
+	}
+}
