@@ -150,13 +150,41 @@ func TestClean(t *testing.T) {
 					t.Errorf("landed_at = %v", a.LandedAt)
 				}
 			}},
-		{name: "first too old is dropped alone", in: `{"ref":"x7k2qpm","first":{"ref":"abcdefg","landed_at":"` +
+		{name: "first older than the window is kept", in: `{"ref":"x7k2qpm","landed_at":"` + landed + `","first":{"ref":"abcdefg","landed_at":"` +
 			testNow.Add(-10*24*time.Hour).Format(time.RFC3339) + `"}}`, ok: true,
+			check: func(t *testing.T, a Attribution) {
+				if a.First == nil || a.First.Ref != "abcdefg" || !a.First.LandedAt.Equal(testNow.Add(-10*24*time.Hour)) || a.Ref != "x7k2qpm" {
+					t.Errorf("attribution = %+v first=%+v", a, a.First)
+				}
+			}},
+		{name: "first with a garbage landed_at is dropped alone", in: `{"ref":"x7k2qpm","first":{"ref":"abcdefg","landed_at":"yesterday"}}`, ok: true,
 			check: func(t *testing.T, a Attribution) {
 				if a.First != nil || a.Ref != "x7k2qpm" {
 					t.Errorf("attribution = %+v first=%+v", a, a.First)
 				}
 			}},
+		{name: "first from the future is dropped alone", in: `{"ref":"x7k2qpm","first":{"ref":"abcdefg","landed_at":"` +
+			testNow.Add(FutureSkew+time.Second).Format(time.RFC3339) + `"}}`, ok: true,
+			check: func(t *testing.T, a Attribution) {
+				if a.First != nil || a.Ref != "x7k2qpm" {
+					t.Errorf("attribution = %+v first=%+v", a, a.First)
+				}
+			}},
+		{name: "first later than the last touch is dropped alone", in: `{"ref":"x7k2qpm","landed_at":"` + landed + `","first":{"ref":"abcdefg","landed_at":"` +
+			testNow.Add(-time.Hour).Format(time.RFC3339) + `"}}`, ok: true,
+			check: func(t *testing.T, a Attribution) {
+				if a.First != nil || a.Ref != "x7k2qpm" {
+					t.Errorf("attribution = %+v first=%+v", a, a.First)
+				}
+			}},
+		{name: "first at the same instant as the last touch is kept", in: `{"ref":"x7k2qpm","landed_at":"` + landed + `","first":{"ref":"abcdefg","landed_at":"` + landed + `"}}`, ok: true,
+			check: func(t *testing.T, a Attribution) {
+				if a.First == nil || a.First.Ref != "abcdefg" {
+					t.Errorf("first = %+v", a.First)
+				}
+			}},
+		{name: "last touch too old is dropped whole even with a valid first", in: `{"ref":"x7k2qpm","landed_at":"` + testNow.Add(-Window-time.Second).Format(time.RFC3339) +
+			`","first":{"ref":"abcdefg","landed_at":"` + testNow.Add(-20*24*time.Hour).Format(time.RFC3339) + `"}}`, ok: false},
 		{name: "first without ref or source is dropped", in: `{"ref":"x7k2qpm","first":{"utm_medium":"m"}}`, ok: true,
 			check: func(t *testing.T, a Attribution) {
 				if a.First != nil {
