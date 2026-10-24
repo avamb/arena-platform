@@ -451,7 +451,11 @@ func TestWordsOfLegacyEqualWordsOfSanitizedMarkup(t *testing.T) {
 
 // ---- no work before the limit, and linear work after ----
 
-const pathologicalBudget = time.Second
+// pathologicalBudget is the wall-clock budget of one pathological input.
+// The race detector slows this code down by an order of magnitude or more
+// (CI's Unit / Race job), so the budget scales there; a quadratic regression
+// still blows through it, the linear code does not.
+var pathologicalBudget = time.Second * time.Duration(raceSlowdown)
 
 func timed(t *testing.T, name string, fn func()) {
 	t.Helper()
