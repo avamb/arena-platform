@@ -1,7 +1,7 @@
 # Форматированный текст (RT-02/RT-03) — ранбук выката
 
 Спецификация: `08_architecture/43_rich_text_editor_spec_ru.md`. Ветка `feat/rt-02-richtext-storage`.
-Миграция: `0167_rich_text.sql` (колонки `events.description_format`, `event_email_notes.note_format`).
+Миграция: `0168_rich_text.sql` (колонки `events.description_format`, `event_email_notes.note_format`).
 
 ## 0. Что меняется для сайтов
 
@@ -36,7 +36,7 @@ WHERE namespace = 'event.description'
 
 ## 2. Порядок выката
 
-1. Миграция `arena-migrate up` (0167). Колонки добавляются с `DEFAULT 'text'`, существующие строки не меняются.
+1. Миграция `arena-migrate up` (0168). Колонки добавляются с `DEFAULT 'text'`, существующие строки не меняются.
 2. api, worker, bot (один тег образа).
 3. `tickets-page` (страница продаж).
 4. `admin-web`.

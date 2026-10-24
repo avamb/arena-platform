@@ -1,4 +1,4 @@
--- 0167_rich_text.sql — RT-02 of the rich-text spec (08_architecture/43): the
+-- 0168_rich_text.sql — RT-02 of the rich-text spec (08_architecture/43): the
 -- format flag of the two formatted texts, the room for their HTML and the
 -- backup table of the backfill command.
 --
@@ -83,7 +83,7 @@ DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM events WHERE description_format = 'art')
        OR EXISTS (SELECT 1 FROM event_email_notes WHERE note_format = 'art') THEN
-        RAISE EXCEPTION '0167 down refused: events or event_email_notes hold rich text (format art); convert them to plain text and set the flag to text first, see the comment of this migration';
+        RAISE EXCEPTION '0168 down refused: events or event_email_notes hold rich text (format art); convert them to plain text and set the flag to text first, see the comment of this migration';
     END IF;
 END
 $$;

@@ -3,7 +3,7 @@
 //
 // The organizer's own text of an event for the buyer letters (migration 0165,
 // EC-31). The text is filtered by richtext.Normalize (eventtext.NormalizeNote)
-// before it gets here and stored as ART with note_format (migration 0167); a
+// before it gets here and stored as ART with note_format (migration 0168); a
 // row exists only while the event has a note.
 
 package gen

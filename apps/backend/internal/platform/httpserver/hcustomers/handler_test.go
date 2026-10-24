@@ -258,6 +258,7 @@ func newOrderVals(id uuid.UUID, systemID int64, orgID, channelID, eventID, sessi
 		int64(0), int64(0), int64(0), total, int32(0), (*uuid.UUID)(nil),
 		(*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil),
 		(*time.Time)(nil), (*time.Time)(nil), (*time.Time)(nil), json.RawMessage("{}"), created, created,
+		(*uuid.UUID)(nil), json.RawMessage("{}"),
 	}
 }
 

@@ -327,6 +327,8 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `API_PUBLIC_URL` (`https://` when set; required with the Bil24 gateway) | ● | ● | — | — |
 | `EVENT_CENTER_PUBLIC_URL` (`https://` when set) | ● | ● | — | — |
 | `PUBLIC_TICKETS_BASE_URL` | ● | ● | ● | — |
+| `SHORT_LINK_BASE_URL` (`https://`, host only, default `https://go.arenasoldout.com`, the host printed under a QR code; setup: `docs/ops/sales_links_ru.md`) | ● | — | — | — |
+| `SHORT_LINK_FALLBACK_URL` (`https://` when set; where `GET /go/{code}` sends an unknown code; empty = `PUBLIC_TICKETS_BASE_URL`, else `APP_PUBLIC_URL`) | ● | — | — | — |
 | `ONBOARDING_ENABLED`, `ONBOARDING_TERMS_URL`, `ONBOARDING_PRIVACY_URL` | ● | — | — | — |
 | `PLATFORM_TERMS_URL` (buyer checkout consent; empty = `<ONBOARDING_SITE_URL>/legal/terms`) | ● | — | — | — |
 | `ONBOARDING_SITE_URL` | ● | ● | — | — |

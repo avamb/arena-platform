@@ -239,7 +239,7 @@ type Querier interface {
 	ExpireCheckoutSession(ctx context.Context, id uuid.UUID) (CheckoutSessionRow, error)
 	ListCheckoutSessionsByReservation(ctx context.Context, reservationID uuid.UUID) ([]CheckoutSessionRow, error)
 	GetCheckoutSessionByToken(ctx context.Context, token string) (CheckoutSessionRow, error)
-	InsertCheckoutSessionWithToken(ctx context.Context, orgID, channelID, reservationID uuid.UUID, userID *uuid.UUID, checkoutToken string, buyerLocale *string) (CheckoutSessionRow, error)
+	InsertCheckoutSessionWithToken(ctx context.Context, orgID, channelID, reservationID uuid.UUID, userID *uuid.UUID, checkoutToken string, buyerLocale *string, attribution []byte) (CheckoutSessionRow, error)
 	UpdateCheckoutSessionReservationAndReset(ctx context.Context, id uuid.UUID, reservationID uuid.UUID) (CheckoutSessionRow, error)
 
 	// Payment intents — SCA-aware payment state machine (feature #137)

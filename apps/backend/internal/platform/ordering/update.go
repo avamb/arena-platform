@@ -2,6 +2,7 @@ package ordering
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -43,6 +44,12 @@ type UpdateStore interface {
 		expiresAt *time.Time,
 	) (gen.OrderRow, error)
 	DeleteOrderItemsByOrder(ctx context.Context, orderID uuid.UUID) error
+	SetOrderAttribution(
+		ctx context.Context,
+		id, orgID uuid.UUID,
+		salesLinkID *uuid.UUID,
+		attribution json.RawMessage,
+	) (gen.OrderRow, error)
 }
 
 // UpdateInput identifies the order to rewrite; the embedded CreateInput
@@ -50,6 +57,12 @@ type UpdateStore interface {
 // CreateInput.CustomerID and Source are ignored — an order never changes owner
 // or origin — but are accepted so callers can pass one struct through both
 // branches of the one-open-order rule.
+//
+// CreateInput.SalesLinkID and Attribution replace the order's attribution
+// only when Attribution is non-empty (spec 43 section 4.4: last touch wins); a
+// repeat without an attribution keeps what the order carries. The caller
+// merges the earlier touch in (attribution.MergeTouch) before it passes the
+// new object.
 type UpdateInput struct {
 	OrderID uuid.UUID
 	OrgID   uuid.UUID
@@ -89,6 +102,12 @@ func UpdateOrderFromCheckout(ctx context.Context, q UpdateStore, in UpdateInput)
 	)
 	if err != nil {
 		return CreateResult{}, fmt.Errorf("ordering: update order: %w", err)
+	}
+	if len(in.Attribution) > 0 {
+		order, err = q.SetOrderAttribution(ctx, order.ID, in.OrgID, in.SalesLinkID, in.Attribution)
+		if err != nil {
+			return CreateResult{}, fmt.Errorf("ordering: update order attribution: %w", err)
+		}
 	}
 
 	// Old lines go before new ones: order_items has a (order_id, ordinal)

@@ -41,6 +41,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/apikeys"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salelinks"
 )
 
 // ─── environment: organization B, its callers, the server ───────────────────
@@ -194,6 +195,7 @@ type sweepWorld struct {
 	venue, event, channel, feedToken, tier        uuid.UUID
 	s1, s2, s3, s4                                uuid.UUID
 	alloc, issuance, planID, planVersion, orderID uuid.UUID
+	salesLink                                     uuid.UUID
 }
 
 func sweepGAGeometry() seating.Geometry {
@@ -221,6 +223,7 @@ func (e *sweepEnv) newWorld(t *testing.T, org, partner uuid.UUID) *sweepWorld {
 		venue: uuid.New(), event: uuid.New(), channel: uuid.New(), feedToken: uuid.New(), tier: uuid.New(),
 		s1: uuid.New(), s2: uuid.New(), s3: uuid.New(), s4: uuid.New(),
 		alloc: uuid.New(), issuance: uuid.New(), planID: uuid.New(), planVersion: uuid.New(), orderID: uuid.New(),
+		salesLink: uuid.New(),
 	}
 	suffix := uuid.NewString()[:8]
 	start := time.Now().UTC().Add(72 * time.Hour).Truncate(time.Hour)
@@ -266,6 +269,13 @@ func (e *sweepEnv) newWorld(t *testing.T, org, partner uuid.UUID) *sweepWorld {
 	e.exec(t, `INSERT INTO seating_plan_versions (id, seating_plan_id, version_number, geometry, geometry_checksum, capacity_seated, capacity_standing)
 	           VALUES ($1, $2, 1, $3::jsonb, $4, 0, 50)`, w.planVersion, w.planID, string(geoJSON), checksum)
 
+	linkCode, err := salelinks.NewCode()
+	if err != nil {
+		t.Fatalf("NewCode: %v", err)
+	}
+	e.exec(t, `INSERT INTO sales_links (id, org_id, code, target_kind, event_id, label) VALUES ($1, $2, $3, 'event', $4, 'Sweep link')`,
+		w.salesLink, org, linkCode, w.event)
+
 	// A paid order with one active ticket on session 4: cancelling or moving
 	// that session must queue a letter to this buyer.
 	res, cs := uuid.New(), uuid.New()
@@ -297,6 +307,8 @@ func (e *sweepEnv) cleanupWorld(w *sweepWorld) {
 		{`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE org_id = $1)`, w.org},
 		{`DELETE FROM tickets WHERE session_id IN ` + sessions, w.event},
 		{`DELETE FROM orders WHERE org_id = $1`, w.org},
+		{`DELETE FROM sales_link_hits WHERE sales_link_id IN (SELECT id FROM sales_links WHERE org_id = $1)`, w.org},
+		{`DELETE FROM sales_links WHERE org_id = $1`, w.org},
 		{`DELETE FROM checkout_sessions WHERE org_id = $1`, w.org},
 		{`DELETE FROM reservations WHERE org_id = $1`, w.org},
 		{`DELETE FROM complimentary_issuances WHERE org_id = $1`, w.org},
@@ -331,7 +343,7 @@ func (w *sweepWorld) ids(e *sweepEnv, pathOrg uuid.UUID) sweepIDs {
 		Org: pathOrg, OwnVenue: e.venueB, EventOther: e.eventB,
 		Event: w.event, Session1: w.s1, Session2: w.s2, Session3: w.s3, Session4: w.s4,
 		Tier: w.tier, Channel: w.channel, FeedToken: w.feedToken, Alloc: w.alloc, Issuance: w.issuance,
-		PlanVersion: w.planVersion, PartnerOrg: w.partner,
+		PlanVersion: w.planVersion, PartnerOrg: w.partner, SalesLink: w.salesLink,
 	}
 }
 
@@ -362,6 +374,8 @@ func (e *sweepEnv) snapshot(t *testing.T, w *sweepWorld) map[string]string {
 		{"ticket delivery jobs", `SELECT count(*)::text FROM delivery_jobs WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id IN ` + inSessions + `)`, w.event},
 		{"ticket mail jobs", `SELECT count(*)::text FROM worker_jobs WHERE job_type = 'ticket.deliver'
 		   AND payload->>'ticket_id' IN (SELECT id::text FROM tickets WHERE session_id IN ` + inSessions + `)`, w.event},
+		{"sales links", `SELECT COALESCE(string_agg(id||':'||label||':'||status||':'||target_kind||':'||COALESCE(event_id::text,'-')||':'||utm::text||':'||updated_at, ',' ORDER BY id), '')
+		   FROM sales_links WHERE org_id = $1`, w.org},
 		{"session change journal", `SELECT count(*)::text FROM session_changes WHERE org_id = $1`, w.org},
 		{"session change mail jobs", `SELECT count(*)::text FROM worker_jobs WHERE job_type = 'session.change_email'
 		   AND payload->>'order_id' IN (SELECT id::text FROM orders WHERE org_id = $1)`, w.org},

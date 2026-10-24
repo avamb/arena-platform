@@ -73,6 +73,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/go/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Follow a printed sales link (QR code) to its page
+         * @description The public short-link redirect of the organizer sales links (spec 43,
+         *     section 4.1). No JWT, no cookie, outside `/v1`; `go.arenasoldout.com/<code>`
+         *     reaches it through a proxy rule, and it answers the same way on any host.
+         *
+         *     The destination is resolved at the moment of the scan by the fall chain of
+         *     spec 43 section 4.3 (session, event, promoter page, organization page; an
+         *     archived link goes to the organization page), so a printed code keeps
+         *     working after a sell-out, a cancellation or a renamed slug. A malformed or
+         *     unknown code goes to the platform's fallback page (`SHORT_LINK_FALLBACK_URL`)
+         *     and is not counted.
+         *
+         *     A scan of a known code is counted AFTER the redirect was sent and never
+         *     delays or breaks it: one per client and code per UTC day (in-memory
+         *     de-duplication, an IPv6 client by its /64), an obvious bot (by User-Agent,
+         *     or none) in the suspect counter instead. Only the day and the two-letter
+         *     country of a trusted proxy (`CF-IPCountry`, when `TRUSTED_PROXY_COUNT` > 0)
+         *     are stored; the address and the User-Agent are never stored or logged.
+         *
+         *     Rate limited per client IP (`PUBLIC_API_IP_RATE_LIMIT`) before any
+         *     database read; a refused scan is redirected to the fallback page, never
+         *     answered with an error body.
+         */
+        get: operations["getShortLinkRedirect"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /**
+         * Check a printed sales link without counting a scan
+         * @description Answers exactly like `GET /go/{code}` (same `Location`, same limits) but
+         *     never counts a scan: link previews and checkers send HEAD.
+         */
+        head: operations["headShortLinkRedirect"];
+        patch?: never;
+        trace?: never;
+    };
+    "/go/{code}/*": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Follow a printed sales link that carries a trailing part
+         * @description A printed address with a trailing slash or any trailing part
+         *     (`/go/<code>/`, `/go/<code>/anything`) is answered exactly like
+         *     `/go/{code}`: the part after the code is ignored.
+         */
+        get: operations["getShortLinkRedirectTail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /**
+         * Check a printed sales link that carries a trailing part, without counting
+         * @description A printed address with a trailing slash or any trailing part
+         *     (`/go/<code>/`, `/go/<code>/anything`) is answered exactly like
+         *     `/go/{code}`: the part after the code is ignored.
+         */
+        head: operations["headShortLinkRedirectTail"];
+        patch?: never;
+        trace?: never;
+    };
+    "/go": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Short-link host without a code
+         * @description The short-link host without a code (`go.arenasoldout.com/` arrives as
+         *     `/go/` after the proxy prefix): a redirect to the platform's fallback page.
+         */
+        get: operations["getShortLinkRoot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /**
+         * Short-link host without a code (HEAD)
+         * @description The short-link host without a code (`go.arenasoldout.com/` arrives as
+         *     `/go/` after the proxy prefix): a redirect to the platform's fallback page.
+         */
+        head: operations["headShortLinkRoot"];
+        patch?: never;
+        trace?: never;
+    };
+    "/go/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Short-link host without a code
+         * @description The short-link host without a code (`go.arenasoldout.com/` arrives as
+         *     `/go/` after the proxy prefix): a redirect to the platform's fallback page.
+         */
+        get: operations["getShortLinkRootSlash"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /**
+         * Short-link host without a code (HEAD)
+         * @description The short-link host without a code (`go.arenasoldout.com/` arrives as
+         *     `/go/` after the proxy prefix): a redirect to the platform's fallback page.
+         */
+        head: operations["headShortLinkRootSlash"];
+        patch?: never;
+        trace?: never;
+    };
     "/compat/bil24/json": {
         parameters: {
             query?: never;
@@ -4482,6 +4607,139 @@ export interface paths {
          *     Requires JWT + the `promo.read` permission.
          */
         get: operations["getPromoCodeAttemptSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sales-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the sales links of an organization
+         * @description Newest first. `status` defaults to `active`; `all` lists archived links
+         *     too. A page carries at most `limit` links and `next_cursor`, an opaque
+         *     string to pass as `cursor` for the next page (empty on the last page).
+         *
+         *     Requires JWT or API key + the `sales_link.read` permission.
+         */
+        get: operations["listSalesLinks"];
+        put?: never;
+        /**
+         * Create a tracked sales link
+         * @description Mints a short code that leads buyers to an event, a date, a promoter
+         *     page, the organization page or any http(s) address, and remembers where
+         *     the link is placed (a poster, a flyer, a post). The short address is
+         *     `short_url`; print it, or have it drawn as a QR code. When `utm` is
+         *     left out the link gets `utm_source=qr`, `utm_medium=offline`,
+         *     `utm_campaign` = the slug of the event (else of the promoter, else of the
+         *     organization) and `utm_content` = the code; the placements `social`,
+         *     `email` and `messenger` start with their own source and medium.
+         *
+         *     The target must belong to the organization: an event, session or
+         *     promoter of another organization answers 422 `sales_link.invalid_target`.
+         *     A `session` target also fills `event_id` from the session.
+         *
+         *     Requires JWT or API key + the `sales_link.manage` permission.
+         */
+        post: operations["createSalesLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sales-links/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one sales link
+         * @description The link with its short address, the page it leads to right now
+         *     (`destination_url`, without utm) and `destination_degraded`, true when
+         *     the target cannot be shown (the event is off sale or deleted, the
+         *     session is cancelled, the link is archived) and the code leads to a
+         *     higher page instead. A link of another organization answers 404.
+         *
+         *     Requires JWT or API key + the `sales_link.read` permission.
+         */
+        get: operations["getSalesLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a sales link
+         * @description A key that is absent keeps the stored value. `target` moves a code that
+         *     may already be printed: the link then leads to the new page, and the old
+         *     and the new target are written to the audit log
+         *     (`v1.sales_link.retarget`). `utm` replaces the whole set (`{}` or null
+         *     removes it). `status` `archived` stops the link leading to its target:
+         *     buyers who scan it land on the organization page. There is no delete.
+         *
+         *     Requires JWT or API key + the `sales_link.manage` permission.
+         */
+        patch: operations["updateSalesLink"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sales-links/{id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Scans and sales of one sales link
+         * @description `scans_total` and `suspect_total` are the all-time scan counters of the
+         *     link (a scan by an obvious bot counts as suspect). `by_day` and
+         *     `by_country` cover the days from `from` to `to`, both inclusive, UTC
+         *     (default: the last 30 days ending today, at most 366 days). `orders`
+         *     counts the orders that came through the link and were ever paid, their
+         *     tickets, and the revenue per currency in minor units after succeeded
+         *     refunds.
+         *
+         *     Requires JWT or API key + the `sales_link.read` permission.
+         */
+        get: operations["getSalesLinkStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sales-links/{id}/qr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * QR image of a sales link
+         * @description The QR code of the link's short address (`short_url`, exactly the string
+         *     the link answers carry), as a PNG or an SVG. The image is square, black
+         *     modules on white, error correction level Medium. `size` is the side in
+         *     pixels (PNG only, the SVG scales to any size), `margin` the quiet zone in
+         *     modules. The answer carries an `ETag` and `Cache-Control: private,
+         *     max-age=3600`; a repeated request with `If-None-Match` gets 304.
+         *
+         *     Requires JWT or API key + the `sales_link.read` permission.
+         */
+        get: operations["getSalesLinkQr"];
         put?: never;
         post?: never;
         delete?: never;
@@ -14183,6 +14441,63 @@ export interface components {
             entered: components["schemas"]["SummaryEntered"];
             /** @description Invitations of the session, whichever way they were issued. */
             complimentary: components["schemas"]["SummaryComplimentary"];
+            /**
+             * @description The paid orders of the session (paid, partially refunded or
+             *     refunded) grouped by where the buyer came from (spec 43): first
+             *     one entry per sales link the orders are attributed to, then one
+             *     per utm_source and utm_campaign pair of the orders without a
+             *     link (either label alone is enough), then the rest as one direct
+             *     entry. Present only on the
+             *     session summary, never on the event summary. An empty list when
+             *     the session has no paid orders.
+             */
+            sources: components["schemas"]["SessionSummarySource"][];
+        };
+        /** @description One source of a session's paid orders. Carries no buyer data. */
+        SessionSummarySource: {
+            /**
+             * @description sales_link when the orders are attributed to a sales link, utm
+             *     when they have no link but their attribution names a utm_source
+             *     or a utm_campaign, direct otherwise.
+             */
+            kind: string;
+            /**
+             * Format: uuid
+             * @description The sales link of the orders. Only for kind sales_link.
+             */
+            sales_link_id?: string;
+            /** @description The label of that sales link (where it is placed). Only for kind sales_link. */
+            label?: string;
+            /** @description The utm_source of the orders' attribution. Only for kind utm, absent when the orders named only a campaign. */
+            utm_source?: string;
+            /** @description The utm_campaign of the orders' attribution. Only for kind utm, absent when the orders named none. */
+            utm_campaign?: string;
+            /**
+             * Format: int64
+             * @description Number of paid orders from this source.
+             */
+            orders: number;
+            /**
+             * Format: int64
+             * @description Number of tickets of those orders, whatever their status.
+             */
+            tickets: number;
+            /**
+             * @description Revenue per currency: the totals of those orders minus their
+             *     succeeded refunds, in minor units. One entry per currency, by
+             *     currency code.
+             */
+            revenue: components["schemas"]["SessionSummarySourceRevenue"][];
+        };
+        /** @description The revenue of one source in one currency. */
+        SessionSummarySourceRevenue: {
+            /** @description ISO 4217 currency code. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Order totals minus succeeded refunds, in minor units.
+             */
+            amount_minor: number;
         };
         /** @description How many valid tickets were scanned at the door ("entered N of M"). */
         SummaryEntered: {
@@ -20178,6 +20493,212 @@ export interface components {
             /** @description Time of the latest attempt in the window (RFC 3339), null when none. */
             last_attempt_at?: string | null;
         };
+        /** @description Where a sales link leads. */
+        SalesLinkTarget: {
+            /**
+             * @description `org_page` (the organization page), `promoter_page`, `event`,
+             *     `session` (one date of an event) or `url` (any http or https address).
+             */
+            kind: string;
+            /**
+             * Format: uuid
+             * @description The event, for `event` and `session` targets.
+             */
+            event_id?: string | null;
+            /**
+             * Format: uuid
+             * @description The date, for `session` targets.
+             */
+            session_id?: string | null;
+            /**
+             * Format: uuid
+             * @description The promoter, for `promoter_page` targets.
+             */
+            promoter_id?: string | null;
+            /** @description The address, for `url` targets (http or https, no user name or password, at most 2048 characters). */
+            url?: string | null;
+        };
+        /** @description Body of `POST /v1/organizations/{org_id}/sales-links`. */
+        SalesLinkCreateRequest: {
+            /** @description Where the link leads. It must belong to the organization. */
+            target: components["schemas"]["SalesLinkTarget"];
+            /** @description Where the link is placed, 1 to 120 characters, for example "Poster at the theatre entrance". */
+            label: string;
+            /**
+             * @description `poster` (default), `flyer`, `sign`, `social`, `email`, `messenger`
+             *     or `other`.
+             */
+            placement_kind?: string;
+            /**
+             * @description utm_source, utm_medium, utm_campaign, utm_content and utm_term; each
+             *     value is up to 64 characters of letters, digits and . _ ~ - . When
+             *     left out or empty the link gets the defaults described on the route.
+             */
+            utm?: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * @description Body of `PATCH /v1/organizations/{org_id}/sales-links/{id}`. Send at
+         *     least one key; an absent key keeps the stored value.
+         */
+        SalesLinkUpdateRequest: {
+            /** @description New label, 1 to 120 characters. */
+            label?: string;
+            /** @description New placement, one of the values of the create request. */
+            placement_kind?: string;
+            /** @description The whole new set of utm labels. `{}` or null removes them. */
+            utm?: {
+                [key: string]: string;
+            } | null;
+            /** @description The new target. Moving a printed code is written to the audit log. */
+            target?: components["schemas"]["SalesLinkTarget"];
+            /** @description `active` or `archived`. */
+            status?: string;
+        };
+        /** @description A tracked sales link (spec 43). */
+        SalesLink: {
+            /**
+             * Format: uuid
+             * @description Id of the link.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization the link belongs to.
+             */
+            org_id: string;
+            /** @description The seven-character code in the short address. */
+            code: string;
+            /** @description The address to print or turn into a QR code, the short-link host plus the code. */
+            short_url: string;
+            /** @description Where the link leads. */
+            target: components["schemas"]["SalesLinkTarget"];
+            /** @description Where the link is placed. */
+            label: string;
+            /** @description `poster`, `flyer`, `sign`, `social`, `email`, `messenger` or `other`. */
+            placement_kind: string;
+            /** @description The utm labels added to the destination when a buyer scans the code. */
+            utm: {
+                [key: string]: string;
+            };
+            /** @description `active` or `archived`. */
+            status: string;
+            /**
+             * Format: int64
+             * @description Scans counted so far, bots excluded.
+             */
+            scan_count: number;
+            /**
+             * Format: int64
+             * @description Scans by clients that look like bots.
+             */
+            suspect_scan_count: number;
+            /** @description Time of the latest scan (RFC 3339), null when never scanned. */
+            last_scanned_at?: string | null;
+            /**
+             * Format: int64
+             * @description Orders that came through the link and were ever paid.
+             */
+            orders_count: number;
+            /** @description The page the code leads to right now, without utm. Empty when no page address can be built. */
+            destination_url: string;
+            /** @description True when the code leads to a higher page than its target (event off sale, date cancelled, link archived). */
+            destination_degraded: boolean;
+            /**
+             * Format: uuid
+             * @description The user who created the link, null for an API key.
+             */
+            created_by?: string | null;
+            /** @description The client that created it, `telegram_bot`, `admin_web`, `site_plugin`, `event_center_web` or `api`. */
+            created_via?: string | null;
+            /**
+             * Format: date-time
+             * @description When the link was created (RFC 3339).
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the link was last changed (RFC 3339).
+             */
+            updated_at: string;
+        };
+        /** @description One page of sales links, newest first. */
+        SalesLinkList: {
+            /** @description The links of this page. */
+            items: components["schemas"]["SalesLink"][];
+            /** @description Pass as `cursor` to get the next page. Empty on the last page. */
+            next_cursor: string;
+        };
+        /** @description Scans of one day. */
+        SalesLinkDayStats: {
+            /** @description The day, `YYYY-MM-DD` (UTC). */
+            day: string;
+            /**
+             * Format: int64
+             * @description Scans counted that day.
+             */
+            hits: number;
+            /**
+             * Format: int64
+             * @description Scans that day by clients that look like bots.
+             */
+            suspect_hits: number;
+        };
+        /** @description Scans from one country. */
+        SalesLinkCountryStats: {
+            /** @description Two-letter country code, empty when unknown. */
+            country: string;
+            /**
+             * Format: int64
+             * @description Scans counted from that country.
+             */
+            hits: number;
+        };
+        /** @description Revenue of a sales link in one currency. */
+        SalesLinkRevenue: {
+            /** @description ISO 4217 currency code. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Paid totals minus succeeded refunds, in minor units.
+             */
+            amount_minor: number;
+        };
+        /** @description The orders that came through a sales link and were ever paid. */
+        SalesLinkOrderStats: {
+            /**
+             * Format: int64
+             * @description Number of orders.
+             */
+            count: number;
+            /**
+             * Format: int64
+             * @description Number of tickets in those orders.
+             */
+            tickets: number;
+            /** @description Revenue per currency. */
+            revenue: components["schemas"]["SalesLinkRevenue"][];
+        };
+        /** @description Scans and sales of one sales link. */
+        SalesLinkStats: {
+            /**
+             * Format: int64
+             * @description All scans counted since the link was created, bots excluded.
+             */
+            scans_total: number;
+            /**
+             * Format: int64
+             * @description All scans by clients that look like bots.
+             */
+            suspect_total: number;
+            /** @description Scans per day in the asked range, oldest first. */
+            by_day: components["schemas"]["SalesLinkDayStats"][];
+            /** @description Scans per country in the asked range, the biggest first. */
+            by_country: components["schemas"]["SalesLinkCountryStats"][];
+            /** @description The orders that came through the link. */
+            orders: components["schemas"]["SalesLinkOrderStats"];
+        };
         /**
          * @description Envelope returned by
          *     `GET /v1/organizations/{org_id}/promo-code-redemptions` — the
@@ -20888,6 +21409,57 @@ export interface components {
              *     that does not ask for it, it is ignored and nothing is stored.
              */
             consent?: components["schemas"]["PublicCheckoutConsent"];
+            /**
+             * @description The sales link and utm labels that brought the buyer (spec 43),
+             *     optional. The server cleans it and, when `ref` is the code of a
+             *     sales link of this organization, attributes the order to that
+             *     link. An empty, invalid or too old object is not an error: the
+             *     order is created without attribution, because a purchase must
+             *     never fail over a label.
+             */
+            attribution?: components["schemas"]["CheckoutAttribution"];
+        };
+        /**
+         * @description Where the buyer came from (spec 43): the last touch, optionally with
+         *     the first one. Every utm value is at most 64 characters from
+         *     A-Z a-z 0-9 . _ ~ - (a value with any other character is dropped). A
+         *     touch older than 7 days or more than 5 minutes ahead of the server
+         *     clock is dropped whole. A touch with no ref, utm_source or utm_campaign is ignored.
+         */
+        CheckoutAttribution: {
+            /** @description The 7-character code of the sales link the buyer arrived through. */
+            ref?: string;
+            /** @description utm_source of the visit. */
+            utm_source?: string;
+            /** @description utm_medium of the visit. */
+            utm_medium?: string;
+            /** @description utm_campaign of the visit. */
+            utm_campaign?: string;
+            /** @description utm_content of the visit. */
+            utm_content?: string;
+            /** @description utm_term of the visit. */
+            utm_term?: string;
+            /**
+             * Format: date-time
+             * @description When the buyer arrived, RFC 3339. Absent means now.
+             */
+            landed_at?: string;
+            /** @description The buyer's first touch, when it differs from the last one. */
+            first?: components["schemas"]["CheckoutAttributionFirst"];
+        };
+        /** @description The first touch of a buyer, kept beside the last one. */
+        CheckoutAttributionFirst: {
+            /** @description The sales-link code of the first touch. */
+            ref?: string;
+            /** @description utm_source of the first touch. */
+            utm_source?: string;
+            /** @description utm_campaign of the first touch. */
+            utm_campaign?: string;
+            /**
+             * Format: date-time
+             * @description When the first touch happened, RFC 3339.
+             */
+            landed_at?: string;
         };
         /** @description The buyer's answer to the checkout consent checkbox (P2). */
         PublicCheckoutConsent: {
@@ -28154,6 +28726,238 @@ export interface operations {
                      */
                     "text/plain": string;
                 };
+            };
+        };
+    };
+    getShortLinkRedirect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The 7-character code of the sales link, read case-insensitively; anything after the 7th character is ignored. */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Redirect. `Location` is the link's destination with its utm labels
+             *     and `ref=<code>` added; or the platform's fallback page for a
+             *     malformed or unknown code and for a client over the per-IP limit
+             *     (nothing is counted then). The body is empty; `Cache-Control:
+             *     no-store` and `Referrer-Policy: no-referrer-when-downgrade` are set.
+             */
+            302: {
+                headers: {
+                    /** @description Where the scanner goes next. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The link could not be looked up right now (`short_link.unavailable`). Never 502. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    headShortLinkRedirect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The 7-character code of the sales link, read case-insensitively; anything after the 7th character is ignored. */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Redirect. `Location` is the link's destination with its utm labels
+             *     and `ref=<code>` added; or the platform's fallback page for a
+             *     malformed or unknown code and for a client over the per-IP limit
+             *     (nothing is counted then). The body is empty; `Cache-Control:
+             *     no-store` and `Referrer-Policy: no-referrer-when-downgrade` are set.
+             */
+            302: {
+                headers: {
+                    /** @description Where the scanner goes next. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The link could not be looked up right now (`short_link.unavailable`). Never 502. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getShortLinkRedirectTail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The 7-character code of the sales link, read case-insensitively; anything after the 7th character is ignored. */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Redirect. `Location` is the link's destination with its utm labels
+             *     and `ref=<code>` added; or the platform's fallback page for a
+             *     malformed or unknown code and for a client over the per-IP limit
+             *     (nothing is counted then). The body is empty; `Cache-Control:
+             *     no-store` and `Referrer-Policy: no-referrer-when-downgrade` are set.
+             */
+            302: {
+                headers: {
+                    /** @description Where the scanner goes next. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The link could not be looked up right now (`short_link.unavailable`). Never 502. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    headShortLinkRedirectTail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The 7-character code of the sales link, read case-insensitively; anything after the 7th character is ignored. */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Redirect. `Location` is the link's destination with its utm labels
+             *     and `ref=<code>` added; or the platform's fallback page for a
+             *     malformed or unknown code and for a client over the per-IP limit
+             *     (nothing is counted then). The body is empty; `Cache-Control:
+             *     no-store` and `Referrer-Policy: no-referrer-when-downgrade` are set.
+             */
+            302: {
+                headers: {
+                    /** @description Where the scanner goes next. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The link could not be looked up right now (`short_link.unavailable`). Never 502. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getShortLinkRoot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the platform's fallback page (`SHORT_LINK_FALLBACK_URL`). Nothing is counted. */
+            302: {
+                headers: {
+                    /** @description The fallback page. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    headShortLinkRoot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the platform's fallback page (`SHORT_LINK_FALLBACK_URL`). Nothing is counted. */
+            302: {
+                headers: {
+                    /** @description The fallback page. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getShortLinkRootSlash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the platform's fallback page (`SHORT_LINK_FALLBACK_URL`). Nothing is counted. */
+            302: {
+                headers: {
+                    /** @description The fallback page. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    headShortLinkRootSlash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the platform's fallback page (`SHORT_LINK_FALLBACK_URL`). Nothing is counted. */
+            302: {
+                headers: {
+                    /** @description The fallback page. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -44890,6 +45694,506 @@ export interface operations {
                 };
             };
             /** @description Internal server error (`promo_attempts.summary_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listSalesLinks: {
+        parameters: {
+            query?: {
+                /** @description Only links of this event (a session link carries its event). */
+                event_id?: string;
+                /** @description Only links to this date. */
+                session_id?: string;
+                /** @description `active` (default), `archived` or `all`. */
+                status?: string;
+                /** @description Page size, 1-100 (default 50). */
+                limit?: number;
+                /** @description The `next_cursor` of the previous page. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of links. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesLinkList"];
+                };
+            };
+            /** @description A filter is malformed (`sales_link.invalid_filter`, `sales_link.invalid_status`, `sales_link.invalid_limit`, `sales_link.invalid_cursor`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `sales_link.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_link.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createSalesLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SalesLinkCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description The new link. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesLink"];
+                };
+            };
+            /** @description A field is malformed (`sales_link.invalid_body`, `sales_link.invalid_label`, `sales_link.invalid_placement`, `sales_link.invalid_utm`, `sales_link.invalid_url`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `sales_link.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The target is missing, does not match its kind, or belongs to another organization (`sales_link.invalid_target`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_link.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSalesLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+                /** @description UUIDv7 of the sales link. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesLink"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `sales_link.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Link not found in this organization (`sales_link.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_link.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateSalesLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+                /** @description UUIDv7 of the sales link. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SalesLinkUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The link after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesLink"];
+                };
+            };
+            /** @description A field is malformed (`sales_link.invalid_body`, `sales_link.invalid_label`, `sales_link.invalid_placement`, `sales_link.invalid_utm`, `sales_link.invalid_url`, `sales_link.invalid_status`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `sales_link.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Link not found in this organization (`sales_link.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The new target does not match its kind or belongs to another organization (`sales_link.invalid_target`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_link.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSalesLinkStats: {
+        parameters: {
+            query?: {
+                /** @description First day of the series, `YYYY-MM-DD`. */
+                from?: string;
+                /** @description Last day of the series, `YYYY-MM-DD` (default today, UTC). */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+                /** @description UUIDv7 of the sales link. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The numbers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesLinkStats"];
+                };
+            };
+            /** @description The range is malformed (`sales_link.invalid_range`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `sales_link.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Link not found in this organization (`sales_link.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_link.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSalesLinkQr: {
+        parameters: {
+            query?: {
+                /** @description Image format, `png` (default) or `svg`. */
+                format?: string;
+                /** @description Side of the PNG in pixels, 256 to 2048 (default 1024). Ignored for SVG. */
+                size?: number;
+                /** @description Quiet zone around the code in modules, 2 to 8 (default 4). */
+                margin?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+                /** @description UUIDv7 of the sales link. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/svg+xml": string;
+                };
+            };
+            /** @description The image has not changed since the `If-None-Match` ETag. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A query parameter is out of range (`sales_link.invalid_qr_params`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `sales_link.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Link not found in this organization (`sales_link.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_link.failed`). */
             500: {
                 headers: {
                     [name: string]: unknown;

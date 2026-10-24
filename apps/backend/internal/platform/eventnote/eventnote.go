@@ -3,7 +3,7 @@
 // buyer of the event to read ("come 30 minutes early", "the cloakroom is
 // free").
 //
-// The text is stored in event_email_notes (migration 0165, 0167) after
+// The text is stored in event_email_notes (migration 0165, 0168) after
 // richtext.Normalize with the letter-text profile, as ART ("text Arena", a
 // small HTML subset) with note_format 'art'. A row nobody has written since
 // RT-02 is still plain text with note_format 'text'. Build is the ONE reader

@@ -36,6 +36,7 @@
 package hbil24
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -645,6 +646,11 @@ func (h *Handler) orderPersist(
 	bd hcheckout.PricingBreakdown,
 	promoCodeID *uuid.UUID,
 ) {
+	// Spec 43 section 4.4: the attribution's sales link is looked up on the
+	// pool BEFORE the order transaction; inside it only the resolved values
+	// are written.
+	ga := h.orderAttribution(ctx, req, cc)
+
 	tx, err := h.orderDeps.Pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		h.orderTransient(w, req, cc, "begin order tx failed", err)
@@ -692,7 +698,7 @@ func (h *Handler) orderPersist(
 		h.orderInternal(w, req, "checkout token minting failed", err)
 		return
 	}
-	cs, err := txq.InsertCheckoutSessionWithToken(ctx, cc.orgID, cc.channel.ID, res.ID, nil, token, nil)
+	cs, err := txq.InsertCheckoutSessionWithToken(ctx, cc.orgID, cc.channel.ID, res.ID, nil, token, nil, ga.json())
 	if err != nil {
 		h.orderInternal(w, req, "insert checkout session failed", err)
 		return
@@ -723,9 +729,11 @@ func (h *Handler) orderPersist(
 		BuyerPhone:        optionalString(req.Phone),
 		TierUnitPrices:    orderTierPrices(units),
 		ClientReported:    orderClientReported(req),
+		SalesLinkID:       ga.linkID,
+		Attribution:       ga.json(),
 	}
 
-	order, err := h.orderWriteAggregate(ctx, txq, in, customerID, cc, res)
+	order, err := h.orderWriteAggregate(ctx, txq, in, customerID, cc, res, ga)
 	if err != nil {
 		if errors.Is(err, errOpenOrderExists) {
 			// Money-safety fix: the transaction rolls back on this return
@@ -749,6 +757,16 @@ func (h *Handler) orderPersist(
 		}
 		h.orderInternal(w, req, "order write failed", err)
 		return
+	}
+	// Spec 43 decision 3 (Р-QL19): the checkout session carries the
+	// attribution the order holds. On a same-cart re-send the order keeps or
+	// merges an earlier touch, so the new session is brought in line with
+	// the order's final object, in this same transaction.
+	if order.CheckoutSessionID == cs.ID && !bytes.Equal(cs.Attribution, order.Attribution) {
+		if err := txq.SetCheckoutSessionAttribution(ctx, cs.ID, order.Attribution); err != nil {
+			h.orderInternal(w, req, "set checkout session attribution failed", err)
+			return
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		h.orderInternal(w, req, "commit order tx failed", err)
@@ -841,6 +859,7 @@ func (h *Handler) orderWriteAggregate(
 	customerID uuid.UUID,
 	cc cartCtx,
 	res gen.ReservationRow,
+	ga gatewayAttribution,
 ) (gen.OrderRow, error) {
 	existing, ferr := ordering.FindOpenOrder(ctx, txq, customerID, cc.sessionID)
 	switch {
@@ -851,6 +870,10 @@ func (h *Handler) orderWriteAggregate(
 		if (existing.Source == ordering.SourceComplimentary) != (in.Source == ordering.SourceComplimentary) {
 			return gen.OrderRow{}, errOrderKindChanged
 		}
+		// A different attribution is not a kind change: the newer touch
+		// wins and the order's earlier one is kept as "first" (spec 43
+		// section 4.4); a re-send without one keeps what the order has.
+		in.SalesLinkID, in.Attribution = ga.forUpdate(existing)
 		out, err := ordering.UpdateOrderFromCheckout(ctx, txq, ordering.UpdateInput{
 			OrderID: existing.ID, OrgID: existing.OrgID, CreateInput: in,
 		})
