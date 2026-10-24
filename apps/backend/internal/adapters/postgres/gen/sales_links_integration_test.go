@@ -151,6 +151,9 @@ func TestSalesLinks_LiveDB(t *testing.T) {
 	if err != nil || len(page2) != 1 || page2[0].ID != first.ID {
 		t.Fatalf("page 2: n=%d err=%v", len(page2), err)
 	}
+	if half, err := q.ListSalesLinks(ctx, gen.ListSalesLinksParams{OrgID: orgID, Limit: 2, CursorCreatedAt: &last.CreatedAt}); err != nil || len(half) != 2 {
+		t.Errorf("a half cursor must be ignored, not return an empty page: n=%d err=%v", len(half), err)
+	}
 	if bySession, err := q.ListSalesLinks(ctx, gen.ListSalesLinksParams{OrgID: orgID, SessionID: &sessID, Limit: 10}); err != nil || len(bySession) != 1 || bySession[0].ID != second.ID {
 		t.Errorf("session filter: n=%d err=%v", len(bySession), err)
 	}

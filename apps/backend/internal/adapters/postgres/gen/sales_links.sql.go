@@ -190,8 +190,15 @@ type ListSalesLinksParams struct {
 	Limit           int32
 }
 
-// ListSalesLinks returns links newest first, at most p.Limit of them.
+// ListSalesLinks returns links newest first, at most p.Limit of them. The
+// caller passes limit+1 to learn whether a next page exists. Status "" means
+// every status. The cursor counts only when BOTH CursorCreatedAt and CursorID
+// are set; one of them alone is ignored (a half cursor would compare NULL and
+// return an empty page).
 func (q *Queries) ListSalesLinks(ctx context.Context, p ListSalesLinksParams) ([]SalesLinkRow, error) {
+	if p.CursorCreatedAt == nil || p.CursorID == nil {
+		p.CursorCreatedAt, p.CursorID = nil, nil
+	}
 	rows, err := q.db.Query(ctx, listSalesLinks,
 		p.OrgID, p.EventID, p.SessionID, p.Status, p.CursorCreatedAt, p.CursorID, p.Limit)
 	if err != nil {
@@ -332,11 +339,11 @@ LEFT JOIN LATERAL (
     FROM   refunds r
     WHERE  r.state  = 'succeeded'
       AND  r.org_id = $2
-      AND  (r.order_id = lo.id
-            OR (r.order_id IS NULL AND (
-                   r.ticket_id IN (SELECT t.id FROM tickets t WHERE t.order_id = lo.id)
-                OR r.payment_intent_id IN (SELECT pi.id FROM payment_intents pi
-                                           WHERE pi.checkout_session_id = lo.checkout_session_id))))
+      AND  COALESCE(r.order_id,
+                    (SELECT t.order_id FROM tickets t WHERE t.id = r.ticket_id),
+                    (SELECT po.id FROM payment_intents pi
+                     JOIN   orders po ON po.checkout_session_id = pi.checkout_session_id
+                     WHERE  pi.id = r.payment_intent_id)) = lo.id
 ) rf ON true
 GROUP  BY lo.currency
 ORDER  BY lo.currency`
