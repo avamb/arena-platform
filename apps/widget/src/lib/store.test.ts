@@ -20,8 +20,9 @@ import {
   identifyGaTiers,
   planlessGaTiers,
   identifyGaAreas,
+  pickInitialSession,
 } from './store.js';
-import type { Geometry, CategoryPrice, Tier, FeedSession } from '../types.js';
+import type { Geometry, CategoryPrice, Tier, FeedSession, FeedEvent } from '../types.js';
 
 // ─── Mock Storage ─────────────────────────────────────────────────────────────
 
@@ -540,5 +541,40 @@ describe('planlessGaTiers', () => {
     expect(planlessGaTiers(null)).toBeNull();
     expect(planlessGaTiers(undefined)).toBeNull();
     expect(planlessGaTiers({ tiers: null })).toEqual([]);
+  });
+});
+
+// ─── pickInitialSession (spec 43: a QR for one date) ─────────────────────────
+
+describe('pickInitialSession', () => {
+  function sess(id: string, startAt: string, status = 'published'): FeedSession {
+    return { ...makeSession(), id, start_at: startAt, status };
+  }
+  function ev(sessions: FeedSession[]): FeedEvent {
+    return { id: 'ev-1', sessions } as unknown as FeedEvent;
+  }
+  const early = sess('s-early', '2026-03-01T10:00:00Z');
+  const late = sess('s-late', '2026-05-01T10:00:00Z');
+  const cancelled = sess('s-cancelled', '2026-02-01T10:00:00Z', 'cancelled');
+
+  it('opens on the deep-linked date', () => {
+    expect(pickInitialSession(ev([early, late]), 's-late')?.id).toBe('s-late');
+  });
+
+  it('opens on the earliest buyable date without a deep link', () => {
+    expect(pickInitialSession(ev([late, early]), '')?.id).toBe('s-early');
+  });
+
+  it('falls back to the earliest buyable date for an unknown id', () => {
+    expect(pickInitialSession(ev([late, early]), 'someone-elses')?.id).toBe('s-early');
+  });
+
+  it('does not preselect a cancelled date, even when it is deep-linked', () => {
+    expect(pickInitialSession(ev([cancelled, late, early]), 's-cancelled')?.id).toBe('s-early');
+  });
+
+  it('still shows the first date when every date is cancelled', () => {
+    expect(pickInitialSession(ev([cancelled]), 's-cancelled')?.id).toBe('s-cancelled');
+    expect(pickInitialSession(ev([]), '')).toBeNull();
   });
 });

@@ -20,6 +20,21 @@ function currentSearch(): string {
   return window.location.search;
 }
 
+const SESSION_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The session a link such as `/{org}/{event}?session=<uuid>` preselects
+ * (spec 43 section 5.1), or null. Only a well-formed uuid counts; whether the
+ * session exists is the widget's business (it ignores an unknown or foreign
+ * id and shows the first date). The address is only read, never changed. */
+export function preselectedSession(search: string): string | null {
+  try {
+    const v = new URLSearchParams(search).get('session')?.trim() ?? '';
+    return SESSION_UUID_RE.test(v) ? v.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
 export function renderLoading(container: HTMLElement, locale: PageLocale): void {
   clear(container);
   const p = document.createElement('p');
@@ -268,6 +283,11 @@ export function renderEvent(
   const widget = document.createElement('arena-tickets');
   widget.setAttribute('feed-token', data.feed_token);
   widget.setAttribute('event-id', data.event.id);
+  // `?session=<uuid>` (a QR for one date) selects that date; the date chips stay.
+  const wantedSession = preselectedSession(currentSearch());
+  if (wantedSession) {
+    widget.setAttribute('session-id', wantedSession);
+  }
   // The hero above already shows the poster whole; the widget's own cover
   // would print the same picture a second time, cropped.
   if (imageURL) {
