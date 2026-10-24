@@ -89,17 +89,20 @@ func scanEventRow(row interface {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const insertEvent = `-- name: InsertEvent :one
-INSERT INTO events (org_id, name, description, status, visibility, image_url)
-VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'draft'), COALESCE(NULLIF($5, ''), 'public'), $6)
+INSERT INTO events (org_id, name, description, status, visibility, image_url, description_format)
+VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'draft'), COALESCE(NULLIF($5, ''), 'public'), $6, COALESCE(NULLIF($7, ''), 'text'))
 RETURNING id, display_number, org_id, name, description, status, first_session_at, last_session_at, visibility, image_url, poster_media_id, slug, short_description, genre, age_rating, duration_minutes, teaser_url, trailer_url, meta_description, meta_keywords, created_at, updated_at, deleted_at`
 
 // InsertEvent creates a new active event row owned by the given org.
 // status defaults to 'draft' when empty; visibility defaults to 'public' when empty.
 // first_session_at / last_session_at start NULL — a new event has no sessions.
 // Returns the created row including the uuidv7 PK assigned by the database.
-func (q *Queries) InsertEvent(ctx context.Context, orgID uuid.UUID, name string, description *string, status, visibility string, imageURL *string) (EventRow, error) {
+// descriptionFormat ("text" or "art", empty means "text") says how the stored
+// description is to be read; a writer that has passed the text through
+// richtext.Normalize passes "art" (spec 44, RT-02).
+func (q *Queries) InsertEvent(ctx context.Context, orgID uuid.UUID, name string, description *string, status, visibility string, imageURL *string, descriptionFormat string) (EventRow, error) {
 	row := q.db.QueryRow(ctx, insertEvent,
-		orgID, name, description, status, visibility, imageURL,
+		orgID, name, description, status, visibility, imageURL, descriptionFormat,
 	)
 	return scanEventRow(row)
 }
@@ -353,6 +356,7 @@ const updateEvent = `-- name: UpdateEvent :one
 UPDATE events
 SET    name           = COALESCE(NULLIF($3, ''), name),
        description    = CASE WHEN $4::text IS NOT NULL THEN $4::text ELSE description END,
+       description_format = CASE WHEN $4::text IS NOT NULL THEN COALESCE(NULLIF($8::text, ''), 'text') ELSE description_format END,
        visibility     = COALESCE(NULLIF($5, ''), visibility),
        image_url      = CASE WHEN $6::text IS NOT NULL THEN $6::text ELSE image_url END,
        poster_media_id = CASE WHEN $7::uuid IS NOT NULL THEN $7::uuid ELSE poster_media_id END,
@@ -369,9 +373,11 @@ RETURNING id, display_number, org_id, name, description, status, first_session_a
 // it becomes the default for all sessions that have no session-level override.
 // Returns pgx.ErrNoRows when the event does not exist, does not belong to the org,
 // or has been soft-deleted.
-func (q *Queries) UpdateEvent(ctx context.Context, id, orgID uuid.UUID, name string, description *string, visibility string, imageURL *string, posterMediaID *uuid.UUID) (EventRow, error) {
+// descriptionFormat is stored together with a non-nil description (empty means
+// "text"); a nil description keeps the stored format.
+func (q *Queries) UpdateEvent(ctx context.Context, id, orgID uuid.UUID, name string, description *string, visibility string, imageURL *string, posterMediaID *uuid.UUID, descriptionFormat string) (EventRow, error) {
 	row := q.db.QueryRow(ctx, updateEvent,
-		id, orgID, name, description, visibility, imageURL, posterMediaID,
+		id, orgID, name, description, visibility, imageURL, posterMediaID, descriptionFormat,
 	)
 	return scanEventRow(row)
 }
@@ -655,4 +661,119 @@ func (q *Queries) SetEventSlugIfEmpty(ctx context.Context, id, orgID uuid.UUID, 
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LockEventDescription / ListEventI18nDescriptions / SetEventDescriptionART
+// (spec 44, RT-02: the format flag of an event covers its translations)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const lockEventDescription = `-- name: LockEventDescription :one
+SELECT description, description_format
+FROM   events
+WHERE  id = $1
+  AND  org_id = $2
+  AND  deleted_at IS NULL
+FOR UPDATE`
+
+// EventDescriptionState is the base description of an event and its format.
+type EventDescriptionState struct {
+	Description *string `json:"description"`
+	Format      string  `json:"format"`
+}
+
+// LockEventDescription reads the base description and its format flag of an
+// active event of the organization and, inside a transaction, locks the row.
+// pgx.ErrNoRows means the event does not exist, belongs to another
+// organization or has been soft-deleted.
+func (q *Queries) LockEventDescription(ctx context.Context, eventID, orgID uuid.UUID) (EventDescriptionState, error) {
+	var s EventDescriptionState
+	err := q.db.QueryRow(ctx, lockEventDescription, eventID, orgID).Scan(&s.Description, &s.Format)
+	return s, err
+}
+
+const listEventI18nDescriptions = `-- name: ListEventI18nDescriptions :many
+SELECT locale, value
+FROM   i18n_text
+WHERE  namespace = 'event.description'
+  AND  key = $1`
+
+// EventI18nDescription is one translated description of an event.
+type EventI18nDescription struct {
+	Locale string `json:"locale"`
+	Value  string `json:"value"`
+}
+
+// ListEventI18nDescriptions returns every translated description of the event
+// (key is the event UUID as a string).
+func (q *Queries) ListEventI18nDescriptions(ctx context.Context, eventIDStr string) ([]EventI18nDescription, error) {
+	rows, err := q.db.Query(ctx, listEventI18nDescriptions, eventIDStr)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []EventI18nDescription
+	for rows.Next() {
+		var d EventI18nDescription
+		if err := rows.Scan(&d.Locale, &d.Value); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+const setEventDescriptionART = `-- name: SetEventDescriptionART :exec
+UPDATE events
+SET    description = $2,
+       description_format = 'art',
+       updated_at = now()
+WHERE  id = $1`
+
+// SetEventDescriptionART stores an already normalized base description and
+// marks the event's descriptions (base and translations) as ART.
+func (q *Queries) SetEventDescriptionART(ctx context.Context, eventID uuid.UUID, description *string) error {
+	_, err := q.db.Exec(ctx, setEventDescriptionART, eventID, description)
+	return err
+}
+
+const getEventDescriptionFormat = `-- name: GetEventDescriptionFormat :one
+SELECT description_format
+FROM   events
+WHERE  id = $1`
+
+// GetEventDescriptionFormat reads the format flag of the event's descriptions
+// ("text" or "art") without locking the row.
+func (q *Queries) GetEventDescriptionFormat(ctx context.Context, eventID uuid.UUID) (string, error) {
+	var f string
+	err := q.db.QueryRow(ctx, getEventDescriptionFormat, eventID).Scan(&f)
+	return f, err
+}
+
+const listEventDescriptionFormats = `-- name: ListEventDescriptionFormats :many
+SELECT id, description_format
+FROM   events
+WHERE  id = ANY($1::uuid[])`
+
+// ListEventDescriptionFormats returns the format flag ("text" or "art") of the
+// descriptions of the given events, keyed by event id.
+func (q *Queries) ListEventDescriptionFormats(ctx context.Context, eventIDs []uuid.UUID) (map[uuid.UUID]string, error) {
+	out := make(map[uuid.UUID]string, len(eventIDs))
+	if len(eventIDs) == 0 {
+		return out, nil
+	}
+	rows, err := q.db.Query(ctx, listEventDescriptionFormats, eventIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var f string
+		if err := rows.Scan(&id, &f); err != nil {
+			return nil, err
+		}
+		out[id] = f
+	}
+	return out, rows.Err()
 }

@@ -672,7 +672,7 @@ other = "Listo →"
 other = "Varias categorías necesitan al menos dos. Si solo hay una, elige “Una categoría”."
 
 ["bot.wz.ask_description"]
-other = "Descripción del evento para los compradores, en un solo mensaje, de hasta 4000 caracteres. Puedes omitirla.\n\nFormato: una línea en blanco empieza un párrafo nuevo, **negrita**, _cursiva_, las líneas que empiezan por “- ” forman una lista."
+other = "Escribe el texto como siempre: le daré formato y te enseñaré el resultado.\n\nLa descripción del evento para los compradores, en un solo mensaje, de hasta 4000 caracteres. Puedes omitir este paso."
 
 ["bot.wz.ask_currency"]
 other = "¿Moneda de los precios?"
@@ -921,7 +921,7 @@ other = "cargado"
 other = "ninguno"
 
 ["bot.wz.edit_ask_description"]
-other = "Envía la nueva descripción en un solo mensaje, de hasta 4000 caracteres.\n\nFormato: una línea en blanco empieza un párrafo nuevo, **negrita**, _cursiva_, las líneas que empiezan por “- ” forman una lista."
+other = "Escribe el nuevo texto como siempre: le daré formato y te enseñaré el resultado.\n\nEn un solo mensaje, de hasta 4000 caracteres."
 
 ["bot.wz.edit_desc_now"]
 other = "Ahora:\n<i>{{.Text}}</i>\n\n"
@@ -4097,3 +4097,110 @@ other = "Listo. El enlace vuelve a estar activo."
 
 ["bot.ql.gone"]
 other = "Este enlace ya no está en la lista. Abre el menú de enlaces y elige otro."
+["bot.wz.err_description"]
+other = "No se aceptó la descripción. Cambia el texto y envíalo de nuevo."
+
+["bot.wz.err_description_too_long"]
+other = "La descripción es demasiado larga. Acorta el texto y envíalo de nuevo."
+
+["bot.wz.err_description_chars"]
+other = "La descripción tiene un carácter oculto o de control. Escribe el texto de nuevo o pégalo como texto sin formato."
+
+["bot.tf.formatting"]
+other = "Dando formato al texto…"
+
+["bot.tf.preview_ask"]
+other = "Así queda el texto. ¿Lo guardo así?"
+
+["bot.tf.not_applied_note"]
+other = "Aquí tienes el texto sin resaltados, tal como lo escribiste.\n\n"
+
+["bot.tf.save_btn"]
+other = "Guardar así"
+
+["bot.tf.plain_btn"]
+other = "Sin formato"
+
+["bot.tf.again_btn"]
+other = "Dar formato otra vez"
+
+["bot.tf.cancel_btn"]
+other = "Cancelar"
+
+["bot.tf.expired"]
+other = "Se acabó el tiempo. Envía el texto otra vez."
+
+["bot.tf.cancelled"]
+other = "De acuerdo, el texto se queda como estaba."
+
+["bot.tf.err_too_long"]
+other = "El texto es demasiado largo: hasta {{.Limit}} caracteres. Acórtalo y envíalo otra vez."
+
+["bot.tf.err_links"]
+other = "El texto tiene demasiados enlaces: hasta {{.Max}}. Quita algunos y envíalo otra vez."
+
+["bot.tf.err_scheme"]
+other = "El texto tiene una dirección que no empieza por https://. Cámbiala y envía el texto otra vez."
+
+["bot.tf.err_chars"]
+other = "El texto tiene un carácter oculto. Escríbelo de nuevo o pégalo como texto sin formato."
+
+["bot.tf.err_generic"]
+other = "Este texto no sirvió. Revísalo y envíalo otra vez."
+
+["bot.tf.event_btn"]
+other = "✉ Texto en el correo"
+
+["bot.tf.note_title"]
+other = "<b>Texto en el correo</b> · {{.Name}}"
+
+["bot.tf.note_about"]
+other = "Los compradores ven este texto en el correo con la entrada y en el correo sobre una fecha cambiada o cancelada. El correo añade solo el saludo y la fecha: no los escribas."
+
+["bot.tf.note_none"]
+other = "Ahora no hay texto."
+
+["bot.tf.note_now"]
+other = "Ahora en el correo:\n\n{{.Text}}"
+
+["bot.tf.note_add_btn"]
+other = "Añadir texto"
+
+["bot.tf.note_edit_btn"]
+other = "Cambiar"
+
+["bot.tf.note_delete_btn"]
+other = "Borrar el texto"
+
+["bot.tf.note_test_btn"]
+other = "Enviarme un correo de prueba"
+
+["bot.tf.note_ask"]
+other = "Escribe el texto como siempre: le daré formato y te enseñaré el resultado. El correo añade solo el saludo y la fecha.\n\nHasta {{.Limit}} caracteres y {{.Max}} enlaces."
+
+["bot.tf.note_saved"]
+other = "Listo, el texto del correo está actualizado."
+
+["bot.tf.note_save_failed"]
+other = "No se pudo guardar el texto. Inténtalo otra vez."
+
+["bot.tf.note_delete_ask"]
+other = "¿Borrar el texto de los correos de este evento?"
+
+["bot.tf.note_delete_yes_btn"]
+other = "Sí, borrar"
+
+["bot.tf.note_delete_no_btn"]
+other = "No, conservarlo"
+
+["bot.tf.note_deleted"]
+other = "El texto se ha quitado de los correos."
+
+["bot.tf.note_test_sent"]
+other = "El correo de prueba va hacia {{.Email}}. Llega en un minuto."
+
+["bot.tf.note_test_empty"]
+other = "Escribe primero el texto: sin él, el correo de prueba no tiene nada que mostrar."
+
+["bot.tf.note_test_limit"]
+other = "Demasiados correos de prueba en la última hora. Prueba más tarde."

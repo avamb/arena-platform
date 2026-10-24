@@ -257,6 +257,18 @@ describe("emptyEventForm / eventToForm / validateEventForm", () => {
     });
   });
 
+  it("eventToForm loads description_legacy, never the stored ART markup (RT-03a)", () => {
+    const f = eventToForm(
+      ev({
+        description: '<p>Hi <a href="https://e.com">x</a></p>',
+        description_format: "art",
+        description_html: '<p>Hi <a href="https://e.com">x</a></p>',
+        description_legacy: "Hi x (https://e.com)",
+      }),
+    );
+    expect(f.description).toBe("Hi x (https://e.com)");
+  });
+
   it("eventToForm renders a null description as an empty string", () => {
     expect(eventToForm(ev({ description: null })).description).toBe("");
   });

@@ -174,7 +174,7 @@ func TestPromoters0113_CRUDAndOrgIsolation(t *testing.T) {
 	}
 
 	// Event link.
-	ev, err := f.q.InsertEvent(context.Background(), orgA, "Prom0113 Event", nil, "draft", "public", nil)
+	ev, err := f.q.InsertEvent(context.Background(), orgA, "Prom0113 Event", nil, "draft", "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestPromoters0113_CRUDAndOrgIsolation(t *testing.T) {
 	assertEventPromoterInList(t, f, base, keyA, ev.ID.String(), "", "")
 
 	// Another org's event → 404.
-	evB, err := f.q.InsertEvent(context.Background(), orgB, "Prom0113 B Event", nil, "draft", "public", nil)
+	evB, err := f.q.InsertEvent(context.Background(), orgB, "Prom0113 B Event", nil, "draft", "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent B: %v", err)
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -179,6 +180,26 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 	}
 	h.prewarmCompatIDs(ctx, compatids.KindAction, actionIDs)
 
+	// Spec 44 (RT-03b): the description is rendered by the event's format
+	// flag, read for the whole catalog in one round trip. A failure is fatal:
+	// guessing "text" for an ART description would show the tags to every
+	// visitor of the site, and omitting it would blank the site's copy.
+	// The format is a second statement, not part of the event query: a PATCH or
+	// a backfill that converts an event between the two reads can give one
+	// answer the old text with the new format. The text is sanitised either
+	// way, the worst case is tags shown as words in that one answer, and the
+	// site's next fetch is right.
+	descFormats, ferr := h.eventQueries.ListEventDescriptionFormats(ctx, actionIDs)
+	if ferr != nil {
+		h.logger.Error("bil24_compat: GET_ALL_ACTIONS: list description formats failed",
+			slog.String("error", ferr.Error()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInternalError, "failed to retrieve action list",
+		))
+		return
+	}
+
 	actionList := make([]map[string]any, 0, len(events))
 	for _, e := range events {
 		// Spec §7.1: only status='published' events appear in the catalog.
@@ -187,7 +208,9 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		if authed && e.Status != "published" {
 			continue
 		}
-		actionList = append(actionList, h.buildActionEntry(ctx, e, organizerID, organizerName, byEvent[e.ID]))
+		ae := byEvent[e.ID]
+		ae.descriptionFormat = descFormats[e.ID]
+		actionList = append(actionList, h.buildActionEntry(ctx, e, organizerID, organizerName, ae))
 	}
 
 	if authed {
@@ -235,7 +258,9 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 //     migrated before AB-47 landed the poster_media_id column.
 //     Both keys carry the same URL in this wave — sizing (thumb vs
 //     hero) is deferred until media_objects grows a variants surface.
-//   - description    — e.Description raw HTML.
+//   - description    — richtext.Render of e.Description with the event's format
+//     flag (ae.descriptionFormat): safe HTML (spec 44, RT-03b). The sites'
+//     plugins render it as HTML; an old "text" row is converted on the fly.
 //
 // The nested actionEventList and the minPrice / maxPrice envelope arrive
 // pre-built in `ae` (feature #497, cmd_catalog_events.go) — this helper
@@ -330,8 +355,27 @@ func (h *Handler) buildActionEntry(
 		action["bigPosterUrl"] = url
 		action["smallPosterUrl"] = url
 	}
+	// Spec 44 (RT-03b): the sites' plugins expect HTML, so the description is
+	// sent as richtext.Render of the stored text with the event's own format
+	// flag (the flag covers the translations ListEvents resolved). ART gets
+	// rel="noopener noreferrer" target="_blank" on its links, and an old
+	// "text" row is converted on the fly, so "**bold**" reaches the site as
+	// <strong> instead of literal asterisks.
+	//
+	// A row still marked "text" whose content has the tags of the white list
+	// (richtext.LooksLikeHTML) is HTML a site wrote before the format flag
+	// existed: it is rendered as ART (sanitised, paragraphs like wpautop), so
+	// the site gets its own HTML back and never escaped tags.
 	if e.Description != nil {
-		action["description"] = *e.Description
+		format := ae.descriptionFormat
+		if format != richtext.FormatART && richtext.LooksLikeHTML(*e.Description) {
+			// Until the backfill has run, the descriptions the sites wrote
+			// through source=bil24 are HTML marked "text". They go back to the
+			// site as the (sanitised) HTML they sent, never as escaped tags.
+			format = richtext.FormatART
+		}
+		html, _ := richtext.Render(*e.Description, format, richtext.ProfileDescription)
+		action["description"] = html
 	}
 	// Spec §7.1 (slice 19): organizerId is organizations.display_number
 	// (bigint, migration 0072) for the event's owning org. Passed in

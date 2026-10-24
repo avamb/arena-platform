@@ -563,6 +563,18 @@ type Config struct {
 	// counter lives in the memory of one arena-api process, so with several
 	// replicas the ceiling is this value times the replica count.
 	PosterReadsPerOrgPerDay int `env:"POSTER_READS_PER_ORG_PER_DAY" required:"false" default:"50"`
+	// TextFormatLLMModel is the model that adds markup to an organizer's text
+	// (internal/platform/textformat, POST .../texts/format, spec 44 RT-04). It
+	// uses the same key and base URL as the poster reading (POSTER_LLM_API_KEY,
+	// POSTER_LLM_BASE_URL); without the key the route answers 200 with the
+	// plain conversion of the text and ai_applied=false.
+	TextFormatLLMModel string `env:"TEXT_FORMAT_LLM_MODEL" required:"false" default:"claude-haiku-5-5"`
+	// TextFormatsPerUserPerDay and TextFormatsPerOrgPerDay cap the model calls
+	// of that route per person and per organization in a sliding 24 hours (each
+	// call costs money). 0 switches that cap off. Like the poster cap the
+	// counters live in the memory of one arena-api process.
+	TextFormatsPerUserPerDay int `env:"TEXT_FORMATS_PER_USER_PER_DAY" required:"false" default:"100"`
+	TextFormatsPerOrgPerDay  int `env:"TEXT_FORMATS_PER_ORG_PER_DAY" required:"false" default:"500"`
 	// OpsWatchdogHeartbeatHourUTC is the UTC hour (0-23) at which the
 	// ops.watchdog job sends its once-daily "still alive" digest.
 	OpsWatchdogHeartbeatHourUTC int `env:"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC" required:"false" default:"7"`
@@ -801,6 +813,7 @@ func LoadFor(role Role) (*Config, error) {
 		PosterLLMAPIKey:             getenv("POSTER_LLM_API_KEY", ""),
 		PosterLLMModel:              getenv("POSTER_LLM_MODEL", "claude-sonnet-5"),
 		PosterLLMBaseURL:            getenv("POSTER_LLM_BASE_URL", DefaultPosterLLMBaseURL),
+		TextFormatLLMModel:          strings.TrimSpace(getenv("TEXT_FORMAT_LLM_MODEL", "claude-haiku-5-5")),
 
 		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
 	}
@@ -913,6 +926,26 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, fmt.Errorf("POSTER_READS_PER_ORG_PER_DAY must not be negative (0 switches the cap off), got %d", posterReads))
 	}
 	cfg.PosterReadsPerOrgPerDay = posterReads
+
+	// TEXT_FORMATS_PER_USER_PER_DAY / TEXT_FORMATS_PER_ORG_PER_DAY: model calls of
+	// the text-formatting route per person and per organization per day.
+	for _, capEnv := range []struct {
+		name string
+		def  int
+		dst  *int
+	}{
+		{"TEXT_FORMATS_PER_USER_PER_DAY", 100, &cfg.TextFormatsPerUserPerDay},
+		{"TEXT_FORMATS_PER_ORG_PER_DAY", 500, &cfg.TextFormatsPerOrgPerDay},
+	} {
+		v, err := getenvInt(capEnv.name, capEnv.def)
+		if err != nil {
+			parseErrs = append(parseErrs, err)
+		}
+		if v < 0 {
+			parseErrs = append(parseErrs, fmt.Errorf("%s must not be negative (0 switches the cap off), got %d", capEnv.name, v))
+		}
+		*capEnv.dst = v
+	}
 
 	// PUBLIC_TICKETS_BASE_URL / WIDGET_PAYMENT_WINDOW_SECONDS /
 	// WIDGET_PAYMENT_GRACE_SECONDS — widget hosted-payment redirect flow.
