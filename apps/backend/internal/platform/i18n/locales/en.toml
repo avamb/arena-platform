@@ -4172,10 +4172,10 @@ other = "🔗 <b>{{.Label}}</b>\n{{.Place}}"
 other = "Short address: {{.URL}}"
 
 ["bot.ql.card_dest"]
-other = "The code leads to: {{.URL}}"
+other = "Leads now to: {{.URL}}"
 
 ["bot.ql.card_no_dest"]
-other = "The page address is not known yet. Press «Redirect» and choose another target."
+other = "Leads now to the platform's fallback page: no sales page address could be built."
 
 ["bot.ql.card_degraded"]
 other = "The code leads to a higher page than its target. The reason: the event is off sale, the session no longer sells, or the target is gone. Put the event back on sale or press «Redirect»."
@@ -4185,6 +4185,21 @@ other = "The link is in the archive. The code leads to the page with all events.
 
 ["bot.ql.card_counts"]
 other = "Scans: {{.Scans}}. Orders: {{.Orders}}."
+
+["bot.ql.card_why_event_unpublished"]
+other = "The event is not on sale yet (not published), so the code leads to the general page (the address above). Publish the event and the code will lead to its page by itself. You do not need a redirect."
+
+["bot.ql.card_why_event_no_page"]
+other = "The event has no sales page yet, so the code leads to the general page (the address above). A redirect will not help. Write to support and we will add the page."
+
+["bot.ql.card_why_session"]
+other = "The session no longer sells (canceled or deleted), so the code leads to the event page (the address above). To send the code to another session, press «Redirect»."
+
+["bot.ql.card_why_promoter"]
+other = "The promoter sits in the archive or has no page, so the code leads to the organization page (the address above). Restore the promoter or press «Redirect»."
+
+["bot.ql.card_why_no_address"]
+other = "No sales page address could be built: the platform or the organization has no sales page address set. A redirect will not help. Write to support."
 
 ["bot.ql.stats_btn"]
 other = "Statistics"
@@ -4236,6 +4251,15 @@ other = "Yes, redirect"
 
 ["bot.ql.rt_done"]
 other = "Done. The code <b>{{.Label}}</b> leads to the new page now."
+
+["bot.ql.rt_same"]
+other = "The target did not change: the code <b>{{.Label}}</b> leads to the same place. Nothing changed."
+
+["bot.ql.rt_done_same_dest"]
+other = "The target changed. The address the code <b>{{.Label}}</b> leads to stays the same. The reason is below."
+
+["bot.ql.rt_done_no_dest"]
+other = "The target changed. The code <b>{{.Label}}</b> still leads to the platform's fallback page. The reason is below."
 
 ["bot.ql.archived_done"]
 other = "Done. The link is in the archive. Its code leads to the page with all events."
