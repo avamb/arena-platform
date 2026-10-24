@@ -255,6 +255,11 @@ func (w *Wizard) saveReason(loc string, err error) string {
 		return w.texts.T(loc, "bot.wz.err_forbidden", nil)
 	}
 	var ae *APIError
+	if errors.As(err, &ae) && ae.Code == "import.invalid_description" {
+		// A refused description: the organizer reads a text of the bot, by the
+		// reason, never the English message of the API.
+		return w.texts.T(loc, descriptionRefusalKey(ae.Reason), nil)
+	}
 	if errors.As(err, &ae) && ae.Message != "" {
 		return Esc(ae.Message)
 	}

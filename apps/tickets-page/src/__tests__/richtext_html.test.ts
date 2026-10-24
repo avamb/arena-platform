@@ -1,13 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   descriptionPlain,
   hasDescription,
   renderArtHtml,
   renderDescription,
   renderRichText,
+  resetMissingDescriptionHtmlReport,
   safeHref,
 } from '../lib/richtext.ts';
 import { applyDocumentChrome, renderEvent } from '../lib/render.ts';
@@ -206,6 +207,36 @@ describe('renderArtHtml: the safe subset', () => {
     expect(box.querySelectorAll('blockquote').length).toBeLessThanOrEqual(33);
   });
 
+  it('past the depth limit skips dropped elements with their content', () => {
+    const open = '<blockquote>'.repeat(40);
+    const close = '</blockquote>'.repeat(40);
+    const deep =
+      open +
+      'visible<script>alert(1)</script><style>p{display:none}</style><textarea>area text</textarea>' +
+      '<noscript>no script text</noscript><template><p>tpl</p></template> tail<a href="javascript:alert(2)">link</a>' +
+      close;
+    const box = document.createElement('div');
+    box.appendChild(renderArtHtml(document, deep));
+    expect(box.textContent).toBe('visible taillink');
+    expect(box.innerHTML).not.toMatch(/alert|display|area text|no script|tpl|<a /);
+  });
+
+  it('drops <template>, <noscript>, <textarea> and <title> with their content', () => {
+    expect(html('<p>a</p><template><p>x</p><script>alert(1)</script></template><p>b</p>')).toBe('<p>a</p><p>b</p>');
+    expect(html('<p>a</p><noscript><p>no</p><img src=x onerror=alert(1)></noscript><p>b</p>')).toBe('<p>a</p><p>b</p>');
+    expect(html('<p>a</p><textarea>secret</textarea><title>tt</title><p>b</p>')).toBe('<p>a</p><p>b</p>');
+  });
+
+  it('keeps no link from a MathML or SVG <a href="javascript:">', () => {
+    const out = html(
+      '<p>m</p><math><a href="javascript:alert(1)">math link</a></math>' +
+        '<svg><a href="javascript:alert(2)" xlink:href="javascript:alert(3)"><text>svg link</text></a></svg>' +
+        '<math><mi xlink:href="javascript:alert(4)">mi</mi></math>',
+    );
+    expect(out).not.toMatch(/javascript|alert|<a |href|<svg|<math/);
+    expect(out).toContain('math link');
+  });
+
   it('renders nothing for an empty string and for a comment', () => {
     expect(html('')).toBe('');
     expect(html('<!-- x -->')).toBe('');
@@ -235,6 +266,23 @@ describe('the page falls back to the old fields', () => {
     );
     expect(box({ description: 'A **bold** word' })).toBe('<p>A <strong>bold</strong> word</p>');
     expect(box({ description: 'A **bold** word', description_html: null })).toBe('<p>A <strong>bold</strong> word</p>');
+  });
+
+  it('reports a description that came without description_html as an error, once', () => {
+    resetMissingDescriptionHtmlReport();
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      renderDescription(document, { description: '<p>raw art</p>', description_html: null });
+      renderDescription(document, { description: 'again', description_html: null });
+      expect(spy).toHaveBeenCalledTimes(1);
+      // with description_html, or with no description at all, nothing is logged
+      resetMissingDescriptionHtmlReport();
+      renderDescription(document, { description: 'x', description_html: '<p>x</p>' });
+      renderDescription(document, { description: null, description_html: null });
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('hasDescription sees either field', () => {

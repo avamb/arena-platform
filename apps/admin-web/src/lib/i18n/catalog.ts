@@ -138,6 +138,10 @@ export const ruCatalog: Catalog = {
   "forbidden.title": "Доступ запрещён",
   "forbidden.body":
     "У вас нет необходимых прав для просмотра этого раздела. Если это ошибка, обратитесь к платформенному администратору.",
+
+  // Event description edit form
+  "events.descriptionHint":
+    "Правка в этом поле убирает ссылки, заголовки и подчёркивание — для полного оформления используйте ивент-центр",
 };
 
 /** English catalog (fallback / switchable). */
@@ -240,6 +244,10 @@ export const enCatalog: Catalog = {
   "forbidden.title": "Access denied",
   "forbidden.body":
     "You do not have permission to view this section. If this is unexpected, contact a platform administrator.",
+
+  // Event description edit form
+  "events.descriptionHint":
+    "Editing this field removes links, headings and underline. Use the event center for full formatting.",
 };
 
 export const CATALOGS: Readonly<Record<LocaleCode, Catalog>> = {

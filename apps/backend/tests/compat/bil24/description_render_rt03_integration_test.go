@@ -96,14 +96,34 @@ func TestCompatBil24_RT03_CatalogDescriptionIsRenderedHTML(t *testing.T) {
 	}
 
 	// An old text row: the marks become markup instead of literal asterisks,
-	// and a literal tag is shown as text.
-	setDescription("A **bold** word and <b>tag</b>\n\n- one\n- two", "text")
+	// and a "<" that is not a tag is shown as text.
+	setDescription("A **bold** word and a < b\n\n- one\n- two", "text")
 	got = catalogDescription()
-	want = "<p>A <strong>bold</strong> word and &lt;b&gt;tag&lt;/b&gt;</p><ul><li>one</li><li>two</li></ul>"
+	want = "<p>A <strong>bold</strong> word and a &lt; b</p><ul><li>one</li><li>two</li></ul>"
 	if got != want {
 		t.Errorf("text description on the wire =\n  %q\nwant\n  %q", got, want)
 	}
 	if strings.Contains(got, "**") {
 		t.Errorf("the site would still show asterisks: %q", got)
+	}
+
+	// HTML a site wrote through source=bil24 before the format flag existed is
+	// marked "text". The site gets its HTML back (sanitised), never escaped
+	// tags: with <p> as it is, and WordPress-style (blank lines, no <p>) with
+	// paragraphs like wpautop.
+	setDescription(`<p>Hello <b>site</b> <a href="https://example.com/x">link</a></p><script>alert(1)</script>`, "text")
+	got = catalogDescription()
+	want = `<p>Hello <strong>site</strong> <a href="https://example.com/x" rel="noopener noreferrer" target="_blank">link</a></p>`
+	if got != want {
+		t.Errorf("site HTML marked text on the wire =\n  %q\nwant\n  %q", got, want)
+	}
+	if strings.Contains(got, "&lt;") {
+		t.Errorf("the site would show tags as words: %q", got)
+	}
+	setDescription("First <strong>paragraph</strong>.\r\n\r\nSecond,\r\nsame paragraph.", "text")
+	got = catalogDescription()
+	want = "<p>First <strong>paragraph</strong>.</p><p>Second,<br>same paragraph.</p>"
+	if got != want {
+		t.Errorf("WordPress text on the wire =\n  %q\nwant\n  %q", got, want)
 	}
 }

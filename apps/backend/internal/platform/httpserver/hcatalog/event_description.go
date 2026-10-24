@@ -84,6 +84,17 @@ func localesOf(m map[string]string) []string {
 // hydrateDescriptionFormats fills DescriptionFormat from one batched query.
 // Like the other hydrations it is presentational: a failure logs and leaves
 // the field empty, which a reader must treat as unknown.
+//
+// The format is read by a second statement, not by the query that read the
+// description (the format is not in the shared event SELECTs, and this batch
+// costs one round trip for the whole list). A PATCH or a backfill that
+// converts this event between the two statements can give ONE response the
+// old text with the new format, or the reverse. For display that is harmless:
+// the views are rebuilt by the sanitiser from whatever it gets, so nothing
+// unsafe can come out of it, the worst case is tags shown as words (or marks
+// lost) in that one response, and the next request is right. Nothing is
+// written back from these views. A reader that WRITES back what it read (the
+// event-bundle export) reads both in one RepeatableRead snapshot instead.
 func (h *Handler) hydrateDescriptionFormats(ctx context.Context, responses []eventResponse) {
 	if h.eventQueries == nil || len(responses) == 0 {
 		return

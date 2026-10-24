@@ -113,14 +113,13 @@ type purgeResult struct {
 var (
 	markerLineRE = regexp.MustCompile(`^\s*[-*•]\s+\S`)
 	literalTagRE = regexp.MustCompile(`<[^<>\n]{1,200}>`)
-	// htmlTagRE finds a tag of the white list of the sanitiser (and the block
-	// tags a site editor puts around them): a text that has one was written as
-	// HTML by a site, not as the old plain text with marks.
-	htmlTagRE = regexp.MustCompile(`(?i)</?(?:p|br|strong|b|em|i|u|a|ul|ol|li|h[1-6]|blockquote|div|span)(?:\s[^<>]*)?/?>`)
 )
 
-// hasHTMLTags reports whether text holds a tag of the white list.
-func hasHTMLTags(text string) bool { return htmlTagRE.MatchString(text) }
+// hasHTMLTags reports whether text holds a tag of the white list (and the
+// block tags a site editor puts around them): a text that has one was written
+// as HTML by a site, not as the old plain text with marks. It is the test the
+// Bil24 gateway uses, so both read the same rows as HTML.
+func hasHTMLTags(text string) bool { return richtext.LooksLikeHTML(text) }
 
 // singleMarkerLines are the lines of text that start with "- ", "* " or "• "
 // without a neighbour line that does too (two or more in a row are a list).

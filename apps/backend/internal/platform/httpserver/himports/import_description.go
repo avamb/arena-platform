@@ -29,8 +29,8 @@ func importDescription(source string, a bil24compat.ImportSessionAction) (*strin
 	}
 	clean, err := eventtext.NormalizeDescription(a.Description, format)
 	if err != nil {
-		return nil, failImportAt(http.StatusUnprocessableEntity, "import.invalid_description",
-			"/action/description", "action.description is not allowed: "+eventtext.Reason(err)+": "+err.Error())
+		return nil, failImportReason(http.StatusUnprocessableEntity, "import.invalid_description",
+			"/action/description", eventtext.Reason(err), "action.description is not allowed: "+eventtext.Reason(err)+": "+err.Error())
 	}
 	if clean == "" {
 		return nil, nil
@@ -48,8 +48,8 @@ func upgradeEventDescriptions(ctx context.Context, q *gen.Queries, orgID, eventI
 	}
 	err := eventtext.UpgradeDescriptions(ctx, q, eventID, orgID, true)
 	if ue, ok := eventtext.AsUpgradeError(err); ok {
-		return failImportAt(http.StatusUnprocessableEntity, "import.invalid_description",
-			"/action/description", "a stored description of the event cannot be converted: "+eventtext.Reason(ue.Err))
+		return failImportReason(http.StatusUnprocessableEntity, "import.invalid_description",
+			"/action/description", eventtext.Reason(ue.Err), "a stored description of the event cannot be converted: "+eventtext.Reason(ue.Err))
 	}
 	return err
 }

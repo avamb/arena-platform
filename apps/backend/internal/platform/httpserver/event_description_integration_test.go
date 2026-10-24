@@ -384,3 +384,26 @@ func TestEventDescription_PatchAuditsTheNoteOnlyWhenItWasSent(t *testing.T) {
 		t.Fatalf("clearing the note wrote %d note audit rows in total, want 2", n)
 	}
 }
+
+// The metadata audit row is written after the commit, once per edit that
+// carried metadata fields, and never for a description-only edit.
+func TestEventDescription_PatchAuditsMetadataAfterTheCommit(t *testing.T) {
+	e, org, tok := descEnv(t)
+	ev := e.event(t, org)
+	path := "/v1/organizations/" + org.String() + "/events/" + ev.String()
+	audits := func() int {
+		return e.count(t, `SELECT count(*) FROM audit_events WHERE action = 'v1.event.update_metadata' AND resource_id = $1`, ev.String())
+	}
+
+	e.expect(t, http.StatusOK, http.MethodPatch, path, tok, "", `{"description":"only the description"}`)
+	if n := audits(); n != 0 {
+		t.Fatalf("a description-only PATCH wrote %d metadata audit rows", n)
+	}
+	e.expect(t, http.StatusOK, http.MethodPatch, path, tok, "", `{"description":"with a genre","genre":"concert"}`)
+	if n := audits(); n != 1 {
+		t.Fatalf("a PATCH with metadata wrote %d metadata audit rows, want 1", n)
+	}
+	if desc, format := e.descriptionOf(t, ev); format != "art" || desc == nil || *desc != "<p>with a genre</p>" {
+		t.Fatalf("description stored %v / %q", desc, format)
+	}
+}

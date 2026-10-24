@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
 )
 
@@ -46,10 +47,11 @@ func addNewDate(r *wizardRun) {
 }
 
 // Loading an event with an ART description and saving after a change of the
-// date only sends the description back as it was read, byte for byte, with
-// the format "art" (it used to go out as plain text and every tag was
-// escaped).
-func TestDescription_ARTLoadedAndOnlyTheDateChangedGoesBackUnchanged(t *testing.T) {
+// date does NOT send the description at all, in any format: the bot loads it
+// without a locale, so what it holds may be a translation (translation, en,
+// base), and sending it would write that over the base text. The server keeps
+// what it has.
+func TestDescription_ARTLoadedAndOnlyTheDateChangedIsNotResent(t *testing.T) {
 	r, d := loadedWith(t, artDescription, "art")
 	if d.Event.Description != artDescription || d.Event.DescriptionFormat != "art" {
 		t.Fatalf("the draft holds %q / %q", d.Event.Description, d.Event.DescriptionFormat)
@@ -63,13 +65,13 @@ func TestDescription_ARTLoadedAndOnlyTheDateChangedGoesBackUnchanged(t *testing.
 		t.Fatal("nothing was posted")
 	}
 	for i, p := range io.posts {
-		if p.Action.Description != artDescription || p.Action.DescriptionFormat != "art" {
+		if p.Action.Description != "" || p.Action.DescriptionFormat != "" {
 			t.Fatalf("post %d carries %q / %q", i, p.Action.Description, p.Action.DescriptionFormat)
 		}
 	}
 	raw, _ := json.Marshal(io.posts[0])
-	if !strings.Contains(string(raw), `"descriptionFormat":"art"`) {
-		t.Fatalf("the wire body does not name the format: %s", raw)
+	if strings.Contains(string(raw), "<p>") {
+		t.Fatalf("the wire body carries the description: %s", raw)
 	}
 }
 
@@ -212,5 +214,104 @@ func TestDescription_DraftWithoutFormatStillReads(t *testing.T) {
 	}
 	if text, format := back.bundleDescription(); text != "" || format != "" {
 		t.Fatalf("an old draft re-sent its description as %q / %q", text, format)
+	}
+}
+
+// The server shows the English translation when the bot asks for the event
+// without a locale (translation, en, base). Editing only a date must not send
+// that text: it would replace the base description with the translation.
+func TestDescription_ARTShownFromAnEnglishTranslationIsNeverWrittenBack(t *testing.T) {
+	const english = `<p>English <strong>translation</strong> of the program</p>`
+	r, d := loadedWith(t, english, "art")
+	addNewDate(r)
+	io := &fakeSave{}
+	if out := r.w.Save(context.Background(), io, r.ws, d, "d9"); !out.Done {
+		t.Fatalf("save = %+v", out)
+	}
+	if len(io.posts) == 0 {
+		t.Fatal("nothing was posted")
+	}
+	for i, p := range io.posts {
+		if p.Action.Description != "" || p.Action.DescriptionFormat != "" {
+			t.Fatalf("post %d wrote the translation back: %q / %q", i, p.Action.Description, p.Action.DescriptionFormat)
+		}
+	}
+}
+
+// Typing the description is a change, so it goes out, as plain text.
+func TestDescription_TypedAfterARTIsSent(t *testing.T) {
+	r, d := loadedWith(t, artDescription, "art")
+	r.press("e:desc", stXDescription)
+	r.text("Свежий текст", stEditMenu)
+	if text, format := d.bundleDescription(); text != "Свежий текст" || format != "" {
+		t.Fatalf("bundleDescription = %q / %q", text, format)
+	}
+}
+
+// A text typed in a right-to-left language often carries the bidi embedding
+// marks U+202A to U+202E; the server refuses them, so the bot drops them.
+func TestDescription_TypedTextLosesBidiEmbeddingMarks(t *testing.T) {
+	r := func(cp ...rune) string { return string(cp) }
+	d := &Draft{}
+	d.setTypedDescription(r(0x202b) + "שלום עולם" + r(0x202c) + " and " + r(0x202a, 0x202d, 0x202e) + "text" + r(0x202c))
+	if d.Event.Description != "שלום עולם and text" || d.Event.DescriptionFormat != "text" {
+		t.Fatalf("description = %q / %q", d.Event.Description, d.Event.DescriptionFormat)
+	}
+	// The direction marks the server keeps (U+200E, U+200F) stay.
+	keep := "a" + r(0x200f) + "b" + r(0x200e)
+	d.setTypedDescription(keep)
+	if d.Event.Description != keep {
+		t.Fatalf("direction marks lost: %q", d.Event.Description)
+	}
+}
+
+type refusingSave struct {
+	*fakeSave
+	err error
+}
+
+func (f refusingSave) ImportEventBundle(context.Context, string, uuid.UUID, bil24compat.ImportSessionRequest) (ImportResult, error) {
+	return ImportResult{}, f.err
+}
+
+// A refused description is shown to the organizer in the bot's own words,
+// chosen by the reason, in the organizer's language - never the English
+// message of the API.
+func TestDescription_RefusedDescriptionIsLocalisedByReason(t *testing.T) {
+	const apiMessage = "action.description is not allowed: control_characters: richtext: the text contains control, bidi or zero-width characters"
+	cases := []struct{ reason, key string }{
+		{"too_long", "bot.wz.err_description_too_long"},
+		{"html_too_long", "bot.wz.err_description_too_long"},
+		{"control_characters", "bot.wz.err_description_chars"},
+		{"bad_encoding", "bot.wz.err_description_chars"},
+		{"", "bot.wz.err_description"},
+		{"something_new", "bot.wz.err_description"},
+	}
+	for _, loc := range []string{"en", "ru", "es"} {
+		for _, tc := range cases {
+			r, d := loadedWith(t, artDescription, "art")
+			r.ws.Locale = loc
+			r.press("e:desc", stXDescription)
+			r.text("Новый текст", stEditMenu)
+			io := refusingSave{fakeSave: &fakeSave{}, err: &APIError{
+				Status: 422, Code: "import.invalid_description", Message: apiMessage, Reason: tc.reason,
+			}}
+			out := r.w.Save(context.Background(), io, r.ws, d, "d9")
+			want := r.w.texts.T(loc, tc.key, nil)
+			if out.Done || out.Reason != want || want == "" || want == tc.key {
+				t.Fatalf("%s/%q: reason = %q, want %q", loc, tc.reason, out.Reason, want)
+			}
+			if strings.Contains(out.Reason, "richtext") || strings.Contains(out.Reason, "action.description") {
+				t.Fatalf("%s/%q: the API message leaked: %q", loc, tc.reason, out.Reason)
+			}
+		}
+	}
+	// A refusal of something else keeps showing the message of the API.
+	r, d := loadedWith(t, artDescription, "art")
+	r.press("e:desc", stXDescription)
+	r.text("x", stEditMenu)
+	io := refusingSave{fakeSave: &fakeSave{}, err: &APIError{Status: 422, Code: "import.invalid_category", Message: "category is wrong"}}
+	if out := r.w.Save(context.Background(), io, r.ws, d, "d9"); out.Reason != "category is wrong" {
+		t.Fatalf("other refusals changed: %q", out.Reason)
 	}
 }

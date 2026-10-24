@@ -29,8 +29,8 @@ func importEmailNote(source string, a bil24compat.ImportSessionAction) (note str
 	}
 	clean, nErr := eventtext.NormalizeNote(*a.EmailNote, format)
 	if nErr != nil {
-		return "", false, failImportAt(http.StatusUnprocessableEntity, "import.invalid_email_note",
-			"/action/emailNote", "action.emailNote is not allowed: "+eventtext.Reason(nErr)+": "+nErr.Error())
+		return "", false, failImportReason(http.StatusUnprocessableEntity, "import.invalid_email_note",
+			"/action/emailNote", eventtext.Reason(nErr), "action.emailNote is not allowed: "+eventtext.Reason(nErr)+": "+nErr.Error())
 	}
 	return clean, true, nil
 }

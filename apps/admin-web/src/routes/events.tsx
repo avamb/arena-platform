@@ -77,6 +77,7 @@ import {
 } from "@/lib/api/client";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
+import { useTranslation } from "@/lib/i18n/I18nContext";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import {
   ResponsiveTable,
@@ -87,9 +88,10 @@ import {
 import { SessionSeatingBindPanel } from "@/routes/sessionSeatingBind";
 import {
   artToReact,
-  changedDescription,
   descriptionForForm,
+  descriptionPatch,
   hasDescription,
+  reportMissingDescriptionHtml,
 } from "@/lib/richtext";
 
 export const Route = createRoute({
@@ -2317,6 +2319,12 @@ function OverviewTab({
     },
   });
 
+  // The card falls back to plain text when the server sent no description_html:
+  // logged once, as an error.
+  useEffect(() => {
+    reportMissingDescriptionHtml(event);
+  }, [event]);
+
   return (
     <div style={tabBodyStyle}>
       {/* AB-42 resumability: a draft event surfaces a "Continue setup"
@@ -3096,22 +3104,20 @@ function EditEventPanel({ event, orgs, onSuccess, onClose }: EditEventPanelProps
   const errors = useMemo(() => validateEventForm(values, false), [values]);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
 
+  const { t } = useTranslation();
   const mutation = useMutation<EventEnvelope, ApiError, EventFormValues>({
     mutationFn: (v) => {
       // AB-36/AB-37: no venue / date fields on events any more.
       const body: Record<string, unknown> = {};
       if (v.name.trim() !== "") body.name = v.name.trim();
       // description: sent ONLY when the person changed it (then as old-form
-      // text, null clears it). An untouched description is left out, so ART
-      // with links or headings is never degraded by an unrelated edit.
-      const description = changedDescription(
-        eventToForm(event).description,
-        v.description,
+      // text, "" clears it: the server reads null as "leave it as it is").
+      // An untouched description is left out, so ART with links or headings
+      // is never degraded by an unrelated edit.
+      Object.assign(
+        body,
+        descriptionPatch(eventToForm(event).description, v.description),
       );
-      if (description !== undefined) {
-        body.description = description;
-        body.description_format = "text";
-      }
       if (v.visibility !== "") body.visibility = v.visibility;
       return authedFetch<EventEnvelope>({
         method: "PATCH",
@@ -3214,6 +3220,9 @@ function EditEventPanel({ event, orgs, onSuccess, onClose }: EditEventPanelProps
           rows={3}
           data-testid="events-edit-description"
         />
+        <span style={mutedHintStyle} data-testid="events-edit-description-hint">
+          {t("events.descriptionHint")}
+        </span>
       </label>
 
       {submitErr !== null ? (

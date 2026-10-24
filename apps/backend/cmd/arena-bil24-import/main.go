@@ -42,6 +42,13 @@
 // price_tiers are JSON-only; CSV rows have no price tier column.
 // In both formats price_tiers are logged in the summary but not written to DB.
 //
+// # Description format
+//
+// Bil24 descriptions are HTML, so they are read as ART (sanitised, blank-line
+// paragraphs like WordPress) by default. --description-format text reads them
+// as the old plain text with the marks ("**bold**", "- list"), where a tag is
+// shown as written.
+//
 // # Idempotency
 //
 // Every INSERT uses ON CONFLICT (external_bil24_id) DO NOTHING. Running the
@@ -63,7 +70,7 @@
 //	arena-bil24-import \
 //	  --input    /path/to/export.csv   \
 //	  --org-id   <UUID of the target organization> \
-//	  [--dry-run]
+//	  [--dry-run] [--description-format text|art]
 //
 // Exit code is 0 on success (even if all rows were skipped), 1 on fatal error.
 package main
@@ -106,6 +113,7 @@ func run(args []string) error {
 	bil24FID := fs.String("bil24-fid", "", "Bil24 frontend ID (overrides BIL24_FID)")
 	bil24Token := fs.String("bil24-token", "", "Bil24 API token (overrides BIL24_TOKEN)")
 	bil24Locale := fs.String("bil24-locale", "ru-RU", "Bil24 response locale")
+	descFormat := fs.String("description-format", catalogimport.DescriptionFormatART, "how the descriptions of the export are written: art (HTML, the default, as Bil24 sends them) or text (plain text with the old marks)")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -113,6 +121,10 @@ func run(args []string) error {
 
 	if !*venuesMode && *inputFile == "" {
 		return fmt.Errorf("--input is required; point it at the Bil24 export file (.csv or .json)")
+	}
+	format, err := catalogimport.ParseDescriptionFormat(*descFormat)
+	if err != nil {
+		return fmt.Errorf("--description-format: %w", err)
 	}
 	if *orgID == "" {
 		return fmt.Errorf("--org-id is required; provide the UUID of the target organization")
@@ -133,6 +145,7 @@ func run(args []string) error {
 	}
 
 	slog.Info("snapshot loaded", "path", *inputFile, "rows", len(events))
+	applyDescriptionFormat(events, format)
 
 	// -------------------------------------------------------------------------
 	// Validate all rows (collect per-row errors; do NOT abort)
@@ -331,6 +344,14 @@ type RowError struct {
 	Index int
 	ID    string
 	Err   error
+}
+
+// applyDescriptionFormat sets the format the descriptions of the export are
+// read in, on every row.
+func applyDescriptionFormat(events []catalogimport.Bil24SnapshotEvent, format string) {
+	for i := range events {
+		events[i].DescriptionFormat = format
+	}
 }
 
 // validateRows validates every event in the snapshot. Valid rows are returned

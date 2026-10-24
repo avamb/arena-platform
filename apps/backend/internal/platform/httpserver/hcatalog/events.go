@@ -957,6 +957,7 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	metadataUpdated := false
 	// AB-45c: update metadata fields if any were provided (tri-state: absent=keep, null=clear, value=set)
 	if req.Slug.Present || req.ShortDescription.Present || req.Genre.Present || req.AgeRating.Present ||
 		req.DurationMinutes.Present || req.TeaserURL.Present || req.TrailerURL.Present ||
@@ -1002,24 +1003,11 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		updated = meta
+		// The audit row is written after the commit (below): it goes through
+		// the pool, outside this transaction, and a commit that fails must not
+		// leave an "update_metadata" behind.
+		metadataUpdated = true
 
-		if h.audit != nil {
-			actor, _ := auth.ActorFromContext(r.Context())
-			if auditErr := h.audit.Write(r.Context(), audit.Event{
-				OccurredAt:   time.Now().UTC(),
-				ActorType:    "user",
-				ActorID:      actor.ID,
-				Action:       "v1.event.update_metadata",
-				ResourceType: "event",
-				ResourceID:   eventID.String(),
-				RequestID:    logging.RequestID(r.Context()),
-				TraceID:      logging.TraceID(r.Context()),
-				IP:           httputil.ExtractClientIP(r),
-				Metadata:     map[string]any{"org_id": orgID.String()},
-			}); auditErr != nil {
-				h.logger.Warn("event: audit write failed", "error", auditErr.Error())
-			}
-		}
 	}
 
 	if tx != nil {
@@ -1035,6 +1023,9 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		if emailNoteSet {
 			h.auditEmailNote(r, eventID, orgID, emailNote)
 		}
+	}
+	if metadataUpdated {
+		h.auditMetadataUpdate(r, eventID, orgID)
 	}
 
 	// W1-B7c (#506): a subscribed mirror re-reads the event on notification, so
@@ -1331,4 +1322,27 @@ func (h *Handler) HandleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 		"event":   eventFromRow(deleted),
 		"deleted": true,
 	})
+}
+
+// auditMetadataUpdate writes the audit row of a metadata edit. Call it after
+// the edit is committed. A failed write is logged and never fails the request.
+func (h *Handler) auditMetadataUpdate(r *http.Request, eventID, orgID uuid.UUID) {
+	if h.audit == nil {
+		return
+	}
+	actor, _ := auth.ActorFromContext(r.Context())
+	if auditErr := h.audit.Write(r.Context(), audit.Event{
+		OccurredAt:   time.Now().UTC(),
+		ActorType:    "user",
+		ActorID:      actor.ID,
+		Action:       "v1.event.update_metadata",
+		ResourceType: "event",
+		ResourceID:   eventID.String(),
+		RequestID:    logging.RequestID(r.Context()),
+		TraceID:      logging.TraceID(r.Context()),
+		IP:           httputil.ExtractClientIP(r),
+		Metadata:     map[string]any{"org_id": orgID.String()},
+	}); auditErr != nil {
+		h.logger.Warn("event: audit write failed", "error", auditErr.Error())
+	}
 }

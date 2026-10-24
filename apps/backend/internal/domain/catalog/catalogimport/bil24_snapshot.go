@@ -15,6 +15,7 @@ package catalogimport
 import (
 	"errors"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -64,6 +65,12 @@ type Bil24SnapshotEvent struct {
 	// logs them in the summary but does NOT create ticket_tier rows in this
 	// release — arena_new pricing is managed through the native catalog API.
 	PriceTiers []PriceTier `json:"price_tiers,omitempty"`
+
+	// DescriptionFormat says how Description is written: "art" (HTML, the
+	// default, because Bil24 descriptions are HTML) or "text" (the old plain
+	// text with marks). It is set by the importer's --description-format
+	// flag, not read from the snapshot.
+	DescriptionFormat string `json:"-"`
 }
 
 // PriceTier is an optional price tier attached to a Bil24 snapshot event.
@@ -129,12 +136,36 @@ func (e *Bil24SnapshotEvent) ResolvedEndsAt() time.Time {
 	return e.StartsAt.Add(DefaultEventDuration)
 }
 
-// DescriptionART is ResolvedDescription passed through richtext.Normalize as
-// the old plain text ("**bold**", "- list" marks): the text to store in
+// Description format values of the importer.
+const (
+	// DescriptionFormatART reads the description as HTML (the default).
+	DescriptionFormatART = richtext.FormatART
+	// DescriptionFormatText reads it as the old plain text with marks.
+	DescriptionFormatText = richtext.FormatText
+)
+
+// ParseDescriptionFormat checks the value of --description-format: "text" or
+// "art" (an empty value is "art").
+func ParseDescriptionFormat(s string) (string, error) {
+	switch s {
+	case "", DescriptionFormatART:
+		return DescriptionFormatART, nil
+	case DescriptionFormatText:
+		return DescriptionFormatText, nil
+	}
+	return "", fmt.Errorf("description format %q: must be text or art", s)
+}
+
+// DescriptionART is ResolvedDescription passed through richtext.Normalize in
+// the event's DescriptionFormat (art unless set to text): the text to store in
 // events.description together with the format flag "art". It is the single
 // write path of the importer (spec 43, RT-02).
 func (e *Bil24SnapshotEvent) DescriptionART() (string, error) {
-	return richtext.Normalize(e.ResolvedDescription(), richtext.FormatText, richtext.ProfileDescription)
+	format, err := ParseDescriptionFormat(e.DescriptionFormat)
+	if err != nil {
+		return "", err
+	}
+	return richtext.Normalize(e.ResolvedDescription(), format, richtext.ProfileDescription)
 }
 
 // ResolvedDescription merges Description and VenueName into the single
@@ -144,6 +175,11 @@ func (e *Bil24SnapshotEvent) DescriptionART() (string, error) {
 func (e *Bil24SnapshotEvent) ResolvedDescription() string {
 	desc := strings.TrimSpace(e.Description)
 	venue := strings.TrimSpace(e.VenueName)
+	if e.DescriptionFormat != DescriptionFormatText {
+		// The description is HTML: the venue name is a text of the page, so
+		// a "<" in it must not become a tag.
+		venue = html.EscapeString(venue)
+	}
 	if venue == "" {
 		return desc
 	}

@@ -99,7 +99,7 @@ export function plainText(source: string): string {
  * replaced by its own text. */
 const ART_TAGS = new Set(['p', 'br', 'strong', 'em', 'u', 'ul', 'ol', 'li', 'h3', 'h4', 'blockquote']);
 /** Elements whose content is never visible text: dropped with their content. */
-const ART_DROPPED = new Set(['script', 'style', 'template', 'noscript', 'iframe', 'object', 'embed']);
+const ART_DROPPED = new Set(['script', 'style', 'template', 'noscript', 'iframe', 'object', 'embed', 'textarea', 'title']);
 /** A deeper tree is flattened to text: the server never produces one. */
 const ART_MAX_DEPTH = 32;
 
@@ -121,6 +121,24 @@ export function safeHref(raw: string | null): string | null {
   return href;
 }
 
+/** The visible text of an element that is too deep to rebuild: its text nodes
+ * in document order, skipping dropped elements WITH their content (a plain
+ * textContent would show the text of a nested <script> or <style>). Iterative,
+ * so a hostile depth cannot overflow the stack. */
+function appendFlatText(doc: Document, out: Node, root: Element): void {
+  const stack: Node[] = [];
+  for (let c = root.lastChild; c !== null; c = c.previousSibling) stack.push(c);
+  let text = '';
+  for (let n = stack.pop(); n !== undefined; n = stack.pop()) {
+    if (n.nodeType === 3) {
+      text += n.nodeValue ?? '';
+    } else if (n.nodeType === 1 && !ART_DROPPED.has((n as Element).localName.toLowerCase())) {
+      for (let c = n.lastChild; c !== null; c = c.previousSibling) stack.push(c);
+    }
+  }
+  if (text !== '') out.appendChild(doc.createTextNode(text));
+}
+
 function appendArtNode(doc: Document, out: Node, src: Node, depth: number): void {
   if (src.nodeType === 3) {
     out.appendChild(doc.createTextNode(src.nodeValue ?? ''));
@@ -131,7 +149,7 @@ function appendArtNode(doc: Document, out: Node, src: Node, depth: number): void
   const tag = el.localName.toLowerCase();
   if (ART_DROPPED.has(tag)) return;
   if (depth >= ART_MAX_DEPTH) {
-    out.appendChild(doc.createTextNode(el.textContent ?? ''));
+    appendFlatText(doc, out, el);
     return;
   }
   let target: Node = out;
@@ -175,6 +193,23 @@ export function renderArtHtml(doc: Document, html: string): DocumentFragment {
   return out;
 }
 
+let missingHtmlReported = false;
+
+/** The server sent a description but no description_html: it could not read the
+ * event's format (or this is an old backend or a cached response). The page
+ * falls back to the raw text, which for a stored "art" description shows its
+ * tags. That is safe but visible, so it is an ERROR in the console, once. */
+function reportMissingDescriptionHtml(ev: DescriptionSource): void {
+  if (missingHtmlReported || !ev.description) return;
+  missingHtmlReported = true;
+  console.error('tickets-page: description_html is missing, the description is shown from the raw text (its format is unknown)');
+}
+
+/** For tests: forget that the missing description_html was reported. */
+export function resetMissingDescriptionHtmlReport(): void {
+  missingHtmlReported = false;
+}
+
 /** What the page needs of an event to show its description. */
 export interface DescriptionSource {
   description?: string | null;
@@ -192,6 +227,7 @@ export function hasDescription(ev: DescriptionSource): boolean {
  * legacy ** / _ / - renderer (an older backend, a cached response). */
 export function renderDescription(doc: Document, ev: DescriptionSource): DocumentFragment {
   if (ev.description_html) return renderArtHtml(doc, ev.description_html);
+  reportMissingDescriptionHtml(ev);
   return renderRichText(doc, ev.description ?? '');
 }
 

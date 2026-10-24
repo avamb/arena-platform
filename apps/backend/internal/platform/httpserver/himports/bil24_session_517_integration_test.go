@@ -477,3 +477,28 @@ func TestBil24Session_HTMLDescriptionFromASiteIsStoredAsART(t *testing.T) {
 		t.Fatalf("explicit text stored %q", desc)
 	}
 }
+
+// WordPress post_content has blank-line paragraphs and no <p>: the stored ART
+// keeps the paragraphs and the line breaks.
+func TestBil24Session_WordPressParagraphsAreKept(t *testing.T) {
+	pool := import517Pool(t)
+	ctx := context.Background()
+	f := newImport517Fixture(t, ctx, pool)
+	defer f.cleanup()
+	h := New(gen.New(pool), pool, nil, nil).WithMembershipQueries(gen.New(pool))
+
+	body := f.payload()
+	body.Action.Description = "First <b>paragraph</b>.\r\n\r\nSecond,\r\nsame paragraph.\r\n\r\nThird."
+	rec, created := f.call(h, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("import: %d %s", rec.Code, rec.Body.String())
+	}
+	var desc, format string
+	if err := pool.QueryRow(ctx, `SELECT description, description_format FROM events WHERE id = $1`, created.EventID).Scan(&desc, &format); err != nil {
+		t.Fatal(err)
+	}
+	want := `<p>First <strong>paragraph</strong>.</p><p>Second,<br>same paragraph.</p><p>Third.</p>`
+	if format != "art" || desc != want {
+		t.Fatalf("stored %q / %q, want %q", desc, format, want)
+	}
+}

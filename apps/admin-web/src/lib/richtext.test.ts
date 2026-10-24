@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
@@ -8,9 +8,13 @@ import {
   changedDescription,
   decodeEntities,
   descriptionForForm,
+  descriptionPatch,
   hasDescription,
+  reportMissingDescriptionHtml,
+  resetMissingDescriptionHtmlReport,
   safeHref,
 } from "@/lib/richtext";
+import { translate } from "@/lib/i18n/catalog";
 
 const NBSP = String.fromCharCode(0xa0);
 const ZWSP = String.fromCharCode(0x200b);
@@ -171,20 +175,69 @@ describe("form helpers: an untouched description is never sent", () => {
     expect(descriptionForForm({ description: null })).toBe("");
   });
 
-  it("changedDescription: undefined while untouched, null to clear, text when changed", () => {
+  it("changedDescription: undefined while untouched, empty string to clear, text when changed", () => {
     const initial = descriptionForForm(art);
     expect(changedDescription(initial, initial)).toBeUndefined();
     expect(changedDescription(initial, `  ${initial}\n `)).toBeUndefined();
-    expect(changedDescription(initial, "")).toBeNull();
-    expect(changedDescription(initial, "  \n ")).toBeNull();
+    expect(changedDescription(initial, "")).toBe("");
+    expect(changedDescription(initial, "  \n ")).toBe("");
     expect(changedDescription(initial, "New **text**  ")).toBe("New **text**");
     expect(changedDescription("", "")).toBeUndefined();
     expect(changedDescription("", "first")).toBe("first");
+  });
+
+  it("descriptionPatch: clearing sends an empty string (null would mean keep), never null", () => {
+    const initial = descriptionForForm(art);
+    expect(descriptionPatch(initial, initial)).toEqual({});
+    expect(descriptionPatch(initial, "")).toEqual({ description: "", description_format: "text" });
+    expect(JSON.stringify(descriptionPatch(initial, "  "))).toBe('{"description":"","description_format":"text"}');
+    expect(descriptionPatch(initial, " New ")).toEqual({ description: "New", description_format: "text" });
+    expect(Object.values(descriptionPatch(initial, "")).includes(null as unknown as string)).toBe(false);
+  });
+
+  it("reports a description without description_html as an error, once", () => {
+    resetMissingDescriptionHtmlReport();
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      reportMissingDescriptionHtml({ description: "<p>raw</p>", description_html: null });
+      reportMissingDescriptionHtml({ description: "again" });
+      expect(spy).toHaveBeenCalledTimes(1);
+      resetMissingDescriptionHtmlReport();
+      reportMissingDescriptionHtml({ description: "x", description_html: "<p>x</p>" });
+      reportMissingDescriptionHtml({ description: null });
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("hasDescription sees the html or the raw field", () => {
     expect(hasDescription({ description: null })).toBe(false);
     expect(hasDescription({ description: "x" })).toBe(true);
     expect(hasDescription({ description: null, description_html: "<p>x</p>" })).toBe(true);
+  });
+});
+
+describe("artToReact: no link inside a link", () => {
+  it("a new <a> closes the open one, as in HTML", () => {
+    expect(inner('<p><a href="https://a.example/">one <a href="https://b.example/">two</a> three</a></p>')).toBe(
+      '<p><a href="https://a.example/" rel="noopener noreferrer" target="_blank">one </a>' +
+        '<a href="https://b.example/" rel="noopener noreferrer" target="_blank">two</a> three</p>',
+    );
+    const out = inner('<a href="https://a.example/">x<a href="https://b.example/">y<a href="javascript:alert(1)">z</a></a></a>');
+    expect(out).not.toMatch(/<a [^>]*>[^<]*<a /);
+    expect(out).not.toContain("javascript");
+  });
+});
+
+describe("the edit form hint about lost formatting", () => {
+  it("exists in Russian and English and the form shows it under the field", () => {
+    expect(translate("ru", "events.descriptionHint")).toBe(
+      "Правка в этом поле убирает ссылки, заголовки и подчёркивание — для полного оформления используйте ивент-центр",
+    );
+    expect(translate("en", "events.descriptionHint")).toMatch(/links, headings and underline/);
+    const src = readFileSync(resolve(__dirname, "../routes/events.tsx"), "utf8");
+    expect(src).toContain('t("events.descriptionHint")');
+    expect(src).toContain("events-edit-description-hint");
   });
 });

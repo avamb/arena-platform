@@ -208,6 +208,8 @@ function parse(src: string): ArtChild[] {
     // As in HTML, a block ends an open paragraph/heading, and an <li> ends the previous one.
     if (BLOCKS.has(tag.name) && TEXT_BLOCKS.has(top().tag)) stack.pop();
     if (tag.name === "li" && top().tag === "li") stack.pop();
+    // As in HTML, a link never holds a link: a new <a> closes the open one.
+    if (isLink) closeTo("a");
     const href = isLink ? safeHref(tag.attrs.get("href")) : null;
     if (isLink && href === null) continue; // an unsafe link keeps its text only
     const el: ArtElement = { tag: tag.name, href, children: [] };
@@ -250,6 +252,25 @@ export interface DescriptionFields {
   readonly description_legacy?: string | null;
 }
 
+let missingHtmlReported = false;
+
+/**
+ * Logs, once, that an event came with a description but no description_html:
+ * the server could not read the event's format (or it is an old backend). The
+ * card then shows the legacy or raw text, which for a stored "art" description
+ * may carry tags. That is safe but visible, so it is an error, not a warning.
+ */
+export function reportMissingDescriptionHtml(e: DescriptionFields): void {
+  if (missingHtmlReported || e.description_html || !e.description) return;
+  missingHtmlReported = true;
+  console.error("admin-web: description_html is missing, the description is shown as plain text (its format is unknown)");
+}
+
+/** For tests: forget that the missing description_html was reported. */
+export function resetMissingDescriptionHtmlReport(): void {
+  missingHtmlReported = false;
+}
+
 /** True when the event has a description to show. */
 export function hasDescription(e: DescriptionFields): boolean {
   return Boolean(e.description_html) || Boolean(e.description);
@@ -268,11 +289,23 @@ export function descriptionForForm(e: DescriptionFields): string {
 /**
  * What a save sends for `description`: undefined (leave the field out of the
  * PATCH) while the person has not changed the text, so a description with
- * links or headings is never degraded by an unrelated edit; null to clear it;
- * else the trimmed text (to be sent with description_format "text").
+ * links or headings is never degraded by an unrelated edit; "" to clear it (the
+ * server reads a null as "leave it as it is", and an empty string as "no
+ * description"); else the trimmed text (to be sent with description_format
+ * "text").
  */
-export function changedDescription(initial: string, current: string): string | null | undefined {
+export function changedDescription(initial: string, current: string): string | undefined {
   if (current.trim() === initial.trim()) return undefined;
-  const next = current.trim();
-  return next === "" ? null : next;
+  return current.trim();
+}
+
+/**
+ * The description part of an event PATCH body: nothing while the text is
+ * untouched, else `description` (the text, or "" to clear it) with
+ * description_format "text" (what the person typed is the old plain text).
+ */
+export function descriptionPatch(initial: string, current: string): Record<string, string> {
+  const description = changedDescription(initial, current);
+  if (description === undefined) return {};
+  return { description, description_format: "text" };
 }

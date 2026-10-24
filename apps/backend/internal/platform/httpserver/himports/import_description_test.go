@@ -149,3 +149,23 @@ func TestImportDescription_Bil24DefaultsToART(t *testing.T) {
 		t.Fatalf("bil24 note: %q %v %v", nout, set, err)
 	}
 }
+
+// WordPress keeps post_content as paragraphs separated by blank lines, with no
+// <p>. On the bil24 route they become paragraphs, a single newline a <br>; a
+// text that already has <p> is left alone; source=arena "text" is not touched.
+func TestImportDescription_Bil24WordPressParagraphs(t *testing.T) {
+	wp := "Первый абзац с <b>жирным</b>.\r\n\r\nВторой абзац,\r\nвторая строка.\r\n\r\nТретий."
+	got, err := importDescription(bil24compat.SourceBil24, bil24compat.ImportSessionAction{Description: wp})
+	if err != nil || got == nil {
+		t.Fatalf("%v %v", got, err)
+	}
+	want := "<p>Первый абзац с <strong>жирным</strong>.</p><p>Второй абзац,<br>вторая строка.</p><p>Третий.</p>"
+	if *got != want {
+		t.Fatalf("wordpress text: %q want %q", *got, want)
+	}
+
+	got, err = importDescription(bil24compat.SourceBil24, bil24compat.ImportSessionAction{Description: "<p>one</p>\n\n<p>two\nthree</p>"})
+	if err != nil || got == nil || *got != "<p>one</p><p>two three</p>" {
+		t.Fatalf("with <p>: %v %v", got, err)
+	}
+}

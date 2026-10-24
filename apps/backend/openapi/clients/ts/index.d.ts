@@ -23924,7 +23924,8 @@ export interface components {
              * @description Free-form action description copied into the event description,
              *     at most 4000 visible characters. Read as `descriptionFormat` and
              *     stored as filtered HTML. A refused text answers 422
-             *     `import.invalid_description`. Empty keeps the stored text.
+             *     `import.invalid_description` with `error.details.reason`. Empty keeps
+             *     the stored text.
              */
             description?: string;
             /**
@@ -23967,7 +23968,8 @@ export interface components {
              *     stored text, "" removes it, a string replaces it after the same
              *     filter as PATCH `email_note` (at most 2000 visible characters, at
              *     most 5 `https://` links), read as `emailNoteFormat`. A refused
-             *     text answers 422 `import.invalid_email_note`. The event-bundle
+             *     text answers 422 `import.invalid_email_note` with
+             *     `error.details.reason`. The event-bundle
              *     read answers "" when the event has none.
              */
             emailNote?: string | null;

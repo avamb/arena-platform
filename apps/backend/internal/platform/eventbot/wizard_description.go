@@ -51,6 +51,14 @@ func descriptionPreview(e DraftEvent, limit int) string {
 // description counts visible text, and a typed text has no markup, so its
 // characters are its visible characters.
 func (d *Draft) setTypedDescription(text string) {
+	// The server refuses the bidi embedding marks U+202A to U+202E (a Hebrew
+	// organizer pastes them without seeing them), so they are dropped here.
+	text = strings.Map(func(r rune) rune {
+		if r >= 0x202a && r <= 0x202e {
+			return -1
+		}
+		return r
+	}, text)
 	if r := []rune(text); len(r) > 4000 {
 		text = string(r[:4000])
 	}
@@ -66,23 +74,40 @@ func (d *Draft) descriptionChanged() bool {
 }
 
 // bundleDescription is the description and format an event-bundle carries.
-//   - art: sent back as it is, with format "art", so it comes back byte for byte.
-//   - an edit that did not touch the description (a stored text of the old
-//     kind or of an unknown kind): NOT sent, the server keeps what it has.
-//     Re-sending it under a guessed format could turn tags into words.
+//   - an edit that did not touch the description (ANY format): NOT sent, the
+//     server keeps what it has. The bot loads the description without a
+//     locale, so the server may have shown a translation (translation, en,
+//     base): re-sending it would write that translation over the base text.
+//     Re-sending an old text under a guessed format could also turn tags into
+//     words.
+//   - art that the organizer did change (only a typed text changes it, so this
+//     is a new draft with ART in it): sent as it is, format "art".
 //   - what the organizer typed: plain text, format "text" (the default, so no
 //     format is named).
 func (d *Draft) bundleDescription() (text, format string) {
 	switch {
 	case strings.TrimSpace(d.Event.Description) == "":
 		return "", ""
+	case d.Mode == ModeEdit && d.Loaded != nil && !d.descriptionChanged():
+		return "", "" // untouched: never sent, whatever its format
 	case d.Event.DescriptionFormat == richtext.FormatART:
 		return d.Event.Description, richtext.FormatART
-	case d.Mode == ModeEdit && d.Loaded != nil && !d.descriptionChanged():
-		return "", ""
 	}
 	// Typed text: "text" is the wire default of source=arena, so it is left
 	// implicit (and the bundles of the shared wizard golden files stay as
 	// they are).
 	return d.Event.Description, ""
+}
+
+// descriptionRefusalKey is the bot text for a description the server refused
+// (422 import.invalid_description), by error.details.reason. A reason this
+// version does not know (or none) gets the general text.
+func descriptionRefusalKey(reason string) string {
+	switch richtext.Reason(reason) {
+	case richtext.ReasonTooLong, richtext.ReasonHTMLTooLong:
+		return "bot.wz.err_description_too_long"
+	case richtext.ReasonControlChars, richtext.ReasonBadEncoding:
+		return "bot.wz.err_description_chars"
+	}
+	return "bot.wz.err_description"
 }

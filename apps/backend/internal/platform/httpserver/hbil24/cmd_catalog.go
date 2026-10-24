@@ -184,6 +184,11 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 	// flag, read for the whole catalog in one round trip. A failure is fatal:
 	// guessing "text" for an ART description would show the tags to every
 	// visitor of the site, and omitting it would blank the site's copy.
+	// The format is a second statement, not part of the event query: a PATCH or
+	// a backfill that converts an event between the two reads can give one
+	// answer the old text with the new format. The text is sanitised either
+	// way, the worst case is tags shown as words in that one answer, and the
+	// site's next fetch is right.
 	descFormats, ferr := h.eventQueries.ListEventDescriptionFormats(ctx, actionIDs)
 	if ferr != nil {
 		h.logger.Error("bil24_compat: GET_ALL_ACTIONS: list description formats failed",
@@ -356,8 +361,20 @@ func (h *Handler) buildActionEntry(
 	// rel="noopener noreferrer" target="_blank" on its links, and an old
 	// "text" row is converted on the fly, so "**bold**" reaches the site as
 	// <strong> instead of literal asterisks.
+	//
+	// A row still marked "text" whose content has the tags of the white list
+	// (richtext.LooksLikeHTML) is HTML a site wrote before the format flag
+	// existed: it is rendered as ART (sanitised, paragraphs like wpautop), so
+	// the site gets its own HTML back and never escaped tags.
 	if e.Description != nil {
-		html, _ := richtext.Render(*e.Description, ae.descriptionFormat, richtext.ProfileDescription)
+		format := ae.descriptionFormat
+		if format != richtext.FormatART && richtext.LooksLikeHTML(*e.Description) {
+			// Until the backfill has run, the descriptions the sites wrote
+			// through source=bil24 are HTML marked "text". They go back to the
+			// site as the (sanitised) HTML they sent, never as escaped tags.
+			format = richtext.FormatART
+		}
+		html, _ := richtext.Render(*e.Description, format, richtext.ProfileDescription)
 		action["description"] = html
 	}
 	// Spec §7.1 (slice 19): organizerId is organizations.display_number

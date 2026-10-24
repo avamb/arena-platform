@@ -48,9 +48,9 @@ func TestBil24_RT03_TextDescriptionReachesTheSiteAsStrongNotAsterisks(t *testing
 	if strings.Contains(got, "**") {
 		t.Errorf("the site would show asterisks: %q", got)
 	}
-	// A format that was not read is the old text, never a guess from the tags.
-	got, _ = actionDescription(t, ptr("<b>literal</b> **x**"), "")
-	if want := "<p>&lt;b&gt;literal&lt;/b&gt; <strong>x</strong></p>"; got != want {
+	// A format that was not read is the old text.
+	got, _ = actionDescription(t, ptr("a < b and **x**"), "")
+	if want := "<p>a &lt; b and <strong>x</strong></p>"; got != want {
 		t.Errorf("unflagged description = %q, want %q", got, want)
 	}
 }

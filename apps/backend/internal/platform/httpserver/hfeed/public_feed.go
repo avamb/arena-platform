@@ -890,6 +890,17 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 // the events' description_format flags (spec 43, RT-03a). Non-fatal like the
 // venue names: without the flag the views stay nil (the server never guesses a
 // format) and the raw description is still there.
+//
+// The format is read by a second statement, not by the query that read the
+// description (the format is not in the shared event SELECTs, and this batch
+// costs one round trip for the whole list). A PATCH or a backfill that
+// converts this event between the two statements can give ONE response the
+// old text with the new format, or the reverse. For display that is harmless:
+// the views are rebuilt by the sanitiser from whatever it gets, so nothing
+// unsafe can come out of it, the worst case is tags shown as words (or marks
+// lost) in that one response, and the next request is right. Nothing is
+// written back from these views. A reader that WRITES back what it read (the
+// event-bundle export) reads both in one RepeatableRead snapshot instead.
 func (h *Handler) hydrateFeedDescriptions(ctx context.Context, responses []publicFeedEventResponse) {
 	if h.publicFeedQueries == nil || len(responses) == 0 {
 		return

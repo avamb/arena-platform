@@ -219,6 +219,11 @@ var errBundleEventNotFound = errors.New("event not found")
 // loadBundleSource reads the event of orgID and everything its bundles need.
 // A deleted event, an unknown one and another organization's all answer
 // errBundleEventNotFound.
+//
+// It MUST run inside one snapshot (HandleEventBundleRead opens a RepeatableRead
+// read-only transaction): the description and its format are two statements,
+// and a bundle that is posted back stores what it holds, so a text read with
+// the other format would be stored wrongly ("**x**" kept as literal stars).
 func loadBundleSource(ctx context.Context, q *gen.Queries, orgID, eventID uuid.UUID) (bundleSource, error) {
 	ev, err := q.GetEventRaw(ctx, eventID)
 	switch {

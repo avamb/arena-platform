@@ -273,3 +273,18 @@ func TestWriteReport_FileModeIs0600(t *testing.T) {
 		t.Fatalf("stdout report: %q %v", sb.String(), err)
 	}
 }
+
+// --html-as-art on a WordPress text keeps its paragraphs (blank lines) and
+// line breaks; a text that has <p> is read as it is.
+func TestConvertText_HTMLAsARTKeepsWordPressParagraphs(t *testing.T) {
+	wp := "Intro with <b>bold</b>.\n\nSecond,\nsame paragraph.\n\nThird."
+	got, err := convertText(wp, richtext.ProfileDescription, true)
+	want := "<p>Intro with <strong>bold</strong>.</p><p>Second,<br>same paragraph.</p><p>Third.</p>"
+	if err != nil || got != want {
+		t.Fatalf("got %q %v, want %q", got, err, want)
+	}
+	got, err = convertText("<p>a</p>\n\n<p>b</p>", richtext.ProfileDescription, true)
+	if err != nil || got != "<p>a</p><p>b</p>" {
+		t.Fatalf("with <p>: %q %v", got, err)
+	}
+}
