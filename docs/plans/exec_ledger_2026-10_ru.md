@@ -573,7 +573,7 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 
 | Задача | Класс / модель | Ветка | PR | Состояние |
 |---|---|---|---|---|
-| QL-7 | Ф / sonnet | `feat/ql-7-widget-attribution` | [#235](https://github.com/avamb/arena-platform/pull/235) | PR открыт (f9b75582); `lib/attribution.ts` + тест, `CheckoutStartPayload.attribution`, захват в `onMount` `ArenaTickets.svelte`, e2e `tests/attribution.e2e.ts` (4 сценария), `render.ts` `preselectedSession` + тест; ворота: виджет vitest 736/26 файлов (было 25), type-check, build, mock e2e 95 passed; tickets-page vitest 174/11 (было 10), type-check, build; CI PR зелёный кроме ещё идущей Integration (бэкенд не менялся); не проверено: демо `apps/wp-plugin` руками (прочитан `class-widget.php`), `?session=` в браузере (только jsdom), сценарии с `ref` на реальном бэкенде. Sonnet-ревью запущено |
+| QL-7 | Ф / sonnet | `feat/ql-7-widget-attribution` | [#235](https://github.com/avamb/arena-platform/pull/235) | PR открыт (f9b75582); `lib/attribution.ts` + тест, `CheckoutStartPayload.attribution`, захват в `onMount` `ArenaTickets.svelte`, e2e `tests/attribution.e2e.ts` (4 сценария), `render.ts` `preselectedSession` + тест; ворота: виджет vitest 736/26 файлов (было 25), type-check, build, mock e2e 95 passed; tickets-page vitest 174/11 (было 10), type-check, build; CI PR зелёный целиком (Integration включительно); не проверено: демо `apps/wp-plugin` руками (прочитан `class-widget.php`), `?session=` в браузере (только jsdom), сценарии с `ref` на реальном бэкенде. Sonnet-ревью запущено |
 | QL-8 | M / sonnet | `feat/ql-8-bot-sales-links` | — | в работе с 24.10 |
 | QL-9 | S / sonnet | `feat/ql-9-bot-links-list` | — | ждёт QL-8 |
 
