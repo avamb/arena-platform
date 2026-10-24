@@ -113,7 +113,7 @@ func cleanHost(authority string) (string, bool) {
 	}
 	for i := 0; i < len(host); i++ {
 		c := host[i]
-		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '.') {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' && c != '.' {
 			return "", false
 		}
 	}
@@ -140,7 +140,7 @@ func isNumericLabel(s string) bool {
 			return true
 		}
 		for _, r := range s {
-			if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+			if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
 				return false
 			}
 		}

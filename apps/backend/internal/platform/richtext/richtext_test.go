@@ -252,7 +252,7 @@ func TestSanitizeRejects(t *testing.T) {
 		{"control character", "<p>a\x01b</p>", descr, ReasonControlChars},
 		{"nul", "a\x00b", descr, ReasonControlChars},
 		{"escape", "a\x1bb", descr, ReasonControlChars},
-		{"form feed is whitespace", "ab", descr, ""},
+		{"form feed is whitespace", "a\fb", descr, ""},
 		{"c1 control", "a\u0085b", descr, ReasonControlChars},
 		{"numeric entity control", "<p>a&#1;b</p>", descr, ReasonControlChars},
 		{"bidi override", "a\u202eb", descr, ReasonControlChars},
