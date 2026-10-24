@@ -495,6 +495,7 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 | Р-QL7 | QL-1/QL-6 | новый параметр `InsertCheckoutSessionWithToken` | QL-1 только добавляет колонку `attribution` в сканер и `CheckoutSessionRow` (INSERT без неё, работает DEFAULT); сигнатуру и запись json меняет QL-6 | у `InsertCheckoutSessionWithToken` два боевых вызова (hfeed, hbil24) и тесты — менять их должен тот, кто меняет поведение (opus, QL-6) |
 | Р-QL8 | QL-3 | лог запроса на `/go/{code}` | `requestLogMiddleware` оставляем как есть (он пишет `remote_addr`/`user_agent` на каждый запрос, как для `checkout/start`); ST-QL1 касается ХРАНЕНИЯ — в таблицах только агрегаты по дню и стране | та же честная оговорка, что у согласия P2 в AGENTS.md |
 | Р-QL10 | QL-2 | ждать ли QL-1 | QL-2 стартует от `origin/master` параллельно QL-1 и целится в master: пакеты `attribution` и `salelinks` чистые, таблицы `sales_links` не читают (вставка кода — через узкий интерфейс `Inserter`, факты цели — своим запросом по существующим таблицам `GetSalesLinkTargetFacts`); алфавит кода и `IsCode` живут в `attribution`, `salelinks` их импортирует | экономит сутки ожидания и не создаёт конфликтов файлов; зависимость QL-2 от QL-1 в спеке — по смыслу, не по коду |
+| Р-QL11 | QL-2 | проверять ли в `Resolve` достижимость hosted-страницы (канал с `hosted_page.enabled`, живой feed token, публикация), а не только `published` + slug | нет: цепочка §4.3 как написана (`published` и slug). Организация без hosted-канала получит адрес страницы, которая отвечает 404, но у неё и страница организации отвечает 404 — проверка ничего не спасает, а усложняет запрос и фикстуры | §4.3 — решение спеки; предупреждение «у вас нет страницы продаж» — дело клиентов (этапы 2–3) |
 | Р-QL9 | QL-6 | `sources` в сводке события и в батче | блок `sources` — только в сводке СЕАНСА (§4.5); `summaryCore` (общий со сводкой события и батчем `events/sales-summary`) не трогать, иначе ломается `TestEventSalesSummary_BatchEqualsPerEventSummary` | §4.5 говорит о сводке сеанса; расширение на событие — вопрос этапа веб |
 
 ### 11.2 Вопросы владельцу
@@ -508,7 +509,7 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 |---|---|---|---|---|
 | QL-R | R / haiku | — | — | выполнена 24.10; анкоры вписаны в карточки 6.1 спеки 43 |
 | QL-1 | M / sonnet | `feat/ql-1-migration-queries` | — | в работе |
-| QL-2 | M / sonnet | `feat/ql-2-attribution-salelinks` | — | в работе параллельно QL-1 от master |
+| QL-2 | M / sonnet | `feat/ql-2-attribution-salelinks` | [#227](https://github.com/avamb/arena-platform/pull/227) | PR открыт; ворота: build 0, vet 0, юнит 0, интеграция на `arena_ci_ql2` 0, gofmt пусто, golangci-lint 0, staticanalysis 0; не проверено: `-race` (нет cgo); sonnet-ревью идёт |
 | QL-3 | L / opus + opus-ревью | `feat/ql-3-go-redirect` | — | ждёт QL-2 |
 | QL-4 | M / sonnet | `feat/ql-4-org-routes` | — | ждёт QL-2 |
 | QL-5 | S / sonnet | `feat/ql-5-qr-render` | — | ждёт QL-4 |
@@ -519,3 +520,4 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 ### 11.4 Хроника
 
 - 24.10 — старт. Спека 43 и этот раздел журнала — ветка `docs/ql-run-stage1`. QL-R (haiku) собрала анкоры; решения Р-QL1…Р-QL9 записаны. QL-1 запущена, следом QL-2 параллельно (Р-QL10). Документный PR [#226](https://github.com/avamb/arena-platform/pull/226).
+- 24.10 — QL-2 готова (#227), 14 файлов, без миграции и HTTP; развилка исполнителя о достижимости страницы закрыта Р-QL11; запущено sonnet-ревью.
