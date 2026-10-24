@@ -96,3 +96,30 @@ func TestCleanLabel(t *testing.T) {
 		t.Error("121 characters accepted")
 	}
 }
+
+func TestPatchRequestRefusesUnknownNestedFields(t *testing.T) {
+	var req patchRequest
+	if err := json.Unmarshal([]byte(`{"target":{"kind":"org_page","bogus":1}}`), &req); err == nil {
+		t.Error("unknown member inside target accepted")
+	}
+	req = patchRequest{}
+	if err := json.Unmarshal([]byte(`{"target":{"kind":"org_page"},"label":"x","utm":null}`), &req); err != nil {
+		t.Fatalf("valid patch refused: %v", err)
+	}
+	if !req.Target.Present || !req.Label.Present || !req.UTM.Present || req.UTM.Value != nil || req.Status.Present {
+		t.Errorf("tri-state = %+v", req)
+	}
+}
+
+func TestShortHost(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://go.arenasoldout.com":  "go.arenasoldout.com",
+		"https://GO.Example.test:8443": "go.example.test:8443",
+		"":                             "",
+		"not a url":                    "",
+	} {
+		if got := (&Handler{shortBase: in}).shortHost(); got != want {
+			t.Errorf("shortHost(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

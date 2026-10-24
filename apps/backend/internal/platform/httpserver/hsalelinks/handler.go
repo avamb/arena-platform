@@ -24,6 +24,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -180,4 +181,15 @@ func createdVia(ctx context.Context) string {
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	httputil.WriteJSON(w, status, payload)
+}
+
+// shortHost is the host of SHORT_LINK_BASE_URL: the host a new link is issued
+// under, recorded on its row. Empty (the column default) when the base is not
+// a usable address.
+func (h *Handler) shortHost() string {
+	u, err := url.Parse(strings.TrimSpace(h.shortBase))
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return strings.ToLower(u.Host)
 }

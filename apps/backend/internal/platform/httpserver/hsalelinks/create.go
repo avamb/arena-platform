@@ -114,7 +114,7 @@ func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	ins := &codeInserter{
 		q: q, userUTM: utm, campaign: target.campaign,
 		params: gen.InsertSalesLinkParams{
-			OrgID: orgID, TargetKind: target.kind,
+			OrgID: orgID, ShortHost: h.shortHost(), TargetKind: target.kind,
 			EventID: target.eventID, SessionID: target.sessionID, PromoterID: target.promoterID, URL: target.url,
 			Label: label, PlacementKind: placement, CreatedBy: createdBy(ctx), CreatedVia: &via,
 		},

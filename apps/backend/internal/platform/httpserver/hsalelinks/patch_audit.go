@@ -2,7 +2,9 @@ package hsalelinks
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"reflect"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -46,18 +48,29 @@ func (h *Handler) auditPatch(ctx context.Context, tx pgx.Tx, r *http.Request, be
 			return err
 		}
 	}
-	if params.SetLabel || params.SetPlacementKind || params.SetUTM {
-		fields := []string{}
-		if params.SetLabel {
-			fields = append(fields, "label")
-		}
-		if params.SetPlacementKind {
-			fields = append(fields, "placement_kind")
-		}
-		if params.SetUTM {
-			fields = append(fields, "utm")
-		}
-		return h.writeAudit(ctx, tx, r, "v1.sales_link.update", after, map[string]any{"fields": fields})
+	fields := []string{}
+	if params.SetLabel && after.Label != before.Label {
+		fields = append(fields, "label")
 	}
-	return nil
+	if params.SetPlacementKind && after.PlacementKind != before.PlacementKind {
+		fields = append(fields, "placement_kind")
+	}
+	if params.SetUTM && !sameUTM(before.UTM, after.UTM) {
+		fields = append(fields, "utm")
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return h.writeAudit(ctx, tx, r, "v1.sales_link.update", after, map[string]any{"fields": fields})
+}
+
+// sameUTM reports whether two stored utm documents hold the same labels.
+func sameUTM(a, b json.RawMessage) bool {
+	var ma, mb map[string]string
+	_ = json.Unmarshal(a, &ma)
+	_ = json.Unmarshal(b, &mb)
+	if len(ma) == 0 && len(mb) == 0 {
+		return true
+	}
+	return reflect.DeepEqual(ma, mb)
 }

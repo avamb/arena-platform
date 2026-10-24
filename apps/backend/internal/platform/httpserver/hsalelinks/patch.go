@@ -57,6 +57,17 @@ func (h *Handler) HandlePatch(w http.ResponseWriter, r *http.Request) {
 	if !readBody(w, r, &req) {
 		return
 	}
+	ctx := r.Context()
+	// A link of another organization is a 404 before the fields of the body are judged,
+	// so a foreign id never answers with a validation error.
+	if _, err := h.queries.GetSalesLinkByID(ctx, id, orgID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeErr(w, r, http.StatusNotFound, "sales_link.not_found", "sales link not found")
+			return
+		}
+		h.failed(w, r, "load", err)
+		return
+	}
 	if !req.Label.Present && !req.PlacementKind.Present && !req.UTM.Present && !req.Target.Present && !req.Status.Present {
 		writeErr(w, r, http.StatusBadRequest, "sales_link.invalid_body", "send at least one of label, placement_kind, utm, target or status")
 		return
@@ -102,17 +113,6 @@ func (h *Handler) HandlePatch(w http.ResponseWriter, r *http.Request) {
 		params.SetStatus, params.Status = true, strings.TrimSpace(*req.Status.Value)
 	}
 
-	ctx := r.Context()
-	// A link of another organization is a 404 before anything else is judged,
-	// so a foreign id never answers with a validation error about the body.
-	if _, err := h.queries.GetSalesLinkByID(ctx, id, orgID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeErr(w, r, http.StatusNotFound, "sales_link.not_found", "sales link not found")
-			return
-		}
-		h.failed(w, r, "load", err)
-		return
-	}
 	var newTarget resolvedTarget
 	if req.Target.Present {
 		if req.Target.Value == nil {

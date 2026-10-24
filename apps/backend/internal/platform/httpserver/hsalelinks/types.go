@@ -1,6 +1,7 @@
 package hsalelinks
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"time"
@@ -44,8 +45,12 @@ func (o *optional[T]) UnmarshalJSON(data []byte) error {
 		o.Value = nil
 		return nil
 	}
+	// Unknown members are refused here too, so a nested object (the target)
+	// is as strict on PATCH as on create.
 	var v T
-	if err := json.Unmarshal(data, &v); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&v); err != nil {
 		return err
 	}
 	o.Value = &v
