@@ -218,7 +218,7 @@ type candidate struct {
 	desc, note bool
 }
 
-// runBackfill converts every text still marked 'text' (spec 43, RT-02). Each
+// runBackfill converts every text still marked 'text' (spec 44, RT-02). Each
 // event (its base description and its translations together) and each note is
 // one transaction; a dry run runs the same code and rolls back. A row that is
 // not converted (a reason in the report) never stops the run, and the cursor
@@ -525,7 +525,7 @@ type backupRow struct {
 	entity, locale, oldValue, oldFormat, newValue string
 }
 
-// rollbackRun puts back what the run with that id replaced (spec 43, RT-02).
+// rollbackRun puts back what the run with that id replaced (spec 44, RT-02).
 // A text that has been written since the run (it no longer equals what the run
 // stored) is not touched, and neither is the rest of its event: the flag
 // covers the translations, so an event is restored as a whole or not at all.

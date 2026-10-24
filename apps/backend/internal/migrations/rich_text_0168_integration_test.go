@@ -1,6 +1,6 @@
 //go:build integration
 
-// rich_text_0168_integration_test.go — migration 0168 (spec 43, RT-02) on a
+// rich_text_0168_integration_test.go — migration 0168 (spec 44, RT-02) on a
 // migrated database: the format columns and their CHECKs, the wider note
 // limit, and the guard of the Down, which must refuse while any text is
 // stored as 'art' (dropping the flag would leave ART that the old code shows

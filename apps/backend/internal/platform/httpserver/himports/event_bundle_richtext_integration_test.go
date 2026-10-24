@@ -2,7 +2,7 @@
 
 package himports
 
-// event_bundle_richtext_integration_test.go - spec 43, RT-02: the event-bundle
+// event_bundle_richtext_integration_test.go - spec 44, RT-02: the event-bundle
 // writes the description and the organizer's letter text through
 // richtext.Normalize. action.descriptionFormat / action.emailNoteFormat are
 // "text" (default) or "art"; the stored text is ART and the flag is 'art'.

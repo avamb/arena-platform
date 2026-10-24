@@ -352,7 +352,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	// stub does not record; the rows were verified above).
 	press("events:1", "Страница 1 из 1")
 
-	// The event holds a description stored as ART (spec 43, RT-02): the edit
+	// The event holds a description stored as ART (spec 44, RT-02): the edit
 	// below must show it without tags and give it back byte for byte.
 	const artDescription = `<p>Концерт &amp; <strong>вечер</strong></p><ul><li>раз</li><li>два</li></ul>`
 	if _, err := pool.Exec(ctx, `UPDATE events SET description = $2, description_format = 'art' WHERE id = $1`, eventID, artDescription); err != nil {

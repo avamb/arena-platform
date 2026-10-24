@@ -7310,7 +7310,7 @@ type EventItem struct {
 	// the server could not read it; a reader treats that as `text`.
 	DescriptionFormat *EventItemDescriptionFormat `json:"description_format,omitempty"`
 
-	// DescriptionHtml `description` as safe HTML for display (spec 43, RT-03a):
+	// DescriptionHtml `description` as safe HTML for display (spec 44, RT-03a):
 	// `richtext.Render` with the description profile. Locale-resolved
 	// like `description` and read with the event's `description_format`
 	// (the flag covers the translations). Links carry
@@ -8275,7 +8275,7 @@ type HostedPageEvent struct {
 	// cached the older page; new clients read `description_html`.
 	Description *string `json:"description"`
 
-	// DescriptionHtml `description` as safe HTML (spec 43, RT-03a): `richtext.Render`
+	// DescriptionHtml `description` as safe HTML (spec 44, RT-03a): `richtext.Render`
 	// with the description profile, links carry
 	// `rel="noopener noreferrer" target="_blank"`. The page rebuilds it
 	// from whitelisted nodes before showing it. Null when there is no

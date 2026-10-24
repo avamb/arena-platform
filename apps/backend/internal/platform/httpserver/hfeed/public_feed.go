@@ -66,7 +66,7 @@ type publicFeedEventResponse struct {
 	Name          string  `json:"name"`
 	Description   *string `json:"description"`
 	// DescriptionHTML and DescriptionText are the safe HTML and the plain text of
-	// Description, read with the event's format flag (spec 43, RT-03a). nil when
+	// Description, read with the event's format flag (spec 44, RT-03a). nil when
 	// there is no description. Description itself stays the raw stored value.
 	DescriptionHTML *string  `json:"description_html"`
 	DescriptionText *string  `json:"description_text"`
@@ -887,7 +887,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 }
 
 // hydrateFeedDescriptions fills DescriptionHTML/Text from one batched read of
-// the events' description_format flags (spec 43, RT-03a). Non-fatal like the
+// the events' description_format flags (spec 44, RT-03a). Non-fatal like the
 // venue names: without the flag the views stay nil (the server never guesses a
 // format) and the raw description is still there.
 //

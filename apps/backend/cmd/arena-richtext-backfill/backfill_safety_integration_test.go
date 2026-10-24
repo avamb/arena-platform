@@ -3,7 +3,7 @@
 package main
 
 // backfill_safety_integration_test.go - the review fixes of the backfill
-// (spec 43, RT-02): HTML the sites wrote is left alone unless asked for, the
+// (spec 44, RT-02): HTML the sites wrote is left alone unless asked for, the
 // cursor moves past rows that are not converted, a row changed under the run
 // is skipped and the run goes on, the report holds no texts by default,
 // rollback honours --org, and old backup rows can be purged.

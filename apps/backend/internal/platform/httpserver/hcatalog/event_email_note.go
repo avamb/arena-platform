@@ -5,7 +5,7 @@
 //	POST  /v1/organizations/{org_id}/events/{event_id}/email-note/test    (event.update)
 //
 // The text passes richtext.Normalize (the letter-text profile) before it is
-// stored as ART with note_format 'art' (spec 43, RT-02): email_note_format is
+// stored as ART with note_format 'art' (spec 44, RT-02): email_note_format is
 // "text" (default, the old marks) or "art" (HTML); at most five https links,
 // 2000 visible characters. The ticket and session-change letters print it as
 // "About the event".

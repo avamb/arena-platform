@@ -3,7 +3,7 @@ package eventtext
 import "github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 
 // DescriptionView is a stored event description as its readers need it
-// (spec 43, RT-03a): the same text three ways.
+// (spec 44, RT-03a): the same text three ways.
 type DescriptionView struct {
 	// HTML is richtext.Render with the description profile: safe HTML for
 	// buyers' pages and the gateway. Never empty for a text with content.

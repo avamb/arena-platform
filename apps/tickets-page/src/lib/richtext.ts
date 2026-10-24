@@ -92,7 +92,7 @@ export function plainText(source: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// description_html (spec 43, RT-03a): the server's "text Arena" HTML subset.
+// description_html (spec 44, RT-03a): the server's "text Arena" HTML subset.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Elements that may appear in the output, besides <a>. Everything else is

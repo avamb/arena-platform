@@ -155,7 +155,7 @@ type EventResponse struct {
 	// not converted yet). Hydrated by hydrateEvents, never by EventFromRow.
 	DescriptionFormat string `json:"description_format"`
 	// DescriptionHTML, DescriptionText and DescriptionLegacy are the readers'
-	// views of Description (spec 43, RT-03a), resolved with the same locale and
+	// views of Description (spec 44, RT-03a), resolved with the same locale and
 	// read with the event's format flag: safe HTML (richtext.Render), the plain
 	// text of that HTML, and the old "**bold**, - list" text for forms that
 	// cannot show markup. nil when Description is nil or the format is unknown.
@@ -391,7 +391,7 @@ type createEventRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	// DescriptionFormat says how description and the translated descriptions
-	// are written: "text" (default, the old marks) or "art" (HTML, spec 43).
+	// are written: "text" (default, the old marks) or "art" (HTML, spec 44).
 	DescriptionFormat string                      `json:"description_format"`
 	Status            string                      `json:"status"`
 	Visibility        string                      `json:"visibility"`
@@ -465,7 +465,7 @@ func (h *Handler) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The description and its translations are checked BEFORE anything is
-	// written (spec 43, RT-02): richtext.Normalize is the single write path.
+	// written (spec 44, RT-02): richtext.Normalize is the single write path.
 	descFormat, ok := parseTextFormat(w, r, req.DescriptionFormat, "description_format", "event.invalid_description_format")
 	if !ok {
 		return
@@ -695,7 +695,7 @@ type updateEventRequest struct {
 	Name        string  `json:"name"`
 	Description *string `json:"description"`
 	// DescriptionFormat says how description and the translated descriptions
-	// are written: "text" (default, the old marks) or "art" (HTML, spec 43).
+	// are written: "text" (default, the old marks) or "art" (HTML, spec 44).
 	DescriptionFormat     string                      `json:"description_format"`
 	Visibility            string                      `json:"visibility"`
 	ImageURL              *string                     `json:"image_url"`
@@ -717,7 +717,7 @@ type updateEventRequest struct {
 	// null or "" clears, a string sets it after richtext.Normalize.
 	EmailNote optionalString `json:"email_note"`
 	// EmailNoteFormat says how email_note is written: "text" (default) or
-	// "art" (HTML, spec 43).
+	// "art" (HTML, spec 44).
 	EmailNoteFormat string `json:"email_note_format"`
 }
 
@@ -782,7 +782,7 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The description and its translations go through richtext.Normalize
-	// too, before anything is written (spec 43, RT-02).
+	// too, before anything is written (spec 44, RT-02).
 	descFormat, ok := parseTextFormat(w, r, req.DescriptionFormat, "description_format", "event.invalid_description_format")
 	if !ok {
 		return

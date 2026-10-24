@@ -2,7 +2,7 @@
 
 package main
 
-// backfill_integration_test.go - spec 43, RT-02: the backfill command on seeded
+// backfill_integration_test.go - spec 44, RT-02: the backfill command on seeded
 // rows. Dry run writes nothing, apply converts text rows (the base description,
 // every translation, the letter note) and keeps a backup, a row that cannot be
 // converted is left alone with its event, a rerun changes nothing, rollback

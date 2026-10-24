@@ -99,7 +99,7 @@ RETURNING id, display_number, org_id, name, description, status, first_session_a
 // Returns the created row including the uuidv7 PK assigned by the database.
 // descriptionFormat ("text" or "art", empty means "text") says how the stored
 // description is to be read; a writer that has passed the text through
-// richtext.Normalize passes "art" (spec 43, RT-02).
+// richtext.Normalize passes "art" (spec 44, RT-02).
 func (q *Queries) InsertEvent(ctx context.Context, orgID uuid.UUID, name string, description *string, status, visibility string, imageURL *string, descriptionFormat string) (EventRow, error) {
 	row := q.db.QueryRow(ctx, insertEvent,
 		orgID, name, description, status, visibility, imageURL, descriptionFormat,
@@ -665,7 +665,7 @@ func (q *Queries) SetEventSlugIfEmpty(ctx context.Context, id, orgID uuid.UUID, 
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LockEventDescription / ListEventI18nDescriptions / SetEventDescriptionART
-// (spec 43, RT-02: the format flag of an event covers its translations)
+// (spec 44, RT-02: the format flag of an event covers its translations)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const lockEventDescription = `-- name: LockEventDescription :one

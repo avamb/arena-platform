@@ -69,7 +69,7 @@ type hostedPageEventResponse struct {
 	Title       string  `json:"title"`
 	Description *string `json:"description"`
 	// DescriptionHTML and DescriptionText are the safe HTML and the plain text of
-	// Description (spec 43, RT-03a): the page shows the first and puts the
+	// Description (spec 44, RT-03a): the page shows the first and puts the
 	// second into <title> and <meta>. Description stays the raw stored value.
 	DescriptionHTML  *string  `json:"description_html"`
 	DescriptionText  *string  `json:"description_text"`
@@ -450,7 +450,7 @@ func rfc3339UTC(t *time.Time) *string {
 }
 
 // setDescriptionViews fills DescriptionHTML/Text of a page event from its raw
-// description and the event's format flag (spec 43, RT-03a).
+// description and the event's format flag (spec 44, RT-03a).
 func (e *hostedPageEventResponse) setDescriptionViews(format string) {
 	if e.Description == nil || format == "" {
 		return

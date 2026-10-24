@@ -66,7 +66,7 @@ func TestBuild_HostileARTIsSanitisedAgain(t *testing.T) {
 	}
 }
 
-// The table's CHECK is the HTML limit of the letter-text profile (spec 43,
+// The table's CHECK is the HTML limit of the letter-text profile (spec 44,
 // RT-02: migration 0168 widened the 2000 of 0165 to the 8000 characters of the
 // stored HTML; the visible 2000 are checked by Go).
 func TestLimitMatchesMigration(t *testing.T) {

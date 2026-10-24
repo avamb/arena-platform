@@ -1,6 +1,6 @@
 # Форматированный текст (RT-02/RT-03) — ранбук выката
 
-Спецификация: `08_architecture/43_rich_text_editor_spec_ru.md`. Ветка `feat/rt-02-richtext-storage`.
+Спецификация: `08_architecture/44_rich_text_editor_spec_ru.md`. Ветка `feat/rt-02-richtext-storage`.
 Миграция: `0168_rich_text.sql` (колонки `events.description_format`, `event_email_notes.note_format`).
 
 ## 0. Что меняется для сайтов

@@ -1,5 +1,5 @@
 // Package eventtext is the single write path of the two formatted texts of an
-// event (spec 43, RT-02): the description (events.description and the
+// event (spec 44, RT-02): the description (events.description and the
 // i18n_text rows of namespace event.description) and the organizer's own
 // letter text (event_email_notes.note).
 //

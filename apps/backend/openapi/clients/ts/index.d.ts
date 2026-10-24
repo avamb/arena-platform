@@ -15957,7 +15957,7 @@ export interface components {
              */
             description_format?: "text" | "art";
             /**
-             * @description `description` as safe HTML for display (spec 43, RT-03a):
+             * @description `description` as safe HTML for display (spec 44, RT-03a):
              *     `richtext.Render` with the description profile. Locale-resolved
              *     like `description` and read with the event's `description_format`
              *     (the flag covers the translations). Links carry
@@ -16459,7 +16459,7 @@ export interface components {
              */
             description?: string | null;
             /**
-             * @description `description` as safe HTML (spec 43, RT-03a): `richtext.Render`
+             * @description `description` as safe HTML (spec 44, RT-03a): `richtext.Render`
              *     with the description profile, links carry
              *     `rel="noopener noreferrer" target="_blank"`. The page rebuilds it
              *     from whitelisted nodes before showing it. Null when there is no

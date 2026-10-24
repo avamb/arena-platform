@@ -176,7 +176,7 @@ type Querier interface {
 	SoftDeleteEvent(ctx context.Context, id, orgID uuid.UUID) (EventRow, error)
 	UpsertEventI18nName(ctx context.Context, eventIDStr, locale, value string) error
 	UpsertEventI18nDescription(ctx context.Context, eventIDStr, locale, value string) error
-	// Description format flag (spec 43, RT-02): the flag of an event covers its translations
+	// Description format flag (spec 44, RT-02): the flag of an event covers its translations
 	LockEventDescription(ctx context.Context, eventID, orgID uuid.UUID) (EventDescriptionState, error)
 	ListEventI18nDescriptions(ctx context.Context, eventIDStr string) ([]EventI18nDescription, error)
 	SetEventDescriptionART(ctx context.Context, eventID uuid.UUID, description *string) error

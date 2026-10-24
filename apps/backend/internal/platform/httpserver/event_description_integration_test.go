@@ -2,7 +2,7 @@
 
 package httpserver
 
-// event_description_integration_test.go - spec 43, RT-02: the description of
+// event_description_integration_test.go - spec 44, RT-02: the description of
 // an event and the organizer's letter text have ONE write path,
 // richtext.Normalize, and every writer stores ART with the format flag 'art'.
 // REST create and patch with the old text and with art, the translations, the

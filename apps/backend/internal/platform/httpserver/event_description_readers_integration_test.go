@@ -2,7 +2,7 @@
 
 package httpserver
 
-// event_description_readers_integration_test.go - spec 43, RT-03a: the REST
+// event_description_readers_integration_test.go - spec 44, RT-03a: the REST
 // event reads carry description_html, description_text and description_legacy
 // next to the raw description, and email_note_format next to the note, for
 // rows stored as ART and rows still stored as old text, and for a translated

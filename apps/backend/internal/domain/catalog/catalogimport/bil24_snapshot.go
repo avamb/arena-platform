@@ -115,7 +115,7 @@ func (e *Bil24SnapshotEvent) Validate() error {
 		}
 	}
 
-	// The description is stored as ART (spec 43, RT-02): a row whose text the
+	// The description is stored as ART (spec 44, RT-02): a row whose text the
 	// filter refuses is reported with the others and not imported.
 	if _, err := e.DescriptionART(); err != nil {
 		errs = append(errs, "description: "+err.Error())
@@ -159,7 +159,7 @@ func ParseDescriptionFormat(s string) (string, error) {
 // DescriptionART is ResolvedDescription passed through richtext.Normalize in
 // the event's DescriptionFormat (art unless set to text): the text to store in
 // events.description together with the format flag "art". It is the single
-// write path of the importer (spec 43, RT-02).
+// write path of the importer (spec 44, RT-02).
 func (e *Bil24SnapshotEvent) DescriptionART() (string, error) {
 	format, err := ParseDescriptionFormat(e.DescriptionFormat)
 	if err != nil {

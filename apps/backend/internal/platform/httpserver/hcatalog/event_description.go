@@ -1,5 +1,5 @@
 // event_description.go - the description of an event on its single write path
-// (spec 43, RT-02). REST create and patch take description (and the per-locale
+// (spec 44, RT-02). REST create and patch take description (and the per-locale
 // translations) plus the optional description_format ("text" by default,
 // "art"), pass every text through richtext.Normalize with the description
 // profile and store ART with the format flag "art". A refused text is
