@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -16,6 +17,7 @@ import (
 // stub is a Messages API that records the last request.
 type stub struct {
 	srv     *httptest.Server
+	mu      sync.Mutex
 	calls   int
 	header  http.Header
 	body    map[string]any
@@ -28,21 +30,26 @@ func newStub(t *testing.T, status int, answer string) *stub {
 	t.Helper()
 	s := &stub{status: status, answer: answer}
 	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		// A request the client gave up on may still be in its handler when
+		// the next one arrives, so the record is written under the lock.
+		s.mu.Lock()
 		s.calls++
 		s.header = r.Header.Clone()
-		raw, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(raw, &s.body)
+		handler, status, answer := s.handler, s.status, s.answer
+		s.mu.Unlock()
 		if r.URL.Path != "/v1/messages" || r.Method != http.MethodPost {
 			http.NotFound(w, r)
 			return
 		}
-		if s.handler != nil {
-			s.handler(w, r)
+		if handler != nil {
+			handler(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(s.status)
-		_, _ = w.Write([]byte(s.answer))
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(answer))
 	}))
 	t.Cleanup(s.srv.Close)
 	return s

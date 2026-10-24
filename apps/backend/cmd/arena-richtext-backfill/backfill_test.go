@@ -197,7 +197,8 @@ func TestParseFlags_NewFlags(t *testing.T) {
 // By default the report has no text of an event or a note: ids, locales,
 // lengths and reasons only. The texts are in it only when asked for.
 func TestReportMarkdown_NoTextsByDefault(t *testing.T) {
-	rep := &Report{RunID: uuid.New(), Apply: true}
+	// A fixed run id: a random one may itself hold "777".
+	rep := &Report{RunID: uuid.MustParse("0b3c5d1e-2f4a-4b6c-8d0e-1a2b3c4d5e6f"), Apply: true}
 	secret := "call +420 777 123 456 or <b>write</b> to boss@example.com"
 	rep.changed(entityEmailNote, "e1", "", secret, "<p>"+secret+"</p>")
 	rep.notices("e1", textItem{entity: entityEmailNote, old: "- " + secret})
