@@ -51,7 +51,7 @@ func readQLListState(t *testing.T, pool *pgxpool.Pool, tg int64) qlListState {
 	var raw []byte
 	if err := pool.QueryRow(context.Background(),
 		`SELECT step, state FROM bot_dialogs WHERE telegram_user_id = $1 AND kind = 'sales_link_list'`, tg).Scan(&step, &raw); err != nil {
-		t.Fatalf("the sales_link dialog must be stored for %d: %v", tg, err)
+		t.Fatalf("the sales_link_list dialog must be stored for %d: %v", tg, err)
 	}
 	var st struct {
 		Filter  string                  `json:"lf"`
@@ -63,7 +63,7 @@ func readQLListState(t *testing.T, pool *pgxpool.Pool, tg int64) qlListState {
 		Picker  []uuid.UUID             `json:"pi"`
 	}
 	if err := json.Unmarshal(raw, &st); err != nil {
-		t.Fatalf("decode the sales_link dialog: %v", err)
+		t.Fatalf("decode the sales_link_list dialog: %v", err)
 	}
 	out := qlListState{Step: step, Filter: st.Filter, Page: st.Page, Cursors: st.Cursors, Next: st.Next, Rows: st.Rows, Picker: st.Picker}
 	if st.Event != nil {

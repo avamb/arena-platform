@@ -297,6 +297,11 @@ func (b *Bot) slRenderList(ctx context.Context, chatID int64, editMsgID *int, id
 		q.EventID = &ls.Event.ID
 	}
 	res, err := b.arena.ListSalesLinks(ctx, jwt, orgID, q)
+	if err != nil && cursor != "" && APIErrorCode(err) == "sales_link.invalid_cursor" {
+		// A stored cursor the API no longer takes: start from the first page.
+		b.slRenderList(ctx, chatID, editMsgID, id, jwt, ls, 1, "")
+		return
+	}
 	if err != nil {
 		b.ecError(ctx, chatID, editMsgID, id, err, "home")
 		return
