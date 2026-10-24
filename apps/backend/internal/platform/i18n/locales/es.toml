@@ -3893,3 +3893,204 @@ other = "Todos los que tienen una entrada válida ya han entrado."
 
 ["bot.ses.not_entered_invite"]
 other = "invitación"
+
+["bot.ql.menu_btn"]
+other = "🔗 Enlaces y QR"
+
+["bot.ql.btn"]
+other = "🔗 QR / enlace"
+
+["bot.ql.cancel_btn"]
+other = "Cancelar"
+
+["bot.ql.cancelled"]
+other = "Listo. No se cambió nada."
+
+["bot.ql.target_q"]
+other = "¿A dónde debe llevar el enlace?\n\nRecibirás un enlace corto y un código QR. Imprime el código o publícalo en internet."
+
+["bot.ql.target_q_event"]
+other = "¿A dónde debe llevar el enlace?\n\nEvento: <b>{{.Name}}</b>"
+
+["bot.ql.t_event"]
+other = "Este evento"
+
+["bot.ql.t_session"]
+other = "Una sesión…"
+
+["bot.ql.t_pages"]
+other = "Todos los eventos"
+
+["bot.ql.t_other_event"]
+other = "Otro evento…"
+
+["bot.ql.t_pick_event"]
+other = "Elegir un evento…"
+
+["bot.ql.t_url"]
+other = "Mi propia dirección"
+
+["bot.ql.events_q"]
+other = "Elige el evento. Página {{.Page}} de {{.Pages}}."
+
+["bot.ql.events_none"]
+other = "Todavía no hay eventos para enlazar. Crea un evento y vuelve aquí."
+
+["bot.ql.sessions_q"]
+other = "Elige la sesión del evento <b>{{.Name}}</b>. Página {{.Page}} de {{.Pages}}."
+
+["bot.ql.sessions_none"]
+other = "El evento <b>{{.Name}}</b> no tiene sesiones para enlazar. Pulsa «Atrás» y elige otro destino."
+
+["bot.ql.url_q"]
+other = "Escribe la dirección de la página. Debe empezar por https:// o http://.\n\nEjemplo: https://example.com/shop"
+
+["bot.ql.err_url"]
+other = "La dirección debe empezar por https:// o http:// y no puede tener espacios. Revísala y envíala otra vez."
+
+["bot.ql.err_url_long"]
+other = "La dirección es demasiado larga. Envía una de hasta 2048 caracteres."
+
+["bot.ql.err_target"]
+other = "Esta página no está en tu organización. Elige otro destino."
+
+["bot.ql.tgt_event"]
+other = "el evento <b>{{.Name}}</b>"
+
+["bot.ql.tgt_session"]
+other = "<b>{{.Name}}</b>, sesión {{.When}}"
+
+["bot.ql.tgt_page"]
+other = "la página con todos los eventos de <b>{{.Name}}</b>"
+
+["bot.ql.tgt_url"]
+other = "la dirección {{.URL}}"
+
+["bot.ql.placement_q"]
+other = "El enlace lleva a: {{.Target}}.\n\n¿Dónde pondrás el código?"
+
+["bot.ql.pl_poster"]
+other = "Cartel"
+
+["bot.ql.pl_flyer"]
+other = "Folleto"
+
+["bot.ql.pl_sign"]
+other = "Letrero"
+
+["bot.ql.pl_social"]
+other = "Redes sociales"
+
+["bot.ql.pl_email"]
+other = "Correo"
+
+["bot.ql.pl_messenger"]
+other = "Mensajería"
+
+["bot.ql.pl_other"]
+other = "Otro"
+
+["bot.ql.change_target_btn"]
+other = "Elegir otro destino"
+
+["bot.ql.label_q"]
+other = "Ubicación: {{.Place}}.\nEscribe un nombre corto para este lugar, de hasta 120 caracteres.\n\nEjemplo: Cartel en la entrada"
+
+["bot.ql.err_label_empty"]
+other = "El nombre está vacío. Escribe un nombre corto, por ejemplo «Cartel en la entrada»."
+
+["bot.ql.err_label_long"]
+other = "El nombre es demasiado largo. Envía uno de hasta 120 caracteres."
+
+["bot.ql.created"]
+other = "Listo. El enlace está creado. Imprime la imagen de arriba o envíala a la imprenta."
+
+["bot.ql.qr_caption"]
+other = "{{.Label}}"
+
+["bot.ql.svg_caption"]
+other = "El mismo código en un archivo SVG, para imprimir."
+
+["bot.ql.qr_failed"]
+other = "No pudimos enviar la imagen del código. Pulsa «Enviar el código otra vez»."
+
+["bot.ql.card_head"]
+other = "🔗 <b>{{.Label}}</b>\n{{.Place}}"
+
+["bot.ql.card_short"]
+other = "Dirección corta: {{.URL}}"
+
+["bot.ql.card_dest"]
+other = "El código lleva a: {{.URL}}"
+
+["bot.ql.card_no_dest"]
+other = "Todavía no se conoce la dirección de la página."
+
+["bot.ql.card_degraded"]
+other = "El código lleva a una página superior a su destino. El motivo: el evento está fuera de venta, la sesión ya no vende o el destino ya no existe."
+
+["bot.ql.card_archived"]
+other = "El enlace está en el archivo. El código lleva a la página con todos los eventos."
+
+["bot.ql.card_counts"]
+other = "Escaneos: {{.Scans}}. Pedidos: {{.Orders}}."
+
+["bot.ql.stats_btn"]
+other = "Estadísticas"
+
+["bot.ql.retarget_btn"]
+other = "Redirigir"
+
+["bot.ql.archive_btn"]
+other = "Archivar"
+
+["bot.ql.unarchive_btn"]
+other = "Restaurar"
+
+["bot.ql.qr_again_btn"]
+other = "Enviar el código otra vez"
+
+["bot.ql.stats_head"]
+other = "📊 <b>{{.Label}}</b>"
+
+["bot.ql.stats_scans"]
+other = "Escaneos: {{.Total}}.\nÚltimos 7 días: {{.Week}}. Hoy: {{.Today}}."
+
+["bot.ql.stats_utc"]
+other = "Los días se cuentan en UTC."
+
+["bot.ql.stats_bots"]
+other = "Bots excluidos: {{.Count}}."
+
+["bot.ql.stats_orders"]
+other = "Pedidos: {{.Orders}}. Entradas: {{.Tickets}}."
+
+["bot.ql.stats_revenue"]
+other = "Pagado tras devoluciones: {{.Amount}}."
+
+["bot.ql.stats_no_revenue"]
+other = "Todavía no hay pedidos pagados."
+
+["bot.ql.rt_head"]
+other = "Redirigir el enlace <b>{{.Label}}</b>."
+
+["bot.ql.rt_archived"]
+other = "El enlace está en el archivo. Restáuralo primero y luego redirígelo."
+
+["bot.ql.rt_confirm"]
+other = "¿Redirigir <b>{{.Label}}</b> a: {{.Target}}?\n\nEl código impreso no cambia. Los compradores que lo escaneen llegarán a la nueva página."
+
+["bot.ql.rt_yes_btn"]
+other = "Sí, redirigir"
+
+["bot.ql.rt_done"]
+other = "Listo. El código <b>{{.Label}}</b> lleva ahora a la nueva página."
+
+["bot.ql.archived_done"]
+other = "Listo. El enlace está en el archivo. Su código lleva a la página con todos los eventos."
+
+["bot.ql.unarchived_done"]
+other = "Listo. El enlace vuelve a estar activo."
+
+["bot.ql.gone"]
+other = "Este enlace ya no está en la lista. Abre el menú de enlaces y elige otro."

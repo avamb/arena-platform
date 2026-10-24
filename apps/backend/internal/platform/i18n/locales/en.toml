@@ -4041,3 +4041,204 @@ other = "Everyone with a valid ticket has come in."
 
 ["bot.ses.not_entered_invite"]
 other = "invitation"
+
+["bot.ql.menu_btn"]
+other = "🔗 Links and QR"
+
+["bot.ql.btn"]
+other = "🔗 QR / link"
+
+["bot.ql.cancel_btn"]
+other = "Cancel"
+
+["bot.ql.cancelled"]
+other = "Done. Nothing changed."
+
+["bot.ql.target_q"]
+other = "Where should the link lead?\n\nYou get a short link and a QR code. Print the code or post it online."
+
+["bot.ql.target_q_event"]
+other = "Where should the link lead?\n\nEvent: <b>{{.Name}}</b>"
+
+["bot.ql.t_event"]
+other = "This event"
+
+["bot.ql.t_session"]
+other = "One session…"
+
+["bot.ql.t_pages"]
+other = "All events"
+
+["bot.ql.t_other_event"]
+other = "Another event…"
+
+["bot.ql.t_pick_event"]
+other = "Choose an event…"
+
+["bot.ql.t_url"]
+other = "My own address"
+
+["bot.ql.events_q"]
+other = "Choose the event. Page {{.Page}} of {{.Pages}}."
+
+["bot.ql.events_none"]
+other = "There are no events to link to yet. Create an event and come back."
+
+["bot.ql.sessions_q"]
+other = "Choose the session of <b>{{.Name}}</b>. Page {{.Page}} of {{.Pages}}."
+
+["bot.ql.sessions_none"]
+other = "<b>{{.Name}}</b> has no sessions to link to. Press Back and choose another target."
+
+["bot.ql.url_q"]
+other = "Type the address of the page. It must start with https:// or http://.\n\nExample: https://example.com/shop"
+
+["bot.ql.err_url"]
+other = "The address must start with https:// or http:// and have no spaces. Check it and send it again."
+
+["bot.ql.err_url_long"]
+other = "This address is too long. Send an address of up to 2048 characters."
+
+["bot.ql.err_target"]
+other = "This page is not in your organization. Choose another target."
+
+["bot.ql.tgt_event"]
+other = "event <b>{{.Name}}</b>"
+
+["bot.ql.tgt_session"]
+other = "<b>{{.Name}}</b>, session {{.When}}"
+
+["bot.ql.tgt_page"]
+other = "the page with all events of <b>{{.Name}}</b>"
+
+["bot.ql.tgt_url"]
+other = "the address {{.URL}}"
+
+["bot.ql.placement_q"]
+other = "The link leads to {{.Target}}.\n\nWhere will you put the code?"
+
+["bot.ql.pl_poster"]
+other = "Poster"
+
+["bot.ql.pl_flyer"]
+other = "Flyer"
+
+["bot.ql.pl_sign"]
+other = "Sign"
+
+["bot.ql.pl_social"]
+other = "Social media"
+
+["bot.ql.pl_email"]
+other = "E-mail"
+
+["bot.ql.pl_messenger"]
+other = "Messenger"
+
+["bot.ql.pl_other"]
+other = "Other"
+
+["bot.ql.change_target_btn"]
+other = "Change the target"
+
+["bot.ql.label_q"]
+other = "Placement: {{.Place}}.\nType a short name for this place, up to 120 characters.\n\nExample: Poster at the entrance"
+
+["bot.ql.err_label_empty"]
+other = "The name is empty. Type a short name, for example «Poster at the entrance»."
+
+["bot.ql.err_label_long"]
+other = "This name is too long. Send a name of up to 120 characters."
+
+["bot.ql.created"]
+other = "Done. The link is ready. Print the picture above or send it to a printer."
+
+["bot.ql.qr_caption"]
+other = "{{.Label}}"
+
+["bot.ql.svg_caption"]
+other = "The same code as an SVG file, for printing."
+
+["bot.ql.qr_failed"]
+other = "We could not send the picture of the code. Press «Send the code again»."
+
+["bot.ql.card_head"]
+other = "🔗 <b>{{.Label}}</b>\n{{.Place}}"
+
+["bot.ql.card_short"]
+other = "Short address: {{.URL}}"
+
+["bot.ql.card_dest"]
+other = "The code leads to: {{.URL}}"
+
+["bot.ql.card_no_dest"]
+other = "The page address is not known yet."
+
+["bot.ql.card_degraded"]
+other = "The code leads to a higher page than its target. The reason: the event is off sale, the session no longer sells, or the target is gone."
+
+["bot.ql.card_archived"]
+other = "The link is in the archive. The code leads to the page with all events."
+
+["bot.ql.card_counts"]
+other = "Scans: {{.Scans}}. Orders: {{.Orders}}."
+
+["bot.ql.stats_btn"]
+other = "Statistics"
+
+["bot.ql.retarget_btn"]
+other = "Redirect"
+
+["bot.ql.archive_btn"]
+other = "Archive"
+
+["bot.ql.unarchive_btn"]
+other = "Restore"
+
+["bot.ql.qr_again_btn"]
+other = "Send the code again"
+
+["bot.ql.stats_head"]
+other = "📊 <b>{{.Label}}</b>"
+
+["bot.ql.stats_scans"]
+other = "Scans: {{.Total}}.\nLast 7 days: {{.Week}}. Today: {{.Today}}."
+
+["bot.ql.stats_utc"]
+other = "Each day runs on UTC time."
+
+["bot.ql.stats_bots"]
+other = "Bots left out: {{.Count}}."
+
+["bot.ql.stats_orders"]
+other = "Orders: {{.Orders}}. Tickets: {{.Tickets}}."
+
+["bot.ql.stats_revenue"]
+other = "Paid after refunds: {{.Amount}}."
+
+["bot.ql.stats_no_revenue"]
+other = "No paid orders yet."
+
+["bot.ql.rt_head"]
+other = "Redirect the link <b>{{.Label}}</b>."
+
+["bot.ql.rt_archived"]
+other = "This link is in the archive. Restore it first, then redirect it."
+
+["bot.ql.rt_confirm"]
+other = "Redirect <b>{{.Label}}</b> to {{.Target}}?\n\nThe printed code stays the same. Buyers who scan it land on the new page."
+
+["bot.ql.rt_yes_btn"]
+other = "Yes, redirect"
+
+["bot.ql.rt_done"]
+other = "Done. The code <b>{{.Label}}</b> leads to the new page now."
+
+["bot.ql.archived_done"]
+other = "Done. The link is in the archive. Its code leads to the page with all events."
+
+["bot.ql.unarchived_done"]
+other = "Done. The link is active again."
+
+["bot.ql.gone"]
+other = "This link is not in the list any more. Open the links menu and choose another one."
