@@ -180,7 +180,7 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 	}
 	h.prewarmCompatIDs(ctx, compatids.KindAction, actionIDs)
 
-	// Spec 43 (RT-03b): the description is rendered by the event's format
+	// Spec 44 (RT-03b): the description is rendered by the event's format
 	// flag, read for the whole catalog in one round trip. A failure is fatal:
 	// guessing "text" for an ART description would show the tags to every
 	// visitor of the site, and omitting it would blank the site's copy.
@@ -259,7 +259,7 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 //     Both keys carry the same URL in this wave — sizing (thumb vs
 //     hero) is deferred until media_objects grows a variants surface.
 //   - description    — richtext.Render of e.Description with the event's format
-//     flag (ae.descriptionFormat): safe HTML (spec 43, RT-03b). The sites'
+//     flag (ae.descriptionFormat): safe HTML (spec 44, RT-03b). The sites'
 //     plugins render it as HTML; an old "text" row is converted on the fly.
 //
 // The nested actionEventList and the minPrice / maxPrice envelope arrive
@@ -355,7 +355,7 @@ func (h *Handler) buildActionEntry(
 		action["bigPosterUrl"] = url
 		action["smallPosterUrl"] = url
 	}
-	// Spec 43 (RT-03b): the sites' plugins expect HTML, so the description is
+	// Spec 44 (RT-03b): the sites' plugins expect HTML, so the description is
 	// sent as richtext.Render of the stored text with the event's own format
 	// flag (the flag covers the translations ListEvents resolved). ART gets
 	// rel="noopener noreferrer" target="_blank" on its links, and an old

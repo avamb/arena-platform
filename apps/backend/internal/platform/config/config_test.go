@@ -821,6 +821,49 @@ func TestValidate_ProductionWebhookOutbox(t *testing.T) {
 	}
 }
 
+// TestValidate_Production_ShortLinkURLs pins the QL-14 rules: the short-link
+// host is an https origin without a path (a code is appended to it) and the
+// fallback is https. Both are judged for arena-api (and the all-roles
+// config) only.
+func TestValidate_Production_ShortLinkURLs(t *testing.T) {
+	cases := []struct {
+		name, base, fallback string
+		ok                   bool
+	}{
+		{"default host", "https://go.arenasoldout.com", "", true},
+		{"https fallback", "https://go.example.com", "https://www.example.com", true},
+		{"plaintext host", "http://go.example.com", "", false},
+		{"host with a path", "https://go.example.com/go", "", false},
+		{"host with a query", "https://go.example.com/?a=1", "", false},
+		{"host without a scheme", "go.example.com", "", false},
+		{"plaintext fallback", "https://go.example.com", "http://www.example.com", false},
+		{"relative fallback", "https://go.example.com", "/home", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validProductionBase()
+			cfg.ShortLinkBaseURL = tc.base
+			cfg.ShortLinkFallbackURL = tc.fallback
+			err := cfg.Validate()
+			if tc.ok && err != nil {
+				t.Fatalf("want valid, got %v", err)
+			}
+			if !tc.ok && (err == nil || !strings.Contains(err.Error(), "SHORT_LINK_")) {
+				t.Fatalf("want a SHORT_LINK_ error, got %v", err)
+			}
+		})
+	}
+	t.Run("worker is not asked", func(t *testing.T) {
+		cfg := validProductionBase()
+		cfg.Role = RoleWorker
+		cfg.ShortLinkBaseURL = "http://go.example.com/x"
+		cfg.ShortLinkFallbackURL = "http://www.example.com"
+		if err := cfg.Validate(); err != nil && strings.Contains(err.Error(), "SHORT_LINK_") {
+			t.Fatalf("worker never reads these: %v", err)
+		}
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Redaction / log safety
 // ---------------------------------------------------------------------------
@@ -1048,6 +1091,54 @@ func TestLoad_JWTFieldsWiredFromEnv(t *testing.T) {
 	if cfg.JWTDefaultTTL != 2*time.Hour {
 		t.Errorf("JWTDefaultTTL: want 2h, got %v", cfg.JWTDefaultTTL)
 	}
+}
+
+func TestLoad_ShortLinkSettings(t *testing.T) {
+	base := func(es *envSetter) {
+		es.set("APP_ENV", "development")
+		es.set("DATABASE_URL", "postgres://arena:arena@localhost:5432/arena?sslmode=disable")
+		es.set("JWT_SIGNING_SECRET", "dev-secret")
+		es.set("ENABLE_DEV_AUTH", "true")
+	}
+	t.Run("defaults and fallback order", func(t *testing.T) {
+		es := newEnvSetter(t)
+		base(es)
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.ShortLinkBaseURL != "https://go.arenasoldout.com" || cfg.ShortLinkFallbackURL != "" {
+			t.Errorf("defaults: %q %q", cfg.ShortLinkBaseURL, cfg.ShortLinkFallbackURL)
+		}
+		if got := cfg.ShortLinkFallback(); got != "" {
+			t.Errorf("nothing set: %q", got)
+		}
+		cfg.AppPublicURL = "https://app.example/"
+		if got := cfg.ShortLinkFallback(); got != "https://app.example" {
+			t.Errorf("APP_PUBLIC_URL: %q", got)
+		}
+		cfg.PublicTicketsBaseURL = "https://tickets.example"
+		if got := cfg.ShortLinkFallback(); got != "https://tickets.example" {
+			t.Errorf("PUBLIC_TICKETS_BASE_URL: %q", got)
+		}
+		cfg.ShortLinkFallbackURL = " https://fallback.example/ "
+		if got := cfg.ShortLinkFallback(); got != "https://fallback.example" {
+			t.Errorf("SHORT_LINK_FALLBACK_URL: %q", got)
+		}
+	})
+	t.Run("parsing trims", func(t *testing.T) {
+		es := newEnvSetter(t)
+		base(es)
+		es.set("SHORT_LINK_BASE_URL", " https://go.example/ ")
+		es.set("SHORT_LINK_FALLBACK_URL", " https://home.example/ ")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.ShortLinkBaseURL != "https://go.example" || cfg.ShortLinkFallbackURL != "https://home.example" {
+			t.Errorf("got %q %q", cfg.ShortLinkBaseURL, cfg.ShortLinkFallbackURL)
+		}
+	})
 }
 
 func TestLoad_EmailAndSMTPFieldsWiredFromEnv(t *testing.T) {

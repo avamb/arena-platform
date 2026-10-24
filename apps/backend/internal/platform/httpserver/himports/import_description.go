@@ -12,7 +12,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 )
 
-// importDescription reads action.description (spec 43, RT-02) and returns the
+// importDescription reads action.description (spec 44, RT-02) and returns the
 // ART to store: richtext.Normalize of the text in action.descriptionFormat
 // ("text" by default for source=arena, "art" for source=bil24, see
 // importTextFormat). nil means the bundle carries no description (the stored

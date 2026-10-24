@@ -1,6 +1,6 @@
 package hbil24
 
-// catalog_description_rt03_test.go - spec 43, RT-03b: GET_ALL_ACTIONS sends the
+// catalog_description_rt03_test.go - spec 44, RT-03b: GET_ALL_ACTIONS sends the
 // description as richtext.Render of the stored text with the event's format
 // flag. The sites print it as HTML.
 

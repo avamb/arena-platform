@@ -1,6 +1,6 @@
 //go:build integration
 
-// description_render_rt03_integration_test.go - spec 43, RT-03b: the gateway
+// description_render_rt03_integration_test.go - spec 44, RT-03b: the gateway
 // sends the sites the RENDERED description. The WordPress plugins print it as
 // HTML, so GET_ALL_ACTIONS.description is richtext.Render of the stored text
 // with the event's format flag:

@@ -1,6 +1,6 @@
 //go:build integration
 
-// rich_text_0167_integration_test.go — migration 0167 (spec 43, RT-02) on a
+// rich_text_0168_integration_test.go — migration 0168 (spec 44, RT-02) on a
 // migrated database: the format columns and their CHECKs, the wider note
 // limit, and the guard of the Down, which must refuse while any text is
 // stored as 'art' (dropping the flag would leave ART that the old code shows
@@ -16,10 +16,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// downGuard is the DO block of the Down section of 0167.
+// downGuard is the DO block of the Down section of 0168.
 func downGuard(t *testing.T) string {
 	t.Helper()
-	body, err := os.ReadFile("sql/0167_rich_text.sql")
+	body, err := os.ReadFile("sql/0168_rich_text.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func downGuard(t *testing.T) string {
 	return block
 }
 
-func TestMigration0167_FormatChecksNoteLimitAndDownGuard(t *testing.T) {
+func TestMigration0168_FormatChecksNoteLimitAndDownGuard(t *testing.T) {
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, integrationDSN(t))
 	if err != nil {
@@ -61,7 +61,7 @@ func TestMigration0167_FormatChecksNoteLimitAndDownGuard(t *testing.T) {
 
 	// The columns default to 'text' and refuse any other value.
 	var event string
-	if err := tx.QueryRow(ctx, `INSERT INTO events (org_id, name) VALUES ($1, 'mig 0167') RETURNING id::text`, org).Scan(&event); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO events (org_id, name) VALUES ($1, 'mig 0168') RETURNING id::text`, org).Scan(&event); err != nil {
 		t.Fatalf("insert event: %v", err)
 	}
 	var format string
@@ -101,7 +101,7 @@ func TestMigration0167_FormatChecksNoteLimitAndDownGuard(t *testing.T) {
 	if _, err := tx.Exec(ctx, `SAVEPOINT down`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tx.Exec(ctx, guard); err == nil || !strings.Contains(err.Error(), "0167 down refused") {
+	if _, err := tx.Exec(ctx, guard); err == nil || !strings.Contains(err.Error(), "0168 down refused") {
 		t.Fatalf("the Down did not refuse with an art description: %v", err)
 	}
 	if _, err := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT down`); err != nil {
@@ -114,7 +114,7 @@ func TestMigration0167_FormatChecksNoteLimitAndDownGuard(t *testing.T) {
 	if _, err := tx.Exec(ctx, `SAVEPOINT down2`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tx.Exec(ctx, guard); err == nil || !strings.Contains(err.Error(), "0167 down refused") {
+	if _, err := tx.Exec(ctx, guard); err == nil || !strings.Contains(err.Error(), "0168 down refused") {
 		t.Fatalf("the Down did not refuse with an art note: %v", err)
 	}
 	if _, err := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT down2`); err != nil {

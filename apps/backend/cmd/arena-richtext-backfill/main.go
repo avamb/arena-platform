@@ -1,4 +1,4 @@
-// Package main is the arena-richtext-backfill command (spec 43, RT-02): it
+// Package main is the arena-richtext-backfill command (spec 44, RT-02): it
 // converts the formatted texts that are still stored as the old plain text
 // ("**bold**, _italic_, - list") into "text Arena" (ART) and marks them 'art'.
 //

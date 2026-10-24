@@ -1,5 +1,5 @@
 /**
- * richtext.ts - safe display of an event description (spec 43, RT-03a).
+ * richtext.ts - safe display of an event description (spec 44, RT-03a).
  *
  * The API returns `description_html`: the "text Arena" HTML subset, already
  * sanitised by the server. The console still never trusts it. artToReact reads

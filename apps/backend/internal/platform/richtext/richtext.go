@@ -1,5 +1,5 @@
 // Package richtext is the platform's one filter and converter for formatted
-// texts (spec 43, RT-01): the description of an event, the organizer's own
+// texts (spec 44, RT-01): the description of an event, the organizer's own
 // text of the buyer letters and the message about a moved or cancelled
 // session.
 //

@@ -70,7 +70,7 @@ type ImportSessionAction struct {
 	ActionName     string `json:"actionName"`
 	FullActionName string `json:"fullActionName"`
 	Description    string `json:"description"`
-	// DescriptionFormat (arena extension, spec 43) says how description is
+	// DescriptionFormat (arena extension, spec 44) says how description is
 	// written: "text" (default, the old marks) or "art" (HTML). The server
 	// passes the text through richtext.Normalize and stores ART either way
 	// (422 import.invalid_description when refused).
@@ -90,7 +90,7 @@ type ImportSessionAction struct {
 	// richtext.Normalize with the letter-text profile (422
 	// import.invalid_email_note when refused).
 	EmailNote *string `json:"emailNote,omitempty"`
-	// EmailNoteFormat (arena extension, spec 43) says how emailNote is
+	// EmailNoteFormat (arena extension, spec 44) says how emailNote is
 	// written: "text" (default, the old marks) or "art" (HTML).
 	EmailNoteFormat string `json:"emailNoteFormat,omitempty"`
 	// ArenaEventID (arena extension, source=arena only) addresses an existing

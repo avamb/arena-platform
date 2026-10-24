@@ -20,6 +20,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbil24"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcatalog"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hgo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
@@ -88,6 +89,7 @@ type Server struct {
 	publicationQueries    *gen.Queries
 	publicFeedQueries     *gen.Queries
 	publicFeedRL          *publicFeedRateLimiter
+	shortLinks            *hgo.Handler           // GET /go/{code}, one per process (mount_go.go)
 	brevoWebhookRL        *publicFeedRateLimiter // per-IP limit of the Brevo delivery-status webhook
 	sessionQueries        *gen.Queries
 	gdprQueries           *gen.Queries

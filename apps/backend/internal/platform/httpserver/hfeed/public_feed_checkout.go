@@ -126,6 +126,11 @@ type PublicFeedCheckoutStartRequest struct {
 	// in checkout_consents only when the channel asks for it; one sent to a
 	// channel that does not is ignored (nothing of the buyer is stored).
 	Consent *PublicCheckoutConsent `json:"consent,omitempty"`
+	// Attribution is the sales link and utm labels that brought the buyer
+	// (spec 43 section 4.4), optional. It is cleaned and its ref resolved to
+	// a sales link of the organization before the hold; an empty or invalid
+	// object is never an error — a purchase must not fail over a label.
+	Attribution json.RawMessage `json:"attribution,omitempty"`
 }
 
 // normalizeBuyerLocale validates a caller-supplied locale against the
@@ -542,6 +547,9 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// A seated cart is priced from the tier bindings of the seats it locks,
 	// so it may turn out paid; a GA cart only when a priced line exists.
 	preflight := h.preparePaymentPreflight(ctx, checkCtx, req.ReturnURL, hasSeats || gaMayBePaid)
+	// The attribution's sales link is looked up here, on the pool, before the
+	// hold transaction: inside it only the resolved values are written.
+	attr := h.resolveCheckoutAttribution(ctx, checkCtx.OrgID, req.Attribution, time.Now())
 
 	// ── 10. Begin transaction ─────────────────────────────────────────────────
 	if h.inventoryQueries == nil || h.pool == nil {
@@ -854,7 +862,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			seatTierPrices[tid] = l.UnitPrice
 		}
 		h.confirmPublicCheckout(ctx, w, r, checkCtx, res.ID, checkoutToken, bd, promoCodeID, expiresAt,
-			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale, consent)
+			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale, consent, attr)
 		return
 	}
 
@@ -1008,7 +1016,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// Pure GA: reservation_ga_items.unit_price is authoritative for every unit,
 	// so no tier price map is needed.
 	h.confirmPublicCheckout(ctx, w, r, checkCtx, reservation.ID, checkoutToken, bd, promoCodeID, expiresAt,
-		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, nil, req.ReturnURL, buyerLocale, consent)
+		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, nil, req.ReturnURL, buyerLocale, consent, attr)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1237,6 +1245,7 @@ func (h *Handler) confirmPublicCheckout(
 	returnURL string,
 	buyerLocale string,
 	consent *pendingConsent,
+	attr orderAttribution,
 ) {
 	// ── 0. A paid cart needs a place to send the buyer BACK to, and a
 	// payment window, before anything is written. Resolving the return URL
@@ -1306,7 +1315,7 @@ func (h *Handler) confirmPublicCheckout(
 
 	cs, err := txq.InsertCheckoutSessionWithToken(
 		ctx, checkCtx.OrgID, checkCtx.SalesChannelID, reservationID, nil, checkoutToken,
-		localePtr(buyerLocale),
+		localePtr(buyerLocale), attr.json,
 	)
 	if err != nil {
 		h.logger.Error("public_feed_checkout: insert checkout session failed",
@@ -1356,7 +1365,7 @@ func (h *Handler) confirmPublicCheckout(
 		return
 	}
 
-	orderID, err := h.createPublicOrder(ctx, tx, txq, checkCtx, cs, buyer, tierUnitPrices)
+	orderID, err := h.createPublicOrder(ctx, tx, txq, checkCtx, cs, buyer, tierUnitPrices, attr)
 	if err != nil {
 		h.logger.Error("public_feed_checkout: create order failed",
 			slog.String("checkout_session_id", cs.ID.String()),
@@ -1521,6 +1530,7 @@ func (h *Handler) createPublicOrder(
 	cs gen.CheckoutSessionRow,
 	buyer publicOrderBuyer,
 	tierUnitPrices map[uuid.UUID]int64,
+	attr orderAttribution,
 ) (*uuid.UUID, error) {
 	var customerID *uuid.UUID
 	if buyer.Email != "" {
@@ -1605,6 +1615,8 @@ func (h *Handler) createPublicOrder(
 		BuyerEmail:        ptrOrNil(buyer.Email),
 		BuyerPhone:        buyer.Phone,
 		TierUnitPrices:    tierUnitPrices,
+		SalesLinkID:       attr.linkID,
+		Attribution:       attr.json,
 	})
 	if err != nil {
 		return nil, err

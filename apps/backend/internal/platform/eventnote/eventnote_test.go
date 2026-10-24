@@ -66,11 +66,11 @@ func TestBuild_HostileARTIsSanitisedAgain(t *testing.T) {
 	}
 }
 
-// The table's CHECK is the HTML limit of the letter-text profile (spec 43,
-// RT-02: migration 0167 widened the 2000 of 0165 to the 8000 characters of the
+// The table's CHECK is the HTML limit of the letter-text profile (spec 44,
+// RT-02: migration 0168 widened the 2000 of 0165 to the 8000 characters of the
 // stored HTML; the visible 2000 are checked by Go).
 func TestLimitMatchesMigration(t *testing.T) {
-	body, err := os.ReadFile("../../migrations/sql/0167_rich_text.sql")
+	body, err := os.ReadFile("../../migrations/sql/0168_rich_text.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestLimitMatchesMigration(t *testing.T) {
 	}
 	m := regexp.MustCompile(`char_length\(note\)\s+BETWEEN\s+1\s+AND\s+(\d+)`).FindStringSubmatch(up)
 	if m == nil {
-		t.Fatal("note length CHECK not found in the Up block of 0167")
+		t.Fatal("note length CHECK not found in the Up block of 0168")
 	}
 	n, _ := strconv.Atoi(m[1])
 	if n != richtext.ProfileEmailNote.MaxHTML {

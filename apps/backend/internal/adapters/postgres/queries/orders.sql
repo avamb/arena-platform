@@ -14,6 +14,25 @@
 -- file only provides the typed data-access primitives it and the future
 -- orders HTTP handlers will compose.
 
+-- name: SetOrderAttribution :one
+-- Rewrites the attribution of a still-open order (migration 0167, spec 43
+-- section 4.4): a repeat CREATE_ORDER_EXT of the same cart with another
+-- attribution updates the order, last touch wins. A no-op once the order
+-- left pending_payment.
+UPDATE orders
+SET    sales_link_id = $3,
+       attribution   = COALESCE($4::jsonb, '{}'::jsonb),
+       updated_at    = now()
+WHERE  id = $1
+  AND  org_id = $2
+  AND  status = 'pending_payment'
+RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
+          checkout_session_id, reservation_id, external_ref, source, status,
+          currency, subtotal, discount, charge, total, charge_percent_bp,
+          promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
+          paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
+          sales_link_id, attribution;
+
 -- name: InsertOrder :one
 -- Creates a new order row. system_id defaults to the next value of
 -- compatibility_system_id_seq (>= 1e9), matching customers/tickets so
@@ -25,20 +44,21 @@ INSERT INTO orders (
     checkout_session_id, reservation_id, external_ref, source, status,
     currency, subtotal, discount, charge, total, charge_percent_bp,
     promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-    expires_at, metadata
+    expires_at, metadata, sales_link_id, attribution
 )
 VALUES (
     $1, $2, $3, $4, $5,
     $6, $7, $8, $9, $10,
     $11, $12, $13, $14, $15, $16,
     $17, $18, $19, $20, $21,
-    $22, $23
+    $22, $23, $24, COALESCE($25::jsonb, '{}'::jsonb)
 )
 RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           checkout_session_id, reservation_id, external_ref, source, status,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-          paid_at, cancelled_at, expires_at, metadata, created_at, updated_at;
+          paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
+          sales_link_id, attribution;
 
 -- name: GetOrderByID :one
 -- Loads an order scoped to its organization. Returns pgx.ErrNoRows when
@@ -47,7 +67,8 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        checkout_session_id, reservation_id, external_ref, source, status,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
+       sales_link_id, attribution
 FROM   orders
 WHERE  id = $1
   AND  org_id = $2;
@@ -68,7 +89,8 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        checkout_session_id, reservation_id, external_ref, source, status,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
+       sales_link_id, attribution
 FROM   orders
 WHERE  id = $1
   AND  org_id = $2
@@ -81,7 +103,8 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        checkout_session_id, reservation_id, external_ref, source, status,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
+       sales_link_id, attribution
 FROM   orders
 WHERE  system_id = $1;
 
@@ -96,7 +119,8 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        checkout_session_id, reservation_id, external_ref, source, status,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
+       sales_link_id, attribution
 FROM   orders
 WHERE  checkout_session_id = $1;
 
@@ -111,7 +135,8 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        checkout_session_id, reservation_id, external_ref, source, status,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
+       sales_link_id, attribution
 FROM   orders
 WHERE  reservation_id = $1;
 
@@ -126,7 +151,8 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        checkout_session_id, reservation_id, external_ref, source, status,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
+       sales_link_id, attribution
 FROM   orders
 WHERE  customer_id = $1
   AND  session_id = $2
@@ -144,7 +170,8 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        checkout_session_id, reservation_id, external_ref, source, status,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
+       sales_link_id, attribution
 FROM   orders
 WHERE  org_id = $1
   AND  ($2 = '' OR status = $2)
@@ -172,7 +199,8 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           checkout_session_id, reservation_id, external_ref, source, status,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-          paid_at, cancelled_at, expires_at, metadata, created_at, updated_at;
+          paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
+          sales_link_id, attribution;
 
 -- name: SetOrderPaymentMethod :exec
 -- Records how the order was paid (spec §7.9: the Bil24 compat gateway's
@@ -243,7 +271,8 @@ SELECT o.id, o.system_id, o.org_id, o.channel_id, o.event_id, o.session_id,
        o.source, o.status, o.currency, o.subtotal, o.discount, o.charge,
        o.total, o.charge_percent_bp, o.promo_code_id, o.buyer_name,
        o.buyer_email, o.buyer_phone, o.payment_method, o.paid_at,
-       o.cancelled_at, o.expires_at, o.metadata, o.created_at, o.updated_at
+       o.cancelled_at, o.expires_at, o.metadata, o.created_at, o.updated_at,
+       o.sales_link_id, o.attribution
 FROM   orders o
 WHERE  o.status = 'pending_payment'
   AND  o.expires_at IS NOT NULL
@@ -264,7 +293,8 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        checkout_session_id, reservation_id, external_ref, source, status,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
+       sales_link_id, attribution
 FROM   orders
 WHERE  org_id = $1
   AND  customer_id = $2
@@ -286,7 +316,8 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           checkout_session_id, reservation_id, external_ref, source, status,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-          paid_at, cancelled_at, expires_at, metadata, created_at, updated_at;
+          paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
+          sales_link_id, attribution;
 
 -- name: SearchOrdersByOrg :many
 -- EC-04 (spec 35 §5.5): the event-center order search. One page of an
@@ -324,6 +355,7 @@ SELECT o.id, o.system_id, o.org_id, o.channel_id, o.event_id, o.session_id, o.cu
        o.currency, o.subtotal, o.discount, o.charge, o.total, o.charge_percent_bp,
        o.promo_code_id, o.buyer_name, o.buyer_email, o.buyer_phone, o.payment_method,
        o.paid_at, o.cancelled_at, o.expires_at, o.metadata, o.created_at, o.updated_at,
+       o.sales_link_id, o.attribution,
        e.name AS event_name, s.start_at AS session_start_at, v.timezone AS session_timezone
 FROM   orders o
 JOIN   events   e ON e.id = o.event_id

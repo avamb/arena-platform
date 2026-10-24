@@ -15,7 +15,7 @@ SELECT id, org_id, channel_id, reservation_id, user_id, state,
        subtotal, discount, platform_fee, provider_fee, tax, total, currency,
        promo_code_id, payment_intent_id, payment_provider,
        completed_at, abandoned_at, expired_at, created_at, updated_at,
-       checkout_token, buyer_locale
+       checkout_token, buyer_locale, attribution
 FROM   checkout_sessions
 WHERE  ($1::uuid IS NULL OR org_id = $1)
   AND  ($2::text  IS NULL OR state  = $2)
@@ -52,6 +52,7 @@ SELECT o.id, o.system_id, o.org_id, o.channel_id, o.event_id, o.session_id, o.cu
        o.currency, o.subtotal, o.discount, o.charge, o.total, o.charge_percent_bp,
        o.promo_code_id, o.buyer_name, o.buyer_email, o.buyer_phone, o.payment_method,
        o.paid_at, o.cancelled_at, o.expires_at, o.metadata, o.created_at, o.updated_at,
+       o.sales_link_id, o.attribution,
        COALESCE(org.name, '') AS org_name, COALESCE(ev.name, '') AS event_name
 FROM   orders o
 LEFT JOIN organizations org ON org.id = o.org_id

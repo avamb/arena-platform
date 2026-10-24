@@ -38,6 +38,10 @@ type summarySession struct {
 type sessionSummary struct {
 	Session summarySession `json:"session"`
 	summaryCore
+	// Sources groups the session's paid orders by sales link, utm pair or
+	// neither (spec 43 section 4.5). Session summary only: the event summary
+	// and the batch sales summary share summaryCore and carry no sources.
+	Sources []sessionSource `json:"sources"`
 }
 
 // buildSessionSummary folds the raw aggregates of one session into the
@@ -57,6 +61,7 @@ func buildSessionSummary(header gen.SessionSummaryHeaderRow, rows summaryRows) s
 			VenueTimezone:  header.VenueTimezone,
 		},
 		summaryCore: buildSummaryCore(rows),
+		Sources:     []sessionSource{},
 	}
 }
 
@@ -102,5 +107,12 @@ func (h *Handler) HandleSessionSummary(w http.ResponseWriter, r *http.Request) {
 		h.summaryFailure(w, r, "session", part, err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, buildSessionSummary(header, rows))
+	sources, err := h.queries.ListSessionSummarySources(ctx, sessionID, orgID)
+	if err != nil {
+		h.summaryFailure(w, r, "session", "sources", err)
+		return
+	}
+	out := buildSessionSummary(header, rows)
+	out.Sources = foldSources(sources)
+	httputil.WriteJSON(w, http.StatusOK, out)
 }

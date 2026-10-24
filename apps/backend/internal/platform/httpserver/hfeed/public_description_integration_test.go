@@ -1,6 +1,6 @@
 //go:build integration
 
-// public_description_integration_test.go - spec 43, RT-03a: the hosted page and
+// public_description_integration_test.go - spec 44, RT-03a: the hosted page and
 // the public feed return description_html and description_text next to the
 // raw description. The raw value is unchanged (an older cached page keeps
 // working), the HTML is richtext.Render read with the event's format flag, and

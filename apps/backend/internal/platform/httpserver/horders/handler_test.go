@@ -190,6 +190,10 @@ func (f *fakeDB) Query(_ context.Context, sql string, _ ...any) (pgx.Rows, error
 		return &fakeRows{data: f.ticketDetailRows}, nil
 	case strings.Contains(sql, "FROM   payment_intents"):
 		return &fakeRows{data: f.intentRows}, nil
+	case strings.Contains(sql, "-- name: ListSessionSummarySources"):
+		// Spec 43 section 4.5: selects FROM orders, so it must be matched
+		// before the generic orders case below swallows it.
+		return &fakeRows{}, nil
 	case strings.Contains(sql, "FROM   orders"):
 		if !f.orderFound {
 			return &fakeRows{}, nil
@@ -217,6 +221,7 @@ func newOrderVals(
 		(*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil),
 		(*time.Time)(nil), (*time.Time)(nil), (*time.Time)(nil),
 		json.RawMessage("{}"), created, created,
+		(*uuid.UUID)(nil), json.RawMessage("{}"),
 	}
 }
 

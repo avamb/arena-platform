@@ -1,7 +1,7 @@
 package eventbot
 
 // wizard_description.go — the description of an event in the draft keeps the
-// format it is stored in (spec 43, RT-02). The description of a loaded event is
+// format it is stored in (spec 44, RT-02). The description of a loaded event is
 // ART ("art"), or the old plain text with marks ("text", not converted yet),
 // or unknown ("", an old draft). What the organizer types in the bot is plain
 // text ("text"). The screens never show ART tags, and a description the

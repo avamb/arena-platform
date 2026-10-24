@@ -59,6 +59,7 @@ type sweepIDs struct {
 	Issuance    uuid.UUID
 	PlanVersion uuid.UUID
 	PartnerOrg  uuid.UUID // partner of Alloc
+	SalesLink   uuid.UUID // a tracked sales link of the event (QL-4)
 }
 
 // sweepRow is one hole x one method.
@@ -200,6 +201,20 @@ func sweepRows() []sweepRow {
 		{hole: "H8", name: "seat block", route: "PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/seats", perm: "session.seats.manage",
 			path: func(id sweepIDs) string { return sessionBase(id, id.Event, id.Session3) + "/seats" },
 			body: func(_ sweepIDs) string { return `{"action":"block","seat_keys":["S|A|1","S|A|2"]}` }},
+
+		// -- QL-4 sales links: {id} is a link; every query is scoped by (id, org_id).
+		{hole: "QL4", name: "sales link get", route: "GET /v1/organizations/{org_id}/sales-links/{id}", perm: "sales_link.read",
+			path: func(id sweepIDs) string { return orgPath(id) + "/sales-links/" + id.SalesLink.String() }},
+		{hole: "QL4", name: "sales link stats", route: "GET /v1/organizations/{org_id}/sales-links/{id}/stats", perm: "sales_link.read",
+			path: func(id sweepIDs) string { return orgPath(id) + "/sales-links/" + id.SalesLink.String() + "/stats" }},
+		{hole: "QL5", name: "sales link qr", route: "GET /v1/organizations/{org_id}/sales-links/{id}/qr", perm: "sales_link.read",
+			path: func(id sweepIDs) string { return orgPath(id) + "/sales-links/" + id.SalesLink.String() + "/qr" }},
+		{hole: "QL4", name: "sales link archive (patch)", route: "PATCH /v1/organizations/{org_id}/sales-links/{id}", perm: "sales_link.manage",
+			path: func(id sweepIDs) string { return orgPath(id) + "/sales-links/" + id.SalesLink.String() },
+			body: func(_ sweepIDs) string { return `{"status":"archived"}` }},
+		{hole: "QL4", name: "sales link retarget (patch)", route: "PATCH /v1/organizations/{org_id}/sales-links/{id}", perm: "sales_link.manage",
+			path: func(id sweepIDs) string { return orgPath(id) + "/sales-links/" + id.SalesLink.String() },
+			body: func(_ sweepIDs) string { return `{"label":"hijacked","target":{"kind":"org_page"}}` }},
 	}
 	return rows
 }
