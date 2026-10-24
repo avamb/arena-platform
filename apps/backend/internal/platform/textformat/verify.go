@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 )
 
@@ -26,6 +28,10 @@ const (
 	// ReasonLimits: the answer passes the checks but not the limits of the
 	// profile (too long, too many links).
 	ReasonLimits Reason = "limits"
+	// ReasonLinksLost: the profile turns bare https:// addresses into links
+	// (the buyer letters), and the answer has fewer links than the plain
+	// conversion of the text, so using it would make an address unclickable.
+	ReasonLinksLost Reason = "links_lost"
 )
 
 // maxMarksPerParagraph is how many emphasised fragments one paragraph keeps.
@@ -43,12 +49,28 @@ const maxMarksPerParagraph = 3
 //     markup, not text). Not one word, digit, minus, comma or symbol may
 //     move, and a bulleted list cannot become a numbered one (the numbers
 //     are part of the words).
-//  3. Every link target appears in the input and the visible text of the link
-//     is that address; a link that does not is unwrapped and its text stays.
+//  3. A link is kept only when it is one of the addresses written in the
+//     input (the https:// scanner of FromLegacy and an e-mail scanner, see
+//     richtext.LinkCandidates): its target is exactly the canonical target of
+//     that address, its visible text is that address byte for byte (only the
+//     case of the scheme and the host may differ), and the characters around
+//     it do not make it a piece of a longer address (richtext.AddressBoundary).
+//     Any other link is unwrapped and its text stays.
 //  4. At most three emphasised fragments stay in a paragraph (the rest is
 //     unwrapped), and an anchor without text is no anchor.
 //  5. The result is cleaned once more, so the limits of the profile hold.
+//  6. For a profile that links bare https:// addresses itself the result must
+//     keep at least as many links as FromLegacy makes, else ReasonLinksLost.
+//
+// The answer is NFC-normalised first, so what is stored does not depend on
+// the normalisation form the model happened to write.
+//
+// Known, accepted risk: Words does not compare where the items of a bulleted
+// list begin and end, so a model may join or split the items of a "- " list
+// ("- 20" and "- 30 people" as one paragraph "20 30 people") without the
+// check seeing it. Spec 44 accepts this; the words themselves never change.
 func Verify(input, html string, p richtext.Profile) (string, Reason) {
+	html = norm.NFC.String(html)
 	if strings.TrimSpace(html) == "" {
 		return "", ReasonEmpty
 	}
@@ -59,13 +81,14 @@ func Verify(input, html string, p richtext.Profile) (string, Reason) {
 	if sanitized == "" {
 		return "", ReasonEmpty
 	}
-	want := richtext.Words(richtext.FromLegacy(input, p))
+	legacy := richtext.FromLegacy(input, p)
+	want := richtext.Words(legacy)
 	if !slices.Equal(richtext.Words(sanitized), want) {
 		return "", ReasonTextChanged
 	}
 	fixed, err := richtext.Constrain(sanitized, p, richtext.ConstrainOptions{
 		MaxMarksPerUnit: maxMarksPerParagraph,
-		KeepLink:        linkKeeper(input),
+		KeepLink:        linkKeeper(input, p),
 	})
 	if err != nil {
 		return "", sanitizeReason(err)
@@ -74,6 +97,9 @@ func Verify(input, html string, p richtext.Profile) (string, Reason) {
 	// future change of Constrain can slip a change of text through.
 	if fixed == "" || !slices.Equal(richtext.Words(fixed), want) {
 		return "", ReasonTextChanged
+	}
+	if p.AutoLink && richtext.LinkCount(fixed) < richtext.LinkCount(legacy) {
+		return "", ReasonLinksLost
 	}
 	return fixed, ""
 }
@@ -85,23 +111,48 @@ func sanitizeReason(err error) Reason {
 	return ReasonInvalidMarkup
 }
 
-// linkKeeper keeps a link only when its visible text is its own address and
-// that address is written in the organizer's text. The case of the address is
-// not compared: the host of a canonical link is lower case, and the text of
-// the link was already proven to be the organizer's by the words check. An
-// address ending in a sentence sign is a sentence, not a link.
-func linkKeeper(input string) func(text, href string) bool {
-	lower := strings.ToLower(input)
-	return func(text, href string) bool {
-		addr := strings.TrimPrefix(href, "mailto:")
-		if addr == "" || strings.ContainsAny(addr[len(addr)-1:], ".,;:!?") {
+// linkKeeper keeps a link only when it is one of the addresses written in the
+// organizer's text: href is exactly the canonical target of the address, the
+// visible text of the link is the address byte for byte (the scheme and the
+// host are compared without case, the path, the query and the mailbox name
+// are not: bit.ly/AbC and bit.ly/abc are two addresses), and the characters
+// next to the link do not continue the address.
+func linkKeeper(input string, p richtext.Profile) func(text, href, before, after string) bool {
+	cands := richtext.LinkCandidates(input, p)
+	return func(text, href, before, after string) bool {
+		if !richtext.AddressBoundary(before, after) {
 			return false
 		}
-		if !strings.EqualFold(text, addr) {
-			return false
+		for _, c := range cands {
+			if href == c.Href && sameAddress(text, norm.NFC.String(c.Text)) {
+				return true
+			}
 		}
-		return strings.Contains(lower, strings.ToLower(addr))
+		return false
 	}
+}
+
+// sameAddress compares two written addresses: equal bytes, except that the
+// scheme and the host may differ in case.
+func sameAddress(a, b string) bool {
+	return foldHead(a) == foldHead(b)
+}
+
+// foldHead lower-cases the scheme and the host of a written address ("https://"
+// up to the first "/", "?" or "#", or what follows the "@" of an e-mail
+// address) and leaves the rest as it is.
+func foldHead(s string) string {
+	if len(s) >= 8 && strings.EqualFold(s[:8], "https://") {
+		end := strings.IndexAny(s[8:], "/?#")
+		if end < 0 {
+			return strings.ToLower(s)
+		}
+		return strings.ToLower(s[:8+end]) + s[8+end:]
+	}
+	if at := strings.LastIndexByte(s, '@'); at >= 0 {
+		return s[:at+1] + strings.ToLower(s[at+1:])
+	}
+	return s
 }
 
 // The reasons of a fallback that happens before there is an answer to verify.

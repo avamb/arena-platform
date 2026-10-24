@@ -1,6 +1,9 @@
 package richtext
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // ConstrainOptions say what Constrain takes out of an ART (spec 44, RT-04:
 // the code that checks the answer of the formatting model).
@@ -11,9 +14,10 @@ type ConstrainOptions struct {
 	// their text. Zero or less means no limit.
 	MaxMarksPerUnit int
 	// KeepLink decides for every link: text is the whole visible text of the
-	// link and href its canonical target ("https://..." or "mailto:..."). A
+	// link, href its canonical target ("https://..." or "mailto:..."), and before
+	// and after the text of the same unit on each side of it. A
 	// link it refuses is unwrapped and its text stays. Nil keeps every link.
-	KeepLink func(text, href string) bool
+	KeepLink func(text, href, before, after string) bool
 }
 
 // Constrain returns art with the links KeepLink refuses unwrapped and the
@@ -34,27 +38,45 @@ func Constrain(art string, p Profile, o ConstrainOptions) (string, error) {
 	return Sanitize(out, p)
 }
 
-// constrainLinks unwraps every link of one unit that keep refuses.
-func constrainLinks(chunks []chunk, keep func(text, href string) bool) {
+// constrainLinks unwraps every link of one unit that keep refuses. keep also
+// gets the text of the unit before and after the link (a line break counts as
+// "\n"), so it can tell an address that stands alone from a piece of a longer
+// one.
+func constrainLinks(chunks []chunk, keep func(text, href, before, after string) bool) {
 	type link struct {
-		text []byte
-		href string
+		text        []byte
+		href        string
+		first, last int // chunk indexes
 	}
+	var all strings.Builder
+	starts := make([]int, len(chunks))
+	ends := make([]int, len(chunks))
+	for i, c := range chunks {
+		starts[i] = all.Len()
+		if c.br {
+			all.WriteByte('\n')
+		} else {
+			all.WriteString(c.text)
+		}
+		ends[i] = all.Len()
+	}
+	unit := all.String()
 	links := map[int]*link{}
-	for _, c := range chunks {
+	for i, c := range chunks {
 		if c.href == "" || c.br {
 			continue
 		}
 		l := links[c.linkID]
 		if l == nil {
-			l = &link{href: c.href}
+			l = &link{href: c.href, first: i}
 			links[c.linkID] = l
 		}
+		l.last = i
 		l.text = append(l.text, c.text...)
 	}
 	refused := map[int]bool{}
 	for id, l := range links {
-		if !keep(string(l.text), l.href) {
+		if !keep(string(l.text), l.href, unit[:starts[l.first]], unit[ends[l.last]:]) {
 			refused[id] = true
 		}
 	}

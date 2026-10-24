@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -34,6 +36,11 @@ const (
 	// 16 KiB, the rest is JSON.
 	maxBodyBytes = 64 * 1024
 	maxLocaleLen = 35
+	// rawLimitFactor: a text of more than this many times the visible limit is
+	// refused before it is parsed. The markers of the old notation (**, _,
+	// "- ") are not visible, so the exact limit is enforced on the visible
+	// text by richtext.Normalize.
+	rawLimitFactor = 4
 )
 
 // localeRE is a language tag as the clients send it ("ru", "he", "en-GB").
@@ -131,6 +138,14 @@ func (h *Handler) Format(w http.ResponseWriter, r *http.Request) {
 	if !h.rowOrgAccess(w, r, orgID, true, "org.not_found", "organization not found") {
 		return
 	}
+	// The cap of a person is the person's id; a call with no person would
+	// share one bucket with every other such call, so it is refused (the
+	// router's own gate has refused it already, this is the second lock).
+	actor, ok := auth.ActorFromContext(r.Context())
+	if !ok || actor.ID == "" {
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.unauthorized", "authentication required", r))
+		return
+	}
 
 	var req formatRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes)).Decode(&req); err != nil {
@@ -158,18 +173,26 @@ func (h *Handler) Format(w http.ResponseWriter, r *http.Request) {
 	profile := kind.Profile()
 	text := strings.TrimSpace(req.Text)
 	n := utf8.RuneCountInString(text)
-	if n > profile.MaxVisible {
+	tooLong := func() {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 			"text.too_long", "the text is longer than this kind of text allows", r,
 			map[string]any{"field": "text", "kind": string(kind), "max_chars": profile.MaxVisible},
 		))
+	}
+	if n > rawLimitFactor*profile.MaxVisible {
+		tooLong()
 		return
 	}
 	// The plain conversion is both the fallback answer and the proof that the
-	// text may be saved at all: a text with forbidden characters is refused
-	// here, before the model is asked.
+	// text may be saved at all: a text with forbidden characters, or one whose
+	// visible part is over the limit of its kind, is refused here, before the
+	// model is asked.
 	plain, err := richtext.Normalize(text, richtext.FormatText, profile)
 	if err != nil {
+		if errors.Is(err, richtext.ErrTooLong) || errors.Is(err, richtext.ErrHTMLTooLong) {
+			tooLong()
+			return
+		}
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 			"text.invalid", "the text is not allowed: "+err.Error(), r,
 			map[string]any{"field": "text", "reason": string(richtext.ReasonOf(err))},
@@ -177,19 +200,19 @@ func (h *Handler) Format(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fallback := func(reason textformat.Reason, modelErr string) {
-		h.respond(w, orgID, kind, n, plain, false, reason, modelErr)
+	fallback := func(reason textformat.Reason, modelErr string, usage textformat.Usage) {
+		h.respond(w, orgID, kind, n, plain, false, reason, modelErr, usage)
 	}
 	if text == "" {
-		fallback(textformat.ReasonNoText, "")
+		fallback(textformat.ReasonNoText, "", textformat.Usage{})
 		return
 	}
 	if h.formatter == nil {
-		fallback(textformat.ReasonNotConfigured, "")
+		fallback(textformat.ReasonNotConfigured, "", textformat.Usage{})
 		return
 	}
-	if !h.takeSlots(r, orgID) {
-		fallback(textformat.ReasonQuota, "")
+	if !h.takeSlots(actor.ID, orgID) {
+		fallback(textformat.ReasonQuota, "", textformat.Usage{})
 		return
 	}
 
@@ -201,36 +224,70 @@ func (h *Handler) Format(w http.ResponseWriter, r *http.Request) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(h.timeout + writeSlack))
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), h.timeout)
 	defer cancel()
-	out, err := h.formatter.Format(ctx, textformat.Input{Text: text, Kind: kind, Locale: locale})
-	if err != nil {
-		reason, detail := classify(err)
-		fallback(reason, detail)
+	res := h.askModel(ctx, orgID, kind, textformat.Input{Text: text, Kind: kind, Locale: locale}, profile)
+	if res.reason != "" {
+		fallback(res.reason, res.detail, res.usage)
 		return
 	}
-	html, reason := textformat.Verify(text, out.HTML, profile)
-	if reason != "" {
-		fallback(reason, "")
-		return
-	}
-	h.respond(w, orgID, kind, n, html, true, "", "")
+	h.respond(w, orgID, kind, n, res.html, true, "", "", res.usage)
 }
 
-// takeSlots takes one slot of the person's and one of the organization's
+// modelResult is what one model call and its verification came to: the
+// verified ART, or the reason (and a short word for the log) it was not used.
+type modelResult struct {
+	html   string
+	reason textformat.Reason
+	detail string
+	usage  textformat.Usage
+}
+
+// askModel calls the model and verifies its answer. The answer of the model
+// is hostile input for the code that reads it, so a panic anywhere in the call
+// or in Verify is a fallback like any other failure, never a 500: the log
+// gets the kind of the panic and the stack, never the text.
+func (h *Handler) askModel(ctx context.Context, orgID uuid.UUID, kind textformat.Kind, in textformat.Input, profile richtext.Profile) (res modelResult) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			h.logger.Error("texts: format panicked",
+				slog.String("org_id", orgID.String()),
+				slog.String("kind", string(kind)),
+				slog.String("panic_type", fmt.Sprintf("%T", rec)),
+				slog.String("stack", string(debug.Stack())),
+			)
+			res = modelResult{reason: textformat.ReasonModelError, detail: "panic", usage: res.usage}
+		}
+	}()
+	out, err := h.formatter.Format(ctx, in)
+	res.usage = out.Usage
+	if err != nil {
+		res.reason, res.detail = classify(err)
+		return res
+	}
+	html, reason := textformat.Verify(in.Text, out.HTML, profile)
+	if reason != "" {
+		res.reason = reason
+		return res
+	}
+	res.html = html
+	return res
+}
+
+// takeSlots takes one slot of the organization's and one of the person's
 // daily cap, or none. A slot is taken only here, right before the model call.
-func (h *Handler) takeSlots(r *http.Request, orgID uuid.UUID) bool {
-	user := ""
-	if actor, ok := auth.ActorFromContext(r.Context()); ok {
-		user = actor.ID
-	}
+// The organization's slot comes first, and it is the one that is contended:
+// a request that does not get it takes nothing, and one that gets it and then
+// finds the person's cap full gives it back, so no slot is burnt without a
+// call. Count-then-Take would let two requests on the last organization slot
+// both burn a slot of a person.
+func (h *Handler) takeSlots(userID string, orgID uuid.UUID) bool {
 	org := orgID.String()
-	if (h.userQuota != nil && h.userQuota.Count(user) >= h.userMax) ||
-		(h.orgQuota != nil && h.orgQuota.Count(org) >= h.orgMax) {
-		return false
-	}
-	if h.userQuota != nil && !h.userQuota.Take(user) {
-		return false
-	}
 	if h.orgQuota != nil && !h.orgQuota.Take(org) {
+		return false
+	}
+	if h.userQuota != nil && !h.userQuota.Take(userID) {
+		if h.orgQuota != nil {
+			h.orgQuota.Release(org)
+		}
 		return false
 	}
 	return true
@@ -254,6 +311,10 @@ func classify(err error) (textformat.Reason, string) {
 	switch {
 	case errors.Is(err, textformat.ErrTruncated):
 		return textformat.ReasonModelError, "answer_truncated"
+	case errors.Is(err, textformat.ErrIncomplete):
+		return textformat.ReasonModelError, "model_incomplete"
+	case errors.Is(err, textformat.ErrAnswerTooLarge):
+		return textformat.ReasonModelError, "answer_too_large"
 	case errors.Is(err, textformat.ErrNoToolCall):
 		return textformat.ReasonModelError, "no_tool_call"
 	}
@@ -262,7 +323,7 @@ func classify(err error) (textformat.Reason, string) {
 
 // respond writes the 200 answer and the one log line of the request: reason,
 // prompt version, lengths, kind and organization, never a text.
-func (h *Handler) respond(w http.ResponseWriter, orgID uuid.UUID, kind textformat.Kind, inRunes int, html string, applied bool, reason textformat.Reason, modelErr string) {
+func (h *Handler) respond(w http.ResponseWriter, orgID uuid.UUID, kind textformat.Kind, inRunes int, html string, applied bool, reason textformat.Reason, modelErr string, usage textformat.Usage) {
 	attrs := []any{
 		slog.String("org_id", orgID.String()),
 		slog.String("kind", string(kind)),
@@ -274,6 +335,9 @@ func (h *Handler) respond(w http.ResponseWriter, orgID uuid.UUID, kind textforma
 	}
 	if modelErr != "" {
 		attrs = append(attrs, slog.String("model_error", modelErr))
+	}
+	if usage != (textformat.Usage{}) {
+		attrs = append(attrs, slog.Int("input_tokens", usage.InputTokens), slog.Int("output_tokens", usage.OutputTokens))
 	}
 	if applied {
 		h.logger.Info("texts: formatted", attrs...)

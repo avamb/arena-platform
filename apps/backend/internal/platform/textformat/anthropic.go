@@ -26,10 +26,18 @@ const (
 	RequestTimeout = 25 * time.Second
 	toolName       = "format_text"
 
-	minMaxTokens = 256
+	// minMaxTokens, maxMaxTokens and tokenSlack bound the token budget of an
+	// answer, see MaxTokensFor.
+	minMaxTokens = 1024
 	maxMaxTokens = 8192
+	tokenSlack   = 256
 	// maxAnswerBytes bounds what is read of the answer.
 	maxAnswerBytes = 1 << 20
+	// retryDelay is the pause before the one retry of an overloaded call, and
+	// minRetryRemaining the time that must be left before the deadline for the
+	// retry to be worth making.
+	retryDelay        = time.Second
+	minRetryRemaining = 12 * time.Second
 )
 
 // APIError is a non-2xx answer of the model API. It carries the status and
@@ -54,12 +62,23 @@ var ErrNoToolCall = errors.New("textformat: the model returned no format_text to
 // is cut.
 var ErrTruncated = errors.New("textformat: the model's answer was cut at max_tokens")
 
+// ErrIncomplete is returned when the model stopped for any reason but a
+// finished tool call (a refusal, a pause, a full context window, no reason at
+// all): whatever tool input the answer holds may be partial.
+var ErrIncomplete = errors.New("textformat: the model did not finish the format_text call")
+
+// ErrAnswerTooLarge is returned when a successful answer is bigger than the
+// bytes the client reads of it.
+var ErrAnswerTooLarge = errors.New("textformat: the model's answer is too large")
+
 // Anthropic formats texts through the Claude Messages API.
 type Anthropic struct {
 	apiKey  string
 	model   string
 	baseURL string
 	http    *http.Client
+	// retryAfter is the pause before the retry (tests shorten it).
+	retryAfter time.Duration
 }
 
 // NewAnthropic builds a formatter; an empty apiKey yields one that answers
@@ -75,7 +94,7 @@ func NewAnthropic(apiKey, model, baseURL string, client *http.Client) *Anthropic
 	if client == nil {
 		client = &http.Client{Timeout: RequestTimeout}
 	}
-	return &Anthropic{apiKey: strings.TrimSpace(apiKey), model: model, baseURL: strings.TrimRight(baseURL, "/"), http: client}
+	return &Anthropic{apiKey: strings.TrimSpace(apiKey), model: model, baseURL: strings.TrimRight(baseURL, "/"), http: client, retryAfter: retryDelay}
 }
 
 // Configured reports whether the formatter has a key.
@@ -93,11 +112,13 @@ var toolSchema = map[string]any{
 	"required": []string{"html"},
 }
 
-// MaxTokensFor is the token budget of the answer: one and a half times the
-// text, estimated at three characters a token, between 256 and 8192.
+// MaxTokensFor is the token budget of the answer. The answer is the text plus
+// its tags and the JSON escapes of the href quotes, and Hebrew costs about one
+// token a character, Cyrillic two to three, so the budget is one and a half
+// tokens a character plus 256, between 1024 and 8192. A budget costs nothing
+// until it is generated.
 func MaxTokensFor(text string) int {
-	est := utf8.RuneCountInString(text) / 3
-	n := est * 3 / 2
+	n := utf8.RuneCountInString(text)*3/2 + tokenSlack
 	if n < minMaxTokens {
 		return minMaxTokens
 	}
@@ -135,12 +156,19 @@ type messagesResponse struct {
 		Name  string          `json:"name"`
 		Input json.RawMessage `json:"input"`
 	} `json:"content"`
+	Usage struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+	} `json:"usage"`
 	Error *struct {
 		Type string `json:"type"`
 	} `json:"error"`
 }
 
-// Format sends the text and returns the model's HTML, unverified.
+// Format sends the text and returns the model's HTML, unverified. An
+// overloaded API (429, 529) is asked once more when at least 12 seconds are
+// left before the deadline of ctx. The answer is used only when the model
+// finished the tool call (stop_reason tool_use).
 func (a *Anthropic) Format(ctx context.Context, in Input) (Output, error) {
 	if !a.Configured() {
 		return Output{}, ErrNotConfigured
@@ -167,6 +195,36 @@ func (a *Anthropic) Format(ctx context.Context, in Input) (Output, error) {
 	if err != nil {
 		return Output{}, fmt.Errorf("textformat: encode request: %w", err)
 	}
+	out, err := a.call(ctx, raw)
+	if err != nil && retryable(err) && a.canRetry(ctx) {
+		select {
+		case <-time.After(a.retryAfter):
+			out, err = a.call(ctx, raw)
+		case <-ctx.Done():
+		}
+	}
+	return out, err
+}
+
+// retryable reports whether err is the API saying it is overloaded or
+// rate limited.
+func retryable(err error) bool {
+	var api *APIError
+	if !errors.As(err, &api) {
+		return false
+	}
+	return api.Status == http.StatusTooManyRequests || api.Status == 529 || api.Type == "overloaded_error"
+}
+
+// canRetry: the retry pause and a whole second call must still fit before the
+// deadline; without a deadline there is no budget to protect.
+func (a *Anthropic) canRetry(ctx context.Context) bool {
+	dl, ok := ctx.Deadline()
+	return !ok || time.Until(dl) >= minRetryRemaining
+}
+
+// call makes one request and reads the answer.
+func (a *Anthropic) call(ctx context.Context, raw []byte) (Output, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.baseURL+"/v1/messages", bytes.NewReader(raw))
 	if err != nil {
 		return Output{}, err
@@ -180,12 +238,15 @@ func (a *Anthropic) Format(ctx context.Context, in Input) (Output, error) {
 		return Output{}, fmt.Errorf("textformat: call model: %w", err)
 	}
 	defer res.Body.Close()
-	out, err := io.ReadAll(io.LimitReader(res.Body, maxAnswerBytes))
+	out, err := io.ReadAll(io.LimitReader(res.Body, maxAnswerBytes+1))
 	if err != nil {
 		return Output{}, fmt.Errorf("textformat: read answer: %w", err)
 	}
+	tooLarge := len(out) > maxAnswerBytes
 	var parsed messagesResponse
-	_ = json.Unmarshal(out, &parsed)
+	if !tooLarge {
+		_ = json.Unmarshal(out, &parsed)
+	}
 	if res.StatusCode < 200 || res.StatusCode > 299 {
 		e := &APIError{Status: res.StatusCode}
 		if parsed.Error != nil {
@@ -193,8 +254,16 @@ func (a *Anthropic) Format(ctx context.Context, in Input) (Output, error) {
 		}
 		return Output{}, e
 	}
-	if parsed.StopReason == "max_tokens" {
-		return Output{}, ErrTruncated
+	if tooLarge {
+		return Output{}, ErrAnswerTooLarge
+	}
+	result := Output{Usage: Usage{InputTokens: parsed.Usage.InputTokens, OutputTokens: parsed.Usage.OutputTokens}}
+	switch parsed.StopReason {
+	case "tool_use":
+	case "max_tokens":
+		return result, ErrTruncated
+	default:
+		return result, ErrIncomplete
 	}
 	for _, c := range parsed.Content {
 		if c.Type == "tool_use" && c.Name == toolName {
@@ -202,12 +271,13 @@ func (a *Anthropic) Format(ctx context.Context, in Input) (Output, error) {
 				HTML string `json:"html"`
 			}
 			if err := json.Unmarshal(c.Input, &ti); err != nil {
-				return Output{}, fmt.Errorf("textformat: decode tool input: %w", err)
+				return result, fmt.Errorf("textformat: decode tool input: %w", err)
 			}
-			return Output{HTML: ti.HTML}, nil
+			result.HTML = ti.HTML
+			return result, nil
 		}
 	}
-	return Output{}, ErrNoToolCall
+	return result, ErrNoToolCall
 }
 
 func clip(s string, n int) string {

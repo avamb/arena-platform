@@ -156,7 +156,7 @@ func TestVerify_LinksAreRepaired(t *testing.T) {
 			"",
 		},
 		{
-			"a link to a written address with other visible text is unwrapped",
+			"links to written addresses with their own text are kept",
 			KindDescription,
 			`<p>Tickets at https://tickets.example.com/a and mail <a href="mailto:info@example.com">info@example.com</a>, not <a href="https://other.example.org">https://other.example.org</a></p>`,
 			`<p>Tickets at https://tickets.example.com/a and mail <a href="mailto:info@example.com">info@example.com</a>, not <a href="https://other.example.org">https://other.example.org</a></p>`,
@@ -164,8 +164,8 @@ func TestVerify_LinksAreRepaired(t *testing.T) {
 		{
 			"mailto is not allowed in an email note",
 			KindEmailNote,
-			`<p>Tickets at https://tickets.example.com/a and mail <a href="mailto:info@example.com">info@example.com</a>, not https://other.example.org</p>`,
-			`<p>Tickets at https://tickets.example.com/a and mail info@example.com, not https://other.example.org</p>`,
+			`<p>Tickets at <a href="https://tickets.example.com/a">https://tickets.example.com/a</a> and mail <a href="mailto:info@example.com">info@example.com</a>, not <a href="https://other.example.org">https://other.example.org</a></p>`,
+			`<p>Tickets at <a href="https://tickets.example.com/a">https://tickets.example.com/a</a> and mail info@example.com, not <a href="https://other.example.org">https://other.example.org</a></p>`,
 		},
 	}
 	for _, c := range cases {

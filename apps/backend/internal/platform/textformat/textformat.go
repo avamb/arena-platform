@@ -64,6 +64,15 @@ type Input struct {
 // Output is the model's answer, not yet verified.
 type Output struct {
 	HTML string
+	// Usage is what the call cost in tokens; it is filled in whenever the API
+	// answered, also when the answer was not usable, so the budget of tokens
+	// can be tuned from the logs.
+	Usage Usage
+}
+
+// Usage is the token count the API reports for one call (numbers only).
+type Usage struct {
+	InputTokens, OutputTokens int
 }
 
 // Formatter adds markup to a text. Anthropic is the implementation.

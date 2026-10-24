@@ -5,10 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,16 +29,22 @@ type fakeFormatter struct {
 	html  string
 	err   error
 	block bool
+	// usage is reported with every answer; boom makes the call panic.
+	usage textformat.Usage
+	boom  bool
 }
 
 func (f *fakeFormatter) Format(ctx context.Context, in textformat.Input) (textformat.Output, error) {
 	f.calls++
 	f.got = in
+	if f.boom {
+		panic("the formatter blew up")
+	}
 	if f.block {
 		<-ctx.Done()
 		return textformat.Output{}, ctx.Err()
 	}
-	return textformat.Output{HTML: f.html}, f.err
+	return textformat.Output{HTML: f.html, Usage: f.usage}, f.err
 }
 
 type rig struct {
@@ -225,6 +234,9 @@ func TestFormat_FallbacksAre200WithThePlainConversion(t *testing.T) {
 		{"model error", func(rg *rig) { rg.f.err = &textformat.APIError{Status: 529, Type: "overloaded_error"} }, "model_error"},
 		{"model answer cut", func(rg *rig) { rg.f.err = textformat.ErrTruncated }, "model_error"},
 		{"no tool call", func(rg *rig) { rg.f.err = textformat.ErrNoToolCall }, "model_error"},
+		{"model did not finish", func(rg *rig) { rg.f.err = textformat.ErrIncomplete }, "model_error"},
+		{"answer too large", func(rg *rig) { rg.f.err = textformat.ErrAnswerTooLarge }, "model_error"},
+		{"the formatter panics", func(rg *rig) { rg.f.boom = true }, "model_error"},
 		{"unknown failure", func(rg *rig) { rg.f.err = errors.New("boom: the organizer's secret text") }, "model_error"},
 		{"empty answer", func(rg *rig) { rg.f.html = "" }, "empty_output"},
 		{"changed word", func(rg *rig) { rg.f.html = "<p>Hello <strong>word</strong></p>" }, "text_changed"},
@@ -408,5 +420,177 @@ func TestFormat_LogsHoldNoText(t *testing.T) {
 	rg.post(rg.orgID.String(), "{\"text\":\""+secretText+"\\u202e\",\"kind\":\"description\"}")
 	if strings.Contains(rg.logs.String(), secretText) {
 		t.Fatalf("the refusal logged the text: %s", rg.logs.String())
+	}
+}
+
+// The cap of a person is the person's id: a call with no actor is refused, it
+// never shares a bucket with other such calls.
+func TestFormat_NoActorIsRefused(t *testing.T) {
+	rg := newRig(t).limited(5, 5)
+	r := chi.NewRouter()
+	r.Post("/organizations/{org_id}/texts/format", rg.h.Format)
+	req := httptest.NewRequest(http.MethodPost, "/organizations/"+rg.orgID.String()+"/texts/format",
+		strings.NewReader(`{"text":"Hello world","kind":"description"}`))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized || errorCode(t, rec) != "auth.unauthorized" {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	if rg.f.calls != 0 {
+		t.Fatal("the model was called without a person")
+	}
+}
+
+// A panic in the formatter or in the verification is a 200 fallback and the
+// log holds no text.
+func TestFormat_PanicIsAFallbackWithoutTheText(t *testing.T) {
+	rg := newRig(t).limited(5, 5)
+	rg.f.boom = true
+	a := decode(t, rg.format("description", "ORGANIZER-SECRET-TEXT-4711"))
+	if a.AIApplied || a.Reason != "model_error" || !strings.Contains(a.HTML, "ORGANIZER-SECRET-TEXT-4711") {
+		t.Fatalf("answer = %+v", a)
+	}
+	logs := rg.logs.String()
+	if !strings.Contains(logs, "panicked") || !strings.Contains(logs, "model_error=panic") {
+		t.Fatalf("the panic is not in the log: %s", logs)
+	}
+	if strings.Contains(logs, "ORGANIZER-SECRET-TEXT-4711") {
+		t.Fatalf("the log holds the text: %s", logs)
+	}
+}
+
+// The limit is on the visible text: markers of the old notation do not count,
+// and only a text of more than four times the limit is refused before parsing.
+func TestFormat_LimitCountsVisibleCharacters(t *testing.T) {
+	rg := newRig(t).limited(10, 10)
+	visible := strings.Repeat("я", 4000)
+	rg.f.html = "<p><strong>" + visible + "</strong></p>"
+	if a := decode(t, rg.format("description", "**"+visible+"**")); !a.AIApplied {
+		t.Fatalf("4000 visible characters in bold were refused: %+v", a)
+	}
+	// 4001 visible characters under markers: the limit of the visible text.
+	rec := rg.format("description", "**"+visible+"я**")
+	if rec.Code != http.StatusUnprocessableEntity || errorCode(t, rec) != "text.too_long" {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	// More than four times the limit never reaches the parser.
+	rec = rg.format("description", strings.Repeat("я", 4*4000+1))
+	if rec.Code != http.StatusUnprocessableEntity || errorCode(t, rec) != "text.too_long" {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if rg.f.calls != 1 {
+		t.Fatalf("the model was called %d times", rg.f.calls)
+	}
+}
+
+func TestFormat_UsageIsLoggedAsNumbers(t *testing.T) {
+	rg := newRig(t).limited(10, 10)
+	rg.f.html = plainFallback
+	rg.f.usage = textformat.Usage{InputTokens: 812, OutputTokens: 1450}
+	decode(t, rg.format("description", "Hello world"))
+	logs := rg.logs.String()
+	if !strings.Contains(logs, "input_tokens=812") || !strings.Contains(logs, "output_tokens=1450") {
+		t.Fatalf("usage is not in the log: %s", logs)
+	}
+	// A truncated answer costs tokens too.
+	rg.f.err = textformat.ErrTruncated
+	rg.logs.Reset()
+	decode(t, rg.format("description", "Hello world"))
+	if !strings.Contains(rg.logs.String(), "output_tokens=1450") || !strings.Contains(rg.logs.String(), "answer_truncated") {
+		t.Fatalf("log: %s", rg.logs.String())
+	}
+}
+
+func TestFormat_LostEmailNoteLinksFallBack(t *testing.T) {
+	rg := newRig(t)
+	rg.f.html = "<p>Tickets: https://x.example.com/a</p>"
+	a := decode(t, rg.format("email_note", "Tickets: https://x.example.com/a"))
+	if a.AIApplied || a.Reason != "links_lost" {
+		t.Fatalf("answer = %+v", a)
+	}
+}
+
+// A person whose own cap is full does not burn a slot of the organization.
+func TestFormat_RefusedPersonKeepsTheOrganizationSlot(t *testing.T) {
+	rg := newRig(t).limited(1, 2)
+	rg.f.html = plainFallback
+	if a := decode(t, rg.format("description", "Hello world")); !a.AIApplied {
+		t.Fatalf("first call: %+v", a)
+	}
+	// The same person is over the cap, many times: the organization still has a slot.
+	for i := 0; i < 5; i++ {
+		if a := decode(t, rg.format("description", "Hello world")); a.Reason != "quota" {
+			t.Fatalf("over the personal cap: %+v", a)
+		}
+	}
+	rg.user = uuid.NewString()
+	if a := decode(t, rg.format("description", "Hello world")); !a.AIApplied {
+		t.Fatalf("the organization's slot was burnt by refused calls: %+v", a)
+	}
+}
+
+// safeFormatter is a formatter that can be called from many goroutines.
+type safeFormatter struct{ calls atomic.Int32 }
+
+func (f *safeFormatter) Format(context.Context, textformat.Input) (textformat.Output, error) {
+	f.calls.Add(1)
+	return textformat.Output{HTML: plainFallback}, nil
+}
+
+// Two requests of two people race for the last slot of the organization: one
+// gets the call, the other is told "quota", and the loser keeps its own slot.
+func TestFormat_RaceForTheLastOrganizationSlot(t *testing.T) {
+	for round := 0; round < 50; round++ {
+		orgID := uuid.New()
+		f := &safeFormatter{}
+		h := New(slog.New(slog.NewTextHandler(io.Discard, nil))).
+			WithFormatter(f).
+			WithLimits(1, 1).
+			WithRowOrgAccess(func(http.ResponseWriter, *http.Request, uuid.UUID, bool, string, string) bool { return true })
+		r := chi.NewRouter()
+		r.Post("/organizations/{org_id}/texts/format", h.Format)
+		users := []string{uuid.NewString(), uuid.NewString()}
+		codes := make([]string, len(users))
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for i, u := range users {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				req := httptest.NewRequest(http.MethodPost, "/organizations/"+orgID.String()+"/texts/format",
+					strings.NewReader(`{"text":"Hello world","kind":"description"}`))
+				req = req.WithContext(auth.WithActor(req.Context(), auth.Actor{ID: u, Type: auth.ActorTypeUser}))
+				rec := httptest.NewRecorder()
+				<-start
+				r.ServeHTTP(rec, req)
+				var a answer
+				_ = json.Unmarshal(rec.Body.Bytes(), &a)
+				codes[i] = a.Reason
+				if a.AIApplied {
+					codes[i] = "applied"
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+		applied, quota := 0, 0
+		for _, c := range codes {
+			switch c {
+			case "applied":
+				applied++
+			case "quota":
+				quota++
+			}
+		}
+		if applied != 1 || quota != 1 || f.calls.Load() != 1 {
+			t.Fatalf("round %d: codes %v, calls %d", round, codes, f.calls.Load())
+		}
+		// Whoever lost still has a personal slot: with a fresh organization
+		// counter (a new handler cannot be used) it is visible through Count.
+		for i, c := range codes {
+			if c == "quota" && h.userQuota.Count(users[i]) != 0 {
+				t.Fatalf("round %d: the loser's personal slot was burnt", round)
+			}
+		}
 	}
 }
