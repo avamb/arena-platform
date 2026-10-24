@@ -500,7 +500,7 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 ### 11.2 Вопросы владельцу
 
 - **В-QL1 (ST-7, QL-15).** После слияния QL-3 на master: завести DNS `go.arenasoldout.com` (Cloudflare, proxied) → origin arena-prod; Traefik-роутер `Host(go.arenasoldout.com)` → arena-api с middleware `addPrefix: /go`; правило Cloudflare «не кэшировать» для хоста; то же на стенде (`go-staging.arenasoldout.com`). Агенты DNS и Traefik не трогают. Чек-лист — в документе `docs/ops/sales_links_ru.md` (QL-14).
-- **В-QL2 (решение 7 спеки 43).** Кастомные домены организаторов для QR в этой волне не используются; редирект host-независим, колонка `short_host` заложена. Нужно слово владельца, что §7 принят как есть.
+- **В-QL2 (решение 7 спеки 43) — закрыт 24.10.** Владелец: §7 принят как есть, кастомные домены организаторов для QR оставляем на потом и делаем только как отдельно оплачиваемую опцию, не в базовом тарифе. Редирект host-независим, колонка `short_host` заложена в QL-1 (Р-QL2). Формулировка вписана в §2 строку 7 и §7 спеки 43.
 
 ### 11.3 Состояние задач
 
