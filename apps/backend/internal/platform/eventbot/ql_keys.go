@@ -8,7 +8,7 @@ var qlKeys = []string{
 	"bot.ql.menu_btn", "bot.ql.btn", "bot.ql.cancel_btn", "bot.ql.cancelled", "bot.ql.target_q",
 	"bot.ql.target_q_event", "bot.ql.t_event", "bot.ql.t_session", "bot.ql.t_pages", "bot.ql.t_other_event",
 	"bot.ql.t_pick_event", "bot.ql.t_url", "bot.ql.events_q", "bot.ql.events_none", "bot.ql.sessions_q",
-	"bot.ql.sessions_none", "bot.ql.url_q", "bot.ql.err_url", "bot.ql.err_url_long", "bot.ql.err_target",
+	"bot.ql.sessions_none", "bot.ql.url_q", "bot.ql.err_url", "bot.ql.err_url_long", "bot.ql.err_url_refused", "bot.ql.err_target",
 	"bot.ql.tgt_event", "bot.ql.tgt_session", "bot.ql.tgt_page", "bot.ql.tgt_url", "bot.ql.placement_q",
 	"bot.ql.pl_poster", "bot.ql.pl_flyer", "bot.ql.pl_sign", "bot.ql.pl_social", "bot.ql.pl_email",
 	"bot.ql.pl_messenger", "bot.ql.pl_other", "bot.ql.change_target_btn", "bot.ql.label_q",

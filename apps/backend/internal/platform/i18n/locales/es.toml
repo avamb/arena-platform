@@ -3951,6 +3951,9 @@ other = "La dirección debe empezar por https:// o http:// y no puede tener espa
 ["bot.ql.err_url_long"]
 other = "La dirección es demasiado larga. Envía una de hasta 2048 caracteres."
 
+["bot.ql.err_url_refused"]
+other = "La dirección no pasó la comprobación. Quítale el nombre de usuario y la contraseña, luego pulsa «Mi propia dirección» y envíala otra vez."
+
 ["bot.ql.err_target"]
 other = "Esta página no está en tu organización. Elige otro destino."
 
@@ -4024,10 +4027,10 @@ other = "Dirección corta: {{.URL}}"
 other = "El código lleva a: {{.URL}}"
 
 ["bot.ql.card_no_dest"]
-other = "Todavía no se conoce la dirección de la página."
+other = "Todavía no se conoce la dirección de la página. Pulsa «Redirigir» y elige otro destino."
 
 ["bot.ql.card_degraded"]
-other = "El código lleva a una página superior a su destino. El motivo: el evento está fuera de venta, la sesión ya no vende o el destino ya no existe."
+other = "El código lleva a una página superior a su destino. El motivo: el evento está fuera de venta, la sesión ya no vende o el destino ya no existe. Vuelve a poner el evento a la venta o pulsa «Redirigir»."
 
 ["bot.ql.card_archived"]
 other = "El enlace está en el archivo. El código lleva a la página con todos los eventos."

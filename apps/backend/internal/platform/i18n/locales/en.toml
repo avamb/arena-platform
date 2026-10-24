@@ -4099,6 +4099,9 @@ other = "The address must start with https:// or http:// and have no spaces. Che
 ["bot.ql.err_url_long"]
 other = "This address is too long. Send an address of up to 2048 characters."
 
+["bot.ql.err_url_refused"]
+other = "This address did not pass the check. Remove any user name or password from it, then press «My own address» and send it again."
+
 ["bot.ql.err_target"]
 other = "This page is not in your organization. Choose another target."
 
@@ -4172,10 +4175,10 @@ other = "Short address: {{.URL}}"
 other = "The code leads to: {{.URL}}"
 
 ["bot.ql.card_no_dest"]
-other = "The page address is not known yet."
+other = "The page address is not known yet. Press «Redirect» and choose another target."
 
 ["bot.ql.card_degraded"]
-other = "The code leads to a higher page than its target. The reason: the event is off sale, the session no longer sells, or the target is gone."
+other = "The code leads to a higher page than its target. The reason: the event is off sale, the session no longer sells, or the target is gone. Put the event back on sale or press «Redirect»."
 
 ["bot.ql.card_archived"]
 other = "The link is in the archive. The code leads to the page with all events."

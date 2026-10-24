@@ -54,7 +54,6 @@ const (
 	slStepURL       = "url"              // waits for a typed address
 	slStepPlacement = "placement"        // the placement buttons
 	slStepLabel     = "label"            // waits for the typed name of the place
-	slStepCard      = "card"             // a link was made, its card is the last screen
 	slStepConfirm   = "retarget_confirm" // a retarget waits for its press
 )
 
@@ -351,11 +350,12 @@ func slEventOf(e openapi.EventItem) slEvent {
 // slCancel ends the dialog. A retarget goes back to the link's card; a new
 // link goes home.
 func (b *Bot) slCancel(ctx context.Context, chatID int64, msgID *int, from *models.User, id *Identity, jwt string, st salesLinkDialog, found bool) {
+	b.leaveSalesLink(ctx, from.ID)
 	if found && st.Mode == slModeRetarget && st.LinkID != nil {
+		// The dialog ends before the card: a text typed next is not an address.
 		b.slShowCard(ctx, chatID, msgID, id, jwt, *st.LinkID, b.texts.T(id.Locale(), "bot.ql.cancelled", nil)+"\n\n")
 		return
 	}
-	b.leaveSalesLink(ctx, from.ID)
 	b.showHome(ctx, chatID, msgID, from, "")
 }
 
@@ -465,8 +465,9 @@ func (b *Bot) slTargetText(loc string, t slTarget) string {
 
 // ─── choosing an event or a date ──────────────────────────────────────────────
 
-// slRenderEvents lists the organization's events that can still be sold, five
-// to a page. The stored ids are what a press by index is resolved against.
+// slRenderEvents lists the organization's events that are not archived or
+// canceled, five to a page. A draft stays on the list: its code leads to the
+// page with all events until the event is published. The stored ids are what a press by index is resolved against.
 func (b *Bot) slRenderEvents(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, st salesLinkDialog) {
 	loc := id.Locale()
 	all, err := b.arena.ListEvents(ctx, jwt, id.Current.OrgID)
@@ -560,15 +561,30 @@ func (b *Bot) slLoadSessions(ctx context.Context, chatID int64, msgID *int, id *
 		b.ecError(ctx, chatID, msgID, id, err, "home")
 		return
 	}
-	st.Sessions = nil
+	// The list is oldest first and holds the past too: keep the sessions
+	// that can still sell, and cut AFTER that, so a long series still reaches
+	// its coming dates.
+	now := time.Now()
+	var coming []openapi.SessionItem
 	for _, s := range sessions {
-		if string(s.Status) == "cancelled" || len(st.Sessions) >= slMaxSessions {
+		if string(s.Status) == "cancelled" || !s.StartAt.After(now) || (!s.SalesEndAt.IsZero() && !s.SalesEndAt.After(now)) {
 			continue
 		}
-		tz := ""
-		if sum, err := b.arena.SessionSummary(ctx, jwt, orgID, s.Id); err == nil && sum.Session.VenueTimezone != nil {
+		if len(coming) >= slMaxSessions {
+			break
+		}
+		coming = append(coming, s)
+	}
+	// One venue in practice: the first session's zone labels them all. A
+	// failed read leaves the labels in UTC.
+	tz := ""
+	if len(coming) > 0 {
+		if sum, err := b.arena.SessionSummary(ctx, jwt, orgID, coming[0].Id); err == nil && sum.Session.VenueTimezone != nil {
 			tz = *sum.Session.VenueTimezone
 		}
+	}
+	st.Sessions = nil
+	for _, s := range coming {
 		st.Sessions = append(st.Sessions, slSess{ID: s.Id, Label: FormatWhen(s.StartAt, tz)})
 	}
 	st.Page = 1
@@ -731,6 +747,12 @@ func (b *Bot) salesLinkText(ctx context.Context, chatID int64, from *models.User
 		return false
 	}
 	if expired {
+		// The lapse is told only for a dialog that was waiting for TYPED text
+		// (the name of the place or an address). A lapsed card or choice
+		// screen takes no text, so the text goes on to whoever else wants it.
+		if step != slStepLabel && step != slStepURL {
+			return false
+		}
 		loc := NormalizeLocale(from.LanguageCode)
 		if id, _, err := b.resolveIdentity(ctx, from.ID); err == nil {
 			loc = id.Locale()
@@ -795,7 +817,7 @@ func (b *Bot) slCreate(ctx context.Context, chatID int64, editMsgID *int, id *Id
 			b.slRenderTarget(ctx, chatID, editMsgID, id, st, b.texts.T(loc, "bot.ql.err_target", nil)+"\n\n")
 			return
 		case "sales_link.invalid_url":
-			b.slRenderTarget(ctx, chatID, editMsgID, id, st, b.texts.T(loc, "bot.ql.err_url", nil)+"\n\n")
+			b.slRenderTarget(ctx, chatID, editMsgID, id, st, b.texts.T(loc, "bot.ql.err_url_refused", nil)+"\n\n")
 			return
 		case "sales_link.invalid_label":
 			b.slRenderLabelAsk(ctx, chatID, editMsgID, id, st, b.texts.T(loc, "bot.ql.err_label_long", nil)+"\n\n")
@@ -804,14 +826,10 @@ func (b *Bot) slCreate(ctx context.Context, chatID int64, editMsgID *int, id *Id
 		b.ecError(ctx, chatID, editMsgID, id, err, "home")
 		return
 	}
-	// The link exists: the dialog's last step is its card, stored before the
-	// card is sent.
-	st.LinkID, st.LinkLabel = &link.Id, link.Label
-	st.Target, st.Placement, st.Page, st.IDs, st.Sessions = nil, "", 1, nil, nil
-	if editMsgID != nil {
-		st.MsgID = *editMsgID
-	}
-	b.saveSalesLinkState(ctx, id.Link.TelegramUserID, st, slStepCard)
+	// The link exists. Its card needs no state (every button carries the
+	// link's UUID), so the dialog ends here: it would only sit for 30 minutes
+	// and take for an answer a text meant for something else.
+	b.leaveSalesLink(ctx, id.Link.TelegramUserID)
 
 	b.slSendQR(ctx, chatID, jwt, id.Current.OrgID, loc, link)
 	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.ql.created", nil)+"\n\n"+b.slCardText(loc, link), b.slCardKeyboard(loc, link))
@@ -938,6 +956,12 @@ func (b *Bot) slLinkPress(ctx context.Context, chatID int64, msgID int, from *mo
 	linkID, err := uuid.Parse(arg)
 	if err != nil {
 		return
+	}
+	if !confirm {
+		// A press on a link's card ends whatever question was open (the name
+		// of a place, an address), so the next text is not taken for its answer.
+		// The retarget's confirmation keeps the dialog: it needs the question.
+		b.leaveSalesLink(ctx, from.ID)
 	}
 	switch kind {
 	case "v":
@@ -1096,8 +1120,11 @@ func (b *Bot) slRetargetConfirmed(ctx context.Context, chatID int64, editMsgID *
 	link, err := b.arena.UpdateSalesLink(ctx, jwt, orgID, linkID, SalesLinkPatch{Target: &target})
 	if err != nil {
 		switch APIErrorCode(err) {
-		case "sales_link.invalid_target", "sales_link.invalid_url":
+		case "sales_link.invalid_target":
 			b.slRenderTarget(ctx, chatID, editMsgID, id, st, b.texts.T(loc, "bot.ql.err_target", nil)+"\n\n")
+			return
+		case "sales_link.invalid_url":
+			b.slRenderTarget(ctx, chatID, editMsgID, id, st, b.texts.T(loc, "bot.ql.err_url_refused", nil)+"\n\n")
 			return
 		case "sales_link.not_found":
 			b.slShowCard(ctx, chatID, editMsgID, id, jwt, linkID, "")
@@ -1106,7 +1133,6 @@ func (b *Bot) slRetargetConfirmed(ctx context.Context, chatID int64, editMsgID *
 		b.ecError(ctx, chatID, editMsgID, id, err, "home")
 		return
 	}
-	st.Target, st.Mode = nil, slModeNew
-	b.saveSalesLinkState(ctx, from.ID, st, slStepCard)
+	b.leaveSalesLink(ctx, from.ID)
 	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.ql.rt_done", map[string]any{"Label": Esc(link.Label)})+"\n\n"+b.slCardText(loc, link), b.slCardKeyboard(loc, link))
 }
