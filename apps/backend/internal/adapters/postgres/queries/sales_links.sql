@@ -108,6 +108,24 @@ ON CONFLICT (sales_link_id, day, country) DO UPDATE
    SET hits         = sales_link_hits.hits         + EXCLUDED.hits,
        suspect_hits = sales_link_hits.suspect_hits + EXCLUDED.suspect_hits;
 
+-- name: CountSalesLinkScan :exec
+-- One scan of the public redirect in ONE statement: the link's counters and
+-- the daily row move together or not at all (spec 43 section 4.1, QL-3).
+WITH bumped AS (
+    UPDATE sales_links
+    SET scan_count         = scan_count + CASE WHEN $4::boolean THEN 0 ELSE 1 END,
+        suspect_scan_count = suspect_scan_count + CASE WHEN $4::boolean THEN 1 ELSE 0 END,
+        last_scanned_at    = now()
+    WHERE id = $1
+    RETURNING id
+)
+INSERT INTO sales_link_hits (sales_link_id, day, country, hits, suspect_hits)
+SELECT id, $2::date, $3, CASE WHEN $4::boolean THEN 0 ELSE 1 END, CASE WHEN $4::boolean THEN 1 ELSE 0 END
+FROM bumped
+ON CONFLICT (sales_link_id, day, country) DO UPDATE
+   SET hits         = sales_link_hits.hits         + EXCLUDED.hits,
+       suspect_hits = sales_link_hits.suspect_hits + EXCLUDED.suspect_hits;
+
 -- name: SalesLinkOrdersAggregate :many
 -- Per currency: orders that were ever paid, their tickets, and the revenue =
 -- sum of orders.total minus the SUCCEEDED refunds of those orders. A refund

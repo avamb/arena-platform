@@ -6,13 +6,24 @@
 //
 //   - a code that is malformed or unknown goes to one fixed fallback page and
 //     is never counted, so a scan of random addresses writes nothing;
-//   - the per-IP bucket of the public routes runs before any database read;
+//   - the per-IP bucket of the public routes runs before any database read; a
+//     refused scan is sent to the same fallback page (decision R-QL17: a person
+//     who scanned a poster lands on a page, never on a JSON error) uncounted;
+//   - at most countSlots scans are counted at once, one statement each; a scan
+//     that finds every slot taken is not counted (outcome dropped), so a burst
+//     on one code cannot queue on its row lock and drain the database pool;
 //   - the 302 is written and flushed BEFORE the scan is counted, and a counting
 //     failure is logged and changes nothing for the client;
 //   - nothing here logs or stores the client's address, its User-Agent or a
 //     cookie (stop condition ST-QL1). The only value derived from them is the
 //     in-memory de-duplication hash of salelinks.Dedup; the database receives
 //     a day, a two-letter country and a bot flag.
+//
+// The country is the CF-IPCountry header, trusted whenever TRUSTED_PROXY_COUNT
+// is above zero. An origin reachable without Cloudflare therefore lets a client
+// choose the country it is counted under; the damage is bounded (at most 676
+// rows per link and day) and the ops runbook (QL-14) locks the origin to
+// Cloudflare.
 //
 // Server failures answer 503, never 502: Cloudflare replaces an origin 502
 // with its own page.
@@ -26,7 +37,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -45,9 +55,12 @@ import (
 // PUBLIC_TICKETS_BASE_URL, then APP_PUBLIC_URL are all empty).
 const DefaultFallbackURL = "https://tickets.arenasoldout.com/"
 
-// countTimeout bounds the two counting statements. They run on a context
+// countTimeout bounds the counting statement. They run on a context
 // detached from the request, after the response has been flushed.
 const countTimeout = 3 * time.Second
+
+// countSlots is how many scans may be counted at the same time per process.
+const countSlots = 4
 
 // Outcomes of one request, the closed label set of arena_short_link_total.
 const (
@@ -62,8 +75,12 @@ const (
 	// OutcomeFallback: 302 to the fallback page (malformed or unknown code, or
 	// no page address could be built). Nothing is counted.
 	OutcomeFallback = "fallback"
-	// OutcomeRateLimited: 429, nothing was read or written.
+	// OutcomeRateLimited: the client was over the per-IP limit; 302 to the
+	// fallback page, nothing was read or written.
 	OutcomeRateLimited = "rate_limited"
+	// OutcomeDropped: 302 to the destination, the scan was not counted because
+	// every counting slot was taken.
+	OutcomeDropped = "dropped"
 	// OutcomeError: 503, or a 302 whose scan could not be counted.
 	OutcomeError = "error"
 )
@@ -78,8 +95,7 @@ var countryRe = regexp.MustCompile("^[A-Z]{2}$")
 type Queries interface {
 	salelinks.FactsQuerier
 	GetSalesLinkByCode(ctx context.Context, code string) (gen.SalesLinkRow, error)
-	BumpSalesLinkScan(ctx context.Context, id uuid.UUID, suspect bool) error
-	UpsertSalesLinkHit(ctx context.Context, id uuid.UUID, day time.Time, country string, suspect bool) error
+	CountSalesLinkScan(ctx context.Context, id uuid.UUID, day time.Time, country string, suspect bool) error
 }
 
 // RateLimiter is the per-IP bucket of the public routes. The server's public
@@ -99,7 +115,8 @@ type Options struct {
 	Dedup *salelinks.Dedup
 	// Base is PUBLIC_TICKETS_BASE_URL, the base of every page address.
 	Base string
-	// Fallback is config.ShortLinkFallback(); empty means DefaultFallbackURL.
+	// Fallback is config.ShortLinkFallback(); empty, or not an absolute
+	// http(s) address without credentials, means DefaultFallbackURL.
 	Fallback string
 	// TrustedProxies is TRUSTED_PROXY_COUNT. The CF-IPCountry header is read
 	// only when it is above zero: without a proxy in front a client could set
@@ -123,6 +140,7 @@ type Handler struct {
 	now      func() time.Time
 	logger   *slog.Logger
 	observe  func(string)
+	slots    chan struct{}
 }
 
 // New builds a Handler from o.
@@ -137,11 +155,12 @@ func New(o Options) *Handler {
 		now:      o.Now,
 		logger:   o.Logger,
 		observe:  o.Observe,
+		slots:    make(chan struct{}, countSlots),
 	}
 	if h.dedup == nil {
 		h.dedup = salelinks.NewDedup(0, 0)
 	}
-	if h.fallback == "" {
+	if !safeDestination(h.fallback) {
 		h.fallback = DefaultFallbackURL
 	}
 	if h.now == nil {
@@ -167,13 +186,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ip := httputil.TrustedClientIP(r, 0)
 	if h.limiter != nil {
-		if allowed, retry := h.limiter.CheckIP(ip); !allowed {
-			if retry < 1 {
-				retry = 1
-			}
-			w.Header().Set("Retry-After", strconv.Itoa(retry))
-			h.writeError(w, r, http.StatusTooManyRequests, "short_link.rate_limited",
-				"Too many requests. Wait one minute and try again.")
+		if allowed, _ := h.limiter.CheckIP(ip); !allowed {
+			// A person who scanned a poster lands on a page, never on an
+			// error body (R-QL17), so no 429 and no Retry-After.
+			writeRedirect(w, h.fallback)
 			h.observe(OutcomeRateLimited)
 			return
 		}
@@ -245,21 +261,25 @@ func (h *Handler) count(r *http.Request, id uuid.UUID, code, ip string) string {
 	ua := r.UserAgent()
 	suspect := pagestats.IsSuspectAgent(ua)
 	now := h.now()
-	if !suspect && h.dedup.Seen(code, ip, ua, now) {
+	// Never wait for a slot: a scan that finds them all taken is not counted
+	// and not remembered by the de-duplication either.
+	select {
+	case h.slots <- struct{}{}:
+		defer func() { <-h.slots }()
+	default:
+		return OutcomeDropped
+	}
+	// One IPv6 subscriber (a /64) is one client, like for the rate limit.
+	if !suspect && h.dedup.Seen(code, httputil.ClientKey(ip), ua, now) {
 		return OutcomeDedup
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), countTimeout)
 	defer cancel()
-	// The log lines name the code and the link only: never the address or the agent.
-	if err := h.q.BumpSalesLinkScan(ctx, id, suspect); err != nil {
-		h.logger.Warn("short_link: count scan failed",
-			slog.String("code", code), slog.String("sales_link_id", id.String()), slog.String("error", err.Error()))
-		return OutcomeError
-	}
 	utc := now.UTC()
 	day := time.Date(utc.Year(), utc.Month(), utc.Day(), 0, 0, 0, 0, time.UTC)
-	if err := h.q.UpsertSalesLinkHit(ctx, id, day, h.country(r), suspect); err != nil {
-		h.logger.Warn("short_link: count daily hit failed",
+	// The log line names the code and the link only: never the address or the agent.
+	if err := h.q.CountSalesLinkScan(ctx, id, day, h.country(r), suspect); err != nil {
+		h.logger.Warn("short_link: count scan failed",
 			slog.String("code", code), slog.String("sales_link_id", id.String()), slog.String("error", err.Error()))
 		return OutcomeError
 	}
@@ -298,9 +318,11 @@ func (h *Handler) decodeUTM(row gen.SalesLinkRow) map[string]string {
 	return utm
 }
 
-// safeDestination accepts only an absolute http(s) address with a host. A url
-// link is checked when it is created (QL-4); this is the second line, so a
-// stored value of another scheme can never become a Location.
+// safeDestination accepts only an absolute http(s) address with a host and no
+// user information. A url link is checked when it is created (QL-4); this is
+// the second line, so a stored value of another scheme, or one that disguises
+// its host behind credentials (https://trusted.example@evil.example/), can
+// never become a Location.
 func safeDestination(dest string) bool {
 	if dest == "" {
 		return false
@@ -309,7 +331,7 @@ func safeDestination(dest string) bool {
 	if err != nil {
 		return false
 	}
-	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil
 }
 
 func (h *Handler) redirectFallback(w http.ResponseWriter) {

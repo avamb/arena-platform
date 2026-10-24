@@ -297,7 +297,7 @@ type Metrics struct {
 
 	// ShortLinkTotal counts requests of the public short-link redirect
 	// GET /go/{code} by a closed outcome set (redirect, fallback, suspect,
-	// dedup, rate_limited, error). Spec 43, task QL-3.
+	// dedup, dropped, rate_limited, error). Spec 43, task QL-3.
 	//
 	// Metric name: arena_short_link_total.
 	ShortLinkTotal *prometheus.CounterVec
@@ -518,7 +518,7 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 			prometheus.CounterOpts{
 				Namespace: MetricsNamespace,
 				Name:      subsystemShortLink + "_total",
-				Help:      "Total short-link redirect requests (GET /go/{code}), by outcome (redirect, fallback, suspect, dedup, rate_limited, error).",
+				Help:      "Total short-link redirect requests (GET /go/{code}), by outcome (redirect, fallback, suspect, dedup, dropped, rate_limited, error).",
 			},
 			[]string{LabelOutcome},
 		),

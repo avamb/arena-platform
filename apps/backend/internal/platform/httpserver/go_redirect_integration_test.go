@@ -227,9 +227,15 @@ func TestGoRedirect_EventLinkRedirectsAndCountsEachClientOnce(t *testing.T) {
 func TestGoRedirect_SessionLinkCarriesTheSession(t *testing.T) {
 	f := newGoRedirectFixture(t, 0)
 	link := f.link(t, salelinks.KindSession)
-	u := goLocation(t, f.do(http.MethodGet, "/go/"+link.Code, goBrowserUA, "192.0.2.20:1"))
-	if u.Path != "/"+f.orgSlug+"/"+f.eventSlug || u.Query().Get("session") != f.sessionID.String() || u.Query().Get("ref") != link.Code {
-		t.Fatalf("Location = %q", u)
+	// A trailing slash or tail of the printed address changes nothing.
+	for _, path := range []string{"/go/" + link.Code, "/go/" + link.Code + "/", "/go/" + link.Code + "/extra"} {
+		u := goLocation(t, f.do(http.MethodGet, path, goBrowserUA, "192.0.2.20:1"))
+		if u.Path != "/"+f.orgSlug+"/"+f.eventSlug || u.Query().Get("session") != f.sessionID.String() || u.Query().Get("ref") != link.Code {
+			t.Fatalf("%s: Location = %q", path, u)
+		}
+	}
+	if scans, _, _, _, _ := f.counts(t, link.ID); scans != 1 {
+		t.Fatalf("one client counted %d times", scans)
 	}
 }
 
@@ -243,8 +249,10 @@ func TestGoRedirect_UnknownCodeGoesToTheFallbackAndArchivedToTheOrganization(t *
 	if u := goLocation(t, f.do(http.MethodGet, "/go/"+unknown, goBrowserUA, "192.0.2.30:1")); u.String() != goFallback {
 		t.Fatalf("unknown code: Location = %q, want %q", u, goFallback)
 	}
-	if u := goLocation(t, f.do(http.MethodGet, "/go/not-a-code", goBrowserUA, "192.0.2.30:1")); u.String() != goFallback {
-		t.Fatalf("malformed code: Location = %q", u)
+	for _, path := range []string{"/go/not-a-code", "/go", "/go/"} {
+		if u := goLocation(t, f.do(http.MethodGet, path, goBrowserUA, "192.0.2.30:1")); u.String() != goFallback {
+			t.Fatalf("%s: Location = %q", path, u)
+		}
 	}
 
 	link := f.link(t, salelinks.KindEvent)
@@ -266,23 +274,45 @@ func TestGoRedirect_UnknownCodeGoesToTheFallbackAndArchivedToTheOrganization(t *
 	}
 }
 
-// TestGoRedirect_ResponseArrivesBeforeTheCount drives a real listener: the
-// client receives a complete, empty 302 and the scan is counted afterwards.
+// TestGoRedirect_ResponseArrivesBeforeTheCount drives a real listener while
+// another transaction holds the link's row lock, so the count cannot finish:
+// the client still receives a complete, empty 302 within its 1 s timeout, and
+// the scan is counted once the lock is released.
 func TestGoRedirect_ResponseArrivesBeforeTheCount(t *testing.T) {
 	f := newGoRedirectFixture(t, 0)
 	link := f.link(t, salelinks.KindEvent)
 	ts := httptest.NewServer(f.srv.Router())
 	t.Cleanup(ts.Close)
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
+	ctx := context.Background()
+	tx, err := f.srv.pgxPool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT id FROM sales_links WHERE id = $1 FOR UPDATE`, link.ID); err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+
+	client := &http.Client{
+		Timeout:       time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/go/"+link.Code, nil)
 	req.Header.Set("User-Agent", goBrowserUA)
 	resp, err := client.Do(req)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("the redirect waited for the count: %v", err)
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusFound || resp.ContentLength != 0 || !strings.Contains(resp.Header.Get("Location"), "ref="+link.Code) {
 		t.Fatalf("status=%d length=%d Location=%q", resp.StatusCode, resp.ContentLength, resp.Header.Get("Location"))
+	}
+	if scans, _, _, _, _ := f.counts(t, link.ID); scans != 0 {
+		t.Fatalf("counted through a held lock: %d", scans)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -303,15 +333,22 @@ func TestGoRedirect_FloodIsRateLimitedWithoutFailure(t *testing.T) {
 	link := f.link(t, salelinks.KindEvent)
 
 	byStatus := map[int]int{}
+	toEvent, toFallback := 0, 0
 	for i := 0; i < 1000; i++ {
 		rec := f.do(http.MethodGet, "/go/"+link.Code, goBrowserUA, "198.51.100.77:5000")
 		byStatus[rec.Code]++
-		if rec.Code == http.StatusTooManyRequests && rec.Header().Get("Retry-After") == "" {
-			t.Fatal("429 without Retry-After")
+		switch loc := rec.Header().Get("Location"); {
+		case loc == goFallback:
+			toFallback++
+		case strings.HasPrefix(loc, goTicketsBase+"/"+f.orgSlug+"/"+f.eventSlug+"?"):
+			toEvent++
 		}
 	}
-	if byStatus[http.StatusFound] != limit || byStatus[http.StatusTooManyRequests] != 1000-limit || len(byStatus) != 2 {
-		t.Fatalf("statuses = %v, want %d redirects and the rest 429", byStatus, limit)
+	if byStatus[http.StatusFound] != 1000 || len(byStatus) != 1 {
+		t.Fatalf("statuses = %v, want 1000 redirects", byStatus)
+	}
+	if toEvent != limit || toFallback != 1000-limit {
+		t.Fatalf("to the event %d, to the fallback %d, want %d and %d", toEvent, toFallback, limit, 1000-limit)
 	}
 	if scans, _, _, hits, _ := f.counts(t, link.ID); scans != 1 || hits != 1 {
 		t.Fatalf("flood counted scans=%d hits=%d, want 1 (one client)", scans, hits)

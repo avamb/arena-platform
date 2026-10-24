@@ -22,6 +22,8 @@ func TestRequestLog_ShortLinkRedirectOmitsAddressAndAgent(t *testing.T) {
 	}{
 		{http.MethodGet, "/go/x7k2qpm", true},
 		{http.MethodHead, "/go/x7k2qpm", true},
+		{http.MethodGet, "/go", true},
+		{http.MethodPost, "/go/x7k2qpm", false},
 		{http.MethodGet, "/probe", false},
 	} {
 		var buf bytes.Buffer
@@ -29,6 +31,8 @@ func TestRequestLog_ShortLinkRedirectOmitsAddressAndAgent(t *testing.T) {
 		handler := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusFound) }
 		r.Get("/go/{code}", handler)
 		r.Head("/go/{code}", handler)
+		r.Get("/go", handler)
+		r.Post("/go/{code}", handler)
 		r.Get("/probe", handler)
 
 		req := httptest.NewRequest(c.method, c.path, nil)

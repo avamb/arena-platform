@@ -313,6 +313,34 @@ func (q *Queries) UpsertSalesLinkHit(ctx context.Context, id uuid.UUID, day time
 	return err
 }
 
+const countSalesLinkScan = `-- name: CountSalesLinkScan :exec
+-- One scan of the public redirect in ONE statement: the link's counters and
+-- the daily row move together or not at all (spec 43 section 4.1, QL-3).
+WITH bumped AS (
+    UPDATE sales_links
+    SET scan_count         = scan_count + CASE WHEN $4::boolean THEN 0 ELSE 1 END,
+        suspect_scan_count = suspect_scan_count + CASE WHEN $4::boolean THEN 1 ELSE 0 END,
+        last_scanned_at    = now()
+    WHERE id = $1
+    RETURNING id
+)
+INSERT INTO sales_link_hits (sales_link_id, day, country, hits, suspect_hits)
+SELECT id, $2::date, $3, CASE WHEN $4::boolean THEN 0 ELSE 1 END, CASE WHEN $4::boolean THEN 1 ELSE 0 END
+FROM bumped
+ON CONFLICT (sales_link_id, day, country) DO UPDATE
+   SET hits         = sales_link_hits.hits         + EXCLUDED.hits,
+       suspect_hits = sales_link_hits.suspect_hits + EXCLUDED.suspect_hits`
+
+// CountSalesLinkScan counts one scan of the public redirect: the link's
+// scan_count (or suspect_scan_count) and last_scanned_at, and its row of
+// sales_link_hits for the calendar day and the two-letter country ("" when
+// unknown), in ONE statement, so the two counters cannot drift apart. An
+// unknown id writes nothing. Only the date part of day is used.
+func (q *Queries) CountSalesLinkScan(ctx context.Context, id uuid.UUID, day time.Time, country string, suspect bool) error {
+	_, err := q.db.Exec(ctx, countSalesLinkScan, id, day, country, suspect)
+	return err
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SalesLinkOrdersAggregate
 // ─────────────────────────────────────────────────────────────────────────────

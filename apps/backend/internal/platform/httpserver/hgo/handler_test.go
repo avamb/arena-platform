@@ -71,19 +71,15 @@ func (f *fakeQueries) GetSalesLinkTargetFacts(context.Context, uuid.UUID, *uuid.
 	return f.facts, nil
 }
 
-func (f *fakeQueries) BumpSalesLinkScan(_ context.Context, id uuid.UUID, suspect bool) error {
+// CountSalesLinkScan records the bump and the daily hit together, as the one
+// statement does.
+func (f *fakeQueries) CountSalesLinkScan(_ context.Context, id uuid.UUID, day time.Time, country string, suspect bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.bumpErr != nil {
 		return f.bumpErr
 	}
 	f.bumps = append(f.bumps, bump{id, suspect})
-	return nil
-}
-
-func (f *fakeQueries) UpsertSalesLinkHit(_ context.Context, id uuid.UUID, day time.Time, country string, suspect bool) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.hits = append(f.hits, hit{id, day, country, suspect})
 	return nil
 }
@@ -134,15 +130,21 @@ func newRig(t *testing.T, trusted int) *rig {
 		Observe: func(o string) { rg.outcomes = append(rg.outcomes, o) },
 	})
 	r := chi.NewRouter()
-	r.Method(http.MethodGet, "/go/{code}", rg.h)
-	r.Method(http.MethodHead, "/go/{code}", rg.h)
+	for _, p := range []string{"/go", "/go/", "/go/{code}", "/go/{code}/*"} {
+		r.Method(http.MethodGet, p, rg.h)
+		r.Method(http.MethodHead, p, rg.h)
+	}
 	rg.router = r
 	return rg
 }
 
 func (rg *rig) do(method, path, ua string, hdr map[string]string) *httptest.ResponseRecorder {
+	return rg.doFrom("203.0.113.7:51234", method, path, ua, hdr)
+}
+
+func (rg *rig) doFrom(remote, method, path, ua string, hdr map[string]string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, nil)
-	req.RemoteAddr = "203.0.113.7:51234"
+	req.RemoteAddr = remote
 	req.Header.Set("User-Agent", ua)
 	for k, v := range hdr {
 		req.Header.Set(k, v)
@@ -302,23 +304,82 @@ func TestGo_HeadRedirectsWithoutCounting(t *testing.T) {
 	}
 }
 
-func TestGo_RateLimitAnswers429BeforeTheDatabase(t *testing.T) {
+// A refused scan lands on the storefront, never on a JSON error (R-QL17).
+func TestGo_RateLimitRedirectsToTheFallbackBeforeTheDatabase(t *testing.T) {
 	rg := newRig(t, 0)
 	rg.q.links["x7k2qpm"] = eventLink("x7k2qpm")
 	rg.lim.allow, rg.lim.retry = false, 42
 	rec := rg.do(http.MethodGet, "/go/x7k2qpm", browserUA, nil)
-	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") != "42" {
-		t.Fatalf("status=%d Retry-After=%q", rec.Code, rec.Header().Get("Retry-After"))
+	if u := assertRedirect(t, rec); u.String() != fallback {
+		t.Fatalf("Location = %q, want the fallback", u.String())
 	}
-	if rec.Header().Get("Cache-Control") != "no-store" || !strings.Contains(rec.Body.String(), "short_link.rate_limited") {
-		t.Fatalf("headers %v body %q", rec.Header(), rec.Body.String())
+	if rec.Header().Get("Retry-After") != "" {
+		t.Errorf("Retry-After on a redirect: %q", rec.Header().Get("Retry-After"))
 	}
 	if rg.q.lookups != 0 || len(rg.q.bumps) != 0 {
 		t.Fatal("a refused request reached the database")
 	}
-	rg.lim.retry = 0
-	if rec := rg.do(http.MethodGet, "/go/x7k2qpm", browserUA, nil); rec.Header().Get("Retry-After") != "1" {
-		t.Fatalf("Retry-After floor = %q", rec.Header().Get("Retry-After"))
+	if strings.Join(rg.outcomes, ",") != "rate_limited" {
+		t.Errorf("outcomes = %v", rg.outcomes)
+	}
+}
+
+func TestGo_BareHostAndTrailingPartsOfAPrintedAddress(t *testing.T) {
+	rg := newRig(t, 0)
+	rg.q.links["x7k2qpm"] = eventLink("x7k2qpm")
+	for _, path := range []string{"/go", "/go/"} {
+		if u := assertRedirect(t, rg.do(http.MethodGet, path, browserUA, nil)); u.String() != fallback {
+			t.Errorf("%s: Location = %q, want the fallback", path, u.String())
+		}
+	}
+	for _, path := range []string{"/go/x7k2qpm/", "/go/x7k2qpm/anything/else"} {
+		u := assertRedirect(t, rg.do(http.MethodGet, path, browserUA+" "+path, nil))
+		if u.Path != "/teatr/koncert" || u.Query().Get("ref") != "x7k2qpm" {
+			t.Errorf("%s: Location = %q, want the event page", path, u.String())
+		}
+	}
+	if len(rg.q.bumps) != 2 {
+		t.Errorf("bumps = %d, want the two coded scans", len(rg.q.bumps))
+	}
+}
+
+func TestGo_AllCountingSlotsTakenDropsTheCountNotTheRedirect(t *testing.T) {
+	rg := newRig(t, 0)
+	rg.q.links["x7k2qpm"] = eventLink("x7k2qpm")
+	for i := 0; i < cap(rg.h.slots); i++ {
+		rg.h.slots <- struct{}{}
+	}
+	assertRedirect(t, rg.do(http.MethodGet, "/go/x7k2qpm", browserUA, nil))
+	if len(rg.q.bumps) != 0 || strings.Join(rg.outcomes, ",") != "dropped" {
+		t.Fatalf("bumps=%d outcomes=%v", len(rg.q.bumps), rg.outcomes)
+	}
+	// A dropped scan is not remembered: once a slot is free it counts.
+	<-rg.h.slots
+	rg.do(http.MethodGet, "/go/x7k2qpm", browserUA, nil)
+	if len(rg.q.bumps) != 1 {
+		t.Fatalf("scan after a free slot: bumps=%d", len(rg.q.bumps))
+	}
+}
+
+func TestGo_IPv6SubscriberIsOneClient(t *testing.T) {
+	rg := newRig(t, 0)
+	rg.q.links["x7k2qpm"] = eventLink("x7k2qpm")
+	rg.doFrom("[2001:db8:1:2:aaaa::1]:443", http.MethodGet, "/go/x7k2qpm", browserUA, nil)
+	rg.doFrom("[2001:db8:1:2:bbbb::9]:443", http.MethodGet, "/go/x7k2qpm", browserUA, nil)
+	if len(rg.q.bumps) != 1 {
+		t.Fatalf("two addresses of one /64 counted %d times", len(rg.q.bumps))
+	}
+	rg.doFrom("[2001:db8:1:3::1]:443", http.MethodGet, "/go/x7k2qpm", browserUA, nil)
+	if len(rg.q.bumps) != 2 {
+		t.Fatalf("another /64 not counted: %d", len(rg.q.bumps))
+	}
+}
+
+func TestGo_UnsafeFallbackIsReplaced(t *testing.T) {
+	for _, bad := range []string{"javascript:alert(1)", "/relative", "https://tickets.arenasoldout.com@evil.example/", "ftp://x.example"} {
+		if h := New(Options{Queries: &fakeQueries{}, Fallback: bad}); h.fallback != DefaultFallbackURL {
+			t.Errorf("fallback %q kept as %q", bad, h.fallback)
+		}
 	}
 }
 
@@ -393,11 +454,12 @@ func TestGo_URLTargetKeepsItsParametersAndRefusesOtherSchemes(t *testing.T) {
 		t.Fatalf("Location = %q", u.String())
 	}
 
-	bad := "javascript:alert(1)"
-	row.URL = &bad
-	rg.q.links["urtarg2"] = row
-	if u := assertRedirect(t, rg.do(http.MethodGet, "/go/urtarg2", browserUA, nil)); u.String() != fallback {
-		t.Fatalf("unsafe url: Location = %q", u.String())
+	for _, bad := range []string{"javascript:alert(1)", "https://tickets.arenasoldout.com@evil.example/"} {
+		row.URL = &bad
+		rg.q.links["urtarg2"] = row
+		if u := assertRedirect(t, rg.do(http.MethodGet, "/go/urtarg2", browserUA, nil)); u.String() != fallback {
+			t.Fatalf("unsafe url %q: Location = %q", bad, u.String())
+		}
 	}
 }
 

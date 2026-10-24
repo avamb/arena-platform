@@ -10,9 +10,11 @@
 //   - internal/platform/salelinks (the builder) and internal/platform/config
 //     (the default host of SHORT_LINK_BASE_URL);
 //   - generated files (a "Code generated" header);
-//   - the route pattern "/go/{code}" wherever it appears in a literal (the
-//     ROUTE the redirect is mounted on, mount_go.go, and prose such as a
-//     metric help text; it is a placeholder, not a link);
+//   - in httpserver/mount_go.go only, the route patterns of the redirect,
+//     exactly "/go", "/go/", "/go/{code}" and "/go/{code}/*" (chi patterns,
+//     not links; elsewhere a bare "/go/" literal is still flagged, because
+//     "/go/" + code is exactly the hand-built link this guard exists for);
+//   - the placeholder "/go/{code}" inside prose such as a metric help text;
 //   - a literal with "allow:shortlink" in a comment on its line or the line
 //     above, which must say why (a path test in the router, a stored default).
 //
@@ -35,6 +37,18 @@ const shortLinkAllowMarker = "allow:shortlink"
 // shortLinkRoutePattern is the placeholder form of the path; it is removed
 // from a literal before the "/go/" test.
 const shortLinkRoutePattern = "/go/{code}"
+
+// shortLinkRouteFile is the one file that registers the redirect routes, and
+// shortLinkRoutePatterns the exact chi patterns it may spell. A pattern is a
+// route, not a link.
+const shortLinkRouteFile = "internal/platform/httpserver/mount_go.go"
+
+var shortLinkRoutePatterns = map[string]bool{
+	"/go":          true,
+	"/go/":         true,
+	"/go/{code}":   true,
+	"/go/{code}/*": true,
+}
 
 // shortLinkExemptDirs are slash-separated directories (relative to
 // apps/backend) whose files may name the host and the path.
@@ -86,6 +100,9 @@ func shortLinkViolations(t *testing.T, rel string, src []byte) []string {
 		val := lit.Value
 		// The route pattern is a placeholder, never a link: the route itself
 		// and prose such as a metric help text may name it.
+		if rel == shortLinkRouteFile && shortLinkRoutePatterns[strings.Trim(val, "\"`")] {
+			return true
+		}
 		pathCheck := strings.ReplaceAll(val, shortLinkRoutePattern, "")
 		if !strings.Contains(pathCheck, "/go/") && !strings.Contains(strings.ToLower(val), "go.arenasoldout.com") {
 			return true
@@ -159,6 +176,15 @@ func inline(p string) bool { return p == "/go/" } // allow:shortlink path test
 `
 	if got := shortLinkViolations(t, "internal/platform/x/x.go", []byte(good)); len(got) != 0 {
 		t.Fatalf("exemptions must pass, got %v", got)
+	}
+	routes := `package x
+func r() []string { return []string{"/go", "/go/", "/go/{code}", "/go/{code}/*"} }
+`
+	if got := shortLinkViolations(t, shortLinkRouteFile, []byte(routes)); len(got) != 0 {
+		t.Fatalf("the route patterns pass in mount_go.go, got %v", got)
+	}
+	if got := shortLinkViolations(t, "internal/platform/x/x.go", []byte(routes)); len(got) != 1 {
+		t.Fatalf("outside mount_go.go the bare \"/go/\" literal is flagged (the placeholder forms are not), got %v", got)
 	}
 	if got := shortLinkViolations(t, "internal/platform/salelinks/x.go", []byte(bad)); len(got) != 0 {
 		t.Fatalf("salelinks is exempt, got %v", got)

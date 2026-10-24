@@ -13,6 +13,7 @@ var shortLinkOutcomes = map[string]bool{
 	"fallback":     true,
 	"suspect":      true,
 	"dedup":        true,
+	"dropped":      true,
 	"rate_limited": true,
 	"error":        true,
 }
