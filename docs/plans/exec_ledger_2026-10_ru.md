@@ -563,6 +563,7 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 |---|---|---|---|---|
 | Р-QL20 | QL-8/QL-9 | один исполнитель на обе задачи или два | два: QL-8 (диалог, карточки, пункт меню, клиент) — один sonnet; QL-9 (список с пагинацией) — следующий sonnet поверх ветки QL-8 со свежим контекстом | объём QL-8 велик для одного контекста; спека и так делит их на два PR |
 | Р-QL21 | QL-8 | что открывает пункт меню «Ссылки и QR» до QL-9 | создание ссылки с выбором цели; точка входа `ql:list` оставлена для QL-9 | меню без экрана списка не должно вести в пустоту |
+| Р-QL22 | QL-7 | что считать касанием в адресе | только адрес с `ref`, `utm_source` или `utm_campaign` (правило серверного `attribution.Clean`); адрес с одними `utm_medium`/`utm_content`/`utm_term` не затирает сохранённое касание; значения проверяются тем же алфавитом `[A-Za-z0-9._~-]{1,64}`, `ref` в нижний регистр | по букве §5.1 «если что-то есть» такая запись затёрла бы валидное касание, а сервер потом отбросил бы её целиком; отступление исполнителя принято |
 
 ### 12.2 Вопросы владельцу
 
@@ -572,7 +573,7 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 
 | Задача | Класс / модель | Ветка | PR | Состояние |
 |---|---|---|---|---|
-| QL-7 | Ф / sonnet | `feat/ql-7-widget-attribution` | — | в работе с 24.10 |
+| QL-7 | Ф / sonnet | `feat/ql-7-widget-attribution` | [#235](https://github.com/avamb/arena-platform/pull/235) | PR открыт (f9b75582); `lib/attribution.ts` + тест, `CheckoutStartPayload.attribution`, захват в `onMount` `ArenaTickets.svelte`, e2e `tests/attribution.e2e.ts` (4 сценария), `render.ts` `preselectedSession` + тест; ворота: виджет vitest 736/26 файлов (было 25), type-check, build, mock e2e 95 passed; tickets-page vitest 174/11 (было 10), type-check, build; CI PR зелёный кроме ещё идущей Integration (бэкенд не менялся); не проверено: демо `apps/wp-plugin` руками (прочитан `class-widget.php`), `?session=` в браузере (только jsdom), сценарии с `ref` на реальном бэкенде. Sonnet-ревью запущено |
 | QL-8 | M / sonnet | `feat/ql-8-bot-sales-links` | — | в работе с 24.10 |
 | QL-9 | S / sonnet | `feat/ql-9-bot-links-list` | — | ждёт QL-8 |
 
@@ -580,3 +581,4 @@ Invoke-RestMethod -Method Delete -Uri 'https://api.cloudflare.com/client/v4/zone
 
 - 24.10 — CI master на `5d8cf40`: Lint, OpenAPI Check, Widget, Widget Acceptance, Tickets page, Admin, Event center (unit/smoke), Venue SVG generator зелёные; Unit/Race, Integration и Event center live — в работе на момент старта исполнителей (код этапа 1 проверен интеграционными воротами §11.4, стартовать можно). Чистка этапа 1 выполнена. Запущены QL-7 и QL-8 параллельно.
 - 24.10 — CI master `5d8cf40` завершён: все job зелёные (Unit/Race, Integration, Event center live включительно).
+- 24.10 — QL-7 готова ([#235](https://github.com/avamb/arena-platform/pull/235)); отступление по касанию принято Р-QL22; запущено sonnet-ревью.
