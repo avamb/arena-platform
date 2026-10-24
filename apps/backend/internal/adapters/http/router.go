@@ -892,7 +892,7 @@ func isShortLinkRedirect(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return false
 	}
-	return r.URL.Path == "/go" || strings.HasPrefix(r.URL.Path, "/go/")
+	return r.URL.Path == "/go" || strings.HasPrefix(r.URL.Path, "/go/") // allow:shortlink path test of the redirect route, not a link
 }
 
 // isPageTrackBeacon reports whether r is the hosted page's statistics beacon,

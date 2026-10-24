@@ -821,6 +821,49 @@ func TestValidate_ProductionWebhookOutbox(t *testing.T) {
 	}
 }
 
+// TestValidate_Production_ShortLinkURLs pins the QL-14 rules: the short-link
+// host is an https origin without a path (a code is appended to it) and the
+// fallback is https. Both are judged for arena-api (and the all-roles
+// config) only.
+func TestValidate_Production_ShortLinkURLs(t *testing.T) {
+	cases := []struct {
+		name, base, fallback string
+		ok                   bool
+	}{
+		{"default host", "https://go.arenasoldout.com", "", true},
+		{"https fallback", "https://go.example.com", "https://www.example.com", true},
+		{"plaintext host", "http://go.example.com", "", false},
+		{"host with a path", "https://go.example.com/go", "", false},
+		{"host with a query", "https://go.example.com/?a=1", "", false},
+		{"host without a scheme", "go.example.com", "", false},
+		{"plaintext fallback", "https://go.example.com", "http://www.example.com", false},
+		{"relative fallback", "https://go.example.com", "/home", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validProductionBase()
+			cfg.ShortLinkBaseURL = tc.base
+			cfg.ShortLinkFallbackURL = tc.fallback
+			err := cfg.Validate()
+			if tc.ok && err != nil {
+				t.Fatalf("want valid, got %v", err)
+			}
+			if !tc.ok && (err == nil || !strings.Contains(err.Error(), "SHORT_LINK_")) {
+				t.Fatalf("want a SHORT_LINK_ error, got %v", err)
+			}
+		})
+	}
+	t.Run("worker is not asked", func(t *testing.T) {
+		cfg := validProductionBase()
+		cfg.Role = RoleWorker
+		cfg.ShortLinkBaseURL = "http://go.example.com/x"
+		cfg.ShortLinkFallbackURL = "http://www.example.com"
+		if err := cfg.Validate(); err != nil && strings.Contains(err.Error(), "SHORT_LINK_") {
+			t.Fatalf("worker never reads these: %v", err)
+		}
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Redaction / log safety
 // ---------------------------------------------------------------------------

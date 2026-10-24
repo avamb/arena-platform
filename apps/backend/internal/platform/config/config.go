@@ -1602,6 +1602,24 @@ func (c *Config) validateProduction() []error {
 		))
 	}
 
+	// 10d. The short-link host is printed under QR codes (salelinks.ShortURL
+	// appends "/<code>") and the redirect's fallback is where a stranger lands
+	// from a printed code: https only, the host alone for the first. Load always
+	// fills the base with its default, so only a non-empty value is judged. Read by
+	// arena-api only (the public HTTP surface).
+	if c.uses(capPublicURL) && c.uses(capEdge) {
+		if base := strings.TrimSpace(c.ShortLinkBaseURL); base != "" && !isHTTPSOrigin(base) {
+			errs = append(errs, fmt.Errorf(
+				"SHORT_LINK_BASE_URL must be an https:// address with a host and no path, query or fragment in production (got %q)", base,
+			))
+		}
+		if fb := strings.TrimSpace(c.ShortLinkFallbackURL); fb != "" && !strings.HasPrefix(strings.ToLower(fb), "https://") {
+			errs = append(errs, fmt.Errorf(
+				"SHORT_LINK_FALLBACK_URL must start with https:// in production (got %q)", fb,
+			))
+		}
+	}
+
 	// 11. Debug routes expose internal panic/slow endpoints and must never be
 	// enabled in production where an operator Dokploy variable could mount them.
 
