@@ -1,7 +1,7 @@
 import type { PageLocale } from './locale.ts';
 import { isRtlLocale, toWidgetLocale } from './locale.ts';
 import { t } from './i18n.ts';
-import { plainText, renderRichText } from './richtext.ts';
+import { hasDescription, plainText, renderDescription, renderRichText } from './richtext.ts';
 import { renderSellerBlock } from './seller.ts';
 import { renderContactButton } from './contact.ts';
 import { renderMaterials } from './materials.ts';
@@ -244,11 +244,16 @@ export function renderEvent(
 
   // The event's own full description leads; the short one is the card blurb
   // and only stands in when nothing longer was written.
-  const description = data.event.description ?? data.event.short_description;
-  if (description) {
+  // description_html (the server's safe HTML) leads; an older backend sends
+  // only the raw description, which the legacy renderer reads.
+  if (hasDescription(data.event) || data.event.short_description) {
     const box = document.createElement('div');
     box.className = 'asa-hero-description';
-    box.appendChild(renderRichText(document, description));
+    box.appendChild(
+      hasDescription(data.event)
+        ? renderDescription(document, data.event)
+        : renderRichText(document, data.event.short_description ?? ''),
+    );
     heroBody.appendChild(box);
   }
 
@@ -633,11 +638,14 @@ function mountTicketPicker(
   // at the top of the page and the date is in the header a line above, and
   // showing either again here is what made the old event page feel like a
   // pointless extra step.
-  const description = event.short_description ?? event.description;
-  if (description) {
+  if (event.short_description || hasDescription(event)) {
     const box = document.createElement('div');
     box.className = 'asa-date-panel__description';
-    box.appendChild(renderRichText(document, description));
+    box.appendChild(
+      event.short_description
+        ? renderRichText(document, event.short_description)
+        : renderDescription(document, event),
+    );
     panel.appendChild(box);
   }
 
@@ -870,21 +878,24 @@ function cssEscape(value: string): string {
  * the event resolves) and again once event or org data is available. */
 export function applyDocumentChrome(
   locale: PageLocale,
-  content?: { title: string; description?: string | null } | null,
+  content?: { title: string; description?: string | null; descriptionPlain?: string | null } | null,
 ): void {
   document.documentElement.lang = locale;
   document.documentElement.dir = isRtlLocale(locale) ? 'rtl' : 'ltr';
 
   if (content) {
     document.title = `${content.title} — Arena Sold Out`;
-    if (content.description) {
+    // descriptionPlain is already plain text (the server's description_text);
+    // description is the old marked-up text and goes through plainText.
+    const metaText = content.descriptionPlain ? content.descriptionPlain : content.description ? plainText(content.description) : '';
+    if (metaText) {
       let metaEl = document.querySelector('meta[name="description"]');
       if (!metaEl) {
         metaEl = document.createElement('meta');
         metaEl.setAttribute('name', 'description');
         document.head.appendChild(metaEl);
       }
-      metaEl.setAttribute('content', plainText(content.description));
+      metaEl.setAttribute('content', metaText);
     }
   }
 

@@ -85,6 +85,12 @@ import {
   singleColumnFormStyle,
 } from "@/components/layout";
 import { SessionSeatingBindPanel } from "@/routes/sessionSeatingBind";
+import {
+  artToReact,
+  changedDescription,
+  descriptionForForm,
+  hasDescription,
+} from "@/lib/richtext";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -114,7 +120,16 @@ export interface EventItem {
   readonly display_number: number;
   readonly org_id: string;
   readonly name: string;
+  /** The raw stored description: "text Arena" HTML or the old marked-up text. */
   readonly description: string | null;
+  /** How description is stored: "art" or "text" (RT-02). */
+  readonly description_format?: string;
+  /** description as safe HTML (RT-03a); shown through artToReact, never as raw HTML. */
+  readonly description_html?: string | null;
+  /** The visible text of description_html. */
+  readonly description_text?: string | null;
+  /** description in the old "**bold**, - list" form, for the edit form. */
+  readonly description_legacy?: string | null;
   readonly status: EventStatus;
   /**
    * Earliest start_at over the event's active sessions (AB-37). Null when
@@ -191,7 +206,9 @@ export function emptyEventForm(): EventFormValues {
 export function eventToForm(e: EventItem): EventFormValues {
   return {
     name: e.name,
-    description: e.description ?? "",
+    // The old-form text, so the form never shows or re-saves markup; the PATCH
+    // leaves the description out unless the person changed it.
+    description: descriptionForForm(e),
     org_id: e.org_id,
     visibility: e.visibility,
   };
@@ -2443,10 +2460,21 @@ function OverviewTab({
       </DetailRow>
       <DetailRow label="Created">{formatDateOnly(event.created_at)}</DetailRow>
       <DetailRow label="Updated">{formatDateOnly(event.updated_at)}</DetailRow>
-      {event.description !== null && event.description !== "" ? (
+      {hasDescription(event) ? (
         <div style={descriptionBlockStyle}>
           <div style={detailLabelStyle}>Description</div>
-          <p style={descriptionTextStyle}>{event.description}</p>
+          {event.description_html ? (
+            <div
+              style={descriptionHtmlStyle}
+              data-testid="event-description-html"
+            >
+              {artToReact(event.description_html)}
+            </div>
+          ) : (
+            <p style={descriptionTextStyle}>
+              {event.description_legacy ?? event.description}
+            </p>
+          )}
         </div>
       ) : null}
 
@@ -2609,7 +2637,10 @@ function EventWizard({
   >({
     mutationFn: (v) => {
       const body: Record<string, unknown> = { name: v.name.trim() };
-      if (v.description.trim() !== "") body.description = v.description.trim();
+      if (v.description.trim() !== "") {
+        body.description = v.description.trim();
+        body.description_format = "text";
+      }
       if (v.visibility !== "") body.visibility = v.visibility;
       return authedFetch<EventEnvelope>({
         method: "POST",
@@ -3070,8 +3101,17 @@ function EditEventPanel({ event, orgs, onSuccess, onClose }: EditEventPanelProps
       // AB-36/AB-37: no venue / date fields on events any more.
       const body: Record<string, unknown> = {};
       if (v.name.trim() !== "") body.name = v.name.trim();
-      // description: null clears it, string sets it
-      body.description = v.description.trim() !== "" ? v.description.trim() : null;
+      // description: sent ONLY when the person changed it (then as old-form
+      // text, null clears it). An untouched description is left out, so ART
+      // with links or headings is never degraded by an unrelated edit.
+      const description = changedDescription(
+        eventToForm(event).description,
+        v.description,
+      );
+      if (description !== undefined) {
+        body.description = description;
+        body.description_format = "text";
+      }
       if (v.visibility !== "") body.visibility = v.visibility;
       return authedFetch<EventEnvelope>({
         method: "PATCH",
@@ -7437,6 +7477,13 @@ const descriptionBlockStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 4,
+};
+
+const descriptionHtmlStyle: CSSProperties = {
+  fontSize: 13,
+  color: "#334155",
+  lineHeight: 1.5,
+  overflowWrap: "anywhere",
 };
 
 const descriptionTextStyle: CSSProperties = {

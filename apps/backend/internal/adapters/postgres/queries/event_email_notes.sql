@@ -9,7 +9,7 @@ WHERE  event_id = $1
   AND  org_id   = $2;
 
 -- name: ListEventEmailNotes :many
-SELECT event_id, note
+SELECT event_id, note, note_format
 FROM   event_email_notes
 WHERE  event_id = ANY($1::uuid[]);
 

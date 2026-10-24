@@ -15642,6 +15642,35 @@ export interface components {
              */
             description_format?: "text" | "art";
             /**
+             * @description `description` as safe HTML for display (spec 43, RT-03a):
+             *     `richtext.Render` with the description profile. Locale-resolved
+             *     like `description` and read with the event's `description_format`
+             *     (the flag covers the translations). Links carry
+             *     `rel="noopener noreferrer" target="_blank"`. Null when there is
+             *     no description or the format could not be read. The public feed
+             *     returns it too.
+             * @example <p>Open-air festival on the <strong>Tel Aviv</strong> beachfront.</p>
+             */
+            description_html?: string | null;
+            /**
+             * @description The visible text of `description_html` without markup, for
+             *     `<title>`, `<meta>` and counters: paragraphs are separated by a
+             *     blank line, list items are `• x` or `1. x` lines. Null when
+             *     `description_html` is. The public feed returns it too.
+             * @example Open-air festival on the Tel Aviv beachfront.
+             */
+            description_text?: string | null;
+            /**
+             * @description `description` in the old form for editing forms that cannot show
+             *     markup: `**bold**`, `_italic_`, `- ` and `1. ` list lines, a link
+             *     as `text (https://…)`; the stored text itself for a `text` row. An
+             *     admin form loads it and sends `description` back (with the default
+             *     format `text`) only when the person changed it. Returned by the
+             *     authenticated event routes only, absent from the public feed.
+             * @example Open-air festival on the **Tel Aviv** beachfront.
+             */
+            description_legacy?: string | null;
+            /**
              * @description Lifecycle status.
              * @example published
              * @enum {string}
@@ -15737,6 +15766,12 @@ export interface components {
              * @example Come 30 minutes early. The cloakroom is free.
              */
             email_note?: string | null;
+            /**
+             * @description How `email_note` is stored: `art` (the HTML subset) or `text` (the
+             *     old plain text). Null when the event has no note.
+             * @example art
+             */
+            email_note_format?: string | null;
             /**
              * @description Discovery visibility for the cross-tenant GET /v1/events surface.
              *     `public` events appear in the default list; `unlisted` and
@@ -16102,10 +16137,28 @@ export interface components {
              */
             title: string;
             /**
-             * @description Long-form event description.
+             * @description Long-form event description, the raw stored value (ART or old
+             *     text, see the event's format). Kept as it was for clients that
+             *     cached the older page; new clients read `description_html`.
              * @example Open-air festival on the Tel Aviv beachfront.
              */
             description?: string | null;
+            /**
+             * @description `description` as safe HTML (spec 43, RT-03a): `richtext.Render`
+             *     with the description profile, links carry
+             *     `rel="noopener noreferrer" target="_blank"`. The page rebuilds it
+             *     from whitelisted nodes before showing it. Null when there is no
+             *     description or its format could not be read.
+             * @example <p>Open-air festival on the <strong>Tel Aviv</strong> beachfront.</p>
+             */
+            description_html?: string | null;
+            /**
+             * @description The visible text of `description_html` without markup, for the
+             *     page `<title>` and `<meta name="description">`. Null when
+             *     `description_html` is.
+             * @example Open-air festival on the Tel Aviv beachfront.
+             */
+            description_text?: string | null;
             /**
              * @description Short teaser description (AB-45c metadata).
              * @example One night, three stages, unforgettable.

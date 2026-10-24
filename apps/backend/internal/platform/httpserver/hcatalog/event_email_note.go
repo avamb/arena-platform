@@ -133,8 +133,9 @@ func (h *Handler) hydrateEmailNotes(ctx context.Context, responses []eventRespon
 	for i := range responses {
 		if id, err := uuid.Parse(responses[i].ID); err == nil {
 			if n, ok := notes[id]; ok {
-				note := n
+				note, format := n.Note, n.Format
 				responses[i].EmailNote = &note
+				responses[i].EmailNoteFormat = &format
 			}
 		}
 	}

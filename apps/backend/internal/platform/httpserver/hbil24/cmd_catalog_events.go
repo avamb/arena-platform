@@ -54,6 +54,10 @@ type catalogAction struct {
 	// first entry appended to `events` fixes this value; later sessions of
 	// the same action never override it — one action, one cover.
 	posterMediaID *uuid.UUID
+	// descriptionFormat is the event's description_format flag ("art" or
+	// "text"), set by handleBil24GetAllActions from one batched read. Empty
+	// reads as "text".
+	descriptionFormat string
 }
 
 // loadActionEvents builds the whole actionEventList subtree for orgID, keyed

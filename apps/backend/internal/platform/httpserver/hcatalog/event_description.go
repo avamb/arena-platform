@@ -103,5 +103,21 @@ func (h *Handler) hydrateDescriptionFormats(ctx context.Context, responses []eve
 		if id, err := uuid.Parse(responses[i].ID); err == nil {
 			responses[i].DescriptionFormat = formats[id]
 		}
+		responses[i].fillDescriptionViews()
 	}
+}
+
+// fillDescriptionViews sets DescriptionHTML/Text/Legacy from Description and
+// DescriptionFormat. The description is already resolved for the request's
+// locale (COALESCE of the translation, English and the base), and the event's
+// flag covers every translation, so one format reads them all. With no
+// description, or a format that was not hydrated, the views stay nil: the
+// server never guesses a format.
+func (r *eventResponse) fillDescriptionViews() {
+	r.DescriptionHTML, r.DescriptionText, r.DescriptionLegacy = nil, nil, nil
+	if r.Description == nil || r.DescriptionFormat == "" {
+		return
+	}
+	v := eventtext.ViewDescription(*r.Description, r.DescriptionFormat)
+	r.DescriptionHTML, r.DescriptionText, r.DescriptionLegacy = &v.HTML, &v.Text, &v.Legacy
 }

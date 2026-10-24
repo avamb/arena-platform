@@ -29,14 +29,21 @@ func (q *Queries) GetEventEmailNote(ctx context.Context, eventID, orgID uuid.UUI
 }
 
 const listEventEmailNotes = `-- name: ListEventEmailNotes :many
-SELECT event_id, note
+SELECT event_id, note, note_format
 FROM   event_email_notes
 WHERE  event_id = ANY($1::uuid[])`
 
-// ListEventEmailNotes returns the notes of the given events, keyed by event
-// id. Events without a note are absent from the map.
-func (q *Queries) ListEventEmailNotes(ctx context.Context, eventIDs []uuid.UUID) (map[uuid.UUID]string, error) {
-	out := make(map[uuid.UUID]string, len(eventIDs))
+// EventEmailNoteRow is a note with the flag that says how it is stored.
+type EventEmailNoteRow struct {
+	Note string
+	// Format is "art" or "text" (note_format).
+	Format string
+}
+
+// ListEventEmailNotes returns the notes of the given events with their format
+// flag, keyed by event id. Events without a note are absent from the map.
+func (q *Queries) ListEventEmailNotes(ctx context.Context, eventIDs []uuid.UUID) (map[uuid.UUID]EventEmailNoteRow, error) {
+	out := make(map[uuid.UUID]EventEmailNoteRow, len(eventIDs))
 	if len(eventIDs) == 0 {
 		return out, nil
 	}
@@ -47,11 +54,11 @@ func (q *Queries) ListEventEmailNotes(ctx context.Context, eventIDs []uuid.UUID)
 	defer rows.Close()
 	for rows.Next() {
 		var id uuid.UUID
-		var note string
-		if err := rows.Scan(&id, &note); err != nil {
+		var n EventEmailNoteRow
+		if err := rows.Scan(&id, &n.Note, &n.Format); err != nil {
 			return nil, err
 		}
-		out[id] = note
+		out[id] = n
 	}
 	return out, rows.Err()
 }

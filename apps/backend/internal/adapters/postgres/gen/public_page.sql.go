@@ -19,22 +19,24 @@ import (
 // pair to the org/event/feed-token context the hosted sales page needs to
 // render. See public_page.sql for the exact resolution rule.
 type HostedPageResolutionRow struct {
-	OrgID                 uuid.UUID
-	OrgSlug               string
-	OrgName               string
-	OrgLogoMediaID        *uuid.UUID
-	OrgDefaultLocale      string
-	EventID               uuid.UUID
-	EventSlug             *string
-	EventName             string
-	EventDescription      *string
-	EventShortDescription *string
-	EventImageURL         *string
-	EventPosterMediaID    *uuid.UUID
-	EventAgeRating        *string
-	FirstSessionAt        *time.Time
-	LastSessionAt         *time.Time
-	FirstSessionTimezone  *string
+	OrgID            uuid.UUID
+	OrgSlug          string
+	OrgName          string
+	OrgLogoMediaID   *uuid.UUID
+	OrgDefaultLocale string
+	EventID          uuid.UUID
+	EventSlug        *string
+	EventName        string
+	EventDescription *string
+	// EventDescriptionFormat is the event's description_format flag ("art" or "text").
+	EventDescriptionFormat string
+	EventShortDescription  *string
+	EventImageURL          *string
+	EventPosterMediaID     *uuid.UUID
+	EventAgeRating         *string
+	FirstSessionAt         *time.Time
+	LastSessionAt          *time.Time
+	FirstSessionTimezone   *string
 	// FirstSessionDoorsAt is the doors-open time of that same first session
 	// (sessions.doors_open_at, migration 0128), nil when not given.
 	FirstSessionDoorsAt *time.Time
@@ -48,7 +50,7 @@ type HostedPageResolutionRow struct {
 const getHostedPageResolution = `-- name: GetHostedPageResolution :one
 SELECT
     o.id, o.slug, o.name, o.logo_media_id, o.default_locale,
-    e.id, e.slug, e.name, e.description, e.short_description,
+    e.id, e.slug, e.name, e.description, e.description_format, e.short_description,
     e.image_url, e.poster_media_id, e.age_rating,
     e.first_session_at, e.last_session_at,
     (
@@ -110,7 +112,7 @@ func (q *Queries) GetHostedPageResolution(ctx context.Context, orgSlug, eventSlu
 	var r HostedPageResolutionRow
 	err := row.Scan(
 		&r.OrgID, &r.OrgSlug, &r.OrgName, &r.OrgLogoMediaID, &r.OrgDefaultLocale,
-		&r.EventID, &r.EventSlug, &r.EventName, &r.EventDescription, &r.EventShortDescription,
+		&r.EventID, &r.EventSlug, &r.EventName, &r.EventDescription, &r.EventDescriptionFormat, &r.EventShortDescription,
 		&r.EventImageURL, &r.EventPosterMediaID, &r.EventAgeRating,
 		&r.FirstSessionAt, &r.LastSessionAt, &r.FirstSessionTimezone, &r.FirstSessionDoorsAt,
 		&r.SessionCount, &r.FeedToken,

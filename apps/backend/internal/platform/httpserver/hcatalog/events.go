@@ -153,7 +153,16 @@ type EventResponse struct {
 	// DescriptionFormat says how Description is stored: "art" (the HTML subset
 	// of internal/platform/richtext) or "text" (the old plain text with marks,
 	// not converted yet). Hydrated by hydrateEvents, never by EventFromRow.
-	DescriptionFormat string   `json:"description_format"`
+	DescriptionFormat string `json:"description_format"`
+	// DescriptionHTML, DescriptionText and DescriptionLegacy are the readers'
+	// views of Description (spec 43, RT-03a), resolved with the same locale and
+	// read with the event's format flag: safe HTML (richtext.Render), the plain
+	// text of that HTML, and the old "**bold**, - list" text for forms that
+	// cannot show markup. nil when Description is nil or the format is unknown.
+	// Hydrated by hydrateEvents, never by EventFromRow.
+	DescriptionHTML   *string  `json:"description_html"`
+	DescriptionText   *string  `json:"description_text"`
+	DescriptionLegacy *string  `json:"description_legacy"`
 	Status            string   `json:"status"`
 	FirstSessionAt    *string  `json:"first_session_at"`
 	LastSessionAt     *string  `json:"last_session_at"`
@@ -196,8 +205,11 @@ type EventResponse struct {
 	// session-change letters print (EC-31, event_email_notes). nil when the
 	// event has none. Hydrated by hydrateEvents, never by EventFromRow.
 	EmailNote *string `json:"email_note"`
-	CreatedAt string  `json:"created_at"`
-	UpdatedAt string  `json:"updated_at"`
+	// EmailNoteFormat is how EmailNote is stored ("art" or "text"); nil when
+	// the event has no note.
+	EmailNoteFormat *string `json:"email_note_format"`
+	CreatedAt       string  `json:"created_at"`
+	UpdatedAt       string  `json:"updated_at"`
 }
 
 func eventFromRow(e gen.EventRow) eventResponse {
@@ -516,7 +528,7 @@ func (h *Handler) HandleCreateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
-		"event": eventFromRow(e),
+		"event": h.hydratedEvent(ctx, e),
 	})
 }
 

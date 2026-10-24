@@ -7264,6 +7264,29 @@ type EventItem struct {
 	// the server could not read it; a reader treats that as `text`.
 	DescriptionFormat *EventItemDescriptionFormat `json:"description_format,omitempty"`
 
+	// DescriptionHtml `description` as safe HTML for display (spec 43, RT-03a):
+	// `richtext.Render` with the description profile. Locale-resolved
+	// like `description` and read with the event's `description_format`
+	// (the flag covers the translations). Links carry
+	// `rel="noopener noreferrer" target="_blank"`. Null when there is
+	// no description or the format could not be read. The public feed
+	// returns it too.
+	DescriptionHtml *string `json:"description_html"`
+
+	// DescriptionLegacy `description` in the old form for editing forms that cannot show
+	// markup: `**bold**`, `_italic_`, `- ` and `1. ` list lines, a link
+	// as `text (https://…)`; the stored text itself for a `text` row. An
+	// admin form loads it and sends `description` back (with the default
+	// format `text`) only when the person changed it. Returned by the
+	// authenticated event routes only, absent from the public feed.
+	DescriptionLegacy *string `json:"description_legacy"`
+
+	// DescriptionText The visible text of `description_html` without markup, for
+	// `<title>`, `<meta>` and counters: paragraphs are separated by a
+	// blank line, list items are `• x` or `1. x` lines. Null when
+	// `description_html` is. The public feed returns it too.
+	DescriptionText *string `json:"description_text"`
+
 	// DisplayNumber Short operator-facing event number; UUID remains the API key.
 	DisplayNumber int64 `json:"display_number"`
 
@@ -7276,6 +7299,10 @@ type EventItem struct {
 	// session-change e-mails print under "About the event". Null when
 	// the event has none.
 	EmailNote *string `json:"email_note"`
+
+	// EmailNoteFormat How `email_note` is stored: `art` (the HTML subset) or `text` (the
+	// old plain text). Null when the event has no note.
+	EmailNoteFormat *string `json:"email_note_format"`
 
 	// FirstSessionAt Earliest `start_at` over the event's active, non-cancelled
 	// sessions (RFC 3339, UTC). Maintained by a database trigger
@@ -8197,8 +8224,22 @@ type HostedPageEvent struct {
 	// AgeRating Age rating / content advisory for the event, when set.
 	AgeRating *string `json:"age_rating"`
 
-	// Description Long-form event description.
+	// Description Long-form event description, the raw stored value (ART or old
+	// text, see the event's format). Kept as it was for clients that
+	// cached the older page; new clients read `description_html`.
 	Description *string `json:"description"`
+
+	// DescriptionHtml `description` as safe HTML (spec 43, RT-03a): `richtext.Render`
+	// with the description profile, links carry
+	// `rel="noopener noreferrer" target="_blank"`. The page rebuilds it
+	// from whitelisted nodes before showing it. Null when there is no
+	// description or its format could not be read.
+	DescriptionHtml *string `json:"description_html"`
+
+	// DescriptionText The visible text of `description_html` without markup, for the
+	// page `<title>` and `<meta name="description">`. Null when
+	// `description_html` is.
+	DescriptionText *string `json:"description_text"`
 
 	// FeedToken Opaque feed token the event is published through — the same
 	// value `HostedPageResponse.feed_token` carries for that event on
