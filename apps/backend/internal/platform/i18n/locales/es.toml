@@ -3944,3 +3944,60 @@ other = "El texto tiene un carácter oculto. Escríbelo de nuevo o pégalo como 
 
 ["bot.tf.err_generic"]
 other = "Este texto no sirvió. Revísalo y envíalo otra vez."
+
+["bot.tf.event_btn"]
+other = "✉ Texto en el correo"
+
+["bot.tf.note_title"]
+other = "<b>Texto en el correo</b> · {{.Name}}"
+
+["bot.tf.note_about"]
+other = "Los compradores ven este texto en el correo con la entrada y en el correo sobre una fecha cambiada o cancelada. El correo añade solo el saludo y la fecha: no los escribas."
+
+["bot.tf.note_none"]
+other = "Ahora no hay texto."
+
+["bot.tf.note_now"]
+other = "Ahora en el correo:\n\n{{.Text}}"
+
+["bot.tf.note_add_btn"]
+other = "Añadir texto"
+
+["bot.tf.note_edit_btn"]
+other = "Cambiar"
+
+["bot.tf.note_delete_btn"]
+other = "Borrar el texto"
+
+["bot.tf.note_test_btn"]
+other = "Enviarme un correo de prueba"
+
+["bot.tf.note_ask"]
+other = "Escribe el texto como siempre: le daré formato y te enseñaré el resultado. El correo añade solo el saludo y la fecha.\n\nHasta {{.Limit}} caracteres y {{.Max}} enlaces."
+
+["bot.tf.note_saved"]
+other = "Listo, el texto del correo está actualizado."
+
+["bot.tf.note_save_failed"]
+other = "No se pudo guardar el texto. Inténtalo otra vez."
+
+["bot.tf.note_delete_ask"]
+other = "¿Borrar el texto de los correos de este evento?"
+
+["bot.tf.note_delete_yes_btn"]
+other = "Sí, borrar"
+
+["bot.tf.note_delete_no_btn"]
+other = "No, conservarlo"
+
+["bot.tf.note_deleted"]
+other = "El texto se ha quitado de los correos."
+
+["bot.tf.note_test_sent"]
+other = "El correo de prueba va hacia {{.Email}}. Llega en un minuto."
+
+["bot.tf.note_test_empty"]
+other = "Escribe primero el texto: sin él, el correo de prueba no tiene nada que mostrar."
+
+["bot.tf.note_test_limit"]
+other = "Demasiados correos de prueba en la última hora. Prueba más tarde."

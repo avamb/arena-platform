@@ -4092,3 +4092,60 @@ other = "The text has a hidden character. Type the text again or paste it as pla
 
 ["bot.tf.err_generic"]
 other = "This text did not fit. Check it and send it again."
+
+["bot.tf.event_btn"]
+other = "✉ Text in the letter"
+
+["bot.tf.note_title"]
+other = "<b>Text in the letter</b> · {{.Name}}"
+
+["bot.tf.note_about"]
+other = "Buyers see this text in the ticket letter and in the letter about a moved or canceled date. The letter adds the greeting and the date itself, so do not write them."
+
+["bot.tf.note_none"]
+other = "There is no text now."
+
+["bot.tf.note_now"]
+other = "Now in the letter:\n\n{{.Text}}"
+
+["bot.tf.note_add_btn"]
+other = "Add text"
+
+["bot.tf.note_edit_btn"]
+other = "Change"
+
+["bot.tf.note_delete_btn"]
+other = "Delete the text"
+
+["bot.tf.note_test_btn"]
+other = "Send a test letter to me"
+
+["bot.tf.note_ask"]
+other = "Write the text as usual. I will format it and show you the result. The letter adds the greeting and the date itself.\n\nUp to {{.Limit}} characters and {{.Max}} links."
+
+["bot.tf.note_saved"]
+other = "Done, I saved the new text for the letters."
+
+["bot.tf.note_save_failed"]
+other = "The text was not saved. Try again."
+
+["bot.tf.note_delete_ask"]
+other = "Delete the text from the letters of this event?"
+
+["bot.tf.note_delete_yes_btn"]
+other = "Yes, delete"
+
+["bot.tf.note_delete_no_btn"]
+other = "No, keep it"
+
+["bot.tf.note_deleted"]
+other = "The text is gone from the letters."
+
+["bot.tf.note_test_sent"]
+other = "The test letter is on its way to {{.Email}}. It arrives within a minute."
+
+["bot.tf.note_test_empty"]
+other = "Write the text first. A test letter has nothing to show without it."
+
+["bot.tf.note_test_limit"]
+other = "Too many test letters in the last hour. Try again later."

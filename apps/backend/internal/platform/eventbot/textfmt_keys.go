@@ -8,6 +8,12 @@ var textfmtKeys = []string{
 	"bot.tf.save_btn", "bot.tf.plain_btn", "bot.tf.again_btn", "bot.tf.cancel_btn",
 	"bot.tf.expired", "bot.tf.cancelled",
 	"bot.tf.err_too_long", "bot.tf.err_links", "bot.tf.err_scheme", "bot.tf.err_chars", "bot.tf.err_generic",
+	// "Text in the letter" on the event card (RT-06)
+	"bot.tf.event_btn", "bot.tf.note_title", "bot.tf.note_about", "bot.tf.note_none", "bot.tf.note_now",
+	"bot.tf.note_add_btn", "bot.tf.note_edit_btn", "bot.tf.note_delete_btn", "bot.tf.note_test_btn",
+	"bot.tf.note_ask", "bot.tf.note_saved", "bot.tf.note_save_failed",
+	"bot.tf.note_delete_ask", "bot.tf.note_delete_yes_btn", "bot.tf.note_delete_no_btn", "bot.tf.note_deleted",
+	"bot.tf.note_test_sent", "bot.tf.note_test_empty", "bot.tf.note_test_limit",
 }
 
 func init() {

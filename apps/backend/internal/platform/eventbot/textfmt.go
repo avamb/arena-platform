@@ -78,6 +78,23 @@ func tfCheck(text string, kind tfKind) (clean, plain string, ref *tfRefusal) {
 	return clean, plain, nil
 }
 
+// tfRefusalForReason maps the reason of a 422 the server answered when a text
+// was stored (error.details.reason) to the same texts.
+func tfRefusalForReason(reason string, kind tfKind) tfRefusal {
+	p := kind.profile()
+	switch richtext.Reason(reason) {
+	case richtext.ReasonTooLong, richtext.ReasonHTMLTooLong:
+		return tfRefusal{Key: "bot.tf.err_too_long", Limit: p.MaxVisible}
+	case richtext.ReasonTooManyLinks:
+		return tfRefusal{Key: "bot.tf.err_links", Links: p.MaxLinks}
+	case richtext.ReasonSchemeWord:
+		return tfRefusal{Key: "bot.tf.err_scheme"}
+	case richtext.ReasonControlChars, richtext.ReasonBadEncoding:
+		return tfRefusal{Key: "bot.tf.err_chars"}
+	}
+	return tfRefusal{Key: "bot.tf.err_generic"}
+}
+
 // tfOutcome is what the organizer is shown and may keep.
 type tfOutcome struct {
 	// Art is the text "Save as shown" stores: ART, formatted when Applied.

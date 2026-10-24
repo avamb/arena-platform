@@ -205,13 +205,19 @@ func (b *Bot) tfCallback(ctx context.Context, chatID int64, msgID int, from *mod
 	}
 	loc := id.Locale()
 	parts := strings.Split(data, ":")
+	if b.tfNoteCallback(ctx, chatID, msgID, from, id, jwt, parts) {
+		return
+	}
 	switch parts[0] {
 	case "s", "p", "a", "c":
 	default:
 		return
 	}
 	dlg, step, found, _ := b.tfLoad(ctx, from.ID)
-	if !found || step != tfStepPreview || dlg.OrgID != id.Current.OrgID.String() {
+	// "Cancel" also ends the wait for the text of the letters, which has no
+	// preview yet.
+	open := step == tfStepPreview || (parts[0] == "c" && step == tfStepAwait)
+	if !found || !open || dlg.OrgID != id.Current.OrgID.String() {
 		// An older preview, or the 30 minutes ran out: the person types again.
 		b.clearTextFmtDialog(ctx, from.ID)
 		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.tf.expired", nil), b.backKeyboard(loc, "home"))
@@ -235,7 +241,11 @@ func (b *Bot) tfCallback(ctx context.Context, chatID int64, msgID int, from *mod
 }
 
 // tfCommit stores the text the organizer chose.
-func (b *Bot) tfCommit(ctx context.Context, chatID int64, msgID int, from *models.User, id *Identity, jwt string, _ tfDialog, art string) {
+func (b *Bot) tfCommit(ctx context.Context, chatID int64, msgID int, from *models.User, id *Identity, jwt string, dlg tfDialog, art string) {
+	if dlg.kind() == tfKindEmailNote {
+		b.tfCommitNote(ctx, chatID, msgID, from, id, jwt, dlg, art)
+		return
+	}
 	b.tfCommitDescription(ctx, chatID, msgID, from, id, jwt, art)
 }
 
@@ -269,7 +279,11 @@ func (b *Bot) tfCommitDescription(ctx context.Context, chatID int64, msgID int, 
 
 // tfCancelled answers "Cancel" under a preview: nothing changes, and the
 // organizer is back where they were.
-func (b *Bot) tfCancelled(ctx context.Context, chatID int64, msgID int, from *models.User, id *Identity, jwt string, _ tfDialog) {
+func (b *Bot) tfCancelled(ctx context.Context, chatID int64, msgID int, from *models.User, id *Identity, jwt string, dlg tfDialog) {
+	if dlg.kind() == tfKindEmailNote {
+		b.tfCancelledNote(ctx, chatID, msgID, from, dlg)
+		return
+	}
 	ws := b.wizardSession(id, jwt)
 	d, _, err := b.loadDraft(ctx, from.ID, ws)
 	if err != nil {
