@@ -3893,3 +3893,12 @@ other = "Todos los que tienen una entrada válida ya han entrado."
 
 ["bot.ses.not_entered_invite"]
 other = "invitación"
+
+["bot.wz.err_description"]
+other = "No se aceptó la descripción. Cambia el texto y envíalo de nuevo."
+
+["bot.wz.err_description_too_long"]
+other = "La descripción es demasiado larga. Acorta el texto y envíalo de nuevo."
+
+["bot.wz.err_description_chars"]
+other = "La descripción tiene un carácter oculto o de control. Escribe el texto de nuevo o pégalo como texto sin formato."

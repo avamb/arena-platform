@@ -1,5 +1,6 @@
 import { parsePath } from './lib/route.ts';
 import { resolveLocale } from './lib/locale.ts';
+import { descriptionPlain } from './lib/richtext.ts';
 import { applyDocumentChrome, consumeCheckoutTokenFromURL, eventIDWithOpenCheckout, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from './lib/render.ts';
 import { ApiError, fetchHostedPage, fetchPromoterPage } from './lib/api.ts';
 import { renderSellerFooter } from './lib/seller.ts';
@@ -99,7 +100,14 @@ async function main(): Promise<void> {
     renderLoading(mainEl, locale);
     try {
       const data = await fetchHostedPage(API_BASE, route.orgSlug, route.eventSlug);
-      applyDocumentChrome(locale, { title: data.event.title, description: data.event.short_description ?? data.event.description });
+      // The teaser leads; else the plain text of the description (the server's
+      // description_text, or the old plainText of the raw one on an older backend).
+      applyDocumentChrome(
+        locale,
+        data.event.short_description
+          ? { title: data.event.title, description: data.event.short_description }
+          : { title: data.event.title, descriptionPlain: descriptionPlain(data.event) },
+      );
       // Page statistics (HP-2a): the video and partner-link hooks of the
       // materials block count anonymous hits for this event.
       const trackCtx = { apiBase: API_BASE, slug: route.orgSlug, eventSlug: route.eventSlug, search: window.location.search };

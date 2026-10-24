@@ -53,7 +53,7 @@ func newEvMatFixture(t *testing.T) *evMatFixture {
 
 func (f *evMatFixture) event(t *testing.T, orgID uuid.UUID) uuid.UUID {
 	t.Helper()
-	ev, err := f.q.InsertEvent(context.Background(), orgID, "EvMat Event "+uuid.NewString()[:6], nil, "draft", "public", nil)
+	ev, err := f.q.InsertEvent(context.Background(), orgID, "EvMat Event "+uuid.NewString()[:6], nil, "draft", "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent: %v", err)
 	}
