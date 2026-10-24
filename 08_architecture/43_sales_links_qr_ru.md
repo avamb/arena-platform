@@ -120,7 +120,7 @@ CREATE INDEX orders_sales_link_idx ON orders (sales_link_id) WHERE sales_link_id
   "ref": "x7k2qpm",                     // код ссылки, может отсутствовать
   "utm_source": "qr", "utm_medium": "offline", "utm_campaign": "koncert-2026", "utm_content": "x7k2qpm", "utm_term": "",
   "landed_at": "2026-10-24T18:02:11Z",  // когда покупатель пришёл по ссылке (последнее касание)
-  "first": { "ref": "...", "utm_source": "...", "landed_at": "..." }   // первое касание, если отличается
+  "first": { "ref": "...", "utm_source": "...", "utm_campaign": "...", "landed_at": "..." }   // первое касание, если отличается (ref, source или campaign)
 }
 ```
 
@@ -143,7 +143,8 @@ Traefik-роутер по Host добавляет префикс `/go` (ops-ша
 по умолчанию `https://tickets.arenasoldout.com/`); (2) лимит по IP как у публичных маршрутов (`PUBLIC_API_IP_RATE_LIMIT`,
 `TrustedClientIP(r, 0)`); (3) найти ссылку; нет → тот же fallback; (4) разрешить цель по §4.3; (5) к адресу цели
 дописать `utm_*` из `sales_links.utm` (пустые не дописывать) и `ref=<code>`; существующие параметры цели `url`
-сохраняются, наши — побеждают при совпадении имён; (6) посчитать скан: `pagestats`-правило подозрительного UA →
+сохраняются дословно (без перекодирования), наши — побеждают при совпадении имён, но заменяется только ключ, который мы реально
+дописываем (пустой `utm` ссылки не стирает `utm_source` цели); (6) посчитать скан: `pagestats`-правило подозрительного UA →
 `suspect_hits`, иначе дедупликация §2 п. 9 → `hits`; `UPDATE sales_links SET scan_count…, last_scanned_at` +
 `INSERT … ON CONFLICT (sales_link_id, day, country) DO UPDATE` в `sales_link_hits`, страна из `CF-IPCountry`
 (только когда `TRUSTED_PROXY_COUNT > 0`, иначе `''`); (7) `302 Found`, `Cache-Control: no-store`,
