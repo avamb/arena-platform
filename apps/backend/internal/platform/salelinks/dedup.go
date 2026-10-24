@@ -3,6 +3,7 @@ package salelinks
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -51,15 +52,17 @@ func NewDedup(ttl time.Duration, maxEntries int) *Dedup {
 
 func (d *Dedup) key(code, ip, userAgent string, now time.Time) [sha256.Size]byte {
 	h := sha256.New()
-	h.Write([]byte(code))
-	h.Write([]byte{'|'})
-	h.Write([]byte(ip))
-	h.Write([]byte{'|'})
-	h.Write([]byte(userAgent))
-	h.Write([]byte{'|'})
-	h.Write([]byte(now.UTC().Format("2006-01-02"))) // allow:timeformat: a calendar day inside a hash, not a timestamp
-	h.Write([]byte{'|'})
-	h.Write(d.salt[:])
+	// Every field is length-prefixed, so a separator character inside the user
+	// agent cannot shift the boundary between two fields.
+	field := func(b []byte) {
+		h.Write([]byte(strconv.Itoa(len(b)) + ":"))
+		h.Write(b)
+	}
+	field([]byte(code))
+	field([]byte(ip))
+	field([]byte(userAgent))
+	field([]byte(now.UTC().Format("2006-01-02"))) // allow:timeformat: a calendar day inside a hash, not a timestamp
+	field(d.salt[:])
 	var k [sha256.Size]byte
 	copy(k[:], h.Sum(nil))
 	return k

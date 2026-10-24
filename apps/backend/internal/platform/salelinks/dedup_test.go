@@ -85,6 +85,16 @@ func TestDedup_SaltIsPerInstance(t *testing.T) {
 	}
 }
 
+func TestDedup_SeparatorInsideAFieldCannotShiftBoundaries(t *testing.T) {
+	d := NewDedup(0, 0)
+	if d.key("x", "1|2", "u", day1) == d.key("x|1", "2", "u", day1) {
+		t.Error("fields must be length-prefixed")
+	}
+	if d.key("x", "ip", "a|b", day1) == d.key("x", "ip|a", "b", day1) {
+		t.Error("a separator inside the user agent must not shift a boundary")
+	}
+}
+
 func TestDedup_ParallelUse(t *testing.T) {
 	d := NewDedup(time.Hour, 1000)
 	var firsts atomic.Int64

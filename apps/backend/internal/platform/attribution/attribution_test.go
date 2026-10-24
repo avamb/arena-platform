@@ -121,6 +121,28 @@ func TestClean(t *testing.T) {
 					t.Errorf("landed_at = %v, want now", a.LandedAt)
 				}
 			}},
+		{name: "landed_at as a number drops the touch", in: `{"ref":"x7k2qpm","landed_at":1761328800}`, ok: false},
+		{name: "landed_at null drops the touch", in: `{"ref":"x7k2qpm","landed_at":null}`, ok: false},
+		{name: "landed_at empty string drops the touch", in: `{"ref":"x7k2qpm","landed_at":""}`, ok: false},
+		{name: "landed_at true drops the touch", in: `{"ref":"x7k2qpm","landed_at":true}`, ok: false},
+		{name: "first with a bad landed_at is dropped alone", in: `{"ref":"x7k2qpm","first":{"ref":"abcdefg","landed_at":5}}`, ok: true,
+			check: func(t *testing.T, a Attribution) {
+				if a.First != nil || a.Ref != "x7k2qpm" {
+					t.Errorf("attribution = %+v first=%+v", a, a.First)
+				}
+			}},
+		{name: "first with an empty landed_at is dropped alone", in: `{"ref":"x7k2qpm","first":{"ref":"abcdefg","landed_at":""}}`, ok: true,
+			check: func(t *testing.T, a Attribution) {
+				if a.First != nil {
+					t.Errorf("first = %+v", a.First)
+				}
+			}},
+		{name: "first with a campaign only is kept", in: `{"ref":"x7k2qpm","first":{"utm_campaign":"c0"}}`, ok: true,
+			check: func(t *testing.T, a Attribution) {
+				if a.First == nil || a.First.UTMCampaign != "c0" {
+					t.Errorf("first = %+v", a.First)
+				}
+			}},
 		{name: "unparseable landed_at drops the touch", in: `{"ref":"x7k2qpm","landed_at":"yesterday"}`, ok: false},
 		{name: "landed_at with an offset is converted to UTC", in: `{"ref":"x7k2qpm","landed_at":"2026-10-24T19:00:00+02:00"}`, ok: true,
 			check: func(t *testing.T, a Attribution) {
@@ -135,7 +157,7 @@ func TestClean(t *testing.T) {
 					t.Errorf("attribution = %+v first=%+v", a, a.First)
 				}
 			}},
-		{name: "first without ref or source is dropped", in: `{"ref":"x7k2qpm","first":{"utm_campaign":"c"}}`, ok: true,
+		{name: "first without ref or source is dropped", in: `{"ref":"x7k2qpm","first":{"utm_medium":"m"}}`, ok: true,
 			check: func(t *testing.T, a Attribution) {
 				if a.First != nil {
 					t.Errorf("first = %+v", a.First)
@@ -213,6 +235,16 @@ func TestMergeTouch(t *testing.T) {
 		again := MergeTouch(qr, Attribution{Touch: Touch{Ref: "x7k2qpm", UTMSource: "qr", LandedAt: t1}})
 		if again.First != nil {
 			t.Errorf("same source and no earlier first must not invent one: %+v", again.First)
+		}
+	})
+	t.Run("a campaign-only earlier touch is kept as first", func(t *testing.T) {
+		prev := Attribution{Touch: Touch{UTMCampaign: "spring", LandedAt: t0}}
+		got := MergeTouch(prev, soc)
+		if got.First == nil || got.First.UTMCampaign != "spring" || !got.First.LandedAt.Equal(t0) {
+			t.Errorf("first = %+v", got.First)
+		}
+		if got.Ref != "abcdefg" {
+			t.Errorf("got %+v", got)
 		}
 	})
 	t.Run("nothing earlier returns next as it is", func(t *testing.T) {

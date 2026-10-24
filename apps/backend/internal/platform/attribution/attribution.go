@@ -41,9 +41,10 @@ type Touch struct {
 // First is the first touch of the buyer, kept beside the last one when the two
 // differ.
 type First struct {
-	Ref       string
-	UTMSource string
-	LandedAt  time.Time
+	Ref         string
+	UTMSource   string
+	UTMCampaign string // additive to spec 43 section 3: a campaign-only touch is a touch
+	LandedAt    time.Time
 }
 
 // Attribution is the object of spec 43 section 3: the last touch, flattened,
@@ -64,9 +65,10 @@ type wireTouch struct {
 }
 
 type wireFirst struct {
-	Ref       string     `json:"ref,omitempty"`
-	UTMSource string     `json:"utm_source,omitempty"`
-	LandedAt  *time.Time `json:"landed_at,omitempty"`
+	Ref         string     `json:"ref,omitempty"`
+	UTMSource   string     `json:"utm_source,omitempty"`
+	UTMCampaign string     `json:"utm_campaign,omitempty"`
+	LandedAt    *time.Time `json:"landed_at,omitempty"`
 }
 
 type wireAttribution struct {
@@ -91,7 +93,7 @@ func (t Touch) wire() wireTouch {
 }
 
 func (f First) wire() wireFirst {
-	return wireFirst{Ref: f.Ref, UTMSource: f.UTMSource, LandedAt: timePtr(f.LandedAt)}
+	return wireFirst{Ref: f.Ref, UTMSource: f.UTMSource, UTMCampaign: f.UTMCampaign, LandedAt: timePtr(f.LandedAt)}
 }
 
 // MarshalJSON writes landed_at as RFC 3339 UTC and only when it is set.
@@ -127,7 +129,7 @@ func (a *Attribution) UnmarshalJSON(b []byte) error {
 		a.LandedAt = *w.LandedAt
 	}
 	if w.First != nil {
-		f := &First{Ref: w.First.Ref, UTMSource: w.First.UTMSource}
+		f := &First{Ref: w.First.Ref, UTMSource: w.First.UTMSource, UTMCampaign: w.First.UTMCampaign}
 		if w.First.LandedAt != nil {
 			f.LandedAt = *w.First.LandedAt
 		}
@@ -157,12 +159,19 @@ func (a Attribution) JSON() []byte {
 	return b
 }
 
-// hasTouch reports whether a names a source of the visit.
-func (a Attribution) hasTouch() bool { return a.Ref != "" || a.UTMSource != "" }
+// hasTouch reports whether a names a source of the visit: the same test Clean
+// applies (ref, utm_source or utm_campaign).
+func (a Attribution) hasTouch() bool {
+	return a.Ref != "" || a.UTMSource != "" || a.UTMCampaign != ""
+}
+
+func (a Attribution) firstOfTouch() *First {
+	return &First{Ref: a.Ref, UTMSource: a.UTMSource, UTMCampaign: a.UTMCampaign, LandedAt: a.LandedAt}
+}
 
 // MergeTouch returns the attribution to store when a buyer who already carries
 // prev now brings next (a later touch, last touch wins, spec 43 decision 2).
-// The result is next. When prev names a different source (ref or utm_source),
+// The result is next. When prev names a different source (ref, utm_source or utm_campaign),
 // the first touch is kept in First: prev.First if prev already had one,
 // otherwise the own touch of prev. When the source did not change, the First
 // of prev is kept. When prev names no source at all, next is returned as it is.
@@ -171,12 +180,12 @@ func MergeTouch(prev, next Attribution) Attribution {
 	switch {
 	case !prev.hasTouch():
 		// nothing earlier to remember
-	case prev.Ref != next.Ref || prev.UTMSource != next.UTMSource:
+	case prev.Ref != next.Ref || prev.UTMSource != next.UTMSource || prev.UTMCampaign != next.UTMCampaign:
 		if prev.First != nil {
 			f := *prev.First
 			out.First = &f
 		} else {
-			out.First = &First{Ref: prev.Ref, UTMSource: prev.UTMSource, LandedAt: prev.LandedAt}
+			out.First = prev.firstOfTouch()
 		}
 	default:
 		if prev.First != nil {
@@ -200,10 +209,11 @@ func MergeTouch(prev, next Attribution) Attribution {
 //   - landed_at must be RFC 3339, not older than now-Window and not later than
 //     now+FutureSkew, otherwise the WHOLE touch is dropped: the window is
 //     checked by the server, not the client. A landed_at in the near future is
-//     clamped to now. A MISSING landed_at is accepted and set to now: a client
-//     that cannot keep time must not cost a sale;
+//     clamped to now. An ABSENT landed_at is accepted and set to now: a client
+//     that cannot keep time must not cost a sale. A PRESENT landed_at that is
+//     not a non-empty RFC 3339 string drops the touch;
 //   - a touch with no ref and no utm_source/utm_campaign is not a touch;
-//   - "first" is cleaned the same way (ref, utm_source, landed_at) and is
+//   - "first" is cleaned the same way (ref, utm_source, utm_campaign, landed_at) and is
 //     dropped alone when invalid.
 func Clean(raw []byte, now time.Time) (Attribution, bool) {
 	var m map[string]json.RawMessage
@@ -219,8 +229,8 @@ func Clean(raw []byte, now time.Time) (Attribution, bool) {
 	if rawFirst, has := m["first"]; has {
 		var fm map[string]json.RawMessage
 		if err := json.Unmarshal(rawFirst, &fm); err == nil && len(fm) > 0 {
-			if ft, ok := cleanTouch(fm, now); ok && (ft.Ref != "" || ft.UTMSource != "") {
-				out.First = &First{Ref: ft.Ref, UTMSource: ft.UTMSource, LandedAt: ft.LandedAt}
+			if ft, ok := cleanTouch(fm, now); ok && (ft.Ref != "" || ft.UTMSource != "" || ft.UTMCampaign != "") {
+				out.First = &First{Ref: ft.Ref, UTMSource: ft.UTMSource, UTMCampaign: ft.UTMCampaign, LandedAt: ft.LandedAt}
 			}
 		}
 	}
@@ -239,7 +249,14 @@ func cleanTouch(m map[string]json.RawMessage, now time.Time) (Touch, bool) {
 		t.Ref = ref
 	}
 	landed := now
-	if s := str(m["landed_at"]); s != "" {
+	// Only an ABSENT landed_at means "unknown, use now". A key that is present
+	// but is not a non-empty RFC 3339 string (number, null, "", true) is a
+	// broken client and drops the touch.
+	if rawLanded, present := m["landed_at"]; present {
+		var s string
+		if err := json.Unmarshal(rawLanded, &s); err != nil || s == "" {
+			return Touch{}, false
+		}
 		parsed, err := time.Parse(time.RFC3339, s)
 		if err != nil {
 			return Touch{}, false

@@ -40,7 +40,10 @@ func TestNormalizeCode(t *testing.T) {
 		{"x7k2qpm?utm_source=a", "x7k2qpm", true},
 		{"x7k2qpm/extra", "x7k2qpm", true},
 		{"  x7k2qpm  ", "x7k2qpm", true},
-		{"x7k2qpmzzzz", "x7k2qpm", true}, // at most 7 characters are taken
+		{"x7k2qpmzzzz", "x7k2qpm", true}, // a longer string is cut to 7 on purpose
+		{"x7k2qpé", "", false},           // é is 2 bytes: cut mid-rune it is not a code
+		{"x7k2qpmé", "x7k2qpm", true},    // the rune starts after the 7th byte and is cut off whole
+		{"éx7k2qp", "", false},
 		{"x7k2qp", "", false},
 		{"x7k2qp0", "", false},
 		{"", "", false},

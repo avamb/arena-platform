@@ -113,6 +113,16 @@ func TestResolveWithFacts_NoBaseOrSlug(t *testing.T) {
 	if got, deg := ResolveWithFacts(testBase, linkOf(KindOrgPage), Facts{}); got != "" || deg {
 		t.Errorf("no slug: (%q, %v)", got, deg)
 	}
+	for _, kind := range []string{KindSession, KindEvent, KindPromoterPage} {
+		if got, _ := ResolveWithFacts("", linkOf(kind), okFacts); got != "" {
+			t.Errorf("%s without a base address must be empty, got %q", kind, got)
+		}
+	}
+	noSlug := okFacts
+	noSlug.OrgSlug, noSlug.EventPromoterSlug = "", ""
+	if got, _ := ResolveWithFacts(testBase, linkOf(KindSession), noSlug); got != "" {
+		t.Errorf("a session link without any page slug must be empty, never a bare query: %q", got)
+	}
 	if got, _ := ResolveWithFacts("", linkOf(KindURL), Facts{}); got != "https://other.example/p?a=1" {
 		t.Errorf("a url link needs no base address, got %q", got)
 	}

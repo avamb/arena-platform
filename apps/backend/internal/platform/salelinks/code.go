@@ -49,8 +49,11 @@ func NewCode() (string, error) {
 }
 
 // NormalizeCode reads the code out of what a request carried: lower-cased,
-// cut at the first "?" or "/", at most CodeLen characters taken. It is valid
-// only when exactly CodeLen characters of the alphabet remain.
+// cut at the first "?" or "/", at most CodeLen BYTES taken. A longer string is
+// cut to CodeLen on purpose (spec 43 section 4.1: a sloppy trailing part of a
+// printed address must not cost the redirect). It is valid only when exactly
+// CodeLen characters of the alphabet remain, so a multi-byte character cut in
+// the middle of its sequence is refused.
 func NormalizeCode(raw string) (string, bool) {
 	s := strings.ToLower(strings.TrimSpace(raw))
 	if i := strings.IndexAny(s, "?/"); i >= 0 {

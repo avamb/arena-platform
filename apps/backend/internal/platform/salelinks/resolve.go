@@ -85,7 +85,13 @@ func ResolveWithFacts(base string, link Link, f Facts) (destination string, degr
 
 	if kind == KindSession {
 		if f.SessionLive && link.Target.SessionID != nil && eventPageReady(f) {
-			return eventPage(base, f) + "?session=" + url.QueryEscape(link.Target.SessionID.String()), false
+			// No page address (no base or no slug) means no destination: a bare
+			// "?session=..." must never be returned.
+			page := eventPage(base, f)
+			if page == "" {
+				return "", false
+			}
+			return page + "?session=" + url.QueryEscape(link.Target.SessionID.String()), false
 		}
 		kind = KindEvent
 		degraded = true

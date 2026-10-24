@@ -61,6 +61,31 @@ func TestBuildDestination(t *testing.T) {
 	})
 }
 
+func TestBuildDestination_KeepsOtherPairsVerbatim(t *testing.T) {
+	got := BuildDestination("https://t.example/a?q=a%20b;c=1&z=2&utm_source=old&z=3&Utm_Source=keep#frag",
+		map[string]string{"utm_source": "qr", "utm_campaign": "c 1"}, "x7k2qpm")
+	want := "https://t.example/a?q=a%20b;c=1&z=2&z=3&Utm_Source=keep&utm_source=qr&utm_campaign=c+1&ref=x7k2qpm#frag"
+	if got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestBuildDestination_UnsuppliedKeysStay(t *testing.T) {
+	got := BuildDestination("https://t.example/a?utm_medium=mail&ref=zzzzzzz", map[string]string{"utm_source": "qr"}, "")
+	if got != "https://t.example/a?utm_medium=mail&ref=zzzzzzz&utm_source=qr" {
+		t.Errorf("got %s", got)
+	}
+}
+
+func TestDefaultUTM_CampaignGoesThroughCleanUTM(t *testing.T) {
+	if _, has := DefaultUTM("", "Spring Sale!", "x7k2qpm")["utm_campaign"]; has {
+		t.Error("a slug with characters outside the allowlist must leave utm_campaign out")
+	}
+	if got := DefaultUTM("", " spring-2026 ", "x7k2qpm")["utm_campaign"]; got != "spring-2026" {
+		t.Errorf("utm_campaign = %q", got)
+	}
+}
+
 func TestDefaultUTM(t *testing.T) {
 	for _, c := range []struct {
 		placement string
