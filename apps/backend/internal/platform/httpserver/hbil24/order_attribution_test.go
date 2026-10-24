@@ -36,6 +36,19 @@ func TestGatewayAttribution_ForUpdate(t *testing.T) {
 		}
 	})
 
+	t.Run("a failed link lookup writes nothing", func(t *testing.T) {
+		g := gatewayAttribution{present: true, lookupFailed: true,
+			attr: attribution.Attribution{Touch: attribution.Touch{Ref: "bbbbbbb", LandedAt: landed}}}
+		link, raw := g.forUpdate(existing)
+		if link != nil || raw != nil {
+			t.Fatalf("want nothing to write after a failed lookup, got %v %s", link, raw)
+		}
+		// A NEW order still gets the cleaned json, only without a link.
+		if string(g.json()) != `{"ref":"bbbbbbb","landed_at":"2026-10-24T18:00:00Z"}` {
+			t.Fatalf("json() = %s", g.json())
+		}
+	})
+
 	t.Run("a broken stored value is replaced", func(t *testing.T) {
 		g := gatewayAttribution{present: true,
 			attr: attribution.Attribution{Touch: attribution.Touch{UTMSource: "qr", LandedAt: landed}}}

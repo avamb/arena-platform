@@ -160,6 +160,29 @@ func (q *Queries) InsertCheckoutSessionWithToken(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SetCheckoutSessionAttribution
+// ─────────────────────────────────────────────────────────────────────────────
+
+const setCheckoutSessionAttribution = `-- name: SetCheckoutSessionAttribution :exec
+UPDATE checkout_sessions
+SET    attribution = COALESCE($2::jsonb, '{}'::jsonb),
+       updated_at  = now()
+WHERE  id = $1`
+
+// SetCheckoutSessionAttribution rewrites the attribution of one checkout
+// session (spec 43 section 4.4). The Bil24 gateway calls it on a same-cart
+// CREATE_ORDER_EXT re-send so the new checkout session carries the order's
+// final, merged attribution. An empty attribution stores '{}'.
+func (q *Queries) SetCheckoutSessionAttribution(ctx context.Context, id uuid.UUID, attribution []byte) error {
+	var attr any
+	if len(attribution) > 0 {
+		attr = attribution
+	}
+	_, err := q.db.Exec(ctx, setCheckoutSessionAttribution, id, attr)
+	return err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetCheckoutBuyerLocaleByTicketID
 // ─────────────────────────────────────────────────────────────────────────────
 

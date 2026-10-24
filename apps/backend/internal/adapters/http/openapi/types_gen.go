@@ -4947,8 +4947,8 @@ type ChannelWPWebhookTestDelivery struct {
 // CheckoutAttribution Where the buyer came from (spec 43): the last touch, optionally with
 // the first one. Every utm value is at most 64 characters from
 // A-Z a-z 0-9 . _ ~ - (a value with any other character is dropped). A
-// touch older than 7 days or later than the server clock is dropped
-// whole. A touch with no ref, utm_source or utm_campaign is ignored.
+// touch older than 7 days or more than 5 minutes ahead of the server
+// clock is dropped whole. A touch with no ref, utm_source or utm_campaign is ignored.
 type CheckoutAttribution struct {
 	// First The buyer's first touch, when it differs from the last one.
 	First *CheckoutAttributionFirst `json:"first,omitempty"`
@@ -15592,7 +15592,8 @@ type SessionSummary struct {
 	// refunded) grouped by where the buyer came from (spec 43): first
 	// one entry per sales link the orders are attributed to, then one
 	// per utm_source and utm_campaign pair of the orders without a
-	// link, then the rest as one direct entry. Present only on the
+	// link (either label alone is enough), then the rest as one direct
+	// entry. Present only on the
 	// session summary, never on the event summary. An empty list when
 	// the session has no paid orders.
 	Sources []SessionSummarySource `json:"sources"`
@@ -15649,8 +15650,8 @@ type SessionSummary struct {
 // SessionSummarySource One source of a session's paid orders. Carries no buyer data.
 type SessionSummarySource struct {
 	// Kind sales_link when the orders are attributed to a sales link, utm
-	// when they have no link but their attribution names a utm_source,
-	// direct otherwise.
+	// when they have no link but their attribution names a utm_source
+	// or a utm_campaign, direct otherwise.
 	Kind string `json:"kind"`
 
 	// Label The label of that sales link (where it is placed). Only for kind sales_link.
@@ -15673,7 +15674,7 @@ type SessionSummarySource struct {
 	// UtmCampaign The utm_campaign of the orders' attribution. Only for kind utm, absent when the orders named none.
 	UtmCampaign *string `json:"utm_campaign,omitempty"`
 
-	// UtmSource The utm_source of the orders' attribution. Only for kind utm.
+	// UtmSource The utm_source of the orders' attribution. Only for kind utm, absent when the orders named only a campaign.
 	UtmSource *string `json:"utm_source,omitempty"`
 }
 

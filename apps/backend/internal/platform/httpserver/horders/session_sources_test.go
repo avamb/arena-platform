@@ -18,12 +18,15 @@ func TestFoldSources_GroupsByLinkUTMAndDirect(t *testing.T) {
 		{UTMSource: "instagram", UTMCampaign: "c1", Currency: "EUR", Orders: 2, Tickets: 2, Amount: 2000},
 		// a refund in another currency than the orders lands in its own entry
 		{UTMSource: "instagram", UTMCampaign: "c1", Currency: "USD", Orders: 0, Tickets: 0, Amount: -100},
+		// a campaign-only touch is a utm source too (Р-QL13)
+		{UTMCampaign: "spring", Currency: "EUR", Orders: 1, Tickets: 1, Amount: 500},
 	}
 	got := foldSources(rows)
 	b, _ := json.Marshal(got)
 	want := `[` +
 		`{"kind":"sales_link","sales_link_id":"11111111-1111-1111-1111-111111111111","label":"Poster at the door","orders":2,"tickets":2,"revenue":[{"currency":"CZK","amount_minor":40000},{"currency":"EUR","amount_minor":1500}]},` +
 		`{"kind":"utm","utm_source":"instagram","utm_campaign":"c1","orders":2,"tickets":2,"revenue":[{"currency":"EUR","amount_minor":2000},{"currency":"USD","amount_minor":-100}]},` +
+		`{"kind":"utm","utm_campaign":"spring","orders":1,"tickets":1,"revenue":[{"currency":"EUR","amount_minor":500}]},` +
 		`{"kind":"direct","orders":1,"tickets":2,"revenue":[{"currency":"EUR","amount_minor":3000}]}` +
 		`]`
 	if string(b) != want {

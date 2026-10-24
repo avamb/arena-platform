@@ -56,12 +56,19 @@ func TestCompatBil24_CreateOrder_Attribution(t *testing.T) {
 
 	linkA := attrHarnessLink(t, q, orgID, "Poster A")
 	linkB := attrHarnessLink(t, q, orgID, "Poster B")
+	foreignOrg, err := q.InsertOrganization(ctx, "QL6 Gateway Foreign "+uuid.NewString()[:8],
+		"ql6-gw-foreign-"+uuid.NewString()[:8], "EE", "en", 1200)
+	if err != nil {
+		t.Fatalf("InsertOrganization: %v", err)
+	}
+	foreignLink := attrHarnessLink(t, q, foreignOrg.ID, "Somebody else's poster")
 	// Registered after setupHarness, so it runs BEFORE the harness sweeps
 	// its orders: the orders are unlinked first, then the links go.
 	t.Cleanup(func() {
-		ids := []uuid.UUID{linkA.ID, linkB.ID}
+		ids := []uuid.UUID{linkA.ID, linkB.ID, foreignLink.ID}
 		_, _ = st.Pool.Exec(context.Background(), `UPDATE orders SET sales_link_id = NULL WHERE sales_link_id = ANY($1::uuid[])`, ids)
 		_, _ = st.Pool.Exec(context.Background(), `DELETE FROM sales_links WHERE id = ANY($1::uuid[])`, ids)
+		_, _ = st.Pool.Exec(context.Background(), `DELETE FROM organizations WHERE id = $1`, foreignOrg.ID)
 	})
 
 	gaActionEventID := mustActionEventID(t, st, st.GAsessID)
@@ -105,6 +112,19 @@ func TestCompatBil24_CreateOrder_Attribution(t *testing.T) {
 			t.Fatalf("%s: decode attribution %s: %v", label, raw, err)
 		}
 		return s
+	}
+	// Spec 43 decision 3 (Р-QL19): the order's current checkout session
+	// carries the same object as the order.
+	sameAsSession := func(label string, orderID uuid.UUID) {
+		t.Helper()
+		var equal bool
+		if err := st.Pool.QueryRow(ctx, `SELECT o.attribution = cs.attribution FROM orders o
+		    JOIN checkout_sessions cs ON cs.id = o.checkout_session_id WHERE o.id = $1`, orderID).Scan(&equal); err != nil {
+			t.Fatalf("%s: compare attributions: %v", label, err)
+		}
+		if !equal {
+			t.Fatalf("%s: checkout_sessions.attribution differs from orders.attribution", label)
+		}
 	}
 	sendOrder := func(label string, attr any) uuid.UUID {
 		t.Helper()
@@ -151,6 +171,7 @@ func TestCompatBil24_CreateOrder_Attribution(t *testing.T) {
 	if s.attr["ref"] != linkB.Code || f == nil || f["ref"] != linkA.Code {
 		t.Fatalf("ref=B: attribution = %v, want ref B with first ref A", s.attr)
 	}
+	sameAsSession("ref=B", second)
 
 	// ── re-sent without the field: the order keeps what it has ──────────────
 	third := sendOrder("CREATE_ORDER_EXT no attribution", nil)
@@ -161,6 +182,7 @@ func TestCompatBil24_CreateOrder_Attribution(t *testing.T) {
 	if s.link == nil || *s.link != linkB.ID || s.attr["ref"] != linkB.Code {
 		t.Fatalf("no attribution: link %v attribution %v, want B kept", s.link, s.attr)
 	}
+	sameAsSession("no attribution", third)
 
 	// ── an unusable value is not a refusal either ───────────────────────────
 	fourth := sendOrder("CREATE_ORDER_EXT attribution=42", 42)
@@ -171,4 +193,25 @@ func TestCompatBil24_CreateOrder_Attribution(t *testing.T) {
 	if s.link == nil || *s.link != linkB.ID {
 		t.Fatalf("attribution=42: link %v, want B kept", s.link)
 	}
+	sameAsSession("attribution=42", fourth)
+
+	// ── another organization's link: the json keeps the ref, no link ───────
+	fifth := sendOrder("CREATE_ORDER_EXT foreign ref", map[string]any{"ref": foreignLink.Code})
+	s = read("foreign ref", fifth)
+	if s.link != nil || s.attr["ref"] != foreignLink.Code {
+		t.Fatalf("foreign ref: link %v attribution %v, want no link and the foreign ref", s.link, s.attr)
+	}
+	sameAsSession("foreign ref", fifth)
+
+	// ── an unknown code: same ───────────────────────────────────────────────
+	unknown := "zzzzzzz"
+	if _, err := q.GetSalesLinkByCode(ctx, unknown); err == nil {
+		t.Skip("the unknown test code happens to exist")
+	}
+	sixth := sendOrder("CREATE_ORDER_EXT unknown ref", map[string]any{"ref": unknown})
+	s = read("unknown ref", sixth)
+	if s.link != nil || s.attr["ref"] != unknown {
+		t.Fatalf("unknown ref: link %v attribution %v, want no link and the ref", s.link, s.attr)
+	}
+	sameAsSession("unknown ref", sixth)
 }

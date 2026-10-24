@@ -68,9 +68,13 @@ func foldSources(rows []gen.SessionSummarySourceRow) []sessionSource {
 				g.Kind = sourceKindSalesLink
 				g.SalesLinkID = strPtr(k.link)
 				g.Label = strPtr(r.Label)
-			case r.UTMSource != "":
+			case r.UTMSource != "" || r.UTMCampaign != "":
+				// A campaign-only touch is a touch (Р-QL13): utm_source
+				// may be absent on a utm entry.
 				g.Kind = sourceKindUTM
-				g.UTMSource = strPtr(r.UTMSource)
+				if r.UTMSource != "" {
+					g.UTMSource = strPtr(r.UTMSource)
+				}
 				if r.UTMCampaign != "" {
 					g.UTMCampaign = strPtr(r.UTMCampaign)
 				}
@@ -114,16 +118,14 @@ func foldSources(rows []gen.SessionSummarySourceRow) []sessionSource {
 }
 
 func sourceSortKey(s sessionSource) string {
-	switch {
-	case s.SalesLinkID != nil:
-		return *s.Label + "\x00" + *s.SalesLinkID
-	case s.UTMSource != nil:
-		c := ""
-		if s.UTMCampaign != nil {
-			c = *s.UTMCampaign
+	deref := func(p *string) string {
+		if p == nil {
+			return ""
 		}
-		return *s.UTMSource + "\x00" + c
-	default:
-		return ""
+		return *p
 	}
+	if s.Kind == sourceKindSalesLink {
+		return deref(s.Label) + "\x00" + deref(s.SalesLinkID)
+	}
+	return deref(s.UTMSource) + "\x00" + deref(s.UTMCampaign)
 }

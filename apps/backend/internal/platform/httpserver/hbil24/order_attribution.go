@@ -24,6 +24,11 @@ type gatewayAttribution struct {
 	// linkID is the sales link of the order's organization the ref names;
 	// nil for no ref, an unknown code or another organization's link.
 	linkID *uuid.UUID
+	// lookupFailed is true when the sales-link lookup failed (a transient
+	// database error, not "no such link"). A new order still gets the json
+	// without a link, but a re-send must not overwrite the order's stored
+	// link with NULL on a guess: it keeps what the order has.
+	lookupFailed bool
 }
 
 // json is the stored form for a NEW checkout session or order: nil when the
@@ -58,6 +63,7 @@ func (h *Handler) orderAttribution(ctx context.Context, req bil24Request, cc car
 			slog.String("org_id", cc.orgID.String()),
 			slog.String("error", err.Error()),
 		)
+		out.lookupFailed = true
 		return out
 	}
 	out.linkID = linkID
@@ -67,9 +73,11 @@ func (h *Handler) orderAttribution(ctx context.Context, req bil24Request, cc car
 // forUpdate returns what a same-cart re-send writes onto the EXISTING order:
 // nothing (the order keeps its attribution) when the request carried none,
 // otherwise the new touch with the order's earlier touch kept as "first"
-// (attribution.MergeTouch, last touch wins).
+// (attribution.MergeTouch, last touch wins). A failed link lookup also
+// writes nothing: the order keeps its link rather than losing it to a
+// transient error.
 func (g gatewayAttribution) forUpdate(existing gen.OrderRow) (*uuid.UUID, json.RawMessage) {
-	if !g.present {
+	if !g.present || g.lookupFailed {
 		return nil, nil
 	}
 	var prev attribution.Attribution

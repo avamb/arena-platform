@@ -36,6 +36,7 @@
 package hbil24
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -756,6 +757,16 @@ func (h *Handler) orderPersist(
 		}
 		h.orderInternal(w, req, "order write failed", err)
 		return
+	}
+	// Spec 43 decision 3 (Р-QL19): the checkout session carries the
+	// attribution the order holds. On a same-cart re-send the order keeps or
+	// merges an earlier touch, so the new session is brought in line with
+	// the order's final object, in this same transaction.
+	if order.CheckoutSessionID == cs.ID && !bytes.Equal(cs.Attribution, order.Attribution) {
+		if err := txq.SetCheckoutSessionAttribution(ctx, cs.ID, order.Attribution); err != nil {
+			h.orderInternal(w, req, "set checkout session attribution failed", err)
+			return
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		h.orderInternal(w, req, "commit order tx failed", err)

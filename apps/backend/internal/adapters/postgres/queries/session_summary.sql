@@ -195,7 +195,8 @@ GROUP  BY se.session_id, se.source;
 -- The paid orders of one session grouped by where the buyer came from (spec
 -- 43 section 4.5): the sales link the order is attributed to; else, for an
 -- order without a link, the utm_source and utm_campaign of its attribution
--- when utm_source is set; else nothing (direct). One row per group and
+-- when either is set (a campaign-only touch is a touch); else nothing
+-- (direct). One row per group and
 -- currency: orders and tickets count the orders of that currency, amount is
 -- sum(orders.total) minus the SUCCEEDED refunds of those orders in that
 -- currency (minor units). A refund belongs to the order it names, else the
@@ -206,7 +207,6 @@ WITH paid AS (
            CASE WHEN o.sales_link_id IS NULL
                 THEN COALESCE(o.attribution->>'utm_source', '') ELSE '' END AS utm_source,
            CASE WHEN o.sales_link_id IS NULL
-                 AND COALESCE(o.attribution->>'utm_source', '') <> ''
                 THEN COALESCE(o.attribution->>'utm_campaign', '') ELSE '' END AS utm_campaign
     FROM   orders o
     WHERE  o.session_id = $1
@@ -246,6 +246,6 @@ SELECT l.sales_link_id, COALESCE(sl.label, '') AS label,
        sum(l.tickets)::bigint AS tickets,
        sum(l.amount)::bigint  AS amount
 FROM   lines l
-LEFT JOIN sales_links sl ON sl.id = l.sales_link_id
+LEFT JOIN sales_links sl ON sl.id = l.sales_link_id AND sl.org_id = $2
 GROUP  BY l.sales_link_id, sl.label, l.utm_source, l.utm_campaign, l.currency
 ORDER  BY l.sales_link_id NULLS LAST, l.utm_source, l.utm_campaign, l.currency;

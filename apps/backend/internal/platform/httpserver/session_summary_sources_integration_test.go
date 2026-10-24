@@ -77,6 +77,23 @@ func TestSessionSummarySources_LinkUTMAndDirect(t *testing.T) {
 		directOrder, x.org, channel, x.evOnSale, x.sessFuture, directCS, directRes)
 	exec(`INSERT INTO tickets (id, checkout_session_id, session_id, tier_id, holder_email, order_id, ordinal)
 	      VALUES ($1, $2, $3, $4, 'ql6-direct@example.test', $5, 0)`, directTicket, directCS, x.sessFuture, x.tierFuture, directOrder)
+	// A succeeded refund that names only the ticket (order_id NULL) is
+	// mapped to the ticket's order: direct revenue is 1000 - 300.
+	exec(`INSERT INTO refunds (id, org_id, amount, currency, state, settlement, ticket_id, succeeded_at)
+	      VALUES ($1, $2, 300, 'EUR', 'succeeded', 'external', $3, now())`, uuid.New(), x.org, directTicket)
+
+	// 4. A campaign-only touch (no utm_source) is a utm source too (Р-QL13).
+	campRes, campCS := uuid.New(), uuid.New()
+	exec(`INSERT INTO reservations (id, org_id, channel_id, session_id, quantity, state, expires_at, converted_at)
+	      VALUES ($1, $2, $3, $4, 1, 'converted', now() + interval '1 hour', now())`, campRes, x.org, channel, x.sessFuture)
+	exec(`INSERT INTO checkout_sessions (id, org_id, channel_id, reservation_id, state) VALUES ($1, $2, $3, $4, 'completed')`,
+		campCS, x.org, channel, campRes)
+	exec(`INSERT INTO orders (id, org_id, channel_id, event_id, session_id, checkout_session_id, reservation_id,
+	                          source, status, currency, subtotal, discount, charge, total, buyer_name, buyer_email, attribution)
+	      VALUES ($1, $2, $3, $4, $5, $6, $7, 'public_feed', 'paid', 'EUR', 800, 0, 0, 800, 'x', 'ql6-camp@example.test',
+	              '{"utm_campaign":"spring"}'::jsonb)`,
+		uuid.New(), x.org, channel, x.evOnSale, x.sessFuture, campCS, campRes)
+
 	pendingRes, pendingCS := uuid.New(), uuid.New()
 	exec(`INSERT INTO reservations (id, org_id, channel_id, session_id, quantity, state, expires_at)
 	      VALUES ($1, $2, $3, $4, 1, 'active', now() + interval '1 hour')`, pendingRes, x.org, channel, x.sessFuture)
@@ -98,8 +115,9 @@ func TestSessionSummarySources_LinkUTMAndDirect(t *testing.T) {
 	}
 	want := `[` +
 		`{"kind":"sales_link","label":"Poster at the door","orders":1,"revenue":[{"amount_minor":2350,"currency":"EUR"}],"sales_link_id":"` + link.ID.String() + `","tickets":2},` +
+		`{"kind":"utm","orders":1,"revenue":[{"amount_minor":800,"currency":"EUR"}],"tickets":0,"utm_campaign":"spring"},` +
 		`{"kind":"utm","orders":1,"revenue":[{"amount_minor":0,"currency":"EUR"}],"tickets":1,"utm_campaign":"c1","utm_source":"instagram"},` +
-		`{"kind":"direct","orders":1,"revenue":[{"amount_minor":1000,"currency":"EUR"}],"tickets":1}` +
+		`{"kind":"direct","orders":1,"revenue":[{"amount_minor":700,"currency":"EUR"}],"tickets":1}` +
 		`]`
 	if string(raw) != want {
 		t.Fatalf("sources =\n%s\nwant\n%s", raw, want)
