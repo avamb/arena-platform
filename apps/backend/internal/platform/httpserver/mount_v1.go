@@ -123,6 +123,7 @@ func (s *Server) applyAuthScoped(pr chi.Router, perm, scope string, orgScope boo
 	pr.Use(s.orgScopedFor(perm, orgScope))
 	pr.Use(permissions.RequirePermission(s.perms, perm, scope))
 	pr.Use(s.markSuperadminOrgAccess)
+	pr.Use(s.refuseArchivedOrganization)
 }
 
 // markSuperadminOrgAccess derives the cross-tenant marker from the actual
