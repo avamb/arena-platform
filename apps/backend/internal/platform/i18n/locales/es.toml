@@ -4280,6 +4280,9 @@ other = "El enlace funciona durante 5 minutos."
 ["bot.tf.edit_failed"]
 other = "No pude abrir el editor ahora mismo. Inténtalo de nuevo en un minuto."
 
+["bot.tf.edit_superadmin"]
+other = "El mini editor es para organizadores. Un administrador de la plataforma edita los textos en el centro de eventos web o en la consola de administración."
+
 ["bot.tf.editor_saved"]
 other = "Los cambios del editor están guardados."
 

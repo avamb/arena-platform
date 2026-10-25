@@ -141,7 +141,7 @@ func (b *Bot) tfTyped(ctx context.Context, chatID int64, editMsgID *int, from *m
 		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.error_generic", nil), nil)
 		return
 	}
-	b.tfShowPreview(ctx, chatID, editMsgID, loc, dlg)
+	b.tfShowPreview(ctx, chatID, editMsgID, id, loc, dlg)
 }
 
 // tfKeyboard is the four buttons under a preview. edit is the row with the
@@ -166,13 +166,13 @@ func (b *Bot) tfKeyboard(loc string, edit []models.InlineKeyboardButton) *models
 // tfShowPreview sends the formatted text as Telegram renders it, then the
 // question with the buttons. A long text goes in messages of its own and the
 // buttons follow, so no message passes 4096 characters.
-func (b *Bot) tfShowPreview(ctx context.Context, chatID int64, editMsgID *int, loc string, dlg tfDialog) {
+func (b *Bot) tfShowPreview(ctx context.Context, chatID int64, editMsgID *int, id *Identity, loc string, dlg tfDialog) {
 	note := ""
 	if !dlg.Applied {
 		note = b.texts.T(loc, "bot.tf.not_applied_note", nil) + "\n\n"
 	}
 	preview := richtext.ToTelegramHTML(dlg.Art)
-	keyboard := b.tfKeyboard(loc, b.miniappRow(chatID, loc, dlg.kind(), dlg.EventID))
+	keyboard := b.tfKeyboard(loc, b.miniappRow(chatID, id, loc, dlg.kind(), dlg.EventID))
 	texts, last := tfScreens(preview, note, b.texts.T(loc, "bot.tf.preview_ask", nil))
 	for _, part := range texts {
 		if err := b.sendChecked(ctx, chatID, part, nil); err != nil {

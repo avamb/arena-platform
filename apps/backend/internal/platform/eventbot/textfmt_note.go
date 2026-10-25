@@ -82,7 +82,7 @@ func (b *Bot) showEmailNote(ctx context.Context, chatID int64, editMsgID *int, i
 			[]models.InlineKeyboardButton{{Text: t("bot.tf.note_delete_btn"), CallbackData: "tf:d:" + ids}})
 	}
 	// The editor of the Telegram mini app (RT-12a), behind its flag.
-	if edit := b.miniappRow(chatID, loc, tfKindEmailNote, ids); edit != nil {
+	if edit := b.miniappRow(chatID, id, loc, tfKindEmailNote, ids); edit != nil {
 		rows = append(rows, edit)
 	}
 	rows = append(rows, []models.InlineKeyboardButton{
@@ -191,7 +191,7 @@ func (b *Bot) tfCommitNote(ctx context.Context, chatID int64, msgID int, from *m
 	clean, nerr := richtext.Normalize(art, richtext.FormatART, richtext.ProfileEmailNote)
 	if nerr != nil || clean == "" {
 		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.tf.err_generic", nil), nil)
-		b.tfShowPreview(ctx, chatID, nil, loc, dlg)
+		b.tfShowPreview(ctx, chatID, nil, id, loc, dlg)
 		return
 	}
 	if err := b.arena.SetEmailNote(ctx, jwt, id.Current.OrgID, eventID, clean); err != nil {
@@ -203,7 +203,7 @@ func (b *Bot) tfCommitNote(ctx context.Context, chatID int64, msgID int, from *m
 			b.logger.Error("eventbot: letter text save failed", slog.String("error", routeOnly(err)))
 			b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.tf.note_save_failed", nil), nil)
 		}
-		b.tfShowPreview(ctx, chatID, nil, loc, dlg)
+		b.tfShowPreview(ctx, chatID, nil, id, loc, dlg)
 		return
 	}
 	b.clearTextFmtDialog(ctx, from.ID)

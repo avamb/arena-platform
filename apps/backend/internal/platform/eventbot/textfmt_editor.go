@@ -195,7 +195,7 @@ func (b *Bot) tfEditorSavedPreview(ctx context.Context, chatID int64, msgID int,
 	}
 	b.tfEditorSyncDraft(ctx, from, id, jwt, dlg, art)
 	b.reply(ctx, chatID, &msgID, note, nil)
-	b.tfShowPreview(ctx, chatID, nil, loc, dlg)
+	b.tfShowPreview(ctx, chatID, nil, id, loc, dlg)
 	return true
 }
 
