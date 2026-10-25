@@ -757,6 +757,21 @@ export function saveEmailNote(orgId: string, eventId: string, art: string | null
   });
 }
 
+/**
+ * Saves the description of an event: ONE PATCH with `description` and `description_format: "art"` and nothing else, so the
+ * name, the poster, the dates, the categories and the translations stay as they are (the server only converts the
+ * translated descriptions that are still plain text to ART, word for word). An empty text clears the description.
+ * Used by the Telegram mini app editor (spec 44, RT-12b). The answer does not carry the format, the caller reads the
+ * events list again.
+ */
+export function saveDescription(orgId: string, eventId: string, art: string): Promise<EventEnvelope> {
+  return call<EventEnvelope>({
+    route: API.eventUpdate,
+    params: { org_id: orgId, id: eventId },
+    body: { description: art, description_format: "art" },
+  });
+}
+
 /** A test letter with the text (the draft when `note` is given, else the saved one) to the caller's own address. */
 export function sendEmailNoteTest(
   orgId: string,

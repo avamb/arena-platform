@@ -4428,6 +4428,9 @@ other = "The link works for 5 minutes."
 ["bot.tf.edit_failed"]
 other = "I could not open the editor just now. Please try again in a minute."
 
+["bot.tf.editor_saved"]
+other = "Changes from the editor are saved."
+
 ["bot.tf.note_ask"]
 other = "Write the text as usual. I will format it and show you the result. The letter adds the greeting and the date itself.\n\nUp to {{.Limit}} characters and {{.Max}} links."
 

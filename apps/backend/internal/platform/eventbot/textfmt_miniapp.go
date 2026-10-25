@@ -78,7 +78,7 @@ func (b *Bot) miniappRow(chatID int64, loc string, kind tfKind, eventID string) 
 // tfMiniappCallback handles the press of the button: "m" with no more is the
 // preview, "m:<event id>" the letter screen. It reports whether the press was
 // one of them.
-func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, from *models.User, id *Identity, parts []string) bool {
+func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, from *models.User, id *Identity, jwt string, parts []string) bool {
 	if parts[0] != "m" {
 		return false
 	}
@@ -121,6 +121,9 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 		b.send(ctx, chatID, b.texts.T(loc, "bot.tf.edit_failed", nil), nil)
 		return true
 	}
+	// What the text is NOW, before the editor can be opened: the next action of the
+	// organizer compares it with what the event holds then (RT-12b).
+	b.tfEditorMark(ctx, from, id, jwt, kind, eventID, len(parts) == 1)
 	b.miniappOpen(ctx, chatID, msgID, loc, data, link.URL)
 	return true
 }

@@ -4280,6 +4280,9 @@ other = "El enlace funciona durante 5 minutos."
 ["bot.tf.edit_failed"]
 other = "No pude abrir el editor ahora mismo. Inténtalo de nuevo en un minuto."
 
+["bot.tf.editor_saved"]
+other = "Los cambios del editor están guardados."
+
 ["bot.tf.note_ask"]
 other = "Escribe el texto como siempre: le daré formato y te enseñaré el resultado. El correo añade solo el saludo y la fecha.\n\nHasta {{.Limit}} caracteres y {{.Max}} enlaces."
 

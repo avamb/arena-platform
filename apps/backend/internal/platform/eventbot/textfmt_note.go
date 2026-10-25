@@ -113,6 +113,11 @@ func (b *Bot) tfNoteCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ec.no_rights", nil), b.backKeyboard(loc, "home"))
 		return true
 	}
+	// The mini app editor saved a text since this screen was drawn (RT-12b): say so
+	// once and draw the saved text, whatever was pressed.
+	if b.tfEditorSavedNote(ctx, chatID, msgID, from, id, jwt, eventID) {
+		return true
+	}
 	orgID := id.Current.OrgID
 	t := func(key string, data map[string]any) string { return b.texts.T(loc, key, data) }
 	switch parts[0] {

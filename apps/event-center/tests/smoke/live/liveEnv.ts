@@ -15,6 +15,8 @@ export interface Person {
   email: string;
   password: string;
   user_id: string;
+  /** The Telegram account the person is linked to (arena-e2e-seed, tgedit_fixture.go). */
+  telegram_user_id: number;
   /** An access token of the harness's own sign-in (about 15 minutes). */
   access_token: string;
 }
@@ -34,6 +36,8 @@ export interface LiveEnv {
   poster_calls: string;
   /** The harness's Stripe stub (task 8-1): GET /__calls, POST /__reset. */
   stripe_stub_url: string;
+  /** The BOT_SERVICE_TOKEN of the harness API: the twin of the Telegram mini app plays the bot with it. */
+  bot_service_token: string;
   people: Person[];
 }
 

@@ -27,3 +27,18 @@ func TestPeople_ThreeRolesWithValidIDs(t *testing.T) {
 		}
 	}
 }
+
+// The mini app twin asks the bot route for a code in the name of each person's Telegram account: the accounts must
+// be real (positive) and differ, or two people would share one link row.
+func TestPeople_TelegramAccountsAreDistinct(t *testing.T) {
+	seen := map[int64]string{}
+	for _, p := range people() {
+		if p.TelegramUserID <= 0 {
+			t.Errorf("%s: telegram_user_id %d is not positive", p.Role, p.TelegramUserID)
+		}
+		if prev, dup := seen[p.TelegramUserID]; dup {
+			t.Errorf("%s and %s share telegram_user_id %d", p.Role, prev, p.TelegramUserID)
+		}
+		seen[p.TelegramUserID] = p.Role
+	}
+}

@@ -31,11 +31,13 @@ export interface EmailNoteSectionProps {
   noteFormat: string | null | undefined;
   /** `event.update`: the one right the API asks for the save and the test letter. */
   canEdit: boolean;
+  /** Called once after a Save went through and the list was read again (the Telegram mini app closes itself then). */
+  onSaved?: () => void;
 }
 
 type Action = "save" | "test" | "delete";
 
-export function EmailNoteSection({ orgId, eventId, note, noteFormat, canEdit }: EmailNoteSectionProps) {
+export function EmailNoteSection({ orgId, eventId, note, noteFormat, canEdit, onSaved }: EmailNoteSectionProps) {
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const saved = artOfStored(note, noteFormat, "email_note");
@@ -78,6 +80,7 @@ export function EmailNoteSection({ orgId, eventId, note, noteFormat, canEdit }: 
       await saveEmailNote(orgId, eventId, draft);
       setSent(draft);
       await refresh();
+      onSaved?.();
       return t("emailNote.saved");
     });
 

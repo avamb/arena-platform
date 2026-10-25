@@ -197,9 +197,18 @@ the press draws the code and turns that button into a Telegram `web_app` button 
 `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=description|email_note&event=<event id>`.
 The page exchanges the one-time code (purpose `miniapp`, 5 minutes) at `POST /v1/auth/web/link`
 for a 30-minute session of channel `event_center_tg`, takes the three parameters out of the
-address (`src/lib/tgEdit.ts`, called first by `main.tsx`) and today shows the placeholder
-«Редактор появится в следующем обновлении» with a close button (`Telegram.WebApp.close()`).
-The editor is RT-12b. Not reachable by real users while the bot flag is off.
+address (`src/lib/tgEdit.ts`, called first by `main.tsx`), looks the event up and opens the editor of the
+text (RT-12b): the description (`TgDescriptionEditor`, ONE PATCH of the event with `description` and
+`description_format: "art"`) or the letter text (the same `EmailNoteSection` as the event card). The event of the
+link is untrusted: the page looks it up in the events list of every organization of the person
+(`src/lib/tgEditEvent.ts`), and a foreign event, a refused list or a person without `event.update` all get the
+same calm line «Нет доступа к этому мероприятию». After a save the page calls `Telegram.WebApp.close()`; in
+a plain browser (the script says `platform: "unknown"`) it says «Сохранено» and links to the event. The
+Telegram theme and safe areas reach the page only through custom properties (`.tg-page` in `styles.css`), never
+a style attribute. Tests: `src/screens/TgEditor.test.tsx` (jsdom), `tests/smoke/tg-edit.mock.spec.ts` (360 x 740,
+also run against the nginx image in CI, with the CSP check), `tests/smoke/live/tg-edit.spec.ts` (real API; the
+harness gives the API a `BOT_SERVICE_TOKEN` and links the three people to Telegram accounts). Not reachable by
+real users while the bot flag is off.
 
 nginx serves `/tg/` with its own headers: `location ^~ /tg/` and the named location
 `@tg_index` (`nginx.conf.template`), `security-headers-tg.conf.template`. Everything is the main
