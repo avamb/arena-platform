@@ -10665,6 +10665,13 @@ export interface components {
              * @description When the membership was granted
              */
             joined_at: string;
+            /**
+             * @description True when a platform superadmin archived the organization
+             *     (organizations.deleted_at is set). The membership stays listed so a
+             *     client can show the organization as archived, but it must not offer
+             *     it as a working organization.
+             */
+            archived: boolean;
         };
         MeAssignedNetwork: {
             /** @description Operator network UUID */

@@ -97,15 +97,25 @@ export function useMe() {
   return useQuery({ queryKey: ["me"], queryFn: fetchMe, enabled: status === "signedIn", staleTime: 60_000 });
 }
 
-/** The person's organizations, the platform roles filtered out. */
+/** The organizations the person can work in: platform roles and archived organizations are filtered out. */
 export function organizationsOf(memberships: readonly MeOrganizationMembership[]): MeOrganizationMembership[] {
   const byOrg = new Map<string, MeOrganizationMembership>();
   const rank = (role: string) => ["org_admin", "organizer", "agent"].indexOf(role);
   for (const m of memberships) {
     if (m.role === "platform_superadmin" || m.role === "platform_operator") continue;
+    if (m.archived === true) continue;
     const prev = byOrg.get(m.org_id);
     const better = prev === undefined || (rank(m.role) >= 0 && (rank(prev.role) < 0 || rank(m.role) < rank(prev.role)));
     if (better) byOrg.set(m.org_id, m);
+  }
+  return [...byOrg.values()].sort((a, b) => a.org_name.localeCompare(b.org_name));
+}
+
+/** Organizations a platform superadmin archived: shown as archived, never offered as a place to work. */
+export function archivedOrganizationsOf(memberships: readonly MeOrganizationMembership[]): MeOrganizationMembership[] {
+  const byOrg = new Map<string, MeOrganizationMembership>();
+  for (const m of memberships) {
+    if (m.archived === true && !byOrg.has(m.org_id)) byOrg.set(m.org_id, m);
   }
   return [...byOrg.values()].sort((a, b) => a.org_name.localeCompare(b.org_name));
 }

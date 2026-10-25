@@ -18,9 +18,14 @@ const userJWTTTL = 5 * time.Minute
 
 // Identity is who a Telegram account speaks as.
 type Identity struct {
-	Link        gen.BotTelegramLinkRow
+	Link gen.BotTelegramLinkRow
+	// Memberships: the organizations the person can WORK in. An archived
+	// organization is never in this list, see Archived.
 	Memberships []Membership
-	Current     *Membership
+	// Archived: organizations a platform superadmin archived. Shown as such,
+	// never chosen and never offered as an action.
+	Archived []Membership
+	Current  *Membership
 	// Superadmin: the platform operator. Memberships then lists EVERY
 	// organization (as owner).
 	Superadmin bool
@@ -58,8 +63,8 @@ var ErrNotLinked = errors.New("eventbot: telegram account is not linked")
 
 // resolveIdentity loads the link of a Telegram account, mints its JWT and
 // reads its memberships from /v1/me. The current organization is the
-// remembered one when the user still belongs to it, otherwise the only
-// membership, otherwise nil (the caller asks).
+// remembered one when the user still belongs to it and it is not archived,
+// otherwise the only working membership, otherwise nil (the caller asks).
 //
 // A platform superadmin (the operator) has no memberships of their own:
 // their organization list is every organization of the platform, each as
@@ -92,7 +97,22 @@ func (b *Bot) resolveIdentity(ctx context.Context, telegramUserID int64) (*Ident
 		}
 		memberships = all
 	}
-	id := &Identity{Link: link, Memberships: memberships, Superadmin: me.Superadmin}
+	id, remember := buildIdentity(link, memberships, me.Superadmin)
+	if remember != nil {
+		_ = b.queries.SetBotTelegramLinkCurrentOrg(ctx, telegramUserID, remember)
+	}
+	return id, jwt, nil
+}
+
+// buildIdentity splits the memberships into working and archived
+// organizations and picks the current one: the remembered organization while
+// it is still a working one, otherwise the only working organization (then
+// also returned as the id to remember), otherwise none and the caller asks.
+// A remembered organization that was archived since is simply not found among
+// the working ones, so it never stays current.
+func buildIdentity(link gen.BotTelegramLinkRow, all []Membership, superadmin bool) (*Identity, *uuid.UUID) {
+	memberships, archived := splitArchived(all)
+	id := &Identity{Link: link, Memberships: memberships, Archived: archived, Superadmin: superadmin}
 	if link.CurrentOrgID != nil {
 		for i := range memberships {
 			if memberships[i].OrgID == *link.CurrentOrgID {
@@ -104,7 +124,7 @@ func (b *Bot) resolveIdentity(ctx context.Context, telegramUserID int64) (*Ident
 	if id.Current == nil && len(memberships) == 1 {
 		id.Current = &memberships[0]
 		orgID := memberships[0].OrgID
-		_ = b.queries.SetBotTelegramLinkCurrentOrg(ctx, telegramUserID, &orgID)
+		return id, &orgID
 	}
-	return id, jwt, nil
+	return id, nil
 }

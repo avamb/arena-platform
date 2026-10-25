@@ -486,3 +486,48 @@ func indexOf(haystack []string, needle string) int {
 	}
 	return -1
 }
+
+// An organization a platform superadmin archived (organizations.deleted_at)
+// stays in organization_memberships but is flagged, so the Telegram bot and the
+// web event center can show it as archived instead of as a working organization.
+func TestMe_ArchivedOrganizationIsFlagged(t *testing.T) {
+	t.Parallel()
+	userID := uuid.New()
+	liveOrg, goneOrg := uuid.New(), uuid.New()
+	joined := time.Date(2026, 1, 5, 12, 0, 0, 0, time.UTC)
+	store := &fakeMeQuerier{
+		rolesByUser:  map[uuid.UUID][]string{userID: {"organizer"}},
+		permsByRoles: map[string][]string{"organizer": {"org.read"}},
+		membershipsByUser: map[uuid.UUID][]gen.MembershipRow{
+			userID: {
+				{ID: uuid.New(), UserID: userID, OrgID: liveOrg, Role: "organizer", Status: "active", JoinedAt: joined, OrgName: "Live"},
+				{ID: uuid.New(), UserID: userID, OrgID: goneOrg, Role: "org_admin", Status: "active", JoinedAt: joined, OrgName: "Gone", OrgArchived: true},
+			},
+		},
+	}
+	s, stub := buildMeServer(t, store)
+	tok := issueMeToken(t, stub, userID, []string{"organizer"})
+
+	r := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /v1/me: want 200, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	body := decodeMeResponse(t, w)
+	memberships, _ := body["organization_memberships"].([]any)
+	if len(memberships) != 2 {
+		t.Fatalf("organization_memberships: want 2 entries, got %v", body["organization_memberships"])
+	}
+	for _, raw := range memberships {
+		m, _ := raw.(map[string]any)
+		archived, present := m["archived"].(bool)
+		if !present {
+			t.Fatalf("every membership must carry the archived flag, got %v", m)
+		}
+		if want := m["org_id"] == goneOrg.String(); archived != want {
+			t.Errorf("org %v: archived = %v, want %v", m["org_id"], archived, want)
+		}
+	}
+}

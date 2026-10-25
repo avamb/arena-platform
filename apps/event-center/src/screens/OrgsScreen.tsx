@@ -1,5 +1,6 @@
 import { Link, Navigate } from "@tanstack/react-router";
-import { lastOrg, organizationsOf, useAuth, useMe } from "@/lib/auth";
+import type { MeOrganizationMembership } from "@/lib/api/types";
+import { archivedOrganizationsOf, lastOrg, organizationsOf, useAuth, useMe } from "@/lib/auth";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { Empty, ErrorBox, Loading } from "@/components/ui";
 import { RequireSignIn } from "@/screens/RequireSignIn";
@@ -8,6 +9,18 @@ import { LanguageSelect } from "@/screens/LanguageSelect";
 export function roleKey(role: string): MessageKey {
   if (role === "org_admin" || role === "organizer" || role === "agent") return `role.${role}`;
   return "role.none";
+}
+
+/** Archived organizations are named, never linked: there is nothing to open in them. */
+export function ArchivedNote({ archived, only }: { archived: readonly MeOrganizationMembership[]; only?: boolean }) {
+  const { t } = useI18n();
+  if (archived.length === 0) return null;
+  const list = archived.map((m) => m.org_name).join(", ");
+  return (
+    <p className="notice" role="status" data-testid="archived-orgs">
+      {t(only === true ? "orgs.all_archived" : "orgs.archived", { list })}
+    </p>
+  );
 }
 
 function OrgsList() {
@@ -25,9 +38,11 @@ function OrgsList() {
     );
   }
   const orgs = organizationsOf(me.data.organization_memberships);
+  const archived = archivedOrganizationsOf(me.data.organization_memberships);
   if (orgs.length === 1) {
     return <Navigate to="/o/$orgId/events" params={{ orgId: orgs[0].org_id }} replace />;
   }
+  if (orgs.length === 0 && archived.length > 0) return <ArchivedNote archived={archived} only />;
   if (orgs.length === 0) return <Empty>{t("orgs.empty")}</Empty>;
   const last = lastOrg();
   const sorted = [...orgs].sort((a, b) => (a.org_id === last ? -1 : b.org_id === last ? 1 : 0));
@@ -43,6 +58,7 @@ function OrgsList() {
           </li>
         ))}
       </ul>
+      <ArchivedNote archived={archived} />
       <button type="button" className="btn btn-link" onClick={() => void logout()}>
         {t("nav.logout")}
       </button>

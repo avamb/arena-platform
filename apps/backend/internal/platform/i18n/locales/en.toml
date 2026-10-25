@@ -390,6 +390,12 @@ other = "Switched to <b>{{.Org}}</b>."
 ["bot.org_none"]
 other = "You are not a member of any organization any more. Ask its owner for a new invitation."
 
+["bot.org_archived_note"]
+other = "Archived organizations, not available for work: {{.List}}."
+
+["bot.org_all_archived"]
+other = "Your organization {{.List}} is archived, so there is nothing to work on in the bot any more. If this is a mistake, please contact Arena support."
+
 ["bot.lang_choose"]
 other = "Choose the language of the bot."
 

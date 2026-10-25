@@ -190,6 +190,9 @@ type Membership struct {
 	OrgID   uuid.UUID
 	OrgName string
 	Role    string
+	// Archived: a platform superadmin archived the organization. The person
+	// stays a member, but the bot must not offer it as a working organization.
+	Archived bool
 }
 
 // AdminReason is what the bot writes into X-Admin-Reason: a platform
@@ -231,6 +234,8 @@ func (c *ArenaClient) MeInfo(ctx context.Context, jwt string) (Me, error) {
 			OrgName string `json:"org_name"`
 			Role    string `json:"role"`
 			Status  string `json:"status"`
+			// Archived is absent on an API older than the flag: false then.
+			Archived bool `json:"archived"`
 		} `json:"organization_memberships"`
 	}
 	if err := c.do(ctx, http.MethodGet, "/v1/me", jwt, nil, &out); err != nil {
@@ -245,7 +250,7 @@ func (c *ArenaClient) MeInfo(ctx context.Context, jwt string) (Me, error) {
 		if err != nil {
 			continue
 		}
-		me.Memberships = append(me.Memberships, Membership{OrgID: id, OrgName: m.OrgName, Role: m.Role})
+		me.Memberships = append(me.Memberships, Membership{OrgID: id, OrgName: m.OrgName, Role: m.Role, Archived: m.Archived})
 	}
 	for _, r := range out.Roles {
 		if r == superadminRole {

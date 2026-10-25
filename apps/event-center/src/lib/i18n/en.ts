@@ -119,6 +119,8 @@ export const en = {
   "orgs.role": "Your role: {role}",
   "orgs.empty": "Your account is not in an organization yet. Ask the organizer to invite you, or apply on arenasoldout.com.",
   "orgs.superadmin": "You are the platform superadmin. Use the admin console. The event center is for organizers.",
+  "orgs.archived": "Archived organizations, not available for work: {list}.",
+  "orgs.all_archived": "Your organization {list} is archived, so there is nothing to work on here any more. If this is a mistake, please contact Arena support.",
 
   "events.title": "Events",
   "events.tab.run": "Running ({count})",

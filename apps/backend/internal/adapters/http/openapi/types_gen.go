@@ -9685,6 +9685,12 @@ type MeAssignedNetwork struct {
 
 // MeOrganizationMembership defines model for MeOrganizationMembership.
 type MeOrganizationMembership struct {
+	// Archived True when a platform superadmin archived the organization
+	// (organizations.deleted_at is set). The membership stays listed so a
+	// client can show the organization as archived, but it must not offer
+	// it as a working organization.
+	Archived bool `json:"archived"`
+
 	// Id Membership row UUID
 	Id string `json:"id"`
 
