@@ -25,6 +25,11 @@ const DefaultWebSessionIdle = 72 * time.Hour
 // lifetime of a classic refresh token.
 const maxSessionAge = refreshTokenTTL
 
+// MiniappSessionAge is the whole life of a Telegram mini app session (spec
+// 44, RT-12a, owner decision 5): 30 minutes from the exchange of the code,
+// idle or not. A refresh inside it rotates the token but never moves the end.
+const MiniappSessionAge = 30 * time.Minute
+
 // SetWebSessionIdle sets the idle window of a web event center session.
 // Zero or negative switches the web to the classic fixed lifetime.
 func (h *Handler) SetWebSessionIdle(d time.Duration) {
@@ -51,15 +56,19 @@ func (h *Handler) newSession(ctx context.Context, now time.Time) (gen.RefreshTok
 }
 
 // sessionClaims are the claims an access token of session s carries: the
-// sign-in id always, the channel only for the web event center (the one
-// client the money routes ask for the password again).
+// sign-in id always, the channel only for the web event center and its
+// Telegram mini app page (the clients the money routes ask for the password
+// again).
 func sessionClaims(s gen.RefreshTokenSession) auth.SessionClaims {
 	var c auth.SessionClaims
 	if s.SessionID != nil {
 		c.SessionID = s.SessionID.String()
 	}
-	if s.ClientChannel != nil && *s.ClientChannel == audit.ChannelEventCenterWeb {
-		c.Channel = audit.ChannelEventCenterWeb
+	if s.ClientChannel != nil {
+		switch *s.ClientChannel {
+		case audit.ChannelEventCenterWeb, audit.ChannelEventCenterTG:
+			c.Channel = *s.ClientChannel
+		}
 	}
 	return c
 }
@@ -73,7 +82,11 @@ func sessionEnd(s gen.RefreshTokenSession, now time.Time) time.Time {
 	}
 	end := now.Add(time.Duration(*s.IdleSeconds) * time.Second)
 	if s.SessionStartedAt != nil {
-		if limit := s.SessionStartedAt.Add(maxSessionAge); end.After(limit) {
+		age := maxSessionAge
+		if s.ClientChannel != nil && *s.ClientChannel == audit.ChannelEventCenterTG {
+			age = MiniappSessionAge
+		}
+		if limit := s.SessionStartedAt.Add(age); end.After(limit) {
 			end = limit
 		}
 	}

@@ -512,6 +512,12 @@ type Config struct {
 	// website" button in the application dialog. Off until the site's
 	// /start/confirm page exists.
 	BotOnboardingSiteButton bool `env:"BOT_ONBOARDING_SITE_BUTTON" required:"false" default:"false"`
+	// BotMiniappEditorEnabled (read by arena-bot) shows the Telegram web_app
+	// button "Edit in the editor" next to the description preview and on the
+	// email-note screen (spec 44, RT-12a). Off until the editor page of RT-12b
+	// is live: today /tg/edit is a placeholder. It needs EVENT_CENTER_PUBLIC_URL
+	// (https) on arena-api and the /tg/ nginx location of apps/event-center.
+	BotMiniappEditorEnabled bool `env:"BOT_MINIAPP_EDITOR_ENABLED" required:"false" default:"false"`
 	// OnboardingEnabled mounts the public organizer-application routes
 	// (/v1/onboarding/*, 08_architecture/34_onboarding_applications_ru.md).
 	// Off by default: the website's form is the only intended client.
@@ -1061,6 +1067,12 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.BotOnboardingSiteButton = b
+
+	b, err = getenvBool("BOT_MINIAPP_EDITOR_ENABLED", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.BotMiniappEditorEnabled = b
 
 	// JWT default TTL.
 	d, err = getenvDuration("JWT_DEFAULT_TTL", time.Hour, false)

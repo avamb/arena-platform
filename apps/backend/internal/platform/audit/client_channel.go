@@ -39,6 +39,11 @@ const (
 	// ChannelEventCenterWeb is the organizers' web event center
 	// (apps/event-center, 08_architecture/37_web_event_center_ru.md).
 	ChannelEventCenterWeb = "event_center_web"
+	// ChannelEventCenterTG is the Telegram mini app editor, a page of the
+	// same event center opened by a one-time code of purpose 'miniapp' (spec
+	// 44, RT-12a). It is a SESSION channel (the stored session and its "chn"
+	// claim), not a header value: the page still sends event_center_web.
+	ChannelEventCenterTG = "event_center_tg"
 )
 
 // NormalizeClientChannel trims and lowercases raw and reports whether it is an

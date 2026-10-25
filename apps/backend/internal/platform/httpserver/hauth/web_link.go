@@ -53,6 +53,18 @@ func (h *Handler) newWebSession(now time.Time) (gen.RefreshTokenSession, time.Ti
 	return s, sessionEnd(s, now)
 }
 
+// newMiniappSession is the session of a code of purpose 'miniapp': channel
+// event_center_tg, 30 minutes from now and never longer (sessionEnd caps a
+// refresh at the same limit). Its access token says "chn": "event_center_tg",
+// so the money routes ask it for the password like the web.
+func (h *Handler) newMiniappSession(now time.Time) (gen.RefreshTokenSession, time.Time) {
+	channel := audit.ChannelEventCenterTG
+	id := uuid.New()
+	idle := int32(MiniappSessionAge / time.Second) // #nosec G115 -- 1800
+	s := gen.RefreshTokenSession{SessionStartedAt: &now, ClientChannel: &channel, SessionID: &id, IdleSeconds: &idle}
+	return s, sessionEnd(s, now)
+}
+
 func (h *Handler) webLinkInvalid(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 		"auth.web_link_invalid",
@@ -61,7 +73,9 @@ func (h *Handler) webLinkInvalid(w http.ResponseWriter, r *http.Request) {
 
 // WebLink serves POST /v1/auth/web/link. Body {"code": "..."}.
 //
-//	200 the login answer (access_token, refresh_token, ...)
+//	200 the login answer (access_token, refresh_token, ...). A code of
+//	    purpose 'web' opens a 72-hour web session, a code of purpose
+//	    'miniapp' a 30-minute session of channel event_center_tg.
 //	400 auth.web_link_invalid   unknown, used, taken back or expired code,
 //	                            or the Telegram account is no longer linked
 //	                            to the same person (one answer for all)
@@ -153,7 +167,13 @@ func (h *Handler) WebLink(w http.ResponseWriter, r *http.Request) {
 	actorID := used.UserID
 	// A web session: its access token carries "sid" and "chn" like a web
 	// sign-in with a password, so the money routes ask for the password.
-	session, refreshExp := h.newWebSession(time.Now().UTC())
+	// A code of purpose 'miniapp' (the Telegram mini app editor) opens a short
+	// session of its own channel; every other code opens the web session.
+	newSession, via := h.newWebSession, audit.ChannelEventCenterWeb
+	if used.Purpose == gen.WebLoginPurposeMiniapp {
+		newSession, via = h.newMiniappSession, audit.ChannelEventCenterTG
+	}
+	session, refreshExp := newSession(time.Now().UTC())
 	accessToken, exp, err := auth.IssueSessionJWT(h.jwtSecret, actorID, h.jwtIssuer, h.jwtAudience, accessTokenTTL, sessionClaims(session))
 	if err != nil {
 		logger.Error("auth.web_link: issue JWT failed", "error", err)
@@ -182,7 +202,7 @@ func (h *Handler) WebLink(w http.ResponseWriter, r *http.Request) {
 			RequestID:    logging.RequestID(ctx),
 			TraceID:      logging.TraceID(ctx),
 			IP:           httputil.ExtractClientIP(r),
-			Metadata:     map[string]any{"via": audit.ChannelEventCenterWeb, "code_id": used.ID.String()},
+			Metadata:     map[string]any{"via": via, "code_id": used.ID.String(), "purpose": used.Purpose},
 		}); err != nil {
 			logger.Error("auth.web_link: audit write failed", "error", err)
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("auth.audit_failed", "failed to write audit event", r))

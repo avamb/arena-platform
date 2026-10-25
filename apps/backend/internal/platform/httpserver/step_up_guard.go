@@ -6,6 +6,7 @@ package httpserver
 //
 // A request is "from the web" when it says so (X-Client-Channel:
 // event_center_web) OR when its access token was minted from a web sign-in
+// (a mini app session, channel event_center_tg, counts as one)
 // (the "chn" claim, written from the stored session, never from a header).
 // The claim is what makes leaving the header out of a request, or out of a
 // token refresh, useless: the session itself remembers it is a web one.
@@ -62,7 +63,7 @@ func isWebRequest(ctx context.Context) bool {
 		return true
 	}
 	actor, ok := auth.ActorFromContext(ctx)
-	return ok && actor.Channel == audit.ChannelEventCenterWeb
+	return ok && (actor.Channel == audit.ChannelEventCenterWeb || actor.Channel == audit.ChannelEventCenterTG)
 }
 
 // writeStepUpRequired is the one refusal of the guard.

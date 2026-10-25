@@ -61,3 +61,40 @@ func TestSessionEnd_SlidesButNeverPastThirtyDays(t *testing.T) {
 		t.Fatalf("day 29 must stop at 30 days from sign-in: %v", got)
 	}
 }
+
+// A mini app session (spec 44, RT-12a) lasts 30 minutes from the exchange, a
+// refresh inside it never moves the end, and its access token names the
+// channel so the money routes still ask for the password.
+func TestNewMiniappSession_ThirtyMinutesAndRefreshDoesNotExtendIt(t *testing.T) {
+	t.Parallel()
+	h := &Handler{}
+	h.SetWebSessionIdle(72 * time.Hour) // the web window must not leak in
+	started := time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
+
+	s, end := h.newMiniappSession(started)
+	if s.ClientChannel == nil || *s.ClientChannel != "event_center_tg" || audit.ChannelEventCenterTG != "event_center_tg" {
+		t.Fatalf("channel: %+v", s)
+	}
+	if s.IdleSeconds == nil || *s.IdleSeconds != 30*60 || s.SessionID == nil || s.SessionStartedAt == nil {
+		t.Fatalf("session facts: %+v", s)
+	}
+	if !end.Equal(started.Add(30 * time.Minute)) {
+		t.Fatalf("end %v", end)
+	}
+	// A refresh at minute 20 would slide an idle window to minute 50: the cap
+	// holds it at minute 30.
+	if got := sessionEnd(s, started.Add(20*time.Minute)); !got.Equal(started.Add(30 * time.Minute)) {
+		t.Fatalf("refresh at minute 20 ends %v", got)
+	}
+	if c := sessionClaims(s); c.Channel != "event_center_tg" || c.SessionID != s.SessionID.String() {
+		t.Fatalf("claims: %+v", c)
+	}
+	// The web session next to it is unchanged.
+	web, _ := h.newSession(audit.WithClientChannel(context.Background(), audit.ChannelEventCenterWeb), started)
+	if got := sessionEnd(web, started.Add(20*time.Minute)); !got.Equal(started.Add(20*time.Minute + 72*time.Hour)) {
+		t.Fatalf("web refresh ends %v", got)
+	}
+	if c := sessionClaims(web); c.Channel != "event_center_web" {
+		t.Fatalf("web claims: %+v", c)
+	}
+}

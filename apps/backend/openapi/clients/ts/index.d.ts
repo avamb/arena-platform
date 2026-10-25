@@ -745,12 +745,16 @@ export interface paths {
          * @description Exchanges the one-time code of the bot's "Open in browser" link for a
          *     web event center session (spec 37 section 4.3). The code works once,
          *     for 5 minutes, and only while the Telegram account that asked for it
-         *     is still linked to the same person. The session is always a web
-         *     session (72 hours without activity, at most 30 days). Unknown, used,
+         *     is still linked to the same person. The session is a web session (72
+         *     hours without activity, at most 30 days), except for a code the bot
+         *     issued for the Telegram mini app editor (`purpose: miniapp`, spec 44,
+         *     RT-12a): that session lasts 30 minutes from the exchange, refreshes
+         *     included, and has channel `event_center_tg`. Unknown, used,
          *     taken back and expired codes all answer the same 400
          *     `auth.web_link_invalid`. A platform superadmin is refused (403
-         *     `auth.web_link_superadmin`). The bot later tells the person about the
-         *     sign-in and offers "Sign out everywhere".
+         *     `auth.web_link_superadmin`). The bot later tells the person about a
+         *     web sign-in (not about a mini app one) and offers "Sign out everywhere",
+         *     which ends mini app sessions too.
          */
         post: operations["postV1AuthWebLink"];
         delete?: never;
@@ -1526,7 +1530,12 @@ export interface paths {
          *     person's earlier unused ones. The bot sends it to the private chat
          *     only. Refused for a platform superadmin, who works in the admin
          *     console. While `EVENT_CENTER_PUBLIC_URL` is unset the route answers
-         *     503 `bot.web_login_not_configured`.
+         *     503 `bot.web_login_not_configured`. With `purpose: miniapp` (spec 44,
+         *     RT-12a) the link opens the Telegram mini app editor at `/tg/edit`:
+         *     the session is 30 minutes, the chat gets no "signed in" notice and no
+         *     code of another purpose is taken back. An unknown purpose is 400
+         *     `bot.invalid_purpose`, a miniapp code without a valid `kind` and
+         *     `event_id` is 400 `bot.invalid_miniapp_target`.
          */
         post: operations["createBotWebLoginCode"];
         delete?: never;
@@ -10999,13 +11008,32 @@ export interface components {
         BotWebLoginCodeRequest: {
             /**
              * Format: int64
-             * @description The Telegram account that pressed "Open in browser".
+             * @description The Telegram account that pressed "Open in browser" or "Edit in the editor".
              */
             telegram_user_id: number;
+            /**
+             * @description What the code is for. `web` (the default) is "Open in browser": a 72-hour web session, a "signed in"
+             *     notice in the chat, and a new code takes back the person's earlier unused `web` codes. `miniapp` is the
+             *     Telegram mini app editor (spec 44, RT-12a): a 30-minute session of channel `event_center_tg`, no notice,
+             *     and it takes back and is taken back by no code of another purpose.
+             * @default web
+             * @enum {string}
+             */
+            purpose: "web" | "miniapp";
+            /**
+             * @description Which text the mini app opens. Required, and only used, for `purpose: miniapp`.
+             * @enum {string}
+             */
+            kind?: "description" | "email_note";
+            /**
+             * Format: uuid
+             * @description The event whose text the mini app opens. Required, and only used, for `purpose: miniapp`.
+             */
+            event_id?: string;
         };
         /** @description A one-time link to the web event center for the private chat. */
         BotWebLoginCodeResponse: {
-            /** @description `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`. The code is after `#`, so it never reaches a server log. */
+            /** @description `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`, or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`. The code is after `#`, so it never reaches a server log. */
             url: string;
             /**
              * Format: date-time
@@ -32813,7 +32841,7 @@ export interface operations {
                     "application/json": components["schemas"]["BotWebLoginCodeResponse"];
                 };
             };
-            /** @description Invalid body or telegram_user_id */
+            /** @description Invalid body or telegram_user_id, or an invalid purpose (`bot.invalid_purpose`) or mini app target (`bot.invalid_miniapp_target`) */
             400: {
                 headers: {
                     [name: string]: unknown;

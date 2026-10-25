@@ -88,5 +88,5 @@ powershell -ExecutionPolicy Bypass -File apps\event-center\scripts\check-live.ps
 
 ## 5. Что проверяет CI
 
-1. Задача `event-center-build`: vitest, сборка, Playwright smoke (включая страницы `/reset-password` и `/accept-invite`), сборка образа, ожидание `healthy`, `scripts/check-headers.sh` на контейнере, тот же smoke против контейнера с включённым CSP и журнал nginx: в нём есть путь `/reset-password`, но нет токена и адреса из ссылки.
+1. Задача `event-center-build`: vitest, сборка, Playwright smoke (включая страницы `/reset-password` и `/accept-invite`), сборка образа, ожидание `healthy`, `scripts/check-headers.sh` на контейнере, `scripts/check-headers-tg.sh` на контейнере (`/tg/edit` отдаёт index.html с заголовками для Telegram, у `/` по-прежнему `X-Frame-Options`), тот же smoke против контейнера с включённым CSP и журнал nginx: в нём есть путь `/reset-password`, но нет токена и адреса из ссылки.
 2. Go: `authemail` (выбор адреса и тексты писем), `config` (на проде `EVENT_CENTER_PUBLIC_URL` — только адрес вида `https://хост` без пути, запроса и фрагмента), интеграционный тест `TestPGRecipients_OrganizerOrPlatformUser` (кто организатор, кто платформенный пользователь).

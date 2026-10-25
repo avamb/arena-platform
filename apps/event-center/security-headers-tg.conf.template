@@ -1,0 +1,41 @@
+# Security headers of the Telegram mini app page (/tg/ in nginx.conf.template),
+# `include`d into `location ^~ /tg/` and into the named location @tg_index.
+# Spec 44, task RT-12.
+#
+# The page is opened by Telegram inside its own web view. On Android, iOS and
+# Telegram Desktop that is a top-level web view and no frame header matters.
+# Telegram's web clients (web.telegram.org) put the page in an <iframe>, so
+# this variant of security-headers.conf.template differs in exactly two ways:
+#
+#   * there is NO X-Frame-Options header. It has no allow-list syntax
+#     ("ALLOW-FROM" is dead in every current browser), so it cannot name
+#     Telegram, and when both headers are present a browser that knows
+#     frame-ancestors ignores X-Frame-Options anyway;
+#   * frame-ancestors names the Telegram web clients instead of 'none'.
+#
+# Everything else is byte for byte the main policy and MUST stay so: a test
+# (src/lib/tgHeaders.test.ts) compares the two files and the container smoke
+# (scripts/check-headers-tg.sh) asserts the result on /tg/edit.
+#
+# frame-ancestors, checked with curl on 2026-10-25, each one is a Telegram web
+# client that serves the app and itself forbids framing (X-Frame-Options: deny):
+#   https://web.telegram.org    the web clients: /a (Web A), /k (Web K), the old /z redirects to /a
+#   https://webk.telegram.org   Web K on its own host
+#   https://weba.telegram.org   Web A on its own host (webz.telegram.org redirects here)
+# Telegram Desktop, Telegram for macOS, Android and iOS open a mini app in a
+# native web view, not in a frame of an origin, so they need no entry. Verify
+# the list again by hand when RT-13 runs the mini app on Telegram Web (the
+# browser console names a refused ancestor in its CSP error).
+#
+# script-src stays 'self': the Telegram script is a copy in public/ (README.md,
+# "Telegram web app script"). Known and harmless: inside the Telegram Web
+# iframe that script tries to apply the client's theme through a <style>
+# element, which style-src 'self' refuses (one console message). The page does
+# not depend on it.
+#
+# __API_ORIGIN__ is replaced at image build time (Dockerfile).
+add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' __API_ORIGIN__; manifest-src 'self'; form-action 'self'; frame-ancestors https://web.telegram.org https://webk.telegram.org https://weba.telegram.org; base-uri 'none'; object-src 'none'" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "no-referrer" always;
+add_header Cross-Origin-Opener-Policy "same-origin" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;

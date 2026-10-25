@@ -10,27 +10,52 @@ import (
 	"github.com/google/uuid"
 )
 
+// Purposes of a one-time sign-in code (migration 0169).
+const (
+	// WebLoginPurposeWeb is the "Open in browser" button: a 72-hour web
+	// session and a "signed in" notice in the chat.
+	WebLoginPurposeWeb = "web"
+	// WebLoginPurposeMiniapp is the Telegram mini app editor (spec 44,
+	// RT-12a): a 30-minute session, no notice, no effect on other codes.
+	WebLoginPurposeMiniapp = "miniapp"
+)
+
 const revokeOpenWebLoginCodes = `-- name: RevokeOpenWebLoginCodes :exec
 UPDATE web_login_codes
 SET    revoked_at = now()
 WHERE  user_id = $1 AND used_at IS NULL AND revoked_at IS NULL
 `
 
-// RevokeOpenWebLoginCodes takes back every unused code of a person: a new
-// code replaces the old one, and "Sign out everywhere" kills all of them.
+// RevokeOpenWebLoginCodes takes back every unused code of a person of EVERY
+// purpose: "Sign out everywhere" kills all of them.
 func (q *Queries) RevokeOpenWebLoginCodes(ctx context.Context, userID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, revokeOpenWebLoginCodes, userID)
 	return err
 }
 
-const insertWebLoginCode = `-- name: InsertWebLoginCode :exec
-INSERT INTO web_login_codes (code_hash, user_id, telegram_user_id, expires_at)
-VALUES ($1, $2, $3, $4)
+const revokeOpenWebLoginCodesOfPurpose = `-- name: RevokeOpenWebLoginCodesOfPurpose :exec
+UPDATE web_login_codes
+SET    revoked_at = now()
+WHERE  user_id = $1 AND purpose = $2 AND used_at IS NULL AND revoked_at IS NULL
 `
 
-// InsertWebLoginCode stores the SHA-256 of a new code.
-func (q *Queries) InsertWebLoginCode(ctx context.Context, codeHash string, userID uuid.UUID, telegramUserID int64, expiresAt time.Time) error {
-	_, err := q.db.Exec(ctx, insertWebLoginCode, codeHash, userID, telegramUserID, expiresAt)
+// RevokeOpenWebLoginCodesOfPurpose takes back the unused codes of a person
+// of ONE purpose: a new code replaces the old one of its own kind and leaves
+// the codes of the other purposes alone.
+func (q *Queries) RevokeOpenWebLoginCodesOfPurpose(ctx context.Context, userID uuid.UUID, purpose string) error {
+	_, err := q.db.Exec(ctx, revokeOpenWebLoginCodesOfPurpose, userID, purpose)
+	return err
+}
+
+const insertWebLoginCode = `-- name: InsertWebLoginCode :exec
+INSERT INTO web_login_codes (code_hash, user_id, telegram_user_id, expires_at, purpose)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+// InsertWebLoginCode stores the SHA-256 of a new code of the given purpose
+// (WebLoginPurposeWeb or WebLoginPurposeMiniapp).
+func (q *Queries) InsertWebLoginCode(ctx context.Context, codeHash string, userID uuid.UUID, telegramUserID int64, expiresAt time.Time, purpose string) error {
+	_, err := q.db.Exec(ctx, insertWebLoginCode, codeHash, userID, telegramUserID, expiresAt, purpose)
 	return err
 }
 
@@ -39,6 +64,7 @@ type UsedWebLoginCode struct {
 	ID             uuid.UUID `json:"id"`
 	UserID         uuid.UUID `json:"user_id"`
 	TelegramUserID int64     `json:"telegram_user_id"`
+	Purpose        string    `json:"purpose"`
 }
 
 const useWebLoginCode = `-- name: UseWebLoginCode :one
@@ -48,7 +74,7 @@ WHERE  code_hash = $1
   AND  used_at IS NULL
   AND  revoked_at IS NULL
   AND  expires_at > now()
-RETURNING id, user_id, telegram_user_id
+RETURNING id, user_id, telegram_user_id, purpose
 `
 
 // UseWebLoginCode marks a live code used and returns it. A code that is
@@ -56,7 +82,7 @@ RETURNING id, user_id, telegram_user_id
 // exchanges of one code cannot both win.
 func (q *Queries) UseWebLoginCode(ctx context.Context, codeHash string) (UsedWebLoginCode, error) {
 	var r UsedWebLoginCode
-	err := q.db.QueryRow(ctx, useWebLoginCode, codeHash).Scan(&r.ID, &r.UserID, &r.TelegramUserID)
+	err := q.db.QueryRow(ctx, useWebLoginCode, codeHash).Scan(&r.ID, &r.UserID, &r.TelegramUserID, &r.Purpose)
 	return r, err
 }
 
@@ -73,6 +99,7 @@ SET    notice_claimed_at = now()
 WHERE  id IN (
            SELECT id FROM web_login_codes
            WHERE  used_at IS NOT NULL AND notice_claimed_at IS NULL
+             AND  purpose = 'web'
              AND  used_at > now() - interval '1 day'
            ORDER  BY used_at
            LIMIT  $1
@@ -81,7 +108,8 @@ RETURNING id, telegram_user_id, used_at
 `
 
 // ClaimWebLoginNotices marks up to limit unannounced sign-ins of the last
-// day as announced and returns them. A sign-in is announced at most once: a
+// day as announced and returns them. Only "Open in browser" sign-ins are
+// announced: a mini app code (purpose 'miniapp') never produces a notice. A sign-in is announced at most once: a
 // crash between the claim and the message loses one message, never repeats
 // it.
 func (q *Queries) ClaimWebLoginNotices(ctx context.Context, limit int32) ([]WebLoginNotice, error) {
@@ -104,12 +132,13 @@ func (q *Queries) ClaimWebLoginNotices(ctx context.Context, limit int32) ([]WebL
 const revokeWebRefreshTokens = `-- name: RevokeWebRefreshTokens :execrows
 UPDATE refresh_tokens
 SET    expires_at = now()
-WHERE  user_id = $1 AND client_channel = 'event_center_web'
+WHERE  user_id = $1 AND client_channel IN ('event_center_web', 'event_center_tg')
   AND  revoked_at IS NULL AND expires_at > now()
 `
 
 // RevokeWebRefreshTokens ends every web event center session of a person
-// ("Sign out everywhere"). Sessions of admin-web and of the bot are kept.
+// ("Sign out everywhere"), the Telegram mini app ones included. Sessions of
+// admin-web and of the bot are kept.
 //
 // It EXPIRES the tokens instead of setting revoked_at: an open web tab will
 // still send its token once, and a revoked token coming back is treated as

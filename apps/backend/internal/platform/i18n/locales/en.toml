@@ -4416,6 +4416,9 @@ other = "Delete the text"
 ["bot.tf.note_test_btn"]
 other = "Send a test letter to me"
 
+["bot.tf.edit_btn"]
+other = "✏️ Edit in the editor"
+
 ["bot.tf.note_ask"]
 other = "Write the text as usual. I will format it and show you the result. The letter adds the greeting and the date itself.\n\nUp to {{.Limit}} characters and {{.Max}} links."
 

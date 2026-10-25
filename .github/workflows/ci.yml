@@ -486,6 +486,9 @@ jobs:
           done
           curl -fsS http://127.0.0.1:8091/o/any/events | grep -q '<div id="root"></div>'
           sh apps/event-center/scripts/check-headers.sh http://127.0.0.1:8091
+          # The Telegram mini app location (spec 44, RT-12): /tg/edit is index.html
+          # with the tg headers (no X-Frame-Options), / keeps X-Frame-Options.
+          sh apps/event-center/scripts/check-headers-tg.sh http://127.0.0.1:8091
           EVENT_CENTER_BASE_URL=http://127.0.0.1:8091 npm --prefix apps/event-center run test:smoke
           # The password links carry a one-time token and an e-mail address in
           # the query: the access log must keep the path and drop the query.

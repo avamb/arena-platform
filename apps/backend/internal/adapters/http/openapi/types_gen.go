@@ -206,6 +206,18 @@ const (
 	Owner   BotInvitationCreateRequestRole = "owner"
 )
 
+// Defines values for BotWebLoginCodeRequestKind.
+const (
+	BotWebLoginCodeRequestKindDescription BotWebLoginCodeRequestKind = "description"
+	BotWebLoginCodeRequestKindEmailNote   BotWebLoginCodeRequestKind = "email_note"
+)
+
+// Defines values for BotWebLoginCodeRequestPurpose.
+const (
+	Miniapp BotWebLoginCodeRequestPurpose = "miniapp"
+	Web     BotWebLoginCodeRequestPurpose = "web"
+)
+
 // Defines values for CancelTicketRequestRefundMode.
 const (
 	Automatic CancelTicketRequestRefundMode = "automatic"
@@ -794,9 +806,9 @@ const (
 
 // Defines values for TextFormatKind.
 const (
-	Description    TextFormatKind = "description"
-	EmailNote      TextFormatKind = "email_note"
-	SessionMessage TextFormatKind = "session_message"
+	TextFormatKindDescription    TextFormatKind = "description"
+	TextFormatKindEmailNote      TextFormatKind = "email_note"
+	TextFormatKindSessionMessage TextFormatKind = "session_message"
 )
 
 // Defines values for TicketCredentialItemType.
@@ -4676,16 +4688,37 @@ type BotTeamResponse struct {
 
 // BotWebLoginCodeRequest Body of POST /v1/bot/web-login-codes.
 type BotWebLoginCodeRequest struct {
-	// TelegramUserId The Telegram account that pressed "Open in browser".
+	// EventId The event whose text the mini app opens. Required, and only used, for `purpose: miniapp`.
+	EventId *openapi_types.UUID `json:"event_id,omitempty"`
+
+	// Kind Which text the mini app opens. Required, and only used, for `purpose: miniapp`.
+	Kind *BotWebLoginCodeRequestKind `json:"kind,omitempty"`
+
+	// Purpose What the code is for. `web` (the default) is "Open in browser": a 72-hour web session, a "signed in"
+	// notice in the chat, and a new code takes back the person's earlier unused `web` codes. `miniapp` is the
+	// Telegram mini app editor (spec 44, RT-12a): a 30-minute session of channel `event_center_tg`, no notice,
+	// and it takes back and is taken back by no code of another purpose.
+	Purpose *BotWebLoginCodeRequestPurpose `json:"purpose,omitempty"`
+
+	// TelegramUserId The Telegram account that pressed "Open in browser" or "Edit in the editor".
 	TelegramUserId int64 `json:"telegram_user_id"`
 }
+
+// BotWebLoginCodeRequestKind Which text the mini app opens. Required, and only used, for `purpose: miniapp`.
+type BotWebLoginCodeRequestKind string
+
+// BotWebLoginCodeRequestPurpose What the code is for. `web` (the default) is "Open in browser": a 72-hour web session, a "signed in"
+// notice in the chat, and a new code takes back the person's earlier unused `web` codes. `miniapp` is the
+// Telegram mini app editor (spec 44, RT-12a): a 30-minute session of channel `event_center_tg`, no notice,
+// and it takes back and is taken back by no code of another purpose.
+type BotWebLoginCodeRequestPurpose string
 
 // BotWebLoginCodeResponse A one-time link to the web event center for the private chat.
 type BotWebLoginCodeResponse struct {
 	// ExpiresAt When the link stops working (5 minutes after it was issued).
 	ExpiresAt time.Time `json:"expires_at"`
 
-	// Url `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`. The code is after `#`, so it never reaches a server log.
+	// Url `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`, or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`. The code is after `#`, so it never reaches a server log.
 	Url string `json:"url"`
 }
 

@@ -58,6 +58,10 @@ type Options struct {
 	// in the application dialog; keep it off until the site's continue page
 	// (/start/confirm) is live.
 	SiteButton bool
+	// MiniappEditor (BOT_MINIAPP_EDITOR_ENABLED) shows the web_app button
+	// "Edit in the editor" next to the description preview and on the
+	// email-note screen (spec 44, RT-12a). Default off.
+	MiniappEditor bool
 	// DialogSweepEvery is how often long-expired bot_dialogs rows are
 	// deleted (default 10 min); tests shorten it.
 	DialogSweepEvery time.Duration
@@ -102,6 +106,7 @@ type Bot struct {
 	selfOnboarding bool
 	noticeEvery    time.Duration
 	siteButton     bool
+	miniappEditor  bool
 	onb            *onbDialogs
 	onbForms       *onbFormCache
 
@@ -249,6 +254,7 @@ func New(opts Options) (*Bot, error) {
 		selfOnboarding: opts.SelfOnboarding,
 		noticeEvery:    opts.NoticeEvery,
 		siteButton:     opts.SiteButton,
+		miniappEditor:  opts.MiniappEditor,
 		onbForms:       &onbFormCache{m: map[string]onbFormEntry{}},
 		feed:           newFeedMemory(),
 		menuKB:         newMenuShown(),
