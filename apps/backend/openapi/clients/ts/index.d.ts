@@ -4731,11 +4731,20 @@ export interface paths {
         /**
          * QR image of a sales link
          * @description The QR code of the link's short address (`short_url`, exactly the string
-         *     the link answers carry), as a PNG or an SVG. The image is square, black
-         *     modules on white, error correction level Medium. `size` is the side in
-         *     pixels (PNG only, the SVG scales to any size), `margin` the quiet zone in
-         *     modules. The answer carries an `ETag` and `Cache-Control: private,
-         *     max-age=3600`; a repeated request with `If-None-Match` gets 304.
+         *     the link answers carry), as a PNG, an SVG or a printable PDF insert. The
+         *     image is square, black modules on white, error correction level Medium.
+         *     `size` is the side in pixels (PNG only, the SVG scales to any size),
+         *     `margin` the quiet zone in modules (PNG and SVG). `format=pdf` answers
+         *     one page (`paper` a6 by default, or a5) with the organization logo (or
+         *     its name) on top, the name of what the code sells (the event, the date
+         *     of a session with its start on the venue's clock, the promoter or the
+         *     organization), the code as black vector modules with a four-module quiet
+         *     zone, the line "Scan and buy tickets" in the language negotiated from
+         *     `?locale=`, `Accept-Language` and the organization's default locale
+         *     (en, ru, es, cs, he), and the short address in letters under the code.
+         *     The file name is `<code>-<paper>.pdf`. The answer carries an `ETag` and
+         *     `Cache-Control: private, max-age=3600`; a repeated request with
+         *     `If-None-Match` gets 304.
          *
          *     Requires JWT or API key + the `sales_link.read` permission.
          */
@@ -46234,12 +46243,16 @@ export interface operations {
     getSalesLinkQr: {
         parameters: {
             query?: {
-                /** @description Image format, `png` (default) or `svg`. */
+                /** @description Format, `png` (default), `svg` or `pdf` (the printable insert). */
                 format?: string;
                 /** @description Side of the PNG in pixels, 256 to 2048 (default 1024). Ignored for SVG. */
                 size?: number;
-                /** @description Quiet zone around the code in modules, 2 to 8 (default 4). */
+                /** @description Quiet zone around the code in modules, 2 to 8 (default 4). Ignored for the PDF, whose quiet zone is fixed. */
                 margin?: number;
+                /** @description Page size of the PDF insert, `a6` (default) or `a5`. Read only when `format=pdf`. */
+                paper?: string;
+                /** @description Language of the PDF insert's line (`en`, `ru`, `es`, `cs`, `he`); it wins over `Accept-Language`. Read only when `format=pdf`. */
+                locale?: string;
             };
             header?: never;
             path: {
@@ -46252,7 +46265,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The image. */
+            /** @description The image, or the PDF insert. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -46260,6 +46273,7 @@ export interface operations {
                 content: {
                     "image/png": string;
                     "image/svg+xml": string;
+                    "application/pdf": string;
                 };
             };
             /** @description The image has not changed since the `If-None-Match` ETag. */
@@ -46269,7 +46283,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description A query parameter is out of range (`sales_link.invalid_qr_params`). */
+            /** @description A query parameter is out of range, or `paper` is not a6 or a5 (`sales_link.invalid_qr_params`). */
             400: {
                 headers: {
                     [name: string]: unknown;

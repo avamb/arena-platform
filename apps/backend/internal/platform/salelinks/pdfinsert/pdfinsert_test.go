@@ -373,12 +373,17 @@ func TestNormalizeLocale(t *testing.T) {
 
 func TestVisualLine(t *testing.T) {
 	cases := []struct{ in, want string }{
-		{"Scan and buy tickets", "Scan and buy tickets"}, // no Hebrew: untouched
-		{"אבג", "גבא"},                                   // pure Hebrew: reversed
+		// no Hebrew: untouched
+		{"Scan and buy tickets", "Scan and buy tickets"},
+		// pure Hebrew: reversed
+		{"אבג", "גבא"},
 		{"סרקו וקנו כרטיסים", "םיסיטרכ ונקו וקרס"},
-		{"קונצרט 2026", "2026 טרצנוק"},                  // digits keep their order and move to the left
-		{"הופעה (Live) בחיפה", "הפיחב (Live) העפוה"},     // a Latin run stays, brackets mirror
-		{"25.10.2026, 19:00 אולם", "םלוא 19:00 ,25.10.2026"}, // the bidi order: the date on the right, the hall on the left
+		// digits keep their order and move to the left
+		{"קונצרט 2026", "2026 טרצנוק"},
+		// a Latin run stays, brackets mirror
+		{"הופעה (Live) בחיפה", "הפיחב (Live) העפוה"},
+		// the bidi order: the date on the right, the hall on the left
+		{"25.10.2026, 19:00 אולם", "םלוא 19:00 ,25.10.2026"},
 	}
 	for _, c := range cases {
 		if got := visualLine(c.in); got != c.want {

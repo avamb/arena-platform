@@ -331,7 +331,6 @@ func wrap(doc *gofpdf.Fpdf, text string, w float64) []string {
 				// Flush what is pending, then split the long word by runes.
 				if cur != "" {
 					lines = append(lines, cur)
-					cur = ""
 				}
 				piece := ""
 				for _, r := range word {
