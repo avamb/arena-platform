@@ -95,7 +95,7 @@ func (f *fakeMemRows) Next() bool {
 }
 
 // Scan copies the current row (set by Next) into dest.
-// scanMembershipWithOrgRow — used by ListMembershipsByUser — passes 8 pointers:
+// scanMembershipWithOrgRow — used by ListMembershipsByUser — passes 9 pointers:
 //
 //	dest[0] *uuid.UUID  (id)
 //	dest[1] *uuid.UUID  (user_id)
@@ -105,6 +105,7 @@ func (f *fakeMemRows) Next() bool {
 //	dest[5] *time.Time  (joined_at)
 //	dest[6] *string     (org_name)
 //	dest[7] *int64      (org_display_number)
+//	dest[8] *bool       (org_archived)
 func (f *fakeMemRows) Scan(dest ...any) error {
 	if f.current == nil {
 		return pgx.ErrNoRows
@@ -124,6 +125,9 @@ func (f *fakeMemRows) Scan(dest ...any) error {
 	}
 	if len(dest) >= 8 {
 		*dest[7].(*int64) = f.current.OrgDisplayNumber
+	}
+	if len(dest) >= 9 {
+		*dest[8].(*bool) = f.current.OrgArchived
 	}
 	return nil
 }

@@ -880,7 +880,7 @@ components:
 
     MeOrganizationMembership:
       type: object
-      required: [id, org_id, org_name, org_display_number, role, status, joined_at]
+      required: [id, org_id, org_name, org_display_number, role, status, joined_at, archived]
       properties:
         id:
           type: string
@@ -905,6 +905,13 @@ components:
           type: string
           format: date-time
           description: When the membership was granted
+        archived:
+          type: boolean
+          description: |
+            True when a platform superadmin archived the organization
+            (organizations.deleted_at is set). The membership stays listed so a
+            client can show the organization as archived, but it must not offer
+            it as a working organization.
 
     MeAssignedNetwork:
       type: object

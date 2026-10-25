@@ -90,6 +90,8 @@ type meMembershipDTO struct {
 	Role             string `json:"role"`
 	Status           string `json:"status"`
 	JoinedAt         string `json:"joined_at"`
+	// Archived is true when a platform superadmin archived the organization.
+	Archived bool `json:"archived"`
 }
 
 // meNetworkDTO mirrors a single row from assigned_networks.
@@ -355,6 +357,7 @@ func membershipsToDTO(rows []gen.MembershipRow) []meMembershipDTO {
 			Role:             m.Role,
 			Status:           m.Status,
 			JoinedAt:         m.JoinedAt.UTC().Format(time.RFC3339Nano),
+			Archived:         m.OrgArchived,
 		})
 	}
 	return out

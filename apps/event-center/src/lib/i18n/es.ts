@@ -119,6 +119,8 @@ export const es: Record<MessageKey, string> = {
   "orgs.role": "Tu rol: {role}",
   "orgs.empty": "Tu cuenta aún no está en ninguna organización. Pide al organizador que te invite o envía una solicitud en arenasoldout.com.",
   "orgs.superadmin": "Eres superadmin de la plataforma. Usa la consola de administración. El centro de eventos es para organizadores.",
+  "orgs.archived": "Organizaciones archivadas, no disponibles para trabajar: {list}.",
+  "orgs.all_archived": "Tu organización {list} está archivada, así que ya no se puede trabajar con ella aquí. Si es un error, escribe al soporte de Arena.",
 
   "events.title": "Eventos",
   "events.tab.run": "En curso ({count})",
