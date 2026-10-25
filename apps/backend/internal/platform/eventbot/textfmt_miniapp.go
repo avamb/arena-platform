@@ -13,6 +13,8 @@ package eventbot
 //
 //	tf:m              the preview: the kind and the event are in the dialog
 //	tf:m:<event id>   the letter screen (kind email_note), 41 bytes
+//	tf:md:<event id>  the description question of the edit wizard (kind
+//	                  description of an EXISTING event), 42 bytes
 //
 // The press asks arena-api for a code (POST /v1/bot/web-login-codes with
 // purpose "miniapp") and replaces that same button, in the message that was
@@ -57,6 +59,10 @@ const tgButtonURLMax = 2048
 // miniappCallback is the data of the press on the preview's button.
 const miniappCallback = "tf:m"
 
+// miniappDescriptionCallback is the prefix of the press on the description
+// question of an edited event: "tf:md:<event id>" (42 bytes, Telegram's cap is 64).
+const miniappDescriptionCallback = "tf:md:"
+
 // miniappRow is the row with the «Править в редакторе» callback button, or nil
 // when there is none to show. It asks arena-api for nothing: the code is drawn
 // when the button is pressed (tfMiniappCallback). chatID is the chat the screen
@@ -65,27 +71,43 @@ const miniappCallback = "tf:m"
 // button: arena-api refuses a sign-in code to that role (WL-1) and they edit
 // texts in the web event center or the admin console.
 func (b *Bot) miniappRow(chatID int64, id *Identity, loc string, kind tfKind, eventID string) []models.InlineKeyboardButton {
+	data := miniappCallback
+	if kind == tfKindEmailNote {
+		data += ":" + eventID
+	}
+	return b.miniappRowData(chatID, id != nil && id.Superadmin, loc, kind, eventID, data)
+}
+
+// miniappDescriptionRow is the same button for the description QUESTION of the
+// edit wizard (an existing event; the create wizard has no event yet, so no
+// button). Its data names the event, because the wizard's screen is not a
+// preview with a dialog behind it. The wizard itself is a pure state machine,
+// so the bot adds the row when it draws the screen (wizardRender).
+func (b *Bot) miniappDescriptionRow(chatID int64, superadmin bool, loc, eventID string) []models.InlineKeyboardButton {
+	return b.miniappRowData(chatID, superadmin, loc, tfKindDescription, eventID, miniappDescriptionCallback+eventID)
+}
+
+// miniappRowData is the gates of every «Править в редакторе» button (the flag,
+// a private chat, a known kind, a valid event id, no platform superadmin) and
+// the button itself with the given callback data.
+func (b *Bot) miniappRowData(chatID int64, superadmin bool, loc string, kind tfKind, eventID, data string) []models.InlineKeyboardButton {
 	if !b.miniappEditor || chatID <= 0 || (kind != tfKindDescription && kind != tfKindEmailNote) {
 		return nil
 	}
-	if id != nil && id.Superadmin {
+	if superadmin {
 		return nil
 	}
 	if _, err := uuid.Parse(eventID); err != nil {
 		return nil
 	}
-	data := miniappCallback
-	if kind == tfKindEmailNote {
-		data += ":" + eventID
-	}
 	return []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.tf.edit_btn", nil), CallbackData: data}}
 }
 
 // tfMiniappCallback handles the press of the button: "m" with no more is the
-// preview, "m:<event id>" the letter screen. It reports whether the press was
-// one of them.
+// preview, "m:<event id>" the letter screen, "md:<event id>" the description
+// question of the edit wizard. It reports whether the press was one of them.
 func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, from *models.User, id *Identity, jwt string, parts []string) bool {
-	if parts[0] != "m" {
+	if parts[0] != "m" && parts[0] != "md" {
 		return false
 	}
 	loc := id.Locale()
@@ -93,7 +115,11 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 	var kind tfKind
 	var eventID string
 	var pdlg tfDialog // the dialog of the preview (len(parts) == 1)
-	if len(parts) == 1 {
+	question := parts[0] == "md"
+	if question && len(parts) != 2 {
+		return true // a button this version never draws
+	}
+	if !question && len(parts) == 1 {
 		dlg, step, found, _ := b.tfLoad(ctx, from.ID)
 		if !found || step != tfStepPreview || dlg.OrgID != id.Current.OrgID.String() {
 			// An older preview, or the 30 minutes ran out: the person types again.
@@ -109,6 +135,9 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 		}
 		kind, eventID = tfKindEmailNote, parts[1]
 		data += ":" + parts[1]
+		if question {
+			kind, data = tfKindDescription, miniappDescriptionCallback+parts[1]
+		}
 	}
 	if id.Superadmin {
 		// A screen drawn before the person got the role, or an old button: say
@@ -116,7 +145,7 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 		b.send(ctx, chatID, b.texts.T(loc, "bot.tf.edit_superadmin", nil), nil)
 		return true
 	}
-	if len(b.miniappRow(chatID, id, loc, kind, eventID)) == 0 {
+	if len(b.miniappRowData(chatID, false, loc, kind, eventID, data)) == 0 {
 		// The flag was turned off after the screen was drawn, or the press is
 		// not one the screen can make.
 		b.send(ctx, chatID, b.texts.T(loc, "bot.tf.edit_failed", nil), nil)
@@ -125,7 +154,11 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 	// The editor was opened from this screen before and may have saved since: say
 	// so first (RT-12b), never open it again over a mark that has not been told.
 	// The press is not carried out; the organizer presses the button once more.
-	if len(parts) == 1 {
+	// The description question has no dialog behind it: the wizard's draft is
+	// brought up to the saved text when the organizer goes on (wizard_editor_sync.go).
+	if question {
+		// nothing to ask
+	} else if len(parts) == 1 {
 		if pdlg.Editor && pdlg.Seen != "" && b.tfEditorSavedPreview(ctx, chatID, msgID, from, id, jwt, pdlg) {
 			return true
 		}
@@ -146,7 +179,9 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 	}
 	// What the text is NOW, before the editor can be opened: the next action of the
 	// organizer compares it with what the event holds then (RT-12b).
-	b.tfEditorMark(ctx, from, id, jwt, kind, eventID, len(parts) == 1)
+	if !question {
+		b.tfEditorMark(ctx, from, id, jwt, kind, eventID, len(parts) == 1)
+	}
 	b.miniappOpen(ctx, chatID, msgID, loc, data, link.URL)
 	return true
 }

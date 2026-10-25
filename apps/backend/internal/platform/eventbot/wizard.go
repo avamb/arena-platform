@@ -360,6 +360,10 @@ type WizSession struct {
 	OrgName  string
 	Locale   string
 	Defaults Defaults
+	// Superadmin is the platform operator: arena-api gives them no mini app
+	// sign-in code, so the bot draws no «Править в редакторе» button for them.
+	// The wizard itself never reads it.
+	Superadmin bool
 }
 
 // WizInput is one answer: a typed text, a button, or an accepted poster.
