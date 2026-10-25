@@ -915,3 +915,30 @@ fieldset legend {
 .billing-return {
   margin-block: 1rem;
 }
+
+/* QL-12: sales links and QR codes */
+.qr-box {
+  margin: 1rem 0;
+}
+.qr-img {
+  display: block;
+  width: min(100%, 320px);
+  height: auto;
+  aspect-ratio: 1 / 1;
+  background: #fff;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 8px;
+}
+.link-dest {
+  overflow-wrap: anywhere;
+}
+.link-target select,
+.link-utm input {
+  width: 100%;
+  max-width: 100%;
+}
+.link-utm summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin: 0.75rem 0 0.25rem;
+}

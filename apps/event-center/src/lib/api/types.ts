@@ -132,3 +132,12 @@ export type BillingLedgerEntry = S["BillingLedgerEntry"];
 export type BillingServiceFeeQuote = S["BillingServiceFeeQuote"];
 export type BillingPayerRequest = S["BillingPayerRequest"];
 export type BillingPayerResponse = S["BillingPayerResponse"];
+// QL-12: tracked sales links and QR codes (spec 43).
+export type SalesLink = S["SalesLink"];
+export type SalesLinkList = S["SalesLinkList"];
+export type SalesLinkTarget = S["SalesLinkTarget"];
+export type SalesLinkCreateRequest = S["SalesLinkCreateRequest"];
+export type SalesLinkUpdateRequest = S["SalesLinkUpdateRequest"];
+export type SalesLinkStats = S["SalesLinkStats"];
+export type SalesLinkDayStats = S["SalesLinkDayStats"];
+export type SalesLinkCountryStats = S["SalesLinkCountryStats"];
