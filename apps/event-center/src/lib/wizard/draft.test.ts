@@ -146,6 +146,26 @@ describe("storage", () => {
     expect(parseDraft(null)).toBeNull();
   });
 
+  it("converts the plain description of an older draft to ART once, and leaves a version-5 one alone (spec 44, RT-11)", () => {
+    const plain = "Line one\nLine <two>\n\n- a\n- b\n\nBold **word**";
+    const art = "<p>Line one<br>Line &lt;two&gt;</p><ul><li>a</li><li>b</li></ul><p>Bold <strong>word</strong></p>";
+    for (const version of [2, 3, 4]) {
+      const read = parseDraft({ ...filled, version, event: { ...filled.event, description: plain } });
+      expect(read?.event.description, `version ${version}`).toBe(art);
+      expect(read?.version).toBe(DRAFT_VERSION);
+    }
+    // A blank old description stays blank, not "<p></p>".
+    expect(parseDraft({ ...filled, version: 4, event: { ...filled.event, description: "  \n " } })?.event.description).toBe("");
+    // Version 5 holds ART already: read as it is, and the conversion is not run a second time.
+    const stored = { ...filled, version: 5, event: { ...filled.event, description: art } };
+    expect(parseDraft(stored)?.event.description).toBe(art);
+    expect(parseDraft(parseDraft(stored))?.event.description).toBe(art);
+    // What the editor stores survives a save and a load.
+    const store = memoryStorage();
+    saveDraft("o", { ...filled, event: { ...filled.event, description: art } }, store);
+    expect(loadDraft("o", store)?.event.description).toBe(art);
+  });
+
   it("survives a storage that throws", () => {
     const broken = {
       getItem: () => {

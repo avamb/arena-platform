@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+// The message is ART (RT-11): counting it reads HTML, which needs a DOM.
 import { describe, expect, it } from "vitest";
 import type { SessionChangeImpact } from "@/lib/api/types";
 import { translate } from "@/lib/i18n";
@@ -16,6 +18,7 @@ import {
   proposeMove,
   resetToSuggested,
   sameInstant,
+  suggestedArt,
   typeMessage,
   validTime,
   withSuggested,
@@ -152,12 +155,12 @@ describe("request shapes", () => {
   });
   it("builds the PATCH of a move with the notice only when buyers get a letter", () => {
     const p = { problem: "none" as const, startAt: "2027-01-17T19:00:00Z", venueId: "v2", changed: true };
-    expect(moveBody(p, "Sorry.")).toEqual({ start_at: "2027-01-17T19:00:00Z", venue_id: "v2", notice: { message: "Sorry." } });
+    expect(moveBody(p, "Sorry.")).toEqual({ start_at: "2027-01-17T19:00:00Z", venue_id: "v2", notice: { message: "Sorry.", message_format: "art" } });
     expect(moveBody(p, null)).toEqual({ start_at: "2027-01-17T19:00:00Z", venue_id: "v2" });
-    expect(moveBody({ ...p, venueId: null }, "")).toEqual({ start_at: "2027-01-17T19:00:00Z", notice: { message: "" } });
+    expect(moveBody({ ...p, venueId: null }, "")).toEqual({ start_at: "2027-01-17T19:00:00Z", notice: { message: "", message_format: "art" } });
   });
   it("builds the PATCH of a cancellation as status cancelled, never a delete", () => {
-    expect(cancelBody("Sorry.")).toEqual({ status: "cancelled", notice: { message: "Sorry." } });
+    expect(cancelBody("Sorry.")).toEqual({ status: "cancelled", notice: { message: "Sorry.", message_format: "art" } });
     expect(cancelBody(null)).toEqual({ status: "cancelled" });
   });
   it("sends a message only to a session that has buyers", () => {
@@ -165,22 +168,37 @@ describe("request shapes", () => {
     expect(noticeToSend({ orders: 0 }, "x")).toBeNull();
     expect(noticeToSend({ orders: 1 }, "x")).toBe("x");
   });
-  it("counts the message the way the API does", () => {
-    expect(noticeTooLong("a".repeat(MAX_NOTICE_CHARS))).toBe(false);
-    expect(noticeTooLong("a".repeat(MAX_NOTICE_CHARS + 1))).toBe(true);
+  it("counts the VISIBLE text of the message the way the API does, not its HTML", () => {
+    const art = (s: string) => "<p>" + s + "</p>";
+    expect(noticeTooLong(art("a".repeat(MAX_NOTICE_CHARS)))).toBe(false);
+    expect(noticeTooLong(art("a".repeat(MAX_NOTICE_CHARS + 1)))).toBe(true);
     // 1000 emoji are 2000 UTF-16 units but 1000 code points.
-    expect(noticeTooLong("😀".repeat(MAX_NOTICE_CHARS))).toBe(false);
+    expect(noticeTooLong(art("😀".repeat(MAX_NOTICE_CHARS)))).toBe(false);
+    // The tags do not count: 1000 visible characters in two marks are fine, 1001 are not.
+    expect(noticeTooLong("<p><strong>" + "a".repeat(500) + "</strong><em>" + "b".repeat(500) + "</em></p>")).toBe(false);
+    expect(noticeTooLong("<p><strong>" + "a".repeat(500) + "</strong><em>" + "b".repeat(501) + "</em></p>")).toBe(true);
+    expect(noticeTooLong("")).toBe(false);
+  });
+  it("refuses a message with more links than the server takes", () => {
+    const link = (n: number) => '<a href="https://example.com/' + n + '">x' + n + "</a> ";
+    expect(noticeTooLong("<p>" + [1, 2, 3].map(link).join("") + "</p>")).toBe(false);
+    expect(noticeTooLong("<p>" + [1, 2, 3, 4].map(link).join("") + "</p>")).toBe(true);
   });
 });
 
 describe("the suggested message", () => {
   it("fills an untouched field and never overwrites a typed one", () => {
+    // The dry run suggests plain text; the field holds ART.
     const first = withSuggested(emptyMessage, "Suggested");
-    expect(first).toEqual({ text: "Suggested", touched: false });
-    expect(withSuggested(first, "Other")).toEqual({ text: "Other", touched: false });
-    const typed = typeMessage("Mine");
-    expect(withSuggested(typed, "Other")).toEqual({ text: "Mine", touched: true });
-    expect(resetToSuggested("Other")).toEqual({ text: "Other", touched: false });
+    expect(first).toEqual({ text: "<p>Suggested</p>", touched: false });
+    expect(withSuggested(first, "Other")).toEqual({ text: "<p>Other</p>", touched: false });
+    const typed = typeMessage("<p>Mine</p>");
+    expect(withSuggested(typed, "Other")).toEqual({ text: "<p>Mine</p>", touched: true });
+    expect(resetToSuggested("Other")).toEqual({ text: "<p>Other</p>", touched: false });
+  });
+  it("turns the suggested text into paragraphs and lists, with its tags kept as text", () => {
+    expect(suggestedArt("Line one\nLine <two>\n\n- a\n- b")).toBe("<p>Line one<br>Line &lt;two&gt;</p><ul><li>a</li><li>b</li></ul>");
+    expect(suggestedArt("")).toBe("");
   });
 });
 

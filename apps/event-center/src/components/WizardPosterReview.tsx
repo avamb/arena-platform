@@ -170,14 +170,14 @@ export function WizardPosterReview({
                     <strong>{t(ROW_LABEL[r.key])}</strong>
                     {": "}
                     <span className="review-value" data-testid={`poster-review-value-${r.key}`}>
-                      {show(r.key, r.value)}
+                      {show(r.key, r.shown ?? r.value)}
                     </span>
                   </span>
                 </label>
                 <div id={`${boxId}-d`}>
                   {r.conflict && (
                     <p className="field-hint" data-testid={`poster-review-replaces-${r.key}`}>
-                      {t("wizard.poster.review.replaces", { current: r.current })}
+                      {t("wizard.poster.review.replaces", { current: r.currentShown ?? r.current })}
                     </p>
                   )}
                   {r.key === "date" && <p className="field-hint">{t("wizard.poster.review.dateNote")}</p>}

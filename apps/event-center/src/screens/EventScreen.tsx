@@ -9,6 +9,7 @@ import { Badge, DownloadButton, Empty, ErrorBox, Loading } from "@/components/ui
 import { SalesFigures } from "@/components/SalesFigures";
 import { EventStatusBlock } from "@/components/EventStatusBlock";
 import { EventPoster } from "@/components/EventPoster";
+import { EmailNoteSection } from "@/components/EmailNoteSection";
 import { MaterialsSection } from "@/components/materials/MaterialsSection";
 import { posterCapabilities } from "@/lib/posters";
 import { PageStats } from "@/components/PageStats";
@@ -173,6 +174,18 @@ export function EventScreen() {
         canView={poster.canView}
         canChange={poster.canChange}
       />
+
+      {/* RT-11: the organizer's own text of the buyer letters. The events list is the route that carries it. */}
+      {access.can("event.update") && (
+        <EmailNoteSection
+          key={`${orgId}:${eventId}`}
+          orgId={orgId}
+          eventId={eventId}
+          note={event.email_note}
+          noteFormat={event.email_note_format}
+          canEdit
+        />
+      )}
 
       {canSales && (
         <section aria-labelledby="event-totals">

@@ -145,7 +145,11 @@ export type ApiErrorStem =
   | "linkTargetInvalid"
   | "linkUrlInvalid"
   | "linkLabelInvalid"
-  | "linkUtmInvalid";
+  | "linkUtmInvalid"
+  // RT-11: formatted texts
+  | "emailNoteEmpty"
+  | "emailNoteRateLimited"
+  | "textRefused";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -173,6 +177,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "billingPayerInvalid", "billingTerms", "billingFxMissing", "billingClosed",
   // QL-12
   "linkTargetInvalid", "linkUrlInvalid", "linkLabelInvalid", "linkUtmInvalid",
+  // RT-11
+  "emailNoteEmpty", "emailNoteRateLimited", "textRefused",
 ];
 
 /**
@@ -291,6 +297,15 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "sales_link.invalid_body": "invalid",
   "sales_link.invalid_qr_params": "invalid",
   "sales_link.failed": "server",
+  // RT-11: the text in the letter, the description and the message to buyers (spec 44)
+  "event.email_note_empty": "emailNoteEmpty",
+  "event.email_note_test_rate_limited": "emailNoteRateLimited",
+  "event.invalid_email_note": "textRefused",
+  "event.invalid_description": "textRefused",
+  "import.invalid_description": "textRefused",
+  "session.change_message_invalid": "textRefused",
+  "text.too_long": "textRefused",
+  "text.invalid": "textRefused",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",

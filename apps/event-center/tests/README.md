@@ -173,6 +173,20 @@ the dev server cannot prove (nginx adds the policy):
 
 The mock smoke ignores `container/**` and the live config ignores it too.
 
+### Formatted texts and the editor (spec 44, RT-11)
+
+- The editor (`RichTextField`, library `apps/rich-editor`) is built into the page through a dynamic import, so
+  `npm --prefix apps/rich-editor ci` and `npm --prefix apps/rich-editor run build` come BEFORE `npm ci`/`test`/`build` of
+  this app (the Dockerfile does it in that order). Unit tests that read HTML (`measure`, `sanitize`) start with
+  `// @vitest-environment jsdom`; the rest of the suite stays in node (jsdom replaces `URL` and breaks the golden and
+  source-reading tests).
+- `live/email-note.spec.ts` is the twin of the bot's "Text in the letter" screen. A test letter is limited to 5 an hour per
+  organization in the memory of one `arena-api` process: one run sends 3, so do not use `--repeat-each` on it. It types into
+  the editor through `richText(page, testId)` of `liveEnv.ts`; so do the wizard and session-change specs.
+- `container/rich-text-csp.spec.ts` runs against the production image, like the poster spec: the editor loads under
+  `style-src 'self'`, a Word and a Google Docs paste is cut to the white list, and not one CSP violation is reported (console
+  and `securitypolicyviolation`).
+
 ### Poster first (live)
 
 `tests/smoke/live/poster-first.spec.ts` needs an `arena-api` built with the TEST-ONLY tag

@@ -6,13 +6,13 @@
  */
 import type { MessageKey } from "@/lib/i18n/en";
 import {
-  MAX_DESCRIPTION_RUNES,
   MAX_NAME_RUNES,
   parseCapacity,
   runeLength,
   validCurrency,
   type WizardDraft,
 } from "@/lib/wizard/draft";
+import { overMarkupLimit, overVisibleLimit } from "@/lib/richText";
 import type { FormField } from "@/lib/wizard/validation";
 
 export type ClientErrors = Partial<Record<FormField, MessageKey>>;
@@ -20,7 +20,9 @@ export type ClientErrors = Partial<Record<FormField, MessageKey>>;
 export function clientErrors(d: WizardDraft): ClientErrors {
   const out: ClientErrors = {};
   if (runeLength(d.event.name.trim()) > MAX_NAME_RUNES) out.name = "wizard.err.nameLong";
-  if (runeLength(d.event.description.trim()) > MAX_DESCRIPTION_RUNES) out.description = "wizard.err.descriptionLong";
+  // The description is ART: the limit is the VISIBLE text (4000), then the stored HTML and the links (spec 44).
+  if (overVisibleLimit(d.event.description, "description")) out.description = "wizard.err.descriptionLong";
+  else if (overMarkupLimit(d.event.description, "description")) out.description = "wizard.err.descriptionMarkup";
   if (d.venue.mode === "new" && parseCapacity(d.venue.capacity) === null) out.venueCapacity = "wizard.err.capacity";
   // An empty currency is the server's to report ("choose a country or type it").
   if (d.currency.trim() !== "" && validCurrency(d.currency) === "") out.currency = "wizard.err.currencyShape";

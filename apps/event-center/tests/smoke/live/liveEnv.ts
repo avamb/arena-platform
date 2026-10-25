@@ -48,6 +48,14 @@ export function person(env: LiveEnv, role: Role): Person {
   return p;
 }
 
+/**
+ * The text area of a RichTextField (the editor of spec 44, RT-11). The field's own test id holds the whole
+ * editor (toolbar, text, counter); the text itself is the one multi-line textbox in it.
+ */
+export function richText(page: Page, testId: string) {
+  return page.getByTestId(testId).locator('[role="textbox"][aria-multiline="true"]');
+}
+
 /** Signs in through the real login form, exactly as the organizer does. */
 export async function signInAs(page: Page, p: Person) {
   await page.goto("/login");

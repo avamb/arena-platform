@@ -340,8 +340,9 @@ export const PARITY: readonly ParityRow[] = [
       `GET ${O}/sessions/{session_id}/change-impact`,
       `PATCH ${O}/events/{event_id}/sessions/{id}`,
       `GET ${O}/venues`,
+      `POST ${O}/texts/format`,
     ],
-    note: "Сначала сухой прогон, потом одно нажатие. Заказы сайта-партнёра блокируют перенос, текст честный.",
+    note: "Сначала сухой прогон, потом одно нажатие. Заказы сайта-партнёра блокируют перенос, текст честный. RT-11: сообщение покупателям — редактор с профилем session_message (1000 видимых знаков, 3 ссылки), уходит как `notice.message` с `message_format: \"art\"`, письма выводят его через `richtext.Render`.",
   },
   {
     area: "Сеансы",
@@ -349,8 +350,8 @@ export const PARITY: readonly ParityRow[] = [
     bot: "sessions_dialog.go, `ses:cx`, `ses:cxall` (слово)",
     web: "R4",
     ready: { twin: "live/session-change.spec.ts" },
-    routes: [`GET ${O}/sessions/{session_id}/change-impact`, `PATCH ${O}/events/{event_id}/sessions/{id}`],
-    note: "Только со словом сеанса. Письма уходят, деньги не возвращаются, заказы остаются оплаченными.",
+    routes: [`GET ${O}/sessions/{session_id}/change-impact`, `PATCH ${O}/events/{event_id}/sessions/{id}`, `POST ${O}/texts/format`],
+    note: "Только со словом сеанса. Письма уходят, деньги не возвращаются, заказы остаются оплаченными. RT-11: сообщение покупателям — тот же редактор, что при переносе.",
   },
   {
     area: "Сеансы",
@@ -616,10 +617,26 @@ export const PARITY: readonly ParityRow[] = [
       "GET /v1/geo/cities",
       "GET /v1/geo/countries/{iso2}/timezones",
       "GET /v1/geo/countries/{iso2}/currency",
+      `POST ${O}/texts/format`,
     ],
-    note: "6-1a: форма из двух разделов с проверкой на лету (`?dry_run=true`, не чаще раза в секунду, ошибки по `errors[].field`), черновик в браузере. Под флагом сборки `VITE_FEATURE_WIZARD=1`. Даты, билеты и сохранение — 6-1b и 6-1c.",
+    note: "RT-11: описание — редактор с профилем description (жирный, курсив, подчёркнутый, ссылки, списки, заголовки, цитата), черновик хранит текст Arena (ART) и шлёт `descriptionFormat: \"art\"`; длину считает по видимому тексту (4000), кнопка «Оформить» — `POST …/texts/format`, при `ai_applied: false` нейтральная строка, без слов об ошибке. Подсказки афиши входят как простой текст, переведённый в ART. 6-1a: форма из двух разделов с проверкой на лету (`?dry_run=true`, не чаще раза в секунду, ошибки по `errors[].field`), черновик в браузере. Под флагом сборки `VITE_FEATURE_WIZARD=1`. Даты, билеты и сохранение — 6-1b и 6-1c.",
   },
   // 6-1b
+  // RT-11
+  {
+    area: "Мероприятия",
+    fn: "Текст в письме",
+    bot: "textfmt_note.go, `tf:n`, `tf:e`, `tf:d`, `tf:dy`, `tf:t`",
+    web: "R4",
+    ready: { twin: "live/email-note.spec.ts" },
+    routes: [
+      `GET ${O}/events`,
+      `PATCH ${O}/events/{id}`,
+      `POST ${O}/events/{event_id}/email-note/test`,
+      `POST ${O}/texts/format`,
+    ],
+    note: "RT-11: раздел на карточке мероприятия (право `event.update`): редактор с профилем email_note (2000 видимых знаков, 5 ссылок, только https), «Сохранить» — один PATCH с `email_note` и `email_note_format: \"art\"`, «Удалить» — после вопроса, «Тестовое письмо себе» — черновик уходит на адрес вошедшего (422 `event.email_note_empty` и 429 имеют свои строки). Экран прямо говорит, что приветствие, дату и площадку письмо добавляет само: подстановок `{name}`, `{date}` в Arena нет (решение владельца, спека 44, п. 9.3). Текст читается из списка мероприятий: только он отдаёт `email_note`.",
+  },
   {
     area: "Мероприятия",
     fn: "Мастер: даты и билеты",

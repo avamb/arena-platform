@@ -3,7 +3,7 @@
 // remote import or font, the scripts have no eval and no new Function, and the
 // IIFE build exposes the global ArenaRichEditor.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -63,6 +63,24 @@ describe.skipIf(!built)('the built library', () => {
       }
     })
   }
+
+  // RT-11: the editor-free entry (dist/text.js) is what the wizard draft, the poster hints and the session
+  // message import, so the page does not carry the editor until the screen that shows it.
+  it('the editor-free entry text.js and its chunk pull in no Tiptap and no ProseMirror', () => {
+    expect(existsSync(resolve(dist, 'text.js'))).toBe(true)
+    const entry = read('text.js')
+    const chunkFiles = existsSync(resolve(dist, 'chunks')) ? readdirSync(resolve(dist, 'chunks')) : []
+    const chunks = chunkFiles.map((f) => read('chunks/' + f)).join('\n')
+    for (const src of [entry, chunks]) {
+      expect(src).not.toMatch(/prosemirror|tiptap/i)
+      expect(src).not.toMatch(/name:[ ]*["'](doc|bold|italic|link|bulletList)["']/)
+    }
+    // The shared code is small: the model, the sanitizer and FromLegacy, not a library.
+    expect(gzipSync(Buffer.from(entry + chunks)).length).toBeLessThan(14_000)
+    for (const name of ['sanitize', 'measure', 'fromLegacy', 'artToPlainText', 'PROFILES', 'cleanHref']) {
+      expect(entry, name).toContain(name)
+    }
+  })
 
   it('the IIFE build defines the global ArenaRichEditor and the editor works', () => {
     const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only' })

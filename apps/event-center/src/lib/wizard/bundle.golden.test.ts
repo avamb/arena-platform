@@ -14,6 +14,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { artOfLegacy } from "@/lib/richText";
 import { buildBundle } from "@/lib/wizard/bundle";
 import { newDraft, reduceDraft, type WizardDraft } from "@/lib/wizard/draft";
 import type { CategoryEntry, DateEntry, PriceStepEntry, TicketMode } from "@/lib/wizard/datesDraft";
@@ -69,7 +70,8 @@ export function draftFromGolden(input: GoldenInput): WizardDraft {
   const NOW = new Date("2026-10-16T10:00:00Z");
   let d = newDraft("draft-golden", NOW, "");
   d = reduceDraft(d, { type: "event", field: "name", value: input.event.name }, NOW);
-  d = reduceDraft(d, { type: "event", field: "description", value: input.event.description }, NOW);
+  // The web wizard's editor holds ART: the same plain text, as the server would convert it.
+  d = reduceDraft(d, { type: "event", field: "description", value: artOfLegacy(input.event.description, "description") }, NOW);
   if (input.event.age !== "") d = reduceDraft(d, { type: "age", value: input.event.age as "6+" }, NOW);
   if (input.event.promoterId !== "") d = reduceDraft(d, { type: "promoter", id: input.event.promoterId, name: "P" }, NOW);
   d = reduceDraft(
@@ -120,7 +122,17 @@ describe("golden bundles of the bot", () => {
           const bot = g.bundles[i];
           const { venue: webVenue, ...webRest } = web;
           const { venue: botVenue, ...botRest } = bot;
-          expect(reduce(webRest)).toEqual(reduce(botRest));
+          const webAction = webRest.action as Record<string, unknown>;
+          const botAction = botRest.action as Record<string, unknown>;
+          expect(webAction.descriptionFormat).toBe("art");
+          expect(webAction.description).toBe(artOfLegacy(String(botAction.description ?? "").trim(), "description"));
+          // Everything else of the action is the bot's, byte for byte.
+          const { description: _wd, descriptionFormat: _wf, ...webActionRest } = webAction;
+          const { description: _bd, ...botActionRest } = botAction;
+          void _wd;
+          void _wf;
+          void _bd;
+          expect(reduce({ ...webRest, action: webActionRest })).toEqual(reduce({ ...botRest, action: botActionRest }));
           // The venue block is 6-1a's own; an existing venue is addressed the same way.
           expect((webVenue as { arenaVenueId?: string }).arenaVenueId).toBe((botVenue as { arenaVenueId: string }).arenaVenueId);
         });

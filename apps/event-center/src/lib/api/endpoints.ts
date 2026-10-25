@@ -27,6 +27,8 @@ import type {
   BotInvitationRevokeResponse,
   BotTeamResponse,
   EventDeleteImpact,
+  EventEmailNoteTestRequest,
+  EventEmailNoteTestResponse,
   EventEnvelope,
   MediaObject,
   PosterFactsResponse,
@@ -71,6 +73,8 @@ import type {
   TierPriceWindowInput,
   UpdateTicketTierRequest,
   VenueItem,
+  TextFormatRequest,
+  TextFormatResponse,
 } from "@/lib/api/types";
 import type { SessionPatchBody } from "@/lib/sessionChange";
 
@@ -726,6 +730,40 @@ export function attachEventPoster(
     body: { poster_media_id: mediaId },
     signal,
   });
+}
+
+// ─── RT-11: formatted texts ──────────────────────────────────────────────────
+
+/**
+ * The editor's "Format" button (`event.update` in this organization): the plain text goes to the server, a model
+ * adds only the marks and the code proves that no word changed. ONE request, never repeated by itself (it costs a
+ * daily slot). A failure of the model is NOT an error here: the answer is 200 with `ai_applied: false` and the
+ * plain conversion of the text.
+ */
+export function formatText(orgId: string, body: TextFormatRequest, signal?: AbortSignal): Promise<TextFormatResponse> {
+  return call<TextFormatResponse>({ route: API.textsFormat, params: { org_id: orgId }, body, signal });
+}
+
+/**
+ * Saves or removes the organizer's own text of the buyer letters: ONE PATCH of the event with ART and its format.
+ * `null` removes the text. The answer does not carry the text (only the events list does), so the caller reads
+ * the list again.
+ */
+export function saveEmailNote(orgId: string, eventId: string, art: string | null): Promise<EventEnvelope> {
+  return call<EventEnvelope>({
+    route: API.eventUpdate,
+    params: { org_id: orgId, id: eventId },
+    body: art === null ? { email_note: null } : { email_note: art, email_note_format: "art" },
+  });
+}
+
+/** A test letter with the text (the draft when `note` is given, else the saved one) to the caller's own address. */
+export function sendEmailNoteTest(
+  orgId: string,
+  eventId: string,
+  body: EventEmailNoteTestRequest,
+): Promise<EventEmailNoteTestResponse> {
+  return call<EventEmailNoteTestResponse>({ route: API.emailNoteTest, params: { org_id: orgId, event_id: eventId }, body });
 }
 
 // ─── 5-2: move or cancel a session ───────────────────────────────────────────
