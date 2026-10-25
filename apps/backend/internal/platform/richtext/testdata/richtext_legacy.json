@@ -75,5 +75,9 @@
   {"name": "email note numbers with a gap", "profile": "email_note", "legacy": "1. doors\n3. show", "art": "<p>1. doors<br>3. show</p>"},
   {"name": "direction marks are kept", "profile": "description", "legacy": "שלום\u200f עולם\u200e (Vino&Co)", "art": "<p>שלום\u200f עולם\u200e (Vino&amp;Co)</p>"},
   {"name": "isolates and zero-width characters are removed", "profile": "description", "legacy": "a\u2066b\u2069 c\u200bd\ufeffe\u2060f", "art": "<p>ab cdef</p>"},
-  {"name": "line and paragraph separators", "profile": "description", "legacy": "a\u2028b\u2029c", "art": "<p>a<br>b</p><p>c</p>"}
+  {"name": "line and paragraph separators", "profile": "description", "legacy": "a\u2028b\u2029c", "art": "<p>a<br>b</p><p>c</p>"},
+  {"name": "bold inside a word", "profile": "description", "legacy": "a**b**c", "art": "<p>a<strong>b</strong>c</p>"},
+  {"name": "emoji glued to italic marks is not a word border", "profile": "description", "legacy": "\ud83c\udf89_party_\ud83c\udf89", "art": "<p>\ud83c\udf89_party_\ud83c\udf89</p>"},
+  {"name": "emoji next to bold marks", "profile": "description", "legacy": "\ud83c\udf89**big**\ud83c\udf89", "art": "<p>\ud83c\udf89<strong>big</strong>\ud83c\udf89</p>"},
+  {"name": "email note link with an ampersand in the query", "profile": "email_note", "legacy": "See https://example.com/a?x=1&y=2 now", "art": "<p>See <a href=\"https://example.com/a?x=1&amp;y=2\">https://example.com/a?x=1&amp;y=2</a> now</p>"}
 ]

@@ -1127,6 +1127,9 @@ other = "Texto estándar"
 ["bot.ses.msg_too_long"]
 other = "Demasiado largo ({{.N}} caracteres). Acórtalo a 1000."
 
+["bot.ses.msg_invalid"]
+other = "Ese texto no se puede usar (un carácter prohibido o marcado). Envía el mensaje de nuevo como texto sin formato."
+
 ["bot.ses.go_move_btn"]
 other = "✔ Trasladar y avisar"
 

@@ -18187,15 +18187,32 @@ export interface components {
          */
         SessionChangeNotice: {
             /**
-             * @description Plain text, up to 1000 characters (longer is refused with 422
-             *     `session.change_message_too_long`), may be empty. Clients offer
-             *     the `default_message` of the change-impact answer as a starting
-             *     point; whatever is sent is what buyers read. It must not promise
-             *     a refund: returning money is a separate conversation between the
-             *     organizer and the buyer.
+             * @description The text buyers read, up to 1000 visible characters (longer is
+             *     refused with 422 `session.change_message_too_long`), may be empty.
+             *     Read as `message_format` and stored as filtered HTML. A text that
+             *     cannot be accepted (forbidden characters, more than 3 links) is 422
+             *     `session.change_message_invalid` with `error.details.reason`.
+             *     Clients offer the `default_message` of the change-impact answer
+             *     (always plain text) as a starting point; whatever is sent is what
+             *     buyers read. It must not promise a refund: returning money is a
+             *     separate conversation between the organizer and the buyer.
              * @example We have moved the show by one week. Your ticket stays valid.
              */
             message?: string;
+            /**
+             * @description How `message` is written: `text` (the default, so a client that
+             *     sends no format, such as the Telegram bot, keeps working) is the old
+             *     plain text with the marks `**bold**`, `_italic_` and `- ` list
+             *     lines, `art` is "text Arena", a small HTML subset (`p`, `br`,
+             *     `strong`, `em`, `u`, `a[href]` to `https`, `ul`, `ol`, `li`; no
+             *     headings or quotes). The server never guesses the format from the
+             *     tags: an `art` text goes through one filter and is stored as ART,
+             *     a `text` is kept as typed, and the letters read both through the
+             *     same safe converter. Values: `text`, `art`.
+             *     Anything else answers 400 `session.invalid_message_format`.
+             * @example art
+             */
+            message_format?: string;
         };
         /**
          * @description What a session save did for buyers. Present on the PATCH and DELETE
@@ -25091,7 +25108,12 @@ export interface components {
              * @description The organizer's own text for the letter buyers get when this
              *     import MOVES a session that already has paid, live tickets (arena
              *     extension). Plain text, up to 1000 characters (longer is refused
-             *     with 422 `session.change_message_too_long`), may be empty;
+             *     with 422 `session.change_message_too_long`), may be empty. A
+             *     character that is never stored (a direction override, a control
+             *     or tag character) is removed silently, not refused. Any other
+             *     text the server cannot accept is 422
+             *     `session.change_message_invalid` (error pointer
+             *     `/changeMessage`);
              *     ignored when nothing a buyer can see changes. An import that
              *     would move such a session is refused, and writes nothing, with
              *     422 `organization.contact_missing` when the organizer has no
@@ -42886,6 +42908,20 @@ export interface operations {
                     "application/json": components["schemas"]["SessionDeleteResponse"];
                 };
             };
+            /**
+             * @description The optional body is invalid. Possible error codes:
+             *     `session.invalid_json` (the body is not valid JSON),
+             *     `session.invalid_message_format` (`notice.message_format` is
+             *     neither `text` nor `art`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Missing or invalid JWT. */
             401: {
                 headers: {
@@ -42906,6 +42942,26 @@ export interface operations {
             };
             /** @description Session not found (`session.not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The cancellation cannot be made. Possible error codes:
+             *     `organization.contact_missing` (buyers hold tickets and the
+             *     organizer has no contact e-mail),
+             *     `session.change_site_unsupported` (an affected order was sold
+             *     through a website),
+             *     `session.change_message_too_long` (`notice.message` over 1000
+             *     visible characters),
+             *     `session.change_message_invalid` (`notice.message` is ART that
+             *     has forbidden characters or too many links;
+             *     `error.details.reason`). Nothing is deleted.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -42977,7 +43033,9 @@ export interface operations {
              *     sent for a general-admission session, whose capacity is the
              *     sum of its category quantities;
              *     `error.details.reason = "category_sum"`),
-             *     `session.invalid_venue_id`, `session.venue_not_found`.
+             *     `session.invalid_venue_id`, `session.venue_not_found`,
+             *     `session.invalid_message_format` (`notice.message_format` is neither
+             *     `text` nor `art`).
              *     A `poster_media_id` that is not a UUID is `session.invalid_poster_media_id`.
              */
             400: {
@@ -43028,7 +43086,9 @@ export interface operations {
              *     organizer has no contact e-mail),
              *     `session.change_site_unsupported` (an affected order was sold
              *     through a website), `session.change_message_too_long`
-             *     (`notice.message` over 1000 characters).
+             *     (`notice.message` over 1000 visible characters),
+             *     `session.change_message_invalid` (`notice.message` has forbidden
+             *     characters or too many links; `error.details.reason`).
              *     A `poster_media_id` that is not a media object of this organization is `session.invalid_poster_media_id`.
              */
             422: {

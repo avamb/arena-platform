@@ -247,8 +247,14 @@ type ChangeData struct {
 	// OldVenue / NewVenue are venue display names (may be empty).
 	OldVenue string
 	NewVenue string
-	// Message is the organizer's own free text; may be empty. Plain text, the html engine escapes it.
+	// Message is the organizer's own text as plain text (the text part of the
+	// letter prints it; the html engine escapes it where it is used); may be empty.
 	Message string
+	// MessageHTML is the same message as safe markup for the HTML part
+	// (eventnote.BuildMessage: richtext.Render with the session_message
+	// profile, inline styles for mail clients). Empty means "print Message as
+	// plain text": Render then fills it with the escaped Message.
+	MessageHTML htmltemplate.HTML
 	// ContactName is the promoter / organization the buyer should write to;
 	// ContactPhone is empty when the organizer chose to hide it. ContactEmail
 	// is the address the letter prints; when it is empty the letter links
@@ -483,6 +489,9 @@ func (r *Renderer) ResolveLocale(kind, locale string) string {
 func (r *Renderer) Render(kind, locale string, data Data) (Rendered, error) {
 	if strings.TrimSpace(data.Accent) == "" {
 		data.Accent = DefaultAccentColor
+	}
+	if data.Change.MessageHTML == "" && data.Change.Message != "" {
+		data.Change.MessageHTML = htmltemplate.HTML(`<p style="margin:0;white-space:pre-line">` + htmltemplate.HTMLEscapeString(data.Change.Message) + `</p>`) //nolint:gosec // escaped
 	}
 	resolved := r.ResolveLocale(kind, locale)
 	key := kind + "." + resolved

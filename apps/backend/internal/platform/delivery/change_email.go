@@ -36,6 +36,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventnote"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
@@ -345,6 +346,10 @@ func (h *changeEmail) buildMessage(
 		contactEmail, contactForm = first.OrgContactEmail, first.ContactFormURL
 	}
 
+	// The organizer's message: ART (or an older plain text) through the one
+	// reader, richtext.Render with the session_message profile.
+	message := eventnote.BuildMessage(rec.Message, rec.MessageFormat)
+
 	newStart := formatSessionForEmail(rec.New.StartAt, rec.New.Timezone)
 	oldStart := formatSessionForEmail(rec.Old.StartAt, rec.Old.Timezone)
 	data := templates.Data{
@@ -364,7 +369,8 @@ func (h *changeEmail) buildMessage(
 			NewStart:       newStart,
 			OldVenue:       rec.Old.VenueName,
 			NewVenue:       rec.New.VenueName,
-			Message:        rec.Message,
+			Message:        message.Plain,
+			MessageHTML:    message.HTML,
 			ContactName:    contact.Name,
 			ContactEmail:   contactEmail,
 			ContactFormURL: contactForm,

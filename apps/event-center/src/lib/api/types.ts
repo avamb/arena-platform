@@ -102,6 +102,12 @@ export type SessionChangeImpact = S["SessionChangeImpact"];
 export type SessionChangeSummary = S["SessionChangeSummary"];
 export type OrganizerContact = S["OrganizerContact"];
 export type EventContactResponse = S["EventContactResponse"];
+// RT-11: the editor's "Format" button and the test letter of the text in the letter.
+export type TextFormatKind = S["TextFormatKind"];
+export type TextFormatRequest = S["TextFormatRequest"];
+export type TextFormatResponse = S["TextFormatResponse"];
+export type EventEmailNoteTestRequest = S["EventEmailNoteTestRequest"];
+export type EventEmailNoteTestResponse = S["EventEmailNoteTestResponse"];
 // 2-3: statistics of the hosted page (beacon counters).
 export type PageStatsResponse = S["PageStatsResponse"];
 export type PageStatsCounts = S["PageStatsCounts"];

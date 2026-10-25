@@ -1,5 +1,5 @@
 /**
- * The section "Event" of the wizard (task 6-1a): name, description, age and
+ * The section "Event" of the wizard (task 6-1a): name, description (the editor of RT-11, kept as ART), age and
  * who promotes it. The poster is task 6-3. Errors come in by field: some are
  * the wizard's own (a length), the rest are the server's check.
  */
@@ -8,7 +8,8 @@ import { listPromoters } from "@/lib/api/endpoints";
 import { useI18n } from "@/lib/i18n";
 import { AGE_OPTIONS, isAgeRating, type DraftAction, type WizardDraft } from "@/lib/wizard/draft";
 import type { FormField } from "@/lib/wizard/validation";
-import { SelectField, TextAreaField, TextField } from "@/components/FormField";
+import { SelectField, TextField } from "@/components/FormField";
+import { RichTextField } from "@/components/RichTextField";
 import { useOrg } from "@/screens/OrgLayout";
 
 export interface SectionProps {
@@ -44,7 +45,9 @@ export function WizardEventSection({ draft, dispatch, touch, errorOf }: SectionP
         onBlur={() => touch("name")}
         testId="wizard-name"
       />
-      <TextAreaField
+      <RichTextField
+        profile="description"
+        orgId={orgId}
         label={t("wizard.f.description")}
         hint={t("wizard.f.descriptionHint")}
         error={errorOf("description")}

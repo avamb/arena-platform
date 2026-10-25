@@ -14,6 +14,7 @@ import type { SessionChangeImpact } from "@/lib/api/types";
 import type { DryRunResult } from "@/lib/dryRun";
 import type { Params } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
+import { artOfLegacy, overMarkupLimit, overVisibleLimit, visibleLength } from "@/lib/richText";
 
 // ─── Permissions and visibility ─────────────────────────────────────────────
 
@@ -21,7 +22,10 @@ import type { MessageKey } from "@/lib/i18n/en";
 export const SESSION_UPDATE_PERMISSION = "session.update";
 /** The permission PUT .../events/{id}/contact asks for. */
 export const EVENT_UPDATE_PERMISSION = "event.update";
-/** The longest message to buyers the API accepts, in characters (sessionchange.MaxMessageRunes). */
+/**
+ * The longest message to buyers the API accepts, in VISIBLE characters (sessionchange.MaxMessageRunes, the
+ * session_message profile of spec 44): the text a reader sees, not the length of its HTML.
+ */
 export const MAX_NOTICE_CHARS = 1000;
 
 export interface ChangeButtons {
@@ -201,7 +205,8 @@ export interface SessionPatchBody {
   start_at?: string;
   venue_id?: string;
   status?: "cancelled";
-  notice?: { message: string };
+  /** The message is ART, the editor's HTML subset, and says so (RT-11): the server never guesses the format. */
+  notice?: { message: string; message_format: "art" };
 }
 
 /**
@@ -213,24 +218,25 @@ export function moveBody(p: MoveProposal, message: string | null): SessionPatchB
   const body: SessionPatchBody = {};
   if (p.startAt !== null) body.start_at = p.startAt;
   if (p.venueId !== null) body.venue_id = p.venueId;
-  if (message !== null) body.notice = { message };
+  if (message !== null) body.notice = { message, message_format: "art" };
   return body;
 }
 
 /** The body of PATCH .../sessions/{id} for a cancellation, same as the bot's. */
 export function cancelBody(message: string | null): SessionPatchBody {
   const body: SessionPatchBody = { status: "cancelled" };
-  if (message !== null) body.notice = { message };
+  if (message !== null) body.notice = { message, message_format: "art" };
   return body;
 }
 
-/** The characters of a message the way the API counts them (code points). */
+/** The visible characters of a message (ART) the way the API counts them (code points of the text). */
 export function noticeLength(message: string): number {
-  return Array.from(message).length;
+  return visibleLength(message, "session_message");
 }
 
+/** True when the message is over the visible limit, or has too many links or too much HTML for the server. */
 export function noticeTooLong(message: string): boolean {
-  return noticeLength(message) > MAX_NOTICE_CHARS;
+  return overVisibleLimit(message, "session_message") || overMarkupLimit(message, "session_message");
 }
 
 /** The message to send: null when no buyer gets a letter, else the text as typed. */
@@ -248,19 +254,27 @@ export interface MessageState {
 
 export const emptyMessage: MessageState = { text: "", touched: false };
 
-/** A new suggested text arrived: it fills an untouched field and never overwrites a typed one. */
-export function withSuggested(state: MessageState, suggested: string): MessageState {
-  return state.touched ? state : { text: suggested, touched: false };
+/**
+ * The text the dry run suggests (`default_message`, always plain text) as ART, the format the editor holds.
+ * "" stays "".
+ */
+export function suggestedArt(plain: string): string {
+  return artOfLegacy(plain, "session_message");
 }
 
-/** The person typed. */
+/** A new suggested text arrived: it fills an untouched field and never overwrites a typed one. */
+export function withSuggested(state: MessageState, suggested: string): MessageState {
+  return state.touched ? state : { text: suggestedArt(suggested), touched: false };
+}
+
+/** The person typed (`text` is ART). */
 export function typeMessage(text: string): MessageState {
   return { text, touched: true };
 }
 
 /** The person asked for the suggested text back. */
 export function resetToSuggested(suggested: string): MessageState {
-  return { text: suggested, touched: false };
+  return { text: suggestedArt(suggested), touched: false };
 }
 
 // ─── Dry run → the lines of DryRunConfirm ───────────────────────────────────

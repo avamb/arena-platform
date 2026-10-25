@@ -42,6 +42,7 @@ var sessionKeys = []string{
 	"bot.ses.msg_clear_btn",
 	"bot.ses.msg_default_btn",
 	"bot.ses.msg_too_long",
+	"bot.ses.msg_invalid",
 	"bot.ses.go_move_btn",
 	"bot.ses.go_move_free_btn",
 	"bot.ses.go_cancel_btn",

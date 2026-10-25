@@ -24,7 +24,10 @@ import { endOfInclusiveDayRfc3339, formatRfc3339, startOfDayRfc3339, wallToEpoch
 
 export interface BundleAction {
   actionName: string;
+  /** ART, the editor's HTML subset (spec 44, RT-11); the server filters it once more. */
   description: string;
+  /** The wizard always writes ART: the server reads `description` with this flag and never guesses it. */
+  descriptionFormat: "art";
   age: string;
   /** "" = the organization itself promotes the event (the bot sends it too). */
   promoterId: string;
@@ -222,6 +225,7 @@ export function buildBundle(draft: WizardDraft, opts: BuildOptions, index = 0): 
     action: {
       actionName: e.name.trim(),
       description: e.description.trim(),
+      descriptionFormat: "art",
       age: e.age,
       promoterId: e.promoterId,
     },

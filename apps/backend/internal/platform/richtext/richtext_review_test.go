@@ -627,3 +627,20 @@ func BenchmarkNormalizeTextAtTheLimit(b *testing.B) {
 		}
 	}
 }
+
+func TestStripRefused(t *testing.T) {
+	flag := "\U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F"
+	for in, want := range map[string]string{
+		"plain text":         "plain text",
+		"a\tb\nc\u200dd":     "a\tb\nc\u200dd", // tab, line break, joiner kept
+		"a\u202eb\u202bc":    "abc",
+		"c1\u0085\u009f":     "c1",
+		"Match " + flag:      "Match \U0001F3F4",
+		"x\u2062y\u2060z":    "xy\u2060z", // an invisible operator goes, a word joiner is Sanitize's
+		"\u2028line\u2029ps": "\u2028line\u2029ps",
+	} {
+		if got := StripRefused(in); got != want {
+			t.Errorf("StripRefused(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
