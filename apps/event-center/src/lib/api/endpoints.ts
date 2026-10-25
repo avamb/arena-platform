@@ -56,6 +56,11 @@ import type {
   PromoCodeEnvelope,
   PromoCodeListResponse,
   PromoRedemptionListResponse,
+  SalesLink,
+  SalesLinkCreateRequest,
+  SalesLinkList,
+  SalesLinkStats,
+  SalesLinkUpdateRequest,
   SessionChangeImpact,
   SessionEnvelope,
   SessionListResponse,
@@ -907,4 +912,64 @@ export function fetchServiceFeeQuote(
 /** Sets the payer details printed on the invoices. */
 export function putBillingPayer(orgId: string, body: BillingPayerRequest): Promise<BillingPayerResponse> {
   return call<BillingPayerResponse>({ route: API.billingPayer, params: { org_id: orgId }, body });
+}
+
+// ── QL-12: tracked sales links and QR codes (spec 43) ─────────────────
+
+export type SalesLinkStatusFilter = "active" | "archived" | "all";
+
+export interface SalesLinkListQuery {
+  status?: SalesLinkStatusFilter;
+  eventId?: string;
+  sessionId?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+/** One page of the organization's links, newest first; `next_cursor` fetches the next page. */
+export function listSalesLinks(orgId: string, q: SalesLinkListQuery = {}): Promise<SalesLinkList> {
+  return call<SalesLinkList>({
+    route: API.salesLinks,
+    params: { org_id: orgId },
+    query: { status: q.status, event_id: q.eventId, session_id: q.sessionId, cursor: q.cursor, limit: q.limit },
+  });
+}
+
+export function fetchSalesLink(orgId: string, linkId: string): Promise<SalesLink> {
+  return call<SalesLink>({ route: API.salesLink, params: { org_id: orgId, id: linkId } });
+}
+
+export function createSalesLink(orgId: string, body: SalesLinkCreateRequest): Promise<SalesLink> {
+  return call<SalesLink>({ route: API.salesLinkCreate, params: { org_id: orgId }, body });
+}
+
+/**
+ * Changes a link. The caller sends only the keys it means to change; a
+ * `utm` key always carries the WHOLE set (the generated type has no
+ * omitempty, so an undefined key must not be written as null).
+ */
+export function updateSalesLink(orgId: string, linkId: string, body: SalesLinkUpdateRequest): Promise<SalesLink> {
+  const clean: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(body)) if (v !== undefined) clean[k] = v;
+  return call<SalesLink>({ route: API.salesLinkUpdate, params: { org_id: orgId, id: linkId }, body: clean });
+}
+
+/** Scans per day and country of the range (UTC days) and the orders of the link. */
+export function fetchSalesLinkStats(orgId: string, linkId: string, range: { from?: string; to?: string } = {}): Promise<SalesLinkStats> {
+  return call<SalesLinkStats>({
+    route: API.salesLinkStats,
+    params: { org_id: orgId, id: linkId },
+    query: { from: range.from, to: range.to },
+  });
+}
+
+/** The QR image of the link's short address, as a file to show or to save. */
+export function downloadSalesLinkQr(orgId: string, linkId: string, format: "png" | "svg", code: string, size = 1024): Promise<DownloadedFile> {
+  return download({
+    route: API.salesLinkQr,
+    params: { org_id: orgId, id: linkId },
+    query: { format, size: format === "png" ? size : undefined },
+    accept: format === "png" ? "image/png" : "image/svg+xml",
+    fallbackName: "qr-" + code + "." + format,
+  });
 }

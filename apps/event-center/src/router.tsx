@@ -34,6 +34,10 @@ import { TeamScreen } from "@/screens/TeamScreen";
 import { EventWizardScreen } from "@/screens/EventWizardScreen";
 import { parsePromoCardSearch, parsePromoListSearch } from "@/lib/promo";
 import { parseCopyFrom } from "@/lib/promoScope";
+import { LinksScreen } from "@/screens/LinksScreen";
+import { LinkCreateScreen } from "@/screens/LinkCreateScreen";
+import { LinkScreen } from "@/screens/LinkScreen";
+import { parseLinkCardSearch, parseLinkNewSearch, parseLinksSearch } from "@/lib/salesLinks";
 
 const rootRoute = createRootRoute({ component: RootLayout, notFoundComponent: NotFoundScreen });
 
@@ -219,6 +223,28 @@ const eventNewRoute = createRoute({
   component: EventWizardScreen,
 });
 
+// QL-12: sales links and QR codes (spec 43). "new" is listed before "$linkId" so it is never read as an id.
+const linksRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/links",
+  validateSearch: parseLinksSearch,
+  component: LinksScreen,
+});
+
+const linkNewRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/links/new",
+  validateSearch: parseLinkNewSearch,
+  component: LinkCreateScreen,
+});
+
+const linkRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/links/$linkId",
+  validateSearch: parseLinkCardSearch,
+  component: LinkScreen,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -247,6 +273,9 @@ export const routeTree = rootRoute.addChildren([
     teamRoute,
     orgDataRoute,
     eventNewRoute,
+    linksRoute,
+    linkNewRoute,
+    linkRoute,
   ]),
 ]);
 

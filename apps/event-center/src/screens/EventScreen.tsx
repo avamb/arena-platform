@@ -147,6 +147,12 @@ export function EventScreen() {
             {t("event.orders")}
           </Link>
         )}
+        {/* QL-12: a short link and QR code that lead to this event. */}
+        {access.can("sales_link.manage") && (
+          <Link to="/o/$orgId/links/new" params={{ orgId }} search={{ event: eventId }} className="btn" data-testid="event-qr-link">
+            {t("links.button")}
+          </Link>
+        )}
       </div>
 
       <EventStatusBlock

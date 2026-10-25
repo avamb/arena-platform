@@ -183,6 +183,14 @@ export const API = {
   eventPageStatsCsv: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/page-stats.csv" },
   // M2: the tickets of a session with their entry at the door.
   sessionTickets: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/tickets" },
+  // QL-12: tracked sales links and their QR codes (spec 43). A PATCH sends the
+  // whole utm object or leaves the key out: "utm": null erases the labels.
+  salesLinks: { method: "GET", path: "/v1/organizations/{org_id}/sales-links" },
+  salesLinkCreate: { method: "POST", path: "/v1/organizations/{org_id}/sales-links" },
+  salesLink: { method: "GET", path: "/v1/organizations/{org_id}/sales-links/{id}" },
+  salesLinkUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/sales-links/{id}" },
+  salesLinkStats: { method: "GET", path: "/v1/organizations/{org_id}/sales-links/{id}/stats" },
+  salesLinkQr: { method: "GET", path: "/v1/organizations/{org_id}/sales-links/{id}/qr" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;
