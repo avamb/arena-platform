@@ -6,6 +6,7 @@ import {
   MESSAGES,
   resolveLocale,
   type CreateOptions,
+  type FormatRequest,
   type FormatResult,
   type Locale,
   type ProfileName,
@@ -261,10 +262,11 @@ describe('the Format button', () => {
   const result = (html: string, ai_applied = true): FormatResult => ({ html, ai_applied })
 
   it('sends the plain text, applies the answer and undo brings the old text back in one step', async () => {
-    const format = vi.fn(async (_text: string) => result('<p><strong>Concert</strong></p><ul><li>one</li><li>two</li></ul>'))
+    const format = vi.fn(async (_request: FormatRequest) => result('<p><strong>Concert</strong></p><ul><li>one</li><li>two</li></ul>'))
     const { editor, root, button, click } = setup('description', { value: '<p>Concert</p><p>one<br>two</p>', format })
     click('format')
-    expect(format).toHaveBeenCalledWith('Concert\n\none\ntwo')
+    // The API gets the plain text and the profile name (its `kind`).
+    expect(format).toHaveBeenCalledWith({ text: 'Concert\n\none\ntwo', profile: 'description' })
     expect(button('format')?.disabled).toBe(true) // busy
     expect(root.getAttribute('aria-busy')).toBe('true')
     expect(editor.editor.isEditable).toBe(false)
@@ -514,7 +516,12 @@ describe('languages', () => {
     for (const l of LOCALES) {
       const { root } = setup('description', { locale: l })
       expect(root.getAttribute('dir')).toBe(l === 'he' ? 'rtl' : 'ltr')
-      expect(root.getAttribute('lang')).toBe(l)
+      // The interface language sits on the panel, the dialog and the footer, never on the text itself.
+      expect(root.getAttribute('lang')).toBeNull()
+      expect(root.querySelector('.ProseMirror')?.closest('[lang]')).toBeNull()
+      for (const part of ['.arena-re__toolbar', '.arena-re__link', '.arena-re__footer']) {
+        expect(root.querySelector(part)?.getAttribute('lang')).toBe(l)
+      }
     }
     expect(setup('description', { locale: 'en', dir: 'rtl' }).root.getAttribute('dir')).toBe('rtl')
   })

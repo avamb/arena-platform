@@ -96,3 +96,36 @@ export function runeCount(s: string): number {
   }
   return n
 }
+
+/** A UTF-16 surrogate code unit on its own (a half of a pair). Go reads it as U+FFFD after JSON. */
+export function isLoneSurrogate(cp: number): boolean {
+  return cp >= 0xd800 && cp <= 0xdfff
+}
+
+/**
+ * Removes the characters that never reach a stored text: the ones the policy
+ * refuses or strips, and lone surrogates (JSON would turn them into U+FFFD, so
+ * the text saved would differ from the text shown). Line breaks and tabs stay.
+ * `for...of` yields a valid pair as one code point, so only lone halves are cut.
+ */
+export function stripForbiddenChars(text: string): string {
+  let out = ''
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) as number
+    if (isLoneSurrogate(cp)) continue
+    const action = charPolicy(cp)
+    if (action === CharAction.Refuse || action === CharAction.Strip) continue
+    out += ch
+  }
+  return out
+}
+
+/** Length in UTF-8 bytes, like Go's len(string). A lone surrogate counts as U+FFFD (3 bytes). */
+export function byteLength(s: string): number {
+  let n = 0
+  for (const ch of s) {
+    const cp = ch.codePointAt(0) as number
+    n += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4
+  }
+  return n
+}

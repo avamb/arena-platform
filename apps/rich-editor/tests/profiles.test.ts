@@ -50,6 +50,8 @@ describe('profiles: the Go table, field by field', () => {
       expect(p.maxVisible).toBe(goInt(body, 'MaxVisible'))
       expect(p.maxHtml).toBe(goInt(body, 'MaxHTML'))
       expect(p.maxLinks).toBe(goInt(body, 'MaxLinks'))
+      // StrictSchemeWords is true in Go for the profiles that set it and absent (false) elsewhere.
+      expect(p.strictSchemeWords).toBe(/StrictSchemeWords:\s*true/.test(body))
     })
   }
 

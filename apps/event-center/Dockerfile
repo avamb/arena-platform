@@ -38,19 +38,21 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 # The shared editor library (spec 44, RT-10). event-center depends on it as
-# "@arena/rich-editor": "file:../rich-editor", which from /app is /rich-editor,
-# so it is installed and built there first: the link needs its dist/.
-# Lockfile first, so npm ci is cached independently from source changes.
+# "@arena/rich-editor": "file:../rich-editor", which from /app is /rich-editor.
+# npm ci links it and needs only its package.json there, so the manifests of
+# both packages come first and every dependency layer is built from them alone:
+# a change to the editor sources (or to the event center sources) never
+# reinstalls anything.
 COPY apps/rich-editor/package.json apps/rich-editor/package-lock.json /rich-editor/
-RUN npm --prefix /rich-editor ci --no-audit --no-fund
-COPY apps/rich-editor/ /rich-editor/
-RUN npm --prefix /rich-editor run build
-
-# Copy only the lockfile + package.json first so npm ci is cached
-# independently from source changes.
 COPY apps/event-center/package.json apps/event-center/package-lock.json ./
 
 RUN npm ci --no-audit --no-fund
+RUN npm --prefix /rich-editor ci --no-audit --no-fund
+
+# The editor sources, only now: the link needs the built dist/ (the types and
+# the ESM bundle) before tsc and vite of the event center run.
+COPY apps/rich-editor/ /rich-editor/
+RUN npm --prefix /rich-editor run build
 
 # Copy the OpenAPI TypeScript declarations (type-only; needed by tsc).
 COPY apps/backend/openapi/clients/ts/ /openapi-clients/ts/

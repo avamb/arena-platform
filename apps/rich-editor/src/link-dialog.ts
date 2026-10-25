@@ -12,6 +12,8 @@ export interface LinkDialogOptions {
   profile: Profile
   messages: Messages
   idPrefix: string
+  /** The interface language, set on the dialog (the editing text has its own). */
+  locale: string
   /** How many links the text has now. */
   linkCount: () => number
   /** Called after the dialog closed, so the host can refresh the toolbar. */
@@ -30,6 +32,7 @@ export function createLinkDialog(o: LinkDialogOptions): LinkDialog {
   const mailto = profileAllowsScheme(profile, 'mailto')
   const el = document.createElement('div')
   el.className = 'arena-re__link'
+  el.setAttribute('lang', o.locale)
   el.setAttribute('role', 'dialog')
   el.setAttribute('aria-labelledby', o.idPrefix + '-link-title')
   el.hidden = true
@@ -116,6 +119,7 @@ export function createLinkDialog(o: LinkDialogOptions): LinkDialog {
   }
 
   function open(): void {
+    if (!editor.isEditable) return // a read-only text takes no link
     const existing = editor.isActive('link') ? (editor.getAttributes('link').href as string | undefined) : undefined
     editing = !!existing
     const empty = editor.state.selection.empty
@@ -131,6 +135,10 @@ export function createLinkDialog(o: LinkDialogOptions): LinkDialog {
 
   form.addEventListener('submit', (ev) => {
     ev.preventDefault()
+    if (!editor.isEditable) {
+      close(false)
+      return
+    }
     const href = parseLinkInput(address.input.value, profile)
     if (href === null) {
       showError(mailto ? t.linkInvalidMailto : t.linkInvalidHttps)

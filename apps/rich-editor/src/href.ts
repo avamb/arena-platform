@@ -3,18 +3,8 @@
 // user-info, port, IP address or localhost, a mailto link is just an address,
 // and no whitespace, control, bidi or invisible character occurs anywhere.
 
-import { CharAction, charPolicy, isUnicodeSpace, isWS } from './chars'
+import { byteLength, CharAction, charPolicy, isLoneSurrogate, isUnicodeSpace, isWS } from './chars'
 import { MAX_LINK_LENGTH, profileAllowsScheme, type Profile } from './profiles'
-
-/** Length in UTF-8 bytes, like Go's len(string). */
-function byteLength(s: string): number {
-  let n = 0
-  for (const ch of s) {
-    const cp = ch.codePointAt(0) as number
-    n += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4
-  }
-  return n
-}
 
 function isSpaceChar(c: string): boolean {
   const cp = c.codePointAt(0) as number
@@ -40,6 +30,7 @@ export function cleanHref(raw: string, p: Profile): string | null {
     const cp = ch.codePointAt(0) as number
     if (
       isUnicodeSpace(cp) ||
+      isLoneSurrogate(cp) || // JSON would turn it into U+FFFD
       charPolicy(cp) !== CharAction.Plain ||
       ch === BACKSLASH ||
       ch === '"' ||
@@ -96,8 +87,13 @@ function validLocalPart(s: string): boolean {
   return true
 }
 
-/** IDNA (UTS 46) to ASCII, the way a browser reads a host. Null when it fails. */
+/**
+ * IDNA (UTS 46) to ASCII, the way a browser reads a host (Go: idna.Lookup). Null when it fails.
+ * The URL parser ends the host at "/", "?" and "#" and keeps going, Go's STD3 rules refuse them in
+ * a name, so they are refused here before the parser can cut them off.
+ */
 function toASCII(authority: string): string | null {
+  if (/[/?#]/.test(authority)) return null
   try {
     const u = new URL('https://' + authority)
     // A host with a path, port, user-info or the like would not round trip.
@@ -123,8 +119,10 @@ function cleanHost(authority: string): string | null {
     if ((c < 'a' || c > 'z') && (c < '0' || c > '9') && c !== '-' && c !== '.') return null
   }
   for (const label of host.split('.')) {
-    // IDNA label rules (CheckHyphens, VerifyDNSLength): the Go side refuses what a browser would still open.
-    if (label.length < 1 || label.length > 63 || label.startsWith('-') || label.endsWith('-')) return null
+    // IDNA CheckHyphens, as in idna.Lookup. The label length is not checked: Lookup does not
+    // verify DNS lengths (only the whole name is kept to 253 characters above), and a link Go
+    // saved must stay a link when the editor opens it.
+    if (label.length < 1 || label.startsWith('-') || label.endsWith('-')) return null
     if (label.slice(2, 4) === '--' && !label.startsWith('xn--')) return null
   }
   if (host === 'localhost' || host.endsWith('.localhost')) return null

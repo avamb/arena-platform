@@ -3,14 +3,15 @@
 // core with injectCSS off (the host loads rich-editor.css), no NodeViews and
 // no inline styles, so it runs under a strict CSP.
 
-import { Editor } from '@tiptap/core'
+import { Editor, createDocument } from '@tiptap/core'
 import { closeHistory } from '@tiptap/pm/history'
+import { EditorState, Selection } from '@tiptap/pm/state'
 
 import { buildExtensions } from './extensions'
 import { directionOf, format, MESSAGES, resolveLocale, type Locale } from './i18n'
 import { createLinkDialog } from './link-dialog'
 import { parseHtml, measure, sanitize, type TextStats } from './sanitize'
-import { plainText } from './model'
+import { hasFormatting, plainText } from './model'
 import { PROFILES, profileByName, type Profile, type ProfileName } from './profiles'
 import { createToolbar } from './toolbar'
 
@@ -20,6 +21,12 @@ export interface FormatResult {
   ai_applied: boolean
   reason?: string
   prompt_version?: string
+}
+
+/** What the host's format callback gets: the plain text and the profile name, which is the `kind` of the API. */
+export interface FormatRequest {
+  text: string
+  profile: ProfileName
 }
 
 export interface EditorStats {
@@ -33,7 +40,9 @@ export interface EditorStats {
   maxHtml: number
   /** True when the text has no visible content. */
   empty: boolean
-  /** True when a limit is exceeded; the API stays the final judge. */
+  /** True when the profile is strict about scheme words and the text holds one (the API: scheme_not_allowed). */
+  schemeWord: boolean
+  /** True when a limit is exceeded or a scheme word is in the text; the API stays the final judge. */
   overLimit: boolean
 }
 
@@ -47,18 +56,19 @@ export interface CreateOptions {
   /** Called after every change made by the person with the canonical HTML. */
   onChange?: (html: string, stats: EditorStats) => void
   /**
-   * Adds the "Format" button. The host sends the text to the API
-   * (POST /v1/organizations/{org_id}/texts/format) and returns its answer.
-   * The result goes in as one step that undo reverses.
+   * Adds the "Format" button. The host sends the plain text to the API
+   * (POST /v1/organizations/{org_id}/texts/format with `kind` = request.profile)
+   * and returns its answer. Links and styling of the text are not sent: the
+   * status warns about it. The result goes in as one step that undo reverses.
    */
-  format?: (text: string) => Promise<FormatResult>
+  format?: (request: FormatRequest) => Promise<FormatResult>
   /** Text direction. Default: rtl for he, ltr for the rest. */
   dir?: 'ltr' | 'rtl'
   /** aria-label of the editing area. Default: the localized "Text editor". */
   label?: string
   /** id of an element that labels the editing area (takes precedence over label). */
   labelledBy?: string
-  /** Makes the text read-only. */
+  /** Makes the text read-only: no typing, no toolbar, no Format, no link dialog. */
   disabled?: boolean
 }
 
@@ -67,7 +77,7 @@ export interface RichEditor {
   readonly editor: Editor
   /** The canonical ART: what the Go sanitizer accepts unchanged. "" for no text. */
   getHTML: () => string
-  /** Replaces the text (cut down to the profile) and clears the undo history. */
+  /** Replaces the text (cut down to the profile) and clears the undo history. Makes no onChange call. */
   setHTML: (html: string) => void
   /** The plain text of the editor, paragraphs separated by a blank line. */
   getText: () => string
@@ -82,6 +92,7 @@ let instanceCounter = 0
 
 function toStats(s: TextStats, p: Profile): EditorStats {
   return {
+    schemeWord: s.schemeWord,
     visible: s.visible,
     maxVisible: p.maxVisible,
     links: s.links,
@@ -89,8 +100,14 @@ function toStats(s: TextStats, p: Profile): EditorStats {
     htmlLength: s.htmlLength,
     maxHtml: p.maxHtml,
     empty: s.html === '',
-    overLimit: s.visible > p.maxVisible || s.links > p.maxLinks || s.htmlLength > p.maxHtml,
+    overLimit: s.visible > p.maxVisible || s.links > p.maxLinks || s.htmlLength > p.maxHtml || s.schemeWord,
   }
+}
+
+/** What the status line warns about: a counted limit first, then a scheme word. */
+function problemOf(s: EditorStats): 'limit' | 'scheme' | null {
+  if (s.visible > s.maxVisible || s.links > s.maxLinks || s.htmlLength > s.maxHtml) return 'limit'
+  return s.schemeWord ? 'scheme' : null
 }
 
 /** Canonical ART of a text for the profile, or "" when it cannot be read. */
@@ -116,7 +133,6 @@ export function create(element: HTMLElement, options: CreateOptions): RichEditor
   const root = document.createElement('div')
   root.className = 'arena-re'
   root.setAttribute('dir', dir)
-  root.setAttribute('lang', locale)
   root.setAttribute('data-profile', profile.name)
 
   const body = document.createElement('div')
@@ -124,6 +140,7 @@ export function create(element: HTMLElement, options: CreateOptions): RichEditor
 
   const footer = document.createElement('div')
   footer.className = 'arena-re__footer'
+  footer.setAttribute('lang', locale) // the counter and the status speak the interface language
   const counter = document.createElement('span')
   counter.className = 'arena-re__counter'
   counter.id = id + '-counter'
@@ -135,7 +152,8 @@ export function create(element: HTMLElement, options: CreateOptions): RichEditor
 
   let destroyed = false
   let busy = false
-  let lastOver = false
+  let lastProblem: 'limit' | 'scheme' | null = null
+  let html = ''
   let stats: EditorStats = toStats(measure('', profile), profile)
 
   // What the status line says: a result of Format goes away at the next change of the text, the
@@ -152,7 +170,10 @@ export function create(element: HTMLElement, options: CreateOptions): RichEditor
 
   const editor = new Editor({
     element: body,
-    extensions: buildExtensions(profile, { onLink: () => dialog.open() }),
+    extensions: buildExtensions(profile, {
+      onLink: () => dialog.open(),
+      onPasteFallback: () => setStatus(t.pasteFallback),
+    }),
     content: cleanOrEmpty(options.value ?? '', profile),
     injectCSS: false,
     editable: !options.disabled,
@@ -167,10 +188,17 @@ export function create(element: HTMLElement, options: CreateOptions): RichEditor
     },
   })
 
+  /** One parse of the text gives the canonical HTML and the counters; the result is kept for this document. */
+  let statsDoc: unknown = null
   const readStats = (): EditorStats => {
-    stats = toStats(measure(editor.getHTML(), profile), profile)
+    const m = measure(editor.getHTML(), profile)
+    html = m.html
+    stats = toStats(m, profile)
+    statsDoc = editor.state.doc
     return stats
   }
+  /** The counters of the document as it is now (a command run on editor.commands changes it too). */
+  const currentStats = (): EditorStats => (statsDoc === editor.state.doc ? stats : readStats())
 
   const renderCounter = () => {
     const parts = [format(t.counter, { n: stats.visible, max: stats.maxVisible })]
@@ -179,13 +207,25 @@ export function create(element: HTMLElement, options: CreateOptions): RichEditor
     counter.classList.toggle('arena-re__counter--over', stats.overLimit)
   }
 
-  const getHTML = () => cleanOrEmpty(editor.getHTML(), profile)
+  const getHTML = () => {
+    currentStats()
+    return html
+  }
+
+  /** The status line text for a problem of the text. */
+  const problemMessage = (problem: 'limit' | 'scheme' | null): string =>
+    problem === 'limit'
+      ? format(t.overLimit, { n: Math.max(stats.visible - stats.maxVisible, 1) })
+      : problem === 'scheme'
+        ? t.schemeWord
+        : ''
 
   const dialog = createLinkDialog({
     editor,
     profile,
     messages: t,
     idPrefix: id,
+    locale,
     linkCount: () => stats.links,
     onClose: () => toolbar.refresh(),
   })
@@ -195,6 +235,7 @@ export function create(element: HTMLElement, options: CreateOptions): RichEditor
     profile,
     messages: t,
     dir,
+    locale,
     openLink: () => dialog.open(),
     runFormat: options.format ? () => void runFormat() : undefined,
     isBusy: () => busy,
@@ -203,22 +244,41 @@ export function create(element: HTMLElement, options: CreateOptions): RichEditor
   root.append(toolbar.el, dialog.el, body, footer)
   element.appendChild(root)
 
+  /** aria-readonly on the editing area while the host made the text read-only. */
+  const applyReadOnly = () => {
+    if (options.disabled) editor.view.dom.setAttribute('aria-readonly', 'true')
+    else editor.view.dom.removeAttribute('aria-readonly')
+  }
+
+  // Bumped by setHTML: an answer of Format that comes after it is not applied to the new text.
+  let epoch = 0
+
   async function runFormat(): Promise<void> {
     const callback = options.format
-    if (!callback || busy || destroyed) return
-    const text = plainText(parseHtml(editor.getHTML(), profile))
+    if (!callback || busy || destroyed || !editor.isEditable) return
+    const doc = parseHtml(editor.getHTML(), profile)
+    const text = plainText(doc)
     if (text.trim() === '') {
       setStatus(t.formatEmpty)
       return
     }
+    // Only the plain text goes to the API: a link or styling in the text would be replaced.
+    const lossy = hasFormatting(doc)
+    const withWarning = (message: string) => (lossy ? message + ' ' + t.formatLossy : message)
+    const started = epoch
     busy = true
     root.setAttribute('aria-busy', 'true')
     editor.setEditable(false, false)
-    setStatus(t.formatting)
+    setStatus(withWarning(t.formatting))
     toolbar.refresh()
     try {
-      const result = await callback(text)
+      const result = await callback({ text, profile: profile.name })
       if (destroyed) return
+      if (epoch !== started) return // setHTML replaced the text meanwhile (and cleared the status)
+      if (options.disabled) {
+        setStatus('') // locked meanwhile: nothing is applied
+        return
+      }
       const clean = cleanOrEmpty(result.html, profile)
       if (clean === '') {
         setStatus(t.formatFailed)
@@ -231,15 +291,17 @@ export function create(element: HTMLElement, options: CreateOptions): RichEditor
           closeHistory(tr)
           return true
         })
-        .setContent(clean, true)
+        .setContent(clean, { emitUpdate: true })
         .run()
       editor.chain().command(({ tr }) => {
         closeHistory(tr)
         return true
       }).run()
-      setStatus(result.ai_applied ? t.formatDone : t.formatPlain, 'format')
+      const problem = problemOf(currentStats())
+      const done = withWarning(result.ai_applied ? t.formatDone : t.formatPlain)
+      setStatus(problem === null ? done : done + ' ' + problemMessage(problem), 'format')
     } catch {
-      if (!destroyed) setStatus(t.formatFailed)
+      if (!destroyed && epoch === started) setStatus(t.formatFailed)
     } finally {
       busy = false
       if (!destroyed) {
@@ -255,44 +317,54 @@ export function create(element: HTMLElement, options: CreateOptions): RichEditor
     readStats()
     renderCounter()
     if (statusKind === 'format') setStatus('')
-    if (stats.overLimit !== lastOver) {
-      lastOver = stats.overLimit
-      if (stats.overLimit) {
-        setStatus(format(t.overLimit, { n: Math.max(stats.visible - stats.maxVisible, 1) }), 'limit')
-      } else if (statusKind === 'limit') {
-        setStatus('')
-      }
+    const problem = problemOf(stats)
+    if (problem !== lastProblem) {
+      lastProblem = problem
+      if (problem !== null) setStatus(problemMessage(problem), 'limit')
+      else if (statusKind === 'limit') setStatus('')
     }
-    options.onChange?.(getHTML(), stats)
+    options.onChange?.(html, stats)
   }
 
   editor.on('update', onUpdate)
   editor.on('transaction', () => toolbar.refresh())
   readStats()
   renderCounter()
-  lastOver = stats.overLimit
+  lastProblem = problemOf(stats)
+  if (lastProblem !== null) setStatus(problemMessage(lastProblem), 'limit')
+  applyReadOnly()
   toolbar.refresh()
 
   return {
     editor,
     getHTML,
-    setHTML(html: string) {
-      const clean = cleanOrEmpty(html, profile)
-      editor.chain().setMeta('addToHistory', false).setContent(clean, false).run()
+    setHTML(value: string) {
+      if (destroyed) return
+      epoch++
+      const clean = cleanOrEmpty(value, profile)
+      // A new state, not a transaction: only that starts the undo history empty again.
+      const doc = createDocument(clean, editor.schema)
+      editor.view.updateState(
+        EditorState.create({ schema: editor.schema, doc, plugins: editor.state.plugins, selection: Selection.atEnd(doc) }),
+      )
       readStats()
       renderCounter()
-      lastOver = stats.overLimit
-      setStatus('')
+      lastProblem = problemOf(stats)
+      setStatus(problemMessage(lastProblem), 'limit')
       toolbar.refresh()
     },
     getText: () => plainText(parseHtml(editor.getHTML(), profile)),
-    getStats: () => stats,
+    getStats: () => currentStats(),
     focus: () => {
       editor.commands.focus()
     },
     setDisabled(disabled: boolean) {
+      if (destroyed) return
       options.disabled = disabled
       editor.setEditable(!disabled && !busy, false)
+      if (disabled) dialog.close(false)
+      applyReadOnly()
+      toolbar.refresh()
     },
     destroy() {
       if (destroyed) return

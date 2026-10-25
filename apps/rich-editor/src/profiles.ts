@@ -20,6 +20,11 @@ export interface Profile {
   readonly maxHtml: number
   /** How many links the text may carry. */
   readonly maxLinks: number
+  /**
+   * Refuses a visible text that holds a "javascript:", "data:", "http:" and the like as a word
+   * (Go: StrictSchemeWords, the strictness of the old email note).
+   */
+  readonly strictSchemeWords: boolean
 }
 
 /** The longest link target, in bytes (Go: MaxLinkLength). */
@@ -42,6 +47,7 @@ export const PROFILES: Readonly<Record<ProfileName, Profile>> = Object.freeze({
     maxVisible: 4000,
     maxHtml: 16000,
     maxLinks: 20,
+    strictSchemeWords: false,
   }),
   email_note: Object.freeze({
     name: 'email_note',
@@ -50,6 +56,7 @@ export const PROFILES: Readonly<Record<ProfileName, Profile>> = Object.freeze({
     maxVisible: 2000,
     maxHtml: 8000,
     maxLinks: 5,
+    strictSchemeWords: true,
   }),
   session_message: Object.freeze({
     name: 'session_message',
@@ -58,6 +65,7 @@ export const PROFILES: Readonly<Record<ProfileName, Profile>> = Object.freeze({
     maxVisible: 1000,
     maxHtml: 4000,
     maxLinks: 3,
+    strictSchemeWords: false,
   }),
 })
 

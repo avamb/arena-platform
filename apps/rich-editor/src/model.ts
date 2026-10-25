@@ -294,6 +294,24 @@ export function visibleLen(d: Doc): number {
   return n
 }
 
+/** True when a link, bold, italic or underline is in the text: what a round trip through plain text loses. */
+export function hasFormatting(d: Doc): boolean {
+  let found = false
+  units(d, (chunks) => {
+    for (const c of chunks) {
+      if (!c.br && (c.href !== '' || c.strong || c.em || c.u)) found = true
+    }
+  })
+  return found
+}
+
+/** The text the way a reader sees it, units separated by line breaks (Go: visibleText), for the scheme-word check. */
+export function visibleText(d: Doc): string {
+  const parts: string[] = []
+  units(d, (chunks) => parts.push(chunksText(chunks)))
+  return parts.join('\n')
+}
+
 /** The text a reader sees: units separated by a blank line, list items by a line break. */
 export function plainText(d: Doc): string {
   const parts: string[] = []

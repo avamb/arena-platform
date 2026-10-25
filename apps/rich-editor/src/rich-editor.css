@@ -234,6 +234,12 @@
   margin: 0 0 0.75em;
 }
 
+/* A block takes its direction from its own first strong letter: a Hebrew paragraph in a left-to-right
+   interface starts on the right, an English one in the Hebrew interface on the left. */
+.arena-re .ProseMirror :is(p, li, h3, h4) {
+  unicode-bidi: plaintext;
+}
+
 .arena-re .ProseMirror > :last-child {
   margin-bottom: 0;
 }

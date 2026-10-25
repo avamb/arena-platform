@@ -4,6 +4,7 @@
 // IIFE build exposes the global ArenaRichEditor.
 
 import { existsSync, readFileSync } from 'node:fs'
+import { gzipSync } from 'node:zlib'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -36,6 +37,30 @@ describe.skipIf(!built)('the built library', () => {
     it(`${file} sets no style attribute`, () => {
       const js = read(file)
       expect(js).not.toMatch(/setAttribute\(\s*["']style["']/)
+    })
+  }
+
+  // Size budgets (gzip, bytes) with some room over the measured sizes: ESM 149.4 kB (the library build
+  // is not minified, the host's build does that), IIFE 114.9 kB. A jump means an extension or a library
+  // slipped back in (StarterKit, linkify, drop cursor...): look at what was imported before raising it.
+  const BUDGET: Record<string, number> = { 'rich-editor.js': 160_000, 'arena-rich-editor.iife.js': 125_000 }
+  for (const file of Object.keys(BUDGET)) {
+    it(`${file} stays within its gzip budget`, () => {
+      const size = gzipSync(readFileSync(resolve(dist, file)), { level: 9 }).length
+      expect(size).toBeLessThan(BUDGET[file])
+      expect(size).toBeGreaterThan(50_000) // and it is the whole library, not a stub
+    })
+    it(`${file} holds no extension or library that the white list does not use`, () => {
+      const js = read(file)
+      expect(js).not.toMatch(/linkify/i)
+      expect(js).not.toMatch(/tlds/)
+      for (const name of ['code', 'codeBlock', 'horizontalRule', 'strike', 'dropCursor', 'gapCursor', 'trailingNode', 'taskList', 'taskItem', 'listKeymap', 'characterCount', 'placeholder']) {
+        expect(js, name).not.toMatch(new RegExp(`name:[ ]*["']${name}["']`))
+      }
+      // The extensions the editor does use are in.
+      for (const name of ['doc', 'paragraph', 'text', 'bold', 'italic', 'underline', 'hardBreak', 'undoRedo', 'bulletList', 'orderedList', 'listItem', 'link']) {
+        expect(js, name).toMatch(new RegExp(`name:[ ]*["']${name}["']`))
+      }
     })
   }
 

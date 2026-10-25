@@ -2,7 +2,7 @@
 // ESM for apps/event-center, IIFE (global ArenaRichEditor) for WordPress.
 
 export { create } from './editor'
-export type { CreateOptions, EditorStats, FormatResult, RichEditor } from './editor'
+export type { CreateOptions, EditorStats, FormatRequest, FormatResult, RichEditor } from './editor'
 
 export { PROFILES, PROFILE_NAMES, profileByName } from './profiles'
 export type { LinkScheme, Profile, ProfileName } from './profiles'

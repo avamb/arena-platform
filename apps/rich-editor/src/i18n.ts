@@ -27,6 +27,12 @@ export interface Messages {
   formatPlain: string
   formatFailed: string
   formatEmpty: string
+  /** Added to the status when the text has links or styling that formatting from plain text replaces. */
+  formatLossy: string
+  /** A paste or drop that was too large for its markup: its plain text went in. */
+  pasteFallback: string
+  /** The text has a scheme word the strict profile refuses (scheme_not_allowed). */
+  schemeWord: string
   linkDialogTitle: string
   linkAddress: string
   linkText: string
@@ -68,6 +74,9 @@ const en: Messages = {
   formatPlain: 'Automatic formatting is not available now. The text is kept as it is.',
   formatFailed: 'The text could not be formatted. Try again.',
   formatEmpty: 'There is nothing to format.',
+  formatLossy: 'Links and text styling are not sent for formatting: its result replaces them. Undo brings them back.',
+  pasteFallback: 'The pasted content is too large to keep its formatting. It was pasted as plain text.',
+  schemeWord: 'The text has words like “http:”, “javascript:” or “data:” followed by text. Remove them: this note cannot be saved with them.',
   linkDialogTitle: 'Link',
   linkAddress: 'Link address',
   linkText: 'Link text',
@@ -107,6 +116,9 @@ const ru: Messages = {
   formatPlain: 'Автоматическое оформление сейчас недоступно. Текст оставлен как есть.',
   formatFailed: 'Не удалось оформить текст. Попробуйте ещё раз.',
   formatEmpty: 'Оформлять нечего.',
+  formatLossy: 'Ссылки и выделение текста при оформлении не передаются: результат их заменит. Отмена вернёт их.',
+  pasteFallback: 'Вставленный фрагмент слишком большой, чтобы сохранить оформление. Он вставлен как обычный текст.',
+  schemeWord: 'В тексте есть слова вида «http:», «javascript:» или «data:» с текстом сразу после двоеточия. Уберите их: с ними заметку нельзя сохранить.',
   linkDialogTitle: 'Ссылка',
   linkAddress: 'Адрес ссылки',
   linkText: 'Текст ссылки',
@@ -139,12 +151,15 @@ const cs: Messages = {
   undo: 'Zpět',
   redo: 'Znovu',
   format: 'Formátovat',
-  formatHint: 'Naformátovat text automaticky',
+  formatHint: 'Formátovat text automaticky',
   formatting: 'Formátujeme text…',
   formatDone: 'Text je naformátovaný. Lze to vrátit zpět.',
   formatPlain: 'Automatické formátování teď není dostupné. Text zůstal beze změny.',
   formatFailed: 'Text se nepodařilo naformátovat. Zkuste to znovu.',
   formatEmpty: 'Není co formátovat.',
+  formatLossy: 'Odkazy a zvýraznění textu se k formátování neposílají: výsledek je nahradí. Zpět je vrátí.',
+  pasteFallback: 'Vložený obsah je příliš velký, než aby si zachoval formátování. Vložil se jako prostý text.',
+  schemeWord: 'Text obsahuje slova jako „http:“, „javascript:“ nebo „data:“ s textem hned za dvojtečkou. Odstraňte je: s nimi se poznámka nedá uložit.',
   linkDialogTitle: 'Odkaz',
   linkAddress: 'Adresa odkazu',
   linkText: 'Text odkazu',
@@ -184,6 +199,9 @@ const he: Messages = {
   formatPlain: 'העיצוב האוטומטי אינו זמין כרגע. הטקסט נשאר כפי שהוא.',
   formatFailed: 'לא הצלחנו לעצב את הטקסט. נסו שוב.',
   formatEmpty: 'אין מה לעצב.',
+  formatLossy: 'קישורים והדגשות אינם נשלחים לעיצוב: התוצאה תחליף אותם. ביטול יחזיר אותם.',
+  pasteFallback: 'התוכן שהודבק גדול מכדי לשמור על העיצוב. הוא הודבק כטקסט רגיל.',
+  schemeWord: 'בטקסט יש מילים כמו “http:”, “javascript:” או “data:” עם טקסט מיד אחרי הנקודתיים. הסירו אותן: אי אפשר לשמור את ההערה איתן.',
   linkDialogTitle: 'קישור',
   linkAddress: 'כתובת הקישור',
   linkText: 'טקסט הקישור',
@@ -222,6 +240,9 @@ const es: Messages = {
   formatPlain: 'El formato automático no está disponible ahora. El texto se queda como está.',
   formatFailed: 'No se pudo dar formato al texto. Inténtalo de nuevo.',
   formatEmpty: 'No hay nada a lo que dar formato.',
+  formatLossy: 'Los enlaces y los estilos del texto no se envían para dar formato: el resultado los sustituye. Deshacer los recupera.',
+  pasteFallback: 'El contenido pegado es demasiado grande para conservar su formato. Se pegó como texto sin formato.',
+  schemeWord: 'El texto tiene palabras como «http:», «javascript:» o «data:» seguidas de texto. Quítalas: la nota no se puede guardar con ellas.',
   linkDialogTitle: 'Enlace',
   linkAddress: 'Dirección del enlace',
   linkText: 'Texto del enlace',

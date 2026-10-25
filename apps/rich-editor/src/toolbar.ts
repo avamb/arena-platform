@@ -105,6 +105,8 @@ export interface ToolbarOptions {
   profile: Profile
   messages: Messages
   dir: 'ltr' | 'rtl'
+  /** The interface language: only the panel and its texts carry it (the editing text has its own). */
+  locale: string
   openLink: () => void
   /** Present when the host passed a format callback. */
   runFormat?: () => void
@@ -241,6 +243,7 @@ export function createToolbar(o: ToolbarOptions): Toolbar {
 
   const el = document.createElement('div')
   el.className = 'arena-re__toolbar'
+  el.setAttribute('lang', o.locale)
   el.setAttribute('role', 'toolbar')
   el.setAttribute('aria-label', t.toolbarLabel)
   el.setAttribute('aria-orientation', 'horizontal')
@@ -358,7 +361,7 @@ export function createToolbar(o: ToolbarOptions): Toolbar {
     for (const { def, btn } of built) {
       if (def.active) btn.setAttribute('aria-pressed', def.active(editor) ? 'true' : 'false')
       let enabled = def.enabled ? def.enabled(editor) : true
-      if (busy) enabled = false
+      if (busy || !editor.isEditable) enabled = false // a read-only text takes no formatting
       btn.disabled = !enabled
       if (def.id === 'format') btn.setAttribute('aria-busy', busy ? 'true' : 'false')
     }

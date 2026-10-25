@@ -5,7 +5,7 @@
 // anything. Limits are not enforced here (the counter shows them, the API is
 // the final judge); forbidden characters are dropped instead of refused.
 
-import { CharAction, charPolicy } from './chars'
+import { byteLength, stripForbiddenChars } from './chars'
 import { cleanHref } from './href'
 import {
   brChunk,
@@ -13,6 +13,7 @@ import {
   finish,
   textChunk,
   visibleLen,
+  visibleText,
   type Block,
   type Chunk,
   type Doc,
@@ -149,13 +150,9 @@ class Converter {
 
   private text(s: string, m: Marks): void {
     if (s === '') return
-    const out: string[] = []
-    for (const ch of s) {
-      const action = charPolicy(ch.codePointAt(0) as number)
-      if (action === CharAction.Refuse || action === CharAction.Strip) continue
-      out.push(ch)
-    }
-    this.cur.push(textChunk(out.join(''), m))
+    const clean = stripForbiddenChars(s)
+    if (clean === '') return
+    this.cur.push(textChunk(clean, m))
   }
 
   /** Closes the pending run into the current container. */
@@ -359,6 +356,9 @@ class Converter {
 const isTagNameStart = (c: string | undefined): boolean => c !== undefined && /[A-Za-z]/.test(c)
 const isAttrSpace = (c: string): boolean => c === ' ' || c === String.fromCharCode(9) || c === String.fromCharCode(10) || c === String.fromCharCode(12) || c === String.fromCharCode(13)
 
+/** Elements whose content the HTML parser reads as text (RCDATA and RAWTEXT), so no tag inside it is a tag. */
+const RAW_TEXT_TAGS = new Set(['textarea', 'title', 'xmp', 'iframe', 'noembed', 'noframes', 'style', 'script'])
+
 /**
  * Renames every style attribute of a start tag to data-arena-style before the
  * browser parses the string. Under a strict CSP (style-src without
@@ -367,7 +367,8 @@ const isAttrSpace = (c: string): boolean => c === ' ' || c === String.fromCharCo
  * that would flood the console on every Word or Google Docs paste. The text of
  * the attribute stays readable for the paste path (styleDeclarations); it
  * never becomes a style. Only start tags are touched: comments, end tags and
- * text are copied as they are.
+ * text are copied as they are, and so is the content of textarea, xmp, plaintext
+ * and the other elements whose content is text.
  */
 export function renameStyleAttributes(html: string): string {
   if (!/style/i.test(html)) return html
@@ -396,6 +397,7 @@ export function renameStyleAttributes(html: string): string {
     // A start tag: its name, then attributes until the closing >.
     let j = lt + 1
     while (j < n && !isAttrSpace(html[j]) && html[j] !== '/' && html[j] !== '>') j++
+    const nameEnd = j
     out.push(html.slice(lt, j))
     while (j < n && html[j] !== '>') {
       if (isAttrSpace(html[j]) || html[j] === '/') {
@@ -427,15 +429,60 @@ export function renameStyleAttributes(html: string): string {
       j = valueEnd
     }
     i = j
+    // The content of these elements is text, not markup: copy it as it is (Go reads it the same way).
+    const name = html.slice(lt + 1, nameEnd).toLowerCase()
+    if (name === 'plaintext') {
+      out.push(html.slice(i))
+      break
+    }
+    if (RAW_TEXT_TAGS.has(name)) {
+      const close = new RegExp('</' + name + '[\t\n\f\r />]', 'ig')
+      close.lastIndex = i
+      const found = close.exec(html)
+      const stop = found ? found.index : n
+      out.push(html.slice(i, stop))
+      i = stop
+    }
   }
   return out.join('')
 }
 
 const NO_MARKS: Marks = { strong: false, em: false, u: false, href: '', linkID: 0 }
 
+/** Go compares the input with maxInputBytes in bytes (len), not in UTF-16 units. */
+function tooLarge(input: string): boolean {
+  // A UTF-16 unit is at most 3 bytes: a short string cannot be over the limit, no need to count.
+  if (input.length * 3 <= MAX_INPUT_BYTES) return false
+  return byteLength(input) > MAX_INPUT_BYTES
+}
+
+/**
+ * Cuts the weight a page copy carries and no text of ART needs: comments, the
+ * head, style and script elements, images and data: URIs (a page with
+ * pictures embedded in the markup is megabytes of base64).
+ */
+export function stripBulk(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, '')
+    .replace(/<(head|style|script)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, '')
+    .replace(/<img\b(?:[^>"']|"[^"]*"|'[^']*')*>?/gi, '')
+    .replace(/data:[\w.+-]+\/[\w.+-]+[;,][^"'\s>)]*/gi, '')
+}
+
+/**
+ * The cleanup of a paste or a drop: the markup is read for the foreign
+ * styles of Word and Google Docs. A markup over the size limit is slimmed
+ * (stripBulk) before the limit is checked; it throws RichTextError when it is
+ * still too large or nested too deeply.
+ */
+export function sanitizePaste(html: string, p: Profile): string {
+  const slim = tooLarge(html) ? stripBulk(html) : html
+  return sanitize(slim, p, { foreignStyles: true })
+}
+
 /** Reads HTML into the document model for the profile. Throws RichTextError for a hostile input. */
 export function parseHtml(input: string, p: Profile, o: SanitizeOptions = {}): Doc {
-  if (input.length > MAX_INPUT_BYTES) throw new RichTextError('too_large')
+  if (tooLarge(input)) throw new RichTextError('too_large')
   // A <template> is parsed into an inert fragment: nothing loads and no script runs, and (unlike a
   // DOMParser document, which belongs to the page) it raises no Content-Security-Policy violation for the
   // style attributes of a Word or Google Docs paste. It has no implied <head> either, so a leading
@@ -453,6 +500,14 @@ export function sanitize(input: string, p: Profile, o: SanitizeOptions = {}): st
   return docHtml(parseHtml(input, p, o)).html
 }
 
+/**
+ * Go: schemeWordRE. A scheme that can run code or load a local or opaque
+ * resource, or the plain-http scheme, as a word of the text. The word border
+ * is Unicode-aware, and the last class is the ASCII \S of RE2 (JavaScript's
+ * \S also skips no-break and other Unicode spaces, which Go counts as text).
+ */
+export const SCHEME_WORD_RE = /(?:^|[^\p{L}\p{N}])(?:javascript|vbscript|data|file|blob|about|http):[^\t\n\f\r ]/iu
+
 export interface TextStats {
   /** Canonical ART. */
   html: string
@@ -461,11 +516,19 @@ export interface TextStats {
   links: number
   /** Characters of the canonical HTML. */
   htmlLength: number
+  /** True when the profile is strict about scheme words and the visible text holds one (the API: scheme_not_allowed). */
+  schemeWord: boolean
 }
 
 /** Canonical ART and the counters of any HTML. */
 export function measure(input: string, p: Profile, o: SanitizeOptions = {}): TextStats {
   const d = parseHtml(input, p, o)
   const { html, links } = docHtml(d)
-  return { html, visible: visibleLen(d), links, htmlLength: Array.from(html).length }
+  return {
+    html,
+    visible: visibleLen(d),
+    links,
+    htmlLength: Array.from(html).length,
+    schemeWord: p.strictSchemeWords && SCHEME_WORD_RE.test(visibleText(d)),
+  }
 }
