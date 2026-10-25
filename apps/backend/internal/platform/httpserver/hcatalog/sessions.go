@@ -61,9 +61,11 @@ import (
 	catalogdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/catalog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 )
 
@@ -864,8 +866,29 @@ type updateSessionRequest struct {
 // sessionNoticeRequest is the optional "notice" object of a session PATCH.
 type sessionNoticeRequest struct {
 	// Message is shown to buyers under the standard wording; up to 1000
-	// characters of plain text, may be empty.
+	// visible characters, may be empty.
 	Message string `json:"message"`
+	// MessageFormat says how Message is written: "text" (the default, plain
+	// text) or "art" (the HTML subset of the session_message profile).
+	MessageFormat string `json:"message_format"`
+}
+
+// noticeOf reads the message and its format of an optional notice. A format
+// other than "", "text" and "art" answers 400 and ok is false.
+func noticeOf(w http.ResponseWriter, r *http.Request, n *sessionNoticeRequest) (message, format string, ok bool) {
+	if n == nil {
+		return "", richtext.FormatText, true
+	}
+	format, valid := eventtext.ParseFormat(n.MessageFormat)
+	if !valid {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"session.invalid_message_format",
+			"notice.message_format must be text or art", r,
+			map[string]any{"field": "notice.message_format"},
+		))
+		return "", "", false
+	}
+	return n.Message, format, true
 }
 
 // writeSessionChangeError answers the refusals of sessionchange.Apply and
@@ -887,6 +910,12 @@ func writeSessionChangeError(w http.ResponseWriter, r *http.Request, err error) 
 			"session.change_message_too_long",
 			"the message to buyers is too long", r,
 			map[string]any{"field": "notice.message", "max_length": sessionchange.MaxMessageRunes},
+		))
+	case errors.Is(err, sessionchange.ErrMessageInvalid):
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			"session.change_message_invalid",
+			"the message to buyers cannot be accepted", r,
+			map[string]any{"field": "notice.message", "reason": sessionchange.MessageReason(err)},
 		))
 	default:
 		return false
@@ -1188,9 +1217,9 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	// The update and the buyer notification share ONE transaction
 	// (sessionchange.Apply): a session that moves or is cancelled while
 	// buyers hold tickets either queues their letters or does not move.
-	noticeMessage := ""
-	if req.Notice != nil {
-		noticeMessage = req.Notice.Message
+	noticeMessage, noticeFormat, ok := noticeOf(w, r, req.Notice)
+	if !ok {
+		return
 	}
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -1240,7 +1269,7 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	change, err := sessionchange.Apply(ctx, tx, sessionchange.Input{
 		SessionID: sessionID,
 		Old:       before.State,
-		Notice:    sessionchange.NoticeFor(ctx, noticeMessage),
+		Notice:    sessionchange.NoticeForFormat(ctx, noticeMessage, noticeFormat),
 	})
 	if err != nil {
 		if writeSessionChangeError(w, r, err) {
@@ -1395,7 +1424,7 @@ func (h *Handler) HandleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	// Deleting a session cancels it for its buyers: the same journal and the
 	// same letters as a PATCH to status=cancelled. An optional JSON body
 	// {"notice": {"message": "..."}} carries the organizer's own text.
-	noticeMessage := ""
+	noticeMessage, noticeFormat := "", richtext.FormatText
 	if body, rerr := io.ReadAll(io.LimitReader(r.Body, 64*1024)); rerr == nil && len(strings.TrimSpace(string(body))) > 0 {
 		var req struct {
 			Notice *sessionNoticeRequest `json:"notice"`
@@ -1404,8 +1433,9 @@ func (h *Handler) HandleDeleteSession(w http.ResponseWriter, r *http.Request) {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("session.invalid_json", "request body is not valid JSON", r))
 			return
 		}
-		if req.Notice != nil {
-			noticeMessage = req.Notice.Message
+		var ok bool
+		if noticeMessage, noticeFormat, ok = noticeOf(w, r, req.Notice); !ok {
+			return
 		}
 	}
 	before, err := sessionchange.Load(ctx, tx, sessionID, true)
@@ -1436,7 +1466,7 @@ func (h *Handler) HandleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	change, err := sessionchange.Apply(ctx, tx, sessionchange.Input{
 		SessionID: sessionID,
 		Old:       before.State,
-		Notice:    sessionchange.NoticeFor(ctx, noticeMessage),
+		Notice:    sessionchange.NoticeForFormat(ctx, noticeMessage, noticeFormat),
 	})
 	if err != nil {
 		if writeSessionChangeError(w, r, err) {

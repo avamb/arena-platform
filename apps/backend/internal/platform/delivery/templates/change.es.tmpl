@@ -29,9 +29,9 @@
     {{with .SeatNumber}}<tr><td><strong>Asiento</strong></td><td>{{.}}</td></tr>{{end}}
   </table>
   <p style="margin:0 0 12px 0;">Adjuntamos un nuevo PDF de tu entrada con los datos actualizados. El código de barras de tu entrada no ha cambiado: en la entrada son válidos tanto el PDF anterior como el nuevo.</p>
-  {{with .Change.Message}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid {{$.Accent}};background:#f8f9fa">
+  {{with .Change.MessageHTML}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid {{$.Accent}};background:#f8f9fa">
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Mensaje del organizador:</strong></p>
-    <p style="margin:0;white-space:pre-line">{{.}}</p>
+    <div style="margin:0;font-size:14px;line-height:1.6;">{{.}}</div>
   </div>{{end}}
   {{with .EventNote.HTML}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid {{$.Accent}};background:#f8f9fa;">
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Sobre el evento:</strong></p>

@@ -37,6 +37,7 @@ import {
   noticeTooLong,
   proposeMove,
   resetToSuggested,
+  suggestedArt,
   typeMessage,
   withSuggested,
   type MessageState,
@@ -117,7 +118,7 @@ export function SessionMovePanel({ orgId, eventId, sessionId, startAt, venueId, 
       // again, so a change that has buyers always travels with its text.
       const known =
         impact ?? (await fetchChangeImpact(orgId, sessionId, impactQuery({ startAt: proposal.startAt, venueId: proposal.venueId, locale })));
-      const text = impact === null && !message.touched ? known.default_message : message.text;
+      const text = impact === null && !message.touched ? suggestedArt(known.default_message) : message.text;
       const answer = await patchSession(orgId, eventId, sessionId, moveBody(proposal, noticeToSend(known, text)));
       await queryClient.invalidateQueries();
       onDone({ startAt: answer.session.start_at, queued: answer.change?.queued ?? null });
@@ -202,6 +203,7 @@ export function SessionMovePanel({ orgId, eventId, sessionId, startAt, venueId, 
         <>
           {impact !== null && impact.orders > 0 && (
             <SessionChangeMessage
+              orgId={access.can(EVENT_UPDATE_PERMISSION) ? orgId : undefined}
               state={message}
               suggested={impact.default_message}
               onType={(text) => setMessage(typeMessage(text))}

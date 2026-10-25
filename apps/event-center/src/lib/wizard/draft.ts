@@ -17,6 +17,7 @@
  * created event) and the person's decision (poster or "continue without"):
  * never the file, a blob address, a signed link, a token or anything a model read.
  */
+import { artOfLegacy } from "@/lib/richText";
 import { applyDateAction, emptyDate, isBlankDate, isDateAction, parseDates, type DateAction, type DateEntry } from "@/lib/wizard/datesDraft";
 
 /** The age ratings the database accepts (`events_age_rating_check`, migration 0051). */
@@ -27,13 +28,20 @@ export function isAgeRating(value: string): value is AgeRating {
   return (AGE_OPTIONS as readonly string[]).includes(value);
 }
 
-/** Longest event name and description, as the bot's wizard keeps them. */
+/**
+ * Longest event name and description, as the bot's wizard keeps them. The description is counted in VISIBLE
+ * characters (the text a reader sees), never in the length of its HTML (spec 44, RT-11).
+ */
 export const MAX_NAME_RUNES = 200;
 export const MAX_DESCRIPTION_RUNES = 4000;
 /** The largest hall the wizard accepts, as the bot's `maxCount`. */
 export const MAX_CAPACITY = 1_000_000;
 
-export const DRAFT_VERSION = 4;
+/**
+ * Version 5 (spec 44, RT-11): the description is kept as ART, the editor's HTML subset. A draft of version 2 to 4
+ * holds the old plain text the textarea gave; it is converted once, when read (parseDraft).
+ */
+export const DRAFT_VERSION = 5;
 /** The oldest stored version that is still read (and upgraded) instead of dropped. */
 export const OLDEST_READABLE_DRAFT_VERSION = 2;
 
@@ -41,6 +49,7 @@ export type VenueMode = "" | "existing" | "new";
 
 export interface EventSection {
   name: string;
+  /** ART (the editor's HTML subset), "" when empty. */
   description: string;
   /** "" = not chosen. */
   age: AgeRating | "";
@@ -411,7 +420,10 @@ export function parseDraft(raw: unknown): WizardDraft | null {
   const age = str(e.age);
   if (age === null || (age !== "" && !isAgeRating(age))) return null;
   const name = str(e.name);
-  const description = str(e.description);
+  const storedDescription = str(e.description);
+  // Before version 5 the description was plain text from a textarea: convert it once (a blank text stays "").
+  const description =
+    storedDescription !== null && o.version < 5 ? artOfLegacy(storedDescription, "description") : storedDescription;
   const promoterId = str(e.promoterId);
   const promoterName = str(e.promoterName);
   if (name === null || description === null || promoterId === null || promoterName === null) return null;

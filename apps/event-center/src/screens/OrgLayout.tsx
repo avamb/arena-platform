@@ -15,7 +15,7 @@ export interface OrgContextValue {
   access: OrgAccess;
 }
 
-const OrgCtx = createContext<OrgContextValue | null>(null);
+export const OrgCtx = createContext<OrgContextValue | null>(null);
 
 /** The organization the current screen works in, and the caller's permissions there. */
 export function useOrg(): OrgContextValue {

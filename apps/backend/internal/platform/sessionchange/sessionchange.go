@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -23,7 +24,8 @@ const JobTypeChangeEmail = "session.change_email"
 // changeEmailMaxAttempts is the retry budget of one letter job.
 const changeEmailMaxAttempts = 6
 
-// MaxMessageRunes bounds the organizer's own text in a letter.
+// MaxMessageRunes bounds the organizer's own text in a letter: the visible
+// characters of the session_message profile (richtext.ProfileSessionMessage).
 const MaxMessageRunes = 1000
 
 // Notice states of session_change_notices.state.
@@ -58,8 +60,12 @@ var (
 	// WordPress site, whose own letter is not wired yet; the move is refused
 	// rather than sent without it (decision 2: no move without a letter).
 	ErrSiteRoute = errors.New("sessionchange: an affected order was sold through a site that cannot be notified yet")
-	// ErrMessageTooLong means the organizer's text exceeds MaxMessageRunes.
+	// ErrMessageTooLong means the organizer's text exceeds MaxMessageRunes
+	// visible characters (or the 4000 characters of its HTML).
 	ErrMessageTooLong = errors.New("sessionchange: the message is too long")
+	// ErrMessageInvalid means the organizer's text is refused for another
+	// reason (forbidden characters, too many links, ...); MessageReason says which.
+	ErrMessageInvalid = errors.New("sessionchange: the message is not acceptable")
 )
 
 // DB is the slice of pgx.Tx / *pgxpool.Pool the package needs.
@@ -106,6 +112,9 @@ type Notice struct {
 	// Message is the organizer's own text, shown to the buyer under the
 	// standard wording. May be empty.
 	Message string
+	// MessageFormat says how Message is written: richtext.FormatText (the
+	// default, also for "") or richtext.FormatART.
+	MessageFormat string
 	// ActorType is "user", "api_key" or "system"; ActorID is free text.
 	ActorType string
 	ActorID   string
@@ -114,6 +123,89 @@ type Notice struct {
 // NormalizeMessage trims the organizer's text, unifies line breaks, drops
 // control characters other than newline and bounds its length.
 func NormalizeMessage(raw string) (string, error) {
+	out := strings.TrimSpace(cleanPlainMessage(raw))
+	if utf8.RuneCountInString(out) > MaxMessageRunes {
+		return "", ErrMessageTooLong
+	}
+	return out, nil
+}
+
+// MessageError is the refusal of an organizer's text that is not just too long:
+// Reason is the short stable word of richtext (control_characters,
+// too_many_links, ...). errors.Is(err, ErrMessageInvalid) is true for it.
+type MessageError struct{ Reason string }
+
+func (e *MessageError) Error() string {
+	return "sessionchange: the message is not acceptable: " + e.Reason
+}
+
+// Is makes errors.Is(err, ErrMessageInvalid) true.
+func (e *MessageError) Is(target error) bool { return target == ErrMessageInvalid }
+
+// MessageReason is the short word of a refused message, "" for any other error.
+func MessageReason(err error) string {
+	var me *MessageError
+	if errors.As(err, &me) {
+		return me.Reason
+	}
+	return ""
+}
+
+// NormalizeNotice is the one write path of the organizer's text (spec 44,
+// RT-11). format is richtext.FormatText (also "": the old plain text, which
+// every client that sends no format keeps writing, the Telegram bot among
+// them) or richtext.FormatART; anything else is a *MessageError (reason
+// invalid_format). It returns the text to store and the format to store next
+// to it:
+//
+//   - art: richtext.Normalize with the session_message profile; the stored
+//     text is ART and the format "art";
+//   - text: the plain text exactly as before (trimmed, line breaks unified,
+//     control characters other than newline and tab dropped, at most
+//     MaxMessageRunes characters), stored as it is with the format "text", so
+//     the bot's journal rows are the ones it always wrote. A character that
+//     richtext.Render drops (a direction override, a tag character of the
+//     England flag, a C1 control) is stripped silently, never refused: older
+//     clients sent them. The letters read the text through richtext.Render,
+//     which converts it on the fly.
+//
+// "Too long" is ErrMessageTooLong. For art any other refusal is a
+// *MessageError with the short word of richtext; a text is only ever too long.
+// An empty text stays empty.
+func NormalizeNotice(raw, format string) (stored, storedFormat string, err error) {
+	switch format {
+	case "", richtext.FormatText:
+		// Never refused for a character an older client sent: cleanPlainMessage
+		// strips what Render strips. The length of the HTML Render makes of it
+		// is not checked either (900 "&" are 900 characters of text, not 4500).
+		plain := strings.TrimSpace(cleanPlainMessage(raw))
+		if utf8.RuneCountInString(plain) > MaxMessageRunes {
+			return "", "", ErrMessageTooLong
+		}
+		return plain, richtext.FormatText, nil
+	case richtext.FormatART:
+		out, err := richtext.Normalize(raw, richtext.FormatART, richtext.ProfileSessionMessage)
+		if err != nil {
+			return "", "", noticeError(err)
+		}
+		return out, richtext.FormatART, nil
+	}
+	return "", "", &MessageError{Reason: string(richtext.ReasonInvalidFormat)}
+}
+
+// noticeError maps a richtext refusal: a text over a limit is ErrMessageTooLong
+// (the existing 422 session.change_message_too_long), anything else a *MessageError.
+func noticeError(err error) error {
+	var re *richtext.Error
+	if errors.As(err, &re) && (re.Reason == richtext.ReasonTooLong || re.Reason == richtext.ReasonHTMLTooLong) {
+		return ErrMessageTooLong
+	}
+	return &MessageError{Reason: string(richtext.ReasonOf(err))}
+}
+
+// cleanPlainMessage unifies line breaks and drops control characters other
+// than newline and tab, and strips what richtext.Render strips.
+func cleanPlainMessage(raw string) string {
 	raw = strings.ReplaceAll(raw, "\r\n", "\n")
 	raw = strings.ReplaceAll(raw, "\r", "\n")
 	var b strings.Builder
@@ -122,11 +214,7 @@ func NormalizeMessage(raw string) (string, error) {
 			b.WriteRune(r)
 		}
 	}
-	out := strings.TrimSpace(b.String())
-	if utf8.RuneCountInString(out) > MaxMessageRunes {
-		return "", ErrMessageTooLong
-	}
-	return out, nil
+	return richtext.StripRefused(b.String())
 }
 
 // Contact is who a buyer writes to when the new date does not suit them.
@@ -333,9 +421,9 @@ type Result struct {
 
 const insertChangeSQL = `
 INSERT INTO session_changes
-       (session_id, event_id, org_id, kinds, old_state, new_state, message,
+       (session_id, event_id, org_id, kinds, old_state, new_state, message, message_format,
         actor_type, actor_id, orders_total, tickets_total)
-VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11)
+VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12)
 RETURNING id`
 
 const insertNoticeSQL = `
@@ -351,7 +439,7 @@ ON CONFLICT (change_id, order_id) DO NOTHING`
 // letter or without someone to answer to; the caller must then roll back, so
 // the session does not move.
 func Apply(ctx context.Context, tx DB, in Input) (Result, error) {
-	message, err := NormalizeMessage(in.Notice.Message)
+	message, messageFormat, err := NormalizeNotice(in.Notice.Message, in.Notice.MessageFormat)
 	if err != nil {
 		return Result{}, err
 	}
@@ -398,7 +486,7 @@ func Apply(ctx context.Context, tx DB, in Input) (Result, error) {
 	}
 	var changeID uuid.UUID
 	if err := tx.QueryRow(ctx, insertChangeSQL, sess.ID, sess.EventID, sess.OrgID, kinds,
-		string(oldJSON), string(newJSON), message, actorType, in.Notice.ActorID,
+		string(oldJSON), string(newJSON), message, messageFormat, actorType, in.Notice.ActorID,
 		len(orders), tickets).Scan(&changeID); err != nil {
 		return Result{}, fmt.Errorf("sessionchange: journal change: %w", err)
 	}
@@ -425,10 +513,16 @@ type ChangeEmailPayload struct {
 	OrderID  string `json:"order_id"`
 }
 
-// NoticeFor builds the Notice for a request: the organizer's text plus the
-// principal behind ctx (a user, or an organization API key).
+// NoticeFor builds the Notice for a request: the organizer's plain text plus
+// the principal behind ctx (a user, or an organization API key).
 func NoticeFor(ctx context.Context, message string) Notice {
-	n := Notice{Message: message, ActorType: "system"}
+	return NoticeForFormat(ctx, message, richtext.FormatText)
+}
+
+// NoticeForFormat is NoticeFor for a text written in the given format
+// (richtext.FormatText or richtext.FormatART).
+func NoticeForFormat(ctx context.Context, message, format string) Notice {
+	n := Notice{Message: message, MessageFormat: format, ActorType: "system"}
 	if actor, ok := auth.ActorFromContext(ctx); ok {
 		n.ActorID = actor.ID
 		if actor.IsService() {

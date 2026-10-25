@@ -66,8 +66,20 @@ CSS подключает хозяин страницы: редактор нич�
 | `editor` | объект Tiptap для особых случаев. Текст читать только через `getHTML()` этого объекта, не через `editor.getHTML()` |
 
 Чистые функции без редактора: `sanitize(html, profile, {foreignStyles?})`, `measure(html, profile)`,
-`cleanHref(href, profile)`, `parseLinkInput(text, profile)`, а также `PROFILES`, `profileByName`, `MESSAGES`,
-`resolveLocale`.
+`cleanHref(href, profile)`, `parseLinkInput(text, profile)`, `fromLegacy(text, profile)`,
+`artToPlainText(html, profile)`, а также `PROFILES`, `profileByName`, `MESSAGES`, `resolveLocale`.
+
+**Вход без редактора `@arena/rich-editor/text`** (RT-11). Те же чистые функции (`sanitize`, `measure`, `fromLegacy`,
+`artToPlainText`, `cleanHref`, `parseLinkInput`, `PROFILES`) без Tiptap и ProseMirror: черновик мастера, подсказки афиши
+и сообщение о переносе считают и сравнивают тексты, а сам редактор грузится позже, на экране, который его показывает
+(`import('@arena/rich-editor')` в отдельный кусок). `sanitize`, `measure` и `artToPlainText` читают HTML через
+`<template>`, поэтому им нужен DOM (браузер или jsdom); `fromLegacy` DOM не нужен. `tests/build.test.ts` следит, чтобы в
+`dist/text.js` и его общем куске не было ни Tiptap, ни ProseMirror.
+
+**`fromLegacy`** — построчный порт Go `richtext.FromLegacy`: пустая строка — абзац, одиночный перенос — `<br>`, `**x**` —
+strong, `_x_` на границе слова — em, блок из двух и более строк «- », «* », «• » или «1. », «2. » — список, `<b>`, набранный
+человеком, остаётся текстом; автоссылки на `https://` только у профиля `email_note`. `tests/legacy.test.ts` прогоняет поля
+`legacy` и `art` общего корпуса `richtext_legacy.json`: правка `legacy.go` без правки порта ломает сборку редактора.
 
 ## Профили и Go
 

@@ -504,3 +504,31 @@ func Words(art string) []string {
 	}
 	return words
 }
+
+// StripRefused removes the characters Render drops when it reads a stored text
+// (control characters, direction overrides, tag characters, invisible
+// operators). A writer of the old plain text uses it so that such a text is
+// cleaned like Render would clean it, instead of being refused: older clients
+// sent these characters (the tag characters of the England flag, a direction
+// mark copied from Hebrew text) and were never told no. The line break family
+// and the characters Sanitize keeps or strips on its own are left alone.
+func StripRefused(s string) string {
+	refused := false
+	for _, r := range s {
+		if charPolicy(r) == charRefuse {
+			refused = true
+			break
+		}
+	}
+	if !refused {
+		return s
+	}
+	var sb strings.Builder
+	sb.Grow(len(s))
+	for _, r := range s {
+		if charPolicy(r) != charRefuse {
+			sb.WriteRune(r)
+		}
+	}
+	return sb.String()
+}

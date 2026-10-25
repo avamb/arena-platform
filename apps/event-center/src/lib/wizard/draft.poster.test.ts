@@ -49,7 +49,8 @@ describe("a version-2 draft survives this upgrade", () => {
     expect(read).not.toBeNull();
     expect(read?.version).toBe(DRAFT_VERSION);
     expect(read?.poster).toEqual({ mediaId: "", eventId: "" });
-    expect(read?.event).toMatchObject({ name: "Swan Lake", description: "Ballet in two acts", age: "12+" });
+    // The description was plain text from a textarea: it is converted once to the editor's ART (spec 44, RT-11).
+    expect(read?.event).toMatchObject({ name: "Swan Lake", description: "<p>Ballet in two acts</p>", age: "12+" });
     expect(read?.dates).toEqual(typed.dates);
     expect(read?.currency).toBe("EUR");
   });

@@ -12,6 +12,7 @@ package httpserver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -29,8 +30,10 @@ import (
 const e2eSessionsTelegramUser = 781
 
 func e2eSessionsMessage(text string) string {
-	return fmt.Sprintf(`"message":{"message_id":%d,"date":1700000000,"chat":{"id":%d,"type":"private"},"from":{"id":%d,"is_bot":false,"first_name":"Ses","language_code":"ru"},"text":%q}`,
-		time.Now().UnixNano()%100000, e2eSessionsTelegramUser, e2eSessionsTelegramUser, text)
+	// JSON, not %q: Go writes a tag character as \U000e0067, which JSON does not know.
+	textJSON, _ := json.Marshal(text)
+	return fmt.Sprintf(`"message":{"message_id":%d,"date":1700000000,"chat":{"id":%d,"type":"private"},"from":{"id":%d,"is_bot":false,"first_name":"Ses","language_code":"ru"},"text":%s}`,
+		time.Now().UnixNano()%100000, e2eSessionsTelegramUser, e2eSessionsTelegramUser, textJSON)
 }
 
 func e2eSessionsCallback(data string) string {
@@ -181,7 +184,10 @@ func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
 
 	// The organizer edits the message, then confirms: one press writes.
 	press("ses:msg", "Напишите, что прочитают")
-	say("Перенесли на неделю, извините.", "Перенос сеанса")
+	// The text holds what older clients sent and Render strips: a direction
+	// embedding copied from Hebrew text and the England flag (a black flag plus
+	// tag characters). The bot must take it and the server store it cleaned.
+	say("Перенесли \u202bна\u202c неделю, \U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F извините.", "Перенос сеанса")
 	press("ses:go", "Сеанс перенесён")
 
 	got := sessionStart()
@@ -199,7 +205,7 @@ func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT kinds, message, orders_total FROM session_changes WHERE session_id = $1`, sessionID).Scan(&kinds, &message, &orders); err != nil {
 		t.Fatalf("journal row: %v", err)
 	}
-	if len(kinds) == 0 || message != "Перенесли на неделю, извините." || orders != 1 {
+	if len(kinds) == 0 || message != "Перенесли на неделю, \U0001F3F4 извините." || orders != 1 {
 		t.Fatalf("journal = kinds %v message %q orders %d", kinds, message, orders)
 	}
 	var jobs int

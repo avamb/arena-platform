@@ -15,7 +15,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { liveEnv, person, signInAs, type Role } from "./liveEnv";
+import { liveEnv, person, richText, signInAs, type Role } from "./liveEnv";
 
 const env = liveEnv();
 
@@ -49,6 +49,7 @@ interface Rows {
   queued_letters: number;
   org_contact_email: string;
   last_message: string;
+  last_message_format: string;
   paid_orders: number;
 }
 
@@ -117,7 +118,7 @@ test.describe("session change: failed and repeated writes (live)", () => {
     await pickDay(page, "21.06.2090", "2090-06-21");
     await page.getByTestId("session-move-time").fill("21:15");
     await expect(page.getByTestId("dry-run-confirm")).toBeVisible();
-    const message = page.getByTestId("session-change-message");
+    const message = richText(page, "session-change-message");
     await message.fill("Typed by a person: we moved to Sunday.");
 
     // The first write is refused by a stand-in server (the real one never sees it).
@@ -137,7 +138,7 @@ test.describe("session change: failed and repeated writes (live)", () => {
     await expect(page.getByTestId("dry-run-action-error")).toBeVisible();
     expect(rows(S_MOVE), "nothing was written").toMatchObject({ start_at: START, changes: 0, queued_letters: 0 });
     // Everything the person typed is still there.
-    await expect(message).toHaveValue("Typed by a person: we moved to Sunday.");
+    await expect(message).toHaveText("Typed by a person: we moved to Sunday.");
     await expect(page.getByTestId("session-move-time")).toHaveValue("21:15");
     await expect(page.getByTestId("date-field-selected")).toContainText("2090");
     await expect(page.getByTestId("session-contact-form")).toHaveCount(0);
@@ -154,7 +155,8 @@ test.describe("session change: failed and repeated writes (live)", () => {
       notices: 1,
       queued_letters: 1,
       paid_orders: 1,
-      last_message: "Typed by a person: we moved to Sunday.",
+      last_message: "<p>Typed by a person: we moved to Sunday.</p>",
+      last_message_format: "art",
     });
   });
 
@@ -204,7 +206,7 @@ test.describe("session change: failed and repeated writes (live)", () => {
     const calls = trackApi(page);
     await openSession(page, "org_admin", S_CANCEL);
     await page.getByTestId("session-cancel-open").click();
-    await page.getByTestId("session-change-message").fill("Canceled by the organizer, text typed by hand.");
+    await richText(page, "session-change-message").fill("Canceled by the organizer, text typed by hand.");
     await page.getByTestId("session-cancel-continue").click();
     let failNext = true;
     await page.route(patchUrl(S_CANCEL), (route) => {
@@ -228,7 +230,8 @@ test.describe("session change: failed and repeated writes (live)", () => {
       changes: 1,
       queued_letters: 1,
       paid_orders: 1,
-      last_message: "Canceled by the organizer, text typed by hand.",
+      last_message: "<p>Canceled by the organizer, text typed by hand.</p>",
+      last_message_format: "art",
     });
   });
 });

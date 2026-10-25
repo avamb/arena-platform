@@ -27,7 +27,7 @@
  * and tickets themselves are proven by wizard-dates-tickets.spec.ts.
  */
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { liveEnv, noA11yViolations, person, signInAs, type Role } from "./liveEnv";
+import { liveEnv, noA11yViolations, person, richText, signInAs, type Role } from "./liveEnv";
 import { fillFirstDate, openWizard, trackChecks } from "./wizardHelpers";
 
 test.describe.configure({ mode: "serial" });
@@ -67,7 +67,7 @@ test.describe("event wizard: Event and Venue", () => {
     await expect(status(page)).toContainText("Fill in the sections");
 
     await page.getByTestId("wizard-name").fill(EVENT_NAME);
-    await page.getByTestId("wizard-description").fill("A twin test event.");
+    await richText(page, "wizard-description").fill("A twin test event.");
     await page.getByTestId("wizard-age").selectOption("6+");
     await page.getByTestId("wizard-promoter").selectOption({ label: "E2E Wizard Promoter" });
     await page.getByTestId("wizard-venue-mode-existing").check();

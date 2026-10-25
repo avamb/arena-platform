@@ -121,6 +121,10 @@ export const API = {
   // server (the model key never reaches the browser). Costs a daily slot of the organization.
   posterFacts: { method: "POST", path: "/v1/organizations/{org_id}/media/{media_id}/poster-facts" },
   eventUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{id}" },
+  // RT-11 (spec 44): the editor's "Format" button (a model adds the marks, the code keeps the words) and
+  // the test letter of the organizer's own text. The text itself is saved with eventUpdate.
+  textsFormat: { method: "POST", path: "/v1/organizations/{org_id}/texts/format" },
+  emailNoteTest: { method: "POST", path: "/v1/organizations/{org_id}/events/{event_id}/email-note/test" },
   // 5-3: the sales end and doors-open time of a session
   sessionUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{id}" },
   // 5-4: a date's categories. PATCH changes ONE thing of a category (open,

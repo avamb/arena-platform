@@ -12,6 +12,10 @@
       "types": "./dist/types/index.d.ts",
       "import": "./dist/rich-editor.js"
     },
+    "./text": {
+      "types": "./dist/types/text.d.ts",
+      "import": "./dist/text.js"
+    },
     "./rich-editor.css": "./dist/rich-editor.css",
     "./iife": "./dist/arena-rich-editor.iife.js"
   },

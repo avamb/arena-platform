@@ -222,6 +222,7 @@ func runSessionChangeOp(op, sessionID string) error {
 			queued               int
 			orgEmail             string
 			lastMessage          string
+			lastFormat           string
 		)
 		err := pool.QueryRow(ctx, `
 			SELECT s.status, s.venue_id::text, to_char(s.start_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
@@ -231,15 +232,16 @@ func runSessionChangeOp(op, sessionID string) error {
 			          AND j.payload->>'order_id' IN (SELECT o.id::text FROM orders o WHERE o.session_id = s.id)),
 			       COALESCE((SELECT btrim(o.contact_email) FROM organizations o WHERE o.id = $2), ''),
 			       COALESCE((SELECT c.message FROM session_changes c WHERE c.session_id = s.id ORDER BY c.created_at DESC LIMIT 1), ''),
+			       COALESCE((SELECT c.message_format FROM session_changes c WHERE c.session_id = s.id ORDER BY c.created_at DESC LIMIT 1), ''),
 			       (SELECT count(*) FROM orders o2 WHERE o2.session_id = s.id AND o2.status = 'paid')
 			FROM sessions s WHERE s.id = $1`, sessionID, orgID).
-			Scan(&status, &venue, &start, &changes, &notices, &queued, &orgEmail, &lastMessage, &paidOrders)
+			Scan(&status, &venue, &start, &changes, &notices, &queued, &orgEmail, &lastMessage, &lastFormat, &paidOrders)
 		if err != nil {
 			return fmt.Errorf("inspect: %w", err)
 		}
 		return printSessionChangeJSON(map[string]any{
 			"status": status, "venue_id": venue, "start_at": start, "changes": changes,
-			"notices": notices, "queued_letters": queued, "org_contact_email": orgEmail, "last_message": lastMessage,
+			"notices": notices, "queued_letters": queued, "org_contact_email": orgEmail, "last_message": lastMessage, "last_message_format": lastFormat,
 			"paid_orders": paidOrders,
 		})
 	default:

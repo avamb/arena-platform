@@ -1275,6 +1275,9 @@ other = "Standard text"
 ["bot.ses.msg_too_long"]
 other = "Too long ({{.N}} characters). Shorten it to 1000."
 
+["bot.ses.msg_invalid"]
+other = "That text cannot be used (a forbidden character or markup). Send the message again as plain text."
+
 ["bot.ses.go_move_btn"]
 other = "✔ Move and email the buyers"
 
