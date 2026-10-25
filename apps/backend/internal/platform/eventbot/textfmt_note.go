@@ -81,6 +81,10 @@ func (b *Bot) showEmailNote(ctx context.Context, chatID int64, editMsgID *int, i
 			[]models.InlineKeyboardButton{{Text: t("bot.tf.note_test_btn"), CallbackData: "tf:t:" + ids}},
 			[]models.InlineKeyboardButton{{Text: t("bot.tf.note_delete_btn"), CallbackData: "tf:d:" + ids}})
 	}
+	// The editor of the Telegram mini app (RT-12a), behind its flag.
+	if edit := b.miniappRow(chatID, loc, tfKindEmailNote, ids); edit != nil {
+		rows = append(rows, edit)
+	}
 	rows = append(rows, []models.InlineKeyboardButton{
 		{Text: "« " + t("bot.btn_back"), CallbackData: "event:" + ids + ":1"},
 		{Text: t("bot.btn_home"), CallbackData: "home"},

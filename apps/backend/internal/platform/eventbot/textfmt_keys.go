@@ -14,6 +14,8 @@ var textfmtKeys = []string{
 	"bot.tf.note_ask", "bot.tf.note_saved", "bot.tf.note_save_failed",
 	"bot.tf.note_delete_ask", "bot.tf.note_delete_yes_btn", "bot.tf.note_delete_no_btn", "bot.tf.note_deleted",
 	"bot.tf.note_test_sent", "bot.tf.note_test_empty", "bot.tf.note_test_limit",
+	// The button of the Telegram mini app editor, its note and its refusal (RT-12a)
+	"bot.tf.edit_btn", "bot.tf.edit_note", "bot.tf.edit_failed",
 }
 
 func init() {

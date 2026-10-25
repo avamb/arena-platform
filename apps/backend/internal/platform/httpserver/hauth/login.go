@@ -212,7 +212,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Feature #118: session tracking + concurrent-session enforcement (post-commit, best-effort).
-	h.trackNewSession(ctx, actorID, refreshToken, refreshExp)
+	h.trackNewSession(ctx, actorID, refreshToken, refreshExp, session)
 
 	slog.Info("auth.login: successful login",
 		"user_id", actorID.String(),
@@ -369,12 +369,22 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		id := uuid.New()
 		session.SessionID = &id
 	}
+	// The new end comes first: the access token never outlives the session
+	// (a mini app session ends 30 minutes after the exchange, so a refresh
+	// at minute 29 must not hand out an access token valid until minute 44).
+	now := time.Now().UTC()
+	newRefreshExp := sessionEnd(session, now)
+	ttl := accessTTL(newRefreshExp, now)
+	if ttl <= 0 {
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.refresh_token_expired", "refresh token has expired", r))
+		return
+	}
 	accessToken, exp, err := auth.IssueSessionJWT(
 		h.jwtSecret,
 		actorID,
 		h.jwtIssuer,
 		h.jwtAudience,
-		accessTokenTTL,
+		ttl,
 		sessionClaims(session),
 	)
 	if err != nil {
@@ -391,7 +401,6 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	newTokenHash := users.TokenHash(newRawToken)
-	newRefreshExp := sessionEnd(session, time.Now().UTC())
 
 	if err := q.RevokeRefreshToken(ctx, tokenHash); err != nil {
 		logger.Error("auth.refresh: revoke old token failed", "error", err)
@@ -411,9 +420,9 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Feature #118: update Redis session tracking after successful rotation.
-	if h.sessionStore != nil {
+	// A mini app session stays out of it, see trackNewSession.
+	if h.sessionStore != nil && !isMiniappSession(session) {
 		userIDStr := actorID.String()
-		now := time.Now().UTC()
 		// Revoke the old raw token in Redis.
 		if rErr := h.sessionStore.RevokeSession(ctx, userIDStr, req.RefreshToken, row.ExpiresAt); rErr != nil {
 			logger.Warn("auth.refresh: redis revoke old session failed (DB revocation succeeded)", "error", rErr)
@@ -422,7 +431,6 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		if tErr := h.sessionStore.TrackSession(ctx, userIDStr, newRawToken, newRefreshExp); tErr != nil {
 			logger.Warn("auth.refresh: redis track new session failed", "error", tErr, "user_id", userIDStr)
 		}
-		_ = now
 	}
 
 	slog.Info("auth.refresh: token rotated",
@@ -441,9 +449,15 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 // trackNewSession records a new sign-in in the session store and evicts the
 // oldest sessions above MaxConcurrentSessions (feature #118). It runs after
 // the sign-in committed and never fails it.
-func (h *Handler) trackNewSession(ctx context.Context, actorID uuid.UUID, refreshToken string, refreshExp time.Time) {
+//
+// A Telegram mini app session is not tracked: it lasts 30 minutes and the
+// organizer may open the editor several times in that time, so counting it
+// would push the person's main web or admin session out of the limit. It is
+// still a refresh_tokens row, so "sign out everywhere" and a deactivated
+// account end it like any other.
+func (h *Handler) trackNewSession(ctx context.Context, actorID uuid.UUID, refreshToken string, refreshExp time.Time, session gen.RefreshTokenSession) {
 	logger := logging.FromContext(ctx)
-	if h.sessionStore != nil {
+	if h.sessionStore != nil && !isMiniappSession(session) {
 		userIDStr := actorID.String()
 		now := time.Now().UTC()
 

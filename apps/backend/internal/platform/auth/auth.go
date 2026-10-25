@@ -118,7 +118,8 @@ type Actor struct {
 	SessionID string
 	// Channel is the "chn" claim: the client that started the sign-in, taken
 	// from the stored session, never from the request. Only the web event
-	// center ("event_center_web") is written today: a money route asks it for
+	// center ("event_center_web") and its Telegram mini app page
+	// ("event_center_tg") are written today: a money route asks both for
 	// the password again even when a request leaves X-Client-Channel out.
 	Channel string
 }

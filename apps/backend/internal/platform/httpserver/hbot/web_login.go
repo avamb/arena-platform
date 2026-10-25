@@ -9,6 +9,13 @@ package hbot
 //	POST /v1/bot/web-login-notices/claim  sign-ins the bot must report, each
 //	                                      handed out once
 //
+// A code has a purpose (migration 0169). "web" is the button above. "miniapp"
+// (spec 44, RT-12a) is the Telegram mini app editor: the link is
+// <EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event id>,
+// the exchange opens a 30-minute session of channel event_center_tg, the
+// chat gets no "signed in" notice, and issuing it takes back no code of
+// another purpose.
+//
 // Both are called by the bot PROCESS under BOT_SERVICE_TOKEN. The web
 // exchanges the code at POST /v1/auth/web/link (hauth).
 
@@ -21,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -30,6 +38,13 @@ import (
 
 // WebLoginCodeTTL is how long a link from the bot opens the web.
 const WebLoginCodeTTL = 5 * time.Minute
+
+// Kinds of text the mini app editor opens (RT-12a). They travel in the
+// fragment of the link next to the code.
+const (
+	MiniappKindDescription = "description"
+	MiniappKindEmailNote   = "email_note"
+)
 
 // webLoginNoticeBatch caps one claim of sign-in notices.
 const webLoginNoticeBatch = 50
@@ -42,15 +57,20 @@ func (h *Handler) WithEventCenterURL(origin string) *Handler {
 }
 
 // HandleCreateWebLoginCode serves POST /v1/bot/web-login-codes.
-// Body {"telegram_user_id": 123}.
+// Body {"telegram_user_id": 123} for "Open in browser" (purpose web, the
+// default), or {"telegram_user_id": 123, "purpose": "miniapp", "kind":
+// "description" or "email_note", "event_id": "<uuid>"} for the mini app editor.
 //
 //	201 {url, expires_at}             the link for the private chat
+//	400 bot.invalid_purpose           purpose is neither web nor miniapp
+//	400 bot.invalid_miniapp_target    a miniapp code needs kind and event_id
 //	404 bot.not_linked                the account is linked to nobody
 //	403 auth.user_deactivated
 //	403 bot.web_login_superadmin      a platform superadmin works in admin-web
 //	503 bot.web_login_not_configured  EVENT_CENTER_PUBLIC_URL is empty
 //
-// A new code takes back the person's earlier unused codes.
+// A new code takes back the person's earlier unused codes of the SAME
+// purpose.
 func (h *Handler) HandleCreateWebLoginCode(w http.ResponseWriter, r *http.Request) {
 	if h.queries == nil || h.pool == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -64,7 +84,10 @@ func (h *Handler) HandleCreateWebLoginCode(w http.ResponseWriter, r *http.Reques
 	}
 	ctx := r.Context()
 	var req struct {
-		TelegramUserID int64 `json:"telegram_user_id"`
+		TelegramUserID int64  `json:"telegram_user_id"`
+		Purpose        string `json:"purpose"`
+		Kind           string `json:"kind"`
+		EventID        string `json:"event_id"`
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4*1024))
 	if err != nil || json.Unmarshal(body, &req) != nil {
@@ -76,6 +99,29 @@ func (h *Handler) HandleCreateWebLoginCode(w http.ResponseWriter, r *http.Reques
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"bot.invalid_telegram_user_id", "telegram_user_id must be a positive integer", r,
 			map[string]any{"field": "telegram_user_id"}))
+		return
+	}
+
+	purpose := strings.TrimSpace(req.Purpose)
+	if purpose == "" {
+		purpose = gen.WebLoginPurposeWeb
+	}
+	var linkSuffix string
+	switch purpose {
+	case gen.WebLoginPurposeWeb:
+	case gen.WebLoginPurposeMiniapp:
+		eventID, perr := uuid.Parse(strings.TrimSpace(req.EventID))
+		if perr != nil || (req.Kind != MiniappKindDescription && req.Kind != MiniappKindEmailNote) {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"bot.invalid_miniapp_target", "a miniapp code needs kind (description or email_note) and a valid event_id", r,
+				map[string]any{"field": "kind"}))
+			return
+		}
+		linkSuffix = "&kind=" + req.Kind + "&event=" + eventID.String()
+	default:
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"bot.invalid_purpose", "purpose must be web or miniapp", r,
+			map[string]any{"field": "purpose"}))
 		return
 	}
 
@@ -134,9 +180,9 @@ func (h *Handler) HandleCreateWebLoginCode(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	expiresAt := h.now().Add(WebLoginCodeTTL)
-	err = q.RevokeOpenWebLoginCodes(ctx, link.UserID)
+	err = q.RevokeOpenWebLoginCodesOfPurpose(ctx, link.UserID, purpose)
 	if err == nil {
-		err = q.InsertWebLoginCode(ctx, users.TokenHash(code), link.UserID, req.TelegramUserID, expiresAt)
+		err = q.InsertWebLoginCode(ctx, users.TokenHash(code), link.UserID, req.TelegramUserID, expiresAt, purpose)
 	}
 	if err != nil {
 		h.logger.Error("hbot: web login: save code failed", slog.String("error", err.Error()))
@@ -151,9 +197,13 @@ func (h *Handler) HandleCreateWebLoginCode(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	h.writeAudit(r, "user", link.UserID.String(), "v1.auth.web_login_code_issue", "user", link.UserID.String(),
-		map[string]any{"via": "telegram_bot"})
+		map[string]any{"via": "telegram_bot", "purpose": purpose})
+	url := h.eventCenterURL + "/login/link#code=" + code
+	if purpose == gen.WebLoginPurposeMiniapp {
+		url = h.eventCenterURL + "/tg/edit#code=" + code + linkSuffix
+	}
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
-		"url":        h.eventCenterURL + "/login/link#code=" + code,
+		"url":        url,
 		"expires_at": expiresAt.UTC().Format(time.RFC3339),
 	})
 }

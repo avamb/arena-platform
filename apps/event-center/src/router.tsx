@@ -7,6 +7,7 @@ import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/
 import { RootLayout } from "@/screens/RootLayout";
 import { LoginScreen } from "@/screens/LoginScreen";
 import { LinkLoginScreen } from "@/screens/LinkLoginScreen";
+import { TgEditScreen } from "@/screens/TgEditScreen";
 import { ForgotPasswordScreen } from "@/screens/ForgotPasswordScreen";
 import { SetPasswordScreen } from "@/screens/SetPasswordScreen";
 import { OrgsScreen } from "@/screens/OrgsScreen";
@@ -62,6 +63,14 @@ const linkLoginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login/link",
   component: LinkLoginScreen,
+});
+
+// The Telegram mini app page (spec 44, RT-12): opened by the bot's web_app
+// button «Править в редакторе». Public: the one-time code is the proof.
+const tgEditRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tg/edit",
+  component: TgEditScreen,
 });
 
 const forgotRoute = createRoute({
@@ -249,6 +258,7 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   linkLoginRoute,
+  tgEditRoute,
   forgotRoute,
   resetPasswordRoute,
   acceptInviteRoute,

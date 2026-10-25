@@ -188,3 +188,50 @@ key exists in the harness. **No real poster has been read by a real model in the
 the shown poster are blob addresses made in the page). `script-src`, `frame-*`,
 `object-src` and `connect-src` are unchanged. `tests/smoke/container/poster-csp.spec.ts`
 proves it against the real nginx image (see `tests/README.md`).
+
+## Telegram mini app: `/tg/edit` (spec 44, RT-12)
+
+The bot's «Править в редакторе» button (behind the bot flag
+`BOT_MINIAPP_EDITOR_ENABLED`, off by default) is an ordinary callback button until it is pressed:
+the press draws the code and turns that button into a Telegram `web_app` button that opens
+`<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=description|email_note&event=<event id>`.
+The page exchanges the one-time code (purpose `miniapp`, 5 minutes) at `POST /v1/auth/web/link`
+for a 30-minute session of channel `event_center_tg`, takes the three parameters out of the
+address (`src/lib/tgEdit.ts`, called first by `main.tsx`) and today shows the placeholder
+«Редактор появится в следующем обновлении» with a close button (`Telegram.WebApp.close()`).
+The editor is RT-12b. Not reachable by real users while the bot flag is off.
+
+nginx serves `/tg/` with its own headers: `location ^~ /tg/` and the named location
+`@tg_index` (`nginx.conf.template`), `security-headers-tg.conf.template`. Everything is the main
+policy except two things: no `X-Frame-Options` and `frame-ancestors` naming the Telegram web
+clients (the file says which and why). `scripts/check-headers-tg.sh` is the container smoke (CI
+job `event-center-build`); `src/lib/tgHeaders.test.ts` checks the files before an image exists.
+
+### Telegram web app script
+
+`public/vendor/telegram-web-app.124bdff7.js` is a copy of `https://telegram.org/js/telegram-web-app.js`
+(the file has no version number: it is the script of Bot API 9.x, `Last-Modified: Tue, 06 Oct 2026 09:27:17 GMT`,
+119731 bytes, downloaded 2026-10-25). `script-src 'self'` is unchanged: the page loads the copy.
+
+    sha256  124bdff7ba3fe86c8ba5143467afec21e020405e74abdb92cfdda6c0ee3b5908
+
+The first 8 hex digits are in the file name, so the one-year cache of nginx cannot serve an old copy.
+To update: download the new file, compute `sha256sum`, rename it `telegram-web-app.<8 digits>.js`,
+change `TELEGRAM_SCRIPT_SRC` in `src/lib/tgEdit.ts` and the hash above. `src/lib/tgEdit.test.ts`
+fails if the file, its name and this note disagree. The page works without the file (the close
+button then goes back to the app), so a missing script never blocks the sign-in.
+
+Known limits. The fragment check below must be done by hand on Android, iOS, Telegram Desktop and
+Telegram Web BEFORE `BOT_MINIAPP_EDITOR_ENABLED` is turned on anywhere (`src/lib/tgEdit.test.ts`
+covers the parser for a second `#` and for data appended after `&`, not the clients themselves):
+
+- Telegram may add its own parameters to the fragment or replace it. The page keeps everything
+  except `code`, `kind` and `event`, and it stops at a second `#`. If a client drops our fragment, the spec's fall-back is the
+  code in the path; the nginx access log writes paths, so it needs a log rule first.
+- Inside the Telegram Web iframe the script tries to apply the client's theme through a `<style>`
+  element, which `style-src 'self'` refuses (one console message). The page does not depend on it.
+- The page signs in with the app's normal token store (the same storage keys as the web sign-in): a mini app session replaces a 72-hour web
+  session kept in the same browser profile or Telegram Desktop web view of this origin, for
+  example when the link is forwarded and opened in an ordinary browser. This is accepted: the
+  person signs in again. The session has no sign-in slot in the limit of concurrent sessions, so
+  it never pushes the main web or admin session out.
