@@ -83,12 +83,13 @@ func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, e
 
 	d := &Draft{Version: draftSchemaVersion, Mode: ModeEdit, Step: stEditMenu}
 	d.Event = DraftEvent{
-		EventID:      ev.Id.String(),
-		UpdatedAt:    ev.UpdatedAt.UTC().Format(time.RFC3339Nano),
-		Name:         ev.Name,
-		Age:          deref(ev.AgeRating),
-		PromoterName: deref(ev.PromoterName),
-		Description:  deref(ev.Description),
+		EventID:           ev.Id.String(),
+		UpdatedAt:         ev.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		Name:              ev.Name,
+		Age:               deref(ev.AgeRating),
+		PromoterName:      deref(ev.PromoterName),
+		Description:       eventDescriptionBase(ev), // the canonical text, never a translation
+		DescriptionFormat: descriptionFormatOf(ev.DescriptionFormat),
 	}
 	if ev.PromoterId != nil {
 		d.Event.PromoterID = ev.PromoterId.String()

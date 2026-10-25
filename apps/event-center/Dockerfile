@@ -37,11 +37,22 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Copy only the lockfile + package.json first so npm ci is cached
-# independently from source changes.
+# The shared editor library (spec 44, RT-10). event-center depends on it as
+# "@arena/rich-editor": "file:../rich-editor", which from /app is /rich-editor.
+# npm ci links it and needs only its package.json there, so the manifests of
+# both packages come first and every dependency layer is built from them alone:
+# a change to the editor sources (or to the event center sources) never
+# reinstalls anything.
+COPY apps/rich-editor/package.json apps/rich-editor/package-lock.json /rich-editor/
 COPY apps/event-center/package.json apps/event-center/package-lock.json ./
 
 RUN npm ci --no-audit --no-fund
+RUN npm --prefix /rich-editor ci --no-audit --no-fund
+
+# The editor sources, only now: the link needs the built dist/ (the types and
+# the ESM bundle) before tsc and vite of the event center run.
+COPY apps/rich-editor/ /rich-editor/
+RUN npm --prefix /rich-editor run build
 
 # Copy the OpenAPI TypeScript declarations (type-only; needed by tsc).
 COPY apps/backend/openapi/clients/ts/ /openapi-clients/ts/
@@ -80,10 +91,12 @@ ENV API_ORIGIN=${VITE_API_BASE_URL}
 RUN mkdir -p /etc/nginx/snippets
 COPY apps/event-center/nginx.conf.template /tmp/nginx.conf.template
 COPY apps/event-center/security-headers.conf.template /tmp/security-headers.conf.template
+COPY apps/event-center/security-headers-tg.conf.template /tmp/security-headers-tg.conf.template
 RUN test -n "${API_ORIGIN}" \
     && sed "s|__API_ORIGIN__|${API_ORIGIN}|g" /tmp/nginx.conf.template > /etc/nginx/conf.d/arena-event-center.conf \
     && sed "s|__API_ORIGIN__|${API_ORIGIN}|g" /tmp/security-headers.conf.template > /etc/nginx/snippets/security-headers.conf \
-    && rm /tmp/nginx.conf.template /tmp/security-headers.conf.template
+    && sed "s|__API_ORIGIN__|${API_ORIGIN}|g" /tmp/security-headers-tg.conf.template > /etc/nginx/snippets/security-headers-tg.conf \
+    && rm /tmp/nginx.conf.template /tmp/security-headers.conf.template /tmp/security-headers-tg.conf.template
 
 # Copy the built static assets from the build stage.
 COPY --from=build /app/dist /usr/share/nginx/html

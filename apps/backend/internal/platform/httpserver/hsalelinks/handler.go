@@ -13,7 +13,7 @@
 // sales_link.not_found, and a target (event, session, promoter) of another
 // organization is a 422 sales_link.invalid_target, never a 404.
 //
-//	GET   /v1/organizations/{org_id}/sales-links/{id}/qr   (QL-5, PNG or SVG)
+//	GET   /v1/organizations/{org_id}/sales-links/{id}/qr   (QL-5, PNG or SVG; QL-13, PDF insert)
 //
 // The QR route encodes the link's short address and needs sales_link.read.
 package hsalelinks
@@ -37,6 +37,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
@@ -53,6 +54,10 @@ type Handler struct {
 	// shortBase is SHORT_LINK_BASE_URL, ticketsBase PUBLIC_TICKETS_BASE_URL.
 	shortBase   string
 	ticketsBase string
+
+	// bundle and logos serve the PDF insert (insert.go); both may be nil.
+	bundle *i18n.Bundle
+	logos  LogoResolver
 }
 
 // New builds the handler. pool may be nil: every route then answers 503.

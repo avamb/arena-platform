@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+// The description is ART (spec 44, RT-11): comparing it by its visible text reads HTML, which needs a DOM.
 /**
  * What the poster said becomes SUGGESTIONS: sanitised, compared with the current
  * form, never applied silently, never inventing a venue, a currency or a capacity.
@@ -105,6 +107,28 @@ describe("buildPlan: fill, replace, skip", () => {
     const p = buildPlan(facts({ name: "Swan Lake", description: "Ballet", age: "12+", date: "2027-03-05", time: "19:30" }), ctx(fresh()));
     expect(rowKeys(p)).toEqual(["name", "description", "age", "date", "time"]);
     expect(p.rows.every((r) => !r.conflict && isRowOn(r, undefined))).toBe(true);
+    // The poster's description is plain text: the row holds it as ART (what the editor takes), and shows it as text.
+    const description = p.rows.find((r) => r.key === "description");
+    expect(description?.value).toBe("<p>Ballet</p>");
+    expect(description?.shown).toBe("Ballet");
+  });
+  it("enters the poster's description as ART, with paragraphs and lists, tags kept as text", () => {
+    const p = buildPlan(facts({ description: "One <b>\n\n- a\n- b" }), ctx(fresh()));
+    expect(p.rows[0].value).toBe("<p>One &lt;b&gt;</p><ul><li>a</li><li>b</li></ul>");
+    expect(buildActions(p, NO_SELECTION, fresh()).actions).toEqual([
+      { type: "event", field: "description", value: "<p>One &lt;b&gt;</p><ul><li>a</li><li>b</li></ul>" },
+    ]);
+  });
+  it("compares the description by its VISIBLE text, never by its markup", () => {
+    // The same words typed with bold: nothing new to suggest.
+    const typed = edit(fresh(), { type: "event", field: "description", value: "<p>Ballet in <strong>two</strong> acts</p>" });
+    expect(buildPlan(facts({ description: "Ballet in two acts" }), ctx(typed)).rows).toEqual([]);
+    // Other words: a conflict, and the hint shows the typed text without its tags.
+    const other = edit(fresh(), { type: "event", field: "description", value: "<p>My <em>own</em> text</p>" });
+    const row = buildPlan(facts({ description: "Ballet" }), ctx(other)).rows[0];
+    expect(row.conflict).toBe(true);
+    expect(row.current).toBe("<p>My <em>own</em> text</p>");
+    expect(row.currentShown).toBe("My own text");
   });
   it("typed text is NOT replaced by default: it is a conflict that needs its own tick", () => {
     const d = edit(fresh(), { type: "event", field: "name", value: "My own name" });
@@ -135,6 +159,9 @@ describe("buildPlan: fill, replace, skip", () => {
     const p = buildPlan(facts({ name: "New", description: "New text" }), ctx(d));
     const sel: Selection = { ...NO_SELECTION, rows: new Map([["name", { on: true, basis: "Old" }]]) };
     expect(buildActions(p, sel, d).actions).toEqual([{ type: "event", field: "name", value: "New" }]);
+    // The description is a conflict too, and ticking it enters ART.
+    const both: Selection = { ...NO_SELECTION, rows: new Map([["description", { on: true, basis: "Old text" }]]) };
+    expect(buildActions(p, both, d).actions).toEqual([{ type: "event", field: "description", value: "<p>New text</p>" }]);
   });
   it("the poster's one date goes to the FIRST date only; other dates are left alone", () => {
     let d = edit(fresh(), { type: "dateAdd", key: "d2", defaultName: "Admission" }, { type: "dateDay", key: "d2", value: "2027-05-01" });

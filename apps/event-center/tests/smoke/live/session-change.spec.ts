@@ -19,7 +19,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { liveEnv, noA11yViolations, person, signInAs, type Role } from "./liveEnv";
+import { liveEnv, noA11yViolations, person, richText, signInAs, type Role } from "./liveEnv";
 
 const env = liveEnv();
 
@@ -54,6 +54,7 @@ interface Rows {
   queued_letters: number;
   org_contact_email: string;
   last_message: string;
+  last_message_format: string;
   paid_orders: number;
 }
 
@@ -164,8 +165,8 @@ test.describe("move or cancel a session (live)", () => {
     await expect(page.getByTestId("dry-run-blocked")).toHaveCount(0);
     await expect(page.getByTestId("dry-run-summary")).toBeVisible();
     await expect(page.getByTestId("dry-run-result")).toContainText("organizer-contact@example.test");
-    const message = page.getByTestId("session-change-message");
-    await expect(message).not.toHaveValue("");
+    const message = richText(page, "session-change-message");
+    await expect(message).not.toHaveText("");
     await message.fill("We moved the show to Saturday. Sorry for the change.");
     expect(rows(S_MOVE)).toMatchObject({ start_at: START, changes: 0, queued_letters: 0, org_contact_email: "organizer-contact@example.test" });
 
@@ -180,7 +181,8 @@ test.describe("move or cancel a session (live)", () => {
       notices: 1,
       queued_letters: 1,
       paid_orders: 1,
-      last_message: "We moved the show to Saturday. Sorry for the change.",
+      last_message: "<p>We moved the show to Saturday. Sorry for the change.</p>",
+      last_message_format: "art",
     });
     await noA11yViolations(page);
   });
@@ -200,7 +202,7 @@ test.describe("move or cancel a session (live)", () => {
 
     await saveContact(page, "cancel-contact@example.test");
     await expect(page.getByTestId("session-cancel-continue")).toBeVisible();
-    await page.getByTestId("session-change-message").fill("The show is canceled. We will write to you about the money.");
+    await richText(page, "session-change-message").fill("The show is canceled. We will write to you about the money.");
     await page.getByTestId("session-cancel-continue").click();
 
     const dialog = page.getByTestId("confirm-word");
@@ -236,7 +238,8 @@ test.describe("move or cancel a session (live)", () => {
       notices: 1,
       queued_letters: 1,
       paid_orders: 1,
-      last_message: "The show is canceled. We will write to you about the money.",
+      last_message: "<p>The show is canceled. We will write to you about the money.</p>",
+      last_message_format: "art",
     });
   });
 
@@ -315,7 +318,7 @@ test.describe("move or cancel a session (live)", () => {
     await pickDay(page, "20.06.2090", "2090-06-20");
     await saveContact(page, "long-contact@example.test");
     await expect(page.getByTestId("dry-run-confirm")).toBeVisible();
-    await page.getByTestId("session-change-message").fill("x".repeat(1001));
+    await richText(page, "session-change-message").fill("x".repeat(1001));
     await expect(page.getByTestId("session-change-message-error")).toBeVisible();
     await page.getByTestId("dry-run-confirm").click();
     await expect(page.getByTestId("dry-run-action-error")).toBeVisible();

@@ -84,7 +84,7 @@ func NewEventNoteTestHandler(opts EventNoteTestOptions) worker.HandlerFunc {
 			EventName:      eventName,
 			Branding:       templates.Branding{OrgName: orgName, LegalName: legalName},
 			Tickets:        []templates.TicketLine{{Number: "1000"}},
-			EventNote:      eventnote.Parse(p.Note),
+			EventNote:      eventnote.Build(p.Note, p.NoteFormat),
 		})
 		if err != nil {
 			return err

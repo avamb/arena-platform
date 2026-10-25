@@ -15,6 +15,8 @@ export interface Person {
   email: string;
   password: string;
   user_id: string;
+  /** The Telegram account the person is linked to (arena-e2e-seed, tgedit_fixture.go). */
+  telegram_user_id: number;
   /** An access token of the harness's own sign-in (about 15 minutes). */
   access_token: string;
 }
@@ -34,6 +36,8 @@ export interface LiveEnv {
   poster_calls: string;
   /** The harness's Stripe stub (task 8-1): GET /__calls, POST /__reset. */
   stripe_stub_url: string;
+  /** The BOT_SERVICE_TOKEN of the harness API: the twin of the Telegram mini app plays the bot with it. */
+  bot_service_token: string;
   people: Person[];
 }
 
@@ -46,6 +50,14 @@ export function person(env: LiveEnv, role: Role): Person {
   const p = env.people.find((x) => x.role === role);
   if (p === undefined) throw new Error(`the live fixture has no ${role}`);
   return p;
+}
+
+/**
+ * The text area of a RichTextField (the editor of spec 44, RT-11). The field's own test id holds the whole
+ * editor (toolbar, text, counter); the text itself is the one multi-line textbox in it.
+ */
+export function richText(page: Page, testId: string) {
+  return page.getByTestId(testId).locator('[role="textbox"][aria-multiline="true"]');
 }
 
 /** Signs in through the real login form, exactly as the organizer does. */

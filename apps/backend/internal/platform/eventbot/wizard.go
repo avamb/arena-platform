@@ -150,6 +150,11 @@ type DraftEvent struct {
 	PosterW       int    `json:"poster_w"`
 	PosterH       int    `json:"poster_h"`
 	Description   string `json:"description"`
+	// DescriptionFormat is the format Description is in: "art" (as stored on
+	// the site), "text" (typed in the bot, or an old stored text) or ""
+	// (unknown: a draft saved before the format was kept). See
+	// wizard_description.go.
+	DescriptionFormat string `json:"description_format,omitempty"`
 }
 
 // DraftSession is one date of the event.
@@ -355,6 +360,10 @@ type WizSession struct {
 	OrgName  string
 	Locale   string
 	Defaults Defaults
+	// Superadmin is the platform operator: arena-api gives them no mini app
+	// sign-in code, so the bot draws no «Править в редакторе» button for them.
+	// The wizard itself never reads it.
+	Superadmin bool
 }
 
 // WizInput is one answer: a typed text, a button, or an accepted poster.
@@ -362,6 +371,10 @@ type WizInput struct {
 	Text   string
 	Data   string // callback payload without the "wz:" prefix
 	Poster *PosterAccepted
+	// Art is a description the organizer approved in the preview (RT-05):
+	// ART that already went through the server's filter. It answers the
+	// description question.
+	Art string
 }
 
 // PosterAccepted is a poster the bot already validated and uploaded.
@@ -1403,13 +1416,12 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 
 	case stXDescription:
 		switch {
+		case in.Art != "":
+			d.setApprovedDescription(in.Art)
 		case data == "clear":
-			d.Event.Description = ""
+			d.Event.Description, d.Event.DescriptionFormat = "", ""
 		case data != "skip":
-			if len([]rune(text)) > 4000 {
-				text = string([]rune(text)[:4000])
-			}
-			d.Event.Description = text
+			d.setTypedDescription(text)
 		}
 		d.next(stXCurrency)
 

@@ -142,6 +142,7 @@ func TestLoadFor_SharedProductionRulesApplyToEveryRole(t *testing.T) {
 		{"allpay seam", "ALLPAY_API_BASE_URL", "http://stub:12113"},
 		{"brevo host", "BREVO_API_BASE_URL", "https://brevo.attacker.example"},
 		{"llm host", "POSTER_LLM_BASE_URL", "https://llm.attacker.example"},
+		{"gemini host", "POSTER_GEMINI_BASE_URL", "https://gemini.attacker.example"},
 		{"event center link", "EVENT_CENTER_PUBLIC_URL", "http://ec.example.com"},
 	}
 	for role, own := range roleMinimum {
@@ -272,6 +273,7 @@ func TestLoadFor_DefaultAPIHostsAreAccepted(t *testing.T) {
 	setEnv(t, roleMinimum[RoleBot])
 	t.Setenv("BREVO_API_BASE_URL", DefaultBrevoAPIBaseURL+"/")
 	t.Setenv("POSTER_LLM_BASE_URL", DefaultPosterLLMBaseURL)
+	t.Setenv("POSTER_GEMINI_BASE_URL", DefaultPosterGeminiBaseURL+"/")
 	if _, err := LoadFor(RoleBot); err != nil {
 		t.Fatalf("the default API hosts must be accepted: %v", err)
 	}
@@ -516,5 +518,41 @@ func TestLoadFor_BillingCollectSince(t *testing.T) {
 	t.Setenv("BILLING_COLLECT_SINCE", "yesterday")
 	if _, err := LoadFor(RoleWorker); err == nil {
 		t.Fatal("a value that is not RFC 3339 must be refused")
+	}
+}
+
+// The text-formatting route (spec 44, RT-04) uses the poster key and base URL
+// and has its own model and daily caps.
+func TestLoadFor_TextFormatSettings(t *testing.T) {
+	clearConfigEnv(t)
+	setEnv(t, productionCommon)
+	setEnv(t, roleMinimum[RoleAPI])
+	cfg, err := LoadFor(RoleAPI)
+	if err != nil {
+		t.Fatalf("api: %v", err)
+	}
+	if cfg.TextFormatLLMModel != "claude-haiku-5-5" || cfg.TextFormatsPerUserPerDay != 100 || cfg.TextFormatsPerOrgPerDay != 500 {
+		t.Errorf("defaults = %q, %d, %d", cfg.TextFormatLLMModel, cfg.TextFormatsPerUserPerDay, cfg.TextFormatsPerOrgPerDay)
+	}
+	t.Setenv("TEXT_FORMAT_LLM_MODEL", " claude-test ")
+	t.Setenv("TEXT_FORMATS_PER_USER_PER_DAY", "7")
+	t.Setenv("TEXT_FORMATS_PER_ORG_PER_DAY", "0")
+	cfg, err = LoadFor(RoleAPI)
+	if err != nil {
+		t.Fatalf("api with settings: %v", err)
+	}
+	if cfg.TextFormatLLMModel != "claude-test" || cfg.TextFormatsPerUserPerDay != 7 || cfg.TextFormatsPerOrgPerDay != 0 {
+		t.Errorf("settings = %q, %d, %d", cfg.TextFormatLLMModel, cfg.TextFormatsPerUserPerDay, cfg.TextFormatsPerOrgPerDay)
+	}
+	for _, name := range []string{"TEXT_FORMATS_PER_USER_PER_DAY", "TEXT_FORMATS_PER_ORG_PER_DAY"} {
+		t.Setenv(name, "-1")
+		if _, err = LoadFor(RoleAPI); err == nil || !strings.Contains(err.Error(), name) {
+			t.Errorf("%s=-1 must be refused, got %v", name, err)
+		}
+		t.Setenv(name, "5")
+	}
+	t.Setenv("TEXT_FORMATS_PER_ORG_PER_DAY", "many")
+	if _, err = LoadFor(RoleAPI); err == nil {
+		t.Error("a cap that is not a number must be refused")
 	}
 }

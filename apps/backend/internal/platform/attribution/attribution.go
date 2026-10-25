@@ -213,15 +213,20 @@ func MergeTouch(prev, next Attribution) Attribution {
 //     that cannot keep time must not cost a sale. A PRESENT landed_at that is
 //     not a non-empty RFC 3339 string drops the touch;
 //   - a touch with no ref and no utm_source/utm_campaign is not a touch;
-//   - "first" is cleaned the same way (ref, utm_source, utm_campaign, landed_at) and is
-//     dropped alone when invalid.
+//   - "first" is cleaned the same way (ref, utm_source, utm_campaign, landed_at)
+//     except that the 7-day Window does NOT apply to it: the window belongs to
+//     the last touch only, and the first touch is older than the last by
+//     definition (decision R-QL23, MergeTouch carries it forward without any
+//     window). Its landed_at must still be RFC 3339, not later than
+//     now+FutureSkew and not later than the landed_at of the last touch;
+//     otherwise "first" is dropped alone.
 func Clean(raw []byte, now time.Time) (Attribution, bool) {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &m); err != nil || len(m) == 0 {
 		return Attribution{}, false
 	}
 	now = now.UTC()
-	t, ok := cleanTouch(m, now)
+	t, ok := cleanTouch(m, now, true)
 	if !ok || (t.Ref == "" && t.UTMSource == "" && t.UTMCampaign == "") {
 		return Attribution{}, false
 	}
@@ -229,7 +234,10 @@ func Clean(raw []byte, now time.Time) (Attribution, bool) {
 	if rawFirst, has := m["first"]; has {
 		var fm map[string]json.RawMessage
 		if err := json.Unmarshal(rawFirst, &fm); err == nil && len(fm) > 0 {
-			if ft, ok := cleanTouch(fm, now); ok && (ft.Ref != "" || ft.UTMSource != "" || ft.UTMCampaign != "") {
+			// The first touch is exempt from the window, and it cannot be
+			// later than the last touch: then it is not the first.
+			if ft, ok := cleanTouch(fm, now, false); ok && !ft.LandedAt.After(t.LandedAt) &&
+				(ft.Ref != "" || ft.UTMSource != "" || ft.UTMCampaign != "") {
 				out.First = &First{Ref: ft.Ref, UTMSource: ft.UTMSource, UTMCampaign: ft.UTMCampaign, LandedAt: ft.LandedAt}
 			}
 		}
@@ -237,7 +245,9 @@ func Clean(raw []byte, now time.Time) (Attribution, bool) {
 	return out, true
 }
 
-func cleanTouch(m map[string]json.RawMessage, now time.Time) (Touch, bool) {
+// cleanTouch cleans one touch object. windowed applies the last-touch Window
+// to landed_at; it is false for the first touch, which may be older.
+func cleanTouch(m map[string]json.RawMessage, now time.Time, windowed bool) (Touch, bool) {
 	t := Touch{
 		UTMSource:   pagestats.CleanUTM(str(m["utm_source"])),
 		UTMMedium:   pagestats.CleanUTM(str(m["utm_medium"])),
@@ -263,7 +273,7 @@ func cleanTouch(m map[string]json.RawMessage, now time.Time) (Touch, bool) {
 		}
 		landed = parsed.UTC()
 	}
-	if landed.Before(now.Add(-Window)) || landed.After(now.Add(FutureSkew)) {
+	if (windowed && landed.Before(now.Add(-Window))) || landed.After(now.Add(FutureSkew)) {
 		return Touch{}, false
 	}
 	if landed.After(now) {

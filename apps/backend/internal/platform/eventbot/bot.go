@@ -58,6 +58,10 @@ type Options struct {
 	// in the application dialog; keep it off until the site's continue page
 	// (/start/confirm) is live.
 	SiteButton bool
+	// MiniappEditor (BOT_MINIAPP_EDITOR_ENABLED) shows the web_app button
+	// "Edit in the editor" next to the description preview and on the
+	// email-note screen (spec 44, RT-12a). Default off.
+	MiniappEditor bool
 	// DialogSweepEvery is how often long-expired bot_dialogs rows are
 	// deleted (default 10 min); tests shorten it.
 	DialogSweepEvery time.Duration
@@ -102,6 +106,7 @@ type Bot struct {
 	selfOnboarding bool
 	noticeEvery    time.Duration
 	siteButton     bool
+	miniappEditor  bool
 	onb            *onbDialogs
 	onbForms       *onbFormCache
 
@@ -249,6 +254,7 @@ func New(opts Options) (*Bot, error) {
 		selfOnboarding: opts.SelfOnboarding,
 		noticeEvery:    opts.NoticeEvery,
 		siteButton:     opts.SiteButton,
+		miniappEditor:  opts.MiniappEditor,
 		onbForms:       &onbFormCache{m: map[string]onbFormEntry{}},
 		feed:           newFeedMemory(),
 		menuKB:         newMenuShown(),
@@ -576,6 +582,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.categoryCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ct:"))
 	case "og":
 		b.orgDataCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "og:"))
+	case "ql":
+		b.salesLinkCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ql:"))
 	case "home":
 		b.showHome(ctx, chatID, &msgID, from, "")
 	case menuCallback:
@@ -629,6 +637,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.onbCallback(ctx, chatID, msgID, from, cq.Data)
 	case "ses":
 		b.sessionsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ses:"))
+	case "tf":
+		b.tfCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "tf:"))
 	case "team":
 		b.teamCallback(ctx, chatID, msgID, from, strings.TrimPrefix(strings.TrimPrefix(cq.Data, "team"), ":"))
 	}
@@ -746,7 +756,7 @@ func (b *Bot) showHome(ctx context.Context, chatID int64, editMsgID *int, from *
 		b.showOrgChooserFor(ctx, chatID, editMsgID, id)
 		return
 	}
-	text := prefix + b.texts.T(id.Locale(), "bot.menu_title", map[string]any{"Org": Esc(id.Current.OrgName)}) + b.paymentsNote(ctx, id, jwt)
+	text := prefix + b.texts.T(id.Locale(), "bot.menu_title", map[string]any{"Org": Esc(id.Current.OrgName)}) + b.paymentsNote(ctx, id, jwt) + b.archivedNote(id)
 	b.reply(ctx, chatID, editMsgID, text, b.homeKeyboard(ctx, id, jwt))
 }
 
@@ -773,6 +783,9 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 		rows = append(rows, row)
 	}
 	if row := b.promoterMenuRow(loc, id); row != nil { // promoters (EC-14)
+		rows = append(rows, row)
+	}
+	if row := b.salesLinkMenuRow(loc, id); row != nil { // links and QR codes (spec 43, QL-8)
 		rows = append(rows, row)
 	}
 	if row := b.orgDataMenuRow(loc, id); row != nil { // organization data (HP-4a)
@@ -821,10 +834,22 @@ func (b *Bot) showOrgChooser(ctx context.Context, chatID int64, editMsgID *int, 
 }
 
 func (b *Bot) showOrgChooserFor(ctx context.Context, chatID int64, editMsgID *int, id *Identity) {
+	text, kb := b.orgChooserView(id)
+	b.reply(ctx, chatID, editMsgID, text, kb)
+}
+
+// orgChooserView is the organization chooser: one button per WORKING
+// organization, archived ones only named in the text, and a plain notice (no
+// buttons) when nothing is left to work in.
+func (b *Bot) orgChooserView(id *Identity) (string, *models.InlineKeyboardMarkup) {
 	loc := id.Locale()
 	if len(id.Memberships) == 0 {
-		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.org_none", nil), nil)
-		return
+		if len(id.Archived) > 0 {
+			// Every organization of this person is archived: say so plainly
+			// instead of showing a menu that cannot work.
+			return b.texts.T(loc, "bot.org_all_archived", map[string]any{"List": archivedNames(id.Archived)}), nil
+		}
+		return b.texts.T(loc, "bot.org_none", nil), nil
 	}
 	rows := make([][]models.InlineKeyboardButton, 0, len(id.Memberships)+1)
 	for _, m := range id.Memberships {
@@ -833,7 +858,7 @@ func (b *Bot) showOrgChooserFor(ctx context.Context, chatID int64, editMsgID *in
 	if id.Current != nil {
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}})
 	}
-	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.org_choose", nil), &models.InlineKeyboardMarkup{InlineKeyboard: rows})
+	return b.texts.T(loc, "bot.org_choose", nil) + b.archivedNote(id), &models.InlineKeyboardMarkup{InlineKeyboard: rows}
 }
 
 func (b *Bot) switchOrg(ctx context.Context, chatID int64, editMsgID *int, from *models.User, orgID uuid.UUID) {

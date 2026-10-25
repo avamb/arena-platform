@@ -59,13 +59,16 @@ type person struct {
 	Password     string `json:"password"`
 	UserID       string `json:"user_id"`
 	MembershipID string `json:"-"`
+	// TelegramUserID is the Telegram account the person is linked to (tgedit_fixture.go), so a twin test can
+	// ask the bot route for a mini app code in their name.
+	TelegramUserID int64 `json:"telegram_user_id"`
 }
 
 func people() []person {
 	return []person{
-		{Role: "org_admin", Email: "e2e-owner@test.arena.local", UserID: "fe0000e3-0000-7000-8000-000000000001", MembershipID: "fe0000e4-0000-7000-8000-000000000001"},
-		{Role: "organizer", Email: "e2e-manager@test.arena.local", UserID: "fe0000e3-0000-7000-8000-000000000002", MembershipID: "fe0000e4-0000-7000-8000-000000000002"},
-		{Role: "agent", Email: "e2e-agent@test.arena.local", UserID: "fe0000e3-0000-7000-8000-000000000003", MembershipID: "fe0000e4-0000-7000-8000-000000000003"},
+		{Role: "org_admin", Email: "e2e-owner@test.arena.local", UserID: "fe0000e3-0000-7000-8000-000000000001", MembershipID: "fe0000e4-0000-7000-8000-000000000001", TelegramUserID: 9100000001},
+		{Role: "organizer", Email: "e2e-manager@test.arena.local", UserID: "fe0000e3-0000-7000-8000-000000000002", MembershipID: "fe0000e4-0000-7000-8000-000000000002", TelegramUserID: 9100000002},
+		{Role: "agent", Email: "e2e-agent@test.arena.local", UserID: "fe0000e3-0000-7000-8000-000000000003", MembershipID: "fe0000e4-0000-7000-8000-000000000003", TelegramUserID: 9100000003},
 	}
 }
 
@@ -267,6 +270,10 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	if err := applyTeamFixture(ctx, tx); err != nil {
+		return err
+	}
+	// RT-12b: the Telegram links of the three people (tgedit_fixture.go).
+	if err := applyTgEditFixture(ctx, tx); err != nil {
 		return err
 	}
 	// 4-3: the promo-code twin test's extra rows (promo_fixture.go).

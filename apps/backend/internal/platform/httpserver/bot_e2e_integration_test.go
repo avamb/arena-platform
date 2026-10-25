@@ -80,6 +80,7 @@ type stubMessage struct {
 	markup json.RawMessage // the reply_markup as sent; nil when it has none
 	data   []string        // callback data of its buttons
 	urls   []string        // addresses of its URL buttons
+	webApp []string        // addresses of its web_app buttons
 	// replyKB is a reply keyboard (the one under the message field) the
 	// message carried, as sent; nil for an inline keyboard or none.
 	replyKB json.RawMessage
@@ -206,12 +207,17 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write(data)
-	case "sendDocument":
-		// A document arrives as multipart; it is recorded as a sent line
-		// "[document <filename>] <caption>" so waitFor can see it.
+	case "sendDocument", "sendPhoto":
+		// A document (or a photo) arrives as multipart; it is recorded as a
+		// sent line "[document <filename>] <caption>" (or "[photo ...]") so
+		// waitFor can see it.
+		kind := "document"
+		if method == "sendPhoto" {
+			kind = "photo"
+		}
 		name, caption := "", field("caption")
 		if r.MultipartForm != nil {
-			if files := r.MultipartForm.File["document"]; len(files) > 0 {
+			if files := r.MultipartForm.File[kind]; len(files) > 0 {
 				name = files[0].Filename
 				if fh, err := files[0].Open(); err == nil {
 					body, _ := io.ReadAll(fh)
@@ -231,7 +237,7 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		s.mu.Lock()
-		s.sent = append(s.sent, "[document "+name+"] "+caption)
+		s.sent = append(s.sent, "["+kind+" "+name+"] "+caption)
 		s.sentIDs = append(s.sentIDs, 0)
 		s.msgSeq++
 		seq := s.msgSeq
@@ -345,6 +351,9 @@ func (s *stubTelegram) remember(id int, p stubSent) {
 		InlineKeyboard [][]struct {
 			CallbackData string `json:"callback_data"`
 			URL          string `json:"url"`
+			WebApp       *struct {
+				URL string `json:"url"`
+			} `json:"web_app"`
 		} `json:"inline_keyboard"`
 	}
 	if len(p.ReplyMarkup) > 0 && json.Unmarshal(p.ReplyMarkup, &kb) == nil {
@@ -352,6 +361,9 @@ func (s *stubTelegram) remember(id int, p stubSent) {
 			for _, b := range row {
 				if b.CallbackData != "" {
 					m.data = append(m.data, b.CallbackData)
+				}
+				if b.WebApp != nil && b.WebApp.URL != "" {
+					m.webApp = append(m.webApp, b.WebApp.URL)
 				}
 				if b.URL != "" {
 					m.urls = append(m.urls, b.URL)
@@ -841,4 +853,14 @@ func (s *stubTelegram) replyKeyboardSince(mark int) (kb stubReplyKeyboard, text 
 		return kb, m.text, true
 	}
 	return kb, "", false
+}
+
+// webAppsOf returns the addresses of a message's web_app buttons now.
+func (s *stubTelegram) webAppsOf(id int) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if m := s.msgs[id]; m != nil {
+		return append([]string(nil), m.webApp...)
+	}
+	return nil
 }

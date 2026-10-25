@@ -461,7 +461,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 			now := t("bot.wz.edit_desc_none", nil)
 			rows := [][]Button{}
 			if strings.TrimSpace(d.Event.Description) != "" {
-				now = t("bot.wz.edit_desc_now", map[string]any{"Text": Esc(truncate(d.Event.Description, 300))})
+				now = t("bot.wz.edit_desc_now", map[string]any{"Text": descriptionPreview(d.Event, previewRunes)})
 				rows = append(rows, []Button{btn("bot.wz.clear_description_btn", "clear")})
 			}
 			return Screen{Text: header(4, "bot.wz.title_extra") + now + t("bot.wz.edit_ask_description", nil), Buttons: nav(rows...)}, nil

@@ -241,3 +241,34 @@ describe('ArenaTickets.svelte — checkout/start locale', () => {
     expect(src).toMatch(/payload\.locale = normLocale[\s\S]{0,400}postCheckoutStart\(normFeedToken, payload/);
   });
 });
+
+// ─── checkout/start alone carries the attribution (spec 43) ──────────────────
+
+describe('ArenaTickets.svelte — attribution', () => {
+  const source = (): Promise<string> =>
+    import('./ArenaTickets.svelte?raw').then((m: { default: string }) => m.default);
+
+  it('puts the attribution on the checkout/start payload exactly once, before the request', async () => {
+    const src = await source();
+    expect(src.match(/payload\.attribution = /g)).toHaveLength(1);
+    expect(src).toMatch(/payload\.attribution = attribution;[\s\S]{0,1200}postCheckoutStart\(normFeedToken, payload/);
+  });
+
+  it('reads the touch once on mount, from the page address', async () => {
+    const src = await source();
+    expect(src.match(/captureAttribution\(/g)).toHaveLength(1);
+    expect(src).toMatch(/attribution = captureAttribution\(normFeedToken, window\.location\.search\)/);
+  });
+
+  it('never hands the attribution to checkout/recover or checkout/quote', async () => {
+    const src = await source();
+    for (const call of ['postCheckoutRecover(', 'postCheckoutQuote(', 'buildQuotePayload(']) {
+      let at = src.indexOf(call);
+      expect(at).toBeGreaterThan(-1);
+      while (at !== -1) {
+        expect(src.slice(at, at + 200)).not.toMatch(/attribution/i);
+        at = src.indexOf(call, at + 1);
+      }
+    }
+  });
+});

@@ -98,11 +98,14 @@ SELECT EXISTS (
 -- belong to. Used by the GET /v1/me current-user context endpoint (feature #211)
 -- so the response can enumerate organization_memberships and derive
 -- organization-scoped entries in available_scopes.
-SELECT id, user_id, org_id, role, status, joined_at
-FROM   memberships
-WHERE  user_id = $1
-  AND  status  = 'active'
-ORDER  BY joined_at ASC, id ASC;
+SELECT m.id, m.user_id, m.org_id, m.role, m.status, m.joined_at,
+       o.name AS org_name, o.display_number AS org_display_number,
+       (o.deleted_at IS NOT NULL) AS org_archived
+FROM   memberships m
+JOIN   organizations o ON o.id = m.org_id
+WHERE  m.user_id = $1
+  AND  m.status  = 'active'
+ORDER  BY m.joined_at ASC, m.id ASC;
 
 -- name: GetMembershipByID :one
 -- Looks up a single membership by its UUIDv7 primary key, scoped to the

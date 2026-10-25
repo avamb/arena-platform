@@ -163,6 +163,14 @@ services:
       # The key lives on the api only; the bot calls the route. Empty = off.
       POSTER_LLM_API_KEY: "${POSTER_LLM_API_KEY:-}"
       POSTER_LLM_MODEL: "${POSTER_LLM_MODEL:-claude-sonnet-5}"
+      # Provider choice: anthropic (default) or gemini, with an optional fallback
+      # provider tried once. GEMINI_API_KEY is the key of the gemini provider.
+      POSTER_LLM_PROVIDER: "${POSTER_LLM_PROVIDER:-anthropic}"
+      POSTER_LLM_FALLBACK_PROVIDER: "${POSTER_LLM_FALLBACK_PROVIDER:-}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      POSTER_GEMINI_MODEL: "${POSTER_GEMINI_MODEL:-gemini-3.8-flash}"
+      # The same key adds markup to organizer texts (POST /v1/organizations/{org_id}/texts/format), cost-capped per person and per organization.
+      TEXT_FORMAT_LLM_MODEL: "${TEXT_FORMAT_LLM_MODEL:-claude-haiku-5-5}"
       JWT_ISSUER: "arena-dev"
       JWT_AUDIENCE: "arena-api"
       JWT_DEFAULT_TTL: "1h"

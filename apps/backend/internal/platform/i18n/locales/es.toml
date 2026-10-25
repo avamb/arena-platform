@@ -245,6 +245,12 @@ other = "Has cambiado a <b>{{.Org}}</b>."
 ["bot.org_none"]
 other = "Ya no eres miembro de ninguna organización. Pide una nueva invitación a su propietario."
 
+["bot.org_archived_note"]
+other = "Organizaciones archivadas, no disponibles para trabajar: {{.List}}."
+
+["bot.org_all_archived"]
+other = "Tu organización {{.List}} está archivada, así que ya no se puede trabajar con ella en el bot. Si es un error, escribe al soporte de Arena."
+
 ["bot.lang_choose"]
 other = "Elige el idioma del bot."
 
@@ -675,7 +681,7 @@ other = "Listo →"
 other = "Varias categorías necesitan al menos dos. Si solo hay una, elige “Una categoría”."
 
 ["bot.wz.ask_description"]
-other = "Descripción del evento para los compradores, en un solo mensaje, de hasta 4000 caracteres. Puedes omitirla.\n\nFormato: una línea en blanco empieza un párrafo nuevo, **negrita**, _cursiva_, las líneas que empiezan por “- ” forman una lista."
+other = "Escribe el texto como siempre: le daré formato y te enseñaré el resultado.\n\nLa descripción del evento para los compradores, en un solo mensaje, de hasta 4000 caracteres. Puedes omitir este paso."
 
 ["bot.wz.ask_currency"]
 other = "¿Moneda de los precios?"
@@ -927,7 +933,7 @@ other = "cargado"
 other = "ninguno"
 
 ["bot.wz.edit_ask_description"]
-other = "Envía la nueva descripción en un solo mensaje, de hasta 4000 caracteres.\n\nFormato: una línea en blanco empieza un párrafo nuevo, **negrita**, _cursiva_, las líneas que empiezan por “- ” forman una lista."
+other = "Escribe el nuevo texto como siempre: le daré formato y te enseñaré el resultado.\n\nEn un solo mensaje, de hasta 4000 caracteres."
 
 ["bot.wz.edit_desc_now"]
 other = "Ahora:\n<i>{{.Text}}</i>\n\n"
@@ -1132,6 +1138,9 @@ other = "Texto estándar"
 
 ["bot.ses.msg_too_long"]
 other = "Demasiado largo ({{.N}} caracteres). Acórtalo a 1000."
+
+["bot.ses.msg_invalid"]
+other = "Ese texto no se puede usar (un carácter prohibido o marcado). Envía el mensaje de nuevo como texto sin formato."
 
 ["bot.ses.go_move_btn"]
 other = "✔ Trasladar y avisar"
@@ -3899,3 +3908,426 @@ other = "Todos los que tienen una entrada válida ya han entrado."
 
 ["bot.ses.not_entered_invite"]
 other = "invitación"
+
+["bot.ql.menu_btn"]
+other = "🔗 Enlaces y QR"
+
+["bot.ql.btn"]
+other = "🔗 QR / enlace"
+
+["bot.ql.cancel_btn"]
+other = "Cancelar"
+
+["bot.ql.cancelled"]
+other = "Listo. No se cambió nada."
+
+["bot.ql.target_q"]
+other = "¿A dónde debe llevar el enlace?\n\nRecibirás un enlace corto y un código QR. Imprime el código o publícalo en internet."
+
+["bot.ql.target_q_event"]
+other = "¿A dónde debe llevar el enlace?\n\nEvento: <b>{{.Name}}</b>"
+
+["bot.ql.t_event"]
+other = "Este evento"
+
+["bot.ql.t_session"]
+other = "Una sesión…"
+
+["bot.ql.t_pages"]
+other = "Todos los eventos"
+
+["bot.ql.t_other_event"]
+other = "Otro evento…"
+
+["bot.ql.t_pick_event"]
+other = "Elegir un evento…"
+
+["bot.ql.t_url"]
+other = "Mi propia dirección"
+
+["bot.ql.events_q"]
+other = "Elige el evento. Página {{.Page}} de {{.Pages}}."
+
+["bot.ql.events_none"]
+other = "Todavía no hay eventos para enlazar. Crea un evento y vuelve aquí."
+
+["bot.ql.sessions_q"]
+other = "Elige la sesión del evento <b>{{.Name}}</b>. Página {{.Page}} de {{.Pages}}."
+
+["bot.ql.sessions_none"]
+other = "El evento <b>{{.Name}}</b> no tiene sesiones para enlazar. Pulsa «Atrás» y elige otro destino."
+
+["bot.ql.url_q"]
+other = "Escribe la dirección de la página. Debe empezar por https:// o http://.\n\nEjemplo: https://example.com/shop"
+
+["bot.ql.err_url"]
+other = "La dirección debe empezar por https:// o http:// y no puede tener espacios. Revísala y envíala otra vez."
+
+["bot.ql.err_url_long"]
+other = "La dirección es demasiado larga. Envía una de hasta 2048 caracteres."
+
+["bot.ql.err_url_refused"]
+other = "La dirección no pasó la comprobación. Quítale el nombre de usuario y la contraseña, luego pulsa «Mi propia dirección» y envíala otra vez."
+
+["bot.ql.err_target"]
+other = "Esta página no está en tu organización. Elige otro destino."
+
+["bot.ql.tgt_event"]
+other = "el evento <b>{{.Name}}</b>"
+
+["bot.ql.tgt_session"]
+other = "<b>{{.Name}}</b>, sesión {{.When}}"
+
+["bot.ql.tgt_page"]
+other = "la página con todos los eventos de <b>{{.Name}}</b>"
+
+["bot.ql.tgt_url"]
+other = "la dirección {{.URL}}"
+
+["bot.ql.placement_q"]
+other = "El enlace lleva a: {{.Target}}.\n\n¿Dónde pondrás el código?"
+
+["bot.ql.pl_poster"]
+other = "Cartel"
+
+["bot.ql.pl_flyer"]
+other = "Folleto"
+
+["bot.ql.pl_sign"]
+other = "Letrero"
+
+["bot.ql.pl_social"]
+other = "Redes sociales"
+
+["bot.ql.pl_email"]
+other = "Correo"
+
+["bot.ql.pl_messenger"]
+other = "Mensajería"
+
+["bot.ql.pl_other"]
+other = "Otro"
+
+["bot.ql.change_target_btn"]
+other = "Elegir otro destino"
+
+["bot.ql.label_q"]
+other = "Ubicación: {{.Place}}.\nEscribe un nombre corto para este lugar, de hasta 120 caracteres.\n\nEjemplo: Cartel en la entrada"
+
+["bot.ql.err_label_empty"]
+other = "El nombre está vacío. Escribe un nombre corto, por ejemplo «Cartel en la entrada»."
+
+["bot.ql.err_label_long"]
+other = "El nombre es demasiado largo. Envía uno de hasta 120 caracteres."
+
+["bot.ql.created"]
+other = "Listo. El enlace está creado. Imprime la imagen de arriba o envíala a la imprenta."
+
+["bot.ql.qr_caption"]
+other = "{{.Label}}"
+
+["bot.ql.svg_caption"]
+other = "El mismo código en un archivo SVG, para imprimir."
+
+["bot.ql.pdf_caption"]
+other = "Una tarjeta A6 para imprimir: el código, el nombre y la dirección en una página."
+
+["bot.ql.qr_failed"]
+other = "No pudimos enviar la imagen del código. Pulsa «Enviar el código otra vez»."
+
+["bot.ql.card_head"]
+other = "🔗 <b>{{.Label}}</b>\n{{.Place}}"
+
+["bot.ql.card_short"]
+other = "Dirección corta: {{.URL}}"
+
+["bot.ql.card_dest"]
+other = "Ahora lleva a: {{.URL}}"
+
+["bot.ql.card_no_dest"]
+other = "Ahora lleva a la página de reserva de la plataforma: no se pudo construir la dirección de la página de venta."
+
+["bot.ql.card_degraded"]
+other = "El código lleva a una página superior a su destino. El motivo: el evento está fuera de venta, la sesión ya no vende o el destino ya no existe. Vuelve a poner el evento a la venta o pulsa «Redirigir»."
+
+["bot.ql.card_archived"]
+other = "El enlace está en el archivo. El código lleva a la página con todos los eventos."
+
+["bot.ql.card_counts"]
+other = "Escaneos: {{.Scans}}. Pedidos: {{.Orders}}."
+
+["bot.ql.card_why_event_unpublished"]
+other = "El evento no está publicado, por eso el código lleva a la página general (la dirección de arriba). Publica el evento y el código llevará a su página por sí solo. No hace falta redirigir."
+
+["bot.ql.card_why_event_no_page"]
+other = "El evento todavía no tiene página de venta, por eso el código lleva a la página general (la dirección de arriba). Redirigir no ayudará. Escribe a soporte y añadiremos la página."
+
+["bot.ql.card_why_session"]
+other = "La sesión está cancelada o eliminada, por eso el código lleva a la página del evento (la dirección de arriba). Para que el código lleve a otra sesión, pulsa «Redirigir»."
+
+["bot.ql.card_why_promoter"]
+other = "El promotor está en el archivo o no tiene página, por eso el código lleva a la página de la organización (la dirección de arriba). Restaura el promotor o pulsa «Redirigir»."
+
+["bot.ql.card_why_no_address"]
+other = "No se pudo construir la dirección de la página de venta: la plataforma o la organización no tiene configurada la dirección de las páginas de venta. Redirigir no ayudará. Escribe a soporte."
+
+["bot.ql.stats_btn"]
+other = "Estadísticas"
+
+["bot.ql.retarget_btn"]
+other = "Redirigir"
+
+["bot.ql.archive_btn"]
+other = "Archivar"
+
+["bot.ql.unarchive_btn"]
+other = "Restaurar"
+
+["bot.ql.qr_again_btn"]
+other = "Enviar el código otra vez"
+
+["bot.ql.stats_head"]
+other = "📊 <b>{{.Label}}</b>"
+
+["bot.ql.stats_scans"]
+other = "Escaneos: {{.Total}}.\nÚltimos 7 días: {{.Week}}. Hoy: {{.Today}}."
+
+["bot.ql.stats_utc"]
+other = "Los días se cuentan en UTC."
+
+["bot.ql.stats_bots"]
+other = "Bots excluidos: {{.Count}}."
+
+["bot.ql.stats_orders"]
+other = "Pedidos: {{.Orders}}. Entradas: {{.Tickets}}."
+
+["bot.ql.stats_revenue"]
+other = "Pagado tras devoluciones: {{.Amount}}."
+
+["bot.ql.stats_no_revenue"]
+other = "Todavía no hay pedidos pagados."
+
+["bot.ql.rt_head"]
+other = "Redirigir el enlace <b>{{.Label}}</b>."
+
+["bot.ql.rt_archived"]
+other = "El enlace está en el archivo. Restáuralo primero y luego redirígelo."
+
+["bot.ql.rt_confirm"]
+other = "¿Redirigir <b>{{.Label}}</b> a: {{.Target}}?\n\nEl código impreso no cambia. Los compradores que lo escaneen llegarán a la nueva página."
+
+["bot.ql.rt_yes_btn"]
+other = "Sí, redirigir"
+
+["bot.ql.rt_done"]
+other = "Listo. El código <b>{{.Label}}</b> lleva ahora a la nueva página."
+
+["bot.ql.rt_same"]
+other = "El destino no cambió: el código <b>{{.Label}}</b> lleva al mismo sitio. No se cambió nada."
+
+["bot.ql.rt_done_same_dest"]
+other = "El destino ha cambiado. La dirección a la que lleva el código <b>{{.Label}}</b> sigue siendo la misma. El motivo está abajo."
+
+["bot.ql.rt_done_no_dest"]
+other = "El destino ha cambiado. El código <b>{{.Label}}</b> sigue llevando a la página de reserva de la plataforma. El motivo está abajo."
+
+["bot.ql.archived_done"]
+other = "Listo. El enlace está en el archivo. Su código lleva a la página con todos los eventos."
+
+["bot.ql.unarchived_done"]
+other = "Listo. El enlace vuelve a estar activo."
+
+["bot.ql.gone"]
+other = "Este enlace ya no está en la lista. Abre el menú de enlaces y elige otro."
+
+["bot.ql.list_head"]
+other = "🔗 <b>Enlaces y QR</b>\nFiltro: {{.Filter}}. Página {{.Page}}."
+
+["bot.ql.list_event"]
+other = "Solo el evento: <b>{{.Name}}</b>"
+
+["bot.ql.list_hint"]
+other = "Pulsa un número para abrir un enlace."
+
+["bot.ql.list_row"]
+other = "{{.N}}. <b>{{.Label}}</b> · {{.Where}} · escaneos {{.Scans}} · pedidos {{.Orders}}"
+
+["bot.ql.list_mark_archived"]
+other = "(archivado)"
+
+["bot.ql.list_empty"]
+other = "Aún no hay enlaces. Pulsa «+ Nuevo» y recibirás un enlace corto y un código QR."
+
+["bot.ql.list_empty_archived"]
+other = "El archivo está vacío. Un enlace llega aquí cuando pulsas «Archivar» en su tarjeta."
+
+["bot.ql.list_empty_event"]
+other = "Este evento no tiene enlaces con este filtro. Cambia el filtro o pulsa «+ Nuevo»."
+
+["bot.ql.w_event"]
+other = "evento «{{.Name}}»"
+
+["bot.ql.w_session"]
+other = "una sesión del evento «{{.Name}}»"
+
+["bot.ql.w_promoter"]
+other = "página del promotor"
+
+["bot.ql.w_org"]
+other = "página de la organización"
+
+["bot.ql.w_url"]
+other = "dirección {{.URL}}"
+
+["bot.ql.f_active"]
+other = "Activos"
+
+["bot.ql.f_archived"]
+other = "Archivo"
+
+["bot.ql.f_all"]
+other = "Todos"
+
+["bot.ql.list_new_btn"]
+other = "+ Nuevo"
+
+["bot.ql.list_pick_btn"]
+other = "Solo un evento…"
+
+["bot.ql.list_all_events_btn"]
+other = "Mostrar todos los eventos"
+
+["bot.ql.list_btn"]
+other = "Volver a la lista"
+
+["bot.ql.list_event_btn"]
+other = "Volver a la lista de este evento"
+
+["bot.ql.list_pick_event"]
+other = "Elige un evento para ver solo sus enlaces. Página {{.Page}} de {{.Pages}}."
+["bot.wz.err_description"]
+other = "No se aceptó la descripción. Cambia el texto y envíalo de nuevo."
+
+["bot.wz.err_description_too_long"]
+other = "La descripción es demasiado larga. Acorta el texto y envíalo de nuevo."
+
+["bot.wz.err_description_chars"]
+other = "La descripción tiene un carácter oculto o de control. Escribe el texto de nuevo o pégalo como texto sin formato."
+
+["bot.tf.formatting"]
+other = "Dando formato al texto…"
+
+["bot.tf.preview_ask"]
+other = "Así queda el texto. ¿Lo guardo así?"
+
+["bot.tf.not_applied_note"]
+other = "Aquí tienes el texto sin resaltados, tal como lo escribiste.\n\n"
+
+["bot.tf.save_btn"]
+other = "Guardar así"
+
+["bot.tf.plain_btn"]
+other = "Sin formato"
+
+["bot.tf.again_btn"]
+other = "Dar formato otra vez"
+
+["bot.tf.cancel_btn"]
+other = "Cancelar"
+
+["bot.tf.expired"]
+other = "Se acabó el tiempo. Envía el texto otra vez."
+
+["bot.tf.cancelled"]
+other = "De acuerdo, el texto se queda como estaba."
+
+["bot.tf.err_too_long"]
+other = "El texto es demasiado largo: hasta {{.Limit}} caracteres. Acórtalo y envíalo otra vez."
+
+["bot.tf.err_links"]
+other = "El texto tiene demasiados enlaces: hasta {{.Max}}. Quita algunos y envíalo otra vez."
+
+["bot.tf.err_scheme"]
+other = "El texto tiene una dirección que no empieza por https://. Cámbiala y envía el texto otra vez."
+
+["bot.tf.err_chars"]
+other = "El texto tiene un carácter oculto. Escríbelo de nuevo o pégalo como texto sin formato."
+
+["bot.tf.err_generic"]
+other = "Este texto no sirvió. Revísalo y envíalo otra vez."
+
+["bot.tf.event_btn"]
+other = "✉ Texto en el correo"
+
+["bot.tf.note_title"]
+other = "<b>Texto en el correo</b> · {{.Name}}"
+
+["bot.tf.note_about"]
+other = "Los compradores ven este texto en el correo con la entrada y en el correo sobre una fecha cambiada o cancelada. El correo añade solo el saludo y la fecha: no los escribas."
+
+["bot.tf.note_none"]
+other = "Ahora no hay texto."
+
+["bot.tf.note_now"]
+other = "Ahora en el correo:\n\n{{.Text}}"
+
+["bot.tf.note_add_btn"]
+other = "Añadir texto"
+
+["bot.tf.note_edit_btn"]
+other = "Cambiar"
+
+["bot.tf.note_delete_btn"]
+other = "Borrar el texto"
+
+["bot.tf.note_test_btn"]
+other = "Enviarme un correo de prueba"
+
+["bot.tf.edit_btn"]
+other = "✏️ Editar en el editor"
+
+["bot.tf.edit_note"]
+other = "El enlace funciona durante 5 minutos."
+
+["bot.tf.edit_failed"]
+other = "No pude abrir el editor ahora mismo. Inténtalo de nuevo en un minuto."
+
+["bot.tf.edit_superadmin"]
+other = "El mini editor es para organizadores. Un administrador de la plataforma edita los textos en el centro de eventos web o en la consola de administración."
+
+["bot.tf.editor_saved"]
+other = "Los cambios del editor están guardados."
+
+["bot.tf.note_ask"]
+other = "Escribe el texto como siempre: le daré formato y te enseñaré el resultado. El correo añade solo el saludo y la fecha.\n\nHasta {{.Limit}} caracteres y {{.Max}} enlaces."
+
+["bot.tf.note_saved"]
+other = "Listo, el texto del correo está actualizado."
+
+["bot.tf.note_save_failed"]
+other = "No se pudo guardar el texto. Inténtalo otra vez."
+
+["bot.tf.note_delete_ask"]
+other = "¿Borrar el texto de los correos de este evento?"
+
+["bot.tf.note_delete_yes_btn"]
+other = "Sí, borrar"
+
+["bot.tf.note_delete_no_btn"]
+other = "No, conservarlo"
+
+["bot.tf.note_deleted"]
+other = "El texto se ha quitado de los correos."
+
+["bot.tf.note_test_sent"]
+other = "El correo de prueba va hacia {{.Email}}. Llega en un minuto."
+
+["bot.tf.note_test_empty"]
+other = "Escribe primero el texto: sin él, el correo de prueba no tiene nada que mostrar."
+
+["bot.tf.note_test_limit"]
+other = "Demasiados correos de prueba en la última hora. Prueba más tarde."
+
+# The sales-link PDF insert (spec 43, QL-13): the one line printed under the QR code.
+["salelinks.insert.scan_and_buy"]
+other = "Escanea y compra entradas"

@@ -155,3 +155,7 @@ other = "כדי לענות לקונה, השב למייל הזה. Arena לא רו
 
 ["contact.email.footer"]
 other = "Arena Sold Out שלחה הודעה זו כי טופס יצירת הקשר בדף המכירה שלך פעיל."
+
+# The sales-link PDF insert (spec 43, QL-13): the one line printed under the QR code.
+["salelinks.insert.scan_and_buy"]
+other = "סרקו וקנו כרטיסים"

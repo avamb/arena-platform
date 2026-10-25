@@ -745,12 +745,16 @@ export interface paths {
          * @description Exchanges the one-time code of the bot's "Open in browser" link for a
          *     web event center session (spec 37 section 4.3). The code works once,
          *     for 5 minutes, and only while the Telegram account that asked for it
-         *     is still linked to the same person. The session is always a web
-         *     session (72 hours without activity, at most 30 days). Unknown, used,
+         *     is still linked to the same person. The session is a web session (72
+         *     hours without activity, at most 30 days), except for a code the bot
+         *     issued for the Telegram mini app editor (`purpose: miniapp`, spec 44,
+         *     RT-12a): that session lasts 30 minutes from the exchange, refreshes
+         *     included, and has channel `event_center_tg`. Unknown, used,
          *     taken back and expired codes all answer the same 400
          *     `auth.web_link_invalid`. A platform superadmin is refused (403
-         *     `auth.web_link_superadmin`). The bot later tells the person about the
-         *     sign-in and offers "Sign out everywhere".
+         *     `auth.web_link_superadmin`). The bot later tells the person about a
+         *     web sign-in (not about a mini app one) and offers "Sign out everywhere",
+         *     which ends mini app sessions too.
          */
         post: operations["postV1AuthWebLink"];
         delete?: never;
@@ -1523,10 +1527,15 @@ export interface paths {
          *     <BOT_SERVICE_TOKEN>` when a person presses "Open in browser" (spec 37
          *     section 4.3, every role, according to its rights). Returns a link
          *     that works once and for 5 minutes; a new link takes back the
-         *     person's earlier unused ones. The bot sends it to the private chat
+         *     person's earlier unused ones of the same purpose. The bot sends it to the private chat
          *     only. Refused for a platform superadmin, who works in the admin
          *     console. While `EVENT_CENTER_PUBLIC_URL` is unset the route answers
-         *     503 `bot.web_login_not_configured`.
+         *     503 `bot.web_login_not_configured`. With `purpose: miniapp` (spec 44,
+         *     RT-12a) the link opens the Telegram mini app editor at `/tg/edit`:
+         *     the session is 30 minutes, the chat gets no "signed in" notice and no
+         *     code of another purpose is taken back. An unknown purpose is 400
+         *     `bot.invalid_purpose`, a miniapp code without a valid `kind` and
+         *     `event_id` is 400 `bot.invalid_miniapp_target`.
          */
         post: operations["createBotWebLoginCode"];
         delete?: never;
@@ -4731,11 +4740,20 @@ export interface paths {
         /**
          * QR image of a sales link
          * @description The QR code of the link's short address (`short_url`, exactly the string
-         *     the link answers carry), as a PNG or an SVG. The image is square, black
-         *     modules on white, error correction level Medium. `size` is the side in
-         *     pixels (PNG only, the SVG scales to any size), `margin` the quiet zone in
-         *     modules. The answer carries an `ETag` and `Cache-Control: private,
-         *     max-age=3600`; a repeated request with `If-None-Match` gets 304.
+         *     the link answers carry), as a PNG, an SVG or a printable PDF insert. The
+         *     image is square, black modules on white, error correction level Medium.
+         *     `size` is the side in pixels (PNG only, the SVG scales to any size),
+         *     `margin` the quiet zone in modules (PNG and SVG). `format=pdf` answers
+         *     one page (`paper` a6 by default, or a5) with the organization logo (or
+         *     its name) on top, the name of what the code sells (the event, the date
+         *     of a session with its start on the venue's clock, the promoter or the
+         *     organization), the code as black vector modules with a four-module quiet
+         *     zone, the line "Scan and buy tickets" in the language negotiated from
+         *     `?locale=`, `Accept-Language` and the organization's default locale
+         *     (en, ru, es, cs, he), and the short address in letters under the code.
+         *     The file name is `<code>-<paper>.pdf`. The answer carries an `ETag` and
+         *     `Cache-Control: private, max-age=3600`; a repeated request with
+         *     `If-None-Match` gets 304.
          *
          *     Requires JWT or API key + the `sales_link.read` permission.
          */
@@ -5993,6 +6011,55 @@ export interface paths {
          *     organization is a 404.
          */
         post: operations["postV1OrganizationsOrgIdMediaMediaIdPosterFacts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/texts/format": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add markup to an organizer's text with the model
+         * @description A model adds markup (paragraphs, bold, italic, underline, links, lists
+         *     and, in descriptions, headings and quotes) to a text the organizer
+         *     typed, and the server proves that nothing else changed: the words,
+         *     numbers, punctuation and symbols of the answer must be exactly those of
+         *     the text (the `**bold**` and `- ` list markers of the old notation read
+         *     as markup), every link must point to an address written in the text and
+         *     show that address, a paragraph keeps at most 3 emphasised fragments, and
+         *     the result must pass the same cleaning as every stored text. The model
+         *     sees only this text, never buyer data.
+         *
+         *     **The route never fails because of the model.** Every other problem (no
+         *     model key, the daily caps, a timeout, an error of the model, an answer
+         *     that fails the check) is a 200 whose `html` is the plain conversion of
+         *     the text and whose `ai_applied` is false, with a `reason`. A client
+         *     always gets text it can save. Only a bad request is refused: an unknown
+         *     `kind` is a 400, a text longer than the limit of its kind is a 422
+         *     `text.too_long` before any model call, and a text with forbidden
+         *     characters is a 422 `text.invalid`.
+         *
+         *     Each call to the model costs money: a person gets at most
+         *     `TEXT_FORMATS_PER_USER_PER_DAY` (default 100) and an organization
+         *     `TEXT_FORMATS_PER_ORG_PER_DAY` (default 500) in a sliding 24 hours,
+         *     counted in the memory of one arena-api process. A slot is taken only
+         *     right before the model call, so a refused request never takes one. The
+         *     call may take up to 25 seconds. Logs hold the reason, the prompt
+         *     version, the lengths, the kind and the organization, never the text.
+         *
+         *     Requires the `event.update` permission in the path organization (the
+         *     owner and the manager hold it). An organization the caller does not
+         *     belong to is a 404.
+         */
+        post: operations["postV1OrganizationsOrgIdTextsFormat"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9940,6 +10007,58 @@ export interface components {
             facts: components["schemas"]["PosterFacts"];
         };
         /**
+         * @description Which text is formatted. It picks the tags the model may add and the
+         *     longest text: `description` (an event description, 4000 characters, with
+         *     headings, quotes and links to `https` and `mailto`), `email_note` (the
+         *     organizer's own text of the buyer letters, 2000 characters) and
+         *     `session_message` (the message about a moved or cancelled session, 1000
+         *     characters). The last two have no headings or quotes and link only to
+         *     `https`.
+         * @enum {string}
+         */
+        TextFormatKind: "description" | "email_note" | "session_message";
+        /** @description A text the organizer typed, to be marked up. */
+        TextFormatRequest: {
+            /**
+             * @description The organizer's text in the plain notation (`**bold**`, `_italic_`,
+             *     `- ` lists, a blank line between paragraphs). At most 4000, 2000 or
+             *     1000 characters by `kind`; a longer text is a 422 `text.too_long`
+             *     and the model is not called.
+             */
+            text: string;
+            /** @description Which text this is. */
+            kind: components["schemas"]["TextFormatKind"];
+            /**
+             * @description Optional language tag of the text (`ru`, `he`, `en-GB`), only a hint
+             *     for the model.
+             */
+            locale?: string;
+        };
+        /**
+         * @description The text to use. `html` is always safe, ready to store as the `art`
+         *     format: the model's markup when `ai_applied` is true, the plain
+         *     conversion of the text otherwise.
+         */
+        TextFormatResponse: {
+            /** @description The text as ART, the platform's small HTML subset (`p`, `br`, `strong`, `em`, `u`, `a`, lists, and `h3`, `h4`, `blockquote` for descriptions). */
+            html: string;
+            /**
+             * @description True when the model's markup was kept, because the code proved that
+             *     not one word, number or sign changed. False when `html` is the plain
+             *     conversion of the text. Clients look at this field only.
+             */
+            ai_applied: boolean;
+            /**
+             * @description Why the model was not used, present only when `ai_applied` is false:
+             *     `not_configured`, `quota`, `timeout`, `model_error`, `no_text`,
+             *     `empty_output`, `invalid_markup`, `text_changed` or `limits`. The
+             *     list may grow; do not branch on it.
+             */
+            reason?: string;
+            /** @description Version of the prompt the route uses (for example `rt04-v1`). */
+            prompt_version: string;
+        };
+        /**
          * @description A registered binary media object (org logo, event poster, artist
          *     photo). The bytes live in the configured storage backend
          *     (`MEDIA_BACKEND=s3|local`); this object holds the metadata. Fields
@@ -10546,6 +10665,13 @@ export interface components {
              * @description When the membership was granted
              */
             joined_at: string;
+            /**
+             * @description True when a platform superadmin archived the organization
+             *     (organizations.deleted_at is set). The membership stays listed so a
+             *     client can show the organization as archived, but it must not offer
+             *     it as a working organization.
+             */
+            archived: boolean;
         };
         MeAssignedNetwork: {
             /** @description Operator network UUID */
@@ -10889,13 +11015,29 @@ export interface components {
         BotWebLoginCodeRequest: {
             /**
              * Format: int64
-             * @description The Telegram account that pressed "Open in browser".
+             * @description The Telegram account that pressed "Open in browser" or "Edit in the editor".
              */
             telegram_user_id: number;
+            /**
+             * @description What the code is for: `web` or `miniapp` (a plain string, not an enum, so no generated constant is
+             *     renamed). `web` (the default) is "Open in browser": a 72-hour web session, a "signed in"
+             *     notice in the chat, and a new code takes back the person's earlier unused `web` codes. `miniapp` is the
+             *     Telegram mini app editor (spec 44, RT-12a): a 30-minute session of channel `event_center_tg`, no notice,
+             *     and it takes back and is taken back by no code of another purpose.
+             * @default web
+             */
+            purpose: string;
+            /** @description Which text the mini app opens: `description` or `email_note` (a plain string, not an enum). Required, and only used, for `purpose: miniapp`. */
+            kind?: string;
+            /**
+             * Format: uuid
+             * @description The event whose text the mini app opens. Required, and only used, for `purpose: miniapp`.
+             */
+            event_id?: string;
         };
         /** @description A one-time link to the web event center for the private chat. */
         BotWebLoginCodeResponse: {
-            /** @description `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`. The code is after `#`, so it never reaches a server log. */
+            /** @description `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`, or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`. The code is after `#`, so it never reaches a server log. */
             url: string;
             /**
              * Format: date-time
@@ -15946,6 +16088,64 @@ export interface components {
              */
             description?: string | null;
             /**
+             * @description How `description` is stored: `art` is "text Arena", the small HTML
+             *     subset (`p`, `br`, `strong`, `em`, `u`, `a[href]`, `ul`, `ol`, `li`,
+             *     headings and quotes), `text` is the old plain text with the marks
+             *     `**bold**`, `_italic_` and `- ` list lines that the backfill has not
+             *     converted yet. The flag covers the translations too. Empty only when
+             *     the server could not read it; a reader treats that as `text`.
+             * @example art
+             * @enum {string}
+             */
+            description_format?: "text" | "art";
+            /**
+             * @description The canonical description exactly as stored on the event, never a
+             *     translation. `description` is resolved for the request's locale and
+             *     may be the text of a translation; a client that EDITS the
+             *     description reads and writes this one (with `description_format`),
+             *     otherwise saving would put a translation over the original. Null
+             *     when the event has no canonical description or the server could
+             *     not read it.
+             * @example <p>Open-air festival on the <strong>Tel Aviv</strong> beachfront.</p>
+             */
+            description_base?: string | null;
+            /**
+             * @description True when `description` is not the canonical text, that is, the
+             *     negotiated locale (or English) has its own translation. False when
+             *     the two are the same, or there is no description.
+             * @example false
+             */
+            description_translated?: boolean;
+            /**
+             * @description `description` as safe HTML for display (spec 44, RT-03a):
+             *     `richtext.Render` with the description profile. Locale-resolved
+             *     like `description` and read with the event's `description_format`
+             *     (the flag covers the translations). Links carry
+             *     `rel="noopener noreferrer" target="_blank"`. Null when there is
+             *     no description or the format could not be read. The public feed
+             *     returns it too.
+             * @example <p>Open-air festival on the <strong>Tel Aviv</strong> beachfront.</p>
+             */
+            description_html?: string | null;
+            /**
+             * @description The visible text of `description_html` without markup, for
+             *     `<title>`, `<meta>` and counters: paragraphs are separated by a
+             *     blank line, list items are `• x` or `1. x` lines. Null when
+             *     `description_html` is. The public feed returns it too.
+             * @example Open-air festival on the Tel Aviv beachfront.
+             */
+            description_text?: string | null;
+            /**
+             * @description `description` in the old form for editing forms that cannot show
+             *     markup: `**bold**`, `_italic_`, `- ` and `1. ` list lines, a link
+             *     as `text (https://…)`; the stored text itself for a `text` row. An
+             *     admin form loads it and sends `description` back (with the default
+             *     format `text`) only when the person changed it. Returned by the
+             *     authenticated event routes only, absent from the public feed.
+             * @example Open-air festival on the **Tel Aviv** beachfront.
+             */
+            description_legacy?: string | null;
+            /**
              * @description Lifecycle status.
              * @example published
              * @enum {string}
@@ -16043,6 +16243,12 @@ export interface components {
              * @example Come 30 minutes early. The cloakroom is free.
              */
             email_note?: string | null;
+            /**
+             * @description How `email_note` is stored: `art` (the HTML subset) or `text` (the
+             *     old plain text). Null when the event has no note.
+             * @example art
+             */
+            email_note_format?: string | null;
             /**
              * @description Discovery visibility for the cross-tenant GET /v1/events surface.
              *     `public` events appear in the default list; `unlisted` and
@@ -16408,10 +16614,28 @@ export interface components {
              */
             title: string;
             /**
-             * @description Long-form event description.
+             * @description Long-form event description, the raw stored value (ART or old
+             *     text, see the event's format). Kept as it was for clients that
+             *     cached the older page; new clients read `description_html`.
              * @example Open-air festival on the Tel Aviv beachfront.
              */
             description?: string | null;
+            /**
+             * @description `description` as safe HTML (spec 44, RT-03a): `richtext.Render`
+             *     with the description profile, links carry
+             *     `rel="noopener noreferrer" target="_blank"`. The page rebuilds it
+             *     from whitelisted nodes before showing it. Null when there is no
+             *     description or its format could not be read.
+             * @example <p>Open-air festival on the <strong>Tel Aviv</strong> beachfront.</p>
+             */
+            description_html?: string | null;
+            /**
+             * @description The visible text of `description_html` without markup, for the
+             *     page `<title>` and `<meta name="description">`. Null when
+             *     `description_html` is.
+             * @example Open-air festival on the Tel Aviv beachfront.
+             */
+            description_text?: string | null;
             /**
              * @description Short teaser description (AB-45c metadata).
              * @example One night, three stages, unforgettable.
@@ -17177,8 +17401,25 @@ export interface components {
              * @example Summer Festival 2026
              */
             name: string;
-            /** @description Optional long-form description. */
+            /**
+             * @description Optional long-form description, at most 4000 visible characters.
+             *     Read as `description_format`; stored as filtered HTML. A refused
+             *     text answers 422 `event.invalid_description` with
+             *     `error.details.reason`.
+             */
             description?: string;
+            /**
+             * @description How `description` (and the translated descriptions) is written: `text` (default) is the old plain text
+             *     with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+             *     "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+             *     `a[href]`, `ul`, `ol`, `li`, `h3`, `h4`, `blockquote`). The server never guesses the
+             *     format from the tags: it passes the text through one filter,
+             *     stores ART and marks it `art`, so old clients keep working.
+             *     Values: `text`, `art`. Anything else answers 400
+             *     `event.invalid_description_format`.
+             * @example text
+             */
+            description_format?: string;
             /**
              * @description Initial lifecycle status. Defaults to `draft` on the server when
              *     omitted.
@@ -17208,8 +17449,24 @@ export interface components {
         UpdateEventRequest: {
             /** @description New canonical event name. Empty leaves the value unchanged. */
             name?: string;
-            /** @description New long-form description. */
+            /**
+             * @description New long-form description, at most 4000 visible characters. Read
+             *     as `description_format`; stored as filtered HTML. A refused text
+             *     answers 422 `event.invalid_description` with `error.details.reason`.
+             */
             description?: string | null;
+            /**
+             * @description How `description` (and the translated descriptions) is written: `text` (default) is the old plain text
+             *     with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+             *     "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+             *     `a[href]`, `ul`, `ol`, `li`, `h3`, `h4`, `blockquote`). The server never guesses the
+             *     format from the tags: it passes the text through one filter,
+             *     stores ART and marks it `art`, so old clients keep working.
+             *     Values: `text`, `art`. Anything else answers 400
+             *     `event.invalid_description_format`.
+             * @example art
+             */
+            description_format?: string;
             /**
              * @description New discovery visibility for the event.
              * @enum {string}
@@ -17297,14 +17554,26 @@ export interface components {
             /**
              * @description Tri-state (absent=keep, null or "" = clear, value=set). The
              *     organizer's own text that the ticket and session-change e-mails
-             *     print under "About the event". Plain text of at most 2000
-             *     characters: HTML tags are removed, control characters are
-             *     refused, at most 5 links and every link must be `https://`. A
-             *     refused text answers 400 `event.invalid_email_note` with
+             *     print under "About the event". At most 2000 visible characters
+             *     and 5 links, every link `https://`, control characters are
+             *     refused. Read as `email_note_format` and stored as filtered HTML.
+             *     A refused text answers 422 `event.invalid_email_note` with
              *     `error.details.reason`.
              * @example Come 30 minutes early. The cloakroom is free.
              */
             email_note?: string | null;
+            /**
+             * @description How `email_note` is written: `text` (default) is the old plain text
+             *     with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+             *     "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+             *     `a[href]`, `ul`, `ol`, `li`). The server never guesses the
+             *     format from the tags: it passes the text through one filter,
+             *     stores ART and marks it `art`, so old clients keep working.
+             *     Values: `text`, `art`. Anything else answers 400
+             *     `event.invalid_email_note_format`.
+             * @example text
+             */
+            email_note_format?: string;
         };
         /**
          * @description Status-transition body for POST
@@ -17340,6 +17609,13 @@ export interface components {
              * @example Come 30 minutes early.
              */
             note?: string;
+            /**
+             * @description How the draft `note` is written: `text` (default, the old marks)
+             *     or `art`, as `email_note_format` of PATCH. Anything else answers
+             *     400 `event.invalid_email_note_format`.
+             * @example art
+             */
+            note_format?: string;
             /**
              * @description Language of the letter (en, ru, cs, de, es, fr, he). Empty means the caller's language.
              * @example ru
@@ -17938,15 +18214,32 @@ export interface components {
          */
         SessionChangeNotice: {
             /**
-             * @description Plain text, up to 1000 characters (longer is refused with 422
-             *     `session.change_message_too_long`), may be empty. Clients offer
-             *     the `default_message` of the change-impact answer as a starting
-             *     point; whatever is sent is what buyers read. It must not promise
-             *     a refund: returning money is a separate conversation between the
-             *     organizer and the buyer.
+             * @description The text buyers read, up to 1000 visible characters (longer is
+             *     refused with 422 `session.change_message_too_long`), may be empty.
+             *     Read as `message_format` and stored as filtered HTML. A text that
+             *     cannot be accepted (forbidden characters, more than 3 links) is 422
+             *     `session.change_message_invalid` with `error.details.reason`.
+             *     Clients offer the `default_message` of the change-impact answer
+             *     (always plain text) as a starting point; whatever is sent is what
+             *     buyers read. It must not promise a refund: returning money is a
+             *     separate conversation between the organizer and the buyer.
              * @example We have moved the show by one week. Your ticket stays valid.
              */
             message?: string;
+            /**
+             * @description How `message` is written: `text` (the default, so a client that
+             *     sends no format, such as the Telegram bot, keeps working) is the old
+             *     plain text with the marks `**bold**`, `_italic_` and `- ` list
+             *     lines, `art` is "text Arena", a small HTML subset (`p`, `br`,
+             *     `strong`, `em`, `u`, `a[href]` to `https`, `ul`, `ol`, `li`; no
+             *     headings or quotes). The server never guesses the format from the
+             *     tags: an `art` text goes through one filter and is stored as ART,
+             *     a `text` is kept as typed, and the letters read both through the
+             *     same safe converter. Values: `text`, `art`.
+             *     Anything else answers 400 `session.invalid_message_format`.
+             * @example art
+             */
+            message_format?: string;
         };
         /**
          * @description What a session save did for buyers. Present on the PATCH and DELETE
@@ -20491,6 +20784,17 @@ export interface components {
             destination_url: string;
             /** @description True when the code leads to a higher page than its target (event off sale, date cancelled, link archived). */
             destination_degraded: boolean;
+            /**
+             * @description Why the code does not lead to the page its target names; empty when it does.
+             *     Names what decided the final page, so a client can say what brings the code back and
+             *     offers a retarget only where it changes the address: `event_not_published` (publish the
+             *     event), `event_no_slug` (the event has no page address), `session_not_live` (the date is
+             *     cancelled or deleted, another date would change the address), `promoter_unavailable`
+             *     (the promoter is archived or has no page address), `archived` (the link is in the
+             *     archive), `no_page_address` (no page address can be built at all, the scan goes to the
+             *     platform's fallback page), `org_not_found`.
+             */
+            destination_reason: string;
             /**
              * Format: uuid
              * @description The user who created the link, null for an API key.
@@ -24378,8 +24682,26 @@ export interface components {
              * @example Vino & Co Grand Tasting 2026
              */
             fullActionName?: string;
-            /** @description Free-form action description copied into the event description. */
+            /**
+             * @description Free-form action description copied into the event description,
+             *     at most 4000 visible characters. Read as `descriptionFormat` and
+             *     stored as filtered HTML. A refused text answers 422
+             *     `import.invalid_description` with `error.details.reason`. Empty keeps
+             *     the stored text.
+             */
             description?: string;
+            /**
+             * @description How `description` is written: `text` (default) is the old plain text
+             *     with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+             *     "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+             *     `a[href]`, `ul`, `ol`, `li`, `h3`, `h4`, `blockquote`). The server never guesses the
+             *     format from the tags: it passes the text through one filter,
+             *     stores ART and marks it `art`, so old clients keep working.
+             *     Values: `text`, `art`. Anything else answers 422
+             *     `import.invalid_description`.
+             * @example text
+             */
+            descriptionFormat?: string;
             /**
              * @description Absolute URL of the Bil24 poster image. Side-loaded into arena media
              *     storage outside the import transaction; a fetch failure is reported
@@ -24406,12 +24728,25 @@ export interface components {
              *     0165): the organizer's own text that the ticket and session-change
              *     e-mails print under "About the event". Absent or null keeps the
              *     stored text, "" removes it, a string replaces it after the same
-             *     filter as PATCH `email_note` (plain text, at most 2000
-             *     characters, at most 5 `https://` links). A refused text answers
-             *     422 `import.invalid_email_note`. The event-bundle read answers
-             *     "" when the event has none.
+             *     filter as PATCH `email_note` (at most 2000 visible characters, at
+             *     most 5 `https://` links), read as `emailNoteFormat`. A refused
+             *     text answers 422 `import.invalid_email_note` with
+             *     `error.details.reason`. The event-bundle
+             *     read answers "" when the event has none.
              */
             emailNote?: string | null;
+            /**
+             * @description How `emailNote` is written: `text` (default) is the old plain text
+             *     with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+             *     "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+             *     `a[href]`, `ul`, `ol`, `li`). The server never guesses the
+             *     format from the tags: it passes the text through one filter,
+             *     stores ART and marks it `art`, so old clients keep working.
+             *     Values: `text`, `art`. Anything else answers 422
+             *     `import.invalid_email_note`.
+             * @example text
+             */
+            emailNoteFormat?: string;
         };
         /**
          * @description Bil24 "actionEvent" block — becomes an arena session. This block's
@@ -24800,7 +25135,12 @@ export interface components {
              * @description The organizer's own text for the letter buyers get when this
              *     import MOVES a session that already has paid, live tickets (arena
              *     extension). Plain text, up to 1000 characters (longer is refused
-             *     with 422 `session.change_message_too_long`), may be empty;
+             *     with 422 `session.change_message_too_long`), may be empty. A
+             *     character that is never stored (a direction override, a control
+             *     or tag character) is removed silently, not refused. Any other
+             *     text the server cannot accept is 422
+             *     `session.change_message_invalid` (error pointer
+             *     `/changeMessage`);
              *     ignored when nothing a buyer can see changes. An import that
              *     would move such a session is refused, and writes nothing, with
              *     422 `organization.contact_missing` when the organizer has no
@@ -32547,7 +32887,7 @@ export interface operations {
                     "application/json": components["schemas"]["BotWebLoginCodeResponse"];
                 };
             };
-            /** @description Invalid body or telegram_user_id */
+            /** @description Invalid body or telegram_user_id, or an invalid purpose (`bot.invalid_purpose`) or mini app target (`bot.invalid_miniapp_target`) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -38984,7 +39324,7 @@ export interface operations {
              * @description Body missing/invalid. Possible error codes:
              *     `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
              *     `event.invalid_name`, `event.invalid_status`,
-             *     `event.invalid_visibility`.
+             *     `event.invalid_visibility`, `event.invalid_description_format`.
              */
             400: {
                 headers: {
@@ -39005,6 +39345,20 @@ export interface operations {
             };
             /** @description Caller lacks `event.create`. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The description or a translated description is refused
+             *     (`event.invalid_description`, `error.details.reason` names why:
+             *     `too_long`, `html_too_long`, `too_many_links`,
+             *     `control_characters`, `bad_encoding`, `too_deep`).
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -39154,7 +39508,8 @@ export interface operations {
             /**
              * @description Body invalid. Possible error codes:
              *     `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
-             *     `event.invalid_visibility`.
+             *     `event.invalid_visibility`, `event.invalid_description_format`,
+             *     `event.invalid_email_note_format`.
              */
             400: {
                 headers: {
@@ -39196,7 +39551,11 @@ export interface operations {
             };
             /**
              * @description `poster_media_id` does not name a media object of this organization
-             *     (`event.invalid_poster_media_id`).
+             *     (`event.invalid_poster_media_id`), or the description, a translated
+             *     description or a description stored earlier that must be converted
+             *     with it is refused (`event.invalid_description`,
+             *     `error.details.reason` names why), or the letter text `email_note`
+             *     is refused (`event.invalid_email_note`, same details).
              */
             422: {
                 headers: {
@@ -42576,6 +42935,20 @@ export interface operations {
                     "application/json": components["schemas"]["SessionDeleteResponse"];
                 };
             };
+            /**
+             * @description The optional body is invalid. Possible error codes:
+             *     `session.invalid_json` (the body is not valid JSON),
+             *     `session.invalid_message_format` (`notice.message_format` is
+             *     neither `text` nor `art`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Missing or invalid JWT. */
             401: {
                 headers: {
@@ -42596,6 +42969,26 @@ export interface operations {
             };
             /** @description Session not found (`session.not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The cancellation cannot be made. Possible error codes:
+             *     `organization.contact_missing` (buyers hold tickets and the
+             *     organizer has no contact e-mail),
+             *     `session.change_site_unsupported` (an affected order was sold
+             *     through a website),
+             *     `session.change_message_too_long` (`notice.message` over 1000
+             *     visible characters),
+             *     `session.change_message_invalid` (`notice.message` is ART that
+             *     has forbidden characters or too many links;
+             *     `error.details.reason`). Nothing is deleted.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -42667,7 +43060,9 @@ export interface operations {
              *     sent for a general-admission session, whose capacity is the
              *     sum of its category quantities;
              *     `error.details.reason = "category_sum"`),
-             *     `session.invalid_venue_id`, `session.venue_not_found`.
+             *     `session.invalid_venue_id`, `session.venue_not_found`,
+             *     `session.invalid_message_format` (`notice.message_format` is neither
+             *     `text` nor `art`).
              *     A `poster_media_id` that is not a UUID is `session.invalid_poster_media_id`.
              */
             400: {
@@ -42718,7 +43113,9 @@ export interface operations {
              *     organizer has no contact e-mail),
              *     `session.change_site_unsupported` (an affected order was sold
              *     through a website), `session.change_message_too_long`
-             *     (`notice.message` over 1000 characters).
+             *     (`notice.message` over 1000 visible characters),
+             *     `session.change_message_invalid` (`notice.message` has forbidden
+             *     characters or too many links; `error.details.reason`).
              *     A `poster_media_id` that is not a media object of this organization is `session.invalid_poster_media_id`.
              */
             422: {
@@ -45958,12 +46355,16 @@ export interface operations {
     getSalesLinkQr: {
         parameters: {
             query?: {
-                /** @description Image format, `png` (default) or `svg`. */
+                /** @description Format, `png` (default), `svg` or `pdf` (the printable insert). */
                 format?: string;
                 /** @description Side of the PNG in pixels, 256 to 2048 (default 1024). Ignored for SVG. */
                 size?: number;
-                /** @description Quiet zone around the code in modules, 2 to 8 (default 4). */
+                /** @description Quiet zone around the code in modules, 2 to 8 (default 4). Ignored for the PDF, whose quiet zone is fixed. */
                 margin?: number;
+                /** @description Page size of the PDF insert, `a6` (default) or `a5`. Read only when `format=pdf`. */
+                paper?: string;
+                /** @description Language of the PDF insert's line (`en`, `ru`, `es`, `cs`, `he`); it wins over `Accept-Language`. Read only when `format=pdf`. */
+                locale?: string;
             };
             header?: never;
             path: {
@@ -45976,7 +46377,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The image. */
+            /** @description The image, or the PDF insert. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -45984,6 +46385,7 @@ export interface operations {
                 content: {
                     "image/png": string;
                     "image/svg+xml": string;
+                    "application/pdf": string;
                 };
             };
             /** @description The image has not changed since the `If-None-Match` ETag. */
@@ -45993,7 +46395,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description A query parameter is out of range (`sales_link.invalid_qr_params`). */
+            /** @description A query parameter is out of range, or `paper` is not a6 or a5 (`sales_link.invalid_qr_params`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -50257,6 +50659,87 @@ export interface operations {
                 };
             };
             /** @description Poster reading is not configured (`media.poster_reader_not_configured`), the model could not be reached (`media.poster_read_failed`), or media storage is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdTextsFormat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TextFormatRequest"];
+            };
+        };
+        responses: {
+            /** @description The text to use, formatted by the model or, when `ai_applied` is false, converted without it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextFormatResponse"];
+                };
+            };
+            /** @description org_id is not a valid UUID, the body is not valid JSON (`text.invalid_request`), `kind` is unknown (`text.unknown_kind`) or `locale` is not a language tag (`text.invalid_locale`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization does not exist or the caller does not belong to it (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The text is longer than the limit of its kind (`text.too_long`) or holds characters that are not allowed (`text.invalid`, `details.reason` names why). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization access guard is not configured (`dependency.org_access_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -57944,7 +58427,7 @@ export interface operations {
                     "application/json": components["schemas"]["EventEmailNoteTestResponse"];
                 };
             };
-            /** @description Invalid body (`event.invalid_json`), a refused text (`event.invalid_email_note`), a missing or invalid address (`event.email_note_test_recipient_required`, `event.email_note_test_invalid_recipient`). */
+            /** @description Invalid body (`event.invalid_json`), an unknown `note_format` (`event.invalid_email_note_format`), a missing or invalid address (`event.email_note_test_recipient_required`, `event.email_note_test_invalid_recipient`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -57980,7 +58463,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The event has no text to preview (`event.email_note_empty`) or `to` is not a member of the organization (`event.email_note_test_recipient_not_member`). */
+            /** @description The draft `note` is refused (`event.invalid_email_note`), the event has no text to preview (`event.email_note_empty`) or `to` is not a member of the organization (`event.email_note_test_recipient_not_member`). */
             422: {
                 headers: {
                     [name: string]: unknown;

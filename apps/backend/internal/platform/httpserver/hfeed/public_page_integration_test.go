@@ -77,7 +77,7 @@ func newPublicPageFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	}
 
 	desc := "integration test event"
-	event, err := q.InsertEvent(ctx, org.ID, "Public Page Test Event "+run, &desc, "published", "public", nil)
+	event, err := q.InsertEvent(ctx, org.ID, "Public Page Test Event "+run, &desc, "published", "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent: %v", err)
 	}

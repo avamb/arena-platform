@@ -143,8 +143,14 @@ func (b *Bot) showEventCard(ctx context.Context, chatID int64, editMsgID *int, f
 			{Text: b.texts.T(loc, "bot.wz.copy_btn", nil), CallbackData: "wz:copy:" + eventID.String()},
 		},
 		[]models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.sample_btn", nil), CallbackData: "sample:" + eventID.String()}},
-		b.sessionsOrdersRow(loc, id, eventID),
 	)
+	if canViewSales(id) { // the owner, the manager and the operator write the text of the letters (RT-06)
+		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.tf.event_btn", nil), CallbackData: "tf:n:" + eventID.String()}})
+	}
+	rows = append(rows, b.sessionsOrdersRow(loc, id, eventID))
+	if row := b.salesLinkEventRow(loc, id, eventID); row != nil { // QR / link of the event (spec 43, QL-8)
+		rows = append(rows, row)
+	}
 	if row := b.promoEventRow(loc, id, eventID); row != nil { // promo codes of the event (EC-11)
 		rows = append(rows, row)
 	}

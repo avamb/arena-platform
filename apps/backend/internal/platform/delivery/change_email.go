@@ -36,6 +36,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventnote"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
@@ -173,7 +174,7 @@ func (h *changeEmail) handle(ctx context.Context, payload []byte) error {
 		tplKind = templates.TemplateKindCancel
 	}
 	letter.TemplateVersion = templateVersionFor(h.renderer, tplKind, recipient.LocaleHint,
-		!changeEventNote(moves, rendered[0].Payload.EventEmailNote).Empty())
+		!changeEventNote(moves, rendered[0].Payload.EventEmailNote, rendered[0].Payload.EventEmailNoteFormat).Empty())
 	ids := make([]uuid.UUID, 0, len(rendered))
 	for _, t := range rendered {
 		ids = append(ids, t.TicketID)
@@ -345,6 +346,10 @@ func (h *changeEmail) buildMessage(
 		contactEmail, contactForm = first.OrgContactEmail, first.ContactFormURL
 	}
 
+	// The organizer's message: ART (or an older plain text) through the one
+	// reader, richtext.Render with the session_message profile.
+	message := eventnote.BuildMessage(rec.Message, rec.MessageFormat)
+
 	newStart := formatSessionForEmail(rec.New.StartAt, rec.New.Timezone)
 	oldStart := formatSessionForEmail(rec.Old.StartAt, rec.Old.Timezone)
 	data := templates.Data{
@@ -356,7 +361,7 @@ func (h *changeEmail) buildMessage(
 		DoorsOpen:      formatClockForEmail(first.DoorsOpenAt, first.SessionTZ),
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
 		Branding:       branding,
-		EventNote:      changeEventNote(moves, first.EventEmailNote),
+		EventNote:      changeEventNote(moves, first.EventEmailNote, first.EventEmailNoteFormat),
 		Change: templates.ChangeData{
 			Date:           sessionchange.Has(rec.Kinds, sessionchange.KindDate) || sessionchange.Has(rec.Kinds, sessionchange.KindTime),
 			Venue:          sessionchange.Has(rec.Kinds, sessionchange.KindVenue),
@@ -364,7 +369,8 @@ func (h *changeEmail) buildMessage(
 			NewStart:       newStart,
 			OldVenue:       rec.Old.VenueName,
 			NewVenue:       rec.New.VenueName,
-			Message:        rec.Message,
+			Message:        message.Plain,
+			MessageHTML:    message.HTML,
 			ContactName:    contact.Name,
 			ContactEmail:   contactEmail,
 			ContactFormURL: contactForm,

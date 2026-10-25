@@ -189,6 +189,13 @@ export interface CheckoutStartPayload {
    * (422 `checkout.consent_required`).
    */
   consent?: import('./consent.js').CheckoutConsentPayload;
+  /**
+   * The sales link and utm labels that brought the buyer (spec 43), read from
+   * the page address and kept for 7 days. Optional; the platform cleans it and
+   * a missing or invalid object never fails the purchase. Not sent to
+   * checkout/recover.
+   */
+  attribution?: import('./attribution.js').AttributionPayload;
 }
 
 /**

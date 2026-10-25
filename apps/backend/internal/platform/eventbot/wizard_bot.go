@@ -42,7 +42,7 @@ const (
 
 // wizardSession builds the wizard's view of the caller.
 func (b *Bot) wizardSession(id *Identity, jwt string) WizSession {
-	return WizSession{JWT: jwt, OrgID: id.Current.OrgID, OrgName: id.Current.OrgName, Locale: id.Locale(), Defaults: DecodeDefaults(id.Link.Defaults)}
+	return WizSession{JWT: jwt, OrgID: id.Current.OrgID, OrgName: id.Current.OrgName, Locale: id.Locale(), Defaults: DecodeDefaults(id.Link.Defaults), Superadmin: id.Superadmin}
 }
 
 func (b *Bot) loadDraft(ctx context.Context, tgID int64, ws WizSession) (*Draft, *gen.BotDraftRow, error) {
@@ -225,6 +225,11 @@ func (b *Bot) wizardCallback(ctx context.Context, chatID int64, msgID int, from 
 			return
 		}
 	}
+	if editorSyncData(d, data) {
+		// The mini app editor may have saved the description since the event was
+		// loaded (wizard_editor_sync.go).
+		b.syncEditorDescription(ctx, from.ID, ws, d)
+	}
 	switch data {
 	case "resume":
 		b.wizardRender(ctx, chatID, &msgID, ws, d, "")
@@ -264,6 +269,17 @@ func (b *Bot) wizardText(ctx context.Context, chatID int64, from *models.User, t
 	if err != nil || d == nil || d.Paused || d.Step == stDone || d.Step == stSummary || d.Step == stEditMenu || d.Step == stCancel ||
 		d.Step == stPreview || d.Step == stSConfirm {
 		return false
+	}
+	if d.Step == stXDescription {
+		// The description is formatted and shown first; the wizard gets it
+		// only when the organizer presses a button under the preview
+		// (textfmt_dialog.go, RT-05).
+		eventID := ""
+		if d.Mode == ModeEdit {
+			eventID = d.Event.EventID
+		}
+		b.descriptionTyped(ctx, chatID, from, id, jwt, text, eventID)
+		return true
 	}
 	b.wizardApply(ctx, chatID, nil, from, ws, d, WizInput{Text: text})
 	return true
@@ -486,7 +502,30 @@ func (b *Bot) wizardRender(ctx context.Context, chatID int64, editMsgID *int, ws
 	if note != "" {
 		text = note + "\n\n" + text
 	}
-	b.reply(ctx, chatID, editMsgID, text, wizardKeyboard(screen))
+	b.reply(ctx, chatID, editMsgID, text, b.withDescriptionEditor(chatID, ws, d, wizardKeyboard(screen)))
+}
+
+// withDescriptionEditor puts the «Править в редакторе» button on the
+// description question of an EXISTING event (RT-12: the mini app editor opens
+// on the text the event holds now). The create wizard has no event yet, so it
+// gets none; the row goes above the navigation row, like on the letter screen.
+func (b *Bot) withDescriptionEditor(chatID int64, ws WizSession, d *Draft, kb *models.InlineKeyboardMarkup) *models.InlineKeyboardMarkup {
+	if d.Mode != ModeEdit || d.Step != stXDescription {
+		return kb
+	}
+	row := b.miniappDescriptionRow(chatID, ws.Superadmin, ws.Locale, d.Event.EventID)
+	if row == nil {
+		return kb
+	}
+	if kb == nil || len(kb.InlineKeyboard) == 0 {
+		return &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{row}}
+	}
+	rows := kb.InlineKeyboard
+	last := len(rows) - 1
+	out := make([][]models.InlineKeyboardButton, 0, len(rows)+1)
+	out = append(out, rows[:last]...)
+	out = append(out, row, rows[last])
+	return &models.InlineKeyboardMarkup{InlineKeyboard: out}
 }
 
 func wizardKeyboard(s Screen) *models.InlineKeyboardMarkup {

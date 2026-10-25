@@ -405,6 +405,48 @@ jobs:
           done
 
   # ─────────────────────────────────────────────────────────────────
+  # Job: Rich editor — the one editor library of every interface
+  # (apps/rich-editor, spec 44 RT-10). Tiptap core, ESM for the web event
+  # center, IIFE for WordPress.
+  #
+  # install → type-check → build → vitest. The tests run after the build on
+  # purpose: tests/build.test.ts checks the built files (no @import in the
+  # CSS, no eval and no new Function in the JS, the global ArenaRichEditor),
+  # and tests/corpus.test.ts and tests/shared-tables.test.ts read the Go
+  # testdata (richtext_legacy.json, links_table.json,
+  # scheme_words_table.json) in apps/backend/internal/platform/richtext/.
+  # ─────────────────────────────────────────────────────────────────
+  rich-editor-build:
+    name: Rich editor (unit / build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/rich-editor/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix apps/rich-editor ci
+
+      - name: Type-check
+        run: npm --prefix apps/rich-editor run type-check
+
+      - name: Production build (ESM and IIFE)
+        run: npm --prefix apps/rich-editor run build
+
+      - name: Unit tests (vitest)
+        run: npm --prefix apps/rich-editor test
+
+  # ─────────────────────────────────────────────────────────────────
   # Job: Event center — the organizers' web event center
   # (apps/event-center, events.arenasoldout.com,
   # 08_architecture/37_web_event_center_ru.md).
@@ -429,10 +471,20 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: apps/event-center/package-lock.json
+          cache-dependency-path: |
+            apps/event-center/package-lock.json
+            apps/rich-editor/package-lock.json
 
       - name: Install dependencies
         run: npm --prefix apps/event-center ci
+
+      # @arena/rich-editor is a file: link whose package.json points types and
+      # main at the git-ignored dist/: build it before the first tsc or vite run
+      # that can import it (the event-center lockfile does not install its deps).
+      - name: Install and build the rich editor library
+        run: |
+          npm --prefix apps/rich-editor ci
+          npm --prefix apps/rich-editor run build
 
       - name: Type-check
         run: npm --prefix apps/event-center run type-check
@@ -486,6 +538,9 @@ jobs:
           done
           curl -fsS http://127.0.0.1:8091/o/any/events | grep -q '<div id="root"></div>'
           sh apps/event-center/scripts/check-headers.sh http://127.0.0.1:8091
+          # The Telegram mini app location (spec 44, RT-12): /tg/edit is index.html
+          # with the tg headers (no X-Frame-Options), / keeps X-Frame-Options.
+          sh apps/event-center/scripts/check-headers-tg.sh http://127.0.0.1:8091
           EVENT_CENTER_BASE_URL=http://127.0.0.1:8091 npm --prefix apps/event-center run test:smoke
           # The password links carry a one-time token and an e-mail address in
           # the query: the access log must keep the path and drop the query.
@@ -563,10 +618,17 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: apps/event-center/package-lock.json
+          cache-dependency-path: |
+            apps/event-center/package-lock.json
+            apps/rich-editor/package-lock.json
 
       - name: Install dependencies
         run: npm --prefix apps/event-center ci
+
+      - name: Install and build the rich editor library
+        run: |
+          npm --prefix apps/rich-editor ci
+          npm --prefix apps/rich-editor run build
 
       - name: Install Chromium for the live test
         run: npx --prefix apps/event-center playwright install --with-deps chromium

@@ -512,6 +512,12 @@ type Config struct {
 	// website" button in the application dialog. Off until the site's
 	// /start/confirm page exists.
 	BotOnboardingSiteButton bool `env:"BOT_ONBOARDING_SITE_BUTTON" required:"false" default:"false"`
+	// BotMiniappEditorEnabled (read by arena-bot) shows the Telegram web_app
+	// button "Edit in the editor" next to the description preview and on the
+	// email-note screen (spec 44, RT-12a). Off until the editor page of RT-12b
+	// is live: today /tg/edit is a placeholder. It needs EVENT_CENTER_PUBLIC_URL
+	// (https) on arena-api and the /tg/ nginx location of apps/event-center.
+	BotMiniappEditorEnabled bool `env:"BOT_MINIAPP_EDITOR_ENABLED" required:"false" default:"false"`
 	// OnboardingEnabled mounts the public organizer-application routes
 	// (/v1/onboarding/*, 08_architecture/34_onboarding_applications_ru.md).
 	// Off by default: the website's form is the only intended client.
@@ -558,11 +564,37 @@ type Config struct {
 	PosterLLMModel string `env:"POSTER_LLM_MODEL" required:"false" default:"claude-sonnet-5"`
 	// PosterLLMBaseURL is the Messages API origin (a stub in tests).
 	PosterLLMBaseURL string `env:"POSTER_LLM_BASE_URL" required:"false" default:"https://api.anthropic.com"`
+	// PosterLLMProvider picks the vision provider that reads a poster:
+	// "anthropic" (default, key POSTER_LLM_API_KEY) or "gemini" (key
+	// GEMINI_API_KEY). PosterLLMFallbackProvider, when set to the other one,
+	// is tried once when the first fails or times out and enough time is left.
+	PosterLLMProvider         string `env:"POSTER_LLM_PROVIDER" required:"false" default:"anthropic"`
+	PosterLLMFallbackProvider string `env:"POSTER_LLM_FALLBACK_PROVIDER" required:"false" default:""`
+	// GeminiAPIKey is the Google AI Studio / Gemini API key (secret). Empty
+	// leaves the Gemini reader unconfigured.
+	GeminiAPIKey string `env:"GEMINI_API_KEY" required:"false" default:""`
+	// PosterGeminiModel is the Gemini model that reads posters.
+	PosterGeminiModel string `env:"POSTER_GEMINI_MODEL" required:"false" default:"gemini-3.8-flash"`
+	// PosterGeminiBaseURL is the Generative Language API origin: a test seam
+	// (a stub server), refused in production unless it is the default.
+	PosterGeminiBaseURL string `env:"POSTER_GEMINI_BASE_URL" required:"false" default:"https://generativelanguage.googleapis.com"`
 	// PosterReadsPerOrgPerDay caps the model calls of ONE organization in a
 	// sliding 24 hours (each call costs money). 0 switches the cap off. The
 	// counter lives in the memory of one arena-api process, so with several
 	// replicas the ceiling is this value times the replica count.
 	PosterReadsPerOrgPerDay int `env:"POSTER_READS_PER_ORG_PER_DAY" required:"false" default:"50"`
+	// TextFormatLLMModel is the model that adds markup to an organizer's text
+	// (internal/platform/textformat, POST .../texts/format, spec 44 RT-04). It
+	// uses the same key and base URL as the poster reading (POSTER_LLM_API_KEY,
+	// POSTER_LLM_BASE_URL); without the key the route answers 200 with the
+	// plain conversion of the text and ai_applied=false.
+	TextFormatLLMModel string `env:"TEXT_FORMAT_LLM_MODEL" required:"false" default:"claude-haiku-5-5"`
+	// TextFormatsPerUserPerDay and TextFormatsPerOrgPerDay cap the model calls
+	// of that route per person and per organization in a sliding 24 hours (each
+	// call costs money). 0 switches that cap off. Like the poster cap the
+	// counters live in the memory of one arena-api process.
+	TextFormatsPerUserPerDay int `env:"TEXT_FORMATS_PER_USER_PER_DAY" required:"false" default:"100"`
+	TextFormatsPerOrgPerDay  int `env:"TEXT_FORMATS_PER_ORG_PER_DAY" required:"false" default:"500"`
 	// OpsWatchdogHeartbeatHourUTC is the UTC hour (0-23) at which the
 	// ops.watchdog job sends its once-daily "still alive" digest.
 	OpsWatchdogHeartbeatHourUTC int `env:"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC" required:"false" default:"7"`
@@ -801,6 +833,12 @@ func LoadFor(role Role) (*Config, error) {
 		PosterLLMAPIKey:             getenv("POSTER_LLM_API_KEY", ""),
 		PosterLLMModel:              getenv("POSTER_LLM_MODEL", "claude-sonnet-5"),
 		PosterLLMBaseURL:            getenv("POSTER_LLM_BASE_URL", DefaultPosterLLMBaseURL),
+		PosterLLMProvider:           strings.ToLower(strings.TrimSpace(getenv("POSTER_LLM_PROVIDER", PosterProviderAnthropic))),
+		PosterLLMFallbackProvider:   strings.ToLower(strings.TrimSpace(getenv("POSTER_LLM_FALLBACK_PROVIDER", ""))),
+		GeminiAPIKey:                getenv("GEMINI_API_KEY", ""),
+		PosterGeminiModel:           strings.TrimSpace(getenv("POSTER_GEMINI_MODEL", DefaultPosterGeminiModel)),
+		PosterGeminiBaseURL:         getenv("POSTER_GEMINI_BASE_URL", DefaultPosterGeminiBaseURL),
+		TextFormatLLMModel:          strings.TrimSpace(getenv("TEXT_FORMAT_LLM_MODEL", "claude-haiku-5-5")),
 
 		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
 	}
@@ -913,6 +951,38 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, fmt.Errorf("POSTER_READS_PER_ORG_PER_DAY must not be negative (0 switches the cap off), got %d", posterReads))
 	}
 	cfg.PosterReadsPerOrgPerDay = posterReads
+
+	// POSTER_LLM_PROVIDER / POSTER_LLM_FALLBACK_PROVIDER: which vision provider
+	// reads posters. A typo must stop the boot, not silently read with the
+	// wrong provider.
+	if !validPosterProvider(cfg.PosterLLMProvider, false) {
+		parseErrs = append(parseErrs, fmt.Errorf("POSTER_LLM_PROVIDER must be %q or %q, got %q", PosterProviderAnthropic, PosterProviderGemini, cfg.PosterLLMProvider))
+	}
+	if !validPosterProvider(cfg.PosterLLMFallbackProvider, true) {
+		parseErrs = append(parseErrs, fmt.Errorf("POSTER_LLM_FALLBACK_PROVIDER must be empty, %q or %q, got %q", PosterProviderAnthropic, PosterProviderGemini, cfg.PosterLLMFallbackProvider))
+	} else if cfg.PosterLLMFallbackProvider != "" && cfg.PosterLLMFallbackProvider == cfg.PosterLLMProvider {
+		parseErrs = append(parseErrs, fmt.Errorf("POSTER_LLM_FALLBACK_PROVIDER must differ from POSTER_LLM_PROVIDER (both %q)", cfg.PosterLLMProvider))
+	}
+
+	// TEXT_FORMATS_PER_USER_PER_DAY / TEXT_FORMATS_PER_ORG_PER_DAY: model calls of
+	// the text-formatting route per person and per organization per day.
+	for _, capEnv := range []struct {
+		name string
+		def  int
+		dst  *int
+	}{
+		{"TEXT_FORMATS_PER_USER_PER_DAY", 100, &cfg.TextFormatsPerUserPerDay},
+		{"TEXT_FORMATS_PER_ORG_PER_DAY", 500, &cfg.TextFormatsPerOrgPerDay},
+	} {
+		v, err := getenvInt(capEnv.name, capEnv.def)
+		if err != nil {
+			parseErrs = append(parseErrs, err)
+		}
+		if v < 0 {
+			parseErrs = append(parseErrs, fmt.Errorf("%s must not be negative (0 switches the cap off), got %d", capEnv.name, v))
+		}
+		*capEnv.dst = v
+	}
 
 	// PUBLIC_TICKETS_BASE_URL / WIDGET_PAYMENT_WINDOW_SECONDS /
 	// WIDGET_PAYMENT_GRACE_SECONDS — widget hosted-payment redirect flow.
@@ -1028,6 +1098,12 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.BotOnboardingSiteButton = b
+
+	b, err = getenvBool("BOT_MINIAPP_EDITOR_ENABLED", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.BotMiniappEditorEnabled = b
 
 	// JWT default TTL.
 	d, err = getenvDuration("JWT_DEFAULT_TTL", time.Hour, false)
@@ -1725,12 +1801,13 @@ func (c *Config) validateProduction() []error {
 		))
 	}
 
-	// 17b. BREVO_API_BASE_URL and POSTER_LLM_BASE_URL: a changed host would
+	// 17b. BREVO_API_BASE_URL, POSTER_LLM_BASE_URL and POSTER_GEMINI_BASE_URL: a changed host would
 	// receive the platform's Brevo key or the LLM key with every request. Only
 	// the built-in default is accepted in production, on every role.
 	for _, seam := range []struct{ name, value, def string }{
 		{"BREVO_API_BASE_URL", c.BrevoAPIBaseURL, DefaultBrevoAPIBaseURL},
 		{"POSTER_LLM_BASE_URL", c.PosterLLMBaseURL, DefaultPosterLLMBaseURL},
+		{"POSTER_GEMINI_BASE_URL", c.PosterGeminiBaseURL, DefaultPosterGeminiBaseURL},
 	} {
 		if v := strings.TrimRight(strings.TrimSpace(seam.value), "/"); v != "" && v != seam.def {
 			errs = append(errs, fmt.Errorf(
@@ -1803,6 +1880,28 @@ const (
 	DefaultBrevoAPIBaseURL  = "https://api.brevo.com"
 	DefaultPosterLLMBaseURL = "https://api.anthropic.com"
 )
+
+// Poster-reading providers (POSTER_LLM_PROVIDER, POSTER_LLM_FALLBACK_PROVIDER)
+// and the Gemini defaults. DefaultPosterGeminiBaseURL is the only
+// POSTER_GEMINI_BASE_URL production accepts.
+const (
+	PosterProviderAnthropic    = "anthropic"
+	PosterProviderGemini       = "gemini"
+	DefaultPosterGeminiModel   = "gemini-3.8-flash"
+	DefaultPosterGeminiBaseURL = "https://generativelanguage.googleapis.com"
+)
+
+// validPosterProvider reports whether v names a poster provider; an empty
+// value is valid only when allowEmpty (the fallback may be unset).
+func validPosterProvider(v string, allowEmpty bool) bool {
+	switch v {
+	case PosterProviderAnthropic, PosterProviderGemini:
+		return true
+	case "":
+		return allowEmpty
+	}
+	return false
+}
 
 // MinBrevoWebhookTokenLen is the shortest BREVO_WEBHOOK_TOKEN production
 // accepts.

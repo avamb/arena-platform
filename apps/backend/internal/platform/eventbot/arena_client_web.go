@@ -49,3 +49,20 @@ func (c *ArenaClient) RevokeWebSessions(ctx context.Context, jwt string) error {
 	}
 	return c.do(ctx, http.MethodPost, "/v1/auth/web-sessions/revoke", jwt, struct{}{}, &out)
 }
+
+// MiniappLink asks for a one-time link to the Telegram mini app editor
+// (spec 44, RT-12a): purpose "miniapp", the kind of text ("description" or
+// "email_note") and the event it belongs to. The code stays one-time and
+// lasts 5 minutes; it takes back and is taken back by no "Open in browser"
+// link, and the chat gets no sign-in notice for it.
+func (c *ArenaClient) MiniappLink(ctx context.Context, telegramUserID int64, kind, eventID string) (WebLoginLink, error) {
+	var out WebLoginLink
+	body := struct {
+		TelegramUserID int64  `json:"telegram_user_id"`
+		Purpose        string `json:"purpose"`
+		Kind           string `json:"kind"`
+		EventID        string `json:"event_id"`
+	}{telegramUserID, "miniapp", kind, eventID}
+	err := c.do(ctx, http.MethodPost, "/v1/bot/web-login-codes", c.serviceToken, body, &out)
+	return out, err
+}

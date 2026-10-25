@@ -27,6 +27,8 @@ type ArenaClient struct {
 	baseURL      string
 	serviceToken string
 	http         *http.Client
+	// formatTimeout is how long FormatText waits (default formatCallTimeout).
+	formatTimeout time.Duration
 }
 
 // NewArenaClient builds a client for baseURL (http://api:8080 in compose).
@@ -48,6 +50,9 @@ type APIError struct {
 	Message string
 	// Fields is error.details.fields of a 422: field key -> reason.
 	Fields map[string]string
+	// Reason is error.details.reason: the short word of a refused text
+	// (richtext reason, for example "too_long").
+	Reason string
 	// OwnersNotice is error.details.owners_notice of a refund refused for a
 	// scanned ticket: queued, throttled, no_recipient, or empty.
 	OwnersNotice string
@@ -125,6 +130,7 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 				Message string `json:"message"`
 				Details struct {
 					Fields       map[string]string `json:"fields"`
+					Reason       string            `json:"reason"`
 					OwnersNotice string            `json:"owners_notice"`
 					TicketID     string            `json:"ticket_id"`
 				} `json:"details"`
@@ -134,6 +140,7 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 			ae.Code = env.Error.Code
 			ae.Message = env.Error.Message
 			ae.Fields = env.Error.Details.Fields
+			ae.Reason = env.Error.Details.Reason
 			ae.OwnersNotice = env.Error.Details.OwnersNotice
 			ae.TicketID = env.Error.Details.TicketID
 		}
@@ -183,6 +190,9 @@ type Membership struct {
 	OrgID   uuid.UUID
 	OrgName string
 	Role    string
+	// Archived: a platform superadmin archived the organization. The person
+	// stays a member, but the bot must not offer it as a working organization.
+	Archived bool
 }
 
 // AdminReason is what the bot writes into X-Admin-Reason: a platform
@@ -224,6 +234,8 @@ func (c *ArenaClient) MeInfo(ctx context.Context, jwt string) (Me, error) {
 			OrgName string `json:"org_name"`
 			Role    string `json:"role"`
 			Status  string `json:"status"`
+			// Archived is absent on an API older than the flag: false then.
+			Archived bool `json:"archived"`
 		} `json:"organization_memberships"`
 	}
 	if err := c.do(ctx, http.MethodGet, "/v1/me", jwt, nil, &out); err != nil {
@@ -238,7 +250,7 @@ func (c *ArenaClient) MeInfo(ctx context.Context, jwt string) (Me, error) {
 		if err != nil {
 			continue
 		}
-		me.Memberships = append(me.Memberships, Membership{OrgID: id, OrgName: m.OrgName, Role: m.Role})
+		me.Memberships = append(me.Memberships, Membership{OrgID: id, OrgName: m.OrgName, Role: m.Role, Archived: m.Archived})
 	}
 	for _, r := range out.Roles {
 		if r == superadminRole {

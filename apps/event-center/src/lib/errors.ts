@@ -140,7 +140,16 @@ export type ApiErrorStem =
   | "billingPayerInvalid"
   | "billingTerms"
   | "billingFxMissing"
-  | "billingClosed";
+  | "billingClosed"
+  // QL-12: sales links
+  | "linkTargetInvalid"
+  | "linkUrlInvalid"
+  | "linkLabelInvalid"
+  | "linkUtmInvalid"
+  // RT-11: formatted texts
+  | "emailNoteEmpty"
+  | "emailNoteRateLimited"
+  | "textRefused";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -166,6 +175,10 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   // B3-3/B4
   "billingCardUnavailable", "billingKeyReused", "billingPackGone", "billingNoAccount", "billingNotCardPayable",
   "billingPayerInvalid", "billingTerms", "billingFxMissing", "billingClosed",
+  // QL-12
+  "linkTargetInvalid", "linkUrlInvalid", "linkLabelInvalid", "linkUtmInvalid",
+  // RT-11
+  "emailNoteEmpty", "emailNoteRateLimited", "textRefused",
 ];
 
 /**
@@ -274,6 +287,25 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "billing.invalid_payment_method": "invalid",
   "billing.bad_request": "invalid",
   "billing.organizer_disabled": "billingClosed",
+  // QL-12: sales links (spec 43)
+  "sales_link.invalid_target": "linkTargetInvalid",
+  "sales_link.invalid_url": "linkUrlInvalid",
+  "sales_link.invalid_label": "linkLabelInvalid",
+  "sales_link.invalid_utm": "linkUtmInvalid",
+  "sales_link.invalid_placement": "invalid",
+  "sales_link.invalid_status": "invalid",
+  "sales_link.invalid_body": "invalid",
+  "sales_link.invalid_qr_params": "invalid",
+  "sales_link.failed": "server",
+  // RT-11: the text in the letter, the description and the message to buyers (spec 44)
+  "event.email_note_empty": "emailNoteEmpty",
+  "event.email_note_test_rate_limited": "emailNoteRateLimited",
+  "event.invalid_email_note": "textRefused",
+  "event.invalid_description": "textRefused",
+  "import.invalid_description": "textRefused",
+  "session.change_message_invalid": "textRefused",
+  "text.too_long": "textRefused",
+  "text.invalid": "textRefused",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",

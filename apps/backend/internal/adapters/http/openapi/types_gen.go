@@ -426,6 +426,12 @@ const (
 	DeliveryJobStatusSent       DeliveryJobStatus = "sent"
 )
 
+// Defines values for EventItemDescriptionFormat.
+const (
+	Art  EventItemDescriptionFormat = "art"
+	Text EventItemDescriptionFormat = "text"
+)
+
 // Defines values for EventItemStatus.
 const (
 	EventItemStatusArchived  EventItemStatus = "archived"
@@ -784,6 +790,13 @@ const (
 const (
 	SessionMediaReplaceRequestItemsKindPoster SessionMediaReplaceRequestItemsKind = "poster"
 	SessionMediaReplaceRequestItemsKindVideo  SessionMediaReplaceRequestItemsKind = "video"
+)
+
+// Defines values for TextFormatKind.
+const (
+	Description    TextFormatKind = "description"
+	EmailNote      TextFormatKind = "email_note"
+	SessionMessage TextFormatKind = "session_message"
 )
 
 // Defines values for TicketCredentialItemType.
@@ -4663,7 +4676,20 @@ type BotTeamResponse struct {
 
 // BotWebLoginCodeRequest Body of POST /v1/bot/web-login-codes.
 type BotWebLoginCodeRequest struct {
-	// TelegramUserId The Telegram account that pressed "Open in browser".
+	// EventId The event whose text the mini app opens. Required, and only used, for `purpose: miniapp`.
+	EventId *openapi_types.UUID `json:"event_id,omitempty"`
+
+	// Kind Which text the mini app opens: `description` or `email_note` (a plain string, not an enum). Required, and only used, for `purpose: miniapp`.
+	Kind *string `json:"kind,omitempty"`
+
+	// Purpose What the code is for: `web` or `miniapp` (a plain string, not an enum, so no generated constant is
+	// renamed). `web` (the default) is "Open in browser": a 72-hour web session, a "signed in"
+	// notice in the chat, and a new code takes back the person's earlier unused `web` codes. `miniapp` is the
+	// Telegram mini app editor (spec 44, RT-12a): a 30-minute session of channel `event_center_tg`, no notice,
+	// and it takes back and is taken back by no code of another purpose.
+	Purpose *string `json:"purpose,omitempty"`
+
+	// TelegramUserId The Telegram account that pressed "Open in browser" or "Edit in the editor".
 	TelegramUserId int64 `json:"telegram_user_id"`
 }
 
@@ -4672,7 +4698,7 @@ type BotWebLoginCodeResponse struct {
 	// ExpiresAt When the link stops working (5 minutes after it was issued).
 	ExpiresAt time.Time `json:"expires_at"`
 
-	// Url `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`. The code is after `#`, so it never reaches a server log.
+	// Url `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`, or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`. The code is after `#`, so it never reaches a server log.
 	Url string `json:"url"`
 }
 
@@ -5777,8 +5803,21 @@ type CreateEventPartnerLinkRequest struct {
 // they belong to the event's sessions and are supplied when sessions
 // are created.
 type CreateEventRequest struct {
-	// Description Optional long-form description.
+	// Description Optional long-form description, at most 4000 visible characters.
+	// Read as `description_format`; stored as filtered HTML. A refused
+	// text answers 422 `event.invalid_description` with
+	// `error.details.reason`.
 	Description *string `json:"description,omitempty"`
+
+	// DescriptionFormat How `description` (and the translated descriptions) is written: `text` (default) is the old plain text
+	// with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+	// "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+	// `a[href]`, `ul`, `ol`, `li`, `h3`, `h4`, `blockquote`). The server never guesses the
+	// format from the tags: it passes the text through one filter,
+	// stores ART and marks it `art`, so old clients keep working.
+	// Values: `text`, `art`. Anything else answers 400
+	// `event.invalid_description_format`.
+	DescriptionFormat *string `json:"description_format,omitempty"`
 
 	// ImageUrl Optional poster / cover image URL.
 	ImageUrl *string `json:"image_url,omitempty"`
@@ -7174,6 +7213,11 @@ type EventEmailNoteTestRequest struct {
 	// Absent means the stored text.
 	Note *string `json:"note,omitempty"`
 
+	// NoteFormat How the draft `note` is written: `text` (default, the old marks)
+	// or `art`, as `email_note_format` of PATCH. Anything else answers
+	// 400 `event.invalid_email_note_format`.
+	NoteFormat *string `json:"note_format,omitempty"`
+
 	// To Address to send to: the caller's own, or that of an active member
 	// of the organization. Empty means the caller's own address.
 	To *string `json:"to,omitempty"`
@@ -7278,6 +7322,51 @@ type EventItem struct {
 	// Description Optional long-form description. Locale-resolved like `name`.
 	Description *string `json:"description"`
 
+	// DescriptionBase The canonical description exactly as stored on the event, never a
+	// translation. `description` is resolved for the request's locale and
+	// may be the text of a translation; a client that EDITS the
+	// description reads and writes this one (with `description_format`),
+	// otherwise saving would put a translation over the original. Null
+	// when the event has no canonical description or the server could
+	// not read it.
+	DescriptionBase *string `json:"description_base"`
+
+	// DescriptionFormat How `description` is stored: `art` is "text Arena", the small HTML
+	// subset (`p`, `br`, `strong`, `em`, `u`, `a[href]`, `ul`, `ol`, `li`,
+	// headings and quotes), `text` is the old plain text with the marks
+	// `**bold**`, `_italic_` and `- ` list lines that the backfill has not
+	// converted yet. The flag covers the translations too. Empty only when
+	// the server could not read it; a reader treats that as `text`.
+	DescriptionFormat *EventItemDescriptionFormat `json:"description_format,omitempty"`
+
+	// DescriptionHtml `description` as safe HTML for display (spec 44, RT-03a):
+	// `richtext.Render` with the description profile. Locale-resolved
+	// like `description` and read with the event's `description_format`
+	// (the flag covers the translations). Links carry
+	// `rel="noopener noreferrer" target="_blank"`. Null when there is
+	// no description or the format could not be read. The public feed
+	// returns it too.
+	DescriptionHtml *string `json:"description_html"`
+
+	// DescriptionLegacy `description` in the old form for editing forms that cannot show
+	// markup: `**bold**`, `_italic_`, `- ` and `1. ` list lines, a link
+	// as `text (https://…)`; the stored text itself for a `text` row. An
+	// admin form loads it and sends `description` back (with the default
+	// format `text`) only when the person changed it. Returned by the
+	// authenticated event routes only, absent from the public feed.
+	DescriptionLegacy *string `json:"description_legacy"`
+
+	// DescriptionText The visible text of `description_html` without markup, for
+	// `<title>`, `<meta>` and counters: paragraphs are separated by a
+	// blank line, list items are `• x` or `1. x` lines. Null when
+	// `description_html` is. The public feed returns it too.
+	DescriptionText *string `json:"description_text"`
+
+	// DescriptionTranslated True when `description` is not the canonical text, that is, the
+	// negotiated locale (or English) has its own translation. False when
+	// the two are the same, or there is no description.
+	DescriptionTranslated *bool `json:"description_translated,omitempty"`
+
 	// DisplayNumber Short operator-facing event number; UUID remains the API key.
 	DisplayNumber int64 `json:"display_number"`
 
@@ -7290,6 +7379,10 @@ type EventItem struct {
 	// session-change e-mails print under "About the event". Null when
 	// the event has none.
 	EmailNote *string `json:"email_note"`
+
+	// EmailNoteFormat How `email_note` is stored: `art` (the HTML subset) or `text` (the
+	// old plain text). Null when the event has no note.
+	EmailNoteFormat *string `json:"email_note_format"`
 
 	// FirstSessionAt Earliest `start_at` over the event's active, non-cancelled
 	// sessions (RFC 3339, UTC). Maintained by a database trigger
@@ -7413,6 +7506,14 @@ type EventItem struct {
 	// `?visibility=` filter.
 	Visibility EventItemVisibility `json:"visibility"`
 }
+
+// EventItemDescriptionFormat How `description` is stored: `art` is "text Arena", the small HTML
+// subset (`p`, `br`, `strong`, `em`, `u`, `a[href]`, `ul`, `ol`, `li`,
+// headings and quotes), `text` is the old plain text with the marks
+// `**bold**`, `_italic_` and `- ` list lines that the backfill has not
+// converted yet. The flag covers the translations too. Empty only when
+// the server could not read it; a reader treats that as `text`.
+type EventItemDescriptionFormat string
 
 // EventItemStatus Lifecycle status.
 type EventItemStatus string
@@ -8205,8 +8306,22 @@ type HostedPageEvent struct {
 	// AgeRating Age rating / content advisory for the event, when set.
 	AgeRating *string `json:"age_rating"`
 
-	// Description Long-form event description.
+	// Description Long-form event description, the raw stored value (ART or old
+	// text, see the event's format). Kept as it was for clients that
+	// cached the older page; new clients read `description_html`.
 	Description *string `json:"description"`
+
+	// DescriptionHtml `description` as safe HTML (spec 44, RT-03a): `richtext.Render`
+	// with the description profile, links carry
+	// `rel="noopener noreferrer" target="_blank"`. The page rebuilds it
+	// from whitelisted nodes before showing it. Null when there is no
+	// description or its format could not be read.
+	DescriptionHtml *string `json:"description_html"`
+
+	// DescriptionText The visible text of `description_html` without markup, for the
+	// page `<title>` and `<meta name="description">`. Null when
+	// `description_html` is.
+	DescriptionText *string `json:"description_text"`
 
 	// FeedToken Opaque feed token the event is published through — the same
 	// value `HostedPageResponse.feed_token` carries for that event on
@@ -8512,18 +8627,43 @@ type ImportBil24SessionAction struct {
 	// as a warning and never fails the import.
 	BigPosterUrl *string `json:"bigPosterUrl,omitempty"`
 
-	// Description Free-form action description copied into the event description.
+	// Description Free-form action description copied into the event description,
+	// at most 4000 visible characters. Read as `descriptionFormat` and
+	// stored as filtered HTML. A refused text answers 422
+	// `import.invalid_description` with `error.details.reason`. Empty keeps
+	// the stored text.
 	Description *string `json:"description,omitempty"`
+
+	// DescriptionFormat How `description` is written: `text` (default) is the old plain text
+	// with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+	// "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+	// `a[href]`, `ul`, `ol`, `li`, `h3`, `h4`, `blockquote`). The server never guesses the
+	// format from the tags: it passes the text through one filter,
+	// stores ART and marks it `art`, so old clients keep working.
+	// Values: `text`, `art`. Anything else answers 422
+	// `import.invalid_description`.
+	DescriptionFormat *string `json:"descriptionFormat,omitempty"`
 
 	// EmailNote Arena event-bundle extension (source=arena only; EC-31, migration
 	// 0165): the organizer's own text that the ticket and session-change
 	// e-mails print under "About the event". Absent or null keeps the
 	// stored text, "" removes it, a string replaces it after the same
-	// filter as PATCH `email_note` (plain text, at most 2000
-	// characters, at most 5 `https://` links). A refused text answers
-	// 422 `import.invalid_email_note`. The event-bundle read answers
-	// "" when the event has none.
+	// filter as PATCH `email_note` (at most 2000 visible characters, at
+	// most 5 `https://` links), read as `emailNoteFormat`. A refused
+	// text answers 422 `import.invalid_email_note` with
+	// `error.details.reason`. The event-bundle
+	// read answers "" when the event has none.
 	EmailNote *string `json:"emailNote"`
+
+	// EmailNoteFormat How `emailNote` is written: `text` (default) is the old plain text
+	// with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+	// "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+	// `a[href]`, `ul`, `ol`, `li`). The server never guesses the
+	// format from the tags: it passes the text through one filter,
+	// stores ART and marks it `art`, so old clients keep working.
+	// Values: `text`, `art`. Anything else answers 422
+	// `import.invalid_email_note`.
+	EmailNoteFormat *string `json:"emailNoteFormat,omitempty"`
 
 	// FullActionName Full action name. Preferred over actionName as the event title.
 	FullActionName *string `json:"fullActionName,omitempty"`
@@ -8737,7 +8877,12 @@ type ImportBil24SessionRequest struct {
 	// ChangeMessage The organizer's own text for the letter buyers get when this
 	// import MOVES a session that already has paid, live tickets (arena
 	// extension). Plain text, up to 1000 characters (longer is refused
-	// with 422 `session.change_message_too_long`), may be empty;
+	// with 422 `session.change_message_too_long`), may be empty. A
+	// character that is never stored (a direction override, a control
+	// or tag character) is removed silently, not refused. Any other
+	// text the server cannot accept is 422
+	// `session.change_message_invalid` (error pointer
+	// `/changeMessage`);
 	// ignored when nothing a buyer can see changes. An import that
 	// would move such a session is refused, and writes nothing, with
 	// 422 `organization.contact_missing` when the organizer has no
@@ -9044,7 +9189,12 @@ type ImportEventBundleRequest struct {
 	// ChangeMessage The organizer's own text for the letter buyers get when this
 	// import MOVES a session that already has paid, live tickets (arena
 	// extension). Plain text, up to 1000 characters (longer is refused
-	// with 422 `session.change_message_too_long`), may be empty;
+	// with 422 `session.change_message_too_long`), may be empty. A
+	// character that is never stored (a direction override, a control
+	// or tag character) is removed silently, not refused. Any other
+	// text the server cannot accept is 422
+	// `session.change_message_invalid` (error pointer
+	// `/changeMessage`);
 	// ignored when nothing a buyer can see changes. An import that
 	// would move such a session is refused, and writes nothing, with
 	// 422 `organization.contact_missing` when the organizer has no
@@ -9537,6 +9687,12 @@ type MeAssignedNetwork struct {
 
 // MeOrganizationMembership defines model for MeOrganizationMembership.
 type MeOrganizationMembership struct {
+	// Archived True when a platform superadmin archived the organization
+	// (organizations.deleted_at is set). The membership stays listed so a
+	// client can show the organization as archived, but it must not offer
+	// it as a working organization.
+	Archived bool `json:"archived"`
+
 	// Id Membership row UUID
 	Id string `json:"id"`
 
@@ -13999,6 +14155,16 @@ type SalesLink struct {
 	// DestinationDegraded True when the code leads to a higher page than its target (event off sale, date cancelled, link archived).
 	DestinationDegraded bool `json:"destination_degraded"`
 
+	// DestinationReason Why the code does not lead to the page its target names; empty when it does.
+	// Names what decided the final page, so a client can say what brings the code back and
+	// offers a retarget only where it changes the address: `event_not_published` (publish the
+	// event), `event_no_slug` (the event has no page address), `session_not_live` (the date is
+	// cancelled or deleted, another date would change the address), `promoter_unavailable`
+	// (the promoter is archived or has no page address), `archived` (the link is in the
+	// archive), `no_page_address` (no page address can be built at all, the scan goes to the
+	// platform's fallback page), `org_not_found`.
+	DestinationReason string `json:"destination_reason"`
+
 	// DestinationUrl The page the code leads to right now, without utm. Empty when no page address can be built.
 	DestinationUrl string `json:"destination_url"`
 
@@ -15320,13 +15486,28 @@ type SessionChangeImpact struct {
 // being moved or cancelled. Shown under the standard, localized wording
 // of the letter.
 type SessionChangeNotice struct {
-	// Message Plain text, up to 1000 characters (longer is refused with 422
-	// `session.change_message_too_long`), may be empty. Clients offer
-	// the `default_message` of the change-impact answer as a starting
-	// point; whatever is sent is what buyers read. It must not promise
-	// a refund: returning money is a separate conversation between the
-	// organizer and the buyer.
+	// Message The text buyers read, up to 1000 visible characters (longer is
+	// refused with 422 `session.change_message_too_long`), may be empty.
+	// Read as `message_format` and stored as filtered HTML. A text that
+	// cannot be accepted (forbidden characters, more than 3 links) is 422
+	// `session.change_message_invalid` with `error.details.reason`.
+	// Clients offer the `default_message` of the change-impact answer
+	// (always plain text) as a starting point; whatever is sent is what
+	// buyers read. It must not promise a refund: returning money is a
+	// separate conversation between the organizer and the buyer.
 	Message *string `json:"message,omitempty"`
+
+	// MessageFormat How `message` is written: `text` (the default, so a client that
+	// sends no format, such as the Telegram bot, keeps working) is the old
+	// plain text with the marks `**bold**`, `_italic_` and `- ` list
+	// lines, `art` is "text Arena", a small HTML subset (`p`, `br`,
+	// `strong`, `em`, `u`, `a[href]` to `https`, `ul`, `ol`, `li`; no
+	// headings or quotes). The server never guesses the format from the
+	// tags: an `art` text goes through one filter and is stored as ART,
+	// a `text` is kept as typed, and the letters read both through the
+	// same safe converter. Values: `text`, `art`.
+	// Anything else answers 400 `session.invalid_message_format`.
+	MessageFormat *string `json:"message_format,omitempty"`
 }
 
 // SessionChangeSummary What a session save did for buyers. Present on the PATCH and DELETE
@@ -16166,6 +16347,53 @@ type SummaryTierItem struct {
 	PriceAmount int64 `json:"price_amount"`
 }
 
+// TextFormatKind Which text is formatted. It picks the tags the model may add and the
+// longest text: `description` (an event description, 4000 characters, with
+// headings, quotes and links to `https` and `mailto`), `email_note` (the
+// organizer's own text of the buyer letters, 2000 characters) and
+// `session_message` (the message about a moved or cancelled session, 1000
+// characters). The last two have no headings or quotes and link only to
+// `https`.
+type TextFormatKind string
+
+// TextFormatRequest A text the organizer typed, to be marked up.
+type TextFormatRequest struct {
+	// Kind Which text this is.
+	Kind TextFormatKind `json:"kind"`
+
+	// Locale Optional language tag of the text (`ru`, `he`, `en-GB`), only a hint
+	// for the model.
+	Locale *string `json:"locale,omitempty"`
+
+	// Text The organizer's text in the plain notation (`**bold**`, `_italic_`,
+	// `- ` lists, a blank line between paragraphs). At most 4000, 2000 or
+	// 1000 characters by `kind`; a longer text is a 422 `text.too_long`
+	// and the model is not called.
+	Text string `json:"text"`
+}
+
+// TextFormatResponse The text to use. `html` is always safe, ready to store as the `art`
+// format: the model's markup when `ai_applied` is true, the plain
+// conversion of the text otherwise.
+type TextFormatResponse struct {
+	// AiApplied True when the model's markup was kept, because the code proved that
+	// not one word, number or sign changed. False when `html` is the plain
+	// conversion of the text. Clients look at this field only.
+	AiApplied bool `json:"ai_applied"`
+
+	// Html The text as ART, the platform's small HTML subset (`p`, `br`, `strong`, `em`, `u`, `a`, lists, and `h3`, `h4`, `blockquote` for descriptions).
+	Html string `json:"html"`
+
+	// PromptVersion Version of the prompt the route uses (for example `rt04-v1`).
+	PromptVersion string `json:"prompt_version"`
+
+	// Reason Why the model was not used, present only when `ai_applied` is false:
+	// `not_configured`, `quota`, `timeout`, `model_error`, `no_text`,
+	// `empty_output`, `invalid_markup`, `text_changed` or `limits`. The
+	// list may grow; do not branch on it.
+	Reason *string `json:"reason,omitempty"`
+}
+
 // TicketCredentialItem A bearer credential issued for a single ticket. There is at most
 // one row per `(ticket_id, type)` pair, enforced by the
 // `ticket_credentials_ticket_type_unique` UNIQUE constraint in
@@ -16757,8 +16985,20 @@ type UpdateEventRequest struct {
 	// every session (AB-47). No-op when false or omitted.
 	ClearSessionOverrides *bool `json:"clear_session_overrides,omitempty"`
 
-	// Description New long-form description.
+	// Description New long-form description, at most 4000 visible characters. Read
+	// as `description_format`; stored as filtered HTML. A refused text
+	// answers 422 `event.invalid_description` with `error.details.reason`.
 	Description *string `json:"description"`
+
+	// DescriptionFormat How `description` (and the translated descriptions) is written: `text` (default) is the old plain text
+	// with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+	// "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+	// `a[href]`, `ul`, `ol`, `li`, `h3`, `h4`, `blockquote`). The server never guesses the
+	// format from the tags: it passes the text through one filter,
+	// stores ART and marks it `art`, so old clients keep working.
+	// Values: `text`, `art`. Anything else answers 400
+	// `event.invalid_description_format`.
+	DescriptionFormat *string `json:"description_format,omitempty"`
 
 	// DurationMinutes Tri-state (absent=keep, null=clear, value=set).
 	// Event runtime in minutes (AB-45c).
@@ -16766,12 +17006,22 @@ type UpdateEventRequest struct {
 
 	// EmailNote Tri-state (absent=keep, null or "" = clear, value=set). The
 	// organizer's own text that the ticket and session-change e-mails
-	// print under "About the event". Plain text of at most 2000
-	// characters: HTML tags are removed, control characters are
-	// refused, at most 5 links and every link must be `https://`. A
-	// refused text answers 400 `event.invalid_email_note` with
+	// print under "About the event". At most 2000 visible characters
+	// and 5 links, every link `https://`, control characters are
+	// refused. Read as `email_note_format` and stored as filtered HTML.
+	// A refused text answers 422 `event.invalid_email_note` with
 	// `error.details.reason`.
 	EmailNote *string `json:"email_note"`
+
+	// EmailNoteFormat How `email_note` is written: `text` (default) is the old plain text
+	// with the marks `**bold**`, `_italic_` and `- ` list lines, `art` is
+	// "text Arena", a small HTML subset (`p`, `br`, `strong`, `em`, `u`,
+	// `a[href]`, `ul`, `ol`, `li`). The server never guesses the
+	// format from the tags: it passes the text through one filter,
+	// stores ART and marks it `art`, so old clients keep working.
+	// Values: `text`, `art`. Anything else answers 400
+	// `event.invalid_email_note_format`.
+	EmailNoteFormat *string `json:"email_note_format,omitempty"`
 
 	// Genre Tri-state (absent=keep, null=clear, value=set).
 	// Event genre/category string (AB-45c).
@@ -18909,14 +19159,20 @@ type ListSalesLinksParams struct {
 
 // GetSalesLinkQrParams defines parameters for GetSalesLinkQr.
 type GetSalesLinkQrParams struct {
-	// Format Image format, `png` (default) or `svg`.
+	// Format Format, `png` (default), `svg` or `pdf` (the printable insert).
 	Format *string `form:"format,omitempty" json:"format,omitempty"`
 
 	// Size Side of the PNG in pixels, 256 to 2048 (default 1024). Ignored for SVG.
 	Size *int `form:"size,omitempty" json:"size,omitempty"`
 
-	// Margin Quiet zone around the code in modules, 2 to 8 (default 4).
+	// Margin Quiet zone around the code in modules, 2 to 8 (default 4). Ignored for the PDF, whose quiet zone is fixed.
 	Margin *int `form:"margin,omitempty" json:"margin,omitempty"`
+
+	// Paper Page size of the PDF insert, `a6` (default) or `a5`. Read only when `format=pdf`.
+	Paper *string `form:"paper,omitempty" json:"paper,omitempty"`
+
+	// Locale Language of the PDF insert's line (`en`, `ru`, `es`, `cs`, `he`); it wins over `Accept-Language`. Read only when `format=pdf`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
 // GetSalesLinkStatsParams defines parameters for GetSalesLinkStats.
@@ -19662,6 +19918,9 @@ type PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody = SeatB
 
 // PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody = SeatLayoutSuggestRequest
+
+// PostV1OrganizationsOrgIdTextsFormatJSONRequestBody defines body for PostV1OrganizationsOrgIdTextsFormat for application/json ContentType.
+type PostV1OrganizationsOrgIdTextsFormatJSONRequestBody = TextFormatRequest
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody

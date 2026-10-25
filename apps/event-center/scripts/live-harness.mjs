@@ -220,6 +220,7 @@ const stripeStub = createServer((req, res) => {
 stripeStub.listen(stripePort, "127.0.0.1");
 
 // 3. Start the real arena-api (apiBin chosen in step 2).
+const botServiceToken = process.env.BOT_SERVICE_TOKEN ?? "event-center-live-harness-bot-service-token";
 const apiEnv = {
   ...process.env,
   APP_ENV: "development",
@@ -233,6 +234,9 @@ const apiEnv = {
       : []),
   ].join(","),
   EVENT_CENTER_PUBLIC_URL: `http://127.0.0.1:${uiPort}`,
+  // The Telegram mini app twin (spec 44, RT-12b) plays the bot: it asks POST /v1/bot/web-login-codes for a code.
+  // The route answers 503 without a token; this one is a test value for the throwaway API of this run.
+  BOT_SERVICE_TOKEN: botServiceToken,
   // Credit packs and platform invoices (B3-3/B4) are closed by default in a
   // deployment; the billing-packs twin needs them open.
   BILLING_ORGANIZER_ENABLED: process.env.BILLING_ORGANIZER_ENABLED ?? "true",
@@ -307,6 +311,7 @@ writeFileSync(
       poster_script: posterScript,
       poster_calls: posterCalls,
       stripe_stub_url: stripeBase,
+      bot_service_token: botServiceToken,
       people,
     },
     null,

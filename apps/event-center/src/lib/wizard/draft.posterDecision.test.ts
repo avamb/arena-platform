@@ -131,7 +131,7 @@ describe("an older stored draft keeps all its work", () => {
     expect(read).not.toBeNull();
     expect(read?.version).toBe(DRAFT_VERSION);
     expect(read?.event.name).toBe("Swan Lake");
-    expect(read?.event.description).toBe("Ballet in two acts");
+    expect(read?.event.description).toBe("<p>Ballet in two acts</p>");
     expect(read?.dates[0].day).toBe("2027-03-05");
     expect(read?.dates[0].time).toBe("19:30");
     expect(read?.poster).toEqual({ mediaId: "", eventId: "" });

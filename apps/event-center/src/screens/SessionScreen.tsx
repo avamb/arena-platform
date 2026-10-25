@@ -185,6 +185,12 @@ export function SessionScreen() {
             fetchFile={() => downloadSampleTicket(orgId, sessionId, locale)}
           />
         )}
+        {/* QL-12: a short link and QR code that lead to this date. */}
+        {access.can("sales_link.manage") && (
+          <Link to="/o/$orgId/links/new" params={{ orgId }} search={{ event: eventId, session: sessionId }} className="btn" data-testid="session-qr-link">
+            {t("links.button")}
+          </Link>
+        )}
       </div>
 
       {startAt !== null && (

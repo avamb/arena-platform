@@ -82,6 +82,12 @@ func (f *scFixture) mustExec(ctx context.Context, t *testing.T, sql string, args
 // (or roll back when Apply refuses). It returns Apply's result and error.
 func (f *scFixture) save(ctx context.Context, t *testing.T, update string, args []any, message string) (sessionchange.Result, error) {
 	t.Helper()
+	return f.saveFormat(ctx, t, update, args, message, "")
+}
+
+// saveFormat is save for a message written in the given format (RT-11).
+func (f *scFixture) saveFormat(ctx context.Context, t *testing.T, update string, args []any, message, format string) (sessionchange.Result, error) {
+	t.Helper()
 	tx, err := f.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		t.Fatalf("begin: %v", err)
@@ -97,7 +103,7 @@ func (f *scFixture) save(ctx context.Context, t *testing.T, update string, args 
 	res, err := sessionchange.Apply(ctx, tx, sessionchange.Input{
 		SessionID: f.SessionID,
 		Old:       before.State,
-		Notice:    sessionchange.Notice{Message: message, ActorType: "user", ActorID: "test"},
+		Notice:    sessionchange.Notice{Message: message, MessageFormat: format, ActorType: "user", ActorID: "test"},
 	})
 	if err != nil {
 		return sessionchange.Result{}, err

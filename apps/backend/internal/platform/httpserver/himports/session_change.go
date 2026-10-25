@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 )
 
@@ -36,7 +37,7 @@ func applySessionChange(ctx context.Context, tx pgx.Tx, plan importPlan, before 
 
 // previewSessionChange is the dry-run half of applySessionChange.
 func previewSessionChange(ctx context.Context, tx pgx.Tx, before sessionchange.Session, message string) error {
-	if _, err := sessionchange.NormalizeMessage(message); err != nil {
+	if _, _, err := sessionchange.NormalizeNotice(message, richtext.FormatText); err != nil {
 		return sessionChangeError(err)
 	}
 	after, err := sessionchange.Load(ctx, tx, before.ID, false)
@@ -71,6 +72,9 @@ func sessionChangeError(err error) error {
 	case errors.Is(err, sessionchange.ErrMessageTooLong):
 		return failImportAt(http.StatusUnprocessableEntity, "session.change_message_too_long", "/changeMessage",
 			"changeMessage is too long")
+	case errors.Is(err, sessionchange.ErrMessageInvalid):
+		return failImportAt(http.StatusUnprocessableEntity, "session.change_message_invalid", "/changeMessage",
+			"changeMessage cannot be accepted: "+sessionchange.MessageReason(err))
 	default:
 		return err
 	}

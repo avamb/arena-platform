@@ -14,7 +14,7 @@
  * Serial: scenarios share one organization and one scripted reader.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { liveEnv, noA11yViolations, person, signInAs, type Role } from "./liveEnv";
+import { liveEnv, noA11yViolations, person, richText, signInAs, type Role } from "./liveEnv";
 import { skipPoster } from "./wizardHelpers";
 import {
   auth,
@@ -153,7 +153,7 @@ test.describe("the poster is the first, conscious decision", () => {
     }, key);
     await page.reload();
     await expect(page.getByTestId("wizard-name")).toHaveValue("Typed before the upgrade");
-    await expect(page.getByTestId("wizard-description")).toHaveValue("Kept description");
+    await expect(richText(page, "wizard-description")).toHaveText("Kept description");
     await expect(page.getByTestId("wizard-poster-skip")).toBeVisible();
     await expect(page.getByTestId("wizard-poster-skipped")).toHaveCount(0);
     await expect(page.getByTestId("wizard-create")).toBeDisabled();
@@ -199,7 +199,7 @@ test.describe("upload once, review the hints, apply on purpose", () => {
     await openWizard(page);
 
     // Existing typed text is not overwritten silently.
-    await page.getByTestId("wizard-description").fill("My own description");
+    await richText(page, "wizard-description").fill("My own description");
 
     // 1. Upload happens at once; the stored bytes are exactly the chosen ones; nothing is read yet.
     const img = await chooseImage(page, 10);
@@ -278,7 +278,7 @@ test.describe("upload once, review the hints, apply on purpose", () => {
     await expect(page.getByTestId("wizard-poster-read-done")).toContainText("Filled in from the poster");
     await expect(page.getByTestId("wizard-name")).toHaveValue("Swan Lake");
     await expect(page.getByTestId("wizard-age")).toHaveValue("12+");
-    await expect(page.getByTestId("wizard-description")).toHaveValue("My own description");
+    await expect(richText(page, "wizard-description")).toHaveText("My own description");
     await expect(page.getByTestId("wizard-date-0-day-value")).toHaveAttribute("data-value", "2031-03-05");
     await expect(page.getByTestId("wizard-date-0-time")).toHaveValue("19:30");
     await expect(page.getByTestId("wizard-venue-pick")).toContainText("E2E Hall");
@@ -439,7 +439,7 @@ test.describe("a poster that cannot be read never blocks the form and never lose
     const writes = trackWrites(page);
     const readsBefore = reads().length;
     await openWizard(page);
-    await page.getByTestId("wizard-description").fill("Typed before the failure");
+    await richText(page, "wizard-description").fill("Typed before the failure");
     const img = await chooseImage(page, 200);
     await expect(page.getByTestId("wizard-poster-ok")).toBeVisible({ timeout: 20_000 });
     scriptFailure();
@@ -455,7 +455,7 @@ test.describe("a poster that cannot be read never blocks the form and never lose
     expect(reads().length - readsBefore).toBe(1);
     // The picture and the typed text are intact.
     await expect(page.getByTestId("wizard-poster-picker-preview")).toBeVisible();
-    await expect(page.getByTestId("wizard-description")).toHaveValue("Typed before the failure");
+    await expect(richText(page, "wizard-description")).toHaveText("Typed before the failure");
     // An explicit "read again" makes exactly one more read (and fails the same way here).
     await page.getByTestId("wizard-poster-read-again").click();
     await expect(failed).toBeVisible();

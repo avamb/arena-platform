@@ -11,7 +11,7 @@
  * unique name (`nonce`), and the checks count events BY NAME.
  */
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { liveEnv, noA11yViolations, person, signInAs, type Role } from "./liveEnv";
+import { liveEnv, noA11yViolations, person, richText, signInAs, type Role } from "./liveEnv";
 import { skipPoster, pickDay } from "./wizardHelpers";
 
 test.describe.configure({ mode: "serial" });
@@ -69,7 +69,7 @@ async function fillForm(page: Page, name: string) {
   // Poster first: this spec is about creation, so it makes the conscious choice to go without a poster.
   await skipPoster(page);
   await page.getByTestId("wizard-name").fill(name);
-  await page.getByTestId("wizard-description").fill("A twin-test show");
+  await richText(page, "wizard-description").fill("A twin-test show");
   await page.getByTestId("wizard-venue-mode-existing").check();
   await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
   await page.getByTestId("wizard-currency").fill("EUR");
@@ -132,6 +132,15 @@ test.describe("create a draft GA event", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].status).toBe("draft");
     const eventId = rows[0].id;
+    // The main promise of RT-11: the description reached the base as ART, with its format flag,
+    // not as the plain text it would be if `descriptionFormat` were lost on the way.
+    const storedEvent = await request.get(`${env.api_base_url}/v1/events/${eventId}`, { headers: auth("org_admin") });
+    expect(storedEvent.status()).toBe(200);
+    expect(((await storedEvent.json()) as { event: Record<string, unknown> }).event).toMatchObject({
+      description: "<p>A twin-test show</p>",
+      description_format: "art",
+      description_html: "<p>A twin-test show</p>",
+    });
     const sessions = await request.get(`${base}/events/${eventId}/sessions`, { headers: auth("org_admin") });
     const sessionList = ((await sessions.json()) as { sessions: { id: string; status: string; start_at: string }[] }).sessions;
     expect(sessionList).toHaveLength(1);

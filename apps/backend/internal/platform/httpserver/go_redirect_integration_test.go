@@ -56,7 +56,7 @@ func newGoRedirectFixture(t *testing.T, ipLimit int) *goRedirectFixture {
 	if err != nil {
 		t.Fatalf("InsertOrganization: %v", err)
 	}
-	ev, err := q.InsertEvent(ctx, org.ID, "GoRedirect Event "+run, nil, "published", "public", nil)
+	ev, err := q.InsertEvent(ctx, org.ID, "GoRedirect Event "+run, nil, "published", "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent: %v", err)
 	}

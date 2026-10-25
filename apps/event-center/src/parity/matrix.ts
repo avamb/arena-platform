@@ -340,8 +340,9 @@ export const PARITY: readonly ParityRow[] = [
       `GET ${O}/sessions/{session_id}/change-impact`,
       `PATCH ${O}/events/{event_id}/sessions/{id}`,
       `GET ${O}/venues`,
+      `POST ${O}/texts/format`,
     ],
-    note: "Сначала сухой прогон, потом одно нажатие. Заказы сайта-партнёра блокируют перенос, текст честный.",
+    note: "Сначала сухой прогон, потом одно нажатие. Заказы сайта-партнёра блокируют перенос, текст честный. RT-11: сообщение покупателям — редактор с профилем session_message (1000 видимых знаков, 3 ссылки), уходит как `notice.message` с `message_format: \"art\"`, письма выводят его через `richtext.Render`.",
   },
   {
     area: "Сеансы",
@@ -349,8 +350,8 @@ export const PARITY: readonly ParityRow[] = [
     bot: "sessions_dialog.go, `ses:cx`, `ses:cxall` (слово)",
     web: "R4",
     ready: { twin: "live/session-change.spec.ts" },
-    routes: [`GET ${O}/sessions/{session_id}/change-impact`, `PATCH ${O}/events/{event_id}/sessions/{id}`],
-    note: "Только со словом сеанса. Письма уходят, деньги не возвращаются, заказы остаются оплаченными.",
+    routes: [`GET ${O}/sessions/{session_id}/change-impact`, `PATCH ${O}/events/{event_id}/sessions/{id}`, `POST ${O}/texts/format`],
+    note: "Только со словом сеанса. Письма уходят, деньги не возвращаются, заказы остаются оплаченными. RT-11: сообщение покупателям — тот же редактор, что при переносе.",
   },
   {
     area: "Сеансы",
@@ -545,6 +546,27 @@ export const PARITY: readonly ParityRow[] = [
     routes: [`GET ${O}/promoters`, `POST ${O}/promoters`, `PATCH ${O}/promoters/{id}`],
     note: "4-6: список с фильтром архива, карточка с правкой по одному полю, смена адреса страницы с вопросом «было → стало», архив и возврат, ссылка на публичную страницу с кнопкой копирования.",
   },
+  // ── Ссылки и QR ─────────────────────────────────────────────────────
+  {
+    area: "Ссылки и QR",
+    fn: "Список, карточка, QR, статистика",
+    bot: "sales_link_list.go, sales_link_dialog.go, `ql:list`, `ql:v`, `ql:st`, `ql:qr`",
+    web: "R3",
+    // QL-12 (спека 43 §5.3)
+    ready: { twin: "live/sales-links.spec.ts" },
+    routes: [`GET ${O}/sales-links`, `GET ${O}/sales-links/{id}`, `GET ${O}/sales-links/{id}/stats`, `GET ${O}/sales-links/{id}/qr`],
+    note: "Список с фильтрами активные / архив / все и по мероприятию, курсорная пагинация API. Карточка: большой QR, «Скачать PNG» и «Скачать SVG», короткий адрес с «Скопировать», «Сейчас ведёт на: …» и причина из `destination_reason`, статистика по дням и странам. Выручка только на карточке: ответ списка её не несёт. Право `sales_link.read`.",
+  },
+  {
+    area: "Ссылки и QR",
+    fn: "Создание, перенацелить, правка, архив",
+    bot: "sales_link_dialog.go, `ql:e`, `ql:s`, `ql:new`, `ql:rt`, `ql:ar`, `ql:ua`",
+    web: "R3",
+    // QL-12 (спека 43 §5.3)
+    ready: { twin: "live/sales-links.spec.ts" },
+    routes: [`POST ${O}/sales-links`, `PATCH ${O}/sales-links/{id}`],
+    note: "Те же шаги, что в боте: цель (мероприятие, сеанс, страница организации или промоутера, свой адрес), размещение, подпись. Кнопка «QR / ссылка» на карточках мероприятия и сеанса открывает создание с выбранной целью. Перенацелить подтверждается одним нажатием, та же цель — без запроса. Правка подписи, размещения и меток utm только в вебе (PATCH шлёт весь набор utm). Архив и возврат. Право `sales_link.manage`.",
+  },
   // ── Данные организации ──────────────────────────────────────────────
   {
     area: "Данные организации",
@@ -595,8 +617,57 @@ export const PARITY: readonly ParityRow[] = [
       "GET /v1/geo/cities",
       "GET /v1/geo/countries/{iso2}/timezones",
       "GET /v1/geo/countries/{iso2}/currency",
+      `POST ${O}/texts/format`,
     ],
-    note: "6-1a: форма из двух разделов с проверкой на лету (`?dry_run=true`, не чаще раза в секунду, ошибки по `errors[].field`), черновик в браузере. Под флагом сборки `VITE_FEATURE_WIZARD=1`. Даты, билеты и сохранение — 6-1b и 6-1c.",
+    note: "RT-11: описание — редактор с профилем description (жирный, курсив, подчёркнутый, ссылки, списки, заголовки, цитата), черновик хранит текст Arena (ART) и шлёт `descriptionFormat: \"art\"`; длину считает по видимому тексту (4000), кнопка «Оформить» — `POST …/texts/format`, при `ai_applied: false` нейтральная строка, без слов об ошибке. Подсказки афиши входят как простой текст, переведённый в ART. 6-1a: форма из двух разделов с проверкой на лету (`?dry_run=true`, не чаще раза в секунду, ошибки по `errors[].field`), черновик в браузере. Под флагом сборки `VITE_FEATURE_WIZARD=1`. Даты, билеты и сохранение — 6-1b и 6-1c.",
+  },
+  // RT-11
+  {
+    area: "Мероприятия",
+    fn: "Текст в письме",
+    bot: "textfmt_note.go, `tf:n`, `tf:e`, `tf:d`, `tf:dy`, `tf:t`",
+    web: "R4",
+    ready: { twin: "live/email-note.spec.ts" },
+    routes: [
+      `GET ${O}/events`,
+      `PATCH ${O}/events/{id}`,
+      `POST ${O}/events/{event_id}/email-note/test`,
+      `POST ${O}/texts/format`,
+    ],
+    note: "RT-11: раздел на карточке мероприятия (право `event.update`): редактор с профилем email_note (2000 видимых знаков, 5 ссылок, только https), «Сохранить» — один PATCH с `email_note` и `email_note_format: \"art\"`, «Удалить» — после вопроса, «Тестовое письмо себе» — черновик уходит на адрес вошедшего (422 `event.email_note_empty` и 429 имеют свои строки). Экран прямо говорит, что приветствие, дату и площадку письмо добавляет само: подстановок `{name}`, `{date}` в Arena нет (решение владельца, спека 44, п. 9.3). Текст читается из списка мероприятий: только он отдаёт `email_note`.",
+  },
+  // RT-12b
+  {
+    area: "Мероприятия",
+    fn: "Описание в мини-приложении Telegram",
+    bot: "textfmt_miniapp.go `tf:m`, textfmt_editor.go",
+    web: "R4",
+    ready: { twin: "live/tg-edit.spec.ts" },
+    routes: [
+      "GET /v1/me",
+      `GET ${O}/me`,
+      `GET ${O}/events`,
+      `PATCH ${O}/events/{id}`,
+      `POST ${O}/texts/format`,
+    ],
+    note: "RT-12b: страница `/tg/edit` на events.arenasoldout.com, кнопка бота «Править в редакторе» под предпросмотром описания. Вход — одноразовый код назначения `miniapp` (`POST /v1/auth/web/link`, сессия 30 минут). Мероприятие из ссылки не доверенное: страница ищет его в списках организаций самого человека, а чужое или без права `event.update` показывает как «Нет доступа к этому мероприятию». «Сохранить» — ОДИН PATCH мероприятия с `description` и `description_format: \"art\"` и больше ничем: название, афиша, даты, билеты и переводы остаются как были. После сохранения `Telegram.WebApp.close()`, вне Telegram — «Сохранено» и ссылка на мероприятие. Бот при следующем действии организатора перечитывает мероприятие и один раз говорит «Изменения из редактора сохранены».",
+  },
+  // RT-12b
+  {
+    area: "Мероприятия",
+    fn: "Текст в письме в мини-приложении Telegram",
+    bot: "textfmt_miniapp.go `tf:m:<id>`, textfmt_editor.go",
+    web: "R4",
+    ready: { twin: "live/tg-edit.spec.ts" },
+    routes: [
+      "GET /v1/me",
+      `GET ${O}/me`,
+      `GET ${O}/events`,
+      `PATCH ${O}/events/{id}`,
+      `POST ${O}/events/{event_id}/email-note/test`,
+      `POST ${O}/texts/format`,
+    ],
+    note: "RT-12b: тот же экран, что «Текст в письме» на карточке (`EmailNoteSection`: сохранить, удалить после вопроса, тестовое письмо себе), открытый из бота на странице `/tg/edit`. Закрывает окно Telegram только после «Сохранить», не после тестового письма и не после удаления.",
   },
   // 6-1b
   {

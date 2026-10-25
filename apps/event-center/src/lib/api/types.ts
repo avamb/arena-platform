@@ -102,6 +102,12 @@ export type SessionChangeImpact = S["SessionChangeImpact"];
 export type SessionChangeSummary = S["SessionChangeSummary"];
 export type OrganizerContact = S["OrganizerContact"];
 export type EventContactResponse = S["EventContactResponse"];
+// RT-11: the editor's "Format" button and the test letter of the text in the letter.
+export type TextFormatKind = S["TextFormatKind"];
+export type TextFormatRequest = S["TextFormatRequest"];
+export type TextFormatResponse = S["TextFormatResponse"];
+export type EventEmailNoteTestRequest = S["EventEmailNoteTestRequest"];
+export type EventEmailNoteTestResponse = S["EventEmailNoteTestResponse"];
 // 2-3: statistics of the hosted page (beacon counters).
 export type PageStatsResponse = S["PageStatsResponse"];
 export type PageStatsCounts = S["PageStatsCounts"];
@@ -132,3 +138,12 @@ export type BillingLedgerEntry = S["BillingLedgerEntry"];
 export type BillingServiceFeeQuote = S["BillingServiceFeeQuote"];
 export type BillingPayerRequest = S["BillingPayerRequest"];
 export type BillingPayerResponse = S["BillingPayerResponse"];
+// QL-12: tracked sales links and QR codes (spec 43).
+export type SalesLink = S["SalesLink"];
+export type SalesLinkList = S["SalesLinkList"];
+export type SalesLinkTarget = S["SalesLinkTarget"];
+export type SalesLinkCreateRequest = S["SalesLinkCreateRequest"];
+export type SalesLinkUpdateRequest = S["SalesLinkUpdateRequest"];
+export type SalesLinkStats = S["SalesLinkStats"];
+export type SalesLinkDayStats = S["SalesLinkDayStats"];
+export type SalesLinkCountryStats = S["SalesLinkCountryStats"];

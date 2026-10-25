@@ -29,13 +29,13 @@
     {{with .SeatNumber}}<tr><td><strong>Место</strong></td><td>{{.}}</td></tr>{{end}}
   </table>
   <p style="margin:0 0 12px 0;">Новый PDF билета с обновлёнными данными приложен к письму. Штрихкод вашего билета не изменился — на входе действительны и старый, и новый PDF.</p>
-  {{with .Change.Message}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid {{$.Accent}};background:#f8f9fa">
+  {{with .Change.MessageHTML}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid {{$.Accent}};background:#f8f9fa">
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Сообщение от организатора:</strong></p>
-    <p style="margin:0;white-space:pre-line">{{.}}</p>
+    <div style="margin:0;font-size:14px;line-height:1.6;">{{.}}</div>
   </div>{{end}}
-  {{with .EventNote.Paragraphs}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid {{$.Accent}};background:#f8f9fa;">
+  {{with .EventNote.HTML}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid {{$.Accent}};background:#f8f9fa;">
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>О мероприятии:</strong></p>
-    {{range .}}<p style="margin:0 0 8px 0;color:#46555f;font-size:14px;line-height:1.6;white-space:pre-line;">{{range .}}{{if .URL}}<a href="{{.URL}}" rel="noopener" style="color:#1a73e8;">{{.Text}}</a>{{else}}{{.Text}}{{end}}{{end}}</p>{{end}}
+    <div style="color:#46555f;font-size:14px;line-height:1.6;">{{.}}</div>
   </div>{{end}}
   {{if or .Change.ContactEmail .Change.ContactFormURL}}<p style="margin:0 0 12px 0;">Если вам не подходит изменение, напишите организатору{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}на <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else if .Change.ContactFormURL}}через <a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">форму на странице продаж</a>{{end}}{{with .Change.ContactPhone}}, телефон {{.}}{{end}} и расскажите, как вы хотели бы поступить. Организатор читает каждое сообщение.</p>{{end}}
   <p style="font-size:12px;color:#666">Номер билета: {{.TicketID}}</p>

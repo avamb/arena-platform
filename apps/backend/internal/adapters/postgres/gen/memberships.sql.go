@@ -31,6 +31,9 @@ type MembershipRow struct {
 	JoinedAt         time.Time `json:"joined_at"`
 	OrgName          string    `json:"org_name,omitempty"`
 	OrgDisplayNumber int64     `json:"org_display_number,omitempty"`
+	// OrgArchived is true when the organization carries deleted_at (a platform
+	// superadmin archived it). Populated only by ListMembershipsByUser.
+	OrgArchived bool `json:"org_archived,omitempty"`
 }
 
 // scanMembershipRow scans a single memberships row into a MembershipRow.
@@ -65,6 +68,7 @@ func scanMembershipWithOrgRow(row interface {
 		&m.JoinedAt,
 		&m.OrgName,
 		&m.OrgDisplayNumber,
+		&m.OrgArchived,
 	)
 	return m, err
 }
@@ -254,7 +258,8 @@ func (q *Queries) GetActiveRolesForUserInOrg(ctx context.Context, userID, orgID 
 
 const listMembershipsByUser = `-- name: ListMembershipsByUser :many
 SELECT m.id, m.user_id, m.org_id, m.role, m.status, m.joined_at,
-       o.name AS org_name, o.display_number AS org_display_number
+       o.name AS org_name, o.display_number AS org_display_number,
+       (o.deleted_at IS NOT NULL) AS org_archived
 FROM   memberships m
 JOIN   organizations o ON o.id = m.org_id
 WHERE  m.user_id = $1
@@ -266,7 +271,9 @@ ORDER  BY m.joined_at ASC, m.id ASC`
 // current-user context endpoint (GET /v1/me — feature #211) to populate
 // organization_memberships and the organization-scoped entries inside
 // available_scopes. The JOIN against organizations populates OrgName and
-// OrgDisplayNumber so the scope bar can render friendly labels (AB-31).
+// OrgDisplayNumber so the scope bar can render friendly labels (AB-31). An
+// archived organization (deleted_at set) is still listed, flagged OrgArchived,
+// because the membership itself is untouched: clients decide how to show it.
 func (q *Queries) ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]MembershipRow, error) {
 	rows, err := q.db.Query(ctx, listMembershipsByUser, userID)
 	if err != nil {

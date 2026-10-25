@@ -85,8 +85,9 @@ powershell -ExecutionPolicy Bypass -File apps\event-center\scripts\check-live.ps
 
 1. Письма снова ведут в админку, а кнопка «Открыть в браузере» в боте отвечает «веб ещё не подключён», если убрать строку `EVENT_CENTER_PUBLIC_URL` из `x-arena-env` (или оставить пустое значение) и нажать «Deploy» у `backend-prod`. Код и сайт трогать не нужно.
 2. Сайт можно остановить кнопкой «Stop» у приложения `event-center`. Перед этим уберите `EVENT_CENTER_PUBLIC_URL` (пункт 1), иначе письма поведут на остановленный сайт.
+3. Кнопка «Править в редакторе» в боте (задача RT-12a, миграция 0169). Порядок отката важен. Сначала выключите флаг: уберите строку `BOT_MINIAPP_EDITOR_ENABLED` из `x-arena-env` (или поставьте `false`), нажмите «Deploy» у `backend-prod` и дождитесь, пока бот станет healthy. Потом откатывайте образ arena-api. Миграцию 0169 откатывайте последней. Откат миграции сам закрывает открытые коды редактора.
 
 ## 5. Что проверяет CI
 
-1. Задача `event-center-build`: vitest, сборка, Playwright smoke (включая страницы `/reset-password` и `/accept-invite`), сборка образа, ожидание `healthy`, `scripts/check-headers.sh` на контейнере, тот же smoke против контейнера с включённым CSP и журнал nginx: в нём есть путь `/reset-password`, но нет токена и адреса из ссылки.
+1. Задача `event-center-build`: vitest, сборка, Playwright smoke (включая страницы `/reset-password` и `/accept-invite`), сборка образа, ожидание `healthy`, `scripts/check-headers.sh` на контейнере, `scripts/check-headers-tg.sh` на контейнере (`/tg/edit` отдаёт index.html с заголовками для Telegram, у `/` по-прежнему `X-Frame-Options`), тот же smoke против контейнера с включённым CSP и журнал nginx: в нём есть путь `/reset-password`, но нет токена и адреса из ссылки.
 2. Go: `authemail` (выбор адреса и тексты писем), `config` (на проде `EVENT_CENTER_PUBLIC_URL` — только адрес вида `https://хост` без пути, запроса и фрагмента), интеграционный тест `TestPGRecipients_OrganizerOrPlatformUser` (кто организатор, кто платформенный пользователь).

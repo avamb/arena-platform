@@ -147,4 +147,20 @@ func TestEventBundle_MovingASessionWithBuyersNeedsAContactAndQueuesTheLetter(t *
 	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "session.change_message_too_long") {
 		t.Fatalf("long message: %d %s", rec.Code, rec.Body.String())
 	}
+	// Characters older clients sent are cleaned, not refused: the England flag
+	// (a black flag plus tag characters) and a direction embedding. The
+	// import is not rejected and the journal holds the cleaned text.
+	old := f.payload()
+	old.ActionEvent.Day = "17.05.2026"
+	old.ChangeMessage = "Moved again \U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F \u202bsorry\u202c."
+	rec, _ = f.call(h, old)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("message with old characters: %d %s", rec.Code, rec.Body.String())
+	}
+	if err := pool.QueryRow(ctx, `SELECT message FROM session_changes WHERE session_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1`, created.SessionID).Scan(&message); err != nil {
+		t.Fatalf("journal row: %v", err)
+	}
+	if message != "Moved again \U0001F3F4 sorry." {
+		t.Fatalf("journal message = %q", message)
+	}
 }

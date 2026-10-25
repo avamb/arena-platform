@@ -65,7 +65,7 @@ func newSampleFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool) sam
 	if err != nil {
 		t.Fatalf("InsertVenue: %v", err)
 	}
-	event, err := q.InsertEvent(ctx, org.ID, "Ночь открытой сцены "+suffix[:6], nil, "published", "public", nil)
+	event, err := q.InsertEvent(ctx, org.ID, "Ночь открытой сцены "+suffix[:6], nil, "published", "public", nil, "text")
 	if err != nil {
 		t.Fatalf("InsertEvent: %v", err)
 	}

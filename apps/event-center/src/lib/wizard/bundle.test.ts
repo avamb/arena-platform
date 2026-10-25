@@ -31,7 +31,7 @@ describe("buildBundle", () => {
       ),
       opts,
     );
-    expect(b.action).toEqual({ actionName: "Swan Lake", description: "A ballet", age: "12+", promoterId: "p-1" });
+    expect(b.action).toEqual({ actionName: "Swan Lake", description: "A ballet", descriptionFormat: "art", age: "12+", promoterId: "p-1" });
   });
 
   it("sends an empty promoter id when the organization promotes the event", () => {

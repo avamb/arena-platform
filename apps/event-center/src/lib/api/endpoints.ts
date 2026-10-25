@@ -27,6 +27,8 @@ import type {
   BotInvitationRevokeResponse,
   BotTeamResponse,
   EventDeleteImpact,
+  EventEmailNoteTestRequest,
+  EventEmailNoteTestResponse,
   EventEnvelope,
   MediaObject,
   PosterFactsResponse,
@@ -56,6 +58,11 @@ import type {
   PromoCodeEnvelope,
   PromoCodeListResponse,
   PromoRedemptionListResponse,
+  SalesLink,
+  SalesLinkCreateRequest,
+  SalesLinkList,
+  SalesLinkStats,
+  SalesLinkUpdateRequest,
   SessionChangeImpact,
   SessionEnvelope,
   SessionListResponse,
@@ -66,6 +73,8 @@ import type {
   TierPriceWindowInput,
   UpdateTicketTierRequest,
   VenueItem,
+  TextFormatRequest,
+  TextFormatResponse,
 } from "@/lib/api/types";
 import type { SessionPatchBody } from "@/lib/sessionChange";
 
@@ -723,6 +732,55 @@ export function attachEventPoster(
   });
 }
 
+// ─── RT-11: formatted texts ──────────────────────────────────────────────────
+
+/**
+ * The editor's "Format" button (`event.update` in this organization): the plain text goes to the server, a model
+ * adds only the marks and the code proves that no word changed. ONE request, never repeated by itself (it costs a
+ * daily slot). A failure of the model is NOT an error here: the answer is 200 with `ai_applied: false` and the
+ * plain conversion of the text.
+ */
+export function formatText(orgId: string, body: TextFormatRequest, signal?: AbortSignal): Promise<TextFormatResponse> {
+  return call<TextFormatResponse>({ route: API.textsFormat, params: { org_id: orgId }, body, signal });
+}
+
+/**
+ * Saves or removes the organizer's own text of the buyer letters: ONE PATCH of the event with ART and its format.
+ * `null` removes the text. The answer does not carry the text (only the events list does), so the caller reads
+ * the list again.
+ */
+export function saveEmailNote(orgId: string, eventId: string, art: string | null): Promise<EventEnvelope> {
+  return call<EventEnvelope>({
+    route: API.eventUpdate,
+    params: { org_id: orgId, id: eventId },
+    body: art === null ? { email_note: null } : { email_note: art, email_note_format: "art" },
+  });
+}
+
+/**
+ * Saves the description of an event: ONE PATCH with `description` and `description_format: "art"` and nothing else, so the
+ * name, the poster, the dates, the categories and the translations stay as they are (the server only converts the
+ * translated descriptions that are still plain text to ART, word for word). An empty text clears the description.
+ * Used by the Telegram mini app editor (spec 44, RT-12b). The answer does not carry the format, the caller reads the
+ * events list again.
+ */
+export function saveDescription(orgId: string, eventId: string, art: string): Promise<EventEnvelope> {
+  return call<EventEnvelope>({
+    route: API.eventUpdate,
+    params: { org_id: orgId, id: eventId },
+    body: { description: art, description_format: "art" },
+  });
+}
+
+/** A test letter with the text (the draft when `note` is given, else the saved one) to the caller's own address. */
+export function sendEmailNoteTest(
+  orgId: string,
+  eventId: string,
+  body: EventEmailNoteTestRequest,
+): Promise<EventEmailNoteTestResponse> {
+  return call<EventEmailNoteTestResponse>({ route: API.emailNoteTest, params: { org_id: orgId, event_id: eventId }, body });
+}
+
 // ─── 5-2: move or cancel a session ───────────────────────────────────────────
 
 /** The dry run of a move or a cancellation. Writes nothing. See impactQuery(). */
@@ -907,4 +965,64 @@ export function fetchServiceFeeQuote(
 /** Sets the payer details printed on the invoices. */
 export function putBillingPayer(orgId: string, body: BillingPayerRequest): Promise<BillingPayerResponse> {
   return call<BillingPayerResponse>({ route: API.billingPayer, params: { org_id: orgId }, body });
+}
+
+// ── QL-12: tracked sales links and QR codes (spec 43) ─────────────────
+
+export type SalesLinkStatusFilter = "active" | "archived" | "all";
+
+export interface SalesLinkListQuery {
+  status?: SalesLinkStatusFilter;
+  eventId?: string;
+  sessionId?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+/** One page of the organization's links, newest first; `next_cursor` fetches the next page. */
+export function listSalesLinks(orgId: string, q: SalesLinkListQuery = {}): Promise<SalesLinkList> {
+  return call<SalesLinkList>({
+    route: API.salesLinks,
+    params: { org_id: orgId },
+    query: { status: q.status, event_id: q.eventId, session_id: q.sessionId, cursor: q.cursor, limit: q.limit },
+  });
+}
+
+export function fetchSalesLink(orgId: string, linkId: string): Promise<SalesLink> {
+  return call<SalesLink>({ route: API.salesLink, params: { org_id: orgId, id: linkId } });
+}
+
+export function createSalesLink(orgId: string, body: SalesLinkCreateRequest): Promise<SalesLink> {
+  return call<SalesLink>({ route: API.salesLinkCreate, params: { org_id: orgId }, body });
+}
+
+/**
+ * Changes a link. The caller sends only the keys it means to change; a
+ * `utm` key always carries the WHOLE set (the generated type has no
+ * omitempty, so an undefined key must not be written as null).
+ */
+export function updateSalesLink(orgId: string, linkId: string, body: SalesLinkUpdateRequest): Promise<SalesLink> {
+  const clean: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(body)) if (v !== undefined) clean[k] = v;
+  return call<SalesLink>({ route: API.salesLinkUpdate, params: { org_id: orgId, id: linkId }, body: clean });
+}
+
+/** Scans per day and country of the range (UTC days) and the orders of the link. */
+export function fetchSalesLinkStats(orgId: string, linkId: string, range: { from?: string; to?: string } = {}): Promise<SalesLinkStats> {
+  return call<SalesLinkStats>({
+    route: API.salesLinkStats,
+    params: { org_id: orgId, id: linkId },
+    query: { from: range.from, to: range.to },
+  });
+}
+
+/** The QR image of the link's short address, as a file to show or to save. */
+export function downloadSalesLinkQr(orgId: string, linkId: string, format: "png" | "svg", code: string, size = 1024): Promise<DownloadedFile> {
+  return download({
+    route: API.salesLinkQr,
+    params: { org_id: orgId, id: linkId },
+    query: { format, size: format === "png" ? size : undefined },
+    accept: format === "png" ? "image/png" : "image/svg+xml",
+    fallbackName: "qr-" + code + "." + format,
+  });
 }

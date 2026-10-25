@@ -15,7 +15,7 @@ export interface OrgContextValue {
   access: OrgAccess;
 }
 
-const OrgCtx = createContext<OrgContextValue | null>(null);
+export const OrgCtx = createContext<OrgContextValue | null>(null);
 
 /** The organization the current screen works in, and the caller's permissions there. */
 export function useOrg(): OrgContextValue {
@@ -113,6 +113,11 @@ function OrgShell() {
             {access.can("promo.read") && (
               <Link to="/o/$orgId/promo" params={{ orgId }} search={{}} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-promo">
                 {t("nav.promo")}
+              </Link>
+            )}
+            {access.can("sales_link.read") && (
+              <Link to="/o/$orgId/links" params={{ orgId }} search={{}} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-links">
+                {t("nav.links")}
               </Link>
             )}
             <Link

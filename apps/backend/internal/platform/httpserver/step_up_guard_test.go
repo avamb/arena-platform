@@ -78,6 +78,7 @@ func TestRequireWebStepUp(t *testing.T) {
 		return rec.Code
 	}
 	web := audit.ChannelEventCenterWeb
+	tg := audit.ChannelEventCenterTG
 	s1 := sid.String()
 	for name, c := range map[string]struct {
 		req  req
@@ -99,6 +100,16 @@ func TestRequireWebStepUp(t *testing.T) {
 		"token without session or org":   {req{claim: web, sid: s1, token: unbound}, false, http.StatusForbidden},
 		"web request without a sign-in":  {req{header: web, token: good}, false, http.StatusForbidden},
 		"signed out":                     {req{claim: web, sid: uuid.NewString(), token: good}, false, http.StatusForbidden},
+		// RT-12a: a Telegram mini app session (chn=event_center_tg) is asked too,
+		// with or without the header the page sends.
+		"tg claim, no token":                 {req{claim: tg, sid: s1}, false, http.StatusForbidden},
+		"tg claim, web header, no token":     {req{claim: tg, header: web, sid: s1}, false, http.StatusForbidden},
+		"tg claim with the token":            {req{claim: tg, sid: s1, token: good}, true, 0},
+		"tg claim, header, with token":       {req{claim: tg, header: web, sid: s1, token: good}, true, 0},
+		"tg claim, right org in the path":    {req{claim: tg, sid: s1, token: good, pathOrg: org}, true, 0},
+		"tg claim, another org in path":      {req{claim: tg, sid: s1, token: otherOrg, pathOrg: org}, false, http.StatusForbidden},
+		"tg claim, token of another sign-in": {req{claim: tg, sid: s1, token: otherSession}, false, http.StatusForbidden},
+		"tg claim, signed out":               {req{claim: tg, sid: uuid.NewString(), token: good}, false, http.StatusForbidden},
 	} {
 		code := run(c.req)
 		if reached != c.pass || (!c.pass && code != c.code) {

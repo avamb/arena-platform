@@ -24,6 +24,7 @@
  *    known, and it never opens sales, changes places or other categories.
  */
 import type { PosterFactsResponse } from "@/lib/api/types";
+import { artOfLegacy, plainOfArt, sameVisibleText } from "@/lib/richText";
 import { parseTime, formatPriceMinor, parsePriceMinor } from "@/lib/wizard/parse";
 import {
   MAX_DESCRIPTION_RUNES,
@@ -138,10 +139,14 @@ export type HintKey = "name" | "description" | "age" | "date" | "time" | "venueN
 
 export interface PlanRow {
   key: HintKey;
-  /** What the poster says. */
+  /** What the poster says, as the form would hold it (the description: ART, the editor's format). */
   value: string;
   /** What the form holds now ("" = empty). */
   current: string;
+  /** `value` as text for the review list (the description: its visible text); absent = `value` itself. */
+  shown?: string;
+  /** `current` as text for the "replaces" hint; absent = `current` itself. */
+  currentShown?: string;
   /** Applying would REPLACE typed text. */
   conflict: boolean;
 }
@@ -218,13 +223,19 @@ export function buildPlan(facts: PosterFacts, ctx: PlanContext): Plan {
   const rows: PlanRow[] = [];
   const notes: PlanNote[] = [];
   const first = draft.dates[0];
-  const row = (key: HintKey, value: string, current: string, same: boolean) => {
+  const row = (key: HintKey, value: string, current: string, same: boolean, texts?: { shown: string; currentShown: string }) => {
     if (value === "" || same) return;
-    rows.push({ key, value, current, conflict: current.trim() !== "" });
+    rows.push({ key, value, current, conflict: current.trim() !== "", ...texts });
   };
 
   row("name", facts.name, draft.event.name, draft.event.name.trim() === facts.name);
-  row("description", facts.description, draft.event.description, draft.event.description.trim() === facts.description);
+  // The poster's description is the old plain text: it enters the form as ART (what the editor holds), and the
+  // comparison with what is typed is on the VISIBLE text, never on the markup.
+  const descriptionArt = artOfLegacy(facts.description, "description");
+  row("description", descriptionArt, draft.event.description, sameVisibleText(draft.event.description, descriptionArt, "description"), {
+    shown: plainOfArt(descriptionArt, "description"),
+    currentShown: plainOfArt(draft.event.description, "description"),
+  });
   row("age", facts.age, draft.event.age, draft.event.age === facts.age);
   row("date", facts.date, first.day, first.day === facts.date);
   row("time", facts.time, first.time, parseTime(first.time) === facts.time);

@@ -11,10 +11,10 @@ import (
 )
 
 // The reader posts the poster as a base64 image with the version header
-// and the key, forces the poster_facts tool, and normalizes the tool input:
+// and the key, offers the poster_facts tool with tool_choice auto, and normalizes the tool input:
 // prices become minor units, the age one of the five ratings, an unreal
 // date or time is dropped rather than passed on.
-func TestAnthropic_Read_ForcesTheToolAndNormalizes(t *testing.T) {
+func TestAnthropic_Read_OffersTheToolAndNormalizes(t *testing.T) {
 	var got map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/messages" || r.Header.Get("x-api-key") != "sk-test" || r.Header.Get("anthropic-version") == "" {
@@ -40,7 +40,7 @@ func TestAnthropic_Read_ForcesTheToolAndNormalizes(t *testing.T) {
 	if got["model"] != DefaultModel {
 		t.Errorf("model = %v", got["model"])
 	}
-	if tc, _ := got["tool_choice"].(map[string]any); tc["type"] != "tool" || tc["name"] != "poster_facts" {
+	if tc, _ := got["tool_choice"].(map[string]any); tc["type"] != "auto" {
 		t.Errorf("tool_choice = %v", got["tool_choice"])
 	}
 	msgs, _ := got["messages"].([]any)

@@ -25,6 +25,13 @@ const DefaultWebSessionIdle = 72 * time.Hour
 // lifetime of a classic refresh token.
 const maxSessionAge = refreshTokenTTL
 
+// MiniappSessionAge is the whole life of a Telegram mini app session (spec
+// 44, RT-12a, owner decision 5): 30 minutes from the exchange of the code,
+// idle or not. A refresh inside it rotates the token but never moves the end,
+// and the access token is cut to the end too (accessTTL): nothing the session
+// issued outlives minute 30.
+const MiniappSessionAge = 30 * time.Minute
+
 // SetWebSessionIdle sets the idle window of a web event center session.
 // Zero or negative switches the web to the classic fixed lifetime.
 func (h *Handler) SetWebSessionIdle(d time.Duration) {
@@ -51,15 +58,19 @@ func (h *Handler) newSession(ctx context.Context, now time.Time) (gen.RefreshTok
 }
 
 // sessionClaims are the claims an access token of session s carries: the
-// sign-in id always, the channel only for the web event center (the one
-// client the money routes ask for the password again).
+// sign-in id always, the channel only for the web event center and its
+// Telegram mini app page (the clients the money routes ask for the password
+// again).
 func sessionClaims(s gen.RefreshTokenSession) auth.SessionClaims {
 	var c auth.SessionClaims
 	if s.SessionID != nil {
 		c.SessionID = s.SessionID.String()
 	}
-	if s.ClientChannel != nil && *s.ClientChannel == audit.ChannelEventCenterWeb {
-		c.Channel = audit.ChannelEventCenterWeb
+	if s.ClientChannel != nil {
+		switch *s.ClientChannel {
+		case audit.ChannelEventCenterWeb, audit.ChannelEventCenterTG:
+			c.Channel = *s.ClientChannel
+		}
 	}
 	return c
 }
@@ -73,9 +84,28 @@ func sessionEnd(s gen.RefreshTokenSession, now time.Time) time.Time {
 	}
 	end := now.Add(time.Duration(*s.IdleSeconds) * time.Second)
 	if s.SessionStartedAt != nil {
-		if limit := s.SessionStartedAt.Add(maxSessionAge); end.After(limit) {
+		age := maxSessionAge
+		if isMiniappSession(s) {
+			age = MiniappSessionAge
+		}
+		if limit := s.SessionStartedAt.Add(age); end.After(limit) {
 			end = limit
 		}
 	}
 	return end
+}
+
+// accessTTL is the life of an access token minted now for a session whose
+// refresh token ends at end: the usual access lifetime, cut so the token never
+// outlives the session. For a Telegram mini app session (30 minutes in all) a
+// refresh at minute 29 therefore gives an access token that dies at minute 30,
+// not at minute 44. It is zero or negative once the session is over.
+func accessTTL(end, now time.Time) time.Duration {
+	return min(accessTokenTTL, end.Sub(now))
+}
+
+// isMiniappSession reports whether s is a Telegram mini app session (channel
+// event_center_tg).
+func isMiniappSession(s gen.RefreshTokenSession) bool {
+	return s.ClientChannel != nil && *s.ClientChannel == audit.ChannelEventCenterTG
 }
