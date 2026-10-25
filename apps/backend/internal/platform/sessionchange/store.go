@@ -20,11 +20,14 @@ type Record struct {
 	Old       State
 	New       State
 	Message   string
-	CreatedAt time.Time
+	// MessageFormat is how Message is stored: "art" or "text" (every row written
+	// before migration 0169).
+	MessageFormat string
+	CreatedAt     time.Time
 }
 
 const loadChangeSQL = `
-SELECT id, session_id, event_id, org_id, kinds, old_state, new_state, message, created_at
+SELECT id, session_id, event_id, org_id, kinds, old_state, new_state, message, message_format, created_at
 FROM   session_changes
 WHERE  id = $1`
 
@@ -36,7 +39,7 @@ func LoadChange(ctx context.Context, db DB, changeID uuid.UUID) (Record, error) 
 		newRaw []byte
 	)
 	if err := db.QueryRow(ctx, loadChangeSQL, changeID).Scan(&r.ID, &r.SessionID, &r.EventID, &r.OrgID,
-		&r.Kinds, &oldRaw, &newRaw, &r.Message, &r.CreatedAt); err != nil {
+		&r.Kinds, &oldRaw, &newRaw, &r.Message, &r.MessageFormat, &r.CreatedAt); err != nil {
 		return Record{}, err
 	}
 	if err := json.Unmarshal(oldRaw, &r.Old); err != nil {

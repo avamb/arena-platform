@@ -15441,13 +15441,28 @@ type SessionChangeImpact struct {
 // being moved or cancelled. Shown under the standard, localized wording
 // of the letter.
 type SessionChangeNotice struct {
-	// Message Plain text, up to 1000 characters (longer is refused with 422
-	// `session.change_message_too_long`), may be empty. Clients offer
-	// the `default_message` of the change-impact answer as a starting
-	// point; whatever is sent is what buyers read. It must not promise
-	// a refund: returning money is a separate conversation between the
-	// organizer and the buyer.
+	// Message The text buyers read, up to 1000 visible characters (longer is
+	// refused with 422 `session.change_message_too_long`), may be empty.
+	// Read as `message_format` and stored as filtered HTML. A text that
+	// cannot be accepted (forbidden characters, more than 3 links) is 422
+	// `session.change_message_invalid` with `error.details.reason`.
+	// Clients offer the `default_message` of the change-impact answer
+	// (always plain text) as a starting point; whatever is sent is what
+	// buyers read. It must not promise a refund: returning money is a
+	// separate conversation between the organizer and the buyer.
 	Message *string `json:"message,omitempty"`
+
+	// MessageFormat How `message` is written: `text` (the default, so a client that
+	// sends no format, such as the Telegram bot, keeps working) is the old
+	// plain text with the marks `**bold**`, `_italic_` and `- ` list
+	// lines, `art` is "text Arena", a small HTML subset (`p`, `br`,
+	// `strong`, `em`, `u`, `a[href]` to `https`, `ul`, `ol`, `li`; no
+	// headings or quotes). The server never guesses the format from the
+	// tags: an `art` text goes through one filter and is stored as ART,
+	// a `text` is kept as typed, and the letters read both through the
+	// same safe converter. Values: `text`, `art`.
+	// Anything else answers 400 `session.invalid_message_format`.
+	MessageFormat *string `json:"message_format,omitempty"`
 }
 
 // SessionChangeSummary What a session save did for buyers. Present on the PATCH and DELETE

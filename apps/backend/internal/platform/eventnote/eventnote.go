@@ -67,3 +67,28 @@ func Build(note, format string) Block {
 	}
 	return Block{HTML: template.HTML(emailStyle.Replace(html)), Plain: strings.TrimSpace(plain)} //nolint:gosec // richtext.Render output is sanitised
 }
+
+// BuildMessage turns the organizer's message about a moved or cancelled
+// session and the format it was stored in (session_changes.message_format)
+// into a Block, with the profile of that message (richtext.ProfileSessionMessage)
+// and the same inline styles as Build. A format that is not "art" (including
+// the empty one of a row written before migration 0169) means the old plain
+// text. It never fails and a blank message gives the zero Block.
+func BuildMessage(message, format string) Block {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return Block{}
+	}
+	if format != richtext.FormatART {
+		format = richtext.FormatText
+	}
+	html, _ := richtext.Render(message, format, richtext.ProfileSessionMessage)
+	if strings.TrimSpace(html) == "" {
+		return Block{}
+	}
+	plain := message
+	if format == richtext.FormatART {
+		plain = richtext.PlainText(message)
+	}
+	return Block{HTML: template.HTML(emailStyle.Replace(html)), Plain: strings.TrimSpace(plain)} //nolint:gosec // richtext.Render output is sanitised
+}
