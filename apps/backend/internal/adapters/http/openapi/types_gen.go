@@ -19099,14 +19099,20 @@ type ListSalesLinksParams struct {
 
 // GetSalesLinkQrParams defines parameters for GetSalesLinkQr.
 type GetSalesLinkQrParams struct {
-	// Format Image format, `png` (default) or `svg`.
+	// Format Format, `png` (default), `svg` or `pdf` (the printable insert).
 	Format *string `form:"format,omitempty" json:"format,omitempty"`
 
 	// Size Side of the PNG in pixels, 256 to 2048 (default 1024). Ignored for SVG.
 	Size *int `form:"size,omitempty" json:"size,omitempty"`
 
-	// Margin Quiet zone around the code in modules, 2 to 8 (default 4).
+	// Margin Quiet zone around the code in modules, 2 to 8 (default 4). Ignored for the PDF, whose quiet zone is fixed.
 	Margin *int `form:"margin,omitempty" json:"margin,omitempty"`
+
+	// Paper Page size of the PDF insert, `a6` (default) or `a5`. Read only when `format=pdf`.
+	Paper *string `form:"paper,omitempty" json:"paper,omitempty"`
+
+	// Locale Language of the PDF insert's line (`en`, `ru`, `es`, `cs`, `he`); it wins over `Accept-Language`. Read only when `format=pdf`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
 // GetSalesLinkStatsParams defines parameters for GetSalesLinkStats.

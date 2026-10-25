@@ -42,6 +42,10 @@ var slPlacements = []string{"poster", "flyer", "sign", "social", "email", "messe
 // code is a few tens of kilobytes.
 const slQRMaxBytes = 5 << 20
 
+// slInsertPaper is the paper of the PDF insert the bot sends: A6, a flyer
+// stand or a table tent. The web event center offers A5 as well.
+const slInsertPaper = "a6"
+
 // SalesLinkCreate is the body of a new link. The utm labels are never sent:
 // the server fills the defaults of spec 43 §2 item 3.
 type SalesLinkCreate struct {
@@ -163,23 +167,29 @@ func (c *ArenaClient) UpdateSalesLink(ctx context.Context, jwt string, orgID, li
 	return out, err
 }
 
-// SalesLinkQR downloads the QR image of a link: format png or svg, size in
-// pixels (256-2048). The body is the picture itself.
+// SalesLinkQR downloads the code of a link: format png or svg (size in
+// pixels, 256-2048), or pdf, the printable A6 insert (QL-13). The body is
+// the file itself.
 func (c *ArenaClient) SalesLinkQR(ctx context.Context, jwt string, orgID, linkID uuid.UUID, format string, size int) ([]byte, error) {
-	if format != "png" && format != "svg" {
+	if format != "png" && format != "svg" && format != "pdf" {
 		return nil, fmt.Errorf("sales link qr: format %q", format)
 	}
 	path := salesLinkPath(orgID, linkID) + "/qr?format=" + format
-	if size > 0 {
+	if format == "pdf" {
+		path += "&paper=" + slInsertPaper
+	} else if size > 0 {
 		path += "&size=" + strconv.Itoa(size)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build GET sales link qr: %w", err)
 	}
-	if format == "svg" {
+	switch format {
+	case "svg":
 		req.Header.Set("Accept", "image/svg+xml")
-	} else {
+	case "pdf":
+		req.Header.Set("Accept", "application/pdf")
+	default:
 		req.Header.Set("Accept", "image/png")
 	}
 	req.Header.Set("X-Admin-Reason", AdminReason)

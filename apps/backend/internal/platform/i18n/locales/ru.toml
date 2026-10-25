@@ -4156,6 +4156,9 @@ other = "{{.Label}}"
 ["bot.ql.svg_caption"]
 other = "Тот же код в файле SVG, для печати."
 
+["bot.ql.pdf_caption"]
+other = "Вкладыш А6 для печати: код, название и адрес на одной странице."
+
 ["bot.ql.qr_failed"]
 other = "Не удалось отправить картинку с кодом. Нажмите «Прислать код ещё раз»."
 
@@ -4436,3 +4439,7 @@ other = "Сначала напишите текст — без него в те�
 
 ["bot.tf.note_test_limit"]
 other = "За последний час отправлено слишком много тестовых писем. Попробуйте позже."
+
+# The sales-link PDF insert (spec 43, QL-13): the one line printed under the QR code.
+["salelinks.insert.scan_and_buy"]
+other = "Отсканируйте и купите билеты"

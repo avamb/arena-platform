@@ -155,3 +155,7 @@ other = "Kupujícímu odpovíte odpovědí na tento e-mail. Arena vaši odpově�
 
 ["contact.email.footer"]
 other = "Arena Sold Out poslala tuto zprávu, protože kontaktní formulář vaší prodejní stránky je zapnutý."
+
+# The sales-link PDF insert (spec 43, QL-13): the one line printed under the QR code.
+["salelinks.insert.scan_and_buy"]
+other = "Naskenujte a kupte si vstupenky"

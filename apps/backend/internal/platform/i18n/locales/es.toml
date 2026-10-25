@@ -4014,6 +4014,9 @@ other = "{{.Label}}"
 ["bot.ql.svg_caption"]
 other = "El mismo código en un archivo SVG, para imprimir."
 
+["bot.ql.pdf_caption"]
+other = "Una tarjeta A6 para imprimir: el código, el nombre y la dirección en una página."
+
 ["bot.ql.qr_failed"]
 other = "No pudimos enviar la imagen del código. Pulsa «Enviar el código otra vez»."
 
@@ -4294,3 +4297,7 @@ other = "Escribe primero el texto: sin él, el correo de prueba no tiene nada qu
 
 ["bot.tf.note_test_limit"]
 other = "Demasiados correos de prueba en la última hora. Prueba más tarde."
+
+# The sales-link PDF insert (spec 43, QL-13): the one line printed under the QR code.
+["salelinks.insert.scan_and_buy"]
+other = "Escanea y compra entradas"

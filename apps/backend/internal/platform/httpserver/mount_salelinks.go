@@ -4,11 +4,13 @@ package httpserver
 // of tracked sales links. Reads need sales_link.read, writes sales_link.manage;
 // every route also needs membership of {org_id}, and the handlers load each
 // link by (id, org_id), so another organization's link is the route's own 404.
-// The QR image route (QL-5) is in the read group.
+// The QR image route (QL-5) is in the read group; its PDF insert (QL-13) gets
+// the shared i18n bundle and the organization logo through the media store.
 
 import (
 	"github.com/go-chi/chi/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/mediaresolver"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hsalelinks"
 )
 
@@ -17,7 +19,13 @@ func (s *Server) salesLinksHandler() *hsalelinks.Handler {
 	if s.cfg != nil {
 		short, tickets = s.cfg.ShortLinkBaseURL, s.cfg.PublicTicketsBaseURL
 	}
-	return hsalelinks.New(s.pgxPool, s.audit, s.logger, short, tickets)
+	var logos hsalelinks.LogoResolver
+	if s.media != nil {
+		if m := mediaresolver.New(s.media, s.apiPublicURL(), s.logger); m != nil {
+			logos = m
+		}
+	}
+	return hsalelinks.New(s.pgxPool, s.audit, s.logger, short, tickets).WithInsert(s.bundle, logos)
 }
 
 func (s *Server) mountSalesLinkRoutes(r chi.Router) {
