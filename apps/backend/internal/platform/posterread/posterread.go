@@ -6,8 +6,9 @@
 //
 // Privacy: only the poster image travels to the model — public marketing
 // material by nature — never a buyer's data, never the organization's
-// keys. The model is Anthropic's Claude over the Messages API; the
-// extraction is forced through a tool call so the answer is structured
+// keys. The model is Anthropic's Claude over the Messages API (anthropic.go
+// here) or Google's Gemini over generateContent (gemini.go); the extraction
+// goes through a tool call or a response schema so the answer is structured
 // JSON, not prose to parse. Every value is a HINT: the wizard shows it as
 // a button the organizer confirms, and never writes it on its own.
 package posterread
@@ -20,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -80,6 +82,15 @@ type Anthropic struct {
 	model   string
 	baseURL string
 	http    *http.Client
+	log     *slog.Logger
+}
+
+// WithLogger makes the reader log one line per call with the provider, the
+// model, the token counts and the duration (never a poster's text). A nil
+// logger, the default, logs nothing. The receiver is returned for chaining.
+func (a *Anthropic) WithLogger(l *slog.Logger) *Anthropic {
+	a.log = l
+	return a
 }
 
 // NewAnthropic builds a reader; an empty apiKey yields one that answers
@@ -161,6 +172,10 @@ type messagesResponse struct {
 		Name  string          `json:"name"`
 		Input json.RawMessage `json:"input"`
 	} `json:"content"`
+	Usage struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+	} `json:"usage"`
 	Error *struct {
 		Type    string `json:"type"`
 		Message string `json:"message"`
@@ -188,12 +203,10 @@ func (a *Anthropic) Read(ctx context.Context, image []byte, mediaType string) (F
 	if !a.Configured() {
 		return Facts{}, ErrNotConfigured
 	}
-	if len(image) == 0 || len(image) > maxImageBytes {
-		return Facts{}, fmt.Errorf("posterread: image of %d bytes is outside the 1..%d range", len(image), maxImageBytes)
+	if err := checkImage(image, mediaType); err != nil {
+		return Facts{}, err
 	}
-	if mediaType != "image/jpeg" && mediaType != "image/png" {
-		return Facts{}, fmt.Errorf("posterread: unsupported media type %q", mediaType)
-	}
+	started := time.Now()
 	body := messagesRequest{
 		Model:     a.model,
 		MaxTokens: 1024,
@@ -203,7 +216,11 @@ func (a *Anthropic) Read(ctx context.Context, image []byte, mediaType string) (F
 			Description: "Record the facts printed on an event poster.",
 			InputSchema: toolSchema,
 		}},
-		ToolChoice: map[string]any{"type": "tool", "name": toolName},
+		// "auto", not a forced {"type":"tool"}: the newest models (Claude 5.5)
+		// answer 400 to a forced tool_choice, and with a single tool plus the
+		// instruction in the prompt they call it every time. A reply without
+		// the call is still an error below.
+		ToolChoice: map[string]any{"type": "auto"},
 		Messages: []messageContent{{
 			Role: "user",
 			Content: []map[string]any{
@@ -244,6 +261,7 @@ func (a *Anthropic) Read(ctx context.Context, image []byte, mediaType string) (F
 		}
 		return Facts{}, fmt.Errorf("posterread: model answered %d: %s", res.StatusCode, msg)
 	}
+	logUsage(a.log, "anthropic", a.model, parsed.Usage.InputTokens, parsed.Usage.OutputTokens, time.Since(started))
 	for _, c := range parsed.Content {
 		if c.Type == "tool_use" && c.Name == toolName {
 			var rf rawFacts
@@ -254,6 +272,30 @@ func (a *Anthropic) Read(ctx context.Context, image []byte, mediaType string) (F
 		}
 	}
 	return Facts{}, errors.New("posterread: the model returned no poster_facts tool call")
+}
+
+// checkImage is the input check every reader shares: a non-empty image of at
+// most maxImageBytes, JPEG or PNG.
+func checkImage(image []byte, mediaType string) error {
+	if len(image) == 0 || len(image) > maxImageBytes {
+		return fmt.Errorf("posterread: image of %d bytes is outside the 1..%d range", len(image), maxImageBytes)
+	}
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		return fmt.Errorf("posterread: unsupported media type %q", mediaType)
+	}
+	return nil
+}
+
+// logUsage writes the one line a successful call leaves: numbers and names
+// only, never the poster's text or the model's answer.
+func logUsage(l *slog.Logger, provider, model string, in, out int, took time.Duration) {
+	if l == nil {
+		return
+	}
+	l.Info("posterread: model call",
+		slog.String("provider", provider), slog.String("model", model),
+		slog.Int("input_tokens", in), slog.Int("output_tokens", out),
+		slog.Int64("duration_ms", took.Milliseconds()))
 }
 
 var (

@@ -354,6 +354,9 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `BOT_MINIAPP_EDITOR_ENABLED` (`true` shows the «Править в редакторе» web_app button in the bot, spec 44 RT-12a; default off. Needs `EVENT_CENTER_PUBLIC_URL` with https on the API and the `/tg/` nginx location of the event center. Until RT-12b the page is a placeholder, so leave it off in production. To roll back, turn it off and redeploy the bot FIRST, then roll back the API image, the migration last: docs/ops/event_center_rollout_ru.md section 4) | — | — | ● | — |
 | `POSTER_LLM_API_KEY` (secret), `POSTER_LLM_MODEL` | ● | — | — | — |
 | `POSTER_LLM_BASE_URL` (production: unset or `https://api.anthropic.com`) | ● | — | — | — |
+| `POSTER_LLM_PROVIDER` (`anthropic` default or `gemini`; the vision provider that reads posters), `POSTER_LLM_FALLBACK_PROVIDER` (empty = none, else the other provider, tried once when the first fails or times out) | ● | — | — | — |
+| `GEMINI_API_KEY` (secret; the key of the `gemini` provider), `POSTER_GEMINI_MODEL` (default `gemini-3.8-flash`) | ● | — | — | — |
+| `POSTER_GEMINI_BASE_URL` (test seam; production: unset or `https://generativelanguage.googleapis.com`) | ● | — | — | — |
 | `POSTER_READS_PER_ORG_PER_DAY` (default 50, `0` = no cap) | ● | — | — | — |
 | `TEXT_FORMAT_LLM_MODEL` (default `claude-haiku-5-5`; the key and the base URL are the poster ones: `POSTER_LLM_API_KEY`, `POSTER_LLM_BASE_URL`) | ● | — | — | — |
 | `TEXT_FORMATS_PER_USER_PER_DAY` (default 100, `0` = no cap), `TEXT_FORMATS_PER_ORG_PER_DAY` (default 500, `0` = no cap) | ● | — | — | — |
@@ -365,7 +368,7 @@ Never set in production, on any service: `ENABLE_DEV_AUTH=true`,
 `DB_LOG_QUERIES=true`, `DEBUG_ROUTES_ENABLED=true`,
 `FAULT_INJECT_OUTBOX_AFTER_AUDIT=true`, `STRIPE_API_BASE_URL`,
 `FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, and `BREVO_API_BASE_URL` /
-`POSTER_LLM_BASE_URL` with anything but their default (every role refuses
+`POSTER_LLM_BASE_URL` / `POSTER_GEMINI_BASE_URL` with anything but their default (every role refuses
 to start: a changed host would receive the API key).
 
 **Staging** follows the same split. With `APP_ENV=staging` the production

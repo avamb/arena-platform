@@ -46,6 +46,12 @@ const (
 type APIError struct {
 	Status int
 	Type   string
+	// ToolChoiceRejected is set for a 400 whose message names tool_choice:
+	// the configured model does not accept a forced tool call (the newest
+	// models answer "tool_choice: type tool and any are not supported for
+	// this model"). It is a configuration problem of TEXT_FORMAT_LLM_MODEL,
+	// not a transient failure. Only the flag is kept, never the message.
+	ToolChoiceRejected bool
 }
 
 func (e *APIError) Error() string {
@@ -161,7 +167,8 @@ type messagesResponse struct {
 		OutputTokens int `json:"output_tokens"`
 	} `json:"usage"`
 	Error *struct {
-		Type string `json:"type"`
+		Type    string `json:"type"`
+		Message string `json:"message"`
 	} `json:"error"`
 }
 
@@ -251,6 +258,9 @@ func (a *Anthropic) call(ctx context.Context, raw []byte) (Output, error) {
 		e := &APIError{Status: res.StatusCode}
 		if parsed.Error != nil {
 			e.Type = clip(parsed.Error.Type, 64)
+			// The message is read for this one test and dropped.
+			e.ToolChoiceRejected = res.StatusCode == http.StatusBadRequest &&
+				strings.Contains(strings.ToLower(parsed.Error.Message), "tool_choice")
 		}
 		return Output{}, e
 	}

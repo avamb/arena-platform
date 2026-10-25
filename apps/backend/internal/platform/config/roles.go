@@ -131,6 +131,7 @@ var roleSecrets = []roleSecret{
 	// TEXT_FORMAT_LLM_MODEL and TEXT_FORMATS_PER_*_PER_DAY are plain settings of
 	// the api, not secrets): the model key stays on arena-api only.
 	{"POSTER_LLM_API_KEY", []Role{RoleAPI}, func(c *Config) string { return c.PosterLLMAPIKey }},
+	{"GEMINI_API_KEY", []Role{RoleAPI}, func(c *Config) string { return c.GeminiAPIKey }},
 }
 
 // unusedSecretWarnings names every secret that is set although the role
