@@ -53,7 +53,14 @@ export interface TgEditFragment extends TgEditTarget {
 }
 
 export function parseTgEditFragment(hash: string): TgEditFragment {
-  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  // Telegram may put its own part after a second "#" (or after "&"). Our three
+  // parameters live before the second "#": past it nothing is ours, and a
+  // value must never swallow it (event=<uuid>#tgWebAppData=... is not an id).
+  const body = hash.replace(/^#/, "");
+  const cut = body.indexOf("#");
+  const own = cut < 0 ? body : body.slice(0, cut);
+  const foreign = cut < 0 ? "" : body.slice(cut + 1);
+  const params = new URLSearchParams(own);
   const code = params.get("code")?.trim() ?? "";
   const kind = params.get("kind");
   const eventId = params.get("event")?.trim() ?? "";
@@ -62,7 +69,8 @@ export function parseTgEditFragment(hash: string): TgEditFragment {
     code: code !== "" && code.length <= MAX_CODE ? code : null,
     kind: kind === "description" || kind === "email_note" ? kind : null,
     eventId: UUID.test(eventId) ? eventId.toLowerCase() : null,
-    rest: params.toString(),
+    // What Telegram added stays, in one plain fragment its script reads.
+    rest: [params.toString(), foreign].filter((s) => s !== "").join("&"),
   };
 }
 

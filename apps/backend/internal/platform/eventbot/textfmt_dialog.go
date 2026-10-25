@@ -133,8 +133,11 @@ func (b *Bot) tfTyped(ctx context.Context, chatID int64, editMsgID *int, from *m
 }
 
 // tfKeyboard is the four buttons under a preview. edit is the row with the
-// «Править в редакторе» web_app button (textfmt_miniapp.go); it goes under the
-// four, and is nil unless BOT_MINIAPP_EDITOR_ENABLED is on.
+// «Править в редакторе» button (textfmt_miniapp.go, a callback button that the
+// press turns into a web_app one); it goes under the
+// four, and is nil unless BOT_MINIAPP_EDITOR_ENABLED is on. The fallback below
+// (the text without formatting, after Telegram refused the markup) sends the
+// keyboard WITHOUT that row.
 func (b *Bot) tfKeyboard(loc string, edit []models.InlineKeyboardButton) *models.InlineKeyboardMarkup {
 	t := func(key string) string { return b.texts.T(loc, key, nil) }
 	rows := [][]models.InlineKeyboardButton{
@@ -157,7 +160,7 @@ func (b *Bot) tfShowPreview(ctx context.Context, chatID int64, editMsgID *int, l
 		note = b.texts.T(loc, "bot.tf.not_applied_note", nil) + "\n\n"
 	}
 	preview := richtext.ToTelegramHTML(dlg.Art)
-	keyboard := b.tfKeyboard(loc, b.miniappRow(ctx, chatID, loc, dlg.kind(), dlg.EventID))
+	keyboard := b.tfKeyboard(loc, b.miniappRow(chatID, loc, dlg.kind(), dlg.EventID))
 	texts, last := tfScreens(preview, note, b.texts.T(loc, "bot.tf.preview_ask", nil))
 	for _, part := range texts {
 		if err := b.sendChecked(ctx, chatID, part, nil); err != nil {
@@ -170,7 +173,7 @@ func (b *Bot) tfShowPreview(ctx context.Context, chatID int64, editMsgID *int, l
 	if err := b.replyChecked(ctx, chatID, editMsgID, last, keyboard); err != nil && len(texts) == 0 {
 		b.logger.Warn("eventbot: preview markup refused", slog.String("error", err.Error()))
 		plain := Esc(truncate(richtext.PlainText(dlg.Art), tgMessageMax-600))
-		b.reply(ctx, chatID, editMsgID, plain+"\n\n"+note+b.texts.T(loc, "bot.tf.preview_ask", nil), keyboard)
+		b.reply(ctx, chatID, editMsgID, plain+"\n\n"+note+b.texts.T(loc, "bot.tf.preview_ask", nil), b.tfKeyboard(loc, nil))
 	}
 }
 
@@ -216,7 +219,7 @@ func (b *Bot) tfCallback(ctx context.Context, chatID int64, msgID int, from *mod
 	}
 	loc := id.Locale()
 	parts := strings.Split(data, ":")
-	if b.tfNoteCallback(ctx, chatID, msgID, from, id, jwt, parts) {
+	if b.tfMiniappCallback(ctx, chatID, msgID, from, id, parts) || b.tfNoteCallback(ctx, chatID, msgID, from, id, jwt, parts) {
 		return
 	}
 	switch parts[0] {

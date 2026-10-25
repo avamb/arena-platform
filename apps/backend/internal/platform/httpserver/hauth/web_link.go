@@ -54,8 +54,9 @@ func (h *Handler) newWebSession(now time.Time) (gen.RefreshTokenSession, time.Ti
 }
 
 // newMiniappSession is the session of a code of purpose 'miniapp': channel
-// event_center_tg, 30 minutes from now and never longer (sessionEnd caps a
-// refresh at the same limit). Its access token says "chn": "event_center_tg",
+// event_center_tg, 30 minutes from now. Neither its refresh token nor its
+// access token (accessTTL) outlives that end, and sessionEnd caps every
+// refresh at the same limit. Its access token says "chn": "event_center_tg",
 // so the money routes ask it for the password like the web.
 func (h *Handler) newMiniappSession(now time.Time) (gen.RefreshTokenSession, time.Time) {
 	channel := audit.ChannelEventCenterTG
@@ -68,7 +69,7 @@ func (h *Handler) newMiniappSession(now time.Time) (gen.RefreshTokenSession, tim
 func (h *Handler) webLinkInvalid(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 		"auth.web_link_invalid",
-		"this link does not work any more: it works once and for five minutes; press Open in browser in the bot again", r))
+		"this link does not work any more: it works once and for five minutes; ask the bot for a new one", r))
 }
 
 // WebLink serves POST /v1/auth/web/link. Body {"code": "..."}.
@@ -173,8 +174,9 @@ func (h *Handler) WebLink(w http.ResponseWriter, r *http.Request) {
 	if used.Purpose == gen.WebLoginPurposeMiniapp {
 		newSession, via = h.newMiniappSession, audit.ChannelEventCenterTG
 	}
-	session, refreshExp := newSession(time.Now().UTC())
-	accessToken, exp, err := auth.IssueSessionJWT(h.jwtSecret, actorID, h.jwtIssuer, h.jwtAudience, accessTokenTTL, sessionClaims(session))
+	now := time.Now().UTC()
+	session, refreshExp := newSession(now)
+	accessToken, exp, err := auth.IssueSessionJWT(h.jwtSecret, actorID, h.jwtIssuer, h.jwtAudience, accessTTL(refreshExp, now), sessionClaims(session))
 	if err != nil {
 		logger.Error("auth.web_link: issue JWT failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_mint_failed", "failed to issue access token", r))
@@ -215,7 +217,7 @@ func (h *Handler) WebLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.webLinkLimiter.Reset(key)
-	h.trackNewSession(ctx, actorID, refreshToken, refreshExp)
+	h.trackNewSession(ctx, actorID, refreshToken, refreshExp, session)
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"access_token":  accessToken,

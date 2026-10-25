@@ -27,7 +27,9 @@ const maxSessionAge = refreshTokenTTL
 
 // MiniappSessionAge is the whole life of a Telegram mini app session (spec
 // 44, RT-12a, owner decision 5): 30 minutes from the exchange of the code,
-// idle or not. A refresh inside it rotates the token but never moves the end.
+// idle or not. A refresh inside it rotates the token but never moves the end,
+// and the access token is cut to the end too (accessTTL): nothing the session
+// issued outlives minute 30.
 const MiniappSessionAge = 30 * time.Minute
 
 // SetWebSessionIdle sets the idle window of a web event center session.
@@ -83,7 +85,7 @@ func sessionEnd(s gen.RefreshTokenSession, now time.Time) time.Time {
 	end := now.Add(time.Duration(*s.IdleSeconds) * time.Second)
 	if s.SessionStartedAt != nil {
 		age := maxSessionAge
-		if s.ClientChannel != nil && *s.ClientChannel == audit.ChannelEventCenterTG {
+		if isMiniappSession(s) {
 			age = MiniappSessionAge
 		}
 		if limit := s.SessionStartedAt.Add(age); end.After(limit) {
@@ -91,4 +93,19 @@ func sessionEnd(s gen.RefreshTokenSession, now time.Time) time.Time {
 		}
 	}
 	return end
+}
+
+// accessTTL is the life of an access token minted now for a session whose
+// refresh token ends at end: the usual access lifetime, cut so the token never
+// outlives the session. For a Telegram mini app session (30 minutes in all) a
+// refresh at minute 29 therefore gives an access token that dies at minute 30,
+// not at minute 44. It is zero or negative once the session is over.
+func accessTTL(end, now time.Time) time.Duration {
+	return min(accessTokenTTL, end.Sub(now))
+}
+
+// isMiniappSession reports whether s is a Telegram mini app session (channel
+// event_center_tg).
+func isMiniappSession(s gen.RefreshTokenSession) bool {
+	return s.ClientChannel != nil && *s.ClientChannel == audit.ChannelEventCenterTG
 }

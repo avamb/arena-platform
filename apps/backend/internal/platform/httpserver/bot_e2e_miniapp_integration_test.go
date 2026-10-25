@@ -2,16 +2,18 @@
 
 package httpserver
 
-// End-to-end proof of the «Править в редакторе» button (spec 44, RT-12a): with
-// BOT_MINIAPP_EDITOR_ENABLED off (the default) the "Text in the letter" screen
-// and its preview are exactly what they were and no sign-in code is drawn; with
-// it on, both carry the button and each one drew a one-time code of purpose
-// miniapp for the person, without a "web" code or a notice.
+// End-to-end proof of the «Править в редакторе» button (spec 44, RT-12a) and
+// of its LAZY code: with BOT_MINIAPP_EDITOR_ENABLED off (the default) the
+// "Text in the letter" screen and its preview are exactly what they were, no
+// code is drawn and a stray press draws none; with it on, both screens carry an
+// ordinary callback button and NO code exists until it is pressed. A press
+// draws exactly one one-time code of purpose miniapp (a later press takes the
+// earlier open one back, a "web" code or a notice is never made) and turns that
+// button of that message into a web_app button with the fresh link.
 //
-// The Telegram stub records the text and the buttons' labels, not the address of
-// a web_app button, so the button is read by its label and the code by the
-// database. The address itself (shape, https, length) is covered by the unit
-// tests of eventbot and by the API integration test.
+// The shape of the address (https, length) is covered by the unit tests of
+// eventbot and by the API integration test; here the stub records the address
+// of the web_app button and the test checks its prefix and its fragment.
 
 import (
 	"context"
@@ -132,46 +134,98 @@ func TestBotE2E_MiniappButtonFollowsTheFlag(t *testing.T) {
 				}
 				return n
 			}
-			hasEditButton := func() bool {
+			// onLast reports whether the newest message of the chat carries a
+			// button with this callback data.
+			onLast := func(data string) bool {
 				t.Helper()
-				id, _, _ := tg.lastOf(tc.user)
-				for _, label := range tg.labelsOf(id) {
-					if strings.Contains(label, miniappLabelRU) {
+				_, _, got := tg.lastOf(tc.user)
+				for _, d := range got {
+					if d == data {
 						return true
 					}
 				}
 				return false
 			}
 			ids := eventID.String()
+			openCodes := "purpose = 'miniapp' AND used_at IS NULL AND revoked_at IS NULL"
 
-			// The "Text in the letter" screen.
+			// The "Text in the letter" screen: the button is drawn, no code is.
 			say("/events", "Идут")
 			press("event:"+ids+":1", eventName)
 			press("tf:n:"+ids, "Текст в письме")
-			onScreen := hasEditButton()
-			openAfterScreen := count("purpose = 'miniapp' AND used_at IS NULL AND revoked_at IS NULL")
-
-			// The preview of a typed text.
-			press("tf:e:"+ids, "оформлю")
-			say("Парковка бесплатная", "Сохранить так?")
-			onPreview := hasEditButton()
-			openAfterPreview := count("purpose = 'miniapp' AND used_at IS NULL AND revoked_at IS NULL")
-			total := count("purpose = 'miniapp'")
-
+			screenID, _, _ := tg.lastOf(tc.user)
+			onScreen := onLast("tf:m:" + ids)
 			if tc.enable {
-				if !onScreen || !onPreview {
-					t.Fatalf("flag on: button on the screen %v, on the preview %v", onScreen, onPreview)
+				if !onScreen {
+					t.Fatalf("flag on: no button on the letter screen")
 				}
-				// One open code at a time: the preview's code took the screen's back.
-				if openAfterScreen != 1 || openAfterPreview != 1 || total != 2 {
-					t.Fatalf("flag on: open codes %d then %d, %d drawn", openAfterScreen, openAfterPreview, total)
+				if n := count("purpose = 'miniapp'"); n != 0 {
+					t.Fatalf("flag on: %d codes before any press", n)
+				}
+				// The press draws exactly one code and turns the button of THIS
+				// message into a web_app button with the fresh link.
+				press("tf:m:"+ids, "Ссылка действует 5 минут")
+				if n := count("purpose = 'miniapp'"); n != 1 {
+					t.Fatalf("flag on: %d codes after one press, want 1", n)
+				}
+				if n := count(openCodes); n != 1 {
+					t.Fatalf("flag on: %d open codes after one press, want 1", n)
+				}
+				apps := tg.webAppsOf(screenID)
+				prefix := "https://events.example.test/tg/edit#code="
+				if len(apps) != 1 || !strings.HasPrefix(apps[0], prefix) || !strings.HasSuffix(apps[0], "&kind=email_note&event="+ids) {
+					t.Fatalf("web_app buttons of the letter screen: %v", apps)
+				}
+				if hasPrefixData(tg.keyboardOf(screenID), "tf:m") {
+					t.Fatalf("the callback button stayed next to the web_app one: %v", tg.keyboardOf(screenID))
+				}
+				if !hasPrefixData(tg.keyboardOf(screenID), "tf:e:") {
+					t.Fatalf("the other buttons of the screen were lost: %v", tg.keyboardOf(screenID))
 				}
 			} else {
-				if onScreen || onPreview {
-					t.Fatalf("flag off: button on the screen %v, on the preview %v", onScreen, onPreview)
+				if onScreen {
+					t.Fatalf("flag off: a button on the letter screen")
 				}
-				if total != 0 {
-					t.Fatalf("flag off: %d codes drawn", total)
+				for _, label := range tg.labelsOf(screenID) {
+					if strings.Contains(label, miniappLabelRU) {
+						t.Fatalf("flag off: the label %q is on the letter screen", label)
+					}
+				}
+			}
+
+			// The preview of a typed text: again a button and no new code.
+			press("tf:e:"+ids, "оформлю")
+			say("Парковка бесплатная", "Сохранить так?")
+			previewID, _, _ := tg.lastOf(tc.user)
+			if tc.enable {
+				if !onLast("tf:m:" + ids) {
+					t.Fatalf("flag on: no button on the preview")
+				}
+				if n := count("purpose = 'miniapp'"); n != 1 {
+					t.Fatalf("flag on: drawing the preview wrote a code (%d in all, want 1)", n)
+				}
+				// A press later draws a new code and takes the old one back.
+				press("tf:m:"+ids, "Ссылка действует 5 минут")
+				if n := count("purpose = 'miniapp'"); n != 2 {
+					t.Fatalf("flag on: %d codes after the second press, want 2", n)
+				}
+				if n := count(openCodes); n != 1 {
+					t.Fatalf("flag on: %d open codes after the second press, want 1", n)
+				}
+				apps := tg.webAppsOf(previewID)
+				if len(apps) != 1 || !strings.HasSuffix(apps[0], "&kind=email_note&event="+ids) {
+					t.Fatalf("web_app buttons of the preview: %v", apps)
+				}
+			} else {
+				if onLast("tf:m:" + ids) {
+					t.Fatalf("flag off: a button on the preview")
+				}
+				// A press that still arrives (an old screen) draws nothing.
+				m := tg.mark()
+				tg.push(e2eCallbackAs(tc.user, "tf:m:"+ids))
+				tg.waitSince(t, m, "открыть редактор")
+				if n := count("purpose = 'miniapp'"); n != 0 {
+					t.Fatalf("flag off: a press drew %d codes", n)
 				}
 			}
 			// In both cases no "Open in browser" code was drawn behind the user's
@@ -180,6 +234,10 @@ func TestBotE2E_MiniappButtonFollowsTheFlag(t *testing.T) {
 				t.Fatalf("%d web codes drawn", n)
 			}
 			id, _, data := tg.lastOf(tc.user)
+			if !tc.enable {
+				// the made-up press above answered with a plain line: the preview is the one before it
+				id, data = previewID, tg.keyboardOf(previewID)
+			}
 			for _, want := range []string{"tf:s", "tf:p", "tf:a", "tf:c"} {
 				found := false
 				for _, d := range data {

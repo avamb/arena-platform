@@ -10,6 +10,8 @@ package httpserver
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
@@ -284,5 +286,117 @@ func TestWebLinkMiniapp_ThirtyMinuteSessionNoNoticeOtherCodesUntouched(t *testin
 	}
 	if via != "event_center_tg" || purpose != "miniapp" {
 		t.Fatalf("audit via=%q purpose=%q", via, purpose)
+	}
+}
+
+// accessExp is the "exp" claim of an access token.
+func accessExp(t *testing.T, token string) time.Time {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("not a JWT: %q", token)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(raw, &claims); err != nil || claims.Exp == 0 {
+		t.Fatalf("no exp in %s (%v)", raw, err)
+	}
+	return time.Unix(claims.Exp, 0)
+}
+
+// B1: the access token of a mini app session never outlives the session. A
+// refresh at minute 29 gives a token that ends at minute 30 at the latest (not
+// at minute 44), and a refresh after the end is refused.
+func TestWebLinkMiniapp_AccessTokenNeverOutlivesTheSession(t *testing.T) {
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) {
+		c.BotServiceToken = webLinkServiceToken
+		c.EventCenterPublicURL = "https://events.example.test"
+	})
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+	c := webAuthClient{t: t, ts: ts}
+	pool := srv.pgxPool
+	ctx := context.Background()
+	service := map[string]string{"Authorization": "Bearer " + webLinkServiceToken}
+
+	hash, err := users.HashPassword("a long phrase 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var userID uuid.UUID
+	if err := pool.QueryRow(ctx, `INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id`,
+		"miniapp-ttl-"+uuid.NewString()[:8]+"@example.test", hash).Scan(&userID); err != nil {
+		t.Fatal(err)
+	}
+	tg := 6_000_000_000 + rand.Int64N(1_000_000_000)
+	if _, err := gen.New(pool).UpsertBotTelegramLink(ctx, tg, userID, nil, "ru", nil); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM audit_events WHERE actor_id = $1`, userID)
+		_, _ = pool.Exec(ctx, `DELETE FROM web_login_codes WHERE user_id = $1`, userID)
+		_, _ = pool.Exec(ctx, `DELETE FROM refresh_tokens WHERE user_id = $1`, userID)
+		_, _ = pool.Exec(ctx, `DELETE FROM bot_telegram_links WHERE user_id = $1`, userID)
+		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	})
+
+	code, out := c.do(http.MethodPost, "/v1/bot/web-login-codes", "",
+		fmt.Sprintf(`{"telegram_user_id":%d,"purpose":"miniapp","kind":"description","event_id":%q}`, tg, uuid.NewString()), service)
+	if code != http.StatusCreated {
+		t.Fatalf("issue: %d %v", code, out)
+	}
+	link, _ := out["url"].(string)
+	miniCode, _, _ := strings.Cut(strings.TrimPrefix(link, "https://events.example.test/tg/edit#code="), "&")
+	code, signedIn := c.do(http.MethodPost, "/v1/auth/web/link", "", fmt.Sprintf(`{"code":%q}`, miniCode), nil)
+	if code != http.StatusOK {
+		t.Fatalf("exchange: %d %v", code, signedIn)
+	}
+	refresh := signedIn["refresh_token"].(string)
+	first := readTokenSession(t, pool, refresh)
+	// At the exchange the usual 15 minutes fit into the 30 of the session.
+	if exp := accessExp(t, signedIn["access_token"].(string)); exp.After(first.expiresAt) || exp.Before(time.Now().Add(13*time.Minute)) {
+		t.Fatalf("access token at the exchange ends %v, session ends %v", exp, first.expiresAt)
+	}
+
+	// Minute 29 of the session: move its start (and the end of the token) back.
+	ageSession := func(raw string, by string) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, `UPDATE refresh_tokens
+			SET session_started_at = session_started_at - $2::interval, expires_at = expires_at - $2::interval
+			WHERE token = $1`, users.TokenHash(raw), by); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ageSession(refresh, "29 minutes")
+	aged := readTokenSession(t, pool, refresh)
+	code, refreshed := c.do(http.MethodPost, "/v1/auth/refresh", "", fmt.Sprintf(`{"refresh_token":%q}`, refresh), nil)
+	if code != http.StatusOK {
+		t.Fatalf("refresh at minute 29: %d %v", code, refreshed)
+	}
+	next := readTokenSession(t, pool, refreshed["refresh_token"].(string))
+	end := aged.started.Add(30 * time.Minute)
+	if next.expiresAt.After(end) {
+		t.Fatalf("the refreshed session ends %v, after the end of the session %v", next.expiresAt, end)
+	}
+	exp := accessExp(t, refreshed["access_token"].(string))
+	if exp.After(end.Add(time.Second)) {
+		t.Fatalf("access token ends %v, after the end of the session %v (it used to live to minute 44)", exp, end)
+	}
+	if exp.After(time.Now().Add(2 * time.Minute)) {
+		t.Fatalf("access token ends %v: about a minute was left of the session", exp)
+	}
+	if got, _ := refreshed["expires_at"].(string); got == "" {
+		t.Fatalf("no expires_at in the answer: %v", refreshed)
+	}
+
+	// After the end the refresh token is refused.
+	ageSession(refreshed["refresh_token"].(string), "2 minutes")
+	if code, o := c.do(http.MethodPost, "/v1/auth/refresh", "", fmt.Sprintf(`{"refresh_token":%q}`, refreshed["refresh_token"]), nil); code != http.StatusUnauthorized || errCode(o) != "auth.refresh_token_expired" {
+		t.Fatalf("refresh after the end of the session: %d %v", code, o)
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 )
 
 func TestNormalizeClientChannel(t *testing.T) {
@@ -128,5 +130,45 @@ func TestWithVia_NoChannelLeavesEventUntouched(t *testing.T) {
 func TestWithVia_NilInner(t *testing.T) {
 	if got := WithVia(nil); got != nil {
 		t.Fatalf("WithVia(nil) = %v, want nil", got)
+	}
+}
+
+// A request made with an access token of an event_center_tg session is
+// attributed to the Telegram mini app, whatever X-Client-Channel the page sent;
+// a web session and a request without a session keep the header's value.
+func TestWithVia_MiniappSessionIsAttributedToTheMiniapp(t *testing.T) {
+	inner := &recordingWriter{}
+	w := WithVia(inner)
+	header := WithClientChannel(context.Background(), ChannelEventCenterWeb)
+
+	via := func(ctx context.Context) any {
+		t.Helper()
+		if err := w.Write(ctx, Event{Action: "a"}); err != nil {
+			t.Fatal(err)
+		}
+		return inner.ev.Metadata[MetadataVia]
+	}
+	tg := auth.WithActor(header, auth.Actor{ID: "u", Type: auth.ActorTypeUser, Channel: ChannelEventCenterTG})
+	if got := via(tg); got != "telegram_miniapp" {
+		t.Fatalf("mini app session via=%v", got)
+	}
+	// Without the header too.
+	if got := via(auth.WithActor(context.Background(), auth.Actor{ID: "u", Type: auth.ActorTypeUser, Channel: ChannelEventCenterTG})); got != "telegram_miniapp" {
+		t.Fatalf("mini app session without a header via=%v", got)
+	}
+	web := auth.WithActor(header, auth.Actor{ID: "u", Type: auth.ActorTypeUser, Channel: ChannelEventCenterWeb})
+	if got := via(web); got != ChannelEventCenterWeb {
+		t.Fatalf("web session via=%v", got)
+	}
+	if got := via(header); got != ChannelEventCenterWeb {
+		t.Fatalf("no actor via=%v", got)
+	}
+	// The header cannot claim the mini app channel.
+	if _, ok := NormalizeClientChannel("telegram_miniapp"); ok {
+		t.Fatal("telegram_miniapp must not be accepted from a header")
+	}
+	// A "via" the call site set itself still wins.
+	if err := w.Write(tg, Event{Action: "a", Metadata: map[string]any{MetadataVia: "event_center_tg"}}); err != nil || inner.ev.Metadata[MetadataVia] != "event_center_tg" {
+		t.Fatalf("explicit via lost: %v %v", err, inner.ev.Metadata)
 	}
 }

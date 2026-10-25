@@ -5,7 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/redissession"
 )
 
 func TestNewSession_WebGetsTheIdleWindowOthersTheFixedLifetime(t *testing.T) {
@@ -96,5 +99,75 @@ func TestNewMiniappSession_ThirtyMinutesAndRefreshDoesNotExtendIt(t *testing.T) 
 	}
 	if c := sessionClaims(web); c.Channel != "event_center_web" {
 		t.Fatalf("web claims: %+v", c)
+	}
+}
+
+// B1: the access token of a mini app session never outlives the session. A
+// refresh at minute 29 gets an access token that ends at minute 30, one after
+// the end gets none (the refresh token is refused before this is reached).
+func TestAccessTTL_NeverOutlivesTheMiniappSession(t *testing.T) {
+	t.Parallel()
+	h := &Handler{}
+	started := time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
+	s, end := h.newMiniappSession(started)
+
+	// The exchange itself: 30 minutes ahead, the usual 15 minutes win.
+	if got := accessTTL(end, started); got != accessTokenTTL {
+		t.Fatalf("exchange: %v", got)
+	}
+	// Minute 14: still the full 15 minutes, ending exactly at minute 29.
+	m14 := started.Add(14 * time.Minute)
+	if got := accessTTL(sessionEnd(s, m14), m14); got != accessTokenTTL {
+		t.Fatalf("minute 14: %v", got)
+	}
+	// Minute 29: one minute is left, and the token ends with the session.
+	m29 := started.Add(29 * time.Minute)
+	newEnd := sessionEnd(s, m29)
+	ttl := accessTTL(newEnd, m29)
+	if ttl != time.Minute || m29.Add(ttl).After(started.Add(MiniappSessionAge)) {
+		t.Fatalf("minute 29: ttl %v", ttl)
+	}
+	// After the end the TTL is not positive.
+	m31 := started.Add(31 * time.Minute)
+	if got := accessTTL(sessionEnd(s, m31), m31); got > 0 {
+		t.Fatalf("minute 31: %v", got)
+	}
+	// Other sessions keep the usual access lifetime.
+	web, webEnd := h.newWebSession(started)
+	_ = web
+	if got := accessTTL(webEnd, started); got != accessTokenTTL {
+		t.Fatalf("web: %v", got)
+	}
+	if got := accessTTL(started.Add(refreshTokenTTL), started); got != accessTokenTTL {
+		t.Fatalf("classic: %v", got)
+	}
+}
+
+// B5: a mini app sign-in takes no slot in the concurrent-session limit, so it
+// never pushes the person's main web or admin session out.
+func TestTrackNewSession_MiniappTakesNoSlot(t *testing.T) {
+	t.Parallel()
+	store := redissession.NewMemStore()
+	h := &Handler{sessionStore: store, maxConcurrentSessions: 1}
+	user := uuid.New()
+	now := time.Now().UTC()
+	ctx := context.Background()
+
+	admin := audit.WithClientChannel(ctx, audit.ChannelAdminWeb)
+	adminSession, adminEnd := h.newSession(admin, now)
+	h.trackNewSession(ctx, user, "admin-token", adminEnd, adminSession)
+
+	// Three mini app sign-ins in a row: with a limit of 1 each would have
+	// evicted the admin token (h.db is nil, an eviction would panic).
+	for i := 0; i < 3; i++ {
+		s, end := h.newMiniappSession(now)
+		h.trackNewSession(ctx, user, "tg-token-"+uuid.NewString(), end, s)
+	}
+	left, err := store.PruneAndEvict(ctx, user.String(), 0, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 1 || left[0] != "admin-token" {
+		t.Fatalf("tracked sessions %v, want only the admin one", left)
 	}
 }

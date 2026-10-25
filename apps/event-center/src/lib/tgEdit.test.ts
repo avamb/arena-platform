@@ -47,6 +47,47 @@ describe("the fragment of the bot's link", () => {
     expect(f.rest).not.toContain("event");
     expect(f.rest).not.toContain("kind");
   });
+
+  // Telegram clients add their launch parameters to the address of a web app.
+  // Whatever the way, our three parameters are read whole and nothing of
+  // Telegram's is taken for ours.
+  it("reads our three parameters when Telegram appends its data after &", () => {
+    const tg = "tgWebAppData=query_id%3DAAH%26user%3D%257B%2522id%2522%253A42%257D&tgWebAppVersion=9.1&tgWebAppPlatform=android";
+    const f = parseTgEditFragment(`#code=${CODE}&kind=description&event=${EVENT}&${tg}`);
+    expect(f).toMatchObject({ code: CODE, kind: "description", eventId: EVENT });
+    // Telegram's part is left as it came (only decoded and written back the same way).
+    const rest = new URLSearchParams(f.rest);
+    expect([...rest.keys()]).toEqual(["tgWebAppData", "tgWebAppVersion", "tgWebAppPlatform"]);
+    expect(rest.get("tgWebAppData")).toBe("query_id=AAH&user=%7B%22id%22%3A42%7D");
+  });
+
+  it("stops at a second # that Telegram appended, and keeps what is after it", () => {
+    const f = parseTgEditFragment(`#code=${CODE}&kind=email_note&event=${EVENT}#tgWebAppData=query_id%3DAAH&tgWebAppVersion=9.1`);
+    // The event id is not glued to the second fragment.
+    expect(f).toMatchObject({ code: CODE, kind: "email_note", eventId: EVENT });
+    expect(f.rest).toBe("tgWebAppData=query_id%3DAAH&tgWebAppVersion=9.1");
+    expect(f.rest).not.toContain("#");
+    // The second fragment is never read for our names, not even as the last word.
+    const spoof = parseTgEditFragment(`#kind=description#code=${CODE}&event=${EVENT}`);
+    expect(spoof).toMatchObject({ code: null, kind: "description", eventId: null });
+    expect(spoof.rest).toBe(`code=${CODE}&event=${EVENT}`);
+  });
+
+  it("copes with a missing piece, each alone", () => {
+    expect(parseTgEditFragment(`#kind=description&event=${EVENT}`)).toEqual({ code: null, kind: "description", eventId: EVENT, rest: "" });
+    expect(parseTgEditFragment(`#code=${CODE}&event=${EVENT}`)).toEqual({ code: CODE, kind: null, eventId: EVENT, rest: "" });
+    expect(parseTgEditFragment(`#code=${CODE}&kind=description`)).toEqual({ code: CODE, kind: "description", eventId: null, rest: "" });
+    expect(parseTgEditFragment(`#code=${CODE}&kind=description&event=${EVENT}&tgWebAppData=x`).rest).toBe("tgWebAppData=x");
+    // Nothing of ours at all: Telegram's data only, a bare "#", "##", an empty hash.
+    expect(parseTgEditFragment("#tgWebAppData=x&tgWebAppVersion=9.1")).toEqual({ code: null, kind: null, eventId: null, rest: "tgWebAppData=x&tgWebAppVersion=9.1" });
+    expect(parseTgEditFragment("#")).toEqual({ code: null, kind: null, eventId: null, rest: "" });
+    expect(parseTgEditFragment("##")).toEqual({ code: null, kind: null, eventId: null, rest: "" });
+    expect(parseTgEditFragment("#code=")).toMatchObject({ code: null, rest: "" });
+    // A repeated parameter: the first one counts, all of them leave the address.
+    const twice = parseTgEditFragment(`#code=${CODE}&code=other&kind=description&event=${EVENT}`);
+    expect(twice.code).toBe(CODE);
+    expect(twice.rest).toBe("");
+  });
 });
 
 describe("capture", () => {
@@ -63,6 +104,14 @@ describe("capture", () => {
     const h = fakeHistory();
     captureTgEdit({ pathname: TG_EDIT_PATH, hash: `#code=${CODE}&tgWebAppPlatform=android&kind=description&event=${EVENT}` }, h);
     expect(h.calls).toEqual([`${TG_EDIT_PATH}#tgWebAppPlatform=android`]);
+    expect(String(h.calls[0])).not.toContain(CODE);
+  });
+
+  it("keeps the event and clears the address when Telegram appended a second #", () => {
+    const h = fakeHistory();
+    captureTgEdit({ pathname: TG_EDIT_PATH, hash: `#code=${CODE}&kind=description&event=${EVENT}#tgWebAppData=x&tgWebAppVersion=9.1` }, h);
+    expect(tgEditTarget()).toEqual({ code: CODE, kind: "description", eventId: EVENT });
+    expect(h.calls).toEqual([`${TG_EDIT_PATH}#tgWebAppData=x&tgWebAppVersion=9.1`]);
     expect(String(h.calls[0])).not.toContain(CODE);
   });
 

@@ -191,8 +191,9 @@ proves it against the real nginx image (see `tests/README.md`).
 
 ## Telegram mini app: `/tg/edit` (spec 44, RT-12)
 
-The bot's «Править в редакторе» button (a Telegram `web_app` button, behind the bot flag
-`BOT_MINIAPP_EDITOR_ENABLED`, off by default) opens
+The bot's «Править в редакторе» button (behind the bot flag
+`BOT_MINIAPP_EDITOR_ENABLED`, off by default) is an ordinary callback button until it is pressed:
+the press draws the code and turns that button into a Telegram `web_app` button that opens
 `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=description|email_note&event=<event id>`.
 The page exchanges the one-time code (purpose `miniapp`, 5 minutes) at `POST /v1/auth/web/link`
 for a 30-minute session of channel `event_center_tg`, takes the three parameters out of the
@@ -220,12 +221,17 @@ change `TELEGRAM_SCRIPT_SRC` in `src/lib/tgEdit.ts` and the hash above. `src/lib
 fails if the file, its name and this note disagree. The page works without the file (the close
 button then goes back to the app), so a missing script never blocks the sign-in.
 
-Known limits, to check by hand in RT-13 on Android, iOS, Telegram Desktop and Telegram Web:
+Known limits. The fragment check below must be done by hand on Android, iOS, Telegram Desktop and
+Telegram Web BEFORE `BOT_MINIAPP_EDITOR_ENABLED` is turned on anywhere (`src/lib/tgEdit.test.ts`
+covers the parser for a second `#` and for data appended after `&`, not the clients themselves):
 
 - Telegram may add its own parameters to the fragment or replace it. The page keeps everything
-  except `code`, `kind` and `event`. If a client drops our fragment, the spec's fall-back is the
+  except `code`, `kind` and `event`, and it stops at a second `#`. If a client drops our fragment, the spec's fall-back is the
   code in the path; the nginx access log writes paths, so it needs a log rule first.
 - Inside the Telegram Web iframe the script tries to apply the client's theme through a `<style>`
   element, which `style-src 'self'` refuses (one console message). The page does not depend on it.
-- The page signs in with the app's normal token store: a mini app session replaces a 72-hour web
-  session kept in the same browser profile or Telegram Desktop web view of this origin.
+- The page signs in with the app's normal token store (the same storage keys as the web sign-in): a mini app session replaces a 72-hour web
+  session kept in the same browser profile or Telegram Desktop web view of this origin, for
+  example when the link is forwarded and opened in an ordinary browser. This is accepted: the
+  person signs in again. The session has no sign-in slot in the limit of concurrent sessions, so
+  it never pushes the main web or admin session out.

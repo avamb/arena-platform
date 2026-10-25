@@ -57,7 +57,9 @@ func (h *Handler) WithEventCenterURL(origin string) *Handler {
 }
 
 // HandleCreateWebLoginCode serves POST /v1/bot/web-login-codes.
-// Body {"telegram_user_id": 123}.
+// Body {"telegram_user_id": 123} for "Open in browser" (purpose web, the
+// default), or {"telegram_user_id": 123, "purpose": "miniapp", "kind":
+// "description" or "email_note", "event_id": "<uuid>"} for the mini app editor.
 //
 //	201 {url, expires_at}             the link for the private chat
 //	400 bot.invalid_purpose           purpose is neither web nor miniapp

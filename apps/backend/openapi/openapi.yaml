@@ -1326,17 +1326,16 @@ components:
           description: The Telegram account that pressed "Open in browser" or "Edit in the editor".
         purpose:
           type: string
-          enum: [web, miniapp]
           default: web
           description: |
-            What the code is for. `web` (the default) is "Open in browser": a 72-hour web session, a "signed in"
+            What the code is for: `web` or `miniapp` (a plain string, not an enum, so no generated constant is
+            renamed). `web` (the default) is "Open in browser": a 72-hour web session, a "signed in"
             notice in the chat, and a new code takes back the person's earlier unused `web` codes. `miniapp` is the
             Telegram mini app editor (spec 44, RT-12a): a 30-minute session of channel `event_center_tg`, no notice,
             and it takes back and is taken back by no code of another purpose.
         kind:
           type: string
-          enum: [description, email_note]
-          description: "Which text the mini app opens. Required, and only used, for `purpose: miniapp`."
+          description: "Which text the mini app opens: `description` or `email_note` (a plain string, not an enum). Required, and only used, for `purpose: miniapp`."
         event_id:
           type: string
           format: uuid
@@ -26013,7 +26012,7 @@ paths:
         <BOT_SERVICE_TOKEN>` when a person presses "Open in browser" (spec 37
         section 4.3, every role, according to its rights). Returns a link
         that works once and for 5 minutes; a new link takes back the
-        person's earlier unused ones. The bot sends it to the private chat
+        person's earlier unused ones of the same purpose. The bot sends it to the private chat
         only. Refused for a platform superadmin, who works in the admin
         console. While `EVENT_CENTER_PUBLIC_URL` is unset the route answers
         503 `bot.web_login_not_configured`. With `purpose: miniapp` (spec 44,
