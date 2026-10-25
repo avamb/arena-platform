@@ -80,6 +80,7 @@ type stubMessage struct {
 	markup json.RawMessage // the reply_markup as sent; nil when it has none
 	data   []string        // callback data of its buttons
 	urls   []string        // addresses of its URL buttons
+	webApp []string        // addresses of its web_app buttons
 	// replyKB is a reply keyboard (the one under the message field) the
 	// message carried, as sent; nil for an inline keyboard or none.
 	replyKB json.RawMessage
@@ -350,6 +351,9 @@ func (s *stubTelegram) remember(id int, p stubSent) {
 		InlineKeyboard [][]struct {
 			CallbackData string `json:"callback_data"`
 			URL          string `json:"url"`
+			WebApp       *struct {
+				URL string `json:"url"`
+			} `json:"web_app"`
 		} `json:"inline_keyboard"`
 	}
 	if len(p.ReplyMarkup) > 0 && json.Unmarshal(p.ReplyMarkup, &kb) == nil {
@@ -357,6 +361,9 @@ func (s *stubTelegram) remember(id int, p stubSent) {
 			for _, b := range row {
 				if b.CallbackData != "" {
 					m.data = append(m.data, b.CallbackData)
+				}
+				if b.WebApp != nil && b.WebApp.URL != "" {
+					m.webApp = append(m.webApp, b.WebApp.URL)
 				}
 				if b.URL != "" {
 					m.urls = append(m.urls, b.URL)
@@ -846,4 +853,14 @@ func (s *stubTelegram) replyKeyboardSince(mark int) (kb stubReplyKeyboard, text 
 		return kb, m.text, true
 	}
 	return kb, "", false
+}
+
+// webAppsOf returns the addresses of a message's web_app buttons now.
+func (s *stubTelegram) webAppsOf(id int) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if m := s.msgs[id]; m != nil {
+		return append([]string(nil), m.webApp...)
+	}
+	return nil
 }

@@ -7,12 +7,15 @@ import { AuthProvider } from "@/lib/auth";
 import { StepUpProvider } from "@/components/StepUpDialog";
 import { I18nProvider } from "@/lib/i18n";
 import { captureLinkCode } from "@/lib/linkCode";
+import { captureTgEdit } from "@/lib/tgEdit";
 import { router } from "@/router";
 import "@/styles.css";
 
 // A bot link carries its one-time code after "#": take it out of the
 // address before anything renders or sends a request (spec 37 §4.3).
 captureLinkCode();
+// The Telegram mini app link does the same at /tg/edit (spec 44, RT-12).
+captureTgEdit();
 
 const queryClient = new QueryClient({
   defaultOptions: {

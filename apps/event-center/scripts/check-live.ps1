@@ -75,6 +75,23 @@ foreach ($path in $paths) {
     if ($missing.Count -eq 0) { Write-Ok "headers on $path" } else { Write-Fail "$path is missing: $($missing -join '; ')" }
 }
 
+# 2b. The Telegram mini app page (spec 44, RT-12a) is the one address that may
+#     be framed, by the Telegram web clients only. A proxy in front (Traefik)
+#     that adds X-Frame-Options or frame-ancestors 'none' would break the page
+#     inside Telegram and only show up on the live site.
+$tg = Get-Page "$Base/tg/edit"
+if ($null -ne $tg) {
+    $problems = @()
+    if ((Get-HeaderValue $tg "X-Frame-Options") -ne "") { $problems += "X-Frame-Options is set" }
+    $tgCsp = (Get-HeaderValue $tg "Content-Security-Policy").ToLower()
+    if (-not $tgCsp.Contains("frame-ancestors https://web.telegram.org")) { $problems += "CSP frame-ancestors does not name https://web.telegram.org" }
+    if ($tgCsp.Contains("frame-ancestors 'none'")) { $problems += "CSP has frame-ancestors 'none'" }
+    if (-not $tgCsp.Contains("default-src 'none'")) { $problems += "CSP default-src" }
+    if (-not (Get-HeaderValue $tg "X-Content-Type-Options").ToLower().Contains("nosniff")) { $problems += "X-Content-Type-Options" }
+    if (-not (Get-HeaderValue $tg "Referrer-Policy").ToLower().Contains("no-referrer")) { $problems += "Referrer-Policy" }
+    if ($problems.Count -eq 0) { Write-Ok "headers on /tg/edit (no X-Frame-Options, frame-ancestors names the Telegram web clients)" } else { Write-Fail "/tg/edit: $($problems -join '; ')" }
+}
+
 # 3. The API lets the event center call it (CORS_ALLOWED_ORIGINS).
 $preflight = Get-Page "$Api/v1/auth/login" "OPTIONS" @{
     "Origin"                         = $Base

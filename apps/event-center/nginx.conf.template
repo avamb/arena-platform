@@ -3,7 +3,7 @@
 #
 # Every location includes the security headers itself: see
 # security-headers.conf.template for why a server-level add_header is not
-# enough. The container smoke in CI asserts the headers on / and on a deep
+# enough. /tg/ (the Telegram mini app) includes security-headers-tg.conf. The container smoke in CI asserts the headers on / and on a deep
 # link, so a location without the include fails the build.
 
 # The access log never carries the query string or the Referer: the
@@ -85,6 +85,29 @@ server {
         include /etc/nginx/snippets/security-headers.conf;
         expires -1;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+    }
+
+    # The Telegram mini app page (spec 44, RT-12): /tg/edit is the same SPA, but
+    # Telegram's web clients frame it, so it has its own headers (no
+    # X-Frame-Options, frame-ancestors naming Telegram, see
+    # security-headers-tg.conf.template). ^~ keeps the regex location of the
+    # static files above from taking /tg/... away.
+    #
+    # The fallback is a NAMED location on purpose. try_files $uri /index.html
+    # would make nginx match /index.html again, land in `location =
+    # /index.html` and send it with the main headers, X-Frame-Options: DENY
+    # included: Telegram Web would show an empty frame. @tg_index rewrites with
+    # `break`, so the file is served right there with the tg headers.
+    location ^~ /tg/ {
+        include /etc/nginx/snippets/security-headers-tg.conf;
+        try_files $uri @tg_index;
+    }
+
+    location @tg_index {
+        include /etc/nginx/snippets/security-headers-tg.conf;
+        expires -1;
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        rewrite ^ /index.html break;
     }
 
     # Every app URL (/o/{org}/events …) is served the SPA index.

@@ -91,10 +91,12 @@ ENV API_ORIGIN=${VITE_API_BASE_URL}
 RUN mkdir -p /etc/nginx/snippets
 COPY apps/event-center/nginx.conf.template /tmp/nginx.conf.template
 COPY apps/event-center/security-headers.conf.template /tmp/security-headers.conf.template
+COPY apps/event-center/security-headers-tg.conf.template /tmp/security-headers-tg.conf.template
 RUN test -n "${API_ORIGIN}" \
     && sed "s|__API_ORIGIN__|${API_ORIGIN}|g" /tmp/nginx.conf.template > /etc/nginx/conf.d/arena-event-center.conf \
     && sed "s|__API_ORIGIN__|${API_ORIGIN}|g" /tmp/security-headers.conf.template > /etc/nginx/snippets/security-headers.conf \
-    && rm /tmp/nginx.conf.template /tmp/security-headers.conf.template
+    && sed "s|__API_ORIGIN__|${API_ORIGIN}|g" /tmp/security-headers-tg.conf.template > /etc/nginx/snippets/security-headers-tg.conf \
+    && rm /tmp/nginx.conf.template /tmp/security-headers.conf.template /tmp/security-headers-tg.conf.template
 
 # Copy the built static assets from the build stage.
 COPY --from=build /app/dist /usr/share/nginx/html

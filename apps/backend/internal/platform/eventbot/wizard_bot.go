@@ -269,7 +269,11 @@ func (b *Bot) wizardText(ctx context.Context, chatID int64, from *models.User, t
 		// The description is formatted and shown first; the wizard gets it
 		// only when the organizer presses a button under the preview
 		// (textfmt_dialog.go, RT-05).
-		b.descriptionTyped(ctx, chatID, from, id, jwt, text)
+		eventID := ""
+		if d.Mode == ModeEdit {
+			eventID = d.Event.EventID
+		}
+		b.descriptionTyped(ctx, chatID, from, id, jwt, text, eventID)
 		return true
 	}
 	b.wizardApply(ctx, chatID, nil, from, ws, d, WizInput{Text: text})

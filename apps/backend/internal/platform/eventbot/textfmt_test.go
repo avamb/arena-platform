@@ -214,7 +214,7 @@ func TestTfScreens_ShortInOneMessageLongInTwoKinds(t *testing.T) {
 // Telegram, and a label in every language.
 func TestTfKeyboard_FourButtonsWithShortCallbacks(t *testing.T) {
 	b := &Bot{texts: nil}
-	kb := b.tfKeyboard("en")
+	kb := b.tfKeyboard("en", nil)
 	var data []string
 	for _, row := range kb.InlineKeyboard {
 		for _, btn := range row {

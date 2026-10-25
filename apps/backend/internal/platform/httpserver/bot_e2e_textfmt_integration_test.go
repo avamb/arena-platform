@@ -32,14 +32,14 @@ const e2eTextFmtTelegramUser = 783
 
 // textFmtBot runs a bot against the stub Telegram, waiting at most
 // formatTimeout for the format route. stop ends it.
-func textFmtBot(t *testing.T, pool *pgxpool.Pool, api *httptest.Server, tg *stubTelegram, formatTimeout time.Duration) (stop func()) {
+func textFmtBot(t *testing.T, pool *pgxpool.Pool, api *httptest.Server, tg *stubTelegram, formatTimeout time.Duration, tweak ...func(*eventbot.Options)) (stop func()) {
 	t.Helper()
 	bundle, err := i18n.NewBundle()
 	if err != nil {
 		t.Fatalf("i18n.NewBundle: %v", err)
 	}
 	tg.restartGap()
-	bot, err := eventbot.New(eventbot.Options{
+	opts := eventbot.Options{
 		Token:             "123:test-token",
 		Queries:           gen.New(pool),
 		Arena:             eventbot.NewArenaClient(api.URL, botTestServiceToken, api.Client()).WithFormatTimeout(formatTimeout),
@@ -49,7 +49,11 @@ func textFmtBot(t *testing.T, pool *pgxpool.Pool, api *httptest.Server, tg *stub
 		HTTPClient:        tg.srv.Client(),
 		TicketsBaseURL:    "https://tickets.test",
 		MessageRateLimit:  -1,
-	})
+	}
+	for _, fn := range tweak {
+		fn(&opts)
+	}
+	bot, err := eventbot.New(opts)
 	if err != nil {
 		t.Fatalf("eventbot.New: %v", err)
 	}

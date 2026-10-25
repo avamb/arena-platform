@@ -20,6 +20,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 )
 
 // MetadataVia is the audit_events.metadata key that names the client channel.
@@ -39,6 +41,15 @@ const (
 	// ChannelEventCenterWeb is the organizers' web event center
 	// (apps/event-center, 08_architecture/37_web_event_center_ru.md).
 	ChannelEventCenterWeb = "event_center_web"
+	// ChannelEventCenterTG is the Telegram mini app editor, a page of the
+	// same event center opened by a one-time code of purpose 'miniapp' (spec
+	// 44, RT-12a). It is a SESSION channel (the stored session and its "chn"
+	// claim), not a header value: the page still sends event_center_web.
+	ChannelEventCenterTG = "event_center_tg"
+	// ChannelTelegramMiniapp is the `via` of every request made with an access
+	// token of an event_center_tg session. It comes from the authenticated
+	// actor (stampVia), never from the header, so it is not on the allowlist.
+	ChannelTelegramMiniapp = "telegram_miniapp"
 )
 
 // NormalizeClientChannel trims and lowercases raw and reports whether it is an
@@ -102,6 +113,12 @@ func (w *viaWriter) WriteTx(ctx context.Context, tx pgx.Tx, ev Event) error {
 // reuse it for another event or read it after the write.
 func stampVia(ctx context.Context, ev Event) Event {
 	channel, ok := ClientChannelFromContext(ctx)
+	// The mini app page sends X-Client-Channel: event_center_web like the
+	// rest of the event center, but its session says what it is: every change
+	// made with an event_center_tg token is attributed to the mini app.
+	if actor, has := auth.ActorFromContext(ctx); has && actor.Channel == ChannelEventCenterTG {
+		channel, ok = ChannelTelegramMiniapp, true
+	}
 	if !ok {
 		return ev
 	}
