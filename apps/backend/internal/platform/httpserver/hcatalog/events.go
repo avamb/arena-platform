@@ -154,6 +154,13 @@ type EventResponse struct {
 	// of internal/platform/richtext) or "text" (the old plain text with marks,
 	// not converted yet). Hydrated by hydrateEvents, never by EventFromRow.
 	DescriptionFormat string `json:"description_format"`
+	// DescriptionBase is the raw canonical description of the events row, the
+	// one an editor reads and writes back (Description is resolved for the
+	// request's locale and may be a translation). DescriptionTranslated says
+	// Description differs from it. Hydrated by hydrateEvents, never by
+	// EventFromRow.
+	DescriptionBase       *string `json:"description_base"`
+	DescriptionTranslated bool    `json:"description_translated"`
 	// DescriptionHTML, DescriptionText and DescriptionLegacy are the readers'
 	// views of Description (spec 44, RT-03a), resolved with the same locale and
 	// read with the event's format flag: safe HTML (richtext.Render), the plain

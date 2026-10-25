@@ -88,7 +88,7 @@ func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, e
 		Name:              ev.Name,
 		Age:               deref(ev.AgeRating),
 		PromoterName:      deref(ev.PromoterName),
-		Description:       deref(ev.Description),
+		Description:       eventDescriptionBase(ev), // the canonical text, never a translation
 		DescriptionFormat: descriptionFormatOf(ev.DescriptionFormat),
 	}
 	if ev.PromoterId != nil {

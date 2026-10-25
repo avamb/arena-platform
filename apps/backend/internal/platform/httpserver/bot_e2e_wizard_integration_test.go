@@ -378,12 +378,13 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	}
 	// Every part is one short screen and the answer returns to the card; the
 	// poster of the event is never asked about, it stays as it is.
-	// The bot loads the event without a locale, so the server answers with the
-	// English translation (translation, en, base): the screen shows it without
-	// tags, and the save below must not write it over the base text.
+	// The list and get routes answer in the request language and the bot sends none, so
+	// `description` is the English translation (translation, en, base); the bot reads the
+	// canonical text from description_base. The screen shows it without tags and never
+	// the translation, and the save below must not write either over the base text.
 	descScreen := press("wz:e:desc", "Сейчас")
-	if strings.Contains(descScreen, "<p>") || strings.Contains(descScreen, "<ul>") || strings.Contains(descScreen, "&lt;p&gt;") || !strings.Contains(descScreen, "<i>translation</i>") {
-		t.Fatalf("the description screen shows tags or lost the text:\n%s", descScreen)
+	if strings.Contains(descScreen, "<p>") || strings.Contains(descScreen, "<ul>") || strings.Contains(descScreen, "&lt;p&gt;") || !strings.Contains(descScreen, "<b>вечер</b>") || strings.Contains(descScreen, "translation") {
+		t.Fatalf("the description screen shows tags, the translation, or lost the canonical text:\n%s", descScreen)
 	}
 	press("wz:e:home", "Правка мероприятия")
 	press("wz:e:name", "Сейчас")

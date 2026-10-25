@@ -196,6 +196,76 @@ label {
   width: 100%;
 }
 
+/*
+ * The Telegram mini app page /tg/edit (spec 44, RT-12b). It follows the
+ * client theme ONLY through custom properties: the Telegram script sets
+ * --tg-theme-* and --tg-safe-area-inset-* on the root with the CSSOM, which
+ * style-src 'self' allows, and this block maps them onto the tokens the app
+ * already uses. Outside Telegram the fallbacks are the app's own colours.
+ * No horizontal scroll at 360 px: the card shrinks (min-width 0), the editor
+ * toolbar wraps, long words break.
+ */
+.tg-page {
+  --bg: var(--tg-theme-secondary-bg-color, #f7f7fb);
+  --surface: var(--tg-theme-bg-color, #ffffff);
+  --text: var(--tg-theme-text-color, #1b1b24);
+  --muted: var(--tg-theme-hint-color, #4f5262);
+  --accent: var(--tg-theme-button-color, #4338ca);
+  --accent-text: var(--tg-theme-button-text-color, #ffffff);
+  box-sizing: border-box;
+  min-height: 100vh;
+  max-width: 100vw;
+  overflow-x: clip;
+  background: var(--bg);
+  color: var(--text);
+  padding-block-start: max(0.75rem, env(safe-area-inset-top, 0px), var(--tg-safe-area-inset-top, 0px));
+  padding-block-end: max(0.75rem, env(safe-area-inset-bottom, 0px), var(--tg-safe-area-inset-bottom, 0px));
+  padding-inline-start: max(0.75rem, env(safe-area-inset-left, 0px), var(--tg-safe-area-inset-left, 0px));
+  padding-inline-end: max(0.75rem, env(safe-area-inset-right, 0px), var(--tg-safe-area-inset-right, 0px));
+}
+
+@media (prefers-color-scheme: dark) {
+  .tg-page {
+    --bg: var(--tg-theme-secondary-bg-color, #121219);
+    --surface: var(--tg-theme-bg-color, #1c1c26);
+    --text: var(--tg-theme-text-color, #ececf3);
+    --muted: var(--tg-theme-hint-color, #b4b6c6);
+    --accent: var(--tg-theme-button-color, #a5b4fc);
+    --accent-text: var(--tg-theme-button-text-color, #121219);
+  }
+}
+
+.tg-card {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 640px;
+  margin-inline: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.tg-card h1 {
+  font-size: 1.35rem;
+  margin-block: 0.25rem 0.5rem;
+}
+
+.tg-card h2 {
+  font-size: 1.1rem;
+}
+
+.tg-card .tg-event {
+  color: var(--muted);
+  margin-block: 0 1rem;
+}
+
+.tg-card .actions .btn {
+  flex: 1 1 auto;
+}
+
 /* The password question before a money action (StepUpDialog). */
 .dialog-backdrop {
   position: fixed;

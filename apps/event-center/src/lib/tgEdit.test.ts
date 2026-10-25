@@ -177,6 +177,14 @@ describe("closing", () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  it("does not count the script in an ordinary browser as a Telegram that can close", () => {
+    const close = vi.fn();
+    expect(closeMiniApp({ Telegram: { WebApp: { close, platform: "unknown" } } })).toBe(false);
+    expect(close).not.toHaveBeenCalled();
+    expect(closeMiniApp({ Telegram: { WebApp: { close, platform: "android" } } })).toBe(true);
+    expect(close).toHaveBeenCalledOnce();
+  });
+
   it("reports false in a plain browser, so the page goes back to the app", () => {
     expect(closeMiniApp({})).toBe(false);
     expect(closeMiniApp({ Telegram: { WebApp: {} } })).toBe(false);

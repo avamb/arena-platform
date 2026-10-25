@@ -105,16 +105,36 @@ func (h *Handler) hydrateDescriptionFormats(ctx context.Context, responses []eve
 			ids = append(ids, id)
 		}
 	}
-	formats, err := h.eventQueries.ListEventDescriptionFormats(ctx, ids)
+	bases, err := h.eventQueries.ListEventDescriptionBases(ctx, ids)
 	if err != nil {
 		h.logger.Warn("event: description format hydration failed", slog.String("error", err.Error()))
 		return
 	}
 	for i := range responses {
 		if id, err := uuid.Parse(responses[i].ID); err == nil {
-			responses[i].DescriptionFormat = formats[id]
+			b := bases[id]
+			responses[i].DescriptionFormat = b.Format
+			responses[i].fillDescriptionBase(b.Text)
 		}
 		responses[i].fillDescriptionViews()
+	}
+}
+
+// fillDescriptionBase sets DescriptionBase (the raw canonical text on the
+// events row) and DescriptionTranslated (the shown Description is another
+// text, a translation). The list and get queries resolve Description per
+// locale, so a client that EDITS must write DescriptionBase back, never
+// Description: saving a translation over the canonical text loses the
+// original (RT-12b review).
+func (r *eventResponse) fillDescriptionBase(base *string) {
+	r.DescriptionBase = base
+	switch {
+	case r.Description == nil:
+		r.DescriptionTranslated = false
+	case base == nil:
+		r.DescriptionTranslated = true
+	default:
+		r.DescriptionTranslated = *r.Description != *base
 	}
 }
 

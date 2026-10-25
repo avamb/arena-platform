@@ -78,7 +78,7 @@ func (b *Bot) miniappRow(chatID int64, loc string, kind tfKind, eventID string) 
 // tfMiniappCallback handles the press of the button: "m" with no more is the
 // preview, "m:<event id>" the letter screen. It reports whether the press was
 // one of them.
-func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, from *models.User, id *Identity, parts []string) bool {
+func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, from *models.User, id *Identity, jwt string, parts []string) bool {
 	if parts[0] != "m" {
 		return false
 	}
@@ -86,6 +86,7 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 	data := miniappCallback
 	var kind tfKind
 	var eventID string
+	var pdlg tfDialog // the dialog of the preview (len(parts) == 1)
 	if len(parts) == 1 {
 		dlg, step, found, _ := b.tfLoad(ctx, from.ID)
 		if !found || step != tfStepPreview || dlg.OrgID != id.Current.OrgID.String() {
@@ -94,7 +95,7 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 			b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.tf.expired", nil), b.backKeyboard(loc, "home"))
 			return true
 		}
-		kind, eventID = dlg.kind(), dlg.EventID
+		kind, eventID, pdlg = dlg.kind(), dlg.EventID, dlg
 	} else {
 		if !canViewSales(id) { // the same people who may change event texts
 			b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ec.no_rights", nil), b.backKeyboard(loc, "home"))
@@ -109,6 +110,16 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 		b.send(ctx, chatID, b.texts.T(loc, "bot.tf.edit_failed", nil), nil)
 		return true
 	}
+	// The editor was opened from this screen before and may have saved since: say
+	// so first (RT-12b), never open it again over a mark that has not been told.
+	// The press is not carried out; the organizer presses the button once more.
+	if len(parts) == 1 {
+		if pdlg.Editor && pdlg.Seen != "" && b.tfEditorSavedPreview(ctx, chatID, msgID, from, id, jwt, pdlg) {
+			return true
+		}
+	} else if eid, perr := uuid.Parse(eventID); perr == nil && b.tfEditorSavedNote(ctx, chatID, msgID, from, id, jwt, eid) {
+		return true
+	}
 	link, err := b.arena.MiniappLink(ctx, chatID, string(kind), eventID)
 	if err != nil {
 		// A platform superadmin, an unlinked account, an address that is not set.
@@ -121,6 +132,9 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 		b.send(ctx, chatID, b.texts.T(loc, "bot.tf.edit_failed", nil), nil)
 		return true
 	}
+	// What the text is NOW, before the editor can be opened: the next action of the
+	// organizer compares it with what the event holds then (RT-12b).
+	b.tfEditorMark(ctx, from, id, jwt, kind, eventID, len(parts) == 1)
 	b.miniappOpen(ctx, chatID, msgID, loc, data, link.URL)
 	return true
 }

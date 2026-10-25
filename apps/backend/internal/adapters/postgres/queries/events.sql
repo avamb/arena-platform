@@ -331,6 +331,14 @@ SELECT description_format
 FROM   events
 WHERE  id = $1;
 
+-- name: ListEventDescriptionBases :many
+-- ListEventDescriptionBases returns the format flag and the RAW canonical
+-- description (events.description, never an i18n_text translation) of the
+-- given events: what an editor must read to write the description back.
+SELECT id, description_format, description
+FROM   events
+WHERE  id = ANY($1::uuid[]);
+
 -- name: ListEventDescriptionFormats :many
 -- ListEventDescriptionFormats returns the format flag ('text' or 'art') of the
 -- descriptions of the given events, one batched read for the REST responses.

@@ -31,6 +31,11 @@ func miniappTestBot(t *testing.T, enabled bool, status int, link string) (*Bot, 
 	var calls atomic.Int32
 	var bodies []map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet { // the event the editor mark reads (RT-12b): none, so no mark
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"events":[]}`))
+			return
+		}
 		calls.Add(1)
 		raw, _ := io.ReadAll(r.Body)
 		var body map[string]any
@@ -214,7 +219,7 @@ func TestMiniappPress_DrawsTheCodeAndReplacesTheButtonInPlace(t *testing.T) {
 	for n := 1; n <= 2; n++ {
 		stub.reset()
 		ctx := withFeedAction(context.Background(), pressAction(noteScreenPress(ev)))
-		if !b.tfMiniappCallback(ctx, 42, 10, from, ownerIdentity(), []string{"m", ev}) {
+		if !b.tfMiniappCallback(ctx, 42, 10, from, ownerIdentity(), "jwt", []string{"m", ev}) {
 			t.Fatal("the press was not taken")
 		}
 		if int(calls.Load()) != n {
@@ -266,7 +271,7 @@ func TestMiniappPress_RefusalsLeaveTheScreenAndSayWhy(t *testing.T) {
 	} {
 		b, calls, stub := miniappPressBot(t, c.enabled, c.status, c.link)
 		ctx := withFeedAction(context.Background(), pressAction(noteScreenPress(ev)))
-		b.tfMiniappCallback(ctx, 42, 10, from, ownerIdentity(), []string{"m", ev})
+		b.tfMiniappCallback(ctx, 42, 10, from, ownerIdentity(), "jwt", []string{"m", ev})
 		if calls.Load() != c.asked {
 			t.Errorf("%s: %d codes asked for, want %d", name, calls.Load(), c.asked)
 		}
@@ -286,7 +291,7 @@ func TestMiniappPress_RightsAndAMessageWithoutItsKeyboard(t *testing.T) {
 	b, calls, stub := miniappPressBot(t, true, http.StatusCreated, miniappTestLink)
 	ctx := withFeedAction(context.Background(), pressAction(noteScreenPress(ev)))
 	agent := &Identity{Current: &Membership{Role: "agent"}}
-	b.tfMiniappCallback(ctx, 42, 10, from, agent, []string{"m", ev})
+	b.tfMiniappCallback(ctx, 42, 10, from, agent, "jwt", []string{"m", ev})
 	if calls.Load() != 0 {
 		t.Errorf("an agent got a code")
 	}
@@ -299,14 +304,14 @@ func TestMiniappPress_RightsAndAMessageWithoutItsKeyboard(t *testing.T) {
 	b, calls, stub = miniappPressBot(t, true, http.StatusCreated, miniappTestLink)
 	bare := press(10, "Text in the letter", "tf:m:"+ev, nil)
 	ctx = withFeedAction(context.Background(), pressAction(bare))
-	b.tfMiniappCallback(ctx, 42, 10, from, ownerIdentity(), []string{"m", ev})
+	b.tfMiniappCallback(ctx, 42, 10, from, ownerIdentity(), "jwt", []string{"m", ev})
 	got := stub.all()
 	if calls.Load() != 1 || len(got) != 1 || got[0].method != "sendMessage" || len(webAppButtons(parseMarkup(t, got[0].markup))) != 1 {
 		t.Errorf("no keyboard in the update: %d codes, calls %+v", calls.Load(), got)
 	}
 
 	// Another press is none of this handler's business.
-	if b.tfMiniappCallback(ctx, 42, 10, from, ownerIdentity(), []string{"s"}) {
+	if b.tfMiniappCallback(ctx, 42, 10, from, ownerIdentity(), "jwt", []string{"s"}) {
 		t.Error("a press of another button was taken")
 	}
 }
@@ -319,7 +324,7 @@ func TestMiniappPress_LongTextOnlyChangesTheKeyboard(t *testing.T) {
 	cq := noteScreenPress(ev)
 	cq.Message.Message.Text = strings.Repeat("я", tgTextLimit-5)
 	ctx := withFeedAction(context.Background(), pressAction(cq))
-	b.tfMiniappCallback(ctx, 42, 10, &models.User{ID: 42}, ownerIdentity(), []string{"m", ev})
+	b.tfMiniappCallback(ctx, 42, 10, &models.User{ID: 42}, ownerIdentity(), "jwt", []string{"m", ev})
 	got := stub.all()
 	if len(got) != 2 || got[0].method != "editMessageReplyMarkup" || got[0].msgID != 10 || got[1].method != "sendMessage" {
 		t.Fatalf("Bot API calls %+v", got)
@@ -429,7 +434,7 @@ func TestMiniappPress_DescriptionPreviewReadsTheDialog(t *testing.T) {
 	if err := b.tfSave(ctx, 42, org, tfStepPreview, tfDialog{Kind: string(tfKindDescription), EventID: ev}); err != nil {
 		t.Fatal(err)
 	}
-	if !b.tfMiniappCallback(ctx, 42, 10, from, id, []string{"m"}) {
+	if !b.tfMiniappCallback(ctx, 42, 10, from, id, "jwt", []string{"m"}) {
 		t.Fatal("the press was not taken")
 	}
 	if calls.Load() != 1 {
@@ -447,7 +452,7 @@ func TestMiniappPress_DescriptionPreviewReadsTheDialog(t *testing.T) {
 	b2, calls2, stub2 := miniappPressBot(t, true, http.StatusCreated, miniappTestLink)
 	b2.dialogs = newMemDialogStore(&testClock{t: time.Now()})
 	ctx2 := withFeedAction(context.Background(), pressAction(previewPress()))
-	b2.tfMiniappCallback(ctx2, 42, 10, from, id, []string{"m"})
+	b2.tfMiniappCallback(ctx2, 42, 10, from, id, "jwt", []string{"m"})
 	if calls2.Load() != 0 {
 		t.Errorf("a press with no preview drew %d codes", calls2.Load())
 	}
@@ -464,11 +469,11 @@ func TestMiniappPress_DescriptionPreviewReadsTheDialog(t *testing.T) {
 	if err := b3.tfSave(ctx3, 42, uuid.New(), tfStepPreview, tfDialog{Kind: string(tfKindDescription), EventID: ev}); err != nil {
 		t.Fatal(err)
 	}
-	b3.tfMiniappCallback(ctx3, 42, 10, from, id, []string{"m"})
+	b3.tfMiniappCallback(ctx3, 42, 10, from, id, "jwt", []string{"m"})
 	if err := b3.tfSave(ctx3, 42, org, tfStepAwait, tfDialog{Kind: string(tfKindDescription), EventID: ev}); err != nil {
 		t.Fatal(err)
 	}
-	b3.tfMiniappCallback(ctx3, 42, 10, from, id, []string{"m"})
+	b3.tfMiniappCallback(ctx3, 42, 10, from, id, "jwt", []string{"m"})
 	if calls3.Load() != 0 {
 		t.Errorf("a foreign or finished preview drew %d codes", calls3.Load())
 	}

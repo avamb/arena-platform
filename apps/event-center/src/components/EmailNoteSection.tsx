@@ -14,7 +14,7 @@
  * The events list is the only route that carries the text (the single-event
  * route does not hydrate it), so after a write the list is read again.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConfirmPressDialog } from "@/components/ConfirmPressDialog";
 import { ErrorNotice } from "@/components/ErrorNotice";
@@ -31,11 +31,15 @@ export interface EmailNoteSectionProps {
   noteFormat: string | null | undefined;
   /** `event.update`: the one right the API asks for the save and the test letter. */
   canEdit: boolean;
+  /** Called once after a Save went through and the list was read again (the Telegram mini app closes itself then). */
+  onSaved?: () => void;
+  /** Called whenever the text is unsaved or an action is on its way (the Telegram mini app guards its window with it). */
+  onWork?: (work: { dirty: boolean; busy: boolean }) => void;
 }
 
 type Action = "save" | "test" | "delete";
 
-export function EmailNoteSection({ orgId, eventId, note, noteFormat, canEdit }: EmailNoteSectionProps) {
+export function EmailNoteSection({ orgId, eventId, note, noteFormat, canEdit, onSaved, onWork }: EmailNoteSectionProps) {
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const saved = artOfStored(note, noteFormat, "email_note");
@@ -56,6 +60,11 @@ export function EmailNoteSection({ orgId, eventId, note, noteFormat, canEdit }: 
   const [asking, setAsking] = useState(false);
 
   const dirty = draft !== saved;
+  const working = busy !== null;
+  useEffect(() => {
+    onWork?.({ dirty, busy: working });
+  }, [onWork, dirty, working]);
+  useEffect(() => () => onWork?.({ dirty: false, busy: false }), [onWork]);
   const tooLong = overVisibleLimit(draft, "email_note") || overMarkupLimit(draft, "email_note");
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["events", orgId] });
 
@@ -78,6 +87,7 @@ export function EmailNoteSection({ orgId, eventId, note, noteFormat, canEdit }: 
       await saveEmailNote(orgId, eventId, draft);
       setSent(draft);
       await refresh();
+      onSaved?.();
       return t("emailNote.saved");
     });
 

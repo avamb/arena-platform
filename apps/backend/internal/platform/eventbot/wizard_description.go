@@ -34,6 +34,22 @@ func descriptionFormatOf(f *openapi.EventItemDescriptionFormat) string {
 	return ""
 }
 
+// eventDescriptionBase is the CANONICAL description of a loaded event: the text
+// stored on the events row. The list and get routes resolve `description` per
+// locale, so it may be a translation; `description_base` is the raw one. A
+// server that predates the field sends neither it nor `description_translated`,
+// and `description` is then the only text there is. A base of null with the
+// translated flag set means the event has no canonical description.
+func eventDescriptionBase(ev openapi.EventItem) string {
+	if ev.DescriptionBase != nil {
+		return *ev.DescriptionBase
+	}
+	if ev.DescriptionTranslated != nil && *ev.DescriptionTranslated {
+		return ""
+	}
+	return deref(ev.Description)
+}
+
 // descriptionPreview is the description as an HTML line of a Telegram screen.
 // ART is shown formatted (ToTelegramHTML) while its VISIBLE text fits limit
 // characters; a longer one is cut by its visible text, as plain text, so a tag

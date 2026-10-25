@@ -110,9 +110,22 @@ export function tgEditErrorKey(err: unknown): MessageKey {
   return key === "linkLogin.error.invalid" ? "tgEdit.error.invalid" : key;
 }
 
+interface TelegramBackButton {
+  show?: () => void;
+  hide?: () => void;
+  onClick?: (handler: () => void) => void;
+  offClick?: (handler: () => void) => void;
+}
+
 interface TelegramWebApp {
+  /** "unknown" when the script runs outside a Telegram client (an ordinary browser); the real script always sets it. */
+  platform?: string;
   close?: () => void;
   ready?: () => void;
+  expand?: () => void;
+  BackButton?: TelegramBackButton;
+  enableClosingConfirmation?: () => void;
+  disableClosingConfirmation?: () => void;
 }
 
 /** A window, or a stand-in with a Telegram global (a window has no declared Telegram property). */
@@ -122,7 +135,54 @@ function webApp(win: TelegramWindow): TelegramWebApp | null {
   return (win as { Telegram?: { WebApp?: TelegramWebApp } }).Telegram?.WebApp ?? null;
 }
 
+/** Tells Telegram the page is up and asks for the full height of the window. Nothing when there is no Telegram. */
+export function startWebApp(win: TelegramWindow = window): void {
+  const app = webApp(win);
+  app?.ready?.();
+  app?.expand?.();
+}
+
+/**
+ * Shows the Telegram back button and runs handler when it is pressed. Returns
+ * the function that takes the button away again; without Telegram it does
+ * nothing (the page has its own close button).
+ */
+export function bindBackButton(handler: () => void, win: TelegramWindow = window): () => void {
+  const button = webApp(win)?.BackButton;
+  if (button?.onClick === undefined) return () => undefined;
+  button.onClick(handler);
+  button.show?.();
+  return () => {
+    button.offClick?.(handler);
+    button.hide?.();
+  };
+}
+
+/**
+ * Asks Telegram to confirm before the window is closed (by a swipe, the cross, the back gesture) while there is
+ * text that is not saved, and stops asking once there is none. Nothing without Telegram.
+ */
+export function setClosingConfirmation(on: boolean, win: TelegramWindow = window): void {
+  const app = webApp(win);
+  if (on) app?.enableClosingConfirmation?.();
+  else app?.disableClosingConfirmation?.();
+}
+
+/**
+ * True inside a Telegram client. The script also runs in an ordinary browser (platform "unknown"), and a page
+ * served there has no Telegram window to close.
+ */
+export function insideTelegram(win: TelegramWindow = window): boolean {
+  const app = webApp(win);
+  return app !== null && app.platform !== "unknown";
+}
+
 let loading: Promise<boolean> | null = null;
+
+/** Forgets the load in progress, so a test can start a page again with another Telegram stand-in. */
+export function resetTelegramScript(): void {
+  loading = null;
+}
 
 /**
  * Loads the Telegram script. It resolves true when Telegram.WebApp exists
@@ -134,6 +194,7 @@ export function loadTelegramScript(doc: Document = document, win: TelegramWindow
   if (loading !== null) return loading;
   loading = new Promise((resolve) => {
     if (webApp(win) !== null) {
+      startWebApp(win);
       resolve(true);
       return;
     }
@@ -141,7 +202,7 @@ export function loadTelegramScript(doc: Document = document, win: TelegramWindow
     el.src = TELEGRAM_SCRIPT_SRC;
     el.async = true;
     el.onload = () => {
-      webApp(win)?.ready?.(); // tells Telegram the page is up
+      startWebApp(win);
       resolve(webApp(win) !== null);
     };
     el.onerror = () => resolve(false);
@@ -150,10 +211,13 @@ export function loadTelegramScript(doc: Document = document, win: TelegramWindow
   return loading;
 }
 
-/** Closes the mini app. False when Telegram.WebApp is not there (a plain browser). */
+/**
+ * Closes the mini app. False when there is no Telegram to close it: no Telegram.WebApp, or the script is there but
+ * runs in an ordinary browser (platform "unknown"), where close() would do nothing and the page has to say "Saved".
+ */
 export function closeMiniApp(win: TelegramWindow = window): boolean {
   const app = webApp(win);
-  if (app?.close === undefined) return false;
+  if (app?.close === undefined || app.platform === "unknown") return false;
   app.close();
   return true;
 }

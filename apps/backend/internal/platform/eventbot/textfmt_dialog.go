@@ -36,6 +36,10 @@ const (
 	tfStepAwait = "await"
 	// tfStepPreview waits for a button under a preview.
 	tfStepPreview = "preview"
+	// tfStepEditor is the letter text screen after the mini app editor was opened
+	// from it (RT-12b): the dialog only remembers what the text was, so the next
+	// action can say that the editor saved something.
+	tfStepEditor = "editor"
 )
 
 // tfDialog is the state of the loop between two messages.
@@ -52,6 +56,11 @@ type tfDialog struct {
 	Art string `json:"art,omitempty"`
 	// Applied says Art carries the model's markup.
 	Applied bool `json:"applied,omitempty"`
+	// Editor says the mini app editor was opened from this screen (RT-12b), and Seen
+	// is the fingerprint of the event text as it was then (editorFingerprint). The
+	// next action re-reads the event: another text means the editor saved.
+	Editor bool   `json:"editor,omitempty"`
+	Seen   string `json:"seen,omitempty"`
 }
 
 func (d tfDialog) kind() tfKind { return tfKind(d.Kind) }
@@ -64,6 +73,9 @@ func (b *Bot) tfSave(ctx context.Context, tg int64, orgID uuid.UUID, step string
 
 // tfLoad reads the dialog. A failed read is logged and read as no dialog.
 func (b *Bot) tfLoad(ctx context.Context, tg int64) (dlg tfDialog, step string, found, expired bool) {
+	if b.dialogs == nil {
+		return tfDialog{}, "", false, false // no store, no dialog
+	}
 	step, found, expired, err := b.dialogs.Load(ctx, tg, tfDialogKind, &dlg)
 	if err != nil {
 		b.logger.Error("eventbot: text formatting dialog load failed", slog.Int64("telegram_user_id", tg), slog.String("error", err.Error()))
@@ -191,7 +203,9 @@ func (b *Bot) descriptionTyped(ctx context.Context, chatID int64, from *models.U
 // took the text.
 func (b *Bot) tfText(ctx context.Context, chatID int64, from *models.User, text string) bool {
 	dlg, step, found, expired := b.tfLoad(ctx, from.ID)
-	if expired {
+	// An expired dialog of the step "editor" (RT-12b) was not waiting for typed text:
+	// the text goes on as it would have, nobody is told "expired" for a line of chat.
+	if expired && (step == tfStepAwait || step == tfStepPreview) {
 		loc := NormalizeLocale(from.LanguageCode)
 		if id, _, err := b.resolveIdentity(ctx, from.ID); err == nil {
 			loc = id.Locale()
@@ -207,6 +221,10 @@ func (b *Bot) tfText(ctx context.Context, chatID int64, from *models.User, text 
 		b.clearTextFmtDialog(ctx, from.ID) // another organization now: not theirs to answer
 		return false
 	}
+	if dlg.Editor && step == tfStepPreview {
+		// A typed text replaces the preview on purpose: only say what the editor saved.
+		dlg = b.tfEditorSavedTyped(ctx, chatID, from, id, jwt, dlg)
+	}
 	b.tfTyped(ctx, chatID, nil, from, id, jwt, dlg, text)
 	return true
 }
@@ -219,7 +237,7 @@ func (b *Bot) tfCallback(ctx context.Context, chatID int64, msgID int, from *mod
 	}
 	loc := id.Locale()
 	parts := strings.Split(data, ":")
-	if b.tfMiniappCallback(ctx, chatID, msgID, from, id, parts) || b.tfNoteCallback(ctx, chatID, msgID, from, id, jwt, parts) {
+	if b.tfMiniappCallback(ctx, chatID, msgID, from, id, jwt, parts) || b.tfNoteCallback(ctx, chatID, msgID, from, id, jwt, parts) {
 		return
 	}
 	switch parts[0] {
@@ -235,6 +253,11 @@ func (b *Bot) tfCallback(ctx context.Context, chatID int64, msgID int, from *mod
 		// An older preview, or the 30 minutes ran out: the person types again.
 		b.clearTextFmtDialog(ctx, from.ID)
 		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.tf.expired", nil), b.backKeyboard(loc, "home"))
+		return
+	}
+	// The mini app editor saved a text since this preview was drawn (RT-12b): say so
+	// once and show the saved text instead of acting on the old one.
+	if dlg.Editor && b.tfEditorSavedPreview(ctx, chatID, msgID, from, id, jwt, dlg) {
 		return
 	}
 	switch parts[0] {
