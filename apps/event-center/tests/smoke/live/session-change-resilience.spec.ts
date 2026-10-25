@@ -49,6 +49,7 @@ interface Rows {
   queued_letters: number;
   org_contact_email: string;
   last_message: string;
+  last_message_format: string;
   paid_orders: number;
 }
 
@@ -155,6 +156,7 @@ test.describe("session change: failed and repeated writes (live)", () => {
       queued_letters: 1,
       paid_orders: 1,
       last_message: "<p>Typed by a person: we moved to Sunday.</p>",
+      last_message_format: "art",
     });
   });
 
@@ -229,6 +231,7 @@ test.describe("session change: failed and repeated writes (live)", () => {
       queued_letters: 1,
       paid_orders: 1,
       last_message: "<p>Canceled by the organizer, text typed by hand.</p>",
+      last_message_format: "art",
     });
   });
 });

@@ -6,7 +6,6 @@ import {
   artOfLegacy,
   artOfStored,
   countText,
-  descriptionArtOf,
   limitsOf,
   overMarkupLimit,
   overVisibleLimit,
@@ -63,14 +62,6 @@ describe("conversion", () => {
     expect(artOfStored("- a\n- b", "", "email_note")).toBe("<ul><li>a</li><li>b</li></ul>");
     expect(artOfStored(null, "art", "description")).toBe("");
     expect(artOfStored("", "text", "description")).toBe("");
-  });
-  it("reads the description of an event: description_html first, then description with description_format", () => {
-    expect(descriptionArtOf({ description_html: '<p>Hi <strong>all</strong> <a href="https://example.com" rel="noopener noreferrer" target="_blank">x</a></p>' })).toBe(
-      '<p>Hi <strong>all</strong> <a href="https://example.com">x</a></p>',
-    );
-    expect(descriptionArtOf({ description: "Old **text**", description_format: "text", description_html: null })).toBe("<p>Old <strong>text</strong></p>");
-    expect(descriptionArtOf({ description: "<p>Stored</p>", description_format: "art" })).toBe("<p>Stored</p>");
-    expect(descriptionArtOf({})).toBe("");
   });
   it("gives the visible text, and compares by it", () => {
     expect(plainOfArt("<p>One</p><ul><li>a</li></ul>", "description")).toBe("One\n\n- a");

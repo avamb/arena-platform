@@ -203,7 +203,7 @@ export function SessionMovePanel({ orgId, eventId, sessionId, startAt, venueId, 
         <>
           {impact !== null && impact.orders > 0 && (
             <SessionChangeMessage
-              orgId={orgId}
+              orgId={access.can(EVENT_UPDATE_PERMISSION) ? orgId : undefined}
               state={message}
               suggested={impact.default_message}
               onType={(text) => setMessage(typeMessage(text))}

@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/api/endpoints", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/endpoints")>()),
   formatText: vi.fn(),
+  fetchChangeImpact: vi.fn(),
   saveEmailNote: vi.fn(),
   sendEmailNoteTest: vi.fn(),
   listPromoters: vi.fn(async () => ({ promoters: [] })),
@@ -24,9 +25,10 @@ vi.mock("@/lib/api/endpoints", async (importOriginal) => ({
 
 import { EmailNoteSection } from "@/components/EmailNoteSection";
 import { RichTextField } from "@/components/RichTextField";
+import { SessionCancelPanel } from "@/components/SessionCancelPanel";
 import { SessionChangeMessage } from "@/components/SessionChangeMessage";
 import { WizardEventSection } from "@/components/WizardEventSection";
-import { formatText, saveEmailNote, sendEmailNoteTest } from "@/lib/api/endpoints";
+import { fetchChangeImpact, formatText, saveEmailNote, sendEmailNoteTest } from "@/lib/api/endpoints";
 import { ApiError } from "@/lib/api/http";
 import { I18nProvider, type Locale } from "@/lib/i18n";
 import { emptyMessage, typeMessage, withSuggested } from "@/lib/sessionChange";
@@ -374,13 +376,62 @@ describe("the screen Text in the letter", () => {
     expect(el.querySelector('[data-testid="email-note-status"]')?.textContent).toContain("me@example.test");
   });
 
+  it("follows the saved text while nothing was typed, and never overwrites what the person typed", async () => {
+    const { el, rerender } = mount(<EmailNoteSection {...props} note={NOTE} noteFormat="art" />);
+    const box = await ready(el);
+    // The bot (or another tab) changed the text and the list was read again: the editor shows it.
+    rerender(<EmailNoteSection {...props} note="<p>Changed by the bot.</p>" noteFormat="art" />);
+    await until(() => box.textContent === "Changed by the bot.", "the editor follows the saved text");
+    expect(el.querySelector('[data-testid="email-note-unsaved"]')).toBeNull();
+    // The person types: a later change of the saved text must not wipe the typing.
+    await press(action(el, "bulletList"));
+    expect(box.querySelectorAll("li")).toHaveLength(1);
+    rerender(<EmailNoteSection {...props} note="<p>Changed again.</p>" noteFormat="art" />);
+    await act(async () => {
+      await sleep(30);
+    });
+    expect(box.querySelectorAll("li")).toHaveLength(1);
+    expect(box.textContent).toBe("Changed by the bot.");
+    expect(el.querySelector('[data-testid="email-note-unsaved"]')).not.toBeNull();
+  });
+
+  it("clears the unsaved mark after a save even when the server writes the ART a little differently", async () => {
+    vi.mocked(saveEmailNote).mockResolvedValue({} as never);
+    const { el, rerender } = mount(<EmailNoteSection {...props} note={NOTE} noteFormat="art" />);
+    await ready(el);
+    await press(action(el, "bulletList"));
+    expect(el.querySelector('[data-testid="email-note-unsaved"]')).not.toBeNull();
+    await press(el.querySelector('[data-testid="email-note-save"]'));
+    // The list is read again: the server's canonical form is not byte for byte the editor's.
+    rerender(<EmailNoteSection {...props} note="<ul><li><p>Bring a <strong>warm</strong> jacket.</p></li></ul>" noteFormat="art" />);
+    await until(() => el.querySelector('[data-testid="email-note-unsaved"]') === null, "the unsaved mark goes");
+    expect((el.querySelector('[data-testid="email-note-save"]') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("locks the editor while the delete is running", async () => {
+    let finish: (v: never) => void = () => {};
+    vi.mocked(saveEmailNote).mockReturnValue(new Promise((resolve) => (finish = resolve as (v: never) => void)));
+    const { el } = mount(<EmailNoteSection {...props} note={NOTE} noteFormat="art" />);
+    const box = await ready(el);
+    await press(el.querySelector('[data-testid="email-note-delete"]'));
+    await press(el.querySelector('[data-testid="email-note-delete-dialog-submit"]'));
+    expect(saveEmailNote).toHaveBeenCalledWith("o-1", "e-1", null);
+    expect(box.getAttribute("aria-readonly")).toBe("true");
+    expect((el.querySelector('[data-testid="email-note-test"]') as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => {
+      finish({} as never);
+      await sleep(0);
+    });
+    await until(() => el.querySelector('[data-testid="email-note-status"]')?.textContent?.includes("deleted") === true, "deleted");
+  });
+
   it("gives the empty-text refusal and the hourly limit their own lines", async () => {
     vi.mocked(sendEmailNoteTest).mockRejectedValueOnce(new ApiError(422, "event.email_note_empty", "no text"));
     const { el } = mount(<EmailNoteSection {...props} note={null} noteFormat={null} />);
     await ready(el);
     await press(el.querySelector('[data-testid="email-note-test"]'));
-    // An empty editor sends no draft: the server answers for the saved text.
-    expect(sendEmailNoteTest).toHaveBeenLastCalledWith("o-1", "e-1", { locale: "en" });
+    // The letter is what the editor holds: an empty editor is an empty draft, not the saved text.
+    expect(sendEmailNoteTest).toHaveBeenLastCalledWith("o-1", "e-1", { note: "", note_format: "art", locale: "en" });
     expect(el.querySelector('[data-testid="email-note-error"]')?.textContent).toContain("There is no text to send");
     vi.mocked(sendEmailNoteTest).mockRejectedValueOnce(new ApiError(429, "event.email_note_test_rate_limited", "slow down"));
     await press(el.querySelector('[data-testid="email-note-test"]'));
@@ -414,5 +465,40 @@ describe("the screen Text in the letter", () => {
     expect(el.querySelector('[data-testid="email-note-delete"]')).toBeNull();
     expect(action(el, "format")).toBeNull();
     expect(el.textContent).toContain("needs the right to edit the event");
+  });
+});
+
+describe("who may use the Format button in the message of a session change", () => {
+  const impact = {
+    blocked: "",
+    kinds: ["cancel"],
+    orders: 1,
+    tickets: 1,
+    arena_orders: 1,
+    site_orders: 0,
+    no_address: 0,
+    default_message: "The show is canceled.",
+    contact: { complete: true, email: "o@example.test" },
+  };
+
+  function panel(permissions: string[]) {
+    const access = { data: undefined, isLoading: false, error: null, can: (p: string) => permissions.includes(p) };
+    return (
+      <OrgCtx.Provider value={{ orgId: "o-1", orgName: "Org", access }}>
+        <SessionCancelPanel orgId="o-1" eventId="e-1" sessionId="s-1" startAt="2090-06-15T17:00:00Z" timezone="Europe/Madrid" onDone={() => {}} onClose={() => {}} />
+      </OrgCtx.Provider>
+    );
+  }
+
+  it("offers Format with event.update, and not to a role that has session.update only (the route would answer 403)", async () => {
+    vi.mocked(fetchChangeImpact).mockResolvedValue(impact as never);
+    const withRight = mount(panel(["session.update", "event.update"]));
+    await ready(withRight.el);
+    expect(action(withRight.el, "format")).not.toBeNull();
+    const without = mount(panel(["session.update"]));
+    await ready(without.el);
+    expect(action(without.el, "format")).toBeNull();
+    // The message itself is still written: only the helper that needs another right is left out.
+    expect(without.el.querySelector('[data-testid="session-change-message-box"]')).not.toBeNull();
   });
 });

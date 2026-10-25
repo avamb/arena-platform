@@ -30,6 +30,35 @@ func TestNormalizeNotice(t *testing.T) {
 			t.Fatalf("got %q, %v", got, err)
 		}
 	})
+	t.Run("a plain text is never refused for a character an older client sent, it is stripped like Render does", func(t *testing.T) {
+		cases := []struct{ name, in, want string }{
+			{"england flag", "Match \U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F today", "Match \U0001F3F4 today"},
+			{"rtl embedding", "\u202bshalom\u202c now", "shalom now"},
+			{"bidi override", "a\u202eb", "ab"},
+			{"c1 control", "a\u0085b\u009fc", "abc"},
+			{"invisible operator", "a\u2062b", "ab"},
+		}
+		for _, c := range cases {
+			for _, format := range []string{"", "text"} {
+				got, stored, err := NormalizeNotice(c.in, format)
+				if err != nil || got != c.want || stored != "text" {
+					t.Errorf("%s (%q): got %q (%s), %v want %q", c.name, format, got, stored, err, c.want)
+				}
+			}
+			if got, err := NormalizeMessage(c.in); err != nil || got != c.want {
+				t.Errorf("%s: NormalizeMessage got %q, %v want %q", c.name, got, err, c.want)
+			}
+		}
+	})
+	t.Run("a plain text is bounded by its characters, not by the HTML Render makes of it", func(t *testing.T) {
+		// 900 "&" are 4500 characters of HTML, over the 4000 of the profile.
+		if got, _, err := NormalizeNotice(strings.Repeat("&", 900), "text"); err != nil || got != strings.Repeat("&", 900) {
+			t.Errorf("900 ampersands: %v", err)
+		}
+		if _, _, err := NormalizeNotice(strings.Repeat("&", 1000), "text"); err != nil {
+			t.Errorf("1000 ampersands: %v", err)
+		}
+	})
 	t.Run("art is cut to the whitelist of the profile and stored as ART, format art", func(t *testing.T) {
 		got, stored, err := NormalizeNotice(`<div><h3>T</h3><p onclick="x()">A <b>b</b> <i>i</i> <u>u</u></p><ul><li>x</li></ul><img src=x><script>y()</script></div>`, "art")
 		if err != nil || stored != "art" {
@@ -82,11 +111,9 @@ func TestNormalizeNotice(t *testing.T) {
 		if !errors.Is(err, ErrMessageInvalid) || MessageReason(err) != "invalid_format" || errors.Is(err, ErrMessageTooLong) {
 			t.Errorf("unknown format: %v (%q)", err, MessageReason(err))
 		}
-		for _, format := range []string{"art", "text"} {
-			_, _, err = NormalizeNotice("<p>a\u202eb</p>", format)
-			if !errors.Is(err, ErrMessageInvalid) || MessageReason(err) != "control_characters" {
-				t.Errorf("bidi override (%s): %v (%q)", format, err, MessageReason(err))
-			}
+		_, _, err = NormalizeNotice("<p>a\u202eb</p>", "art")
+		if !errors.Is(err, ErrMessageInvalid) || MessageReason(err) != "control_characters" {
+			t.Errorf("bidi override (art): %v (%q)", err, MessageReason(err))
 		}
 		_, _, err = NormalizeNotice(`<p><a href="https://a.example/1">1</a> <a href="https://a.example/2">2</a> <a href="https://a.example/3">3</a> <a href="https://a.example/4">4</a></p>`, "art")
 		if !errors.Is(err, ErrMessageInvalid) || MessageReason(err) != "too_many_links" {

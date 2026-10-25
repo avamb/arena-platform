@@ -93,18 +93,3 @@ export function plainOfArt(art: string, profile: ProfileName): string {
 export function sameVisibleText(a: string, b: string, profile: ProfileName): boolean {
   return plainOfArt(a, profile).trim() === plainOfArt(b, profile).trim();
 }
-
-/** The visible text of a description with the `description_html` / `description_format` fields of an event. */
-export function descriptionArtOf(e: {
-  description?: string | null;
-  description_html?: string | null;
-  description_format?: string | null;
-}): string {
-  // `description_html` is `richtext.Render` of the stored text, safe HTML for display: reading it back through
-  // the description profile gives ART whichever format was stored. Else the raw value with its flag.
-  if (e.description_html !== null && e.description_html !== undefined && e.description_html !== "") {
-    const c = countText(e.description_html, "description");
-    if (c !== null) return c.art;
-  }
-  return artOfStored(e.description, e.description_format, "description");
-}

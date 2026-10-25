@@ -40,6 +40,16 @@ export function EmailNoteSection({ orgId, eventId, note, noteFormat, canEdit }: 
   const queryClient = useQueryClient();
   const saved = artOfStored(note, noteFormat, "email_note");
   const [draft, setDraft] = useState(saved);
+  // The saved text the draft was last in step with, and the draft that was last sent by Save. The draft
+  // follows the saved text while the person has typed nothing since (the bot or another tab changed
+  // it, so Save cannot overwrite their text unseen), and after a Save it takes the server's canonical
+  // form, so the "not saved" mark goes even when the server wrote the ART a byte differently.
+  const [synced, setSynced] = useState(saved);
+  const [sent, setSent] = useState<string | null>(null);
+  if (saved !== synced) {
+    if (draft === synced || draft === sent) setDraft(saved);
+    setSynced(saved);
+  }
   const [busy, setBusy] = useState<Action | null>(null);
   const [failure, setFailure] = useState<{ error: unknown } | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -66,23 +76,34 @@ export function EmailNoteSection({ orgId, eventId, note, noteFormat, canEdit }: 
   const save = () =>
     run("save", async () => {
       await saveEmailNote(orgId, eventId, draft);
+      setSent(draft);
       await refresh();
       return t("emailNote.saved");
     });
 
   const test = () =>
     run("test", async () => {
-      // The draft as it is now; an empty editor sends nothing, and the server answers for the saved text.
-      const answer = await sendEmailNoteTest(orgId, eventId, draft === "" ? { locale } : { note: draft, note_format: "art", locale });
+      // The letter shows what is in the editor, always: an empty editor is an empty draft (the server
+      // answers "no text to send"), never the saved text the person may have just cleared.
+      const answer = await sendEmailNoteTest(orgId, eventId, { note: draft, note_format: "art", locale });
       return t("emailNote.test.sent", { email: answer.to });
     });
 
   const remove = async () => {
-    await saveEmailNote(orgId, eventId, null);
-    await refresh();
-    setDraft("");
-    setAsking(false);
-    setStatus(t("emailNote.deleted"));
+    // Busy while the PATCH runs: nothing can be typed that the delete would then wipe out. A failure
+    // propagates to the dialog, which stays open and says what to do.
+    if (busy !== null) return;
+    setBusy("delete");
+    try {
+      await saveEmailNote(orgId, eventId, null);
+      await refresh();
+      setDraft("");
+      setSynced("");
+      setAsking(false);
+      setStatus(t("emailNote.deleted"));
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (

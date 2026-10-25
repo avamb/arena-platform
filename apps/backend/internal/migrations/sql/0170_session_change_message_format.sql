@@ -19,7 +19,8 @@
 -- change in PostgreSQL 11 and later (no rewrite); lock_timeout bounds the wait
 -- for the ACCESS EXCLUSIVE lock, so a deploy that meets a long transaction
 -- fails fast. The CHECK is added with the column, valid at once: every
--- existing row has just received the constant 'text'.
+-- existing row has just received the constant 'text'. The Down sets the same
+-- timeout before its DROP COLUMN.
 
 -- +goose Up
 SET LOCAL lock_timeout = '5s';
@@ -33,6 +34,8 @@ COMMENT ON COLUMN session_changes.message_format IS
     'How message is stored: text (old plain text) or art (the HTML subset of richtext, profile session_message).';
 
 -- +goose Down
+SET LOCAL lock_timeout = '5s';
+
 -- Dropping the flag would leave ART written since the release without its
 -- marker, and the code before this migration would print the tags as text. So
 -- the Down REFUSES while any journal row holds an art message. Rolling the

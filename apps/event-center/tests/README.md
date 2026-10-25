@@ -185,7 +185,7 @@ The mock smoke ignores `container/**` and the live config ignores it too.
   the editor through `richText(page, testId)` of `liveEnv.ts`; so do the wizard and session-change specs.
 - `container/rich-text-csp.spec.ts` runs against the production image, like the poster spec: the editor loads under
   `style-src 'self'`, a Word and a Google Docs paste is cut to the white list, and not one CSP violation is reported (console
-  and `securitypolicyviolation`).
+  and `securitypolicyviolation`). A third test does the same on the message of a session change (the fixture of `arena-e2e-seed --session-change-op reset`).
 
 ### Poster first (live)
 

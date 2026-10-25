@@ -25108,7 +25108,12 @@ export interface components {
              * @description The organizer's own text for the letter buyers get when this
              *     import MOVES a session that already has paid, live tickets (arena
              *     extension). Plain text, up to 1000 characters (longer is refused
-             *     with 422 `session.change_message_too_long`), may be empty;
+             *     with 422 `session.change_message_too_long`), may be empty. A
+             *     character that is never stored (a direction override, a control
+             *     or tag character) is removed silently, not refused. Any other
+             *     text the server cannot accept is 422
+             *     `session.change_message_invalid` (error pointer
+             *     `/changeMessage`);
              *     ignored when nothing a buyer can see changes. An import that
              *     would move such a session is refused, and writes nothing, with
              *     422 `organization.contact_missing` when the organizer has no
@@ -42903,6 +42908,20 @@ export interface operations {
                     "application/json": components["schemas"]["SessionDeleteResponse"];
                 };
             };
+            /**
+             * @description The optional body is invalid. Possible error codes:
+             *     `session.invalid_json` (the body is not valid JSON),
+             *     `session.invalid_message_format` (`notice.message_format` is
+             *     neither `text` nor `art`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Missing or invalid JWT. */
             401: {
                 headers: {
@@ -42923,6 +42942,26 @@ export interface operations {
             };
             /** @description Session not found (`session.not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The cancellation cannot be made. Possible error codes:
+             *     `organization.contact_missing` (buyers hold tickets and the
+             *     organizer has no contact e-mail),
+             *     `session.change_site_unsupported` (an affected order was sold
+             *     through a website),
+             *     `session.change_message_too_long` (`notice.message` over 1000
+             *     visible characters),
+             *     `session.change_message_invalid` (`notice.message` is ART that
+             *     has forbidden characters or too many links;
+             *     `error.details.reason`). Nothing is deleted.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

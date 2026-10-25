@@ -132,6 +132,15 @@ test.describe("create a draft GA event", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].status).toBe("draft");
     const eventId = rows[0].id;
+    // The main promise of RT-11: the description reached the base as ART, with its format flag,
+    // not as the plain text it would be if `descriptionFormat` were lost on the way.
+    const storedEvent = await request.get(`${env.api_base_url}/v1/events/${eventId}`, { headers: auth("org_admin") });
+    expect(storedEvent.status()).toBe(200);
+    expect(((await storedEvent.json()) as { event: Record<string, unknown> }).event).toMatchObject({
+      description: "<p>A twin-test show</p>",
+      description_format: "art",
+      description_html: "<p>A twin-test show</p>",
+    });
     const sessions = await request.get(`${base}/events/${eventId}/sessions`, { headers: auth("org_admin") });
     const sessionList = ((await sessions.json()) as { sessions: { id: string; status: string; start_at: string }[] }).sessions;
     expect(sessionList).toHaveLength(1);

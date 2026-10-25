@@ -8861,7 +8861,12 @@ type ImportBil24SessionRequest struct {
 	// ChangeMessage The organizer's own text for the letter buyers get when this
 	// import MOVES a session that already has paid, live tickets (arena
 	// extension). Plain text, up to 1000 characters (longer is refused
-	// with 422 `session.change_message_too_long`), may be empty;
+	// with 422 `session.change_message_too_long`), may be empty. A
+	// character that is never stored (a direction override, a control
+	// or tag character) is removed silently, not refused. Any other
+	// text the server cannot accept is 422
+	// `session.change_message_invalid` (error pointer
+	// `/changeMessage`);
 	// ignored when nothing a buyer can see changes. An import that
 	// would move such a session is refused, and writes nothing, with
 	// 422 `organization.contact_missing` when the organizer has no
@@ -9168,7 +9173,12 @@ type ImportEventBundleRequest struct {
 	// ChangeMessage The organizer's own text for the letter buyers get when this
 	// import MOVES a session that already has paid, live tickets (arena
 	// extension). Plain text, up to 1000 characters (longer is refused
-	// with 422 `session.change_message_too_long`), may be empty;
+	// with 422 `session.change_message_too_long`), may be empty. A
+	// character that is never stored (a direction override, a control
+	// or tag character) is removed silently, not refused. Any other
+	// text the server cannot accept is 422
+	// `session.change_message_invalid` (error pointer
+	// `/changeMessage`);
 	// ignored when nothing a buyer can see changes. An import that
 	// would move such a session is refused, and writes nothing, with
 	// 422 `organization.contact_missing` when the organizer has no

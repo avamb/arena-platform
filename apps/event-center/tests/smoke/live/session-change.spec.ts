@@ -54,6 +54,7 @@ interface Rows {
   queued_letters: number;
   org_contact_email: string;
   last_message: string;
+  last_message_format: string;
   paid_orders: number;
 }
 
@@ -181,6 +182,7 @@ test.describe("move or cancel a session (live)", () => {
       queued_letters: 1,
       paid_orders: 1,
       last_message: "<p>We moved the show to Saturday. Sorry for the change.</p>",
+      last_message_format: "art",
     });
     await noA11yViolations(page);
   });
@@ -237,6 +239,7 @@ test.describe("move or cancel a session (live)", () => {
       queued_letters: 1,
       paid_orders: 1,
       last_message: "<p>The show is canceled. We will write to you about the money.</p>",
+      last_message_format: "art",
     });
   });
 

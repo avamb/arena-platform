@@ -92,6 +92,8 @@ test.describe("text in the letter (live)", () => {
       await expect(editor(page).locator("strong")).toHaveText("Bring a warm jacket.");
       await page.getByTestId("email-note-save").click();
       await expect(page.getByTestId("email-note-status")).toContainText("Saved");
+      // The server wrote its own canonical ART, which the editor takes: nothing is "not saved" any more.
+      await expect(page.getByTestId("email-note-unsaved")).toHaveCount(0);
       expect(writes, "exactly one write").toEqual([`PATCH /v1/organizations/${env.org_id}/events/${env.event_id}`]);
       const stored = await storedNote(request);
       expect(stored.email_note_format).toBe("art");

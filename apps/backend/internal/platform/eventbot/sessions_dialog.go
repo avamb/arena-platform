@@ -1033,6 +1033,12 @@ func (b *Bot) sesGoFailed(ctx context.Context, chatID int64, msgID *int, id *Ide
 		dlg.Step = sesStepMsg
 		b.sesShow(ctx, chatID, msgID, id, jwt, from, dlg, b.sesT(loc, "bot.ses.msg_too_long", map[string]any{"N": utf8.RuneCountInString(dlg.Message)}))
 		return
+	case "session.change_message_invalid":
+		// The server refused the text for something other than its length: the
+		// person is sent back to the message step, not to the generic error.
+		dlg.Step = sesStepMsg
+		b.sesShow(ctx, chatID, msgID, id, jwt, from, dlg, b.sesT(loc, "bot.ses.msg_invalid", nil))
+		return
 	}
 	if done > 0 {
 		// Part of a cancel-all went through before the failure.

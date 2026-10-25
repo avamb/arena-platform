@@ -9,6 +9,7 @@ package httpserver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -89,6 +90,24 @@ func TestSessionChangeHTTP_MessageFormat(t *testing.T) {
 		t.Fatalf("journal after text: rows=%d format=%q message=%q", rows, format, msg)
 	}
 
+	// A plain text with what older clients sent (a direction embedding, the
+	// tag characters of the England flag, a C1 control) is accepted and stored
+	// cleaned, never refused. 900 "&" are 4500 characters of HTML and fit too.
+	for i, c := range []struct{ in, want string }{
+		{"Match \U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F moved\u202b!\u202c\u0085", "Match \U0001F3F4 moved!"},
+		{strings.Repeat("&", 900), strings.Repeat("&", 900)},
+	} {
+		notice, _ := json.Marshal(map[string]string{"message": c.in})
+		st, body = move(3+i, string(notice))
+		if st != http.StatusOK {
+			t.Fatalf("PATCH text %d with old characters: %d %v", i, st, body)
+		}
+		msg, format, rows = f.journal()
+		if rows != 3+i || format != "text" || msg != c.want {
+			t.Fatalf("journal after old characters %d: rows=%d format=%q message=%q", i, rows, format, msg)
+		}
+	}
+
 	// The cancellation by DELETE takes the format too, and rejects an unknown one.
 	st, body = f.do(http.MethodDelete, sessionURL, `{"notice":{"message":"<p>Cancelled, <strong>sorry</strong>.</p>","message_format":"nope"}}`)
 	if st != http.StatusBadRequest || scErrCode(body) != "session.invalid_message_format" {
@@ -99,7 +118,7 @@ func TestSessionChangeHTTP_MessageFormat(t *testing.T) {
 		t.Fatalf("DELETE art: %d %v", st, body)
 	}
 	msg, format, rows = f.journal()
-	if rows != 3 || format != "art" || msg != "<p>Cancelled, <strong>sorry</strong>.</p>" {
+	if rows != 5 || format != "art" || msg != "<p>Cancelled, <strong>sorry</strong>.</p>" {
 		t.Fatalf("journal after delete: rows=%d format=%q message=%q", rows, format, msg)
 	}
 }

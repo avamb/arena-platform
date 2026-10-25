@@ -42,7 +42,8 @@ func TestBuildMessage(t *testing.T) {
 			if !strings.Contains(html, "<br>") || !strings.Contains(html, "&lt;two&gt;") || !strings.Contains(html, "<strong>para</strong>") {
 				t.Errorf("format %q: html = %s", format, html)
 			}
-			if !strings.HasPrefix(b.Plain, "Line one\nLine <two>") {
+			// The text part drops the markers the HTML turned into bold.
+			if !strings.HasPrefix(b.Plain, "Line one\nLine <two>") || !strings.HasSuffix(b.Plain, "New para") {
 				t.Errorf("format %q: plain = %q", format, b.Plain)
 			}
 		}

@@ -9,10 +9,15 @@
  *  - HTML pasted the way Word and Google Docs put it on the clipboard (style, class, span, div, table, img,
  *    script, comments) is cut to the white list of the profile BEFORE the browser parses it, so even the
  *    `style` attributes of the paste raise no violation, and what is saved is exactly the white list.
+ *  - the same on the message of a session change (the fixture of `arena-e2e-seed --session-change-op reset`).
  *
  * Run it as the poster CSP spec is run (tests/README.md, "Posters under the real CSP").
  */
 import { expect, test, type Page } from "@playwright/test";
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { liveEnv, person, richText, signInAs } from "../live/liveEnv";
 
 test.describe.configure({ mode: "serial" });
@@ -165,4 +170,48 @@ test("the text in the letter: the editor, the paste and the save under the polic
 
   // Cleanup: the fixture event goes back to having no text.
   await request.patch(`${base}/events/${env.event_id}`, { headers: auth, data: { email_note: null } });
+});
+
+// The message to buyers of a session change (spec 44, RT-11): the same editor in a third screen. The session
+// and its paid order come from the fixture of `arena-e2e-seed --session-change-op reset` (the binary the
+// live harness built into .live); nothing is confirmed, so nothing is written but the organizer's contact.
+const SESSION_EVENT = "fe0000e2-0000-7000-8000-000000000501";
+const SESSION_CANCEL = "fe0000e2-0000-7000-8000-000000000512";
+
+function seedSessions(): void {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const given = process.env.ARENA_E2E_SEED_BIN;
+  const bin = given !== undefined && given !== "" ? given : join(resolve(here, "..", "..", ".."), ".live", process.platform === "win32" ? "arena-e2e-seed.exe" : "arena-e2e-seed");
+  if (!existsSync(bin)) throw new Error(`the seed binary ${bin} is missing: run through the live harness`);
+  const r = spawnSync(bin, ["--session-change-op", "reset"], { cwd: resolve(here, "..", "..", "..", "..", ".."), env: process.env, encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`arena-e2e-seed --session-change-op reset failed: ${r.stderr}`);
+}
+
+test("the message of a session change: the editor and the paste under the policy", async ({ page, request }) => {
+  seedSessions();
+  const put = await request.put(`${base}/events/${SESSION_EVENT}/contact`, { headers: auth, data: { email: "csp-contact@example.test" } });
+  expect(put.status()).toBe(200);
+  const csp = await watchCsp(page);
+  await signInAs(page, person(env, "org_admin"));
+  await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`), { timeout: 20_000 });
+  await page.goto(`/o/${env.org_id}/events/${SESSION_EVENT}/sessions/${SESSION_CANCEL}`);
+  await page.getByTestId("session-cancel-open").click();
+  const box = richText(page, "session-change-message");
+  await expect(box).toBeVisible({ timeout: 20_000 });
+  expect(await page.locator("style").count()).toBe(0);
+
+  await box.click();
+  await box.press("Control+A");
+  await box.press("Delete");
+  await pasteHtml(page, "session-change-message", GOOGLE_DOCS, "Google bold and plain One Two");
+  await expect(box.locator("strong")).toHaveText("Google bold");
+  await expect(box.locator("li")).toHaveCount(2);
+  const html = await box.innerHTML();
+  expect(html).not.toMatch(/style=|<span|<b |<div|class=/);
+  expect(await page.getByTestId("session-change-message").locator("[style]").count()).toBe(0);
+  // The editor of this profile has no heading or quote button.
+  await expect(page.getByTestId("session-change-message").locator('button[data-action="h3"]')).toHaveCount(0);
+  expect(await csp.all()).toEqual([]);
+
+  seedSessions(); // the fixture goes back to how it was
 });

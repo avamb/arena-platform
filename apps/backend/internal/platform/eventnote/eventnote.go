@@ -86,9 +86,12 @@ func BuildMessage(message, format string) Block {
 	if strings.TrimSpace(html) == "" {
 		return Block{}
 	}
-	plain := message
+	var plain string
 	if format == richtext.FormatART {
 		plain = richtext.PlainText(message)
+	} else {
+		// The HTML shows **bold** as bold, so the text part drops the markers too.
+		plain = richtext.PlainText(richtext.FromLegacy(message, richtext.ProfileSessionMessage))
 	}
 	return Block{HTML: template.HTML(emailStyle.Replace(html)), Plain: strings.TrimSpace(plain)} //nolint:gosec // richtext.Render output is sanitised
 }

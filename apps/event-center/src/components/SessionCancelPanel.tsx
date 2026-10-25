@@ -117,7 +117,7 @@ export function SessionCancelPanel({ orgId, eventId, sessionId, startAt, timezon
           <DryRunBody result={result} />
           {!blocked && impact.orders > 0 && (
             <SessionChangeMessage
-              orgId={orgId}
+              orgId={access.can(EVENT_UPDATE_PERMISSION) ? orgId : undefined}
               state={message}
               suggested={impact.default_message}
               onType={(text) => setMessage(typeMessage(text))}

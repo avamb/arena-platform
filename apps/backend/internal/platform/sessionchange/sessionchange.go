@@ -163,22 +163,24 @@ func MessageReason(err error) string {
 //   - text: the plain text exactly as before (trimmed, line breaks unified,
 //     control characters other than newline and tab dropped, at most
 //     MaxMessageRunes characters), stored as it is with the format "text", so
-//     the bot's journal rows are the ones it always wrote. It is still passed
-//     through richtext.Normalize, only to apply the profile's rules (the
-//     visible limit, forbidden characters such as a direction override): the
-//     letters read it through richtext.Render, which converts it on the fly.
+//     the bot's journal rows are the ones it always wrote. A character that
+//     richtext.Render drops (a direction override, a tag character of the
+//     England flag, a C1 control) is stripped silently, never refused: older
+//     clients sent them. The letters read the text through richtext.Render,
+//     which converts it on the fly.
 //
-// Both ways, "too long" is ErrMessageTooLong and any other refusal a
-// *MessageError with the short word of richtext. An empty text stays empty.
+// "Too long" is ErrMessageTooLong. For art any other refusal is a
+// *MessageError with the short word of richtext; a text is only ever too long.
+// An empty text stays empty.
 func NormalizeNotice(raw, format string) (stored, storedFormat string, err error) {
 	switch format {
 	case "", richtext.FormatText:
+		// Never refused for a character an older client sent: cleanPlainMessage
+		// strips what Render strips. The length of the HTML Render makes of it
+		// is not checked either (900 "&" are 900 characters of text, not 4500).
 		plain := strings.TrimSpace(cleanPlainMessage(raw))
 		if utf8.RuneCountInString(plain) > MaxMessageRunes {
 			return "", "", ErrMessageTooLong
-		}
-		if _, err := richtext.Normalize(plain, richtext.FormatText, richtext.ProfileSessionMessage); err != nil {
-			return "", "", noticeError(err)
 		}
 		return plain, richtext.FormatText, nil
 	case richtext.FormatART:
@@ -202,7 +204,7 @@ func noticeError(err error) error {
 }
 
 // cleanPlainMessage unifies line breaks and drops control characters other
-// than newline and tab.
+// than newline and tab, and strips what richtext.Render strips.
 func cleanPlainMessage(raw string) string {
 	raw = strings.ReplaceAll(raw, "\r\n", "\n")
 	raw = strings.ReplaceAll(raw, "\r", "\n")
@@ -212,7 +214,7 @@ func cleanPlainMessage(raw string) string {
 			b.WriteRune(r)
 		}
 	}
-	return b.String()
+	return richtext.StripRefused(b.String())
 }
 
 // Contact is who a buyer writes to when the new date does not suit them.
