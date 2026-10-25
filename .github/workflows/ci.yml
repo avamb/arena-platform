@@ -405,6 +405,47 @@ jobs:
           done
 
   # ─────────────────────────────────────────────────────────────────
+  # Job: Rich editor — the one editor library of every interface
+  # (apps/rich-editor, spec 44 RT-10). Tiptap core, ESM for the web event
+  # center, IIFE for WordPress.
+  #
+  # install → type-check → build → vitest. The tests run after the build on
+  # purpose: tests/build.test.ts checks the built files (no @import in the
+  # CSS, no eval and no new Function in the JS, the global ArenaRichEditor),
+  # and tests/corpus.test.ts reads the Go corpus
+  # apps/backend/internal/platform/richtext/testdata/richtext_legacy.json.
+  # ─────────────────────────────────────────────────────────────────
+  rich-editor-build:
+    name: Rich editor (unit / build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/rich-editor/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix apps/rich-editor ci
+
+      - name: Type-check
+        run: npm --prefix apps/rich-editor run type-check
+
+      - name: Production build (ESM and IIFE)
+        run: npm --prefix apps/rich-editor run build
+
+      - name: Unit tests (vitest)
+        run: npm --prefix apps/rich-editor test
+
+  # ─────────────────────────────────────────────────────────────────
   # Job: Event center — the organizers' web event center
   # (apps/event-center, events.arenasoldout.com,
   # 08_architecture/37_web_event_center_ru.md).

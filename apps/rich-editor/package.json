@@ -1,0 +1,47 @@
+{
+  "name": "@arena/rich-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Arena rich-text editor: one Tiptap-based editor library for every interface (spec 44, RT-10).",
+  "main": "./dist/rich-editor.js",
+  "module": "./dist/rich-editor.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/rich-editor.js"
+    },
+    "./rich-editor.css": "./dist/rich-editor.css",
+    "./iife": "./dist/arena-rich-editor.iife.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "scripts": {
+    "build": "vite build && vite build --mode iife && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@tiptap/core": "2.27.3",
+    "@tiptap/extension-blockquote": "2.27.3",
+    "@tiptap/extension-link": "2.27.3",
+    "@tiptap/extension-list-item": "2.27.3",
+    "@tiptap/extension-underline": "2.27.3",
+    "@tiptap/pm": "2.27.3",
+    "@tiptap/starter-kit": "2.27.3"
+  },
+  "devDependencies": {
+    "@types/jsdom": "21.1.7",
+    "@types/node": "22.19.1",
+    "jsdom": "26.1.0",
+    "typescript": "5.9.3",
+    "vite": "5.4.21",
+    "vitest": "2.1.9"
+  }
+}

@@ -1,0 +1,327 @@
+/*
+ * @arena/rich-editor styles. Shipped as dist/rich-editor.css because the
+ * editor runs with injectCSS off (strict CSP: no injected <style>, no inline
+ * style attributes). No @import, no remote fonts: the font is inherited.
+ * Theme it with the --arena-re-* custom properties on .arena-re or an ancestor.
+ */
+
+.arena-re {
+  --arena-re-border: #c4c9d0;
+  --arena-re-border-focus: #2563eb;
+  --arena-re-bg: #fff;
+  --arena-re-fg: #1a1d21;
+  --arena-re-muted: #5b6370;
+  --arena-re-toolbar-bg: #f4f5f7;
+  --arena-re-active-bg: #dbe7ff;
+  --arena-re-danger: #b42318;
+  --arena-re-radius: 6px;
+  --arena-re-min-height: 10rem;
+
+  box-sizing: border-box;
+  border: 1px solid var(--arena-re-border);
+  border-radius: var(--arena-re-radius);
+  background: var(--arena-re-bg);
+  color: var(--arena-re-fg);
+  font: inherit;
+  position: relative;
+}
+
+.arena-re *,
+.arena-re *::before,
+.arena-re *::after {
+  box-sizing: border-box;
+}
+
+.arena-re:focus-within {
+  border-color: var(--arena-re-border-focus);
+  box-shadow: 0 0 0 1px var(--arena-re-border-focus);
+}
+
+.arena-re[hidden],
+.arena-re [hidden] {
+  display: none !important;
+}
+
+/* ---- toolbar ---- */
+
+.arena-re__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-bottom: 1px solid var(--arena-re-border);
+  background: var(--arena-re-toolbar-bg);
+  border-start-start-radius: var(--arena-re-radius);
+  border-start-end-radius: var(--arena-re-radius);
+}
+
+.arena-re__sep {
+  align-self: stretch;
+  width: 1px;
+  margin-inline: 4px;
+  background: var(--arena-re-border);
+}
+
+.arena-re__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.arena-re__btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.arena-re__btn:focus-visible,
+.arena-re__field input:focus-visible {
+  outline: 2px solid var(--arena-re-border-focus);
+  outline-offset: 1px;
+}
+
+.arena-re__btn[aria-pressed='true'] {
+  background: var(--arena-re-active-bg);
+  border-color: var(--arena-re-border-focus);
+}
+
+.arena-re__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.arena-re__btn--primary {
+  background: var(--arena-re-border-focus);
+  color: #fff;
+}
+
+.arena-re__btn--primary:hover:not(:disabled) {
+  background: #1d4fc4;
+}
+
+.arena-re__glyph {
+  font-weight: 700;
+  font-size: 0.8125rem;
+}
+
+.arena-re__icon {
+  flex: none;
+}
+
+/* Undo and redo point the other way in right-to-left text. */
+.arena-re[dir='rtl'] .arena-re__btn--undo .arena-re__icon,
+.arena-re[dir='rtl'] .arena-re__btn--redo .arena-re__icon {
+  transform: scaleX(-1);
+}
+
+.arena-re__btn--format[aria-busy='true'] .arena-re__icon {
+  animation: arena-re-pulse 1s ease-in-out infinite;
+}
+
+@keyframes arena-re-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arena-re__btn--format[aria-busy='true'] .arena-re__icon {
+    animation: none;
+  }
+}
+
+/* ---- link panel ---- */
+
+.arena-re__link {
+  padding: 8px;
+  border-bottom: 1px solid var(--arena-re-border);
+  background: var(--arena-re-bg);
+}
+
+.arena-re__link-title {
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.arena-re__field {
+  margin-bottom: 8px;
+}
+
+.arena-re__field label {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 0.8125rem;
+}
+
+.arena-re__field input {
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 4px 8px;
+  border: 1px solid var(--arena-re-border);
+  border-radius: 4px;
+  font: inherit;
+  color: inherit;
+  background: var(--arena-re-bg);
+  text-align: start;
+}
+
+.arena-re__field input[aria-invalid='true'] {
+  border-color: var(--arena-re-danger);
+}
+
+.arena-re__hint {
+  margin-top: 2px;
+  font-size: 0.75rem;
+  color: var(--arena-re-muted);
+}
+
+.arena-re__error {
+  color: var(--arena-re-danger);
+  font-size: 0.8125rem;
+}
+
+.arena-re__error:empty {
+  display: none;
+}
+
+.arena-re__link-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.arena-re__link-actions .arena-re__btn {
+  border-color: var(--arena-re-border);
+}
+
+/* ---- editing area (ProseMirror) ---- */
+
+.arena-re__body {
+  min-height: var(--arena-re-min-height);
+}
+
+.arena-re .ProseMirror {
+  position: relative;
+  min-height: var(--arena-re-min-height);
+  padding: 8px 12px;
+  outline: none;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  white-space: break-spaces;
+  font-variant-ligatures: none;
+  font-feature-settings: 'liga' 0;
+  text-align: start;
+}
+
+.arena-re .ProseMirror p,
+.arena-re .ProseMirror ul,
+.arena-re .ProseMirror ol,
+.arena-re .ProseMirror blockquote,
+.arena-re .ProseMirror h3,
+.arena-re .ProseMirror h4 {
+  margin: 0 0 0.75em;
+}
+
+.arena-re .ProseMirror > :last-child {
+  margin-bottom: 0;
+}
+
+.arena-re .ProseMirror ul,
+.arena-re .ProseMirror ol {
+  padding-inline-start: 1.5rem;
+}
+
+.arena-re .ProseMirror li {
+  position: relative;
+}
+
+.arena-re .ProseMirror li > p {
+  margin-bottom: 0.25em;
+}
+
+.arena-re .ProseMirror li > ul,
+.arena-re .ProseMirror li > ol {
+  margin: 0.25em 0 0;
+}
+
+.arena-re .ProseMirror h3 {
+  font-size: 1.25em;
+  line-height: 1.3;
+}
+
+.arena-re .ProseMirror h4 {
+  font-size: 1.1em;
+  line-height: 1.3;
+}
+
+.arena-re .ProseMirror blockquote {
+  padding-inline-start: 1rem;
+  border-inline-start: 3px solid var(--arena-re-border);
+  color: var(--arena-re-muted);
+}
+
+.arena-re .ProseMirror a {
+  color: var(--arena-re-border-focus);
+  text-decoration: underline;
+  cursor: text;
+}
+
+.arena-re .ProseMirror-selectednode {
+  outline: 2px solid var(--arena-re-border-focus);
+}
+
+.arena-re .ProseMirror-hideselection *::selection {
+  background: transparent;
+}
+
+.arena-re .ProseMirror-hideselection {
+  caret-color: transparent;
+}
+
+.arena-re img.ProseMirror-separator {
+  display: inline !important;
+  border: none !important;
+  margin: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* ---- counter and status ---- */
+
+.arena-re__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 4px 12px 6px;
+  border-top: 1px solid var(--arena-re-border);
+  font-size: 0.8125rem;
+  color: var(--arena-re-muted);
+}
+
+.arena-re__counter--over {
+  color: var(--arena-re-danger);
+  font-weight: 600;
+}
+
+.arena-re__status:empty {
+  display: none;
+}
+
+@media (forced-colors: active) {
+  .arena-re__btn[aria-pressed='true'] {
+    outline: 2px solid Highlight;
+  }
+}
