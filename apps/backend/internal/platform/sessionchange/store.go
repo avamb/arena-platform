@@ -21,7 +21,7 @@ type Record struct {
 	New       State
 	Message   string
 	// MessageFormat is how Message is stored: "art" or "text" (every row written
-	// before migration 0169).
+	// before migration 0170).
 	MessageFormat string
 	CreatedAt     time.Time
 }

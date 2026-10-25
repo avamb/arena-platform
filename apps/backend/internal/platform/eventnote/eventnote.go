@@ -72,7 +72,7 @@ func Build(note, format string) Block {
 // session and the format it was stored in (session_changes.message_format)
 // into a Block, with the profile of that message (richtext.ProfileSessionMessage)
 // and the same inline styles as Build. A format that is not "art" (including
-// the empty one of a row written before migration 0169) means the old plain
+// the empty one of a row written before migration 0170) means the old plain
 // text. It never fails and a blank message gives the zero Block.
 func BuildMessage(message, format string) Block {
 	message = strings.TrimSpace(message)

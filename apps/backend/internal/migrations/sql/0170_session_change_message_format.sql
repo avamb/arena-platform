@@ -1,4 +1,4 @@
--- 0169_session_change_message_format.sql — RT-11 of the rich-text spec
+-- 0170_session_change_message_format.sql — RT-11 of the rich-text spec
 -- (08_architecture/44): the format flag of the organizer's message to buyers
 -- about a moved or cancelled session.
 --
@@ -42,7 +42,7 @@ COMMENT ON COLUMN session_changes.message_format IS
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM session_changes WHERE message_format = 'art') THEN
-        RAISE EXCEPTION '0169 down refused: session_changes hold rich text messages (format art); convert them to plain text and set the flag to text first, see the comment of this migration';
+        RAISE EXCEPTION '0170 down refused: session_changes hold rich text messages (format art); convert them to plain text and set the flag to text first, see the comment of this migration';
     END IF;
 END
 $$;

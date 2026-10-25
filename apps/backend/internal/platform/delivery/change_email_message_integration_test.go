@@ -5,7 +5,7 @@
 // (session_changes.message_format) and the letters print it through
 // richtext.Render with the session_message profile, formatted in the HTML part
 // and as plain words in the text part. A journal row written before migration
-// 0169 (format 'text') still prints as before.
+// 0170 (format 'text') still prints as before.
 package delivery
 
 import (

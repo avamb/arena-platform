@@ -1,6 +1,6 @@
 //go:build integration
 
-// session_change_message_format_0169_integration_test.go — migration 0169
+// session_change_message_format_0170_integration_test.go — migration 0170
 // (spec 44, RT-11) on a migrated database: session_changes.message_format
 // defaults to 'text', accepts only 'text' and 'art', and the Down refuses
 // while any journal row holds an art message. Everything runs in a
@@ -16,10 +16,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// guard0169 is the DO block of the Down section of 0169.
-func guard0169(t *testing.T) string {
+// guard0170 is the DO block of the Down section of 0170.
+func guard0170(t *testing.T) string {
 	t.Helper()
-	body, err := os.ReadFile("sql/0169_session_change_message_format.sql")
+	body, err := os.ReadFile("sql/0170_session_change_message_format.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func guard0169(t *testing.T) string {
 	return block
 }
 
-func TestMigration0169_MessageFormatDefaultCheckAndDownGuard(t *testing.T) {
+func TestMigration0170_MessageFormatDefaultCheckAndDownGuard(t *testing.T) {
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, integrationDSN(t))
 	if err != nil {
@@ -56,10 +56,10 @@ func TestMigration0169_MessageFormatDefaultCheckAndDownGuard(t *testing.T) {
 		t.Skipf("no organization in the database (seed it first): %v", err)
 	}
 	var event, venue, session string
-	if err := tx.QueryRow(ctx, `INSERT INTO events (org_id, name) VALUES ($1, 'mig 0169') RETURNING id::text`, org).Scan(&event); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO events (org_id, name) VALUES ($1, 'mig 0170') RETURNING id::text`, org).Scan(&event); err != nil {
 		t.Fatal(err)
 	}
-	if err := tx.QueryRow(ctx, `INSERT INTO venues (org_id, name, timezone) VALUES ($1, 'mig 0169', 'UTC') RETURNING id::text`, org).Scan(&venue); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO venues (org_id, name, timezone) VALUES ($1, 'mig 0170', 'UTC') RETURNING id::text`, org).Scan(&venue); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.QueryRow(ctx, `INSERT INTO sessions (event_id, venue_id, start_at, end_at, capacity_total, status, currency, currency_source)
@@ -95,11 +95,11 @@ func TestMigration0169_MessageFormatDefaultCheckAndDownGuard(t *testing.T) {
 	}
 
 	// The Down refuses while an art row exists ...
-	guard := guard0169(t)
+	guard := guard0170(t)
 	if _, err := tx.Exec(ctx, "SAVEPOINT down"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tx.Exec(ctx, guard); err == nil || !strings.Contains(err.Error(), "0169 down refused") {
+	if _, err := tx.Exec(ctx, guard); err == nil || !strings.Contains(err.Error(), "0170 down refused") {
 		t.Fatalf("the Down guard did not refuse with an art row: %v", err)
 	}
 	if _, err := tx.Exec(ctx, "ROLLBACK TO SAVEPOINT down"); err != nil {
