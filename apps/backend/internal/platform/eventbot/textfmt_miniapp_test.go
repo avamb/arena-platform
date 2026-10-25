@@ -3,6 +3,7 @@ package eventbot
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -87,14 +88,14 @@ func TestMiniappRow_FlagOnShowsACallbackButtonAndAsksForNoCode(t *testing.T) {
 	b, calls, _ := miniappTestBot(t, true, http.StatusCreated, miniappTestLink)
 	want := map[string]string{"en": "✏️ Edit in the editor", "ru": "✏️ Править в редакторе", "es": "✏️ Editar en el editor"}
 	for _, loc := range []string{"en", "ru", "es"} {
-		row := b.miniappRow(42, loc, tfKindDescription, ev)
+		row := b.miniappRow(42, nil, loc, tfKindDescription, ev)
 		if len(row) != 1 || row[0].CallbackData != "tf:m" || row[0].WebApp != nil || row[0].URL != "" {
 			t.Fatalf("%s: preview row = %+v", loc, row)
 		}
 		if row[0].Text != want[loc] {
 			t.Errorf("%s: label %q, want %q", loc, row[0].Text, want[loc])
 		}
-		note := b.miniappRow(42, loc, tfKindEmailNote, ev)
+		note := b.miniappRow(42, nil, loc, tfKindEmailNote, ev)
 		if len(note) != 1 || note[0].CallbackData != "tf:m:"+ev || len(note[0].CallbackData) > 64 || note[0].WebApp != nil {
 			t.Fatalf("%s: note row = %+v", loc, note)
 		}
@@ -127,10 +128,10 @@ func TestMiniappRow_FlagOnShowsACallbackButtonAndAsksForNoCode(t *testing.T) {
 // buttons of before.
 func TestMiniappRow_FlagOffShowsNothingAndAsksForNoCode(t *testing.T) {
 	b, calls, _ := miniappTestBot(t, false, http.StatusCreated, miniappTestLink)
-	if row := b.miniappRow(42, "en", tfKindDescription, uuid.NewString()); row != nil {
+	if row := b.miniappRow(42, nil, "en", tfKindDescription, uuid.NewString()); row != nil {
 		t.Fatalf("row with the flag off: %+v", row)
 	}
-	if row := b.miniappRow(42, "en", tfKindEmailNote, uuid.NewString()); row != nil {
+	if row := b.miniappRow(42, nil, "en", tfKindEmailNote, uuid.NewString()); row != nil {
 		t.Fatalf("note row with the flag off: %+v", row)
 	}
 	if calls.Load() != 0 {
@@ -147,16 +148,16 @@ func TestMiniappRow_FlagOffShowsNothingAndAsksForNoCode(t *testing.T) {
 func TestMiniappRow_NoButtonWhereItCannotWork(t *testing.T) {
 	ev := uuid.NewString()
 	b, calls, _ := miniappTestBot(t, true, http.StatusCreated, miniappTestLink)
-	if row := b.miniappRow(-100123, "en", tfKindDescription, ev); row != nil {
+	if row := b.miniappRow(-100123, nil, "en", tfKindDescription, ev); row != nil {
 		t.Errorf("group chat: %+v", row)
 	}
-	if row := b.miniappRow(42, "en", tfKindDescription, ""); row != nil {
+	if row := b.miniappRow(42, nil, "en", tfKindDescription, ""); row != nil {
 		t.Errorf("create wizard, no event yet: %+v", row)
 	}
-	if row := b.miniappRow(42, "en", tfKindDescription, "not-a-uuid"); row != nil {
+	if row := b.miniappRow(42, nil, "en", tfKindDescription, "not-a-uuid"); row != nil {
 		t.Errorf("bad event id: %+v", row)
 	}
-	if row := b.miniappRow(42, "en", tfKind("other"), ev); row != nil {
+	if row := b.miniappRow(42, nil, "en", tfKind("other"), ev); row != nil {
 		t.Errorf("unknown kind: %+v", row)
 	}
 	if calls.Load() != 0 {
@@ -282,6 +283,58 @@ func TestMiniappPress_RefusalsLeaveTheScreenAndSayWhy(t *testing.T) {
 	}
 }
 
+// A platform superadmin gets no button (arena-api refuses them a code by design,
+// WL-1), and a press that still arrives (an old screen) is answered with where to
+// edit, without asking for a code.
+func TestMiniappSuperadmin_NoButtonAndAClearAnswerOnAPress(t *testing.T) {
+	ev := uuid.NewString()
+	admin := &Identity{Superadmin: true, Current: &Membership{Role: membershipRoleOwner}}
+	b, calls, stub := miniappPressBot(t, true, http.StatusCreated, miniappTestLink)
+	for _, loc := range []string{"en", "ru", "es"} {
+		if row := b.miniappRow(42, admin, loc, tfKindDescription, ev); row != nil {
+			t.Errorf("%s: a superadmin got the button: %+v", loc, row)
+		}
+		if row := b.miniappRow(42, admin, loc, tfKindEmailNote, ev); row != nil {
+			t.Errorf("%s: a superadmin got the letter button: %+v", loc, row)
+		}
+		if row := b.miniappRow(42, ownerIdentity(), loc, tfKindDescription, ev); len(row) != 1 {
+			t.Errorf("%s: an organizer lost the button: %+v", loc, row)
+		}
+	}
+	ctx := withFeedAction(context.Background(), pressAction(noteScreenPress(ev)))
+	b.tfMiniappCallback(ctx, 42, 10, &models.User{ID: 42}, admin, "jwt", []string{"m", ev})
+	if calls.Load() != 0 {
+		t.Errorf("%d codes asked for a superadmin", calls.Load())
+	}
+	got := stub.all()
+	want := b.texts.T("en", "bot.tf.edit_superadmin", nil)
+	if len(got) != 1 || got[0].method != "sendMessage" || got[0].text != want || got[0].markup != "" {
+		t.Errorf("Bot API calls %+v, want one plain message %q", got, want)
+	}
+}
+
+// When arena-api itself refuses the code with bot.web_login_superadmin (the
+// button was shown, the role came later), the answer is the superadmin text,
+// not the "try again in a minute" one. Any other refusal keeps the old text.
+func TestMiniappPress_ApiSuperadminRefusalHasItsOwnText(t *testing.T) {
+	ev := uuid.NewString()
+	b, calls, stub := miniappPressBot(t, true, http.StatusForbidden, "")
+	ctx := withFeedAction(context.Background(), pressAction(noteScreenPress(ev)))
+	b.tfMiniappCallback(ctx, 42, 10, &models.User{ID: 42}, ownerIdentity(), "jwt", []string{"m", ev})
+	got := stub.all()
+	if calls.Load() != 1 || len(got) != 1 || got[0].text != b.texts.T("en", "bot.tf.edit_superadmin", nil) {
+		t.Errorf("codes %d, Bot API calls %+v", calls.Load(), got)
+	}
+	if k := miniappLinkErrorKey(&APIError{Status: 403, Code: "bot.web_login_superadmin"}); k != "bot.tf.edit_superadmin" {
+		t.Errorf("superadmin key = %q", k)
+	}
+	for _, err := range []error{&APIError{Status: 503, Code: "bot.web_login_not_configured"}, &APIError{Status: 500}, errors.New("boom")} {
+		if k := miniappLinkErrorKey(err); k != "bot.tf.edit_failed" {
+			t.Errorf("%v: key = %q, want the generic one", err, k)
+		}
+	}
+}
+
 // Only the people who may change event texts get a code, and a press whose
 // keyboard is not in the update still gets the link, in a message of its own.
 func TestMiniappPress_RightsAndAMessageWithoutItsKeyboard(t *testing.T) {
@@ -392,7 +445,7 @@ func TestMiniappKeys_NoteAndRefusalInEveryLanguage(t *testing.T) {
 		t.Fatal(err)
 	}
 	texts := NewTexts(bundle)
-	for _, key := range []string{"bot.tf.edit_note", "bot.tf.edit_failed"} {
+	for _, key := range []string{"bot.tf.edit_note", "bot.tf.edit_failed", "bot.tf.edit_superadmin"} {
 		listed := false
 		for _, k := range MessageKeys {
 			listed = listed || k == key

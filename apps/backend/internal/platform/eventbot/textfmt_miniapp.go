@@ -38,6 +38,7 @@ package eventbot
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"unicode/utf16"
@@ -60,9 +61,14 @@ const miniappCallback = "tf:m"
 // when there is none to show. It asks arena-api for nothing: the code is drawn
 // when the button is pressed (tfMiniappCallback). chatID is the chat the screen
 // goes to; eventID is the event whose text it is (for the preview the data
-// stays "tf:m" and the dialog knows the event).
-func (b *Bot) miniappRow(chatID int64, loc string, kind tfKind, eventID string) []models.InlineKeyboardButton {
+// stays "tf:m" and the dialog knows the event). A platform superadmin gets no
+// button: arena-api refuses a sign-in code to that role (WL-1) and they edit
+// texts in the web event center or the admin console.
+func (b *Bot) miniappRow(chatID int64, id *Identity, loc string, kind tfKind, eventID string) []models.InlineKeyboardButton {
 	if !b.miniappEditor || chatID <= 0 || (kind != tfKindDescription && kind != tfKindEmailNote) {
+		return nil
+	}
+	if id != nil && id.Superadmin {
 		return nil
 	}
 	if _, err := uuid.Parse(eventID); err != nil {
@@ -104,7 +110,13 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 		kind, eventID = tfKindEmailNote, parts[1]
 		data += ":" + parts[1]
 	}
-	if len(b.miniappRow(chatID, loc, kind, eventID)) == 0 {
+	if id.Superadmin {
+		// A screen drawn before the person got the role, or an old button: say
+		// where to edit instead of a generic failure.
+		b.send(ctx, chatID, b.texts.T(loc, "bot.tf.edit_superadmin", nil), nil)
+		return true
+	}
+	if len(b.miniappRow(chatID, id, loc, kind, eventID)) == 0 {
 		// The flag was turned off after the screen was drawn, or the press is
 		// not one the screen can make.
 		b.send(ctx, chatID, b.texts.T(loc, "bot.tf.edit_failed", nil), nil)
@@ -124,7 +136,7 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 	if err != nil {
 		// A platform superadmin, an unlinked account, an address that is not set.
 		b.logger.Warn("eventbot: mini app link failed", slog.String("kind", string(kind)), slog.String("error", routeOnly(err)))
-		b.send(ctx, chatID, b.texts.T(loc, "bot.tf.edit_failed", nil), nil)
+		b.send(ctx, chatID, b.texts.T(loc, miniappLinkErrorKey(err), nil), nil)
 		return true
 	}
 	if !miniappURLOK(link.URL) {
@@ -137,6 +149,17 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 	b.tfEditorMark(ctx, from, id, jwt, kind, eventID, len(parts) == 1)
 	b.miniappOpen(ctx, chatID, msgID, loc, data, link.URL)
 	return true
+}
+
+// miniappLinkErrorKey turns a refusal of POST /v1/bot/web-login-codes into the
+// text the person sees. The platform superadmin is the one refusal that needs
+// its own words: retrying never helps, and the text says where to edit.
+func miniappLinkErrorKey(err error) string {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.Code == "bot.web_login_superadmin" {
+		return "bot.tf.edit_superadmin"
+	}
+	return "bot.tf.edit_failed"
 }
 
 // miniappOpen puts the link into the pressed message: the button with data
