@@ -142,6 +142,7 @@ func TestLoadFor_SharedProductionRulesApplyToEveryRole(t *testing.T) {
 		{"allpay seam", "ALLPAY_API_BASE_URL", "http://stub:12113"},
 		{"brevo host", "BREVO_API_BASE_URL", "https://brevo.attacker.example"},
 		{"llm host", "POSTER_LLM_BASE_URL", "https://llm.attacker.example"},
+		{"gemini host", "POSTER_GEMINI_BASE_URL", "https://gemini.attacker.example"},
 		{"event center link", "EVENT_CENTER_PUBLIC_URL", "http://ec.example.com"},
 	}
 	for role, own := range roleMinimum {
@@ -272,6 +273,7 @@ func TestLoadFor_DefaultAPIHostsAreAccepted(t *testing.T) {
 	setEnv(t, roleMinimum[RoleBot])
 	t.Setenv("BREVO_API_BASE_URL", DefaultBrevoAPIBaseURL+"/")
 	t.Setenv("POSTER_LLM_BASE_URL", DefaultPosterLLMBaseURL)
+	t.Setenv("POSTER_GEMINI_BASE_URL", DefaultPosterGeminiBaseURL+"/")
 	if _, err := LoadFor(RoleBot); err != nil {
 		t.Fatalf("the default API hosts must be accepted: %v", err)
 	}

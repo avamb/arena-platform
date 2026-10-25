@@ -549,6 +549,13 @@ func scanGoFilesForCamelCaseJSONTags(t *testing.T, root string) []string {
 		if strings.HasSuffix(normalized, "internal/platform/customerimport/parsers.go") {
 			return nil
 		}
+		// posterread/gemini.go speaks Google's generateContent wire format
+		// (systemInstruction, inlineData, responseMimeType, x-goog names) — a
+		// third-party format like Brevo above. File-scoped: the Anthropic
+		// reader and the rest of the package stay under the guardrail.
+		if strings.HasSuffix(normalized, "internal/platform/posterread/gemini.go") {
+			return nil
+		}
 		// oapi-codegen output mirrors external wire format schemas (including
 		// MACS camelCase) and is exempt — the guardrail protects hand-written
 		// handler code, not auto-generated type bindings.

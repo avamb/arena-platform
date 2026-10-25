@@ -293,6 +293,10 @@ func (h *Handler) takeSlots(userID string, orgID uuid.UUID) bool {
 	return true
 }
 
+// ModelErrToolChoiceRejected is the short word logged as model_error when the
+// model refused the forced tool_choice of the request.
+const ModelErrToolChoiceRejected = "model_rejects_forced_tool_choice"
+
 // classify turns an error of the model call into the reason of the fallback
 // and a short word for the log. The error text itself is not logged: it may
 // quote the model's answer.
@@ -306,6 +310,9 @@ func classify(err error) (textformat.Reason, string) {
 	}
 	var api *textformat.APIError
 	if errors.As(err, &api) {
+		if api.ToolChoiceRejected {
+			return textformat.ReasonModelError, ModelErrToolChoiceRejected
+		}
 		return textformat.ReasonModelError, api.Error()
 	}
 	switch {
@@ -335,6 +342,12 @@ func (h *Handler) respond(w http.ResponseWriter, orgID uuid.UUID, kind textforma
 	}
 	if modelErr != "" {
 		attrs = append(attrs, slog.String("model_error", modelErr))
+	}
+	if modelErr == ModelErrToolChoiceRejected {
+		// A setting problem, not a transient failure: say so once per request
+		// at error level, with no text and no model message.
+		h.logger.Error("texts: TEXT_FORMAT_LLM_MODEL does not accept a forced tool_choice, choose a model that does (config problem)",
+			slog.String("org_id", orgID.String()), slog.String("kind", string(kind)))
 	}
 	if usage != (textformat.Usage{}) {
 		attrs = append(attrs, slog.Int("input_tokens", usage.InputTokens), slog.Int("output_tokens", usage.OutputTokens))
