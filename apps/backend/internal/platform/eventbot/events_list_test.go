@@ -32,7 +32,7 @@ func names(events []openapi.EventItem) []string {
 func TestEventChip(t *testing.T) {
 	t.Parallel()
 	for state, want := range map[string]string{
-		"on_sale": "●", "upcoming": "○", "sold_out": "✕", "archived": "✓", "": "·", "mystery": "·",
+		"on_sale": "●", "upcoming": "○", "sold_out": "✕", "archived": "✓", "draft": "📝", "": "·", "mystery": "·",
 	} {
 		if got := EventChip(state); got != want {
 			t.Errorf("EventChip(%q) = %q, want %q", state, got, want)
@@ -128,9 +128,13 @@ func TestEventRowLabel(t *testing.T) {
 	if got := eventRowLabel(e, evFilterArc); got != "✓ 09.10 · Concert ×3" {
 		t.Errorf("archive label = %q (an archive row is dated by its last session)", got)
 	}
-	d := openapi.EventItem{Name: "Draft", Status: openapi.EventItemStatusDraft, SalesState: "upcoming"}
-	if got := eventRowLabel(d, evFilterRun); got != "○ 📝 Draft" {
-		t.Errorf("draft label = %q", got)
+	d := openapi.EventItem{Name: "Draft", Status: openapi.EventItemStatusDraft, SalesState: "draft"}
+	if got := eventRowLabel(d, evFilterRun); got != "📝 Draft" {
+		t.Errorf("draft label = %q (one draft mark, never a selling chip next to it)", got)
+	}
+	d.SalesState = "archived"
+	if got := eventRowLabel(d, evFilterArc); got != "✓ 📝 Draft" {
+		t.Errorf("archived draft label = %q", got)
 	}
 	long := openapi.EventItem{Name: strings.Repeat("я", 80), SalesState: "on_sale"}
 	if n := len([]byte(ItemCallback("el:o", 4))); n > 64 {

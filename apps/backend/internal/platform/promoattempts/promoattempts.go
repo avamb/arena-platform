@@ -275,11 +275,26 @@ WHERE NOT EXISTS (
      AND lower(p.code_entered) = lower($4::text) AND p.result = $7::text
      AND p.reason IS NOT DISTINCT FROM $8::text
      AND p.created_at > now() - make_interval(secs => $13::double precision))`
-	_, err := r.pool.Exec(ctx, q,
+	// Two writes of the same check run side by side (each attempt is written
+	// in its own goroutine), and under READ COMMITTED both would pass NOT
+	// EXISTS. A transaction lock on the dedup key makes the second one wait
+	// and then see the first row.
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`,
+		rw.OrgID.String()+"|"+rw.DedupKey+"|"+rw.Surface+"|"+strings.ToLower(rw.Code)); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, q,
 		rw.OrgID, nilUUID(rw.ChannelID), rw.Surface, rw.Code, nilUUID(rw.PromoCodeID), rw.Sessions,
 		rw.Result, nilString(rw.Reason), nilUUID(rw.CustomerID), nilUUID(rw.GatewaySessionID),
-		nilString(rw.IPHash), rw.DedupKey, dedupWindow.Seconds())
-	return err
+		nilString(rw.IPHash), rw.DedupKey, dedupWindow.Seconds()); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func nilUUID(u uuid.UUID) *uuid.UUID {

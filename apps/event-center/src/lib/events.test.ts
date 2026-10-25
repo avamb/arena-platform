@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterEvents, moneyLines, placeFigures, searchEvents } from "@/lib/events";
+import { filterEvents, moneyLines, placeFigures, searchEvents, visibleSalesState } from "@/lib/events";
 import type { EventItem } from "@/lib/api/types";
 
 function ev(partial: Partial<EventItem> & { id: string; name: string }): EventItem {
@@ -24,7 +24,7 @@ function ev(partial: Partial<EventItem> & { id: string; name: string }): EventIt
 const events = [
   ev({ id: "late", name: "Late show", next_session_at: "2026-12-01T19:00:00Z" }),
   ev({ id: "soon", name: "Ёлка", next_session_at: "2026-10-20T19:00:00Z" }),
-  ev({ id: "draft", name: "Draft", status: "draft", sales_state: "upcoming" }),
+  ev({ id: "draft", name: "Draft", status: "draft", sales_state: "draft" }),
   ev({ id: "old", name: "Old", sales_state: "archived", last_session_at: "2026-01-10T19:00:00Z" }),
   ev({ id: "older", name: "Older", sales_state: "archived", last_session_at: "2025-05-10T19:00:00Z" }),
 ];
@@ -55,5 +55,21 @@ describe("figures", () => {
   it("hides money lines with nothing in them", () => {
     const zero = { currency: "EUR", paid_orders: 0, paid: 0, service_charge: 0, discount: 0, refunded: 0, net: 0, pending_orders: 0, pending: 0 };
     expect(moneyLines([zero, { ...zero, currency: "CZK", paid: 100, paid_orders: 1 }]).map((m) => m.currency)).toEqual(["CZK"]);
+  });
+});
+
+describe("visibleSalesState", () => {
+  it("never shows a selling chip next to a draft (UXH-01)", () => {
+    expect(visibleSalesState({ status: "draft", sales_state: "draft" })).toBeNull();
+    // An older server still says on_sale for a draft; the web hides it anyway.
+    expect(visibleSalesState({ status: "draft", sales_state: "on_sale" })).toBeNull();
+    expect(visibleSalesState({ status: "draft", sales_state: "sold_out" })).toBeNull();
+  });
+  it("keeps Finished on a draft whose sessions are over", () => {
+    expect(visibleSalesState({ status: "draft", sales_state: "archived" })).toBe("archived");
+  });
+  it("shows the server's state for a published event and drops unknown ones", () => {
+    expect(visibleSalesState({ status: "published", sales_state: "on_sale" })).toBe("on_sale");
+    expect(visibleSalesState({ status: "published", sales_state: "mystery" })).toBeNull();
   });
 });

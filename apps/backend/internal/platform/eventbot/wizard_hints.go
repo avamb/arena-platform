@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/geotz"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/posterread"
 )
 
@@ -172,4 +173,33 @@ func (w *Wizard) hintsNote(loc string, h DraftHints) string {
 		return t("bot.wz.poster_read_none", nil)
 	}
 	return t("bot.wz.poster_read", map[string]any{"List": strings.Join(lines, "\n")})
+}
+
+// maxPosterCountries caps the "From the poster" country buttons: a city name
+// shared by many countries is still a short list.
+const maxPosterCountries = 3
+
+// posterCountries is the answer the poster gives to the country question of
+// the first date (UXH-02): the platform's countries that have a place with
+// the poster's city name, in geotz's order (a country where it is one of the
+// largest cities first). Nil without a city, for a later date, or when no
+// country of the platform has such a place.
+func (w *Wizard) posterCountries(d *Draft, countries []RefItem) []RefItem {
+	if d.Cur != 0 || strings.TrimSpace(d.Hints.City) == "" {
+		return nil
+	}
+	byISO := map[string]RefItem{}
+	for _, c := range countries {
+		byISO[strings.ToUpper(c.ISO2)] = c
+	}
+	var out []RefItem
+	for _, cc := range geotz.CountriesOfCity(d.Hints.City) {
+		if c, ok := byISO[cc]; ok {
+			out = append(out, c)
+			if len(out) == maxPosterCountries {
+				break
+			}
+		}
+	}
+	return out
 }

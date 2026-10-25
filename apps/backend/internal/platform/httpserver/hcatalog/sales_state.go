@@ -22,14 +22,18 @@ const (
 	SalesStateUpcoming = "upcoming" // future sessions exist, none is selling yet (or any more)
 	SalesStateSoldOut  = "sold_out" // future sessions exist and no free place is left in any of them
 	SalesStateArchived = "archived" // every session has ended, or the event is cancelled/archived
+	SalesStateDraft    = "draft"    // future sessions exist but the event is not published: nobody can buy
 )
 
 // salesStateFor decides the state from the event's lifecycle status and its
 // session facts. ok=false means the event has no active session at all.
 //
 // Precedence: a cancelled or archived event is archived whatever its
-// sessions say; so is an event whose sessions have all ended. Then a
-// session selling now wins; then an empty hall (no free place in any live
+// sessions say; so is an event whose sessions have all ended. A draft with
+// future sessions is "draft" whatever its sessions say: every public surface
+// sells only published events, so calling it "on sale" told the organizer
+// the opposite of the truth (UXH-01, 24.10.2026). Then a session selling now
+// wins; then an empty hall (no free place in any live
 // category of any future session) is sold out; everything else — sales not
 // yet open, a closed category that still has places, a sale that ended
 // before the start — is upcoming.
@@ -39,6 +43,9 @@ func salesStateFor(eventStatus string, f gen.EventSalesFacts, ok bool) string {
 	}
 	if !ok || f.FutureSessions == 0 {
 		return SalesStateArchived
+	}
+	if eventStatus == "draft" {
+		return SalesStateDraft
 	}
 	switch {
 	case f.Selling:

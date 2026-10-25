@@ -140,3 +140,63 @@ func displayName(norm string) string {
 	}
 	return strings.Join(words, " ")
 }
+
+// CountriesOfCity lists the countries (ISO-3166-1 alpha-2) that have a place
+// whose normalised name or alias is exactly the given name, in any script, so
+// "Valencia" and "Валенсия" both give ES (and VE, which has its own Valencia).
+// A country where the place is one of its largest cities comes first, the
+// rest alphabetically. A blank or unknown name gives nil. Like every lookup of
+// this package it is only a suggestion: the caller offers it as a button.
+func CountriesOfCity(name string) []string {
+	loadOnce.Do(load)
+	n := Normalize(name)
+	if n == "" {
+		return nil
+	}
+	rank := map[string]int{}
+	note := func(cc string, r int) {
+		if old, ok := rank[cc]; !ok || r < old {
+			rank[cc] = r
+		}
+	}
+	for cc, m := range cityZone {
+		if e := m[n]; e != nil {
+			note(cc, 1<<30)
+		}
+	}
+	for cc, names := range topBy {
+		for i, top := range names {
+			if Normalize(top) == n {
+				note(cc, i)
+				break
+			}
+		}
+	}
+	// A place found through an alias that is also a top city gets the top rank.
+	for cc := range rank {
+		if rank[cc] == 1<<30 {
+			if e := cityZone[cc][n]; e != nil {
+				for i, top := range topBy[cc] {
+					if Normalize(top) == e.primary {
+						rank[cc] = i
+						break
+					}
+				}
+			}
+		}
+	}
+	if len(rank) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(rank))
+	for cc := range rank {
+		out = append(out, cc)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if rank[out[i]] != rank[out[j]] {
+			return rank[out[i]] < rank[out[j]]
+		}
+		return out[i] < out[j]
+	})
+	return out
+}

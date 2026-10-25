@@ -208,7 +208,17 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 			hasVenue[strings.ToUpper(v.CountryISO2)] = true
 		}
 		rows := [][]Button{}
-		if ws.Defaults.CountryID != "" {
+		// The poster's city names the country first (UXH-02): "Keep: Latvia"
+		// above a poster that says Valencia invited a hurried tap on the
+		// wrong country. Keep stays, below the poster's answer, unless it is
+		// the same country.
+		posterCountries := w.posterCountries(d, countries)
+		keepIsPoster := false
+		for _, c := range posterCountries {
+			rows = append(rows, []Button{{Label: t("bot.wz.hint_btn", map[string]any{"Value": truncate(c.Name, 40)}), Data: "country:" + c.ID}})
+			keepIsPoster = keepIsPoster || c.ID == ws.Defaults.CountryID
+		}
+		if ws.Defaults.CountryID != "" && !keepIsPoster {
 			rows = append(rows, []Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": ws.Defaults.CountryName}), Data: "keep"}})
 		}
 		// A long list goes through regions: the region buttons first, the
@@ -570,13 +580,17 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		return w.previewScreen(loc, ws.OrgName, d), nil
 
 	case stSummary:
-		text := header(5, "bot.wz.title_summary") + w.Summary(loc, d) + "\n\n" + t("bot.wz.summary_footer", nil)
+		// "Not yet" is a deliberate choice: the screen then must not ask to
+		// publish or talk about a «Publish» button it does not show (UXH-03).
+		title, footer := "bot.wz.title_summary", "bot.wz.summary_footer"
 		primary := btn("bot.wz.publish_btn", "publish")
 		if !d.Publish {
+			title, footer = "bot.wz.title_summary_draft", "bot.wz.summary_footer_draft"
 			primary = btn("bot.wz.save_btn", "publish")
 		}
+		text := header(5, title) + w.Summary(loc, d) + "\n\n" + t(footer, nil)
 		if d.Mode == ModeEdit {
-			text = header(5, "bot.wz.title_summary") + w.Summary(loc, d) + "\n\n" + t("bot.wz.edit_footer", nil)
+			text = header(5, title) + w.Summary(loc, d) + "\n\n" + t("bot.wz.edit_footer", nil)
 			primary = btn("bot.wz.save_changes_btn", "publish")
 		}
 		rows := [][]Button{

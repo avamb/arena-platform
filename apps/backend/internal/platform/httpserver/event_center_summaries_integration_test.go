@@ -43,6 +43,7 @@ type ecSumFixture struct {
 	users   []uuid.UUID
 
 	evOnSale, evUpcoming, evSoldOut, evArchived, evEmpty uuid.UUID
+	evDraft                                              uuid.UUID // UXH-01: sessions selling, event not published
 	sessFuture, sessPast                                 uuid.UUID
 	tierFuture, tierPast                                 uuid.UUID
 	promoID                                              uuid.UUID
@@ -80,6 +81,8 @@ func newECSumFixture(t *testing.T) *ecSumFixture {
 	venue := uuid.New()
 	channel := uuid.New()
 	x.evOnSale, x.evUpcoming, x.evSoldOut, x.evArchived, x.evEmpty = uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	x.evDraft = uuid.New()
+	sessDraft, tierDraft := uuid.New(), uuid.New()
 	x.sessFuture, x.sessPast = uuid.New(), uuid.New()
 	sessUpcoming, sessSoldOut, sessArchived := uuid.New(), uuid.New(), uuid.New()
 	x.tierFuture, x.tierPast = uuid.New(), uuid.New()
@@ -106,13 +109,13 @@ func newECSumFixture(t *testing.T) *ecSumFixture {
 			{`DELETE FROM order_items WHERE order_id = ANY($1::uuid[])`, []any{[]uuid.UUID{x.paidOrder, x.complOrder}}},
 			{`DELETE FROM tickets WHERE order_id = ANY($1::uuid[])`, []any{[]uuid.UUID{x.paidOrder, x.complOrder}}},
 			{`DELETE FROM orders WHERE org_id = $1`, []any{x.org}},
-			{`DELETE FROM session_seats WHERE session_id = ANY($1::uuid[])`, []any{[]uuid.UUID{x.sessFuture, x.sessPast, sessUpcoming, sessSoldOut, sessArchived}}},
+			{`DELETE FROM session_seats WHERE session_id = ANY($1::uuid[])`, []any{[]uuid.UUID{x.sessFuture, x.sessPast, sessUpcoming, sessSoldOut, sessArchived, sessDraft}}},
 			{`DELETE FROM checkout_sessions WHERE org_id = $1`, []any{x.org}},
 			{`DELETE FROM reservations WHERE org_id = $1`, []any{x.org}},
-			{`DELETE FROM ticket_tiers WHERE session_id = ANY($1::uuid[])`, []any{[]uuid.UUID{x.sessFuture, x.sessPast, sessUpcoming, sessSoldOut, sessArchived}}},
+			{`DELETE FROM ticket_tiers WHERE session_id = ANY($1::uuid[])`, []any{[]uuid.UUID{x.sessFuture, x.sessPast, sessUpcoming, sessSoldOut, sessArchived, sessDraft}}},
 			{`DELETE FROM promo_codes WHERE org_id = $1`, []any{x.org}},
 			{`DELETE FROM sales_channels WHERE org_id = $1`, []any{x.org}},
-			{`DELETE FROM sessions WHERE event_id = ANY($1::uuid[])`, []any{[]uuid.UUID{x.evOnSale, x.evUpcoming, x.evSoldOut, x.evArchived}}},
+			{`DELETE FROM sessions WHERE event_id = ANY($1::uuid[])`, []any{[]uuid.UUID{x.evOnSale, x.evUpcoming, x.evSoldOut, x.evArchived, x.evDraft}}},
 			{`DELETE FROM events WHERE org_id = $1`, []any{x.org}},
 			{`DELETE FROM venues WHERE org_id = $1`, []any{x.org}},
 			{`DELETE FROM memberships WHERE user_id = ANY($1::uuid[])`, []any{x.users}},
@@ -135,6 +138,7 @@ func newECSumFixture(t *testing.T) *ecSumFixture {
 	} {
 		exec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'published', 'public')`, ev.id, x.org, "EC "+ev.name+" "+suffix)
 	}
+	exec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'draft', 'public')`, x.evDraft, x.org, "EC Draft "+suffix)
 	session := func(id, event uuid.UUID, start time.Time) {
 		exec(`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, status, currency, currency_source)
 		      VALUES ($1, $2, $3, $4, $4::timestamptz + interval '2 hours', 5, 'scheduled', 'EUR', 'override')`, id, event, venue, start)
@@ -146,6 +150,7 @@ func newECSumFixture(t *testing.T) *ecSumFixture {
 	session(sessUpcoming, x.evUpcoming, future)
 	session(sessSoldOut, x.evSoldOut, future)
 	session(sessArchived, x.evArchived, past)
+	session(sessDraft, x.evDraft, future)
 
 	tier := func(id, sess uuid.UUID, windowStart *time.Time) {
 		exec(`INSERT INTO ticket_tiers (id, session_id, name, pricing_mode, price_amount, currency, capacity, unit_seq, is_open, sale_window_start)
@@ -157,6 +162,7 @@ func newECSumFixture(t *testing.T) *ecSumFixture {
 	tier(tierUpcoming, sessUpcoming, &opensLater)
 	tier(tierSoldOut, sessSoldOut, nil)
 	tier(tierArchived, sessArchived, nil)
+	tier(tierDraft, sessDraft, nil)
 
 	// GA places of the post-0101 shape: owned by the category, keyed ga|t<unit_seq>|<n>.
 	place := func(sess, tier uuid.UUID, n int, status string, reservation *uuid.UUID) {
@@ -181,6 +187,7 @@ func newECSumFixture(t *testing.T) *ecSumFixture {
 		place(sessUpcoming, tierUpcoming, n, "available", nil)
 		place(sessSoldOut, tierSoldOut, n, "sold", nil) // sold in the system it was imported from
 		place(sessArchived, tierArchived, n, "available", nil)
+		place(sessDraft, tierDraft, n, "available", nil)
 	}
 
 	promo, err := f.q.InsertPromoCode(ctx, x.org, "EC"+suffix, "fixed_amount", 500, []string{}, []string{}, "EUR", nil, nil, nil, nil, 0, "active")
@@ -262,6 +269,7 @@ func TestEventCenter_SalesStateOnEventsList(t *testing.T) {
 	want := map[uuid.UUID]string{
 		x.evOnSale: "on_sale", x.evUpcoming: "upcoming", x.evSoldOut: "sold_out",
 		x.evArchived: "archived", x.evEmpty: "archived",
+		x.evDraft: "draft", // selling sessions, but nobody can buy an unpublished event
 	}
 	for id, state := range want {
 		ev, ok := byID[id.String()]

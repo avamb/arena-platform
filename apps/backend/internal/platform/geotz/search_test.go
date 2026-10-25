@@ -53,3 +53,33 @@ func TestSingleZone(t *testing.T) {
 		t.Errorf("ES has several zones, got %q", got)
 	}
 }
+
+func TestCountriesOfCity(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"Valencia", "valencia", "Валенсия"} {
+		got := CountriesOfCity(name)
+		if len(got) == 0 || !containsCC(got, "ES") {
+			t.Errorf("CountriesOfCity(%q) = %v, want ES among them", name, got)
+		}
+		if containsCC(got, "LV") {
+			t.Errorf("CountriesOfCity(%q) = %v names Latvia", name, got)
+		}
+	}
+	if got := CountriesOfCity("Madrid"); len(got) == 0 || got[0] != "ES" {
+		t.Errorf("CountriesOfCity(Madrid) = %v, want ES first", got)
+	}
+	for _, name := range []string{"", "   ", "Nowhereville Xyz"} {
+		if got := CountriesOfCity(name); got != nil {
+			t.Errorf("CountriesOfCity(%q) = %v, want nil", name, got)
+		}
+	}
+}
+
+func containsCC(list []string, cc string) bool {
+	for _, c := range list {
+		if c == cc {
+			return true
+		}
+	}
+	return false
+}
