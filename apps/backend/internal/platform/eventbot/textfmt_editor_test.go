@@ -35,6 +35,11 @@ type editorFixture struct {
 	descFm string
 	note   string
 	fail   bool
+	// shown, when set, is the translation the list answers as `description`; desc is then the canonical text.
+	shown string
+	// links counts the codes the bot asked for (the editor was opened).
+	links int
+	clock *testClock
 }
 
 func (f *editorFixture) set(desc, note string) {
@@ -45,7 +50,7 @@ func (f *editorFixture) set(desc, note string) {
 
 func newEditorFixture(t *testing.T) *editorFixture {
 	t.Helper()
-	f := &editorFixture{org: uuid.New(), event: uuid.New(), from: &models.User{ID: 42}}
+	f := &editorFixture{org: uuid.New(), event: uuid.New(), from: &models.User{ID: 42}, clock: &testClock{t: time.Now()}}
 	f.set("<p>Old description</p>", "<p>Old note</p>")
 	arena := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
@@ -60,9 +65,17 @@ func newEditorFixture(t *testing.T) *editorFixture {
 			if f.note != "" {
 				note = fmt.Sprintf("%q", f.note)
 			}
-			_, _ = fmt.Fprintf(w, `{"events":[{"id":%q,"org_id":%q,"name":"Concert","description":%q,"description_format":%q,"email_note":%s,"email_note_format":"art"}]}`,
-				f.event, f.org, f.desc, f.descFm, note)
+			// With a translation shown, `description` is the translation and the canonical text
+			// travels as description_base, the way arena-api answers a Russian client.
+			shown, extra := f.desc, ""
+			if f.shown != "" {
+				shown = f.shown
+				extra = fmt.Sprintf(`,"description_base":%q,"description_translated":true`, f.desc)
+			}
+			_, _ = fmt.Fprintf(w, `{"events":[{"id":%q,"org_id":%q,"name":"Concert","description":%q,"description_format":%q,"email_note":%s,"email_note_format":"art"%s}]}`,
+				f.event, f.org, shown, f.descFm, note, extra)
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/web-login-codes"):
+			f.links++
 			w.WriteHeader(http.StatusCreated)
 			_, _ = io.WriteString(w, `{"url":"https://events.example.test/tg/edit#code=abc&kind=description&event=x","expires_at":"2026-10-25T12:00:00Z"}`)
 		default:
@@ -88,7 +101,7 @@ func newEditorFixture(t *testing.T) *editorFixture {
 		arena:         NewArenaClient(arena.URL, "svc", arena.Client()),
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 		miniappEditor: true,
-		dialogs:       newMemDialogStore(&testClock{t: time.Now()}),
+		dialogs:       newMemDialogStore(f.clock),
 	}
 	f.id = &Identity{Link: gen.BotTelegramLinkRow{Locale: "ru"}, Current: &Membership{OrgID: f.org, Role: membershipRoleOwner}}
 	return f
@@ -239,11 +252,11 @@ func TestEditorSave_TypedTextGetsTheNoteAndGoesOn(t *testing.T) {
 	f := newEditorFixture(t)
 	ctx := context.Background()
 	dlg := tfDialog{Kind: string(tfKindDescription), EventID: f.event.String(), Editor: true, Seen: editorFingerprint("<p>Old description</p>")}
-	if got := f.b.tfEditorSavedTyped(ctx, 42, f.id, "jwt", dlg); !got.Editor || len(f.stub.all()) != 0 {
+	if got := f.b.tfEditorSavedTyped(ctx, 42, f.from, f.id, "jwt", dlg); !got.Editor || len(f.stub.all()) != 0 {
 		t.Fatalf("no save, yet: %+v %v", got, f.stub.all())
 	}
 	f.set("<p>Saved in the editor</p>", "")
-	got := f.b.tfEditorSavedTyped(ctx, 42, f.id, "jwt", dlg)
+	got := f.b.tfEditorSavedTyped(ctx, 42, f.from, f.id, "jwt", dlg)
 	if got.Editor || got.Seen != "" {
 		t.Fatalf("the marker stayed: %+v", got)
 	}

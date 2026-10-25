@@ -34,6 +34,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"log/slog"
+	"time"
 
 	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
@@ -48,23 +49,46 @@ func editorFingerprint(art string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// descriptionART is the stored description of an event as ART ("" when none).
-func descriptionART(ev openapi.EventItem) string {
-	if ev.Description == nil || *ev.Description == "" {
+// normalizedART is a stored text as ART the way the server reads it: through
+// richtext.Normalize with the profile of the text (an old-notation row is
+// converted, an ART row is sanitised once more). Both sides of a comparison go
+// through it, so a plain-text row that the editor rewrote with the same words
+// is "no change". A text the server could not normalize stays as stored.
+func normalizedART(text, format string, p richtext.Profile) string {
+	if text == "" {
 		return ""
 	}
-	if descriptionFormatOf(ev.DescriptionFormat) == richtext.FormatART {
-		return *ev.Description
+	art, err := richtext.Normalize(text, format, p)
+	if err != nil {
+		return text
 	}
-	return richtext.FromLegacy(*ev.Description, richtext.ProfileDescription)
+	return art
+}
+
+// descriptionART is the CANONICAL description of an event as ART ("" when
+// none). It reads description_base, not the description of the list, which is
+// the translation of the request's locale when the event has one.
+func descriptionART(ev openapi.EventItem) string {
+	format := richtext.FormatText
+	if descriptionFormatOf(ev.DescriptionFormat) == richtext.FormatART {
+		format = richtext.FormatART
+	}
+	return normalizedART(eventDescriptionBase(ev), format, richtext.ProfileDescription)
 }
 
 // editorTextART is the stored text of the kind, as ART.
 func editorTextART(kind tfKind, ev openapi.EventItem) string {
-	if kind == tfKindEmailNote {
-		return emailNoteART(ev)
+	if kind != tfKindEmailNote {
+		return descriptionART(ev)
 	}
-	return descriptionART(ev)
+	if ev.EmailNote == nil {
+		return ""
+	}
+	format := richtext.FormatText
+	if ev.EmailNoteFormat != nil && *ev.EmailNoteFormat == richtext.FormatART {
+		format = richtext.FormatART
+	}
+	return normalizedART(*ev.EmailNote, format, richtext.ProfileEmailNote)
 }
 
 // tfEditorRead reads the stored text of the event. ok is false when it could
@@ -104,7 +128,13 @@ func (b *Bot) tfEditorMark(ctx context.Context, from *models.User, id *Identity,
 		}
 		dlg, step = tfDialog{Kind: string(kind), EventID: eventID}, tfStepEditor
 	}
-	dlg.Editor, dlg.Seen = true, editorFingerprint(art)
+	if !dlg.Editor || dlg.Seen == "" || dlg.EventID != eventID || dlg.kind() != kind {
+		dlg.Editor, dlg.Seen = true, editorFingerprint(art)
+	}
+	// Else the editor was opened from this screen before and nothing has told
+	// the organizer what it saved yet: Seen stays what it was, a second press
+	// never overwrites the mark with the saved text (tfMiniappCallback asks
+	// first, this is the guard for a save between the two reads).
 	if err := b.tfSave(ctx, from.ID, orgID, step, dlg); err != nil {
 		b.logger.Warn("eventbot: editor mark not saved", slog.Int64("telegram_user_id", from.ID), slog.String("error", err.Error()))
 	}
@@ -113,22 +143,34 @@ func (b *Bot) tfEditorMark(ctx context.Context, from *models.User, id *Identity,
 // tfEditorChanged reports whether the event holds another text than at the
 // press that opened the editor, and the text it holds now.
 func (b *Bot) tfEditorChanged(ctx context.Context, id *Identity, jwt string, dlg tfDialog) (art string, changed bool) {
+	art, _, changed = b.tfEditorChangedEvent(ctx, id, jwt, dlg)
+	return art, changed
+}
+
+// tfEditorChangedEvent is tfEditorChanged that also hands back the event it
+// read, for the caller that needs more than the text.
+func (b *Bot) tfEditorChangedEvent(ctx context.Context, id *Identity, jwt string, dlg tfDialog) (art string, ev *openapi.EventItem, changed bool) {
 	eid, err := uuid.Parse(dlg.EventID)
 	if err != nil || id.Current == nil || dlg.Seen == "" {
-		return "", false
+		return "", nil, false
 	}
-	art, ok := b.tfEditorRead(ctx, jwt, id.Current.OrgID, eid, dlg.kind())
-	if !ok || editorFingerprint(art) == dlg.Seen {
-		return "", false
+	ev, err = b.eventOf(ctx, jwt, id.Current.OrgID, eid)
+	if err != nil {
+		b.logger.Debug("eventbot: editor save check could not read the event", slog.String("error", routeOnly(err)))
+		return "", nil, false
 	}
-	return art, true
+	art = editorTextART(dlg.kind(), *ev)
+	if editorFingerprint(art) == dlg.Seen {
+		return "", nil, false
+	}
+	return art, ev, true
 }
 
 // tfEditorSavedPreview handles a press under a preview after the editor saved.
 // It reports whether it took the press: the pressed message becomes the note,
 // and the preview is drawn again with the saved text.
 func (b *Bot) tfEditorSavedPreview(ctx context.Context, chatID int64, msgID int, from *models.User, id *Identity, jwt string, dlg tfDialog) bool {
-	art, changed := b.tfEditorChanged(ctx, id, jwt, dlg)
+	art, _, changed := b.tfEditorChangedEvent(ctx, id, jwt, dlg)
 	if !changed {
 		return false
 	}
@@ -151,6 +193,7 @@ func (b *Bot) tfEditorSavedPreview(ctx context.Context, chatID int64, msgID int,
 		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.error_generic", nil), nil)
 		return true
 	}
+	b.tfEditorSyncDraft(ctx, from, id, jwt, dlg, art)
 	b.reply(ctx, chatID, &msgID, note, nil)
 	b.tfShowPreview(ctx, chatID, nil, loc, dlg)
 	return true
@@ -176,10 +219,62 @@ func (b *Bot) tfEditorSavedNote(ctx context.Context, chatID int64, msgID int, fr
 // since the preview was drawn. The typed text goes on as it would have: it is
 // the organizer's own replacement of the preview. The returned dialog has the
 // marker cleared when the note was said.
-func (b *Bot) tfEditorSavedTyped(ctx context.Context, chatID int64, id *Identity, jwt string, dlg tfDialog) tfDialog {
-	if _, changed := b.tfEditorChanged(ctx, id, jwt, dlg); changed {
+func (b *Bot) tfEditorSavedTyped(ctx context.Context, chatID int64, from *models.User, id *Identity, jwt string, dlg tfDialog) tfDialog {
+	if art, _, changed := b.tfEditorChangedEvent(ctx, id, jwt, dlg); changed {
 		b.send(ctx, chatID, b.texts.T(id.Locale(), "bot.tf.editor_saved", nil), nil)
 		dlg.Editor, dlg.Seen = false, ""
+		b.tfEditorSyncDraft(ctx, from, id, jwt, dlg, art)
 	}
 	return dlg
+}
+
+// tfEditorSyncDraft brings the wizard's edit draft up to the description the
+// editor saved. Without it «Publish changes» after a save in the mini app
+// always warned «changed elsewhere» (the event's updated_at moved), and «Save
+// anyway» wrote the draft's stale copy of the event over the saved one.
+//
+// The saved ART goes into the draft's description and into the copy of the
+// loaded event that "changed" is judged against, so the description is not
+// re-sent unless the organizer changes it again. The loaded updated_at is
+// refreshed from the same read ONLY when every other part the draft compares
+// (name, age, promoter, poster) is what was loaded: then the editor's save is
+// the only change since and the warning has nothing to say. If someone else
+// edited too, the warning stays. A draft of another event, a new event's draft
+// and a failed read leave everything as it was.
+func (b *Bot) tfEditorSyncDraft(ctx context.Context, from *models.User, id *Identity, jwt string, dlg tfDialog, art string) {
+	if b.queries == nil || dlg.kind() != tfKindDescription || dlg.EventID == "" || id.Current == nil || art == "" {
+		return
+	}
+	eid, err := uuid.Parse(dlg.EventID)
+	if err != nil {
+		return
+	}
+	ws := b.wizardSession(id, jwt)
+	d, _, err := b.loadDraft(ctx, from.ID, ws)
+	if err != nil || d == nil || d.Mode != ModeEdit || d.Loaded == nil || d.Event.EventID != dlg.EventID {
+		return
+	}
+	d.Event.Description, d.Event.DescriptionFormat = art, richtext.FormatART
+	d.Loaded.Event.Description, d.Loaded.Event.DescriptionFormat = art, richtext.FormatART
+	if ev, err := b.arena.GetEvent(ctx, jwt, eid); err == nil && sameOtherParts(ev, d.Loaded.Event) {
+		stamp := ev.UpdatedAt.UTC().Format(time.RFC3339Nano)
+		d.Event.UpdatedAt, d.Loaded.Event.UpdatedAt = stamp, stamp
+	}
+	d.refreshChanged()
+	if _, err := b.storeDraft(ctx, from.ID, ws, d); err != nil {
+		b.logger.Warn("eventbot: draft not brought up to the editor's save", slog.Int64("telegram_user_id", from.ID), slog.String("error", err.Error()))
+	}
+}
+
+// sameOtherParts reports whether the event is, apart from its description, what
+// the edit draft loaded: the name, the age, the promoter and the poster.
+func sameOtherParts(ev openapi.EventItem, l DraftEvent) bool {
+	promoter, poster := "", ""
+	if ev.PromoterId != nil {
+		promoter = ev.PromoterId.String()
+	}
+	if ev.PosterMediaId != nil {
+		poster = ev.PosterMediaId.String()
+	}
+	return ev.Name == l.Name && deref(ev.AgeRating) == l.Age && promoter == l.PromoterID && poster == l.PosterMediaID
 }

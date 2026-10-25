@@ -86,6 +86,7 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 	data := miniappCallback
 	var kind tfKind
 	var eventID string
+	var pdlg tfDialog // the dialog of the preview (len(parts) == 1)
 	if len(parts) == 1 {
 		dlg, step, found, _ := b.tfLoad(ctx, from.ID)
 		if !found || step != tfStepPreview || dlg.OrgID != id.Current.OrgID.String() {
@@ -94,7 +95,7 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 			b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.tf.expired", nil), b.backKeyboard(loc, "home"))
 			return true
 		}
-		kind, eventID = dlg.kind(), dlg.EventID
+		kind, eventID, pdlg = dlg.kind(), dlg.EventID, dlg
 	} else {
 		if !canViewSales(id) { // the same people who may change event texts
 			b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ec.no_rights", nil), b.backKeyboard(loc, "home"))
@@ -107,6 +108,16 @@ func (b *Bot) tfMiniappCallback(ctx context.Context, chatID int64, msgID int, fr
 		// The flag was turned off after the screen was drawn, or the press is
 		// not one the screen can make.
 		b.send(ctx, chatID, b.texts.T(loc, "bot.tf.edit_failed", nil), nil)
+		return true
+	}
+	// The editor was opened from this screen before and may have saved since: say
+	// so first (RT-12b), never open it again over a mark that has not been told.
+	// The press is not carried out; the organizer presses the button once more.
+	if len(parts) == 1 {
+		if pdlg.Editor && pdlg.Seen != "" && b.tfEditorSavedPreview(ctx, chatID, msgID, from, id, jwt, pdlg) {
+			return true
+		}
+	} else if eid, perr := uuid.Parse(eventID); perr == nil && b.tfEditorSavedNote(ctx, chatID, msgID, from, id, jwt, eid) {
 		return true
 	}
 	link, err := b.arena.MiniappLink(ctx, chatID, string(kind), eventID)

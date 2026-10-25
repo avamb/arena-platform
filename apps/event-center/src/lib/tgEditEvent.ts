@@ -85,3 +85,15 @@ export async function openTgEdit(target: TgEditTarget | null, deps: OpenTgEditDe
     return { phase: "error", key: failureKey(err) };
   }
 }
+
+/**
+ * The CANONICAL description of an event: the text stored on the event itself, which is what the editor reads
+ * and writes back. `description` of the events list is resolved for the request's language and may be a
+ * translation; saving that over the event would lose the original. A server that does not send
+ * `description_base` yet has no translation to mix up, so `description` is then the only text.
+ */
+export function descriptionBaseOf(event: Pick<EventItem, "description" | "description_base" | "description_translated">): string | null {
+  if (event.description_base !== undefined) return event.description_base;
+  if (event.description_translated === true) return null;
+  return event.description ?? null;
+}

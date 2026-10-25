@@ -2,18 +2,29 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { EmailNoteSection } from "@/components/EmailNoteSection";
-import { TgDescriptionEditor } from "@/components/TgDescriptionEditor";
+import { TgDescriptionEditor, type TgWork } from "@/components/TgDescriptionEditor";
 import { fetchMe, fetchOrgMe, listEvents } from "@/lib/api/endpoints";
 import { organizationsOf, useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
-import { bindBackButton, closeMiniApp, loadTelegramScript, tgEditTarget, type TgEditKind } from "@/lib/tgEdit";
-import { openTgEdit, type TgEditOpened } from "@/lib/tgEditEvent";
+import {
+  bindBackButton,
+  closeMiniApp,
+  insideTelegram,
+  loadTelegramScript,
+  setClosingConfirmation,
+  tgEditTarget,
+  type TgEditKind,
+} from "@/lib/tgEdit";
+import { descriptionBaseOf, openTgEdit, type TgEditOpened } from "@/lib/tgEditEvent";
 import { LanguageSelect } from "@/screens/LanguageSelect";
 
 export type TgEditState = { phase: "working" } | TgEditOpened;
 
 /** The right the API asks for both texts (PATCH of the event). */
 const EDIT_RIGHT = "event.update";
+
+/** The events list of the mini app has its own cache entry (no language), under the prefix the saves refresh. */
+const TG_LIST = "tg-edit";
 
 /**
  * The page itself: the state in, the close press out. The state "ready" mounts
@@ -22,11 +33,42 @@ const EDIT_RIGHT = "event.update";
  */
 export function TgEditView({ state, onClose }: { state: TgEditState; onClose: () => void }) {
   const { t } = useI18n();
+  // What the editor on the page is doing: unsaved text asks Telegram to confirm a close, a save on its way
+  // is never cut off by the back button or the close button.
+  const [work, setWork] = useState<TgWork>({ dirty: false, busy: false });
+  const busy = useRef(false);
+  busy.current = work.busy;
   // The Telegram back button closes the page, the same as the button below. The handler is read through a ref:
   // a new function on every render must not take the button away and put it back.
   const close = useRef(onClose);
   close.current = onClose;
-  useEffect(() => bindBackButton(() => close.current()), []);
+  const closeIfIdle = useCallback(() => {
+    if (!busy.current) close.current();
+  }, []);
+  // The button is bound only once the Telegram script has loaded: the script is fetched after the page is
+  // drawn, and a bind before it is a bind to nothing (the button would never appear).
+  useEffect(() => {
+    let alive = true;
+    let unbind: () => void = () => undefined;
+    void loadTelegramScript().then(() => {
+      if (alive) unbind = bindBackButton(closeIfIdle);
+    });
+    return () => {
+      alive = false;
+      unbind();
+    };
+  }, [closeIfIdle]);
+  const dirty = work.dirty;
+  useEffect(() => {
+    let alive = true;
+    void loadTelegramScript().then(() => {
+      if (alive) setClosingConfirmation(dirty);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [dirty]);
+  useEffect(() => () => setClosingConfirmation(false), []);
 
   return (
     <main id="main" className="tg-page">
@@ -34,7 +76,9 @@ export function TgEditView({ state, onClose }: { state: TgEditState; onClose: ()
         <p className="brand">{t("app.name")}</p>
         <h1>{t("tgEdit.title")}</h1>
         {state.phase === "working" && <p role="status">{t("tgEdit.working")}</p>}
-        {state.phase === "ready" && <TgEditor kind={state.kind} orgId={state.orgId} eventId={state.eventId} onClose={onClose} />}
+        {state.phase === "ready" && (
+          <TgEditor kind={state.kind} orgId={state.orgId} eventId={state.eventId} busy={work.busy} onWork={setWork} onClose={closeIfIdle} />
+        )}
         {state.phase === "noAccess" && (
           <p className="notice notice-bad" role="alert" data-testid="tg-edit-no-access">
             {t("tgEdit.noAccess")}
@@ -52,11 +96,11 @@ export function TgEditView({ state, onClose }: { state: TgEditState; onClose: ()
   );
 }
 
-function CloseButton({ onClose }: { onClose: () => void }) {
+function CloseButton({ onClose, disabled = false }: { onClose: () => void; disabled?: boolean }) {
   const { t } = useI18n();
   return (
     <p>
-      <button type="button" className="btn" data-testid="tg-edit-close" onClick={onClose}>
+      <button type="button" className="btn" data-testid="tg-edit-close" onClick={onClose} disabled={disabled}>
         {t("tgEdit.close")}
       </button>
     </p>
@@ -71,13 +115,31 @@ function CloseButton({ onClose }: { onClose: () => void }) {
  * event. After a save the mini app closes itself; in a plain browser it says
  * so and offers the event in the web event center.
  */
-function TgEditor({ kind, orgId, eventId, onClose }: { kind: TgEditKind; orgId: string; eventId: string; onClose: () => void }) {
-  const { t, locale } = useI18n();
+function TgEditor({
+  kind,
+  orgId,
+  eventId,
+  busy,
+  onWork,
+  onClose,
+}: {
+  kind: TgEditKind;
+  orgId: string;
+  eventId: string;
+  busy: boolean;
+  onWork: (work: TgWork) => void;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
   const [saved, setSaved] = useState(false);
-  const events = useQuery({ queryKey: ["events", orgId, locale], queryFn: () => listEvents(orgId, locale) });
+  // No language in the key or the call: the editor works on the canonical text, and switching the language of the
+  // page must neither read the list again nor put another text under the draft.
+  const events = useQuery({ queryKey: ["events", orgId, TG_LIST], queryFn: () => listEvents(orgId) });
   const access = useQuery({ queryKey: ["orgMe", orgId], queryFn: () => fetchOrgMe(orgId), staleTime: 60_000 });
   const done = useCallback(() => {
     // Telegram closes the window; outside Telegram the page stays and says it is saved.
+    // The text is saved: nothing is left to confirm. Telegram closes the window; outside Telegram the page stays and says so.
+    setClosingConfirmation(false);
     if (!closeMiniApp()) setSaved(true);
   }, []);
 
@@ -104,8 +166,9 @@ function TgEditor({ kind, orgId, eventId, onClose }: { kind: TgEditKind; orgId: 
           key={`${orgId}:${eventId}`}
           orgId={orgId}
           eventId={eventId}
-          description={event.description}
+          description={descriptionBaseOf(event)}
           descriptionFormat={event.description_format}
+          onWork={onWork}
           onSaved={done}
         />
       ) : (
@@ -116,6 +179,7 @@ function TgEditor({ kind, orgId, eventId, onClose }: { kind: TgEditKind; orgId: 
           note={event.email_note}
           noteFormat={event.email_note_format}
           canEdit
+          onWork={onWork}
           onSaved={done}
         />
       )}
@@ -124,14 +188,16 @@ function TgEditor({ kind, orgId, eventId, onClose }: { kind: TgEditKind; orgId: 
           <p>
             <strong>{t("tgEdit.saved")}</strong> {t("tgEdit.saved.next")}
           </p>
-          <p>
-            <a href={`/o/${orgId}/events/${eventId}`} data-testid="tg-edit-open-event">
-              {t("tgEdit.openEvent")}
-            </a>
-          </p>
+          {!insideTelegram() && (
+            <p>
+              <a href={`/o/${orgId}/events/${eventId}`} data-testid="tg-edit-open-event">
+                {t("tgEdit.openEvent")}
+              </a>
+            </p>
+          )}
         </div>
       )}
-      <CloseButton onClose={onClose} />
+      <CloseButton onClose={onClose} disabled={busy} />
     </>
   );
 }
@@ -144,7 +210,6 @@ function TgEditor({ kind, orgId, eventId, onClose }: { kind: TgEditKind; orgId: 
  */
 export function TgEditScreen() {
   const { loginWithLink } = useAuth();
-  const { locale } = useI18n();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [target] = useState(() => tgEditTarget());
@@ -162,7 +227,7 @@ export function TgEditScreen() {
         return organizationsOf(me.organization_memberships).map((m) => m.org_id);
       },
       // The list is kept in the query cache, so the editor reads it again without a second request.
-      list: (orgId) => queryClient.fetchQuery({ queryKey: ["events", orgId, locale], queryFn: () => listEvents(orgId, locale), staleTime: 30_000 }),
+      list: (orgId) => queryClient.fetchQuery({ queryKey: ["events", orgId, TG_LIST], queryFn: () => listEvents(orgId), staleTime: 30_000 }),
     });
     void opening.current.then((out) => {
       if (alive) setState(out);

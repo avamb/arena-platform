@@ -16092,6 +16092,24 @@ export interface components {
              */
             description_format?: "text" | "art";
             /**
+             * @description The canonical description exactly as stored on the event, never a
+             *     translation. `description` is resolved for the request's locale and
+             *     may be the text of a translation; a client that EDITS the
+             *     description reads and writes this one (with `description_format`),
+             *     otherwise saving would put a translation over the original. Null
+             *     when the event has no canonical description or the server could
+             *     not read it.
+             * @example <p>Open-air festival on the <strong>Tel Aviv</strong> beachfront.</p>
+             */
+            description_base?: string | null;
+            /**
+             * @description True when `description` is not the canonical text, that is, the
+             *     negotiated locale (or English) has its own translation. False when
+             *     the two are the same, or there is no description.
+             * @example false
+             */
+            description_translated?: boolean;
+            /**
              * @description `description` as safe HTML for display (spec 44, RT-03a):
              *     `richtext.Render` with the description profile. Locale-resolved
              *     like `description` and read with the event's `description_format`

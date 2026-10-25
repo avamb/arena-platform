@@ -7322,6 +7322,15 @@ type EventItem struct {
 	// Description Optional long-form description. Locale-resolved like `name`.
 	Description *string `json:"description"`
 
+	// DescriptionBase The canonical description exactly as stored on the event, never a
+	// translation. `description` is resolved for the request's locale and
+	// may be the text of a translation; a client that EDITS the
+	// description reads and writes this one (with `description_format`),
+	// otherwise saving would put a translation over the original. Null
+	// when the event has no canonical description or the server could
+	// not read it.
+	DescriptionBase *string `json:"description_base"`
+
 	// DescriptionFormat How `description` is stored: `art` is "text Arena", the small HTML
 	// subset (`p`, `br`, `strong`, `em`, `u`, `a[href]`, `ul`, `ol`, `li`,
 	// headings and quotes), `text` is the old plain text with the marks
@@ -7352,6 +7361,11 @@ type EventItem struct {
 	// blank line, list items are `• x` or `1. x` lines. Null when
 	// `description_html` is. The public feed returns it too.
 	DescriptionText *string `json:"description_text"`
+
+	// DescriptionTranslated True when `description` is not the canonical text, that is, the
+	// negotiated locale (or English) has its own translation. False when
+	// the two are the same, or there is no description.
+	DescriptionTranslated *bool `json:"description_translated,omitempty"`
 
 	// DisplayNumber Short operator-facing event number; UUID remains the API key.
 	DisplayNumber int64 `json:"display_number"`

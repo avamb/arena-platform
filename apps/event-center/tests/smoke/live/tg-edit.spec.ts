@@ -136,6 +136,35 @@ for (const role of ["org_admin", "organizer"] as const) {
   });
 }
 
+test.describe("an event with a Russian translation, opened in a Russian Telegram client", () => {
+  test.use({ locale: "ru-RU" });
+
+  test("the editor shows the canonical text, a save writes it and the translation stays as it was", async ({ page, request }) => {
+    const translation = "<p>Вечер <strong>джаза</strong>.</p>";
+    await patch(request, { description: "<p>An evening of <strong>jazz</strong>.</p>", description_format: "art", translations: { ru: { description: translation } } });
+    await telegramStub(page);
+    const writes = trackWrites(page);
+    await page.goto(await miniappLink(request, "org_admin", "description"));
+
+    // The page's own requests carry Accept-Language ru: the list answers the Russian text as `description`.
+    const text = box(page, "tg-description-field");
+    await expect(text).toBeVisible({ timeout: 30_000 });
+    await expect(text.locator("strong")).toHaveText("jazz");
+    await expect(text).not.toContainText("Вечер");
+
+    await page.locator('button[data-action="bulletList"]').click();
+    await page.getByTestId("tg-description-save").click();
+    await expect.poll(() => closedCount(page), { timeout: 20_000 }).toBe(1);
+    expect(writes).toEqual([`PATCH /v1/organizations/${env.org_id}/events/${env.event_id}`]);
+
+    const en = await stored(request);
+    expect(en.description).toBe("<ul><li>An evening of <strong>jazz</strong>.</li></ul>");
+    const ru = await request.get(orgPath("/events?lang=ru"), { headers: bearer("org_admin") });
+    const shown = ((await ru.json()) as { events: ListedEvent[] }).events.find((e) => e.id === env.event_id);
+    expect(shown?.description, "the Russian translation is untouched").toBe(translation);
+  });
+});
+
 test("the letter text opens, saves with the same call as the web card and closes the window", async ({ page, request }) => {
   await patch(request, { email_note: "<p>Bring a <strong>warm</strong> jacket.</p>", email_note_format: "art" });
   const before = await stored(request);

@@ -21,7 +21,7 @@ interface Writes {
 }
 
 /** On top of mockApi: the right to edit, an event with texts, and a PATCH that answers 200. */
-async function tgMocks(page: Page): Promise<Writes> {
+async function tgMocks(page: Page, eventOver: Record<string, unknown> = {}): Promise<Writes> {
   const writes: Writes = { patches: [] };
   await page.route(`${API}/**`, async (route) => {
     const req = route.request();
@@ -59,6 +59,7 @@ async function tgMocks(page: Page): Promise<Writes> {
             visibility: "public",
             created_at: "2026-09-01T10:00:00Z",
             updated_at: "2026-09-01T10:00:00Z",
+            ...eventOver,
           },
         ],
       });
@@ -222,6 +223,35 @@ test.describe("the mini app editor at 360 x 740", () => {
     await expect(page.locator("[data-testid=tg-description-field] .ProseMirror")).toBeVisible({ timeout: 20_000 });
     await page.evaluate(() => (window as unknown as { __tg: { backHandler: () => void } }).__tg.backHandler());
     await expect.poll(async () => (await tgState(page)).closed).toBe(1);
+  });
+
+  test("an event with a translation opens with the canonical description and a save writes the canonical text", async ({ page }) => {
+    await mockApi(page);
+    const writes = await tgMocks(page, {
+      description: "<p>Русский перевод.</p>",
+      description_base: DESCRIPTION,
+      description_translated: true,
+    });
+    await page.goto(`/tg/edit#code=good-link-code&kind=description&event=${EVENT}`);
+    const box = page.locator("[data-testid=tg-description-field] .ProseMirror");
+    await expect(box).toBeVisible({ timeout: 20_000 });
+    await expect(box.locator("strong")).toHaveText("jazz");
+    await expect(box).not.toContainText("Русский");
+    await bullets(page).click();
+    await page.getByTestId("tg-description-save").click();
+    await expect(page.getByTestId("tg-edit-saved")).toBeVisible();
+    expect(writes.patches).toEqual([{ description: "<ul><li>An evening of <strong>jazz</strong>.</li></ul>", description_format: "art" }]);
+  });
+
+  test("a description a website wrote is not opened, and Save cannot be pressed", async ({ page }) => {
+    await mockApi(page);
+    const writes = await tgMocks(page, { description: "<p>Vino</p><br><b>Bring</b>", description_base: "<p>Vino</p><br><b>Bring</b>", description_format: "text" });
+    await page.goto(`/tg/edit#code=good-link-code&kind=description&event=${EVENT}`);
+    await expect(page.getByTestId("tg-description-site-html")).toContainText("came from the website", { timeout: 20_000 });
+    await expect(page.locator(".ProseMirror")).toHaveCount(0);
+    await expect(page.getByTestId("tg-description-save")).toBeDisabled();
+    expect(writes.patches).toEqual([]);
+    await noHorizontalScroll(page);
   });
 
   test("the client theme and the safe areas reach the page through custom properties only", async ({ page }) => {

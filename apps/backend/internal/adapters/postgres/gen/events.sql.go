@@ -755,6 +755,45 @@ SELECT id, description_format
 FROM   events
 WHERE  id = ANY($1::uuid[])`
 
+const listEventDescriptionBases = `-- name: ListEventDescriptionBases :many
+SELECT id, description_format, description
+FROM   events
+WHERE  id = ANY($1::uuid[])`
+
+// EventDescriptionBase is the canonical description of an event as stored on
+// the events row, with the format flag that covers it and its translations.
+type EventDescriptionBase struct {
+	Format string
+	// Text is the raw events.description, nil when the event has none. It is
+	// never the translated text that the locale-resolved SELECTs return.
+	Text *string
+}
+
+// ListEventDescriptionBases returns the format flag and the RAW canonical
+// description (events.description, no i18n_text) of the given events. The
+// locale-resolved list and get queries return a translation in its place, so
+// an editor that writes back what it read must read this one.
+func (q *Queries) ListEventDescriptionBases(ctx context.Context, eventIDs []uuid.UUID) (map[uuid.UUID]EventDescriptionBase, error) {
+	out := make(map[uuid.UUID]EventDescriptionBase, len(eventIDs))
+	if len(eventIDs) == 0 {
+		return out, nil
+	}
+	rows, err := q.db.Query(ctx, listEventDescriptionBases, eventIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var b EventDescriptionBase
+		if err := rows.Scan(&id, &b.Format, &b.Text); err != nil {
+			return nil, err
+		}
+		out[id] = b
+	}
+	return out, rows.Err()
+}
+
 // ListEventDescriptionFormats returns the format flag ("text" or "art") of the
 // descriptions of the given events, keyed by event id.
 func (q *Queries) ListEventDescriptionFormats(ctx context.Context, eventIDs []uuid.UUID) (map[uuid.UUID]string, error) {

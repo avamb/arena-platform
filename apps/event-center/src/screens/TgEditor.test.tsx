@@ -24,6 +24,7 @@ vi.mock("@/lib/api/endpoints", async (importOriginal) => ({
 import { fetchOrgMe, listEvents, saveDescription, saveEmailNote, sendEmailNoteTest } from "@/lib/api/endpoints";
 import { ApiError } from "@/lib/api/http";
 import { I18nProvider, type Locale } from "@/lib/i18n";
+import { resetTelegramScript } from "@/lib/tgEdit";
 import { TgEditView, type TgEditState } from "@/screens/TgEditScreen";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -59,6 +60,7 @@ beforeEach(() => {
   vi.mocked(listEvents).mockResolvedValue({ events: [eventItem()] } as never);
   allow();
   delete (window as { Telegram?: unknown }).Telegram;
+  resetTelegramScript();
 });
 
 afterEach(() => {
@@ -68,6 +70,8 @@ afterEach(() => {
   }
   document.body.innerHTML = "";
   delete (window as { Telegram?: unknown }).Telegram;
+  resetTelegramScript();
+  document.head.querySelectorAll("script").forEach((s) => s.remove());
 });
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -120,6 +124,8 @@ function telegram() {
   const handlers: Array<() => void> = [];
   const app = {
     close: vi.fn(),
+    enableClosingConfirmation: vi.fn(),
+    disableClosingConfirmation: vi.fn(),
     BackButton: {
       show: vi.fn(),
       hide: vi.fn(),
@@ -257,11 +263,19 @@ describe("an event the person may not edit", () => {
   });
 });
 
+/** Lets the promises of the page (the script load, the effects after it) run. */
+async function settle() {
+  await act(async () => {
+    await sleep(0);
+  });
+}
+
 describe("the Telegram back button", () => {
   it("is shown while the page is open, closes the page when pressed and is taken away afterwards", async () => {
     const { app, handlers } = telegram();
     const onClose = vi.fn();
     mount({ phase: "noAccess" }, onClose);
+    await settle();
     expect(app.BackButton.show).toHaveBeenCalledTimes(1);
     expect(handlers).toHaveLength(1);
     handlers[0]();
@@ -271,8 +285,207 @@ describe("the Telegram back button", () => {
     expect(handlers).toHaveLength(0);
   });
 
+  it("is bound only once the Telegram script has loaded, not before it (the page is drawn first)", async () => {
+    const onClose = vi.fn();
+    mount({ phase: "noAccess" }, onClose);
+    await settle();
+    // The script was asked for and has not arrived: no Telegram object, so nothing to bind to.
+    const script = document.head.querySelector<HTMLScriptElement>("script[src*='telegram-web-app']");
+    expect(script).not.toBeNull();
+    // The stand-in appears the way the real script does: when the file has run.
+    const { app, handlers } = telegram();
+    expect(app.BackButton.onClick).not.toHaveBeenCalled();
+    await act(async () => {
+      script?.onload?.(new Event("load"));
+      await sleep(0);
+    });
+    expect(app.BackButton.show).toHaveBeenCalledTimes(1);
+    expect(handlers).toHaveLength(1);
+    handlers[0]();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not leave a button behind when the page is closed before the script arrives", async () => {
+    mount({ phase: "noAccess" });
+    await settle();
+    const script = document.head.querySelector<HTMLScriptElement>("script[src*='telegram-web-app']");
+    act(() => roots.pop()?.unmount());
+    const { app, handlers } = telegram();
+    await act(async () => {
+      script?.onload?.(new Event("load"));
+      await sleep(0);
+    });
+    expect(app.BackButton.onClick).not.toHaveBeenCalled();
+    expect(handlers).toHaveLength(0);
+  });
+
   it("is not needed outside Telegram: the close button is on the page", () => {
     const el = mount({ phase: "noAccess" });
     expect(el.querySelector('[data-testid="tg-edit-close"]')).not.toBeNull();
+  });
+});
+
+describe("the window while there is something to lose", () => {
+  it("asks Telegram to confirm a close while the text is not saved, and stops asking once it is saved", async () => {
+    const { app } = telegram();
+    vi.mocked(saveDescription).mockResolvedValue({} as never);
+    const el = mount(ready("description"));
+    await editor(el);
+    await settle();
+    expect(app.enableClosingConfirmation).not.toHaveBeenCalled();
+    await press(bullets(el));
+    await settle();
+    expect(app.enableClosingConfirmation).toHaveBeenCalledTimes(1);
+    await press(el.querySelector('[data-testid="tg-description-save"]'));
+    expect(app.disableClosingConfirmation).toHaveBeenCalled();
+    expect(app.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not close the page, by the back button or by the close button, while a save is on its way", async () => {
+    const { app, handlers } = telegram();
+    let finish: (v: never) => void = () => undefined;
+    vi.mocked(saveDescription).mockReturnValue(new Promise((res) => (finish = res as typeof finish)));
+    const onClose = vi.fn();
+    const el = mount(ready("description"), onClose);
+    await editor(el);
+    await settle();
+    await press(bullets(el));
+    await press(el.querySelector('[data-testid="tg-description-save"]'));
+    await settle();
+    expect((el.querySelector('[data-testid="tg-edit-close"]') as HTMLButtonElement).disabled).toBe(true);
+    handlers[0]();
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => {
+      finish({} as never);
+      await sleep(0);
+    });
+    expect(app.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the canonical description, not the translation", () => {
+  const CANON = "<p>The <strong>original</strong> text.</p>";
+  const RU = "<p>Русский перевод.</p>";
+
+  function translated(over: Record<string, unknown> = {}) {
+    return eventItem({ description: RU, description_base: CANON, description_translated: true, ...over });
+  }
+
+  it("opens with the canonical text and writes the canonical text back, never the translation", async () => {
+    vi.mocked(listEvents).mockResolvedValue({ events: [translated()] } as never);
+    vi.mocked(saveDescription).mockResolvedValue({} as never);
+    const el = mount(ready("description"));
+    const box = await editor(el);
+    expect(box.textContent).toContain("original");
+    expect(box.textContent).not.toContain("Русский");
+    await press(bullets(el));
+    await press(el.querySelector('[data-testid="tg-description-save"]'));
+    expect(saveDescription).toHaveBeenCalledTimes(1);
+    const sentArt = vi.mocked(saveDescription).mock.calls[0][2];
+    expect(sentArt).toContain("original");
+    expect(sentArt).not.toContain("Русский");
+  });
+
+  it("an event with no canonical text opens an empty editor, never the translation", async () => {
+    vi.mocked(listEvents).mockResolvedValue({ events: [translated({ description_base: null })] } as never);
+    const el = mount(ready("description"));
+    const box = await editor(el);
+    expect(box.textContent).not.toContain("Русский");
+  });
+
+  it("asks for the list without a language, so it is the same list in every language", async () => {
+    mount(ready("description"));
+    await settle();
+    expect(listEvents).toHaveBeenCalled();
+    for (const call of vi.mocked(listEvents).mock.calls) expect(call).toEqual([ORG]);
+  });
+
+  it("keeps the draft, the editor and the list when the language of the page changes", async () => {
+    const el = mount(ready("description"));
+    await editor(el);
+    const section = el.querySelector('[data-testid="tg-description"]');
+    await press(bullets(el));
+    expect(el.querySelector('[data-testid="tg-description-unsaved"]')).not.toBeNull();
+    const before = vi.mocked(listEvents).mock.calls.length;
+    const select = el.querySelector<HTMLSelectElement>('[data-testid="language-select"]') as HTMLSelectElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(select, "ru");
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      await sleep(0);
+    });
+    await settle();
+    // The same editor section, the same draft in a toolbar of the new language, nothing was read again.
+    const box = await editor(el);
+    expect(el.querySelector('[data-testid="tg-description"]')).toBe(section);
+    expect(box.querySelectorAll("li").length).toBeGreaterThan(0);
+    expect(el.querySelector('[data-testid="tg-description-unsaved"]')?.textContent).toContain("Пока не сохранено");
+    expect(vi.mocked(listEvents).mock.calls.length).toBe(before);
+  });
+});
+
+describe("a description a website wrote", () => {
+  const SITE = "<p>Vino night</p><br><b>Bring</b> a friend";
+
+  it("is not opened: a calm note, no editor and a Save that cannot be pressed", async () => {
+    vi.mocked(listEvents).mockResolvedValue({ events: [eventItem({ description: SITE, description_base: SITE, description_format: "text" })] } as never);
+    const el = mount(ready("description"), () => {}, "ru");
+    await until(() => el.querySelector('[data-testid="tg-description-site-html"]') !== null, "the note");
+    expect(el.querySelector('[data-testid="tg-description-site-html"]')?.textContent).toBe("Это описание пришло с сайта — правьте его на сайте.");
+    expect(el.querySelector(".ProseMirror")).toBeNull();
+    expect((el.querySelector('[data-testid="tg-description-save"]') as HTMLButtonElement).disabled).toBe(true);
+    await press(el.querySelector('[data-testid="tg-description-save"]'));
+    expect(saveDescription).not.toHaveBeenCalled();
+  });
+
+  it("does not take a plain text that only has a less-than sign for a site's HTML", async () => {
+    vi.mocked(listEvents).mockResolvedValue({ events: [eventItem({ description: "Tickets < 20 EUR", description_base: "Tickets < 20 EUR", description_format: "text" })] } as never);
+    const el = mount(ready("description"));
+    await editor(el);
+    expect(el.querySelector('[data-testid="tg-description-site-html"]')).toBeNull();
+  });
+
+  it("does not take ART with tags for a site's HTML", async () => {
+    const el = mount(ready("description"));
+    await editor(el);
+    expect(el.querySelector('[data-testid="tg-description-site-html"]')).toBeNull();
+  });
+});
+
+describe("a save refused for a translation", () => {
+  it("names the language of the translation the server could not convert, and what to do", async () => {
+    vi.mocked(saveDescription).mockRejectedValue(new ApiError(422, "event.invalid_description", "no", undefined, { field: "description", reason: "html_too_long", locale: "ru" }));
+    const el = mount(ready("description"));
+    await editor(el);
+    await press(bullets(el));
+    await press(el.querySelector('[data-testid="tg-description-save"]'));
+    const text = el.querySelector('[data-testid="tg-description-error"]')?.textContent ?? "";
+    expect(text).toContain("ru");
+    expect(text).toContain("Nothing was saved");
+    expect(text).toContain("web event center");
+  });
+
+  it("a refusal of the description itself keeps the general text", async () => {
+    vi.mocked(saveDescription).mockRejectedValue(new ApiError(422, "event.invalid_description", "no", undefined, { field: "description", reason: "too_long" }));
+    const el = mount(ready("description"));
+    await editor(el);
+    await press(bullets(el));
+    await press(el.querySelector('[data-testid="tg-description-save"]'));
+    expect(el.querySelector('[data-testid="tg-description-error"]')?.textContent ?? "").not.toContain("translation");
+  });
+});
+
+describe("the link to the web event center", () => {
+  it("is not offered inside a Telegram window", async () => {
+    // A Telegram client whose window cannot be closed from the page: the page says Saved, with no link out.
+    const { app } = telegram();
+    (app as { platform?: string }).platform = "android";
+    (app as { close?: unknown }).close = undefined;
+    vi.mocked(saveDescription).mockResolvedValue({} as never);
+    const el = mount(ready("description"));
+    await editor(el);
+    await press(bullets(el));
+    await press(el.querySelector('[data-testid="tg-description-save"]'));
+    expect(el.querySelector('[data-testid="tg-edit-saved"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="tg-edit-open-event"]')).toBeNull();
   });
 });

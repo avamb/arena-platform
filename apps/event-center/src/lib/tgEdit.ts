@@ -124,6 +124,8 @@ interface TelegramWebApp {
   ready?: () => void;
   expand?: () => void;
   BackButton?: TelegramBackButton;
+  enableClosingConfirmation?: () => void;
+  disableClosingConfirmation?: () => void;
 }
 
 /** A window, or a stand-in with a Telegram global (a window has no declared Telegram property). */
@@ -156,7 +158,31 @@ export function bindBackButton(handler: () => void, win: TelegramWindow = window
   };
 }
 
+/**
+ * Asks Telegram to confirm before the window is closed (by a swipe, the cross, the back gesture) while there is
+ * text that is not saved, and stops asking once there is none. Nothing without Telegram.
+ */
+export function setClosingConfirmation(on: boolean, win: TelegramWindow = window): void {
+  const app = webApp(win);
+  if (on) app?.enableClosingConfirmation?.();
+  else app?.disableClosingConfirmation?.();
+}
+
+/**
+ * True inside a Telegram client. The script also runs in an ordinary browser (platform "unknown"), and a page
+ * served there has no Telegram window to close.
+ */
+export function insideTelegram(win: TelegramWindow = window): boolean {
+  const app = webApp(win);
+  return app !== null && app.platform !== "unknown";
+}
+
 let loading: Promise<boolean> | null = null;
+
+/** Forgets the load in progress, so a test can start a page again with another Telegram stand-in. */
+export function resetTelegramScript(): void {
+  loading = null;
+}
 
 /**
  * Loads the Telegram script. It resolves true when Telegram.WebApp exists

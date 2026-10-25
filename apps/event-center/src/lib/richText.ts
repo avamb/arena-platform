@@ -93,3 +93,17 @@ export function plainOfArt(art: string, profile: ProfileName): string {
 export function sameVisibleText(a: string, b: string, profile: ProfileName): boolean {
   return plainOfArt(a, profile).trim() === plainOfArt(b, profile).trim();
 }
+
+/** The tags of the description's white list (with the aliases b and i) and div, span: a name that shows HTML. */
+const SITE_HTML_TAG = /<\/?(?:div|span|br|b|i|h[1-6]|p|strong|em|u|a|ul|ol|li|blockquote)(?=[\s/>])/i;
+
+/**
+ * True when a description still marked `text` holds a literal HTML tag (a WordPress site wrote it, the Bil24
+ * gateway shows such a row as HTML). The converter would show those tags as words and a save would store the
+ * words, so the Telegram editor leaves such a description to the site. Same test as `richtext.LooksLikeHTML`
+ * on the server: "a < b" is not a tag. An `art` row is never one of these.
+ */
+export function looksLikeSiteHtml(text: string | null | undefined, format: string | null | undefined): boolean {
+  if (text === null || text === undefined || format === ART_FORMAT || !text.includes("<")) return false;
+  return SITE_HTML_TAG.test(text);
+}
