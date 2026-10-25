@@ -34,6 +34,11 @@ apps/event-center/node_modules
 apps/event-center/dist
 apps/event-center/tsconfig.app.tsbuildinfo
 apps/event-center/tsconfig.node.tsbuildinfo
+# The shared editor library (apps/rich-editor) is built inside the event-center
+# image the same way: npm ci + vite build, never the host copy.
+apps/rich-editor/node_modules
+apps/rich-editor/dist
+apps/rich-editor/*.tsbuildinfo
 
 # ----- Widget: not required in any production image ----------
 # The Go and admin images do not use the widget source.
