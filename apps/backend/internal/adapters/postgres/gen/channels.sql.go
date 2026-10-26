@@ -213,6 +213,15 @@ func (q *Queries) SoftDeleteSalesChannel(ctx context.Context, id, orgID uuid.UUI
 // EnableChannelHostedPage
 // ─────────────────────────────────────────────────────────────────────────────
 
+// channelHasNoGatewayCredential is the one predicate that tells a storefront
+// channel from a WordPress site's: a site carries a gateway credential
+// (settings.gateway.token_hash, or the legacy top-level gateway_token_hash) and
+// is never bound to an event or given a hosted page automatically.
+// EnableChannelHostedPage and ListBindableChannelsByOrg both splice it in, so
+// the two cannot drift apart.
+const channelHasNoGatewayCredential = `settings #>> '{gateway,token_hash}' IS NULL
+  AND  settings ->> 'gateway_token_hash' IS NULL`
+
 const enableChannelHostedPage = `-- name: EnableChannelHostedPage :execrows
 UPDATE sales_channels
 SET    settings   = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hosted_page}',
@@ -222,8 +231,7 @@ WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
   AND  COALESCE(settings #>> '{hosted_page,enabled}', '') <> 'true'
-  AND  settings #>> '{gateway,token_hash}' IS NULL
-  AND  settings ->> 'gateway_token_hash' IS NULL`
+  AND  ` + channelHasNoGatewayCredential
 
 // EnableChannelHostedPage turns on settings.hosted_page.enabled for a channel
 // that publishes through the event center and reports whether the row
@@ -235,4 +243,42 @@ func (q *Queries) EnableChannelHostedPage(ctx context.Context, id, orgID uuid.UU
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListBindableChannelsByOrg
+// ─────────────────────────────────────────────────────────────────────────────
+
+// BindableChannel is a storefront channel an event may be bound to when it is
+// published without any: the channel id and whether its hosted page is on.
+type BindableChannel struct {
+	ID                uuid.UUID `json:"id"`
+	HostedPageEnabled bool      `json:"hosted_page_enabled"`
+}
+
+const listBindableChannelsByOrg = `-- name: ListBindableChannelsByOrg :many
+SELECT id, COALESCE(settings #>> '{hosted_page,enabled}', '') = 'true'
+FROM   sales_channels
+WHERE  org_id = $1
+  AND  deleted_at IS NULL
+  AND  ` + channelHasNoGatewayCredential + `
+ORDER  BY created_at ASC, id ASC`
+
+// ListBindableChannelsByOrg lists the organization's live channels that carry
+// no gateway credential (so not a WordPress site's), oldest first.
+func (q *Queries) ListBindableChannelsByOrg(ctx context.Context, orgID uuid.UUID) ([]BindableChannel, error) {
+	rows, err := q.db.Query(ctx, listBindableChannelsByOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BindableChannel
+	for rows.Next() {
+		var c BindableChannel
+		if err := rows.Scan(&c.ID, &c.HostedPageEnabled); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }

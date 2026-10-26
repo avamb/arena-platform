@@ -8,7 +8,9 @@
 // event's publication rows are kept. They are what ties the event to its
 // channels, and they are inert while the status is not `published` (every
 // public surface filters on it), so publishing the event again restores
-// exactly the channels it was sold in. Dropping them would also silence the
+// exactly the channels it was sold in. Publishing an event that has no
+// publication at all binds it to a storefront channel first (UXH-22,
+// eventpublication.BindOnPublish). Dropping them would also silence the
 // `event.changed` webhook that tells a site to hide the event, because the
 // worker finds the sites through those rows.
 package hcatalog
@@ -25,6 +27,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventpublication"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
@@ -67,6 +70,20 @@ func (h *Handler) applyEventStatus(w http.ResponseWriter, r *http.Request, curre
 			return fail(err, "event.schedule_sessions_failed", "failed to schedule event sessions")
 		}
 	}
+	// UXH-22: an event published without any publication (the web event center
+	// saves with publish:false and publishes here) would answer 404 on its own
+	// hosted page, so it is bound to a storefront channel in this transaction.
+	// An event that already has publications keeps exactly those.
+	var boundChannels []string
+	if to == "published" {
+		bound, err := eventpublication.BindOnPublish(ctx, h.eventQueries.WithTx(tx), orgID, current.ID)
+		if err != nil {
+			return fail(err, "event.publish_channel_failed", "failed to bind event to a sales channel")
+		}
+		for _, b := range bound {
+			boundChannels = append(boundChannels, b.ChannelID.String())
+		}
+	}
 	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(ctx)
 		ev := audit.Event{
@@ -85,6 +102,7 @@ func (h *Handler) applyEventStatus(w http.ResponseWriter, r *http.Request, curre
 				"from_status":        current.Status,
 				"to_status":          to,
 				"scheduled_sessions": scheduledSessions,
+				"bound_channels":     boundChannels,
 			},
 		}
 		if err := h.audit.WriteTx(ctx, tx, ev); err != nil {
