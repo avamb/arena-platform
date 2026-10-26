@@ -133,3 +133,49 @@ func TestAllocateGAUnitsTx_RejectsLineWithoutCategory(t *testing.T) {
 		t.Fatalf("AllocateGAUnitsTx with quantity 0 = %v, want ErrHoldInvalidInput", err)
 	}
 }
+
+// UXH-23: a cancelled session keeps its row and its (open) categories, so
+// the session's own status is what refuses a new hold on it. Only
+// 'cancelled' is withdrawn; every other status ('scheduled', 'draft',
+// 'completed') is left to the existing gates, as before.
+func TestSessionStatusRefusal(t *testing.T) {
+	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	tierID := uuid.MustParse("00000000-0000-0000-0000-0000000000a2")
+
+	for _, status := range []string{"scheduled", "draft", "completed", ""} {
+		if err := SessionStatusRefusal(status, tierID, now); err != nil {
+			t.Fatalf("status %q refused: %v", status, err)
+		}
+	}
+
+	cases := []struct {
+		status   string
+		sentinel error
+		wantCode string
+	}{
+		{"cancelled", ErrSessionCancelled, "session.cancelled"},
+	}
+	for _, tc := range cases {
+		t.Run("status="+tc.status, func(t *testing.T) {
+			err := SessionStatusRefusal(tc.status, tierID, now)
+			if err == nil {
+				t.Fatalf("status %q was not refused", tc.status)
+			}
+			if !errors.Is(err, tc.sentinel) {
+				t.Errorf("refusal %v does not match its sentinel %v", err, tc.sentinel)
+			}
+			if errors.Is(err, ErrCategoryNotOnSale) || errors.Is(err, ErrCategoryClosed) {
+				t.Errorf("a session refusal must not read as a category refusal: %v", err)
+			}
+			if got := CategoryGateErrorCode(err); got != tc.wantCode {
+				t.Errorf("error code = %q, want %q", got, tc.wantCode)
+			}
+			if CategoryGateMessage(err) == "" || err.Error() == "" {
+				t.Error("refusal has no message")
+			}
+			if got := CategoryGateTierID(err); got != tierID {
+				t.Errorf("refusal names tier %s, want %s", got, tierID)
+			}
+		})
+	}
+}

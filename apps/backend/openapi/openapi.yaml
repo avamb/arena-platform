@@ -10620,8 +10620,10 @@ components:
             How many places the category still has free - what a buyer may
             still take, and what the widget's quantity picker caps at
             instead of `capacity`. 0 when the category is closed or outside
-            its sale window; null when the category owns no place at all
-            (then `capacity` is the only bound there is).
+            its sale window, or when its session is `cancelled` (a
+            cancelled date stays in the feed with every category at 0); null
+            when the category owns no place at all (then `capacity` is the
+            only bound there is).
 
     TierPriceWindow:
       type: object
@@ -44790,7 +44792,8 @@ paths:
             Seat conflict (reservation.seats_conflict with conflicts[]),
             capacity exceeded (reservation.over_capacity), or a category that
             is closed (`tier.closed`) or outside its sale window or past the
-            session's sales end (`tier.not_on_sale`).
+            session's sales end (`tier.not_on_sale`), or a session that was
+            cancelled (`session.cancelled`).
           content:
             application/json:
               schema:
@@ -44862,7 +44865,8 @@ paths:
         reservation, checkout session, order or payment. It applies the same
         read-only sale gates as a hold: a category that is closed, outside its
         sale window or past the session's sales end is refused with 409
-        `tier.closed` or `tier.not_on_sale`, and a seat that is gone or taken
+        `tier.closed` or `tier.not_on_sale`, a session that was cancelled with
+        409 `session.cancelled`, and a seat that is gone or taken
         with 409 `reservation.seats_conflict`, exactly as `checkout/start`
         refuses them. The answer is never cached (`Cache-Control: no-store`).
 
@@ -44940,7 +44944,8 @@ paths:
           description: |
             A requested seat is gone or taken (`reservation.seats_conflict`),
             or a category is closed (`tier.closed`) or outside its sale window
-            or past the session's sales end (`tier.not_on_sale`).
+            or past the session's sales end (`tier.not_on_sale`), or the
+            session was cancelled (`session.cancelled`).
           content:
             application/json:
               schema:

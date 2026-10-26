@@ -24,6 +24,7 @@ import (
 	"context"
 	"fmt"
 	"time"
+	_ "time/tzdata" // the zone must resolve on a host without system tzdata
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -51,7 +52,18 @@ func applySaleTimesFixture(ctx context.Context, tx pgx.Tx) error {
 		ON CONFLICT (id) DO NOTHING`, saleTimesEventID, orgID, saleTimesEventName); err != nil {
 		return err
 	}
-	start := time.Now().UTC().AddDate(0, 0, 40).Truncate(time.Hour)
+	// The date starts at NOON on the venue's clock (Madrid), whatever hour the
+	// seed runs in. The spec needs its doors values (90 minutes before the
+	// start, one hour after it) on the session's own calendar day: a start
+	// truncated from the current instant wrapped them across midnight when the
+	// job ran between 22:00 and 00:59 UTC (CI run of 2026-10-26) and the
+	// "doors after the start" refusal never appeared.
+	madrid, err := time.LoadLocation("Europe/Madrid")
+	if err != nil {
+		return fmt.Errorf("sale times fixture venue zone: %w", err)
+	}
+	day := time.Now().In(madrid).AddDate(0, 0, 40)
+	start := time.Date(day.Year(), day.Month(), day.Day(), 12, 0, 0, 0, madrid).UTC()
 	if err := run("session", `
 		INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, status, admission_mode, currency, currency_source)
 		VALUES ($1, $2, $3, $4, $4::timestamptz + interval '2 hours', 10, 'scheduled', 'general_admission', 'EUR', 'override')

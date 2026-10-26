@@ -50,6 +50,16 @@ export function clearCheckoutToken(
   try { storage.removeItem(checkoutTokenKey(scope)); } catch { /* ignore */ }
 }
 
+/** True for a date the organizer cancelled: it stays listed but cannot be bought. */
+export function isSessionCancelled(s: FeedSession | null | undefined): boolean {
+  return s?.status === 'cancelled';
+}
+
+/** True when the event has dates and every one of them was cancelled. */
+export function allSessionsCancelled(ev: FeedEvent | null | undefined): boolean {
+  return !!ev && ev.sessions.length > 0 && ev.sessions.every(isSessionCancelled);
+}
+
 /**
  * Pick the session the picker opens on when the event loads.
  *
@@ -57,17 +67,19 @@ export function clearCheckoutToken(
  * one date), then the first non-cancelled session by start time. A deep link to
  * a cancelled date is not honoured: a buyer who scanned an old poster lands on
  * the next date that can be bought, not on a date that cannot. Unknown or
- * foreign ids fall through to the same choice.
+ * foreign ids fall through to the same choice. When every date was cancelled
+ * there is nothing to open: the result is null and the widget shows the
+ * "cancelled" notice instead of a picker (UXH-23).
  */
 export function pickInitialSession(ev: FeedEvent, deepLinkId: string): FeedSession | null {
   if (deepLinkId) {
     const found = ev.sessions.find((s) => s.id === deepLinkId);
-    if (found && found.status !== 'cancelled') return found;
+    if (found && !isSessionCancelled(found)) return found;
   }
   const upcoming = ev.sessions
-    .filter((s) => s.status !== 'cancelled')
+    .filter((s) => !isSessionCancelled(s))
     .sort((a, b) => a.start_at.localeCompare(b.start_at));
-  return upcoming[0] ?? ev.sessions[0] ?? null;
+  return upcoming[0] ?? null;
 }
 
 export function getCheckoutTokenFromSearch(search: string): string | null {

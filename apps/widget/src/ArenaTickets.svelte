@@ -53,6 +53,8 @@
     buildGaItems,
     totalSelectionCount,
     pickInitialSession,
+    isSessionCancelled,
+    allSessionsCancelled,
     type WidgetStage,
     type GaArea,
   } from './lib/store.js';
@@ -176,6 +178,12 @@
   const sessionsHidden = $derived(
     sessions.trim().toLowerCase() === 'hidden' && (event?.sessions.length ?? 0) <= 1,
   );
+
+  // UXH-23: a cancelled date keeps its chip (with a "Cancelled" label) but has
+  // nothing to buy, so the notice replaces the map, the category steppers and
+  // the cart bar — both for a cancelled selection and for an event whose every
+  // date was cancelled (no session is selected then).
+  const salesClosed = $derived(isSessionCancelled(selectedSession) || allSessionsCancelled(event));
 
   // ── Widget stage ───────────────────────────────────────────────────────────
 
@@ -909,7 +917,7 @@
          category list — so the floor applies only when a map is shown. -->
     <div
       class="arena-tickets-frame"
-      class:arena-tickets-frame--flat={!(selectedSession && selectedSession.schema_url)}
+      class:arena-tickets-frame--flat={salesClosed || !(selectedSession && selectedSession.schema_url)}
       class:arena-tickets-frame--bare={frameHidden}
     >
       {#if loading}
@@ -958,11 +966,14 @@
           }}
         />
         {/if}
+        {#if salesClosed}
+          <p class="arena-tickets-cancelled" role="status" data-testid="session-cancelled-notice">{t.session_cancelled_notice}</p>
+        {/if}
         {#if cartLimitNotice}
           <p class="arena-tickets-limit" role="status">{cartLimitNotice}</p>
         {/if}
         <!-- Seat map (only for sessions with schema_url) -->
-        {#if selectedSession && selectedSession.schema_url}
+        {#if !salesClosed && selectedSession && selectedSession.schema_url}
           <div class="arena-tickets-map-wrap">
             <SeatMapView
               session={selectedSession}
@@ -986,7 +997,7 @@
         {/if}
 
         <!-- GA tier cards (shown below the map for hybrid/GA sessions) -->
-        {#if gaTiers.length > 0}
+        {#if !salesClosed && gaTiers.length > 0}
           <div class="ga-tiers-section">
             {#each gaTiers as tier (tier.id)}
               <GaTierCard
@@ -999,7 +1010,7 @@
         {/if}
 
         <!-- Mini cart bar -->
-        {#if selectedSession}
+        {#if selectedSession && !salesClosed}
           <MiniCart
             lines={cart.lines}
             expiresAt={holdExpiresAt}
@@ -1198,6 +1209,15 @@
     font-size: 0.875rem;
     color: #92400e;
     background: #fef3c7;
+  }
+
+  .arena-tickets-cancelled {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #991b1b;
+    background: #fee2e2;
   }
 
   .arena-tickets-placeholder {

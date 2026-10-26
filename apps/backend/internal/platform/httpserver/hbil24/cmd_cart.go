@@ -397,6 +397,13 @@ func (h *Handler) writeHoldError(ctx context.Context, w http.ResponseWriter, com
 		resp := bil24Error(command, ResultCodeInvalidRequest, "one or more requested seats are not available")
 		resp.Data = map[string]any{"conflicts": conflicts.Conflicts}
 		writeBil24JSON(w, http.StatusOK, resp)
+	case errors.Is(err, hcheckout.ErrSessionCancelled):
+		// A cancelled session keeps its categories, so the hold gate refuses
+		// it on the session's status. Same wording CREATE_ORDER_EXT uses for
+		// a session that is not on sale: 101 bil24.sales_closed.
+		writeBil24JSON(w, http.StatusOK, bil24Error(command, ResultCodeUserVisible,
+			h.localizeDesc("", "", "bil24.sales_closed",
+				"sales are closed for this event", nil)))
 	case errors.Is(err, hcheckout.ErrCategoryClosed),
 		errors.Is(err, hcheckout.ErrCategoryNotOnSale):
 		// Decision 4 of plan 08_architecture/23: the wire protocol has no

@@ -21,6 +21,8 @@ import {
   planlessGaTiers,
   identifyGaAreas,
   pickInitialSession,
+  isSessionCancelled,
+  allSessionsCancelled,
 } from './store.js';
 import type { Geometry, CategoryPrice, Tier, FeedSession, FeedEvent } from '../types.js';
 
@@ -573,8 +575,33 @@ describe('pickInitialSession', () => {
     expect(pickInitialSession(ev([cancelled, late, early]), 's-cancelled')?.id).toBe('s-early');
   });
 
-  it('still shows the first date when every date is cancelled', () => {
-    expect(pickInitialSession(ev([cancelled]), 's-cancelled')?.id).toBe('s-cancelled');
+  it('opens on nothing when every date is cancelled (UXH-23)', () => {
+    const cancelledLate = sess('s-cancelled-late', '2026-06-01T10:00:00Z', 'cancelled');
+    expect(pickInitialSession(ev([cancelled]), 's-cancelled')).toBeNull();
+    expect(pickInitialSession(ev([cancelled, cancelledLate]), '')).toBeNull();
     expect(pickInitialSession(ev([]), '')).toBeNull();
+  });
+});
+
+describe('isSessionCancelled / allSessionsCancelled', () => {
+  function sess(id: string, status: string): FeedSession {
+    return { ...makeSession(), id, status };
+  }
+  function ev(sessions: FeedSession[]): FeedEvent {
+    return { id: 'ev-1', sessions } as unknown as FeedEvent;
+  }
+
+  it('only a cancelled status counts as cancelled', () => {
+    expect(isSessionCancelled(sess('a', 'cancelled'))).toBe(true);
+    expect(isSessionCancelled(sess('a', 'scheduled'))).toBe(false);
+    expect(isSessionCancelled(sess('a', 'published'))).toBe(false);
+    expect(isSessionCancelled(null)).toBe(false);
+  });
+
+  it('allSessionsCancelled needs at least one date and every one cancelled', () => {
+    expect(allSessionsCancelled(ev([sess('a', 'cancelled'), sess('b', 'cancelled')]))).toBe(true);
+    expect(allSessionsCancelled(ev([sess('a', 'cancelled'), sess('b', 'scheduled')]))).toBe(false);
+    expect(allSessionsCancelled(ev([]))).toBe(false);
+    expect(allSessionsCancelled(null)).toBe(false);
   });
 });

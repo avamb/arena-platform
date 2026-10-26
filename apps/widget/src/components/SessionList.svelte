@@ -9,6 +9,8 @@
   import type { FeedSession, Tier } from '../types.js';
   import { doorsOpenLabel, sessionChipLabel } from '../lib/session-label.js';
   import { priceLabelBesideName } from '../lib/priceLabel.js';
+  import { getCheckoutI18n } from '../lib/checkout.js';
+  import { isSessionCancelled } from '../lib/store.js';
 
   interface Props {
     sessions: FeedSession[];
@@ -18,6 +20,8 @@
   }
 
   const { sessions, selectedSession, onSelectSession, locale = 'en' }: Props = $props();
+
+  const t = $derived(getCheckoutI18n(locale));
 
   /** Format a price for the legend chip. */
   function formatPrice(tier: Tier): string {
@@ -49,13 +53,16 @@
         aria-selected={isSelected}
         class="chip"
         class:chip--selected={isSelected}
-        class:chip--cancelled={session.status === 'cancelled'}
+        class:chip--cancelled={isSessionCancelled(session)}
         onclick={() => onSelectSession(session)}
-        disabled={session.status === 'cancelled'}
+        disabled={isSessionCancelled(session)}
       >
         <span class="chip-date">{label.date}</span>
         {#if label.time}
           <span class="chip-time">{label.time}</span>
+        {/if}
+        {#if isSessionCancelled(session)}
+          <span class="chip-cancelled-label" data-testid="session-cancelled-label">{t.session_cancelled}</span>
         {/if}
       </button>
     {/each}
@@ -139,9 +146,20 @@
   }
 
   .chip--cancelled {
-    opacity: 0.4;
+    opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  .chip--cancelled .chip-date,
+  .chip--cancelled .chip-time {
     text-decoration: line-through;
+  }
+
+  .chip-cancelled-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
   }
 
   .chip-date {
