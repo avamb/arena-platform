@@ -125,9 +125,9 @@ test.describe("sales end and doors (live, three roles)", () => {
     // Doors: a typed clock time on the venue's clock, 90 minutes before the start.
     await page.getByTestId("doors-change").click();
     await page.getByTestId("doors-time").fill(wallClock(shift(start, -90)));
-    // The fixture starts at midnight. The intended 90-minutes-before value is
-    // therefore on the previous calendar day; the editor requires that choice
-    // explicitly rather than guessing from a clock value alone.
+    // The fixture starts at noon on the venue's clock (the seed fixes it, so the
+    // values below never wrap across midnight). The editor still wants the day
+    // chosen explicitly rather than guessed from a clock value alone.
     await page.getByTestId("doors-another-day").click();
     await page.getByTestId(`date-day-${wallDay(shift(start, -90))}`).click();
     await page.getByTestId("doors-save").click();
