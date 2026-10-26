@@ -612,7 +612,14 @@ func (h *Handler) writePaymentStartError(
 			Status:  http.StatusServiceUnavailable,
 		}
 	}
-	h.logger.Error(logMessage,
+	// A typed refusal (organization without a payment config, unsupported
+	// provider, bad return URL) is an expected answer, not a fault: WARN. An
+	// untyped error could be anything, so it stays at ERROR.
+	level := slog.LevelWarn
+	if !isTyped {
+		level = slog.LevelError
+	}
+	h.logger.Log(r.Context(), level, logMessage,
 		slog.String("code", pse.Code),
 		slog.String("org_id", checkCtx.OrgID.String()),
 		slog.String("session_id", checkCtx.SessionID.String()),

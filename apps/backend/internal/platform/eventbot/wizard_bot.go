@@ -155,11 +155,11 @@ func (b *Bot) wizardStart(ctx context.Context, chatID int64, editMsgID *int, fro
 			return
 		}
 		if d != nil && d.Step != stDone {
-			name := d.Event.Name
-			if name == "" {
-				name = "…"
+			resumeKey := "bot.wz.resume"
+			if d.Event.Name == "" {
+				resumeKey = "bot.wz.resume_noname"
 			}
-			b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.wz.resume", map[string]any{"Name": Esc(name)}),
+			b.reply(ctx, chatID, editMsgID, b.texts.T(loc, resumeKey, map[string]any{"Name": Esc(d.Event.Name)}),
 				&models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
 					{Text: b.texts.T(loc, "bot.wz.resume_btn", nil), CallbackData: "wz:resume"},
 					{Text: b.texts.T(loc, "bot.wz.restart_btn", nil), CallbackData: "wz:restart"},
@@ -393,6 +393,7 @@ const posterOffFor = 10 * time.Minute
 // fails, the wizard simply asks everything as before.
 func (b *Bot) readPosterHints(ctx context.Context, chatID int64, loc, jwt string, orgID uuid.UUID, mediaID string, d *Draft) {
 	if time.Now().Unix() < b.posterOffUntil.Load() {
+		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_read_off", nil), nil)
 		return
 	}
 	done := make(chan struct{})
@@ -408,6 +409,7 @@ func (b *Bot) readPosterHints(ctx context.Context, chatID int64, loc, jwt string
 		if posterReaderOff(err) {
 			b.posterOffUntil.Store(time.Now().Add(posterOffFor).Unix())
 			b.logger.Info("eventbot: poster reading is off on arena-api")
+			b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_read_off", nil), nil)
 			return
 		}
 		b.logger.Warn("eventbot: poster reading failed", slog.String("error", err.Error()))

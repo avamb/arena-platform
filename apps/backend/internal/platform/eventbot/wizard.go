@@ -258,8 +258,13 @@ type DraftScratch struct {
 	NewVenue    VenueCreate    `json:"new_venue"`
 	// TzHint is the zone a typed city name pointed at, offered as a button on
 	// the zone question until the person confirms it.
-	TzHint     string `json:"tz_hint,omitempty"`
-	SameAsPrev bool   `json:"same_as_prev"`
+	TzHint string `json:"tz_hint,omitempty"`
+	// DupVenueID/DupVenueName name the venue a refused "+ new venue" already
+	// is (same name in the organization): the venue question then offers it
+	// as a button, so a refusal always has a way forward.
+	DupVenueID   string `json:"dup_venue_id,omitempty"`
+	DupVenueName string `json:"dup_venue_name,omitempty"`
+	SameAsPrev   bool   `json:"same_as_prev"`
 	// Work is the ticket part the ticket questions fill while an edited
 	// event changes the categories of one date (WorkFor, 1-based) or of every
 	// date (WorkAll); nil means the questions fill Draft.Tickets.
@@ -1146,6 +1151,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 
 	case stSVenue:
 		s := d.session()
+		d.Scratch.DupVenueID, d.Scratch.DupVenueName = "", ""
 		if data == "venue:new" {
 			d.Scratch.NewVenue = VenueCreate{CountryID: s.CountryID, CountryISO2: s.CountryISO2, CityID: s.CityID}
 			d.goTo(stVName)
@@ -1634,6 +1640,21 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 func (w *Wizard) createVenue(ctx context.Context, ws WizSession, d *Draft) (string, error) {
 	v, err := w.refs.CreateVenue(ctx, ws.JWT, ws.OrgID, d.Scratch.NewVenue)
 	if err != nil {
+		if IsAPIError(err, 409) && APIErrorCode(err) == "venue.duplicate" {
+			d.History = nil
+			d.Step = stSVenue
+			name := d.Scratch.NewVenue.Name
+			d.Scratch.NewVenue = VenueCreate{}
+			if venues, lerr := w.refs.Venues(ctx, ws.JWT, ws.OrgID); lerr == nil {
+				for _, v := range venues {
+					if strings.EqualFold(strings.TrimSpace(v.Name), strings.TrimSpace(name)) {
+						d.Scratch.DupVenueID, d.Scratch.DupVenueName = v.ID, v.Name
+						break
+					}
+				}
+			}
+			return w.texts.T(ws.Locale, "bot.wz.venue_duplicate", map[string]any{"Name": Esc(name)}), nil
+		}
 		if IsAPIError(err, 409) || IsAPIError(err, 422) || IsAPIError(err, 400) {
 			d.History = nil
 			d.Step = stSVenue

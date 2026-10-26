@@ -557,6 +557,9 @@ other = "Check and save the draft"
 ["bot.wz.resume"]
 other = "You have an unfinished event, “{{.Name}}”. Continue where you stopped, or start over?"
 
+["bot.wz.resume_noname"]
+other = "You have an unfinished event that has no name yet. Continue where you stopped, or start over?"
+
 ["bot.wz.ask_poster_have"]
 other = "The poster {{.W}}×{{.H}} is already in. Keep it, or send another?"
 
@@ -576,7 +579,10 @@ other = "Reading the poster…"
 other = "The poster says:\n{{.List}}\n\nI will offer these as hints: at each step press “From the poster” if it is right, or type your own."
 
 ["bot.wz.poster_read_none"]
-other = "I found nothing on the poster that I could offer. We fill it in by hand."
+other = "I could not read anything usable from the poster, so please answer the questions yourself."
+
+["bot.wz.poster_read_off"]
+other = "I cannot read posters at the moment, so please answer the questions yourself. The poster is saved."
 
 ["bot.wz.resume_btn"]
 other = "Continue"
@@ -627,7 +633,7 @@ other = "The poster must be a PNG or JPG image."
 other = "That is a PDF, but I need a PNG or JPG image. Open the PDF and save the poster page as an image. You can use Preview, Acrobat or an online “PDF to JPG” converter. Or take a screenshot of the poster. Then send the image as a file."
 
 ["bot.wz.poster_too_big"]
-other = "The poster file is over 5 MB. Save it with a lower quality."
+other = "The poster file is over 5 MB. Send it as a photo (Telegram compresses it), or export it as a JPEG with lower quality in a photo editor and send it again."
 
 ["bot.wz.poster_bad_ratio"]
 other = "The poster is {{.W}}×{{.H}}. It must be 4:5 (1080×1350) or square (1080×1080)."
@@ -703,6 +709,12 @@ other = "I could not find that zone. Pick a button, type the venue's city, or ty
 
 ["bot.wz.venue_failed"]
 other = "I could not save the venue: {{.Reason}}"
+
+["bot.wz.venue_duplicate"]
+other = "A venue called “{{.Name}}” already exists in your organization. Pick it below, or choose another venue from the list."
+
+["bot.wz.venue_dup_btn"]
+other = "✔ Use “{{.Value}}”"
 
 ["bot.wz.ask_capacity"]
 other = "How many places are on sale for this date? A number, for example 80."
@@ -2686,7 +2698,19 @@ other = "🎭 <b>Promoters</b> · {{.Org}} · {{.Total}} in all · page {{.Page}
 other = "Tap a promoter to see and edit its details."
 
 ["bot.prom.empty"]
-other = "There are no promoters yet. A promoter is a partner whose events you sell. You can add one while creating or editing an event."
+other = "There are no promoters yet. A promoter is a partner whose events you sell. Press “➕ Promoter” below to add one, or add it while creating an event."
+
+["bot.prom.add_btn"]
+other = "➕ Promoter"
+
+["bot.prom.new_ask"]
+other = "➕ <b>New promoter.</b> Type its name. Tickets show it as the organizer. Two active promoters cannot share a name."
+
+["bot.prom.new_cancel_btn"]
+other = "‹ Back to the list"
+
+["bot.prom.created"]
+other = "✅ Promoter added. Fill in the other details below if you need them."
 
 ["bot.prom.card"]
 other = "🎭 <b>{{.Name}}</b>"
@@ -3354,6 +3378,9 @@ other = "✅ seller data is shown on the page"
 
 ["bot.og.state_incomplete"]
 other = "⬜ seller data is not shown yet: some data is missing"
+
+["bot.og.state_incomplete_what"]
+other = "⬜ seller data is not shown yet. Missing: {{.Missing}}"
 
 ["bot.og.state_operator_hidden"]
 other = "⬜ seller data is hidden by the platform operator"

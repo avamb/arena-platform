@@ -159,7 +159,7 @@ func TestWizard_HintsNote(t *testing.T) {
 			t.Fatalf("note lacks %q:\n%s", want, note)
 		}
 	}
-	if none := r.w.hintsNote("en", DraftHints{}); !strings.Contains(none, "nothing") {
+	if none := r.w.hintsNote("en", DraftHints{}); !strings.Contains(none, "usable") {
 		t.Fatalf("empty note = %q", none)
 	}
 }

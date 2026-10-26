@@ -15,6 +15,7 @@
   import type { FeedSession, CategoryPrice, SeatStatusValue } from '../types.js';
   import { fetchSessionSchema } from '../api.js';
   import { getCheckoutI18n } from '../lib/checkout.js';
+  import { buyerErrorText } from '../lib/errorI18n.js';
   import {
     buildSeatMapSVG,
     applySeatStatusUpdate,
@@ -117,7 +118,7 @@
       onSchemaLoaded?.(schema.geometry, schema.category_prices);
     } catch (err) {
       if (schemaGen !== gen) return;
-      schemaError = err instanceof Error ? err.message : t.seatmap_error_load;
+      schemaError = buyerErrorText(err, locale, t.seatmap_error_load);
     } finally {
       // Only clear the loading state for the current generation.
       if (schemaGen === gen) schemaLoading = false;

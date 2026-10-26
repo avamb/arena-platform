@@ -491,12 +491,44 @@ func (b *Bot) orgCardText(loc string, p openapi.SellerProfile) string {
 		}
 		sb.WriteString("\n" + b.texts.T(loc, "bot.og.line_form_tg", map[string]any{"Value": tg}))
 	}
-	if len(p.Missing) > 0 {
-		sb.WriteString("\n\n" + b.orgMissingText(loc, p.Missing))
+	// "Complete and shown" is true only when the organization's fields AND
+	// every sales page's own field (its public e-mail) are filled in: a page
+	// listed above as "not shown yet" must never be followed by "complete".
+	missing := orgAllMissing(p)
+	if len(missing) > 0 {
+		sb.WriteString("\n\n" + b.orgMissingText(loc, missing))
 	} else if p.Complete {
 		sb.WriteString("\n\n" + b.texts.T(loc, "bot.og.status_complete", nil))
 	}
 	return sb.String()
+}
+
+// orgChannelIncomplete reports whether a sales page lacks data of its own:
+// not shown, not because the operator hid it.
+func orgChannelIncomplete(c openapi.SellerProfileChannel) bool {
+	return !c.SellerHidden && !c.SellerShown
+}
+
+// orgAllMissing is the organization's missing fields followed by those of its
+// incomplete sales pages, each named once.
+func orgAllMissing(p openapi.SellerProfile) []string {
+	out := append([]string{}, p.Missing...)
+	seen := map[string]bool{}
+	for _, m := range out {
+		seen[m] = true
+	}
+	for _, c := range p.Channels {
+		if !orgChannelIncomplete(c) {
+			continue
+		}
+		for _, m := range c.Missing {
+			if !seen[m] {
+				seen[m] = true
+				out = append(out, m)
+			}
+		}
+	}
+	return out
 }
 
 // orgSellerState is the one line that says whether a sales page shows the
@@ -509,6 +541,13 @@ func (b *Bot) orgSellerState(loc string, c openapi.SellerProfileChannel) string 
 		return b.texts.T(loc, "bot.og.state_operator_hidden", nil)
 	case c.SellerShown:
 		return b.texts.T(loc, "bot.og.state_shown", nil)
+	}
+	if len(c.Missing) > 0 {
+		words := make([]string, 0, len(c.Missing))
+		for _, m := range c.Missing {
+			words = append(words, b.texts.T(loc, "bot.og.m_"+m, nil))
+		}
+		return b.texts.T(loc, "bot.og.state_incomplete_what", map[string]any{"Missing": strings.Join(words, ", ")})
 	}
 	return b.texts.T(loc, "bot.og.state_incomplete", nil)
 }

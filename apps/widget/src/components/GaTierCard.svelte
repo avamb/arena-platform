@@ -1,6 +1,7 @@
 <script lang="ts">
   import { clampGaQuantity, gaTierUpperBound, GA_MAX_QUANTITY } from '../lib/selection.js';
   import { formatPrice } from '../lib/checkout.js';
+  import { priceLabelBesideName } from '../lib/priceLabel.js';
   import type { Tier } from '../types.js';
 
   interface Props {
@@ -15,6 +16,10 @@
   const remaining = $derived(gaTierUpperBound(tier));
   // AB-48: the effective (scheduled) price is what the buyer pays now.
   const price = $derived(tier.current_price ?? tier.price_amount);
+  // A category named "Free" would otherwise read "Free Free".
+  const priceText = $derived(
+    priceLabelBesideName(tier.name, price > 0 && tier.currency ? formatPrice(price, tier.currency) : 'Free'),
+  );
   const nextChange = $derived(
     tier.next_price_change_at ? new Date(tier.next_price_change_at) : null,
   );
@@ -36,10 +41,8 @@
 <div class="ga-card" data-tier-id={tier.id}>
   <div class="ga-card-info">
     <span class="ga-card-name">{tier.name}</span>
-    {#if price > 0 && tier.currency}
-      <span class="ga-card-price">{formatPrice(price, tier.currency)}</span>
-    {:else}
-      <span class="ga-card-price">Free</span>
+    {#if priceText}
+      <span class="ga-card-price">{priceText}</span>
     {/if}
     {#if soldOut}
       <span class="ga-card-soldout" data-testid="ga-sold-out">Sold out</span>

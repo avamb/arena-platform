@@ -410,6 +410,9 @@ other = "Revisa y guarda el borrador"
 ["bot.wz.resume"]
 other = "Tienes un evento sin terminar, «{{.Name}}». ¿Continúas donde lo dejaste o empiezas de nuevo?"
 
+["bot.wz.resume_noname"]
+other = "Tienes un evento sin terminar que aún no tiene nombre. ¿Continúas donde lo dejaste o empiezas de nuevo?"
+
 ["bot.wz.ask_poster_have"]
 other = "El cartel de {{.W}}×{{.H}} ya está subido. ¿Lo mantienes o envías otro?"
 
@@ -429,7 +432,10 @@ other = "Leyendo el cartel…"
 other = "El cartel dice:\n{{.List}}\n\nTe lo ofreceré como sugerencias: en cada paso pulsa «Del cartel» si es correcto o escribe lo tuyo."
 
 ["bot.wz.poster_read_none"]
-other = "No he encontrado nada en el cartel que pueda ofrecerte: lo rellenamos a mano."
+other = "No he podido leer nada útil del cartel, así que responde tú a las preguntas."
+
+["bot.wz.poster_read_off"]
+other = "Ahora mismo no puedo leer carteles, así que responde tú a las preguntas. El cartel queda guardado."
 
 ["bot.wz.resume_btn"]
 other = "Continuar"
@@ -480,7 +486,7 @@ other = "El cartel debe ser una imagen PNG o JPG."
 other = "Eso es un PDF, pero necesito una imagen PNG o JPG. Abre el PDF y guarda la página del cartel como imagen (en Vista Previa, Acrobat o un conversor en línea «PDF a JPG»), o haz una captura de pantalla del cartel, y envíala como archivo."
 
 ["bot.wz.poster_too_big"]
-other = "El archivo del cartel pesa más de 5 MB: guárdalo con menos calidad."
+other = "El archivo del cartel pesa más de 5 MB. Envíalo como foto (Telegram lo comprime) o expórtalo como JPEG con menos calidad desde un editor de imágenes y vuelve a enviarlo."
 
 ["bot.wz.poster_bad_ratio"]
 other = "El cartel mide {{.W}}×{{.H}}: debe ser 4:5 (1080×1350) o cuadrado (1080×1080)."
@@ -556,6 +562,12 @@ other = "No encontré esa zona. Elige un botón, escribe la ciudad del recinto o
 
 ["bot.wz.venue_failed"]
 other = "No se pudo guardar el recinto: {{.Reason}}"
+
+["bot.wz.venue_duplicate"]
+other = "Ya tienes un recinto llamado «{{.Name}}». Elígelo abajo o escoge otro recinto de la lista."
+
+["bot.wz.venue_dup_btn"]
+other = "✔ Elegir «{{.Value}}»"
 
 ["bot.wz.ask_capacity"]
 other = "¿Cuántas plazas hay a la venta para esta fecha? Un número, por ejemplo 80."
@@ -2538,7 +2550,19 @@ other = "🎭 <b>Promotores</b> · {{.Org}} · {{.Total}} en total · pág. {{.P
 other = "Toca un promotor para ver y cambiar sus datos."
 
 ["bot.prom.empty"]
-other = "Aún no hay promotores. Un promotor es un socio cuyos eventos vendes; puedes añadirlo al crear o editar un evento."
+other = "Aún no hay promotores. Un promotor es un socio cuyos eventos vendes. Pulsa «➕ Promotor» abajo para añadir uno, o añádelo al crear un evento."
+
+["bot.prom.add_btn"]
+other = "➕ Promotor"
+
+["bot.prom.new_ask"]
+other = "➕ <b>Nuevo promotor.</b> Escribe su nombre. Se imprime en las entradas como organizador. Dos promotores activos no pueden tener el mismo nombre."
+
+["bot.prom.new_cancel_btn"]
+other = "‹ Volver a la lista"
+
+["bot.prom.created"]
+other = "✅ Promotor añadido. Puedes completar el resto de datos abajo."
 
 ["bot.prom.card"]
 other = "🎭 <b>{{.Name}}</b>"
@@ -3206,6 +3230,9 @@ other = "✅ los datos del vendedor se muestran en la página"
 
 ["bot.og.state_incomplete"]
 other = "⬜ los datos del vendedor aún no se muestran: faltan datos"
+
+["bot.og.state_incomplete_what"]
+other = "⬜ los datos del vendedor aún no se muestran. Falta: {{.Missing}}"
 
 ["bot.og.state_operator_hidden"]
 other = "⬜ el operador de la plataforma ocultó los datos del vendedor"
