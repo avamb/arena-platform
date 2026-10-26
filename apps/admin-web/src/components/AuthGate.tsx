@@ -16,10 +16,15 @@
  *                          screen — the operator must explicitly retry
  *                          or sign out so a malformed /v1/me cannot
  *                          silently strip permissions.
+ *   - authenticated but /v1/me says platform_staff === false
+ *                       -> <StaffOnlyScreen />: the console is for Arena
+ *                          staff only, organizers work in the event center.
+ *                          Nothing of the console renders behind it.
  */
 import { useEffect, type ReactNode, type CSSProperties } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { StaffOnlyScreen } from "@/components/StaffOnlyScreen";
 import { useAuth } from "@/lib/auth/useAuth";
 
 interface AuthGateProps {
@@ -43,6 +48,8 @@ export function AuthGate({ children }: AuthGateProps) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const onLogin = pathname === "/login";
   const onPublic = PUBLIC_PATHS.has(pathname);
+  // An older API does not send the field: only an explicit false blocks.
+  const notStaff = auth.status === "authenticated" && auth.me?.platform_staff === false;
 
   useEffect(() => {
     if (auth.status === "unauthenticated" && !onPublic) {
@@ -53,13 +60,17 @@ export function AuthGate({ children }: AuthGateProps) {
   // Already authenticated and the operator landed on /login -> push them
   // to the workspace.
   useEffect(() => {
-    if (auth.status === "authenticated" && onLogin) {
+    if (auth.status === "authenticated" && onLogin && !notStaff) {
       void navigate({ to: "/", replace: true });
     }
-  }, [auth.status, onLogin, navigate]);
+  }, [auth.status, onLogin, notStaff, navigate]);
 
   if (auth.status === "initializing") {
     return <LoadingScreen label="Restoring session…" />;
+  }
+
+  if (notStaff) {
+    return <StaffOnlyScreen />;
   }
 
   if (auth.status === "authenticating" && !onPublic) {

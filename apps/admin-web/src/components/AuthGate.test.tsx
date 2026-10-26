@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   pathname: "/login",
   status: "unauthenticated",
+  me: null as unknown,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -18,7 +19,7 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/lib/auth/useAuth", () => ({
   useAuth: () => ({
     status: mocks.status as AuthStatus,
-    me: null,
+    me: mocks.me,
     meError: null,
     permissions: new Set<string>(),
     availableScopes: [],
@@ -35,6 +36,7 @@ describe("AuthGate", () => {
     mocks.navigate.mockClear();
     mocks.pathname = "/login";
     mocks.status = "unauthenticated";
+    mocks.me = null;
   });
 
   it("keeps login children mounted while authentication is in flight", () => {
@@ -97,5 +99,58 @@ describe("AuthGate", () => {
 
     expect(html).toContain("Redirecting to sign-in");
     expect(html).not.toContain("protected content sentinel");
+  });
+
+  describe("platform staff only", () => {
+    it("shows the staff-only screen, not the console, when /v1/me says platform_staff is false", () => {
+      mocks.pathname = "/organizations";
+      mocks.status = "authenticated";
+      mocks.me = { platform_staff: false };
+
+      const html = renderToString(
+        <AuthGate>
+          <div>protected content sentinel</div>
+        </AuthGate>,
+      );
+
+      expect(html).not.toContain("protected content sentinel");
+      expect(html).toContain("This console is for Arena staff");
+      expect(html).toContain("Organizers work in the event center.");
+      expect(html).toContain('href="https://events.arenasoldout.com"');
+      expect(html).toContain("Sign out");
+    });
+
+    it("also blocks the login route for a signed-in organizer and does not bounce them to /", () => {
+      mocks.pathname = "/login";
+      mocks.status = "authenticated";
+      mocks.me = { platform_staff: false };
+
+      const html = renderToString(
+        <AuthGate>
+          <div>login form sentinel</div>
+        </AuthGate>,
+      );
+
+      expect(html).not.toContain("login form sentinel");
+      expect(html).toContain('data-testid="staff-only-screen"');
+    });
+
+    it.each([
+      ["staff", { platform_staff: true }],
+      ["an API that predates the field", {}],
+    ])("renders the console for %s", (_name, me) => {
+      mocks.pathname = "/organizations";
+      mocks.status = "authenticated";
+      mocks.me = me;
+
+      const html = renderToString(
+        <AuthGate>
+          <div>protected content sentinel</div>
+        </AuthGate>,
+      );
+
+      expect(html).toContain("protected content sentinel");
+      expect(html).not.toContain("staff-only-screen");
+    });
   });
 });

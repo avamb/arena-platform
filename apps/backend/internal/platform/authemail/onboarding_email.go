@@ -40,9 +40,12 @@ type OnboardingEmailPayload struct {
 	Kind          string `json:"kind"`
 	ApplicationID string `json:"application_id"`
 	Email         string `json:"email"`
-	FirstName     string `json:"first_name,omitempty"`
-	Locale        string `json:"locale,omitempty"`
-	OrgName       string `json:"org_name,omitempty"`
+	// UserID is the applicant's account, set by an approval so the button can
+	// follow the same recipient decision as the password letters.
+	UserID    string `json:"user_id,omitempty"`
+	FirstName string `json:"first_name,omitempty"`
+	Locale    string `json:"locale,omitempty"`
+	OrgName   string `json:"org_name,omitempty"`
 	// Token is the raw resume token. NOT logged.
 	Token   string `json:"token,omitempty"`
 	Message string `json:"message,omitempty"`
@@ -67,6 +70,7 @@ func (h *Handler) HandleOnboardingEmail(ctx context.Context, payload []byte) err
 		return fmt.Errorf("authemail: onboarding payload missing email or kind")
 	}
 	link := ""
+	eventCenterLink := false
 	switch {
 	case p.Kind == OnboardingKindCode:
 		if p.Code == "" {
@@ -81,9 +85,17 @@ func (h *Handler) HandleOnboardingEmail(ctx context.Context, payload []byte) err
 		}
 		link = h.siteURL + "/start/confirm?token=" + url.QueryEscape(p.Token) + "&lang=" + url.QueryEscape(normalizeOnboardingLocale(p.Locale))
 	case p.Kind == OnboardingKindApproved:
-		link = h.appPublicURL
+		// Same decision as the password letters (recipient.go): an organizer
+		// works only in the event center, platform staff in the console.
+		organizer, _, err := h.organizerRecipient(ctx, p.UserID)
+		if err != nil {
+			// Retry rather than send the button to the wrong application.
+			return fmt.Errorf("authemail: look up recipient of user %s: %w", p.UserID, err)
+		}
+		link = h.approvedLink(organizer)
+		eventCenterLink = link != h.appPublicURL
 	}
-	subject, htmlBody, textBody, ok := renderOnboardingEmail(p, link)
+	subject, htmlBody, textBody, ok := renderOnboardingEmail(p, link, eventCenterLink)
 	if !ok {
 		return fmt.Errorf("authemail: unknown onboarding e-mail kind %q", p.Kind)
 	}
@@ -93,6 +105,23 @@ func (h *Handler) HandleOnboardingEmail(ctx context.Context, payload []byte) err
 		return fmt.Errorf("authemail: send onboarding %s e-mail for %s: %w", p.Kind, p.ApplicationID, err)
 	}
 	return nil
+}
+
+// approvedLink is the target of the "approved" e-mail button: the event center
+// for an organizer (when it is configured), the console otherwise.
+func (h *Handler) approvedLink(organizer bool) string {
+	if organizer && h.eventCenter != "" {
+		return h.eventCenter
+	}
+	return h.appPublicURL
+}
+
+// eventCenterButton is the label of the approved e-mail's button when it opens
+// the event center.
+var eventCenterButton = map[string]string{
+	"en": "Open the event center",
+	"ru": "Открыть ивент-центр",
+	"es": "Abrir el centro de eventos",
 }
 
 func normalizeOnboardingLocale(l string) string {
@@ -147,11 +176,14 @@ var onboardingTexts = map[string]map[string]onboardingText{
 
 // renderOnboardingEmail returns the subject and both bodies, ok=false for an
 // unknown kind.
-func renderOnboardingEmail(p OnboardingEmailPayload, link string) (subject, htmlBody, textBody string, ok bool) {
+func renderOnboardingEmail(p OnboardingEmailPayload, link string, eventCenterLink bool) (subject, htmlBody, textBody string, ok bool) {
 	locale := normalizeOnboardingLocale(p.Locale)
 	t, found := onboardingTexts[locale][p.Kind]
 	if !found {
 		return "", "", "", false
+	}
+	if eventCenterLink && p.Kind == OnboardingKindApproved {
+		t.Button = eventCenterButton[locale]
 	}
 	name := ""
 	if n := strings.TrimSpace(p.FirstName); n != "" {

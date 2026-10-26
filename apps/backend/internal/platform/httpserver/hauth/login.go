@@ -45,6 +45,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
@@ -169,6 +170,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	if h.refuseConsoleSignIn(ctx, q, userRow.ID, w, r) {
+		return
+	}
 
 	h.rateLimiter.Reset(rlKey) // clear on successful login
 
@@ -226,6 +230,32 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		"expires_at":    exp.UTC().Format(time.RFC3339),
 		"user_id":       actorID.String(),
 	})
+}
+
+// refuseConsoleSignIn answers 403 auth.console_staff_only and reports true
+// when the request comes from the admin console (X-Client-Channel: admin_web)
+// and userID is not platform staff (gen.PlatformRoleRowSQL). The console is for
+// Arena staff only, who get access through an individual superadmin invitation;
+// an organizer works in the web event center. The check runs on the server so a
+// hand-made request to the console's sign-in cannot mint a console session,
+// whatever the SPA shows. A lookup error answers 503 and also reports true.
+func (h *Handler) refuseConsoleSignIn(ctx context.Context, q *gen.Queries, userID uuid.UUID, w http.ResponseWriter, r *http.Request) bool {
+	if channel, _ := audit.ClientChannelFromContext(ctx); channel != audit.ChannelAdminWeb {
+		return false
+	}
+	staff, err := q.IsPlatformStaff(ctx, userID)
+	if err != nil {
+		logging.FromContext(ctx).Error("auth: platform staff lookup failed", "error", err)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
+		return true
+	}
+	if staff {
+		return false
+	}
+	httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+		"auth.console_staff_only", "this console is for Arena staff; organizers work in the event center", r,
+	))
+	return true
 }
 
 // Refresh serves POST /v1/auth/refresh.
@@ -349,6 +379,9 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 			_ = h.sessionStore.ClearUserSessions(ctx, row.UserID.String())
 		}
 		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope("auth.user_deactivated", "this account has been deactivated", r))
+		return
+	}
+	if h.refuseConsoleSignIn(ctx, q, userRow.ID, w, r) {
 		return
 	}
 

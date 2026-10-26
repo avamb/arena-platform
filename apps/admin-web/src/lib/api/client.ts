@@ -33,6 +33,7 @@ import {
   requiresAdminReason,
   resolveReasonFor,
 } from "@/lib/api/reason";
+import { clientChannelHeaders } from "@/lib/api/channel";
 import { requestPermissionRefresh } from "@/lib/auth/permissionRefresh";
 import type {
   AdminCreateUserRequest,
@@ -117,6 +118,7 @@ interface RawFetchOptions {
 async function rawFetch<T>(opts: RawFetchOptions): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
+    ...clientChannelHeaders,
   };
   if (opts.body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -506,7 +508,10 @@ export async function uploadMedia(
         message: "Upload cancelled",
       });
     }
-    const headers: Record<string, string> = { Accept: "application/json" };
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      ...clientChannelHeaders,
+    };
     const token = getAccessToken();
     if (token !== null) {
       headers.Authorization = `Bearer ${token}`;

@@ -15,6 +15,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // PasswordRecipient is what the password e-mail needs to know about its
@@ -50,7 +52,8 @@ type PGRecipients struct {
 // platform_operator, admin, support, ...) keeps the console link: those
 // people work in admin-web. A global row of a membership role (an old way to
 // hand out org_admin) is not a platform role; this is the same rule as the
-// contact form's owner (gen.OwnerRecipientWhereSQL).
+// contact form's owner (gen.OwnerRecipientWhereSQL), and the global-role part
+// is gen.PlatformRoleRowSQL itself, the rule behind GET /v1/me platform_staff.
 const passwordRecipientSQL = `
 SELECT
     EXISTS (
@@ -65,7 +68,7 @@ SELECT
         SELECT 1 FROM user_roles ur
         JOIN roles r ON r.id = ur.role_id
         WHERE ur.user_id = u.id
-          AND ((ur.org_id IS NULL AND r.name NOT IN ('org_admin', 'organizer', 'agent'))
+          AND ((` + gen.PlatformRoleRowSQL + `)
                OR r.name IN ('platform_superadmin', 'platform_operator'))
     ),
     u.preferred_locale

@@ -47,6 +47,9 @@ type MeQuerier interface {
 	GetPermissionsForRoles(ctx context.Context, roleNames []string) ([]string, error)
 	ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]gen.MembershipRow, error)
 	ListNetworksByUser(ctx context.Context, userID uuid.UUID) ([]gen.OperatorNetworkRow, error)
+	// IsPlatformStaff is gen.PlatformRoleRowSQL: a platform-wide role that is
+	// not a membership role.
+	IsPlatformStaff(ctx context.Context, userID uuid.UUID) (bool, error)
 }
 
 // PickMeQueries returns the explicitly-injected MeQuerier, or one built from
@@ -112,6 +115,9 @@ type meResponse struct {
 	OrganizationMemberships []meMembershipDTO `json:"organization_memberships"`
 	AssignedNetworks        []meNetworkDTO    `json:"assigned_networks"`
 	AvailableScopes         []string          `json:"available_scopes"`
+	// PlatformStaff is true for platform staff: the admin console is for them
+	// only, organizers work in the web event center.
+	PlatformStaff bool `json:"platform_staff"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -273,6 +279,13 @@ func (h *Handler) HandleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	staff, err := h.meQueries.IsPlatformStaff(ctx, userID)
+	if err != nil {
+		logger.Warn("me: IsPlatformStaff failed", "err", err)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "could not load user roles", r))
+		return
+	}
+
 	resp := meResponse{
 		User: meUserDTO{
 			ID:                  actor.ID,
@@ -287,6 +300,9 @@ func (h *Handler) HandleMe(w http.ResponseWriter, r *http.Request) {
 		OrganizationMemberships: membershipsToDTO(memberships),
 		AssignedNetworks:        networksToDTO(networks),
 		AvailableScopes:         ComputeAvailableScopes(roles, memberships, networks),
+		// A signed role claim (service tokens, impersonation) counts like a
+		// stored platform-wide role.
+		PlatformStaff: staff || jwtRolesMakeStaff(actor.Roles),
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
@@ -311,6 +327,7 @@ func (h *Handler) writeMeJWTOnly(w http.ResponseWriter, _ *http.Request, actor a
 		OrganizationMemberships: []meMembershipDTO{},
 		AssignedNetworks:        []meNetworkDTO{},
 		AvailableScopes:         ComputeAvailableScopes(roles, nil, nil),
+		PlatformStaff:           jwtRolesMakeStaff(actor.Roles),
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
@@ -318,6 +335,19 @@ func (h *Handler) writeMeJWTOnly(w http.ResponseWriter, _ *http.Request, actor a
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+// jwtRolesMakeStaff reports whether a signed role claim names a role that is
+// not a membership role (the same split as gen.PlatformRoleRowSQL).
+func jwtRolesMakeStaff(roles []string) bool {
+	for _, r := range roles {
+		switch r {
+		case "", "org_admin", "organizer", "agent":
+		default:
+			return true
+		}
+	}
+	return false
+}
 
 // mergeRoles returns the deduplicated, alphabetically-sorted union of two role
 // slices. Empty strings are dropped. The result is never nil — callers can

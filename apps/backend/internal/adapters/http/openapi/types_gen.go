@@ -9735,6 +9735,14 @@ type MeResponse struct {
 	// Permissions Flat list of permission names expanded from roles
 	Permissions []string `json:"permissions"`
 
+	// PlatformStaff True when the user is Arena platform staff: a platform-wide role
+	// (user_roles without an organization) other than the membership
+	// roles org_admin, organizer and agent, or a signed role claim of such
+	// a role. The admin console is for staff only; an organizer works in
+	// the web event center. Clients that predate the field treat a missing
+	// value as staff, the sign-in routes enforce the rule on the server.
+	PlatformStaff *bool `json:"platform_staff,omitempty"`
+
 	// Roles Deduplicated union of JWT roles and active membership roles, sorted ascending
 	Roles []string `json:"roles"`
 

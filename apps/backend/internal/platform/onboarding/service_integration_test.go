@@ -224,6 +224,18 @@ func TestLifecycle_DraftToApproval(t *testing.T) {
 	if contactPhone != nil {
 		t.Fatalf("organizations.contact_phone = %q after approval, want NULL", *contactPhone)
 	}
+	// The approval e-mail names the owner so its button follows the same
+	// recipient decision as the password letters, and no platform-wide role
+	// was handed out.
+	var approvedFor string
+	if err := pool.QueryRow(ctx, `SELECT payload->>'user_id' FROM worker_jobs WHERE job_type = 'onboarding.email' AND payload->>'email' = $1 AND payload->>'kind' = 'approved'`, email).Scan(&approvedFor); err != nil || approvedFor != res.OwnerID.String() {
+		t.Fatalf("approved e-mail user_id = %q (%v), want %s", approvedFor, err, res.OwnerID)
+	}
+	var globalRoles int
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM user_roles WHERE user_id = $1`, res.OwnerID).Scan(&globalRoles)
+	if globalRoles != 0 {
+		t.Fatalf("the approved owner holds %d user_roles rows, want 0", globalRoles)
+	}
 	var setups int
 	_ = pool.QueryRow(ctx, `SELECT count(*) FROM worker_jobs WHERE job_type = 'auth.password_reset_email' AND payload->>'email' = $1`, email).Scan(&setups)
 	if setups != 1 {
