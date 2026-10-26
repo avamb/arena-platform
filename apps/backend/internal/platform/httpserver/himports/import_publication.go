@@ -23,8 +23,6 @@ package himports
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -35,15 +33,8 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventpublication"
 )
-
-// autoFeedLabel is the label stamped on a feed token minted by an import.
-// It is deliberately recognisable in the admin UI: an operator who sees it
-// knows the token was created for a site's own API key rather than issued by
-// hand, and may revoke it (the next import then mints a fresh one).
-// (The name avoids the word "token" on purpose: gosec's G101 reads any
-// `…Token… = "literal"` const as a hardcoded credential, and this is a label.)
-const autoFeedLabel = "auto:event-bundle"
 
 // ensureChannelPublication publishes eventID into every sales channel the
 // import is asked to bind it to, minting each channel's feed token on first
@@ -154,7 +145,7 @@ func (h *Handler) ensureChannelPublication(
 					"the sales page of channel "+channelID.String()+" was switched on so the event has a public address")
 			}
 		}
-		token, err := h.ensureChannelFeedToken(ctx, q, channelID)
+		token, err := eventpublication.EnsureChannelFeedToken(ctx, q, channelID)
 		if err != nil {
 			return nil, err
 		}
@@ -249,47 +240,4 @@ func nonNilPublications(pubs []ImportPublication) []ImportPublication {
 		return []ImportPublication{}
 	}
 	return pubs
-}
-
-// ensureChannelFeedToken returns the channel's usable feed token, creating one
-// when the channel has none. "Usable" means active and not revoked — the same
-// predicate ListWPSubscribersForEvent applies, so a token this function accepts
-// is guaranteed to carry the fan-out.
-//
-// The oldest usable token wins (ListFeedTokensByChannel orders by created_at),
-// which keeps a repeated bundle idempotent: the second import reuses the token
-// the first one minted instead of stacking a new one per call.
-func (h *Handler) ensureChannelFeedToken(ctx context.Context, q *gen.Queries, channelID uuid.UUID) (gen.FeedTokenRow, error) {
-	tokens, err := q.ListFeedTokensByChannel(ctx, channelID)
-	if err != nil {
-		return gen.FeedTokenRow{}, fmt.Errorf("list feed tokens of channel %s: %w", channelID, err)
-	}
-	for _, t := range tokens {
-		if t.IsActive && t.RevokedAt == nil {
-			return t, nil
-		}
-	}
-
-	value, err := newFeedTokenValue()
-	if err != nil {
-		return gen.FeedTokenRow{}, fmt.Errorf("generate feed token: %w", err)
-	}
-	created, err := q.InsertFeedToken(ctx, value, channelID, autoFeedLabel)
-	if err != nil {
-		return gen.FeedTokenRow{}, fmt.Errorf("create feed token for channel %s: %w", channelID, err)
-	}
-	return created, nil
-}
-
-// newFeedTokenValue mints the same 32-byte hex credential hfeed.GenerateFeedToken
-// produces. It is duplicated rather than imported because no httpserver
-// sub-package imports a sibling — they are wired together only through the
-// *Server shims — and a six-line crypto/rand helper is a smaller price than
-// the first such edge.
-func newFeedTokenValue() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
 }

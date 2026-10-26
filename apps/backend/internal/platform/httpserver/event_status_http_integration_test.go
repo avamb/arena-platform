@@ -77,7 +77,7 @@ func newEvStatusFixture(t *testing.T) *evStatusFixture {
 		}
 		return key
 	}
-	f.key = issue("event.read", "event.publish", "event.delete")
+	f.key = issue("event.read", "event.publish", "event.delete", "import.bil24_session")
 	f.readKey = issue("event.read")
 
 	t.Cleanup(func() {

@@ -81,3 +81,16 @@ WHERE  id = $1
   AND  COALESCE(settings #>> '{hosted_page,enabled}', '') <> 'true'
   AND  settings #>> '{gateway,token_hash}' IS NULL
   AND  settings ->> 'gateway_token_hash' IS NULL;
+
+-- name: ListBindableChannelsByOrg :many
+-- The organization's live channels WITHOUT a gateway credential (not a
+-- WordPress site's), oldest first, with whether the hosted page is on. The
+-- credential predicate is the one EnableChannelHostedPage uses. Publishing an
+-- event that has no publication picks its channel from this list.
+SELECT id, COALESCE(settings #>> '{hosted_page,enabled}', '') = 'true' AS hosted_page_enabled
+FROM   sales_channels
+WHERE  org_id = $1
+  AND  deleted_at IS NULL
+  AND  settings #>> '{gateway,token_hash}' IS NULL
+  AND  settings ->> 'gateway_token_hash' IS NULL
+ORDER  BY created_at ASC, id ASC;
