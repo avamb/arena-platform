@@ -48,6 +48,7 @@ const (
 	prStepAsk     = "ask"     // a field's question is open, waiting for text
 	prStepSlug    = "slug"    // a new page address waits for its confirmation press
 	prStepArchive = "archive" // the archive question is open
+	prStepNew     = "new"     // "+ Promoter": the name of the new promoter is asked
 )
 
 // promoterDialog is the screens' state, stored as the bot_dialogs row's JSON.
@@ -358,6 +359,9 @@ func (b *Bot) promoterCallback(ctx context.Context, chatID int64, msgID int, fro
 	case "l":
 		b.promoterRenderList(ctx, chatID, &msgID, id, jwt, newPromoterDialog(orgID), "")
 		return
+	case "n":
+		b.promoterAskNew(ctx, chatID, &msgID, id, "")
+		return
 	case "ev":
 		eventID, err := uuid.Parse(arg)
 		if err != nil {
@@ -393,6 +397,48 @@ func (b *Bot) promoterCallback(ctx context.Context, chatID int64, msgID int, fro
 		}
 		b.promoterShowCard(ctx, chatID, &msgID, id, jwt, st, st.IDs[i], "")
 	}
+}
+
+// promoterAskNew opens the "+ Promoter" question: one typed name. The step is
+// stored BEFORE the question is shown, so a name typed at once is not lost.
+func (b *Bot) promoterAskNew(ctx context.Context, chatID int64, editMsgID *int, id *Identity, prefix string) {
+	loc := id.Locale()
+	st := newPromoterDialog(id.Current.OrgID)
+	if editMsgID != nil {
+		st.MsgID = *editMsgID
+	}
+	b.savePromoterState(ctx, id.Link.TelegramUserID, st, prStepNew)
+	kb := &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+		{{Text: b.texts.T(loc, "bot.prom.new_cancel_btn", nil), CallbackData: "pr:l"}},
+	}}
+	b.reply(ctx, chatID, editMsgID, prefix+b.texts.T(loc, "bot.prom.new_ask", nil), kb)
+}
+
+// promoterCreate creates the promoter from the typed name (the same API the
+// wizard's "+ new promoter" uses) and opens its card.
+func (b *Bot) promoterCreate(ctx context.Context, chatID int64, edit *int, id *Identity, jwt string, st promoterDialog, text string) {
+	loc := id.Locale()
+	f, _ := promoterFieldByCode("n")
+	name, errKey := parsePromoterField(f, text)
+	if errKey != "" {
+		b.promoterAskNew(ctx, chatID, edit, id, b.texts.T(loc, errKey, nil)+"\n\n")
+		return
+	}
+	item, err := b.arena.CreatePromoter(ctx, jwt, st.OrgID, name, "")
+	if err != nil {
+		if key := promoterAPIErrKey(err); key != "" {
+			b.promoterAskNew(ctx, chatID, edit, id, b.texts.T(loc, key, nil)+"\n\n")
+			return
+		}
+		b.ecError(ctx, chatID, edit, id, err, "pr:l")
+		return
+	}
+	pid, perr := uuid.Parse(item.ID)
+	if perr != nil {
+		b.promoterRenderList(ctx, chatID, edit, id, jwt, newPromoterDialog(st.OrgID), "")
+		return
+	}
+	b.promoterShowCard(ctx, chatID, edit, id, jwt, newPromoterDialog(st.OrgID), pid, b.texts.T(loc, "bot.prom.created", nil)+"\n\n")
 }
 
 // promoterOfEvent opens the card of the event's promoter, or the list with a
@@ -588,17 +634,25 @@ func (b *Bot) promoterRenderList(ctx context.Context, chatID int64, editMsgID *i
 	} else {
 		text += "\n\n" + b.texts.T(loc, "bot.prom.list_hint", nil)
 	}
+	rows := b.promoterListRows(loc, pageItems, st.Page, pages)
+	b.reply(ctx, chatID, editMsgID, clipMessage(text, maxMessageRunes), &models.InlineKeyboardMarkup{InlineKeyboard: rows})
+}
+
+// promoterListRows is the list's keyboard: a row per promoter of the page, the
+// pager, "+ Promoter" (also on an empty list, where it is the way forward) and
+// the way home.
+func (b *Bot) promoterListRows(loc string, pageItems []openapi.Promoter, page, pages int) [][]models.InlineKeyboardButton {
 	var rows [][]models.InlineKeyboardButton
 	for i, p := range pageItems {
 		rows = append(rows, []models.InlineKeyboardButton{{
 			Text: truncate(p.Name, 48), CallbackData: ItemCallback("pr:o", i),
 		}})
 	}
-	if nav := b.promoterPager(loc, Pager{Prefix: "pr:p", Page: st.Page, Pages: pages}); nav != nil {
+	if nav := b.promoterPager(loc, Pager{Prefix: "pr:p", Page: page, Pages: pages}); nav != nil {
 		rows = append(rows, nav)
 	}
-	rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}})
-	b.reply(ctx, chatID, editMsgID, clipMessage(text, maxMessageRunes), &models.InlineKeyboardMarkup{InlineKeyboard: rows})
+	rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.prom.add_btn", nil), CallbackData: "pr:n"}})
+	return append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}})
 }
 
 // ─── the card ─────────────────────────────────────────────────────────────────
@@ -731,8 +785,21 @@ func (b *Bot) promoterText(ctx context.Context, chatID int64, from *models.User,
 		}})
 		return true
 	}
-	if !found || (step != prStepAsk && step != prStepSlug) {
+	if !found || (step != prStepAsk && step != prStepSlug && step != prStepNew) {
 		return false
+	}
+	if step == prStepNew {
+		id, jwt, err := b.resolveIdentity(ctx, from.ID)
+		if err != nil || id.Current == nil || id.Current.OrgID != st.OrgID || !canPromoters(id) {
+			b.leavePromoter(ctx, from.ID)
+			return false
+		}
+		var edit *int
+		if st.MsgID != 0 {
+			edit = &st.MsgID
+		}
+		b.promoterCreate(ctx, chatID, edit, id, jwt, st, text)
+		return true
 	}
 	id, jwt, err := b.resolveIdentity(ctx, from.ID)
 	if err != nil || id.Current == nil || id.Current.OrgID != st.OrgID || !canPromoters(id) || st.CardID == nil {
