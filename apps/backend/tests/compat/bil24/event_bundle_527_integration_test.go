@@ -78,6 +78,10 @@ func bundle527Fixture(t *testing.T, posterURL string) map[string]any {
 	// (event_bundle_fixture_526_test.go) still reads the file verbatim.
 	if ae, ok := body["actionEvent"].(map[string]any); ok {
 		ae["sellStartTime"] = time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
+		// The same goes for the end: the fixture's fixed sellEndTime (the
+		// day of the session) passed on 2026-10-26 and every scenario that
+		// buys from the bundle then answered "Category is sold out".
+		ae["sellEndTime"] = time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339)
 	}
 
 	return body
