@@ -20,6 +20,7 @@ var promoterKeys = []string{
 	"bot.prom.slug_confirm", "bot.prom.slug_save_btn", "bot.prom.archive_ask",
 	"bot.prom.archive_yes_btn", "bot.prom.archived_done", "bot.prom.gone", "bot.prom.event_line",
 	"bot.prom.event_line_org", "bot.prom.event_btn", "bot.prom.event_back_btn", "bot.prom.event_org_note",
+	"bot.prom.add_btn", "bot.prom.new_ask", "bot.prom.new_cancel_btn", "bot.prom.created",
 }
 
 func init() {

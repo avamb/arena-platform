@@ -1,5 +1,6 @@
 import { createRoute, Link, useSearch } from "@tanstack/react-router";
 import { useEffect, useState, type CSSProperties } from "react";
+import { clientChannelHeaders } from "@/lib/api/channel";
 import { config } from "@/lib/config";
 import { Route as RootRoute } from "./__root";
 import { mobileFormStyles } from "./login";
@@ -29,7 +30,7 @@ function VerifyEmailRoute() {
     const controller = new AbortController();
     void fetch(`${config.apiBaseUrl}/v1/auth/verify?token=${encodeURIComponent(search.token)}`, {
       method: "GET",
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", ...clientChannelHeaders },
       credentials: "omit",
       signal: controller.signal,
     })

@@ -326,6 +326,9 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 			return Screen{}, err
 		}
 		rows := [][]Button{}
+		if d.Scratch.DupVenueID != "" {
+			rows = append(rows, []Button{{Label: t("bot.wz.venue_dup_btn", map[string]any{"Value": truncate(d.Scratch.DupVenueName, 40)}), Data: "venue:" + d.Scratch.DupVenueID}})
+		}
 		if ws.Defaults.VenueID != "" && ws.Defaults.CityID == s.CityID {
 			rows = append(rows, []Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": ws.Defaults.VenueName}), Data: "keep"}})
 		}

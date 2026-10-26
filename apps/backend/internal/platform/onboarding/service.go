@@ -634,6 +634,13 @@ WHERE id = $1`, app.ID, now, set.TermsVersion, set.PrivacyVersion); err != nil {
 
 // queueEmail enqueues an onboarding.email job on tx.
 func (s *Service) queueEmail(ctx context.Context, tx pgx.Tx, kind string, app *Application, resumeToken string, fields []string, message string) error {
+	return s.queueEmailFor(ctx, tx, kind, app, uuid.Nil, resumeToken, fields, message)
+}
+
+// queueEmailFor is queueEmail for a letter that belongs to a known account
+// (userID, uuid.Nil for none): an approval names the new owner so the worker
+// can pick the console or the event center for the button.
+func (s *Service) queueEmailFor(ctx context.Context, tx pgx.Tx, kind string, app *Application, userID uuid.UUID, resumeToken string, fields []string, message string) error {
 	name := ""
 	if app.Answers != nil {
 		name = app.Answers.String("first_name")
@@ -642,10 +649,15 @@ func (s *Service) queueEmail(ctx context.Context, tx pgx.Tx, kind string, app *A
 	if app.OrgName != nil {
 		org = *app.OrgName
 	}
+	uid := ""
+	if userID != uuid.Nil {
+		uid = userID.String()
+	}
 	return s.queueRaw(ctx, tx, authemail.OnboardingEmailPayload{
 		Kind:          kind,
 		ApplicationID: app.ID.String(),
 		Email:         app.Email,
+		UserID:        uid,
 		FirstName:     name,
 		Locale:        app.Locale,
 		OrgName:       org,

@@ -41,6 +41,7 @@ import {
   requiresAdminReason,
   resolveReasonFor,
 } from "@/lib/api/reason";
+import { clientChannelHeaders } from "@/lib/api/channel";
 import { config } from "@/lib/config";
 import { RequirePermission } from "@/components/RequirePermission";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
@@ -533,7 +534,7 @@ async function fetchRedemptionsCsvBlob(
     params.set("promo_code_id", promoCodeId);
   }
   const path = `/v1/organizations/${orgId}/promo-code-redemptions?${params.toString()}`;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...clientChannelHeaders };
   const token = getAccessToken();
   if (token !== null) {
     headers.Authorization = `Bearer ${token}`;

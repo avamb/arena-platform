@@ -46,6 +46,11 @@ type fakeMeQuerier struct {
 	permsByRoles      map[string][]string // key = sorted-comma-joined role list
 	membershipsByUser map[uuid.UUID][]gen.MembershipRow
 	networksByUser    map[uuid.UUID][]gen.OperatorNetworkRow
+	staffByUser       map[uuid.UUID]bool
+}
+
+func (f *fakeMeQuerier) IsPlatformStaff(_ context.Context, userID uuid.UUID) (bool, error) {
+	return f.staffByUser[userID], nil
 }
 
 func (f *fakeMeQuerier) GetActiveRolesForUser(_ context.Context, userID uuid.UUID) ([]string, error) {
@@ -529,5 +534,43 @@ func TestMe_ArchivedOrganizationIsFlagged(t *testing.T) {
 		if want := m["org_id"] == goneOrg.String(); archived != want {
 			t.Errorf("org %v: archived = %v, want %v", m["org_id"], archived, want)
 		}
+	}
+}
+
+// platform_staff: DB-held platform-wide role or a signed non-membership role
+// claim makes staff, an organizer's membership role never does.
+func TestMe_PlatformStaffFlag(t *testing.T) {
+	t.Parallel()
+	staffUser, dbStaffUser, organizerUser := uuid.New(), uuid.New(), uuid.New()
+	store := &fakeMeQuerier{
+		rolesByUser: map[uuid.UUID][]string{organizerUser: {"organizer"}},
+		staffByUser: map[uuid.UUID]bool{dbStaffUser: true},
+	}
+	s, stub := buildMeServer(t, store)
+	cases := []struct {
+		name  string
+		user  uuid.UUID
+		roles []string
+		want  bool
+	}{
+		{"claim platform_superadmin", staffUser, []string{"platform_superadmin"}, true},
+		{"stored platform role", dbStaffUser, nil, true},
+		{"organizer membership only", organizerUser, []string{"organizer"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tok := issueMeToken(t, stub, tc.user, tc.roles)
+			r := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+			r.Header.Set("Authorization", "Bearer "+tok)
+			w := httptest.NewRecorder()
+			s.router.ServeHTTP(w, r)
+			if w.Code != http.StatusOK {
+				t.Fatalf("want 200, got %d (%s)", w.Code, w.Body.String())
+			}
+			got, ok := decodeMeResponse(t, w)["platform_staff"].(bool)
+			if !ok || got != tc.want {
+				t.Fatalf("platform_staff = %v (present %v), want %v", got, ok, tc.want)
+			}
+		})
 	}
 }

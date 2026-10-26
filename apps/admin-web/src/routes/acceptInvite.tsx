@@ -1,6 +1,7 @@
 import { createRoute, Link, useSearch } from "@tanstack/react-router";
 import { useState, type CSSProperties, type FormEvent } from "react";
 import { z } from "zod";
+import { clientChannelHeaders } from "@/lib/api/channel";
 import { config } from "@/lib/config";
 import { Route as RootRoute } from "./__root";
 import { mobileFormStyles } from "./login";
@@ -97,7 +98,7 @@ function InviteForm(props: { readonly token: string; readonly email: string | un
     try {
       const res = await fetch(`${config.apiBaseUrl}/v1/auth/password-reset/confirm`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/json", ...clientChannelHeaders },
         body: JSON.stringify({ token: props.token, new_password: parsed.data.password }),
         credentials: "omit",
       });

@@ -226,8 +226,7 @@ func (q *Queries) GetContactFormToTelegram(ctx context.Context, orgID uuid.UUID)
 const OwnerRecipientWhereSQL = `m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
                  AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
                  AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
-                                 WHERE ur.user_id = u.id AND ur.org_id IS NULL
-                                   AND r.org_id IS NULL AND r.name NOT IN ('org_admin', 'organizer', 'agent'))`
+                                 WHERE ur.user_id = u.id AND ` + PlatformRoleRowSQL + `)`
 
 // ownerReachableSQL answers whether such an owner exists - a boolean, never
 // the address.

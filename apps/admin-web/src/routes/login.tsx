@@ -3,6 +3,11 @@ import { useForm } from "react-hook-form";
 import { useEffect, useState, type CSSProperties } from "react";
 import { z } from "zod";
 import { ApiError } from "@/lib/api/client";
+import {
+  CONSOLE_STAFF_ONLY_CODE,
+  CONSOLE_STAFF_ONLY_MESSAGE,
+  eventCenterUrl,
+} from "@/lib/api/channel";
 import { useAuth } from "@/lib/auth/useAuth";
 import { Route as RootRoute } from "./__root";
 
@@ -43,11 +48,30 @@ export const Route = createRoute({
   component: LoginRoute,
 });
 
+type LoginErrorOutcome =
+  | { readonly kind: "staff_only" }
+  | { readonly kind: "text"; readonly text: string };
+
+/** Maps a failed sign-in to what the page shows. */
+function classifyLoginError(err: unknown): LoginErrorOutcome {
+  if (err instanceof ApiError && err.code === CONSOLE_STAFF_ONLY_CODE) {
+    return { kind: "staff_only" };
+  }
+  if (err instanceof ApiError) {
+    return { kind: "text", text: `${err.code}: ${err.message}` };
+  }
+  if (err instanceof Error) {
+    return { kind: "text", text: err.message };
+  }
+  return { kind: "text", text: "Sign-in failed" };
+}
+
 function LoginRoute() {
   const auth = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [staffOnly, setStaffOnly] = useState(false);
   const [redirectPending, setRedirectPending] = useState(false);
   const {
     register,
@@ -73,6 +97,7 @@ function LoginRoute() {
 
   const onSubmit = handleSubmit(async (raw) => {
     setSubmitError(null);
+    setStaffOnly(false);
     const parsed = loginSchema.safeParse(raw);
     if (!parsed.success) {
       return;
@@ -82,12 +107,13 @@ function LoginRoute() {
       await auth.login(parsed.data.email, parsed.data.password);
     } catch (err) {
       setRedirectPending(false);
-      if (err instanceof ApiError) {
-        setSubmitError(`${err.code}: ${err.message}`);
-      } else if (err instanceof Error) {
-        setSubmitError(err.message);
+      const outcome = classifyLoginError(err);
+      if (outcome.kind === "staff_only") {
+        // The server refused a non-staff sign-in: say who the console is for
+        // and where organizers go, not a raw error code.
+        setStaffOnly(true);
       } else {
-        setSubmitError("Sign-in failed");
+        setSubmitError(outcome.text);
       }
     }
   });
@@ -101,11 +127,26 @@ function LoginRoute() {
         Sign in with your operator credentials. Sessions are scoped to this
         browser tab.
       </p>
+      <p style={hintStyle} data-testid="login-organizer-hint">
+        Organizer? Sign in to the{" "}
+        <a href={eventCenterUrl()} style={{ color: "inherit", textDecoration: "underline" }}>
+          event center
+        </a>{" "}
+        instead: this console is for Arena staff.
+      </p>
       <p style={hintStyle} data-testid="login-invited-hint">
         Invited by e-mail? You have no password yet: open the invitation
         letter and press “Choose password” to set it, then sign in here. The
         link expired? Use “Forgot your password?” below.
       </p>
+      {staffOnly ? (
+        <div role="alert" aria-live="assertive" style={alertStyle} data-testid="login-staff-only">
+          {CONSOLE_STAFF_ONLY_MESSAGE}{" "}
+          <a href={eventCenterUrl()} style={{ color: "inherit", textDecoration: "underline" }}>
+            Open the event center
+          </a>
+        </div>
+      ) : null}
       {submitError !== null ? (
         <div role="alert" aria-live="assertive" style={alertStyle} data-testid="login-error">
           {submitError}
@@ -242,3 +283,5 @@ export const mobileFormStyles = {
   alertStyle,
   linkStyle,
 } as const;
+
+export const __test = { classifyLoginError, LoginRoute } as const;

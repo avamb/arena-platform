@@ -8,6 +8,7 @@
    */
   import type { FeedSession, Tier } from '../types.js';
   import { doorsOpenLabel, sessionChipLabel } from '../lib/session-label.js';
+  import { priceLabelBesideName } from '../lib/priceLabel.js';
 
   interface Props {
     sessions: FeedSession[];
@@ -71,7 +72,9 @@
         <div class="legend-item">
           <span class="legend-dot" style="background:{tier.currency ? '#4f46e5' : '#d1d5db'}"></span>
           <span class="legend-name">{tier.name}</span>
-          <span class="legend-price">{formatPrice(tier)}</span>
+          {#if priceLabelBesideName(tier.name, formatPrice(tier))}
+            <span class="legend-price">{formatPrice(tier)}</span>
+          {/if}
         </div>
       {/each}
     </div>

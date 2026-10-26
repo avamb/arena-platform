@@ -10561,6 +10561,16 @@ export interface components {
              *     ]
              */
             available_scopes: string[];
+            /**
+             * @description True when the user is Arena platform staff: a platform-wide role
+             *     (user_roles without an organization) other than the membership
+             *     roles org_admin, organizer and agent, or a signed role claim of such
+             *     a role. The admin console is for staff only; an organizer works in
+             *     the web event center. Clients that predate the field treat a missing
+             *     value as staff, the sign-in routes enforce the rule on the server.
+             * @example false
+             */
+            platform_staff?: boolean;
         };
         /**
          * @description The caller's access inside one organization, returned by
@@ -30173,6 +30183,20 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description The account is deactivated (`auth.user_deactivated`), or the request
+             *     carries `X-Client-Channel: admin_web` and the user is not platform
+             *     staff (`auth.console_staff_only`) - the admin console is for staff
+             *     only, organizers work in the web event center. No token is issued.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Rate limit exceeded — too many login attempts for this IP+email */
             429: {
                 headers: {
@@ -30226,6 +30250,19 @@ export interface operations {
             };
             /** @description Refresh token invalid, expired, or revoked */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The account is deactivated (`auth.user_deactivated`), or the request
+             *     carries `X-Client-Channel: admin_web` and the user is not platform
+             *     staff (`auth.console_staff_only`). No token is issued.
+             */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

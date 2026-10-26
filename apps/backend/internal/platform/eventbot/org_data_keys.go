@@ -7,7 +7,7 @@ var orgDataKeys = []string{
 	"bot.og.btn", "bot.og.owner_only", "bot.og.card", "bot.og.card_where",
 	"bot.og.line_legal_name", "bot.og.line_legal_form", "bot.og.line_reg", "bot.og.line_tax",
 	"bot.og.line_address", "bot.og.pages_title", "bot.og.pages_none", "bot.og.state_shown",
-	"bot.og.state_incomplete", "bot.og.state_operator_hidden", "bot.og.status_complete", "bot.og.none", "bot.og.now", "bot.og.missing_title",
+	"bot.og.state_incomplete", "bot.og.state_incomplete_what", "bot.og.state_operator_hidden", "bot.og.status_complete", "bot.og.none", "bot.og.now", "bot.og.missing_title",
 	"bot.og.m_legal_name", "bot.og.m_tax_id", "bot.og.m_address_line1", "bot.og.m_address_city",
 	"bot.og.m_address_postal_code", "bot.og.m_public_email", "bot.og.btn_legal_name", "bot.og.btn_legal_form",
 	"bot.og.btn_reg", "bot.og.btn_tax", "bot.og.btn_address", "bot.og.btn_city",

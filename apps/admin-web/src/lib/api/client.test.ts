@@ -343,3 +343,51 @@ describe("missing-permission surface", () => {
     }
   });
 });
+
+describe("X-Client-Channel", () => {
+  it("names the console on sign-in, /v1/me and refresh", async () => {
+    setSession({
+      accessToken: "a0",
+      refreshToken: "r0",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      userId: "u1",
+    });
+    const tokens = {
+      access_token: "a1",
+      refresh_token: "r1",
+      token_type: "Bearer",
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      user_id: "u1",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(mockResponse({ status: 200, body: tokens }))
+      .mockResolvedValueOnce(mockResponse({ status: 200, body: { roles: [] } }))
+      .mockResolvedValueOnce(mockResponse({ status: 200, body: tokens }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await login({ email: "op@example.com", password: "pw" });
+    await fetchMe();
+    await refresh();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (const call of fetchMock.mock.calls) {
+      const init = call[1] as { headers: Record<string, string> };
+      expect(init.headers["X-Client-Channel"]).toBe("admin_web");
+    }
+  });
+
+  it("surfaces the staff-only refusal of a sign-in as its own error code", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(
+        mockResponse({ status: 403, body: errorEnvelope("auth.console_staff_only") }),
+      ),
+    );
+    await expect(login({ email: "o@example.com", password: "pw" })).rejects.toMatchObject({
+      status: 403,
+      code: "auth.console_staff_only",
+    });
+    expect(getAccessToken()).toBeNull();
+  });
+});

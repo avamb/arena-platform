@@ -780,6 +780,16 @@ components:
           items:
             type: string
           example: ["network:0193f01a-1234-7000-8000-000000000001"]
+        platform_staff:
+          type: boolean
+          description: |
+            True when the user is Arena platform staff: a platform-wide role
+            (user_roles without an organization) other than the membership
+            roles org_admin, organizer and agent, or a signed role claim of such
+            a role. The admin console is for staff only; an organizer works in
+            the web event center. Clients that predate the field treat a missing
+            value as staff, the sign-in routes enforce the rule on the server.
+          example: false
 
     OrgMeResponse:
       type: object
@@ -23550,6 +23560,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: |
+            The account is deactivated (`auth.user_deactivated`), or the request
+            carries `X-Client-Channel: admin_web` and the user is not platform
+            staff (`auth.console_staff_only`) - the admin console is for staff
+            only, organizers work in the web event center. No token is issued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "429":
           description: Rate limit exceeded — too many login attempts for this IP+email
           content:
@@ -23593,6 +23613,15 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Refresh token invalid, expired, or revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: |
+            The account is deactivated (`auth.user_deactivated`), or the request
+            carries `X-Client-Channel: admin_web` and the user is not platform
+            staff (`auth.console_staff_only`). No token is issued.
           content:
             application/json:
               schema:

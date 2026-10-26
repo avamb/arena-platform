@@ -295,7 +295,7 @@ WHERE applicant_email = $2 AND id <> $1 AND purged_at IS NULL AND status IN ('dr
 	if err := addEvent(ctx, tx, app.ID, "approved", actor, detail, nil); err != nil {
 		return nil, err
 	}
-	if err := s.queueEmail(ctx, tx, authemail.OnboardingKindApproved, app, "", nil, ""); err != nil {
+	if err := s.queueEmailFor(ctx, tx, authemail.OnboardingKindApproved, app, ws.OwnerID, "", nil, ""); err != nil {
 		return nil, err
 	}
 	if err := s.queueNotify(ctx, tx, NotifyPayload{Kind: NotifyApproved, ApplicationID: app.ID.String(),

@@ -33,6 +33,7 @@
   import type { PromoState } from './lib/promoController.js';
   import { getPromoStrings } from './lib/promoI18n.js';
   import { MAX_CART_SEATS, cartLimitMessage, seatCapMessage } from './lib/cartLimits.js';
+  import { buyerErrorText } from './lib/errorI18n.js';
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
@@ -418,7 +419,7 @@
 
       applyFeedEvent(await fetchFeedEvent(token, candidates[0]!.id, resolvedApiBase));
     } catch (err) {
-      loadError = err instanceof Error ? err.message : t.error_load_event;
+      loadError = buyerErrorText(err, normLocale, t.error_load_event);
     } finally {
       loading = false;
     }
@@ -690,7 +691,7 @@
         checkoutError = cartLimitMessage(err.code, normLocale);
       } else {
         conflictKeys = new Set();
-        checkoutError = err instanceof Error ? err.message : t.error_checkout;
+        checkoutError = buyerErrorText(err, normLocale, t.error_checkout);
       }
     } finally {
       checkoutSubmitting = false;
@@ -751,8 +752,7 @@
           // to normal init so the user can start a fresh checkout.
           forgetCheckoutToken();
           checkoutToken = null;
-          loadError =
-            recoveryErr instanceof Error ? recoveryErr.message : t.error_recovery;
+          loadError = buyerErrorText(recoveryErr, normLocale, t.error_recovery);
           stage = 'selecting';
           // Re-load event data so the widget is not left blank.
           if (normFeedToken && normEventId) {
@@ -765,7 +765,7 @@
       if (apiErr?.status === 404) {
         forgetCheckoutToken();
         checkoutToken = null;
-        loadError = err instanceof Error ? err.message : t.error_order_status;
+        loadError = buyerErrorText(err, normLocale, t.error_order_status);
         stage = 'selecting';
         // Re-load event data so the widget is not left blank.
         if (normFeedToken && normEventId) {
@@ -773,7 +773,7 @@
         }
         return;
       }
-      loadError = err instanceof Error ? err.message : t.error_order_status;
+      loadError = buyerErrorText(err, normLocale, t.error_order_status);
       stage = 'selecting';
     }
   }
@@ -802,7 +802,7 @@
         orderActionError = t.conflict_notice;
       } else {
         conflictKeys = new Set();
-        orderActionError = err instanceof Error ? err.message : t.error_recovery;
+        orderActionError = buyerErrorText(err, normLocale, t.error_recovery);
       }
     } finally {
       orderActionLoading = false;
