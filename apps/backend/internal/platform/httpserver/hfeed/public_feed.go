@@ -808,7 +808,13 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 				sessResp.ShowWithdrawalNotice = showWithdrawalNotice
 				sessResp.Consent = consent
 				sessResp.Timezone = h.venueTimezone(ctx, sess.VenueID, venueTimezones)
-				sessResp.applySeatingLinks(admissionByID[sess.ID.String()])
+				// A session that is not 'scheduled' (cancelled through the
+				// session-change flow, draft, completed) stays in the payload
+				// with its status, so a buyer who holds tickets still sees the
+				// date as cancelled — but it offers no seat map.
+				if sess.Status == "scheduled" {
+					sessResp.applySeatingLinks(admissionByID[sess.ID.String()])
+				}
 				sessResp.applyPosterFallback(eventResp.PosterMediaID, eventResp.PosterURL)
 
 				// AB-47c: attach the ordered per-session media gallery.
@@ -869,7 +875,15 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 									tr.NextPriceChangeAt = &s
 								}
 							}
-							tr.Available = publicFeedTierAvailable(hcheckout.CapSaleWindow(tier, salesEndOf(sess)), placeStats, now)
+							if sess.Status != "scheduled" {
+								// The hold gate refuses every NEW hold on this
+								// session (hcheckout.CheckSessionSalesOpen), so
+								// no category has a place to offer.
+								zero := 0
+								tr.Available = &zero
+							} else {
+								tr.Available = publicFeedTierAvailable(hcheckout.CapSaleWindow(tier, salesEndOf(sess)), placeStats, now)
+							}
 							sessResp.Tiers = append(sessResp.Tiers, tr)
 						}
 					}

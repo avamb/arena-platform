@@ -16634,8 +16634,10 @@ type TicketTierItem struct {
 	// Available How many places the category still has free - what a buyer may
 	// still take, and what the widget's quantity picker caps at
 	// instead of `capacity`. 0 when the category is closed or outside
-	// its sale window; null when the category owns no place at all
-	// (then `capacity` is the only bound there is).
+	// its sale window, or when its session is not `scheduled` (a
+	// cancelled date stays in the feed with every category at 0); null
+	// when the category owns no place at all (then `capacity` is the
+	// only bound there is).
 	Available *int32 `json:"available"`
 
 	// Capacity The category's QUANTITY: how many places it owns. Equal to

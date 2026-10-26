@@ -68,6 +68,13 @@ func TestCompatBil24_530_MoneyRoundTripBundleToWebhooks(t *testing.T) {
 
 	// ── step 1: import the event bundle through the real handler ───────────
 	body := bundle527Fixture(t, "")
+	// The fixture's session day (26.10.2026 19:00) is a fixed calendar date
+	// and has passed; a session whose start is in the past has its sales end
+	// there too (migration 0128) and CREATE_ORDER_EXT answers 101. This
+	// scenario buys from the bundle, so move the day ahead of the wall clock.
+	if ae, ok := body["actionEvent"].(map[string]any); ok {
+		ae["day"] = time.Now().UTC().Add(30 * 24 * time.Hour).Format("02.01.2006")
+	}
 	status, resp := restJSON(t, base, "POST",
 		"/v1/organizations/"+st.OrgID+"/imports/event-bundle", rawKey, nil, body)
 	if status != 200 {

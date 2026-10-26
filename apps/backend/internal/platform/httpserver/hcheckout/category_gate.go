@@ -49,6 +49,13 @@ var (
 	// ErrCategoryNotFound — the category does not exist, belongs to
 	// another session, or has been soft-deleted.
 	ErrCategoryNotFound = errors.New("hcheckout: ticket category not found")
+	// ErrSessionCancelled — the session itself was cancelled (for example
+	// through the session-change flow). Its row and categories stay, so the
+	// gate has to refuse the hold on the session's status.
+	ErrSessionCancelled = errors.New("hcheckout: session is cancelled")
+	// ErrSessionNotOnSale — the session is in a status other than
+	// 'scheduled' and not cancelled ('draft', 'completed').
+	ErrSessionNotOnSale = errors.New("hcheckout: session is not on sale")
 )
 
 // CategoryNotSellableError reports which category refused the hold and
@@ -70,6 +77,10 @@ func (e *CategoryNotSellableError) Error() string {
 		return fmt.Sprintf("hcheckout: category %s is closed", e.TierID)
 	case errors.Is(e.Reason, ErrCategoryNotFound):
 		return fmt.Sprintf("hcheckout: category %s not found in this session", e.TierID)
+	case errors.Is(e.Reason, ErrSessionCancelled):
+		return "hcheckout: session is cancelled"
+	case errors.Is(e.Reason, ErrSessionNotOnSale):
+		return "hcheckout: session is not on sale"
 	case e.Start != nil && e.Now.Before(*e.Start):
 		return fmt.Sprintf("hcheckout: category %s is not on sale until %s",
 			e.TierID, e.Start.UTC().Format(time.RFC3339))
@@ -147,16 +158,37 @@ func CapSaleWindow(t gen.TicketTierRow, salesEnd time.Time) gen.TicketTierRow {
 	return t
 }
 
-// CheckSessionSalesOpen refuses a NEW hold once the session's sales end has
-// passed. A session row it cannot find is left to the category checks
+// SessionStatusRefusal reports the refusal for a session whose own status
+// is not 'scheduled', or nil. A cancelled date keeps its row and its
+// categories (buyers who already hold tickets must still see it), so the
+// status is the only thing that stops a new hold on it: ErrSessionCancelled
+// for 'cancelled', ErrSessionNotOnSale for any other status ('draft',
+// 'completed').
+func SessionStatusRefusal(status string, tierID uuid.UUID, now time.Time) error {
+	switch status {
+	case "scheduled":
+		return nil
+	case "cancelled":
+		return &CategoryNotSellableError{TierID: tierID, Reason: ErrSessionCancelled, Now: now}
+	default:
+		return &CategoryNotSellableError{TierID: tierID, Reason: ErrSessionNotOnSale, Now: now}
+	}
+}
+
+// CheckSessionSalesOpen refuses a NEW hold on a session that is not
+// 'scheduled' (cancelled, draft, completed) and once the session's sales end
+// has passed. A session row it cannot find is left to the category checks
 // (they answer ErrCategoryNotFound for its categories).
 func CheckSessionSalesOpen(ctx context.Context, txq *gen.Queries, sessionID, tierID uuid.UUID, now time.Time) error {
-	end, err := txq.GetSessionSalesEnd(ctx, sessionID)
+	end, status, err := txq.GetSessionSalesState(ctx, sessionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
-		return fmt.Errorf("hcheckout: load session sales end: %w", err)
+		return fmt.Errorf("hcheckout: load session sales state: %w", err)
+	}
+	if err := SessionStatusRefusal(status, tierID, now); err != nil {
+		return err
 	}
 	return SessionSalesClosed(end, tierID, now)
 }
@@ -334,6 +366,10 @@ func CheckSeatCategoriesSellable(ctx context.Context, txq *gen.Queries, sessionI
 // widget error envelope code, or "" when err is not one.
 func CategoryGateErrorCode(err error) string {
 	switch {
+	case errors.Is(err, ErrSessionCancelled):
+		return "session.cancelled"
+	case errors.Is(err, ErrSessionNotOnSale):
+		return "session.not_on_sale"
 	case errors.Is(err, ErrCategoryClosed):
 		return "tier.closed"
 	case errors.Is(err, ErrCategoryNotOnSale):
@@ -348,6 +384,10 @@ func CategoryGateErrorCode(err error) string {
 // CategoryGateMessage is the human-readable half of CategoryGateErrorCode.
 func CategoryGateMessage(err error) string {
 	switch {
+	case errors.Is(err, ErrSessionCancelled):
+		return "this session has been cancelled"
+	case errors.Is(err, ErrSessionNotOnSale):
+		return "this session is not on sale"
 	case errors.Is(err, ErrCategoryClosed):
 		return "ticket category is closed"
 	case errors.Is(err, ErrCategoryNotOnSale):

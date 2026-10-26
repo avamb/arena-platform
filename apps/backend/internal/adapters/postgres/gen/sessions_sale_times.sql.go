@@ -73,3 +73,27 @@ func (q *Queries) GetSessionSalesEnd(ctx context.Context, id uuid.UUID) (time.Ti
 	err := q.db.QueryRow(ctx, getSessionSalesEnd, id).Scan(&t)
 	return t, err
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetSessionSalesState
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getSessionSalesState = `-- name: GetSessionSalesState :one
+SELECT sales_end_at, status
+FROM   sessions
+WHERE  id = $1
+  AND  deleted_at IS NULL`
+
+// GetSessionSalesState returns when ticket sales for the session close AND
+// the session's own status. The hold gate (hcheckout.CheckSessionSalesOpen)
+// refuses every NEW hold once the sales end has passed, and for any session
+// that is not 'scheduled' (a cancelled date keeps its row and its tiers).
+// Returns pgx.ErrNoRows for an unknown or deleted session.
+func (q *Queries) GetSessionSalesState(ctx context.Context, id uuid.UUID) (time.Time, string, error) {
+	var (
+		t      time.Time
+		status string
+	)
+	err := q.db.QueryRow(ctx, getSessionSalesState, id).Scan(&t, &status)
+	return t, status, err
+}

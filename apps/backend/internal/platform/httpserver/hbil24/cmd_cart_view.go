@@ -578,6 +578,16 @@ func (h *Handler) writeCartHoldError(
 			h.localizeDesc(req.Locale, cc.locale, "bil24.category_sold_out",
 				"Category is sold out", cartSoldOutParams(pricing, capErr.TierID)),
 		))
+	case errors.Is(err, hcheckout.ErrSessionCancelled),
+		errors.Is(err, hcheckout.ErrSessionNotOnSale):
+		// The session itself is cancelled (or not 'scheduled'): its
+		// categories still exist, so the gate refuses on the session's
+		// status. Same answer CREATE_ORDER_EXT gives: 101 sales_closed.
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUserVisible,
+			h.localizeDesc(req.Locale, cc.locale, "bil24.sales_closed",
+				"sales are closed for this event", nil),
+		))
 	case errors.Is(err, hcheckout.ErrCategoryClosed),
 		errors.Is(err, hcheckout.ErrCategoryNotOnSale):
 		// Decision 4: the wire has no "closed" flag, so a closed category

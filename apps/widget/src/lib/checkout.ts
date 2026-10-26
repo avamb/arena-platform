@@ -640,6 +640,10 @@ export interface CheckoutI18nStrings {
   recover_label: string;
   /** CTA label sending a buyer back to the unfinished hosted payment page. */
   continue_to_payment: string;
+  /** Label on the date chip of a cancelled session. */
+  session_cancelled: string;
+  /** Notice shown instead of the picker when the selected date was cancelled. */
+  session_cancelled_notice: string;
   download_pdf: string;
   // Generic
   loading: string;
@@ -729,6 +733,8 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     retry_label: 'Try again',
     recover_label: 'Reclaim seats',
     continue_to_payment: 'Continue to payment',
+    session_cancelled: 'Cancelled',
+    session_cancelled_notice: 'This date has been cancelled.',
     download_pdf: 'Download PDF',
     loading: 'Loading…',
     error_generic: 'Something went wrong. Please try again.',
@@ -785,6 +791,8 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     retry_label: 'Попробовать снова',
     recover_label: 'Восстановить бронирование',
     continue_to_payment: 'Перейти к оплате',
+    session_cancelled: 'Отменено',
+    session_cancelled_notice: 'Эта дата отменена.',
     download_pdf: 'Скачать PDF',
     loading: 'Загрузка…',
     error_generic: 'Произошла ошибка. Пожалуйста, попробуйте ещё раз.',
@@ -842,6 +850,8 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     retry_label: 'Zkusit znovu',
     recover_label: 'Obnovit rezervaci',
     continue_to_payment: 'Pokračovat k platbě',
+    session_cancelled: 'Zrušeno',
+    session_cancelled_notice: 'Tento termín byl zrušen.',
     download_pdf: 'Stáhnout PDF',
     loading: 'Načítání…',
     error_generic: 'Něco se pokazilo. Zkuste to prosím znovu.',
@@ -899,6 +909,8 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     retry_label: 'נסה שוב',
     recover_label: 'שחזר הזמנה',
     continue_to_payment: 'המשך לתשלום',
+    session_cancelled: 'בוטל',
+    session_cancelled_notice: 'המועד הזה בוטל.',
     download_pdf: 'הורד PDF',
     loading: 'טוען…',
     error_generic: 'משהו השתבש. אנא נסה שוב.',

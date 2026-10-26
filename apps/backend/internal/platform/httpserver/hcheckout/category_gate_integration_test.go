@@ -70,6 +70,32 @@ var gateWithheldCases = []struct {
 		},
 		wantErr: hcheckout.ErrCategoryNotOnSale,
 	},
+	{
+		// UXH-23: a session cancelled through the session-change flow keeps
+		// its row and its categories (all still open, no window), so the
+		// session's own status is the only thing that stops a new hold.
+		name: "session cancelled",
+		withdraw: func(t *testing.T, ctx context.Context, pool *pgxpool.Pool, tierID uuid.UUID) {
+			gateSetSessionStatus(t, ctx, pool, tierID, "cancelled")
+		},
+		wantErr: hcheckout.ErrSessionCancelled,
+	},
+	{
+		name: "session completed",
+		withdraw: func(t *testing.T, ctx context.Context, pool *pgxpool.Pool, tierID uuid.UUID) {
+			gateSetSessionStatus(t, ctx, pool, tierID, "completed")
+		},
+		wantErr: hcheckout.ErrSessionNotOnSale,
+	},
+}
+
+func gateSetSessionStatus(t *testing.T, ctx context.Context, pool *pgxpool.Pool, tierID uuid.UUID, status string) {
+	t.Helper()
+	if _, err := pool.Exec(ctx,
+		`UPDATE sessions SET status = $2
+		  WHERE id = (SELECT session_id FROM ticket_tiers WHERE id = $1)`, tierID, status); err != nil {
+		t.Fatalf("set session status %q: %v", status, err)
+	}
 }
 
 func ptrTime(v time.Time) *time.Time { return &v }
@@ -228,6 +254,9 @@ func TestCategoryGate_ReacquireAndReleaseIgnoreTheGate_LiveDB(t *testing.T) {
 
 	gateSetOpen(t, ctx, pool, f.tierID, false)
 	gateSetWindow(t, ctx, pool, f.tierID, nil, ptrTime(time.Now().UTC().Add(-time.Hour)))
+	// A session cancelled after the cart was placed is no different: the
+	// places behind an existing order stay the buyer's (UXH-23).
+	gateSetSessionStatus(t, ctx, pool, f.tierID, "cancelled")
 
 	if _, err := hcheckout.ReacquireHold(ctx, pool, q, hcheckout.HoldMutationInput{
 		ReservationID: resID, TTL: 15 * time.Minute,
