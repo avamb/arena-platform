@@ -136,14 +136,16 @@ func TestAllocateGAUnitsTx_RejectsLineWithoutCategory(t *testing.T) {
 
 // UXH-23: a cancelled session keeps its row and its (open) categories, so
 // the session's own status is what refuses a new hold on it. Only
-// 'scheduled' sells; the codes distinguish a cancelled date from any other
-// status.
+// 'cancelled' is withdrawn; every other status ('scheduled', 'draft',
+// 'completed') is left to the existing gates, as before.
 func TestSessionStatusRefusal(t *testing.T) {
 	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
 	tierID := uuid.MustParse("00000000-0000-0000-0000-0000000000a2")
 
-	if err := SessionStatusRefusal("scheduled", tierID, now); err != nil {
-		t.Fatalf("scheduled session refused: %v", err)
+	for _, status := range []string{"scheduled", "draft", "completed", ""} {
+		if err := SessionStatusRefusal(status, tierID, now); err != nil {
+			t.Fatalf("status %q refused: %v", status, err)
+		}
 	}
 
 	cases := []struct {
@@ -152,9 +154,6 @@ func TestSessionStatusRefusal(t *testing.T) {
 		wantCode string
 	}{
 		{"cancelled", ErrSessionCancelled, "session.cancelled"},
-		{"completed", ErrSessionNotOnSale, "session.not_on_sale"},
-		{"draft", ErrSessionNotOnSale, "session.not_on_sale"},
-		{"", ErrSessionNotOnSale, "session.not_on_sale"},
 	}
 	for _, tc := range cases {
 		t.Run("status="+tc.status, func(t *testing.T) {

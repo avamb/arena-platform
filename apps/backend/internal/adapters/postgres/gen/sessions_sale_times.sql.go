@@ -86,8 +86,8 @@ WHERE  id = $1
 
 // GetSessionSalesState returns when ticket sales for the session close AND
 // the session's own status. The hold gate (hcheckout.CheckSessionSalesOpen)
-// refuses every NEW hold once the sales end has passed, and for any session
-// that is not 'scheduled' (a cancelled date keeps its row and its tiers).
+// refuses every NEW hold once the sales end has passed, and for a
+// 'cancelled' session (a cancelled date keeps its row and its tiers).
 // Returns pgx.ErrNoRows for an unknown or deleted session.
 func (q *Queries) GetSessionSalesState(ctx context.Context, id uuid.UUID) (time.Time, string, error) {
 	var (

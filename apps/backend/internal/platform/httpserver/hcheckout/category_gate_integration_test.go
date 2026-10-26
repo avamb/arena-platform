@@ -80,13 +80,6 @@ var gateWithheldCases = []struct {
 		},
 		wantErr: hcheckout.ErrSessionCancelled,
 	},
-	{
-		name: "session completed",
-		withdraw: func(t *testing.T, ctx context.Context, pool *pgxpool.Pool, tierID uuid.UUID) {
-			gateSetSessionStatus(t, ctx, pool, tierID, "completed")
-		},
-		wantErr: hcheckout.ErrSessionNotOnSale,
-	},
 }
 
 func gateSetSessionStatus(t *testing.T, ctx context.Context, pool *pgxpool.Pool, tierID uuid.UUID, status string) {
