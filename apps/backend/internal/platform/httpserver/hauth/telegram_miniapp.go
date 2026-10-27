@@ -81,10 +81,12 @@ func (h *Handler) miniappUnavailable(w http.ResponseWriter, r *http.Request) {
 }
 
 // TelegramMiniapp serves POST /v1/auth/telegram-miniapp. Body
-// {"init_data": "<Telegram.WebApp.initData>"}.
+// {"init_data": "<Telegram.WebApp.initData>", "next": "<optional path>"}.
 //
 //	200 the login answer (access_token, refresh_token, ...) of a 30-minute
-//	    session of channel event_center_tg
+//	    session of channel event_center_tg, plus `next`: the event-center
+//	    path the page opens now (the signed start_param, else the body's
+//	    `next`, only /o/<uuid>/... shapes, else "")
 //	400 http.invalid_json
 //	401 auth.telegram_init_data_invalid   malformed data or a wrong signature
 //	401 auth.telegram_init_data_expired   a genuine signature older than five
@@ -115,6 +117,7 @@ func (h *Handler) TelegramMiniapp(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		InitData string `json:"init_data"`
+		Next     string `json:"next"`
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 3*maxInitDataLen))
 	if err != nil || json.Unmarshal(body, &req) != nil {
@@ -246,5 +249,8 @@ func (h *Handler) TelegramMiniapp(w http.ResponseWriter, r *http.Request) {
 		"token_type":    "Bearer",
 		"expires_at":    exp.UTC().Format(time.RFC3339),
 		"user_id":       actorID.String(),
+		// Where the page goes now: the bot's signed start_param first, else
+		// the page's own `next`; only an event-center path, else "".
+		"next": miniappNext(user.StartParam, req.Next),
 	})
 }

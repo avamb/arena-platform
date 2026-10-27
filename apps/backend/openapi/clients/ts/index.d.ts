@@ -793,6 +793,15 @@ export interface paths {
          *     `auth.user_deactivated` and a platform superadmin 403
          *     `auth.web_link_superadmin`. The route answers 503
          *     `auth.telegram_miniapp_not_configured` until the key is set.
+         *
+         *     The answer also says where to go (`next`): the bot can open the Mini
+         *     App straight on a screen (for example the seat manager of one date)
+         *     by writing the path, base64url without padding, into the link's
+         *     `startapp` parameter; Telegram signs it as `start_param`, so it cannot
+         *     be changed on the way. The page may instead send the path in `next`.
+         *     Both are accepted only as event-center paths `/o/<organization uuid>/...`;
+         *     any other value (another site, `..`, a path outside `/o/`) gives an
+         *     empty `next` and the sign-in still succeeds.
          */
         post: operations["postV1AuthTelegramMiniapp"];
         delete?: never;
@@ -11059,6 +11068,29 @@ export interface components {
         AuthTelegramMiniappRequest: {
             /** @description The launch data exactly as Telegram gave it to the Mini App page (`Telegram.WebApp.initData`, a URL-encoded query string with a `hash` field), not parsed or re-encoded. At most 4096 characters. */
             init_data: string;
+            /** @description Optional. The event-center page the person wants to land on, read from the Mini App's own address: a path of the shape `/o/<organization uuid>/...` (at most 300 characters, an optional `?query`). It is checked and echoed back in `next` of the answer; anything else (another site, `..`, a path outside `/o/`) is dropped and the answer's `next` is empty. The signed `start_param` of the launch data, when it holds a good path, wins over this field. */
+            next?: string;
+        };
+        /** @description Answer of POST /v1/auth/telegram-miniapp. The same session fields as a login, plus where the page goes now. */
+        AuthTelegramMiniappResponse: {
+            /** @description Short-lived HS256 JWT access token; it never outlives the 30-minute Mini App session. */
+            access_token: string;
+            /** @description Opaque refresh token of the Mini App session; refreshes never move the end of the session. */
+            refresh_token: string;
+            /** @description Token type, always "Bearer". */
+            token_type: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 expiry of the access token.
+             */
+            expires_at: string;
+            /**
+             * Format: uuid
+             * @description The signed-in person.
+             */
+            user_id: string;
+            /** @description The event-center path the page opens now (`/o/<organization uuid>/...`), taken from the signed `start_param` of the launch data or else from the request's `next`, after the same check. Empty when there is none or it was not a safe event-center path: the page then shows its own start screen. The person's access to that organization is still decided by the screen and the API. */
+            next: string;
         };
         /** @description Answer of POST /v1/auth/web-sessions/revoke. */
         AuthWebSessionsRevokeResponse: {
@@ -30536,13 +30568,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Signed in. Same answer as POST /v1/auth/login. */
+            /** @description Signed in. The session fields of POST /v1/auth/login plus `next`. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AuthLoginResponse"];
+                    "application/json": components["schemas"]["AuthTelegramMiniappResponse"];
                 };
             };
             /** @description The body is not JSON (`http.invalid_json`). */

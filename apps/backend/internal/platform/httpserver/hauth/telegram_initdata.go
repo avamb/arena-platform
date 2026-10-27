@@ -52,6 +52,8 @@ type InitDataUser struct {
 	TelegramID int64
 	// AuthDate is when Telegram signed the data.
 	AuthDate time.Time
+	// StartParam is the signed `start_param` field ("" when there is none).
+	StartParam string
 }
 
 // VerifyInitData checks raw launch data against the derived key secretKey and
@@ -120,7 +122,7 @@ func VerifyInitData(raw string, secretKey []byte, now time.Time, maxAge time.Dur
 	if json.Unmarshal([]byte(values.Get("user")), &user) != nil || user.ID <= 0 {
 		return zero, ErrInitDataMalformed
 	}
-	return InitDataUser{TelegramID: user.ID, AuthDate: authDate}, nil
+	return InitDataUser{TelegramID: user.ID, AuthDate: authDate, StartParam: values.Get("start_param")}, nil
 }
 
 // MiniappSecretKey decodes TELEGRAM_MINIAPP_SECRET_KEY (64 hex characters)

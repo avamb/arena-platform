@@ -36,12 +36,22 @@ const miniappTestBotToken = "5551234567:AA-miniapp-integration-test-token"
 // miniappInitData signs launch data the way Telegram does.
 func miniappInitData(t *testing.T, key []byte, telegramID int64, authDate time.Time) string {
 	t.Helper()
+	return miniappInitDataWith(t, key, telegramID, authDate, nil)
+}
+
+// miniappInitDataWith signs launch data that also carries the extra fields
+// (for example the signed start_param).
+func miniappInitDataWith(t *testing.T, key []byte, telegramID int64, authDate time.Time, extra map[string]string) string {
+	t.Helper()
 	fields := map[string]string{
 		"auth_date":     strconv.FormatInt(authDate.Unix(), 10),
 		"query_id":      "AAH" + uuid.NewString()[:8],
 		"user":          fmt.Sprintf(`{"id":%d,"first_name":"Тест","username":"t%d","language_code":"ru"}`, telegramID, telegramID),
 		"chat_type":     "private",
 		"chat_instance": "-1234567890",
+	}
+	for k, v := range extra {
+		fields[k] = v
 	}
 	names := make([]string, 0, len(fields))
 	for k := range fields {
