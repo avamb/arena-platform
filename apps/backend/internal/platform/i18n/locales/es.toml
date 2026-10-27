@@ -4358,3 +4358,161 @@ other = "Demasiados correos de prueba en la última hora. Prueba más tarde."
 # The sales-link PDF insert (spec 43, QL-13): the one line printed under the QR code.
 ["salelinks.insert.scan_and_buy"]
 other = "Escanea y compra entradas"
+
+# The seat layout screens of a seated date (S3c): bot.sl.* and the allocator's own labels (layoutgen.*, read from the API's label keys).
+
+["bot.sl.btn"]
+other = "🪑 Distribución de plazas"
+
+["bot.sl.scheme_btn"]
+other = "🗺 Plano"
+
+["bot.sl.head"]
+other = "<b>{{.Name}}</b>\n{{.When}}"
+
+["bot.sl.not_seated"]
+other = "Esta sesión no tiene plano del recinto, así que no hay plazas que distribuir."
+
+["bot.sl.need_two"]
+other = "Para distribuir el recinto necesito al menos dos categorías abiertas con plazas en esta sesión. Abre o añade una en «Categorías» y vuelve."
+
+["bot.sl.intro"]
+other = "🪑 <b>Distribución de plazas</b>\nDividiré el recinto entre estas categorías: las mejores plazas van a la más cara. No cambia nada hasta que pulses «Aplicar», y después podrás deshacerlo."
+
+["bot.sl.cat_line"]
+other = "• {{.Name}} — {{.Price}}"
+
+["bot.sl.closed_note"]
+other = "Las categorías cerradas ({{.Count}}) no participan: sus plazas se quedan como están."
+
+["bot.sl.no_algorithms"]
+other = "Todavía no hay ninguna forma de distribuir las plazas."
+
+["bot.sl.last_batch"]
+other = "Último cambio de plazas: {{.When}}, {{.Count}} plazas."
+
+["bot.sl.undo_btn"]
+other = "↩ Deshacer"
+
+["bot.sl.undo_hint"]
+other = "Si no te gusta, pulsa «Deshacer». Las plazas que mientras tanto se hayan vendido o estén en reserva se quedan como están."
+
+["bot.sl.algorithm_gone"]
+other = "Esa forma de distribuir ya no está disponible. Elige otra."
+
+["bot.sl.gone"]
+other = "Esta pantalla ha caducado. Abre «Distribución de plazas» en la sesión otra vez."
+
+["bot.sl.q_stage"]
+other = "¿Dónde está el escenario en el plano, tal como está dibujado? Cuanto más cerca del escenario, mejor la plaza."
+
+["bot.sl.stage_top"]
+other = "⬆ Arriba"
+
+["bot.sl.stage_bottom"]
+other = "⬇ Abajo"
+
+["bot.sl.stage_left"]
+other = "⬅ A la izquierda"
+
+["bot.sl.stage_right"]
+other = "➡ A la derecha"
+
+["bot.sl.show_btn"]
+other = "👁 Mostrar la distribución"
+
+["bot.sl.options_btn"]
+other = "⚙ Ajustes"
+
+["bot.sl.err_stage"]
+other = "Primero elige dónde está el escenario."
+
+["bot.sl.err_param"]
+other = "Estos ajustes no valen. Cámbialos e inténtalo de nuevo."
+
+["bot.sl.err_plan"]
+other = "No he podido leer el plano de esta sesión. Inténtalo dentro de un minuto o usa el plano en la web."
+
+["bot.sl.err_fit"]
+other = "La propuesta no coincide con las categorías de esta sesión, así que no he aplicado nada. Inténtalo de nuevo."
+
+["bot.sl.err_too_big"]
+other = "Este recinto tiene más de {{.Max}} plazas que cambiar, demasiadas para un chat. Usa el plano en la web."
+
+["bot.sl.err_apply"]
+other = "No se pudieron cambiar las plazas. No se ha aplicado nada. Revisa las categorías e inténtalo de nuevo."
+
+["bot.sl.preview_title"]
+other = "<b>Distribución propuesta</b> (todavía no se ha cambiado nada)"
+
+["bot.sl.preview_line"]
+other = "• {{.Name}} — {{.Price}}: {{.Seats}} plazas ({{.Share}}%)"
+
+["bot.sl.preview_frozen"]
+other = "🔒 Se quedan como están: {{.Sold}} vendidas, {{.Held}} en reserva."
+
+["bot.sl.preview_closed"]
+other = "🚫 Plazas cerradas: {{.Count}} (no están a la venta)."
+
+["bot.sl.preview_estimate"]
+other = "💶 Si se vende cada plaza abierta: unos {{.Money}}. Es una cifra de referencia, no una previsión."
+
+["bot.sl.preview_nothing"]
+other = "Cada plaza libre ya está en la categoría que le daría. No hay nada que cambiar."
+
+["bot.sl.preview_hint"]
+other = "Pulsa «Aplicar» y las plazas libres ({{.Count}}) pasarán a estas categorías. Después podrás deshacerlo."
+
+["bot.sl.apply_btn"]
+other = "✅ Aplicar"
+
+["bot.sl.out_of_date"]
+other = "Ese botón ha caducado. Mira la distribución otra vez."
+
+["bot.sl.stale"]
+other = "⚠️ El recinto cambió mientras mirabas (una plaza se vendió, se reservó o se cerró). Esta es la imagen nueva. Revísala y pulsa «Aplicar» otra vez."
+
+["bot.sl.applied"]
+other = "✅ Hecho. {{.Changed}} plazas pasaron a otra categoría y {{.Same}} ya estaban en la correcta."
+
+["bot.sl.applied_skipped"]
+other = "{{.Count}} plazas se quedaron como estaban (acaban de venderse o reservarse)."
+
+["bot.sl.undone"]
+other = "↩ Deshecho. {{.Count}} plazas han vuelto a su categoría anterior."
+
+["bot.sl.undone_skipped"]
+other = "{{.Count}} plazas se quedan como están ahora (vendidas, en reserva o cambiadas después)."
+
+["bot.sl.err_undo_nothing"]
+other = "No hay nada que devolver: las plazas de ese cambio se vendieron, se reservaron o se cambiaron otra vez. Deshaz antes el cambio posterior."
+
+["bot.sl.err_undo_done"]
+other = "Ese cambio ya se deshizo."
+
+["bot.sl.err_undo_gone"]
+other = "Ya no encuentro ese cambio."
+
+["layoutgen.algorithm.desirability"]
+other = "Por cercanía al escenario"
+
+["layoutgen.algorithm.desirability.description"]
+other = "Cuanto más cerca del escenario y del eje central, mejor la plaza. Una fila entera va a una misma categoría."
+
+["layoutgen.param.share_template"]
+other = "Cuántas plazas recibe cada categoría"
+
+["layoutgen.option.share_template.pyramid"]
+other = "Pocas caras, muchas baratas"
+
+["layoutgen.option.share_template.equal"]
+other = "Igual para cada una"
+
+["layoutgen.option.share_template.wide_middle"]
+other = "Más en el centro"
+
+["layoutgen.param.cheaper_row_edges"]
+other = "Extremos de fila más baratos"
+
+["layoutgen.param.cheaper_row_edges.hint"]
+other = "El extremo de una fila larga nunca cuesta más que su centro."

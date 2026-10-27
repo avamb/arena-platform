@@ -4500,3 +4500,161 @@ other = "За последний час отправлено слишком мн
 # The sales-link PDF insert (spec 43, QL-13): the one line printed under the QR code.
 ["salelinks.insert.scan_and_buy"]
 other = "Отсканируйте и купите билеты"
+
+# The seat layout screens of a seated date (S3c): bot.sl.* and the allocator's own labels (layoutgen.*, read from the API's label keys).
+
+["bot.sl.btn"]
+other = "🪑 Раскладка мест"
+
+["bot.sl.scheme_btn"]
+other = "🗺 Схема"
+
+["bot.sl.head"]
+other = "<b>{{.Name}}</b>\n{{.When}}"
+
+["bot.sl.not_seated"]
+other = "На этом сеансе нет схемы зала, поэтому раскладывать нечего."
+
+["bot.sl.need_two"]
+other = "Чтобы разложить места, нужны минимум две открытые категории с местами на этом сеансе. Откройте или добавьте категорию в «Категориях» и вернитесь."
+
+["bot.sl.intro"]
+other = "🪑 <b>Раскладка мест</b>\nЯ разделю места между этими категориями: лучшие получит самая дорогая. Пока вы не нажмёте «Применить», ничего не изменится. Потом изменение можно отменить."
+
+["bot.sl.cat_line"]
+other = "• {{.Name}} — {{.Price}}"
+
+["bot.sl.closed_note"]
+other = "Закрытые категории ({{.Count}}) не участвуют: их места остаются как есть."
+
+["bot.sl.no_algorithms"]
+other = "Способов раскладки пока нет."
+
+["bot.sl.last_batch"]
+other = "Последнее изменение мест: {{.When}}, мест: {{.Count}}."
+
+["bot.sl.undo_btn"]
+other = "↩ Отменить"
+
+["bot.sl.undo_hint"]
+other = "Если не понравится, нажмите «Отменить». Места, которые тем временем проданы или в брони, останутся как есть."
+
+["bot.sl.algorithm_gone"]
+other = "Этот способ раскладки больше недоступен. Выберите другой."
+
+["bot.sl.gone"]
+other = "Экран устарел. Откройте «Раскладку мест» на сеансе ещё раз."
+
+["bot.sl.q_stage"]
+other = "Где сцена на плане, как он нарисован? Чем ближе к сцене, тем лучше место."
+
+["bot.sl.stage_top"]
+other = "⬆ Сверху"
+
+["bot.sl.stage_bottom"]
+other = "⬇ Снизу"
+
+["bot.sl.stage_left"]
+other = "⬅ Слева"
+
+["bot.sl.stage_right"]
+other = "➡ Справа"
+
+["bot.sl.show_btn"]
+other = "👁 Показать раскладку"
+
+["bot.sl.options_btn"]
+other = "⚙ Настройки"
+
+["bot.sl.err_stage"]
+other = "Сначала выберите, где сцена."
+
+["bot.sl.err_param"]
+other = "Эти настройки не подходят. Измените их и попробуйте ещё раз."
+
+["bot.sl.err_plan"]
+other = "Не удалось прочитать схему зала этого сеанса. Попробуйте через минуту или откройте схему в вебе."
+
+["bot.sl.err_fit"]
+other = "Раскладка не совпала с категориями сеанса, поэтому ничего не применено. Попробуйте ещё раз."
+
+["bot.sl.err_too_big"]
+other = "Мест для изменения больше {{.Max}}: для чата это много. Откройте схему в вебе."
+
+["bot.sl.err_apply"]
+other = "Не удалось изменить места. Ничего не применено. Проверьте категории и попробуйте ещё раз."
+
+["bot.sl.preview_title"]
+other = "<b>Предлагаемая раскладка</b> (пока ничего не изменено)"
+
+["bot.sl.preview_line"]
+other = "• {{.Name}} — {{.Price}}: мест {{.Seats}} ({{.Share}}%)"
+
+["bot.sl.preview_frozen"]
+other = "🔒 Остаются как есть: продано {{.Sold}}, в брони {{.Held}}."
+
+["bot.sl.preview_closed"]
+other = "🚫 Закрытые места: {{.Count}} (не в продаже)."
+
+["bot.sl.preview_estimate"]
+other = "💶 Если продадутся все открытые места: около {{.Money}}. Это ориентир, а не прогноз."
+
+["bot.sl.preview_nothing"]
+other = "Все свободные места уже в нужных категориях. Менять нечего."
+
+["bot.sl.preview_hint"]
+other = "Нажмите «Применить», и свободные места ({{.Count}}) встанут в эти категории. Потом можно отменить."
+
+["bot.sl.apply_btn"]
+other = "✅ Применить"
+
+["bot.sl.out_of_date"]
+other = "Эта кнопка устарела. Посмотрите раскладку ещё раз."
+
+["bot.sl.stale"]
+other = "⚠️ Пока вы смотрели, места изменились (одно продано, в брони или закрыто). Вот новая картина. Проверьте её и нажмите «Применить» ещё раз."
+
+["bot.sl.applied"]
+other = "✅ Готово. В новую категорию перенесено мест: {{.Changed}}, уже стояли правильно: {{.Same}}."
+
+["bot.sl.applied_skipped"]
+other = "Осталось как есть мест: {{.Count}} (только что проданы или в брони)."
+
+["bot.sl.undone"]
+other = "↩ Отменено. В прежние категории вернулось мест: {{.Count}}."
+
+["bot.sl.undone_skipped"]
+other = "Как сейчас остаются мест: {{.Count}} (проданы, в брони или изменены потом)."
+
+["bot.sl.err_undo_nothing"]
+other = "Возвращать нечего: места этого изменения проданы, в брони или изменены снова. Сначала отмените более позднее изменение."
+
+["bot.sl.err_undo_done"]
+other = "Это изменение уже отменено."
+
+["bot.sl.err_undo_gone"]
+other = "Не нахожу это изменение."
+
+["layoutgen.algorithm.desirability"]
+other = "По близости к сцене"
+
+["layoutgen.algorithm.desirability.description"]
+other = "Чем ближе к сцене и к центральной оси, тем лучше место. Ряд целиком попадает в одну категорию."
+
+["layoutgen.param.share_template"]
+other = "Сколько мест получает каждая категория"
+
+["layoutgen.option.share_template.pyramid"]
+other = "Мало дорогих, много дешёвых"
+
+["layoutgen.option.share_template.equal"]
+other = "Поровну"
+
+["layoutgen.option.share_template.wide_middle"]
+other = "Больше в середине"
+
+["layoutgen.param.cheaper_row_edges"]
+other = "Края рядов дешевле"
+
+["layoutgen.param.cheaper_row_edges.hint"]
+other = "Край длинного ряда не дороже его середины."

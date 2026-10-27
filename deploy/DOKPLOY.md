@@ -325,7 +325,8 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `BREVO_API_BASE_URL` (production: unset or `https://api.brevo.com`) | ● | ● | — | — |
 | `APP_PUBLIC_URL` (`https://`) | ✅ | ✅ | — | — |
 | `API_PUBLIC_URL` (`https://` when set; required with the Bil24 gateway) | ● | ● | — | — |
-| `EVENT_CENTER_PUBLIC_URL` (`https://` when set) | ● | ● | — | — |
+| `EVENT_CENTER_PUBLIC_URL` (`https://` when set) | ● | ● | ● | — |
+| `BOT_SCHEME_BUTTON` (`off` default, `url` or `web_app`: the «Схема» button on the card of a seated date; needs `EVENT_CENTER_PUBLIC_URL` on the bot; turn it on only after the `/tg` screen of the event center is live, `web_app` after `POST /v1/auth/telegram-miniapp`) | — | — | ● | — |
 | `PUBLIC_TICKETS_BASE_URL` | ● | ● | ● | — |
 | `SHORT_LINK_BASE_URL` (`https://`, host only, default `https://go.arenasoldout.com`, the host printed under a QR code; setup: `docs/ops/sales_links_ru.md`) | ● | — | — | — |
 | `SHORT_LINK_FALLBACK_URL` (`https://` when set; where `GET /go/{code}` sends an unknown code; empty = `PUBLIC_TICKETS_BASE_URL`, else `APP_PUBLIC_URL`) | ● | — | — | — |

@@ -44,6 +44,8 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"Order": "№1", "Gate": "2", "Ticket": "№1", "Next": "", "Chars": 1000, "Left": 2, "Sent": 3, "Got": 1, "Guests": "g", "Guest": "g", "Event": "e", "Line": 2, "Done": 1, "Why": "w",
 		// the Materials screens (materials_keys.go)
 		"Caption": "c", "Seller": "s", "Lat": "50.075500", "Lon": "14.437800",
+		// the seat layout screens (seat_layout_keys.go)
+		"Seats": 3, "Share": 40, "Changed": 2, "Same": 1,
 	}
 	for _, loc := range SupportedLocales {
 		for _, key := range MessageKeys {

@@ -392,6 +392,11 @@ type PosterAccepted struct {
 type Button struct {
 	Label string
 	Data  string
+	// URL, when set, makes a link button (Data is then unused): an ordinary
+	// one, or a Telegram Mini App one when WebApp is true. Only the screens
+	// that build their keyboard with sesKeyboard honour it.
+	URL    string
+	WebApp bool
 }
 
 // Screen is what the bot shows for the current step.
