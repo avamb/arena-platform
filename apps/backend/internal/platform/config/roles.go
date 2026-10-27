@@ -118,6 +118,7 @@ var roleSecrets = []roleSecret{
 	{"MEDIA_S3_ACCESS_KEY_ID", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.MediaS3AccessKeyID }},
 	{"MEDIA_S3_SECRET_ACCESS_KEY", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.MediaS3SecretAccessKey }},
 	{"BOT_SERVICE_TOKEN", []Role{RoleAPI, RoleBot}, func(c *Config) string { return c.BotServiceToken }},
+	{"TELEGRAM_MINIAPP_SECRET_KEY", []Role{RoleAPI}, func(c *Config) string { return c.TelegramMiniappSecretKey }},
 	{"BILLING_STRIPE_SECRET_KEY", []Role{RoleAPI}, func(c *Config) string { return c.BillingStripeSecretKey }},
 	{"BILLING_STRIPE_WEBHOOK_SECRET", []Role{RoleAPI}, func(c *Config) string { return c.BillingStripeWebhookSecret }},
 	{"BILLING_BANK_WEBHOOK_SECRET", []Role{RoleAPI}, func(c *Config) string { return c.BillingBankWebhookSecret }},
