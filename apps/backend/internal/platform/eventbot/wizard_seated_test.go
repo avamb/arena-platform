@@ -172,3 +172,56 @@ func TestWizardSeated_CopyAsksForTickets(t *testing.T) {
 		t.Fatalf("copy = %+v scratch=%+v", c.Tickets, c.Scratch)
 	}
 }
+
+// Choosing another venue after a plan was chosen drops the plan of the first.
+func TestWizardSeated_AnotherVenueDropsThePlan(t *testing.T) {
+	r := seatedRun(t)
+	seatedToVenue(r)
+	r.press("venue:akr", stSPlan)
+	r.press("plan:0", stSPlanPrice)
+	r.w.refs.(*fakeRefs).plans = nil // the venue chosen next has no plan
+	r.d.Step = stSVenue
+	r.press("venue:akr", stSCapacity)
+	if s := r.d.Sessions[0]; s.seated() || s.Tickets != nil {
+		t.Fatalf("the plan of the first choice stayed: %+v", s)
+	}
+}
+
+// A date added after a seated one cannot copy its categories: they are the
+// plan's. "Own categories" on a seated date asks only the prices.
+func TestWizardSeated_NoCopyOfAPlanAndOwnMeansPrices(t *testing.T) {
+	r, f := loadRun(t)
+	s := f.sessions[0]
+	plan := uuid.MustParse(akropolisPlan().VersionID)
+	f.sessions[0].SeatingPlanVersionId = &plan
+	seated := "seated"
+	f.tiers[s.Id] = []openapi.TicketTierItem{{Id: uuid.New(), SessionId: s.Id, Name: "Stalls", PriceAmount: 9000, Currency: "CZK", Kind: &seated}}
+	d, _, err := r.w.LoadEventDraft(context.Background(), f, r.ws, f.event.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.d = d
+	d.Sessions = append(d.Sessions, DraftSession{Date: "2026-12-16", Time: "20:00", VenueID: d.Sessions[0].VenueID, Timezone: d.Sessions[0].Timezone})
+	d.Cur, d.Step = 1, stSTickets
+	screen, err := r.w.Render(context.Background(), r.ws, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range screen.Buttons {
+		for _, b := range row {
+			if b.Data == "st:same" {
+				t.Fatalf("a seated date must not be offered as a copy: %v", screen.Buttons)
+			}
+		}
+	}
+	if _, err := r.w.Apply(context.Background(), r.ws, d, WizInput{Data: "st:same"}); err != nil || d.Step != stSTickets {
+		t.Fatalf("a forced st:same must change nothing: step %s err %v", d.Step, err)
+	}
+
+	// The seated date's own summary: "own categories" re-prices, not GA questions.
+	d.Cur, d.Step = 0, stSConfirm
+	d.Scratch.Edit = "dates"
+	if _, err := r.w.Apply(context.Background(), r.ws, d, WizInput{Data: "sc:own"}); err != nil || d.Step != stSPlanPrice {
+		t.Fatalf("sc:own on a seated date: step %s err %v", d.Step, err)
+	}
+}

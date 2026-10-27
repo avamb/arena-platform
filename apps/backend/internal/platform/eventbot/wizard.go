@@ -1194,6 +1194,11 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 				if s.Capacity == 0 {
 					s.Capacity = v.Capacity
 				}
+				if s.seated() {
+					// Back to the venue question and a venue chosen again: the
+					// plan of the first one does not belong to this one.
+					s.PlanVersionID, s.PlanName, s.Tickets = "", "", nil
+				}
 				if w.offerPlans(ctx, ws, d) {
 					return "", nil
 				}
@@ -1603,6 +1608,9 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		prev := d.ticketsOf(d.Cur - 1)
 		switch data {
 		case "st:same":
+			if d.Sessions[d.Cur-1].seated() {
+				return "", nil // the categories of a plan belong to its plan
+			}
 			// The copy keeps nothing that would end after the new date: a
 			// price change or a stage end later than it is dropped or moved
 			// onto the date, as the "own categories" questions would demand.
@@ -1628,6 +1636,10 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		case "sc:next":
 			d.goTo(stSMore)
 		case "sc:own":
+			if s.seated() {
+				d.startSeatPrices(d.Cur + 1) // a date sold by a plan changes its prices only
+				break
+			}
 			d.goTo(d.startTickets(d.Cur+1, *d.ticketsOf(d.Cur), false))
 		case "sc:cap":
 			if d.ticketsOf(d.Cur).Mode != ModeParallel {

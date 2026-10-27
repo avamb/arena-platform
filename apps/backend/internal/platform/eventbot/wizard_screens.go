@@ -378,12 +378,14 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		}
 		prev := d.Sessions[d.Cur-1]
 		ptk := d.ticketsOf(d.Cur - 1)
+		rows := [][]Button{}
+		if !prev.seated() {
+			rows = append(rows, []Button{{Label: t("bot.wz.s_tickets_same_btn", map[string]any{"Prev": dateLabel(prev)}), Data: "st:same"}})
+		}
+		rows = append(rows, []Button{btn("bot.wz.s_tickets_own_btn", "st:own")})
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_s_tickets", map[string]any{
 			"N": d.Cur + 1, "Prev": dateLabel(prev), "List": w.ticketsText(loc, d.currencyOrGuess(), ptk)}),
-			Buttons: nav(
-				[]Button{{Label: t("bot.wz.s_tickets_same_btn", map[string]any{"Prev": dateLabel(prev)}), Data: "st:same"}},
-				[]Button{btn("bot.wz.s_tickets_own_btn", "st:own")},
-			)}, nil
+			Buttons: nav(rows...)}, nil
 
 	case stSConfirm:
 		return w.confirmDateScreen(loc, d, header(2, "bot.wz.title_when"), nav), nil

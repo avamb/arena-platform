@@ -193,6 +193,10 @@ func (w *Wizard) applySeated(loc string, d *Draft, text, data string) (string, e
 
 // nextSectionAfterSeatPrices ends the price questions of a seated date.
 func (d *Draft) nextSectionAfterSeatPrices() {
+	if d.Scratch.Edit == "dates" {
+		d.goTo(stSConfirm) // the new date's summary, as after any change of its categories
+		return
+	}
 	d.section(stXDescription)
 }
 
