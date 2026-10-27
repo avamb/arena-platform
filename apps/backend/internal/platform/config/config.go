@@ -526,6 +526,12 @@ type Config struct {
 	// is live: today /tg/edit is a placeholder. It needs EVENT_CENTER_PUBLIC_URL
 	// (https) on arena-api and the /tg/ nginx location of apps/event-center.
 	BotMiniappEditorEnabled bool `env:"BOT_MINIAPP_EDITOR_ENABLED" required:"false" default:"false"`
+	// BotSchemeButton (read by arena-bot) is the "Seat map" button on the card of
+	// a seated date: "off" (default) shows none, "url" an ordinary link button,
+	// "web_app" the Telegram Mini App button. It needs EVENT_CENTER_PUBLIC_URL on
+	// the bot. Keep it "off" until the /tg screen of the event center is live,
+	// then "url", and "web_app" once POST /v1/auth/telegram-miniapp is live.
+	BotSchemeButton string `env:"BOT_SCHEME_BUTTON" required:"false" default:"off"`
 	// OnboardingEnabled mounts the public organizer-application routes
 	// (/v1/onboarding/*, 08_architecture/34_onboarding_applications_ru.md).
 	// Off by default: the website's form is the only intended client.
@@ -1113,6 +1119,15 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.BotMiniappEditorEnabled = b
+
+	cfg.BotSchemeButton = strings.ToLower(strings.TrimSpace(getenv("BOT_SCHEME_BUTTON", "off")))
+	switch cfg.BotSchemeButton {
+	case "", "off":
+		cfg.BotSchemeButton = "off"
+	case "url", "web_app":
+	default:
+		parseErrs = append(parseErrs, fmt.Errorf("BOT_SCHEME_BUTTON must be off, url or web_app (got %q)", cfg.BotSchemeButton))
+	}
 
 	// JWT default TTL.
 	d, err = getenvDuration("JWT_DEFAULT_TTL", time.Hour, false)

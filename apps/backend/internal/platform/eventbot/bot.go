@@ -62,6 +62,11 @@ type Options struct {
 	// "Edit in the editor" next to the description preview and on the
 	// email-note screen (spec 44, RT-12a). Default off.
 	MiniappEditor bool
+	// SchemeButton (BOT_SCHEME_BUTTON: "off", "url" or "web_app") is the
+	// "Seat map" button on the card of a seated date; EventCenterURL
+	// (EVENT_CENTER_PUBLIC_URL) is where it leads. Either empty/off shows none.
+	SchemeButton   string
+	EventCenterURL string
 	// DialogSweepEvery is how often long-expired bot_dialogs rows are
 	// deleted (default 10 min); tests shorten it.
 	DialogSweepEvery time.Duration
@@ -107,6 +112,8 @@ type Bot struct {
 	noticeEvery    time.Duration
 	siteButton     bool
 	miniappEditor  bool
+	schemeMode     string
+	eventCenterURL string
 	onb            *onbDialogs
 	onbForms       *onbFormCache
 
@@ -255,6 +262,8 @@ func New(opts Options) (*Bot, error) {
 		noticeEvery:    opts.NoticeEvery,
 		siteButton:     opts.SiteButton,
 		miniappEditor:  opts.MiniappEditor,
+		schemeMode:     opts.SchemeButton,
+		eventCenterURL: opts.EventCenterURL,
 		onbForms:       &onbFormCache{m: map[string]onbFormEntry{}},
 		feed:           newFeedMemory(),
 		menuKB:         newMenuShown(),
@@ -580,6 +589,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.materialsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "mt:"))
 	case "ct":
 		b.categoryCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ct:"))
+	case "sl":
+		b.seatLayoutCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "sl:"))
 	case "og":
 		b.orgDataCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "og:"))
 	case "ql":

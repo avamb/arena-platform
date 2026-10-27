@@ -4506,3 +4506,179 @@ other = "Too many test letters in the last hour. Try again later."
 # The sales-link PDF insert (spec 43, QL-13): the one line printed under the QR code.
 ["salelinks.insert.scan_and_buy"]
 other = "Scan and buy tickets"
+
+# The seat layout screens of a seated date (S3c): bot.sl.* and the allocator's own labels (layoutgen.*, read from the API's label keys).
+
+["bot.sl.btn"]
+other = "🪑 Seat layout"
+
+["bot.sl.scheme_btn"]
+other = "🗺 Seat map"
+
+["bot.sl.head"]
+other = "<b>{{.Name}}</b>\n{{.When}}"
+
+["bot.sl.not_seated"]
+other = "This date has no seating plan, so there are no seats to lay out."
+
+["bot.sl.need_two"]
+other = "To lay out the hall I need at least two open categories with seats on this date. Open or add one in «Categories», then come back."
+
+["bot.sl.intro"]
+other = "🪑 <b>Seat layout</b>\nI will cut the hall into these categories: the best seats go to the dearest one. Nothing changes until you press Apply, and you can undo it afterwards."
+
+["bot.sl.cat_line"]
+other = "• {{.Name}} — {{.Price}}"
+
+["bot.sl.closed_note"]
+other = "Closed categories ({{.Count}}) are left out: their seats stay as they are."
+
+["bot.sl.no_algorithms"]
+other = "There is no way of laying out seats available yet."
+
+["bot.sl.last_batch"]
+other = "Last change of the seats: {{.When}}, {{.Count}} seats."
+
+["bot.sl.undo_btn"]
+other = "↩ Undo"
+
+["bot.sl.undo_hint"]
+other = "If you do not like it, press Undo. Seats that were sold or held meanwhile stay as they are."
+
+["bot.sl.algorithm_gone"]
+other = "That way of laying out seats is no longer available. Pick another."
+
+["bot.sl.gone"]
+other = "This screen is out of date. Open «Seat layout» on the date again."
+
+["bot.sl.q_stage"]
+other = "Where is the stage on the plan, as it is drawn? The nearer the stage, the better the seat."
+
+["bot.sl.stage_top"]
+other = "⬆ At the top"
+
+["bot.sl.stage_bottom"]
+other = "⬇ At the bottom"
+
+["bot.sl.stage_left"]
+other = "⬅ On the left"
+
+["bot.sl.stage_right"]
+other = "➡ On the right"
+
+["bot.sl.show_btn"]
+other = "👁 Show the layout"
+
+["bot.sl.options_btn"]
+other = "⚙ Options"
+
+["bot.sl.err_stage"]
+other = "Pick where the stage is first."
+
+["bot.sl.err_param"]
+other = "These options do not fit. Please change them and try again."
+
+["bot.sl.err_plan"]
+other = "I could not read the seating plan of this date. Try again in a minute or use the seat map on the web."
+
+["bot.sl.err_fit"]
+other = "The proposal does not match the categories of this date, so I did not apply anything. Please try again."
+
+["bot.sl.err_too_big"]
+other = "This hall has more than {{.Max}} seats to change, too many for a chat. Please use the seat map on the web."
+
+["bot.sl.err_apply"]
+other = "The seats could not be changed. Nothing was applied. Please check the categories and try again."
+
+["bot.sl.preview_title"]
+other = "<b>Proposed layout</b> (nothing is changed yet)"
+
+["bot.sl.preview_line"]
+other = "• {{.Name}} — {{.Price}}: {{.Seats}} seats ({{.Share}}%)"
+
+["bot.sl.preview_frozen"]
+other = "🔒 These stay as they are: {{.Sold}} sold, {{.Held}} held."
+
+["bot.sl.preview_closed"]
+other = "🚫 Closed seats: {{.Count}} (they are not on sale)."
+
+["bot.sl.preview_estimate"]
+other = "💶 If every open seat sells: about {{.Money}}. This is a reference figure, not a forecast."
+
+["bot.sl.preview_nothing"]
+other = "Every free seat is already in the category I would give it. There is nothing to change."
+
+["bot.sl.preview_hint"]
+other = "Press Apply to put the free seats ({{.Count}}) into these categories. You can undo it afterwards."
+
+["bot.sl.apply_btn"]
+other = "✅ Apply"
+
+["bot.sl.out_of_date"]
+other = "That button is out of date. Check the layout again."
+
+["bot.sl.stale"]
+other = "⚠️ The hall changed while you were looking (a seat was sold, held or closed). This is the new picture. Check it and press Apply again."
+
+["bot.sl.applied"]
+other = "✅ Done. {{.Changed}} seats moved to a new category, {{.Same}} were already in the right one."
+
+["bot.sl.applied_skipped"]
+other = "{{.Count}} seats were left as they are (sold or held just now)."
+
+["bot.sl.undone"]
+other = "↩ Undone. {{.Count}} seats are back in their old categories."
+
+["bot.sl.undone_skipped"]
+other = "{{.Count}} seats stay as they are now (sold, held or changed since)."
+
+["bot.sl.err_undo_nothing"]
+other = "Nothing to put back: the seats of that change were sold, held or changed again. Undo the later change first."
+
+["bot.sl.err_undo_done"]
+other = "That change was already undone."
+
+["bot.sl.err_undo_gone"]
+other = "I cannot find that change any more."
+
+["layoutgen.algorithm.desirability"]
+other = "By closeness to the stage"
+
+["layoutgen.algorithm.desirability.description"]
+other = "The nearer to the stage and to the centre line, the better the seat. A whole row goes to one category."
+
+["layoutgen.param.share_template"]
+other = "How many seats each category gets"
+
+["layoutgen.option.share_template.pyramid"]
+other = "Few dear, many cheap"
+
+["layoutgen.option.share_template.equal"]
+other = "The same for each"
+
+["layoutgen.option.share_template.wide_middle"]
+other = "More in the middle"
+
+["layoutgen.param.cheaper_row_edges"]
+other = "Cheaper row edges"
+
+["layoutgen.param.cheaper_row_edges.hint"]
+other = "The edge of a long row never costs more than its middle."
+
+["bot.wz.ask_plan"]
+other = "«{{.Venue}}» has a seating plan. Sell the seats by the plan, or sell without seats (free seating)?"
+
+["bot.wz.plan_btn"]
+other = "{{.Name}} · {{.Seats}} places"
+
+["bot.wz.plan_none_btn"]
+other = "Without a plan: free seating"
+
+["bot.wz.ask_plan_price"]
+other = "Category «{{.Name}}» ({{.N}} of {{.Total}}), {{.Places}} places. What is the ticket price, in {{.Currency}}?"
+
+["bot.wz.plan_done_note"]
+other = "Plan «{{.Plan}}»: {{.Seats}} places, {{.Count}} categories with prices. You can change later which seats go to which category: press “Seat layout” on the date’s card."
+
+["bot.wz.t_date_seated_note"]
+other = "A date sold by a seating plan keeps its places and categories. Only the prices change."

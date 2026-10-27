@@ -340,6 +340,9 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		rows = append(rows, []Button{btn("bot.wz.venue_new", "venue:new")})
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_venue", nil), Buttons: nav(rows...)}, nil
 
+	case stSPlan, stSPlanPrice:
+		return w.renderSeated(loc, d, header, nav), nil
+
 	case stVName:
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_venue_name", nil), Buttons: nav()}, nil
 	case stVAddress:
@@ -375,12 +378,14 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		}
 		prev := d.Sessions[d.Cur-1]
 		ptk := d.ticketsOf(d.Cur - 1)
+		rows := [][]Button{}
+		if !prev.seated() {
+			rows = append(rows, []Button{{Label: t("bot.wz.s_tickets_same_btn", map[string]any{"Prev": dateLabel(prev)}), Data: "st:same"}})
+		}
+		rows = append(rows, []Button{btn("bot.wz.s_tickets_own_btn", "st:own")})
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_s_tickets", map[string]any{
 			"N": d.Cur + 1, "Prev": dateLabel(prev), "List": w.ticketsText(loc, d.currencyOrGuess(), ptk)}),
-			Buttons: nav(
-				[]Button{{Label: t("bot.wz.s_tickets_same_btn", map[string]any{"Prev": dateLabel(prev)}), Data: "st:same"}},
-				[]Button{btn("bot.wz.s_tickets_own_btn", "st:own")},
-			)}, nil
+			Buttons: nav(rows...)}, nil
 
 	case stSConfirm:
 		return w.confirmDateScreen(loc, d, header(2, "bot.wz.title_when"), nav), nil
@@ -394,7 +399,9 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 			}
 			rows = append(rows, []Button{{Label: truncate(label, 56), Data: "td:" + itoa(i+1)}})
 		}
-		rows = append(rows, []Button{btn("bot.wz.t_date_all_btn", "td:all")})
+		if !d.anySeated() {
+			rows = append(rows, []Button{btn("bot.wz.t_date_all_btn", "td:all")})
+		}
 		now := w.ticketsText(loc, d.currencyOrGuess(), d.ticketsOf(0))
 		if d.ticketsDiffer() {
 			now = w.ticketsByDate(loc, d)
@@ -402,6 +409,9 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		// "For all dates" takes the first date's way of selling (one category,
 		// at once, one after another) for every date: say so before the press.
 		allNote := t("bot.wz.t_date_all_note", map[string]any{"Value": w.modeLabel(loc, d.ticketsOf(0).Mode)})
+		if d.anySeated() {
+			allNote = t("bot.wz.t_date_seated_note", nil)
+		}
 		return Screen{Text: clipMessage(header(3, "bot.wz.title_tickets")+now+"\n\n"+t("bot.wz.ask_t_date", nil)+"\n"+allNote, maxMessageRunes), Buttons: nav(rows...)}, nil
 
 	case stTMode:
@@ -776,7 +786,10 @@ func (w *Wizard) categoriesList(loc, cur string, tk *DraftTickets) string {
 		p := Esc(c.Name) + " " + FormatMoney(c.PriceMinor, cur, loc)
 		switch tk.Mode {
 		case ModeParallel:
-			p += " × " + itoa(c.Places)
+			// A category of a seating plan that was read back has no count of its own.
+			if c.Places > 0 {
+				p += " × " + itoa(c.Places)
+			}
 		case ModeSequence:
 			ends := []string{}
 			if c.SellLimit > 0 {

@@ -92,6 +92,7 @@ func TestLeaveForeignDialogs(t *testing.T) {
 		{"team:invite", []string{teamDialogKind}},
 		{"team", []string{teamDialogKind}},
 		{"ct:noop", []string{categoryDialogKind}},
+		{"sl:go", []string{seatLayoutDialogKind}},
 		{"pm:o:1", []string{promoDialogKind}},
 		{"iv:new", []string{inviteDialogKind}},
 		{"pr:l", []string{promoterDialogKind}},

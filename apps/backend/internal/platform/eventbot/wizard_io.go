@@ -89,6 +89,14 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 	for _, c := range d.Channels {
 		req.ChannelIDs = append(req.ChannelIDs, c.ID)
 	}
+	if s.seated() {
+		// A date sold by a seating plan: the plan binds the places, the bundle
+		// only prices the categories (S1b). Nothing else of the ticket part
+		// applies: no chain, no schedule, no quantities.
+		req.ActionEvent.ArenaSeatingPlanVersionID = s.PlanVersionID
+		req.CategoryList = seatedCategories(tk)
+		return req
+	}
 	minusOne := -1
 	zero := int32(0)
 	empty := []bil24compat.ImportPriceWindow{}
@@ -173,6 +181,31 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 		}
 	}
 	return req
+}
+
+// seatedCategories prices the categories of a date sold by a seating plan. A
+// new date names each plan category by its index; an existing one by the
+// arena id of its category. A schedule and a chain are left as stored (nil), and
+// only a standing zone carries a quantity: seats belong to the plan.
+func seatedCategories(tk DraftTickets) []bil24compat.ImportSessionCategory {
+	var out []bil24compat.ImportSessionCategory
+	for _, c := range tk.Categories {
+		cat := bil24compat.ImportSessionCategory{
+			ArenaTierID:       c.TierID,
+			CategoryPriceName: c.Name,
+			Price:             money.Major(c.PriceMinor),
+			Placement:         !c.GA,
+		}
+		if c.GA {
+			cat.Availability = i32(c.Places)
+		}
+		if c.TierID == "" && c.PlanIndex > 0 {
+			idx := c.PlanIndex
+			cat.PlanCategoryIndex = &idx
+		}
+		out = append(out, cat)
+	}
+	return out
 }
 
 // i32 narrows a place count for the wire; ParseCount already caps counts

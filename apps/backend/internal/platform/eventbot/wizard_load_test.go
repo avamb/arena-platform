@@ -273,14 +273,8 @@ func TestLoadEventDraft_SequenceAndParallelAndCopy(t *testing.T) {
 	}
 }
 
-func TestLoadEventDraft_RefusesSeatedAndForeign(t *testing.T) {
+func TestLoadEventDraft_RefusesForeignAndUnknown(t *testing.T) {
 	r, f := loadRun(t)
-	plan := uuid.New()
-	f.sessions[0].SeatingPlanVersionId = &plan
-	if _, _, err := r.w.LoadEventDraft(context.Background(), f, r.ws, f.event.Id); !errors.Is(err, ErrNotEditable) {
-		t.Fatalf("seated: %v", err)
-	}
-	f.sessions[0].SeatingPlanVersionId = nil
 	f.event.OrgId = uuid.New()
 	if _, _, err := r.w.LoadEventDraft(context.Background(), f, r.ws, f.event.Id); !errors.Is(err, ErrNotEditable) {
 		t.Fatalf("foreign: %v", err)
