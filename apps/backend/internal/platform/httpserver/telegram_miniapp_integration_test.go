@@ -92,19 +92,23 @@ func TestTelegramMiniappLogin_SessionBindingAndRefusals(t *testing.T) {
 		}
 		return id
 	}
-	person, other, admin, gone := newUser("tgmini"), newUser("tgmini-other"), newUser("tgmini-sa"), newUser("tgmini-off")
+	person, other, admin, gone, erased := newUser("tgmini"), newUser("tgmini-other"), newUser("tgmini-sa"), newUser("tgmini-off"), newUser("tgmini-erased")
 	tgID := func() int64 { return 9_000_000_000 + rand.Int64N(900_000_000) }
-	tgPerson, tgOther, tgAdmin, tgGone, tgRevoked, tgStranger := tgID(), tgID(), tgID(), tgID(), tgID(), tgID()
+	tgPerson, tgOther, tgAdmin, tgGone, tgRevoked, tgStranger, tgErased := tgID(), tgID(), tgID(), tgID(), tgID(), tgID(), tgID()
 	q := gen.New(pool)
 	for _, l := range []struct {
 		tg   int64
 		user uuid.UUID
-	}{{tgPerson, person}, {tgOther, other}, {tgAdmin, admin}, {tgGone, gone}, {tgRevoked, other}} {
+	}{{tgPerson, person}, {tgOther, other}, {tgAdmin, admin}, {tgGone, gone}, {tgRevoked, other}, {tgErased, erased}} {
 		if _, err := q.UpsertBotTelegramLink(ctx, l.tg, l.user, nil, "ru", nil); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if _, err := pool.Exec(ctx, `UPDATE bot_telegram_links SET revoked_at = now() WHERE telegram_user_id = $1`, tgRevoked); err != nil {
+		t.Fatal(err)
+	}
+	// A GDPR-erased account keeps its row with the placeholder address.
+	if _, err := pool.Exec(ctx, `UPDATE users SET email = 'deleted-' || id::text || '@arena.invalid', anonymized_at = now() WHERE id = $1`, erased); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE users SET deactivated_at = now() WHERE id = $1`, gone); err != nil {
@@ -115,7 +119,7 @@ func TestTelegramMiniappLogin_SessionBindingAndRefusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		for _, id := range []uuid.UUID{person, other, admin, gone} {
+		for _, id := range []uuid.UUID{person, other, admin, gone, erased} {
 			_, _ = pool.Exec(ctx, `DELETE FROM audit_events WHERE actor_id = $1`, id)
 			_, _ = pool.Exec(ctx, `DELETE FROM refresh_tokens WHERE user_id = $1`, id)
 			_, _ = pool.Exec(ctx, `DELETE FROM bot_telegram_links WHERE user_id = $1`, id)
@@ -170,8 +174,9 @@ func TestTelegramMiniappLogin_SessionBindingAndRefusals(t *testing.T) {
 	expect("revoked link", miniappBody(miniappInitData(t, key, tgRevoked, now)), http.StatusForbidden, "auth.telegram_not_linked")
 	// Deactivated and platform superadmin.
 	expect("deactivated", miniappBody(miniappInitData(t, key, tgGone, now)), http.StatusForbidden, "auth.user_deactivated")
+	expect("erased account", miniappBody(miniappInitData(t, key, tgErased, now)), http.StatusForbidden, "auth.user_deactivated")
 	expect("superadmin", miniappBody(miniappInitData(t, key, tgAdmin, now)), http.StatusForbidden, "auth.web_link_superadmin")
-	for _, id := range []uuid.UUID{other, admin, gone} {
+	for _, id := range []uuid.UUID{other, admin, gone, erased} {
 		if n := refreshCount(id); n != 0 {
 			t.Fatalf("a refused sign-in left %d refresh tokens for %s", n, id)
 		}

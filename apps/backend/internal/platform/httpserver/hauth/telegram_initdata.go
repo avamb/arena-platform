@@ -74,6 +74,14 @@ func VerifyInitData(raw string, secretKey []byte, now time.Time, maxAge time.Dur
 			return zero, ErrInitDataMalformed
 		}
 	}
+	// The check string is "name=value" lines joined by a line break: a decoded
+	// name or value that holds a line break (or a name that holds "=") could be
+	// read as a different set of fields with the same bytes.
+	for k, v := range values {
+		if strings.ContainsAny(k, "\n=") || strings.Contains(v[0], "\n") {
+			return zero, ErrInitDataMalformed
+		}
+	}
 	gotHex := values.Get("hash")
 	got, err := hex.DecodeString(gotHex)
 	if err != nil || len(got) != sha256.Size {

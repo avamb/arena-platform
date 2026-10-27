@@ -103,7 +103,7 @@ func (h *Handler) TelegramMiniapp(w http.ResponseWriter, r *http.Request) {
 			"auth.telegram_miniapp_not_configured", "Telegram Mini App sign-in is not configured")
 		return
 	}
-	limitKey := "telegram-miniapp:" + httputil.TrustedClientIP(r, h.trustedProxyCount)
+	limitKey := "telegram-miniapp:" + httputil.ClientKey(httputil.TrustedClientIP(r, h.trustedProxyCount))
 	if h.miniappLimiter != nil && !h.miniappLimiter.Allow(limitKey) {
 		h.miniappOutcome("rate_limited")
 		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelopeWithDetails(
@@ -160,12 +160,18 @@ func (h *Handler) TelegramMiniapp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userRow, err := q.GetUserByID(ctx, link.UserID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		h.miniappRefused(w, r, http.StatusForbidden, "not_linked", "auth.telegram_not_linked",
+			"this Telegram account is not linked to a person; ask the organization owner to invite you in the bot")
+		return
+	}
 	if err != nil {
 		logger.Error("auth.telegram_miniapp: get user failed", "error", err)
 		h.miniappUnavailable(w, r)
 		return
 	}
-	if userRow.DeactivatedAt != nil {
+	// A GDPR-erased account keeps its row with a placeholder address.
+	if userRow.DeactivatedAt != nil || strings.HasSuffix(userRow.Email, "@arena.invalid") {
 		h.miniappRefused(w, r, http.StatusForbidden, "forbidden", "auth.user_deactivated", "this account has been deactivated")
 		return
 	}

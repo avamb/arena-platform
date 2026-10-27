@@ -148,7 +148,7 @@ api service's internal address) as the linked user, so it needs the API's
 **`TELEGRAM_MINIAPP_SECRET_KEY` (Telegram Mini App sign-in).** Telegram signs the launch data of a Mini App with a key derived from the bot token: `HMAC-SHA256(key = "WebAppData", message = bot token)`. arena-api gets only that derived value, so a leak of it lets nobody speak as the bot (it still lets a forger sign in as ANY linked person until it is replaced: treat it as a secret). Make it once in PowerShell on your own machine; the token is typed in, not saved, and the result is the value to paste into the api service's environment (api only, not the bot):
 
 ```powershell
-$token = Read-Host "Bot token (EVENTS_TELEGRAM_BOT_TOKEN)"
+$token = [Net.NetworkCredential]::new("", (Read-Host "Bot token (EVENTS_TELEGRAM_BOT_TOKEN)" -AsSecureString)).Password
 $hmac = [System.Security.Cryptography.HMACSHA256]::new([Text.Encoding]::UTF8.GetBytes("WebAppData"))
 -join ($hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($token)) | ForEach-Object { $_.ToString("x2") })
 ```

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -154,6 +155,16 @@ func TestVerifyInitData(t *testing.T) {
 			f["user"] = "not json"
 			return signedInitData(key, f)
 		}, key, ErrInitDataMalformed},
+		{"genuine but a value holds a line break", func() string {
+			f := goodFields(testClock, 1)
+			f["query_id"] = "AA\nchat_type=group"
+			return signedInitData(key, f)
+		}, key, ErrInitDataMalformed},
+		{"genuine but a field name holds an equals sign", func() string {
+			f := goodFields(testClock, 1)
+			f["a=b"] = "c"
+			return signedInitData(key, f)
+		}, key, ErrInitDataMalformed},
 		{"genuine but user id is zero", func() string { return signedInitData(key, goodFields(testClock, 0)) }, key, ErrInitDataMalformed},
 		{"genuine but user id is negative", func() string { return signedInitData(key, goodFields(testClock, -5)) }, key, ErrInitDataMalformed},
 	}
@@ -284,5 +295,24 @@ func TestTelegramMiniapp_RateLimitPerAddress(t *testing.T) {
 	h.TelegramMiniapp(w, r)
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("another address: %d, want 401", w.Code)
+	}
+}
+
+// One IPv6 /64 is one client: rotating the low 64 bits does not earn a new
+// budget.
+func TestTelegramMiniapp_RateLimitFoldsIPv6To64(t *testing.T) {
+	key := DeriveMiniappSecretKey(testBotToken)
+	h := &Handler{jwtSecret: "x", miniappLimiter: newMiniappLimiter(), miniappNow: func() time.Time { return testClock }}
+	h.SetTelegramMiniapp(hex.EncodeToString(key), &fakeMiniappMetrics{})
+	forged := `{"init_data":"` + signedInitData(DeriveMiniappSecretKey("x"), goodFields(testClock, 1)) + `"}`
+	last := 0
+	for i := 0; i < 35; i++ {
+		w, r := miniappRequest(forged)
+		r.RemoteAddr = fmt.Sprintf("[2001:db8:1:2:%x::%x]:1", i+1, i+7)
+		h.TelegramMiniapp(w, r)
+		last = w.Code
+	}
+	if last != http.StatusTooManyRequests {
+		t.Fatalf("35 requests from one /64: last %d, want 429", last)
 	}
 }
