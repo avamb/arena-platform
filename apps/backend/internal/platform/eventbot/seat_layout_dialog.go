@@ -744,7 +744,7 @@ func loSchemeURL(base string, orgID, eventID, sessionID uuid.UUID) string {
 	if base == "" {
 		return ""
 	}
-	return fmt.Sprintf("%s/tg/scheme?org=%s&event=%s&session=%s", base, orgID, eventID, sessionID)
+	return fmt.Sprintf("%s/o/%s/events/%s/sessions/%s/seats?embed=1", base, orgID, eventID, sessionID)
 }
 
 // schemeButton is the "Seat map" button of a seated date's card: a link to the

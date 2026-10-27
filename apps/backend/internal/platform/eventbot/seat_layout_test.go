@@ -196,7 +196,7 @@ func TestBoundsOfGeometry(t *testing.T) {
 func TestLoSchemeURL(t *testing.T) {
 	t.Parallel()
 	o, e, s := uuid.New(), uuid.New(), uuid.New()
-	if got := loSchemeURL("https://events.example.test/", o, e, s); got != "https://events.example.test/tg/scheme?org="+o.String()+"&event="+e.String()+"&session="+s.String() {
+	if got := loSchemeURL("https://events.example.test/", o, e, s); got != "https://events.example.test/o/"+o.String()+"/events/"+e.String()+"/sessions/"+s.String()+"/seats?embed=1" {
 		t.Errorf("url = %s", got)
 	}
 	if loSchemeURL("", o, e, s) != "" {

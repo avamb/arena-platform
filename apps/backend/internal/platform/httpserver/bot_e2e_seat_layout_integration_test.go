@@ -384,7 +384,7 @@ func TestBotE2E_SeatLayout(t *testing.T) {
 	owner2.press("ses:list:"+event.String(), "Layout Show")
 	owner2.press("ses:o:0", "Layout Show")
 	id2, _, _ := tg2.lastOf(slOwnerTG)
-	want := fmt.Sprintf("https://events.example.test/tg/scheme?org=%s&event=%s&session=%s", f.orgID, event, session)
+	want := fmt.Sprintf("https://events.example.test/o/%s/events/%s/sessions/%s/seats?embed=1", f.orgID, event, session)
 	if urls := tg2.urlsOf(id2); len(urls) != 1 || urls[0] != want {
 		t.Errorf("seat map link = %v, want %s", urls, want)
 	}
