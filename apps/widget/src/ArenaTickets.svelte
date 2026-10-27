@@ -972,9 +972,22 @@
         {#if cartLimitNotice}
           <p class="arena-tickets-limit" role="status">{cartLimitNotice}</p>
         {/if}
+        <!-- GA tier cards (above the map: places that need no seat must be seen first, a buyer who scrolls the plan never finds them) -->
+        {#if !salesClosed && gaTiers.length > 0}
+          <div class="ga-tiers-section">
+            {#each gaTiers as tier (tier.id)}
+              <GaTierCard
+                {tier}
+                quantity={gaQuantities.get(tier.id) ?? 0}
+                onQuantityChange={onGaQuantityChange}
+              />
+            {/each}
+          </div>
+        {/if}
+
         <!-- Seat map (only for sessions with schema_url) -->
         {#if !salesClosed && selectedSession && selectedSession.schema_url}
-          <div class="arena-tickets-map-wrap" class:arena-tickets-map-wrap--hybrid={gaTiers.length > 0}>
+          <div class="arena-tickets-map-wrap">
             <SeatMapView
               session={selectedSession}
               locale={normLocale}
@@ -993,19 +1006,6 @@
                 onClose={closeGaAreaPopover}
               />
             {/if}
-          </div>
-        {/if}
-
-        <!-- GA tier cards (shown below the map for hybrid/GA sessions) -->
-        {#if !salesClosed && gaTiers.length > 0}
-          <div class="ga-tiers-section">
-            {#each gaTiers as tier (tier.id)}
-              <GaTierCard
-                {tier}
-                quantity={gaQuantities.get(tier.id) ?? 0}
-                onQuantityChange={onGaQuantityChange}
-              />
-            {/each}
           </div>
         {/if}
 
@@ -1197,13 +1197,6 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
-  }
-  /* Hybrid session: the seat map shares the 400px frame with the category
-     cards, and as a flex:1 item it was left with whatever they did not use -
-     40px with two donation categories, so the buyer saw no seats at all.
-     Give the map a floor of its own; the frame grows to fit it. */
-  .arena-tickets-map-wrap--hybrid {
-    min-height: min(70vh, 520px);
   }
   .arena-tickets-map-wrap :global(.ga-popover) {
     top: 3rem;
