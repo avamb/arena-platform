@@ -32,7 +32,7 @@
     pinchZoom,
     pointerDist,
     pointerMid,
-    toSVGTransform,
+    toCSSTransform,
     type PanZoomState,
   } from '../lib/pan-zoom.js';
   import { SeatStatusPoller } from '../lib/poller.js';
@@ -483,8 +483,8 @@
     }
   });
 
-  // Computed SVG transform attribute.
-  const svgTransform = $derived(toSVGTransform(transform));
+  // Computed CSS transform for the HTML wrapper around the SVG.
+  const cssTransform = $derived(toCSSTransform(transform));
 
   // ── Canonical single-stop: restore container Tab stop on SVG reload ─────────
   // When the session changes, buildSeatMapSVG produces fresh HTML with all seats
@@ -584,7 +584,7 @@
            NOT aria-hidden: the SVG inside carries interactive, focusable seats
            (role="button"/tabindex) and an accessible group name; only the
            decorative decor layer inside the SVG is aria-hidden. -->
-      <div class="seat-map-inner" style="transform: {svgTransform}">
+      <div class="seat-map-inner" style="transform: {cssTransform}">
         {@html svgHTML}
       </div>
     {/if}
