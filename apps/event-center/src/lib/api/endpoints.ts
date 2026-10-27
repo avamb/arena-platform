@@ -75,7 +75,15 @@ import type {
   VenueItem,
   TextFormatRequest,
   TextFormatResponse,
+  AdminSeatsResponse,
+  SeatBatch,
+  SeatBatchList,
+  SeatBatchRequest,
+  SeatLayoutAlgorithmsResponse,
+  SeatLayoutSuggestRequest,
+  SeatLayoutSuggestResponse,
 } from "@/lib/api/types";
+import type { SchemaResponse } from "@seatmap/types";
 import type { SessionPatchBody } from "@/lib/sessionChange";
 
 export function fetchMe(): Promise<MeResponse> {
@@ -1024,5 +1032,59 @@ export function downloadSalesLinkQr(orgId: string, linkId: string, format: "png"
     query: { format, size: format === "png" ? size : undefined },
     accept: format === "png" ? "image/png" : "image/svg+xml",
     fallbackName: "qr-" + code + "." + format,
+  });
+}
+
+// ─── S2b/S2c: the seat manager ────────────────────────────────────────────────
+
+/** The hall of a session: geometry and the category of every plan category. */
+export function fetchSessionSchema(sessionId: string): Promise<SchemaResponse> {
+  return call<SchemaResponse>({ route: API.sessionSchema, params: { id: sessionId } });
+}
+
+/** Every seat of the session with its category and status (the organizer's view). */
+export function fetchSessionSeatsAdmin(sessionId: string): Promise<AdminSeatsResponse> {
+  return call<AdminSeatsResponse>({ route: API.sessionSeatsAdmin, params: { id: sessionId } });
+}
+
+export function listSeatBatches(orgId: string, sessionId: string, limit = 20, offset = 0): Promise<SeatBatchList> {
+  return call<SeatBatchList>({
+    route: API.seatBatches,
+    params: { org_id: orgId, session_id: sessionId },
+    query: { limit, offset },
+  });
+}
+
+/** ONE atomic batch: the whole tray, or nothing. */
+export function createSeatBatch(orgId: string, sessionId: string, body: SeatBatchRequest): Promise<SeatBatch> {
+  return call<SeatBatch>({ route: API.seatBatchCreate, params: { org_id: orgId, session_id: sessionId }, body });
+}
+
+/** Puts a batch back as a new batch. Seats that changed since are skipped, not forced. */
+export function revertSeatBatch(orgId: string, sessionId: string, batchId: string): Promise<SeatBatch> {
+  return call<SeatBatch>({
+    route: API.seatBatchRevert,
+    params: { org_id: orgId, session_id: sessionId, batch_id: batchId },
+    body: {},
+  });
+}
+
+export function listLayoutAlgorithms(orgId: string, sessionId: string): Promise<SeatLayoutAlgorithmsResponse> {
+  return call<SeatLayoutAlgorithmsResponse>({
+    route: API.seatLayoutAlgorithms,
+    params: { org_id: orgId, session_id: sessionId },
+  });
+}
+
+/** A proposal. Nothing is written. */
+export function suggestSeatLayout(
+  orgId: string,
+  sessionId: string,
+  body: SeatLayoutSuggestRequest,
+): Promise<SeatLayoutSuggestResponse> {
+  return call<SeatLayoutSuggestResponse>({
+    route: API.seatLayoutSuggest,
+    params: { org_id: orgId, session_id: sessionId },
+    body,
   });
 }

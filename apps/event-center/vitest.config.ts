@@ -8,6 +8,7 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "@openapi": path.resolve(__dirname, "../backend/openapi/clients/ts"),
+      "@seatmap": path.resolve(__dirname, "../widget/src"),
     },
   },
   test: {

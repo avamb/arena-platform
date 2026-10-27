@@ -195,6 +195,22 @@ export const API = {
   salesLinkUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/sales-links/{id}" },
   salesLinkStats: { method: "GET", path: "/v1/organizations/{org_id}/sales-links/{id}/stats" },
   salesLinkQr: { method: "GET", path: "/v1/organizations/{org_id}/sales-links/{id}/qr" },
+  // S2b/S2c: the seat manager of a seated session (spec 26). The map and the seats
+  // are flat routes (the session id names the organization); the batches and the
+  // automatic layout are organization routes. All need session.seats.manage.
+  sessionSchema: { method: "GET", path: "/v1/event-sessions/{id}/schema" },
+  sessionSeatsAdmin: { method: "GET", path: "/v1/event-sessions/{id}/seats/admin" },
+  seatBatches: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/seat-batches" },
+  seatBatchCreate: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/seat-batches" },
+  seatBatchRevert: {
+    method: "POST",
+    path: "/v1/organizations/{org_id}/sessions/{session_id}/seat-batches/{batch_id}/revert",
+  },
+  seatLayoutAlgorithms: {
+    method: "GET",
+    path: "/v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms",
+  },
+  seatLayoutSuggest: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;

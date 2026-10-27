@@ -109,8 +109,13 @@ func run(args []string) error {
 	saleTimesOp := fs.String("sale-times-op", "", "5-3 twin helper: reset or inspect")
 	categoriesOp := fs.String("categories-op", "", "5-4 twin helper: reset or inspect")
 	refundOp := fs.String("refund-op", "", "8-1 twin helper: reset, inspect or scan (see refund_fixture.go)")
+	seatsOp := fs.String("seats-op", "", "S2b twin helper: reset, inspect or sell (see seats_fixture.go)")
+	seatsKey := fs.String("seats-key", "", "the seat --seats-op sell marks sold")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *seatsOp != "" {
+		return runSeatsOp(*seatsOp, *seatsKey)
 	}
 	if *eventStatusOp != "" {
 		return runEventStatusOp(*eventStatusOp)
@@ -296,6 +301,10 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	}
 	// 5-4: the categories twin test's date (categories_fixture.go).
 	if err := applyCategoriesFixture(ctx, tx); err != nil {
+		return err
+	}
+	// S2b: the seated hall of the seat manager's twin test (seats_fixture.go).
+	if err := applySeatsFixture(ctx, tx); err != nil {
 		return err
 	}
 	// 6-1a: a promoter and a seat count for the wizard's twin test.

@@ -147,3 +147,22 @@ export type SalesLinkUpdateRequest = S["SalesLinkUpdateRequest"];
 export type SalesLinkStats = S["SalesLinkStats"];
 export type SalesLinkDayStats = S["SalesLinkDayStats"];
 export type SalesLinkCountryStats = S["SalesLinkCountryStats"];
+
+// S2b/S2c: the seat manager of a session (spec 26).
+export type AdminSeatRow = S["AdminSeatRow"];
+export type AdminSeatsResponse = S["AdminSeatsResponse"];
+export type SeatBatch = S["SeatBatch"];
+export type SeatBatchSummary = S["SeatBatchSummary"];
+export type SeatBatchList = S["SeatBatchList"];
+export type SeatBatchRequest = S["SeatBatchRequest"];
+export type SeatBatchChange = S["SeatBatchChange"];
+export type SeatBatchSkipped = S["SeatBatchSkipped"];
+export type SeatLayoutParam = S["SeatLayoutParam"];
+export type SeatLayoutParamOption = S["SeatLayoutParamOption"];
+export type SeatLayoutAlgorithm = S["SeatLayoutAlgorithm"];
+export type SeatLayoutAlgorithmsResponse = S["SeatLayoutAlgorithmsResponse"];
+export type SeatLayoutSuggestRequest = S["SeatLayoutSuggestRequest"];
+export type SeatLayoutSuggestResponse = S["SeatLayoutSuggestResponse"];
+export type SeatLayoutProposal = S["SeatLayoutProposal"];
+export type SeatLayoutMetrics = S["SeatLayoutMetrics"];
+export type SeatLayoutSlot = S["SeatLayoutSlot"];

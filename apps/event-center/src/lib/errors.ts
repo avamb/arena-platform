@@ -149,7 +149,13 @@ export type ApiErrorStem =
   // RT-11: formatted texts
   | "emailNoteEmpty"
   | "emailNoteRateLimited"
-  | "textRefused";
+  | "textRefused"
+  // S2b/S2c
+  | "seatNothingToRevert"
+  | "seatTooMany"
+  | "seatTierGone"
+  | "seatStageNeeded"
+  | "seatNoPlan";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -179,6 +185,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "linkTargetInvalid", "linkUrlInvalid", "linkLabelInvalid", "linkUtmInvalid",
   // RT-11
   "emailNoteEmpty", "emailNoteRateLimited", "textRefused",
+  // S2b/S2c
+  "seatNothingToRevert", "seatTooMany", "seatTierGone", "seatStageNeeded", "seatNoPlan",
 ];
 
 /**
@@ -215,6 +223,12 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "promo.rate_limited": "promoRateLimited",
   "promo.duplicate": "promoDuplicate",
   "event.has_paid_orders": "eventHasPaidOrders",
+  // S2b/S2c: the seat manager
+  "seat_batch.nothing_to_revert": "seatNothingToRevert",
+  "seat_batch.too_many_changes": "seatTooMany",
+  "seat_batch.tier_not_in_session": "seatTierGone",
+  "seat_layout.annotation_required": "seatStageNeeded",
+  "seat_layout.no_seating_plan": "seatNoPlan",
   // 4-7
   "org.invalid_tax_id": "taxIdInvalid",
   "org.invalid_tax_id_scheme": "taxIdInvalid",

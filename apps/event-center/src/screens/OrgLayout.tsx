@@ -4,6 +4,7 @@ import { organizationsOf, rememberOrg, useAuth, useMe, useOrgAccess, type OrgAcc
 import { ApiError } from "@/lib/api/http";
 import { wizardGate } from "@/lib/features";
 import { useI18n } from "@/lib/i18n";
+import { useEmbedded } from "@/lib/seatManager/embed";
 import { ErrorBox, ErrorScope, Loading } from "@/components/ui";
 import { RequireSignIn } from "@/screens/RequireSignIn";
 import { LanguageSelect } from "@/screens/LanguageSelect";
@@ -30,6 +31,7 @@ function OrgShell() {
   const { logout } = useAuth();
   const access = useOrgAccess(orgId);
   const me = useMe();
+  const embed = useEmbedded();
   const orgCount = me.data !== undefined ? organizationsOf(me.data.organization_memberships).length : 0;
 
   useEffect(() => {
@@ -79,6 +81,7 @@ function OrgShell() {
   return (
     <OrgCtx.Provider value={{ orgId, orgName, access }}>
       <ErrorScope.Provider value={{ orgId, orgName }}>
+        {!embed && (
         <header className="topbar">
           <div className="topbar-org">
             <span className="brand">{t("app.name")}</span>
@@ -162,7 +165,8 @@ function OrgShell() {
             </button>
           </div>
         </header>
-        <main id="main" className="page">
+        )}
+        <main id="main" className={embed ? "page page-embed" : "page"}>
           <Outlet />
         </main>
       </ErrorScope.Provider>

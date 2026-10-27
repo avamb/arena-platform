@@ -15,6 +15,8 @@ import { OrgLayout } from "@/screens/OrgLayout";
 import { EventsScreen } from "@/screens/EventsScreen";
 import { EventScreen } from "@/screens/EventScreen";
 import { SessionScreen } from "@/screens/SessionScreen";
+import { SessionSeatsScreen } from "@/screens/SessionSeatsScreen";
+import { parseSeatsSearch } from "@/lib/seatManager/embed";
 import { OrdersScreen } from "@/screens/OrdersScreen";
 import { OrderScreen } from "@/screens/OrderScreen";
 import { NotificationsScreen } from "@/screens/NotificationsScreen";
@@ -122,6 +124,14 @@ const sessionRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/events/$eventId/sessions/$sessionId",
   component: SessionScreen,
+});
+
+// S2b/S2c: the hall of a seated session (paint, close, lay out). ?embed=1 for the Telegram mini app.
+const sessionSeatsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/events/$eventId/sessions/$sessionId/seats",
+  validateSearch: parseSeatsSearch,
+  component: SessionSeatsScreen,
 });
 
 const ordersRoute = createRoute({
@@ -268,6 +278,7 @@ export const routeTree = rootRoute.addChildren([
     eventsRoute,
     eventRoute,
     sessionRoute,
+    sessionSeatsRoute,
     ordersRoute,
     orderRoute,
     notificationsRoute,
