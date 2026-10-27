@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/go-telegram/bot/models"
@@ -737,14 +738,27 @@ func (b *Bot) loRevert(ctx context.Context, chatID int64, msgID *int, id *Identi
 // seatLayoutText: the dialog takes no typed text.
 func (b *Bot) seatLayoutText(_ context.Context, _ int64, _ *models.User, _ string) bool { return false }
 
-// loSchemeURL is the address of the seat map screen of the web event center
-// for one date.
-func loSchemeURL(base string, orgID, eventID, sessionID uuid.UUID) string {
+// loSchemePath is the event center path of the seat map screen of one date.
+// It is built from three UUIDs only, so it always starts with /o/ and holds no
+// character that could end a path segment.
+func loSchemePath(orgID, eventID, sessionID uuid.UUID) string {
+	return fmt.Sprintf("/o/%s/events/%s/sessions/%s/seats?embed=1", orgID, eventID, sessionID)
+}
+
+// loSchemeURL is the address a "Seat map" button opens for one date. A plain
+// link goes straight to the screen (the person signs in there). A Mini App goes
+// through /tg, which signs the person in from the Telegram launch data and then
+// opens `next`; the path is query-escaped as one value.
+func loSchemeURL(base string, orgID, eventID, sessionID uuid.UUID, webApp bool) string {
 	base = strings.TrimRight(base, "/")
 	if base == "" {
 		return ""
 	}
-	return fmt.Sprintf("%s/o/%s/events/%s/sessions/%s/seats?embed=1", base, orgID, eventID, sessionID)
+	path := loSchemePath(orgID, eventID, sessionID)
+	if !webApp {
+		return base + path
+	}
+	return base + "/tg?next=" + url.QueryEscape(path)
 }
 
 // schemeButton is the "Seat map" button of a seated date's card: a link to the
@@ -756,7 +770,7 @@ func (b *Bot) schemeButton(chatID int64, loc string, orgID, eventID, sessionID u
 	if chatID <= 0 || (b.schemeMode != "url" && b.schemeMode != "web_app") {
 		return Button{}, false
 	}
-	link := loSchemeURL(b.eventCenterURL, orgID, eventID, sessionID)
+	link := loSchemeURL(b.eventCenterURL, orgID, eventID, sessionID, b.schemeMode == "web_app")
 	if link == "" {
 		return Button{}, false
 	}

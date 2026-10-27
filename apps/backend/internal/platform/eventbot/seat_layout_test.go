@@ -2,6 +2,7 @@ package eventbot
 
 import (
 	"encoding/json"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -196,11 +197,37 @@ func TestBoundsOfGeometry(t *testing.T) {
 func TestLoSchemeURL(t *testing.T) {
 	t.Parallel()
 	o, e, s := uuid.New(), uuid.New(), uuid.New()
-	if got := loSchemeURL("https://events.example.test/", o, e, s); got != "https://events.example.test/o/"+o.String()+"/events/"+e.String()+"/sessions/"+s.String()+"/seats?embed=1" {
+	path := "/o/" + o.String() + "/events/" + e.String() + "/sessions/" + s.String() + "/seats?embed=1"
+	if got := loSchemeURL("https://events.example.test/", o, e, s, false); got != "https://events.example.test"+path {
 		t.Errorf("url = %s", got)
 	}
-	if loSchemeURL("", o, e, s) != "" {
+	if loSchemeURL("", o, e, s, false) != "" || loSchemeURL("", o, e, s, true) != "" {
 		t.Error("no address, no link")
+	}
+
+	// The Mini App address goes through /tg and carries the path as ONE
+	// escaped value of `next`.
+	got := loSchemeURL("https://events.example.test/", o, e, s, true)
+	u, err := url.Parse(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Scheme != "https" || u.Host != "events.example.test" || u.Path != "/tg" {
+		t.Fatalf("web_app url = %s", got)
+	}
+	if len(u.Query()) != 1 || u.Query().Get("next") != path {
+		t.Fatalf("next = %q, want %q (all of it in one parameter)", u.Query().Get("next"), path)
+	}
+	if strings.Contains(u.RawQuery, "/") || strings.Contains(u.RawQuery, "?") || strings.Count(u.RawQuery, "&") != 0 {
+		t.Errorf("next is not escaped as one value: %s", u.RawQuery)
+	}
+	// The path never leaves /o/, and Telegram accepts a web_app URL of up to
+	// 2048 bytes (the bot's other Mini App link keeps to the same).
+	if next := u.Query().Get("next"); !strings.HasPrefix(next, "/o/") || strings.Contains(next, "//") || strings.Contains(next, "..") {
+		t.Errorf("next leaves /o/: %q", next)
+	}
+	if len(got) > 2048 {
+		t.Errorf("web_app url is %d bytes", len(got))
 	}
 }
 
@@ -230,6 +257,12 @@ func TestSchemeButton_FollowsTheSettingAndTheChat(t *testing.T) {
 			}
 			if bt.URL == "" || bt.Label == "" {
 				t.Errorf("%+v: empty button %+v", tc, bt)
+			}
+			if bt.WebApp != strings.HasPrefix(bt.URL, "https://x.test/tg?next=") {
+				t.Errorf("%+v: only a web_app button goes through /tg: %s", tc, bt.URL)
+			}
+			if !bt.WebApp && !strings.HasPrefix(bt.URL, "https://x.test/o/") {
+				t.Errorf("%+v: a url button goes straight to the screen: %s", tc, bt.URL)
 			}
 		}
 		if got != tc.want {

@@ -212,6 +212,9 @@ func TestBotE2E_WizardSeatedDate(t *testing.T) {
 	}
 
 	// ── edit: only the prices ───────────────────────────────────────────────
+	// "Done!" is followed by the sample ticket and the menu, sent in the
+	// background: a press that lands before them is answered as out of date.
+	tg.waitFor(t, "sample-ticket.pdf")
 	owner.press("wz:edit:"+eventID.String(), "Правим")
 	owner.press("wz:e:tickets", "Категория «")
 	for i := 0; i < categories; i++ {

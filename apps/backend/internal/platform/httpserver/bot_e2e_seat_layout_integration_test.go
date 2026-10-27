@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -377,7 +378,7 @@ func TestBotE2E_SeatLayout(t *testing.T) {
 	// ── the setting turns on the link button ─────────────────────────────────
 	stop()
 	tg2 := newStubTelegram(t)
-	startSeatLayoutBot(t, pool, api, tg2, func(o *eventbot.Options) {
+	stop2 := startSeatLayoutBot(t, pool, api, tg2, func(o *eventbot.Options) {
 		o.SchemeButton, o.EventCenterURL = "url", "https://events.example.test"
 	})
 	owner2 := ecDriver{t, tg2, slOwnerTG}
@@ -387,6 +388,25 @@ func TestBotE2E_SeatLayout(t *testing.T) {
 	want := fmt.Sprintf("https://events.example.test/o/%s/events/%s/sessions/%s/seats?embed=1", f.orgID, event, session)
 	if urls := tg2.urlsOf(id2); len(urls) != 1 || urls[0] != want {
 		t.Errorf("seat map link = %v, want %s", urls, want)
+	}
+
+	// ── web_app: the Mini App opens /tg, which signs in and goes on to the screen ─
+	stop2()
+	tg3 := newStubTelegram(t)
+	startSeatLayoutBot(t, pool, api, tg3, func(o *eventbot.Options) {
+		o.SchemeButton, o.EventCenterURL = "web_app", "https://events.example.test"
+	})
+	owner3 := ecDriver{t, tg3, slOwnerTG}
+	owner3.press("ses:list:"+event.String(), "Layout Show")
+	owner3.press("ses:o:0", "Layout Show")
+	id3, _, _ := tg3.lastOf(slOwnerTG)
+	path := fmt.Sprintf("/o/%s/events/%s/sessions/%s/seats?embed=1", f.orgID, event, session)
+	wantApp := "https://events.example.test/tg?next=" + url.QueryEscape(path)
+	if apps := tg3.webAppsOf(id3); len(apps) != 1 || apps[0] != wantApp {
+		t.Errorf("web_app link = %v, want %s", apps, wantApp)
+	}
+	if urls := tg3.urlsOf(id3); len(urls) != 0 {
+		t.Errorf("a web_app button is not a url button: %v", urls)
 	}
 }
 
