@@ -413,6 +413,48 @@ func (a Annotations) matchGeometry(g seating.Geometry) error {
 	return nil
 }
 
+// CheckGeometry is the check Run makes, for a caller that stores annotations
+// before any session uses them: every named section and obstructed seat
+// must exist in the plan (the geometry is canonicalised first, like Run).
+func (a Annotations) CheckGeometry(g seating.Geometry) error {
+	return a.matchGeometry(seating.Canonicalize(g))
+}
+
+// PruneTo returns the annotations without the section weights and obstructed
+// seats the geometry does not have. Stored annotations belong to the plan,
+// not to one of its versions, so a later version may have dropped a section;
+// the allocator then ignores what no longer applies instead of refusing.
+func (a Annotations) PruneTo(g seating.Geometry) Annotations {
+	g = seating.Canonicalize(g)
+	out := Annotations{FocalPoint: a.FocalPoint}
+	if len(a.SectionWeights) > 0 {
+		sections := make(map[string]bool, len(g.Sections))
+		for _, s := range g.Sections {
+			sections[s.Key] = true
+		}
+		for k, w := range a.SectionWeights {
+			if sections[k] {
+				if out.SectionWeights == nil {
+					out.SectionWeights = map[string]float64{}
+				}
+				out.SectionWeights[k] = w
+			}
+		}
+	}
+	if len(a.ObstructedSeatKeys) > 0 {
+		seats := make(map[string]bool, g.SeatCount())
+		for _, s := range Seats(g) {
+			seats[s.Key] = true
+		}
+		for _, k := range a.ObstructedSeatKeys {
+			if seats[k] {
+				out.ObstructedSeatKeys = append(out.ObstructedSeatKeys, k)
+			}
+		}
+	}
+	return out
+}
+
 func (a Annotations) has(name string) bool {
 	switch name {
 	case AnnotationFocalPoint:
