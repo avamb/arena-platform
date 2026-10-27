@@ -229,7 +229,14 @@ func sesKeyboard(rows [][]Button) *models.InlineKeyboardMarkup {
 			if strings.HasPrefix(b.Data, "ql:") {
 				data = b.Data // hands the press over to the Links and QR dialog (spec 43)
 			}
-			line = append(line, models.InlineKeyboardButton{Text: b.Label, CallbackData: data})
+			switch {
+			case b.URL != "" && b.WebApp:
+				line = append(line, models.InlineKeyboardButton{Text: b.Label, WebApp: &models.WebAppInfo{URL: b.URL}})
+			case b.URL != "":
+				line = append(line, models.InlineKeyboardButton{Text: b.Label, URL: b.URL})
+			default:
+				line = append(line, models.InlineKeyboardButton{Text: b.Label, CallbackData: data})
+			}
 		}
 		out = append(out, line)
 	}
@@ -452,6 +459,14 @@ func (b *Bot) sesShowCard(ctx context.Context, chatID int64, msgID *int, jwt, lo
 		text += "\n\n" + b.sesT(loc, "bot.ses.card_hint", nil)
 		if dlg.CanSales {
 			rows = append(rows, []Button{b.sesBtn(loc, "bot.cat.btn", "ct", nil)}) // categories of the date (EC-15)
+		}
+		if dlg.CanSales && isSeatedSession(it.Raw) {
+			// The seat layout of the date (S3c) and its seat map on the web.
+			line := []Button{b.sesBtn(loc, "bot.sl.btn", "sl", nil)}
+			if bt, ok := b.schemeButton(chatID, loc, dlg.OrgID, dlg.EventID, it.ID); ok {
+				line = append(line, bt)
+			}
+			rows = append(rows, line)
 		}
 		if dlg.CanSales {
 			rows = append(rows, []Button{b.salesLinkSessionButton(loc, it.ID)}) // QR / link of the date (spec 43)
@@ -785,6 +800,13 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 		session, event, name := dlg.Items[dlg.Cur].ID, dlg.EventID, dlg.EventName
 		b.sessions.drop(ctx, from.ID, dlg)
 		b.categoriesOpen(ctx, chatID, &msgID, id, jwt, event, session, name)
+	case data == "sl":
+		if dlg.Cur < 0 || dlg.Cur >= len(dlg.Items) || !canSeatLayout(id) || dlg.Items[dlg.Cur].cancelled() {
+			return
+		}
+		session, event, name := dlg.Items[dlg.Cur].ID, dlg.EventID, dlg.EventName
+		b.sessions.drop(ctx, from.ID, dlg)
+		b.seatLayoutOpen(ctx, chatID, &msgID, id, jwt, event, session, name)
 	case data == "sm" || data == "csv":
 		if dlg.Cur < 0 || dlg.Cur >= len(dlg.Items) || !canViewSales(id) {
 			return

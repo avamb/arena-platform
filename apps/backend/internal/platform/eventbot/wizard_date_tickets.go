@@ -63,6 +63,10 @@ func (d *Draft) openTicketsEdit() {
 	if len(d.Sessions) > 1 {
 		return
 	}
+	if d.Sessions[0].seated() {
+		d.startSeatPrices(1)
+		return
+	}
 	d.Step = d.startTickets(1, *d.ticketsOf(0), true)
 }
 

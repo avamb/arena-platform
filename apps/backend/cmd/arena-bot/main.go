@@ -105,6 +105,8 @@ func run() error {
 		SelfOnboarding: cfg.BotSelfOnboardingEnabled,
 		SiteButton:     cfg.BotOnboardingSiteButton,
 		MiniappEditor:  cfg.BotMiniappEditorEnabled,
+		SchemeButton:   cfg.BotSchemeButton,
+		EventCenterURL: cfg.EventCenterPublicURL,
 	})
 	if err != nil {
 		return err
