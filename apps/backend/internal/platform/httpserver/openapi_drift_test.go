@@ -778,11 +778,7 @@ func TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes(t *testing.T) {
 // the YAML → code drift check. Every entry must reference the feature that
 // will implement it. When a route lands in code, the check below fails until
 // its entry is deleted, so this list can never go stale silently.
-var specPendingImplementation = map[string]string{
-	// The event center page /tg (S3c) calls this route; the server side is S3b, PR #262.
-	// Delete this entry in the PR that lands the handler (the check below fails then).
-	"POST /v1/auth/telegram-miniapp": "S3b Telegram mini app sign-in (PR #262)",
-}
+var specPendingImplementation = map[string]string{}
 
 // TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes verifies step 8 (YAML → code):
 // every (path, method) pair documented in openapi.yaml is actually registered
