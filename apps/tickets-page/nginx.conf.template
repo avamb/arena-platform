@@ -76,6 +76,17 @@ server {
     # particular every /{org_slug}/{event_slug} route) is served the SPA
     # index so main.ts can resolve it client-side. Returns 200 today; true
     # server-side 404 status / OG tags need SSR — see README.md.
+    # Renamed event pages: a link that was already shared keeps working and
+    # answers 301 to the new address (query string kept). The platform has no
+    # slug history yet, so each rename is listed here by hand.
+    location ~ ^/actorre/dog-friendly-donat-tolko-ne-nado-pisat-v-obyavlenii-afishe/?$ {
+        include /etc/nginx/snippets/security-headers.conf;
+        # Relative Location: the container listens on 8080 behind Traefik and
+        # Cloudflare, so an absolute one would carry the internal port.
+        absolute_redirect off;
+        return 301 /actorre/serdce-na-povodke$is_args$args;
+    }
+
     location / {
         try_files $uri /index.html;
     }
