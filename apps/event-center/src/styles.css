@@ -1012,3 +1012,425 @@ fieldset legend {
   font-weight: 600;
   margin: 0.75rem 0 0.25rem;
 }
+
+/* S2b/S2c: the seat manager of a seated session. Touch first: no hover, finger-sized
+   controls, the panel is a bottom sheet on a phone and a column at the right on a desktop. */
+.page-embed {
+  max-width: none;
+  padding: 0;
+}
+.sm-article-embed {
+  margin: 0;
+}
+.sm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  height: calc(100dvh - 10rem);
+  min-height: 30rem;
+}
+.sm-embed {
+  height: 100dvh;
+  min-height: 0;
+}
+.sm-summary {
+  margin: 0;
+}
+.sm-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 0.5rem;
+}
+.sm-map {
+  position: relative;
+  flex: 1;
+  min-height: 12rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+.sm-viewport {
+  position: absolute;
+  /* The strip below the hall is the legend's: it never covers a seat. */
+  inset: 0 0 2rem;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+}
+.sm-viewport[data-tool="pan"] {
+  cursor: grab;
+}
+.sm-viewport[data-tool="rect"],
+.sm-viewport[data-tool="lasso"],
+.sm-viewport[data-tool="stage"] {
+  cursor: crosshair;
+}
+.sm-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.sm-inner svg {
+  display: block;
+  overflow: visible;
+}
+.sm-zoom {
+  position: absolute;
+  inset-inline-end: 0.5rem;
+  top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.sm-zoom-btn {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+.sm-banner {
+  position: absolute;
+  inset-inline: 0.5rem 4rem;
+  top: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  background: var(--wait-bg);
+  color: var(--wait-text);
+}
+/* The banner floats over the top of the hall, where the stage usually is: a tap must reach the map under it. */
+.sm-banner { pointer-events: none; }
+.sm-banner .btn { pointer-events: auto; }
+.sm-legend {
+  position: absolute;
+  inset-inline: 0.5rem;
+  bottom: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0 0.6rem;
+  height: 2rem;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  overflow: hidden;
+  background: var(--surface);
+}
+.sm-legend li {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sm-key {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-inline-end: 0.3rem;
+  border-radius: 50%;
+  vertical-align: middle;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+}
+.sm-key-sold {
+  background: #374151;
+}
+.sm-key-held {
+  background: #f59e0b;
+}
+.sm-key-closed {
+  background: repeating-linear-gradient(45deg, #fff 0 3px, #9ca3af 3px 5px);
+}
+.sm-key-changed {
+  background: #c7d2fe;
+  border: 2px solid #111827;
+}
+.sm-panel {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  max-height: min(52dvh, 30rem);
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.sm-panel-collapsed .sm-panel-body,
+.sm-panel-collapsed .sm-notes {
+  display: none;
+}
+.sm-tabs {
+  display: flex;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+.sm-tablist {
+  display: flex;
+  flex: none;
+}
+.sm-tab {
+  flex: none;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sm-tab[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.sm-collapse {
+  margin-inline-start: auto;
+  color: var(--muted);
+}
+.sm-badge {
+  margin-inline-start: 0.35rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 0.75rem;
+}
+.sm-panel-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0.75rem;
+  overflow: auto;
+}
+.sm-notes {
+  padding: 0 0.75rem;
+}
+.sm-notes p {
+  margin: 0.25rem 0;
+}
+.sm-apply {
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--border);
+}
+.sm-status {
+  margin: 0 0 0.4rem;
+  font-weight: 600;
+}
+.sm-apply-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.sm-apply-buttons .btn-primary {
+  flex: 1 0 auto;
+  min-width: 6rem;
+}
+.sm-seg {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.sm-seg-btn {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.sm-seg-btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.sm-brushes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+.sm-brush {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 52px;
+  padding: 0.4rem 0.6rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.sm-brush[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.sm-brush-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+.sm-swatch {
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+.sm-swatch-closed {
+  background: repeating-linear-gradient(45deg, #fff 0 4px, #9ca3af 4px 6px);
+}
+.sm-swatch-open {
+  background: #fff;
+  border: 2px solid var(--accent);
+}
+.sm-tools {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
+}
+.sm-tool {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.sm-tool[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.sm-deltas,
+.sm-rowlist,
+.sm-history,
+.sm-slots {
+  margin: 0.5rem 0;
+  padding: 0;
+  list-style: none;
+}
+.sm-plus {
+  color: var(--ok-text);
+}
+.sm-minus {
+  color: var(--bad-text);
+}
+.sm-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.sm-section-head h3 {
+  margin: 0;
+}
+.sm-rowbtn {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 0.25rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.sm-history li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.sm-slots li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.sm-slot-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.sm-slot-map select {
+  max-width: 11rem;
+}
+.sm-stage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.sm-stage p {
+  margin: 0;
+}
+.sm-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+}
+.sm-check input {
+  width: 1.4rem;
+  min-height: 1.4rem;
+}
+.sm-panel input[type="range"] {
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+}
+@media (min-width: 900px) {
+  .sm-body {
+    flex-direction: row;
+  }
+  .sm-panel {
+    width: 360px;
+    max-height: none;
+  }
+}
+
+/* A phone, outside Telegram: the page scrolls, so the hall gets a real height instead of what the sheet leaves. */
+@media (max-width: 899px) {
+  .sm:not(.sm-embed) {
+    height: auto;
+    min-height: 0;
+  }
+  .sm:not(.sm-embed) .sm-map {
+    flex: none;
+    height: 56dvh;
+    min-height: 16rem;
+  }
+}

@@ -23,7 +23,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@openapi/*": ["../backend/openapi/clients/ts/*"]
+      "@openapi/*": ["../backend/openapi/clients/ts/*"],
+      "@seatmap/*": ["../widget/src/*"]
     },
     "types": ["vite/client"]
   },

@@ -17,7 +17,7 @@
 import { config } from "@/lib/config";
 import { API, buildPath, type ApiRoute } from "@/lib/api/routes";
 import { TabSession, browserBus, browserLocks, browserStore, type Deps, type Tokens } from "@/lib/api/tabSession";
-import type { AuthLoginResponse, AuthRefreshResponse } from "@/lib/api/types";
+import type { AuthLoginResponse, AuthRefreshResponse, AuthTelegramMiniappResponse } from "@/lib/api/types";
 
 const TIMEOUT_MS = 30_000;
 /** A poster of a few megabytes over a slow phone connection needs more than 30 s. */
@@ -222,6 +222,38 @@ export function loginWithLink(code: string): Promise<void> {
     });
   })();
   linkExchange = { code, done };
+  return done;
+}
+
+/**
+ * Signs in with the launch data Telegram gave the mini app page
+ * (Telegram.WebApp.initData). Answers where the page goes now: the server's
+ * checked `next`, or "" for none. One exchange per launch data: React may run
+ * the page's effect twice, and the second POST must not be a second sign-in.
+ */
+let miniappExchange: { initData: string; done: Promise<string> } | null = null;
+
+export function loginWithTelegramMiniapp(initData: string, next: string | null): Promise<string> {
+  if (miniappExchange?.initData === initData) return miniappExchange.done;
+  const done = (async () => {
+    const body: { init_data: string; next?: string } = { init_data: initData };
+    if (next !== null) body.next = next;
+    const res = await readJson<AuthTelegramMiniappResponse>(
+      await send({ route: API.telegramMiniapp, body, authenticated: false }),
+    );
+    await session.signedIn({
+      accessToken: res.access_token,
+      refreshToken: res.refresh_token,
+      expiresAt: res.expires_at,
+      userId: res.user_id,
+    });
+    return res.next;
+  })();
+  miniappExchange = { initData, done };
+  // A refused exchange may be tried again (the person pressed «Try again»).
+  done.catch(() => {
+    if (miniappExchange?.done === done) miniappExchange = null;
+  });
   return done;
 }
 

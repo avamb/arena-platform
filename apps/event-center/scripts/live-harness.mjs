@@ -32,6 +32,7 @@
  * the arena-api port, or it throws on boot (AGENTS.md).
  */
 import { spawn, spawnSync } from "node:child_process";
+import { createHmac } from "node:crypto";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
@@ -221,8 +222,13 @@ stripeStub.listen(stripePort, "127.0.0.1");
 
 // 3. Start the real arena-api (apiBin chosen in step 2).
 const botServiceToken = process.env.BOT_SERVICE_TOKEN ?? "event-center-live-harness-bot-service-token";
+// The Telegram mini app entry /tg (S3b): arena-api checks the launch data with the key Telegram derives from the bot
+// token, HMAC_SHA256("WebAppData", token). The token below is a test value of this throwaway run; the twin signs
+// launch data with the same key (it is written to .live-env.json).
+const miniappKey = createHmac("sha256", "WebAppData").update("123456:event-center-live-harness-bot-token").digest("hex");
 const apiEnv = {
   ...process.env,
+  TELEGRAM_MINIAPP_SECRET_KEY: miniappKey,
   APP_ENV: "development",
   JWT_SIGNING_SECRET: process.env.JWT_SIGNING_SECRET ?? "event-center-live-harness-jwt-secret-32-bytes",
   HTTP_LISTEN_ADDR: `127.0.0.1:${apiPort}`,
@@ -312,6 +318,7 @@ writeFileSync(
       poster_calls: posterCalls,
       stripe_stub_url: stripeBase,
       bot_service_token: botServiceToken,
+      telegram_miniapp_secret_key: miniappKey,
       people,
     },
     null,

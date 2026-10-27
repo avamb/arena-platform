@@ -185,6 +185,18 @@ export function SessionScreen() {
             fetchFile={() => downloadSampleTicket(orgId, sessionId, locale)}
           />
         )}
+        {/* S2b: the hall of a seated date (paint with categories, close and open seats, lay out). */}
+        {access.can("session.seats.manage") && item !== undefined && item.admission_mode !== "general_admission" && (
+          <Link
+            to="/o/$orgId/events/$eventId/sessions/$sessionId/seats"
+            params={{ orgId, eventId, sessionId }}
+            search={{}}
+            className="btn"
+            data-testid="session-seats-link"
+          >
+            {t("seats.open")}
+          </Link>
+        )}
         {/* QL-12: a short link and QR code that lead to this date. */}
         {access.can("sales_link.manage") && (
           <Link to="/o/$orgId/links/new" params={{ orgId }} search={{ event: eventId, session: sessionId }} className="btn" data-testid="session-qr-link">

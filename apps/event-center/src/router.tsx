@@ -8,6 +8,8 @@ import { RootLayout } from "@/screens/RootLayout";
 import { LoginScreen } from "@/screens/LoginScreen";
 import { LinkLoginScreen } from "@/screens/LinkLoginScreen";
 import { TgEditScreen } from "@/screens/TgEditScreen";
+import { TgEnterScreen } from "@/screens/TgEnterScreen";
+import { parseTgEnterSearch } from "@/lib/tgEnter";
 import { ForgotPasswordScreen } from "@/screens/ForgotPasswordScreen";
 import { SetPasswordScreen } from "@/screens/SetPasswordScreen";
 import { OrgsScreen } from "@/screens/OrgsScreen";
@@ -15,6 +17,8 @@ import { OrgLayout } from "@/screens/OrgLayout";
 import { EventsScreen } from "@/screens/EventsScreen";
 import { EventScreen } from "@/screens/EventScreen";
 import { SessionScreen } from "@/screens/SessionScreen";
+import { SessionSeatsScreen } from "@/screens/SessionSeatsScreen";
+import { parseSeatsSearch } from "@/lib/seatManager/embed";
 import { OrdersScreen } from "@/screens/OrdersScreen";
 import { OrderScreen } from "@/screens/OrderScreen";
 import { NotificationsScreen } from "@/screens/NotificationsScreen";
@@ -73,6 +77,17 @@ const tgEditRoute = createRoute({
   component: TgEditScreen,
 });
 
+// The entry of the Telegram mini app for every other screen (the bot's web_app
+// button opens /tg?next=<path>). Public: Telegram's signed launch data is the proof.
+const tgEnterRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tg",
+  validateSearch: parseTgEnterSearch,
+  component: function TgEnterRoute() {
+    return <TgEnterScreen next={tgEnterRoute.useSearch()} />;
+  },
+});
+
 const forgotRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/forgot-password",
@@ -122,6 +137,14 @@ const sessionRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/events/$eventId/sessions/$sessionId",
   component: SessionScreen,
+});
+
+// S2b/S2c: the hall of a seated session (paint, close, lay out). ?embed=1 for the Telegram mini app.
+const sessionSeatsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/events/$eventId/sessions/$sessionId/seats",
+  validateSearch: parseSeatsSearch,
+  component: SessionSeatsScreen,
 });
 
 const ordersRoute = createRoute({
@@ -259,6 +282,7 @@ export const routeTree = rootRoute.addChildren([
   loginRoute,
   linkLoginRoute,
   tgEditRoute,
+  tgEnterRoute,
   forgotRoute,
   resetPasswordRoute,
   acceptInviteRoute,
@@ -268,6 +292,7 @@ export const routeTree = rootRoute.addChildren([
     eventsRoute,
     eventRoute,
     sessionRoute,
+    sessionSeatsRoute,
     ordersRoute,
     orderRoute,
     notificationsRoute,

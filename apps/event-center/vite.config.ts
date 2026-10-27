@@ -16,6 +16,10 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "@openapi": path.resolve(__dirname, "../backend/openapi/clients/ts"),
+      // The seat map core of the widget (pure TypeScript): pan and zoom, the decor
+      // sanitizer, the per-seat category overlay and the geometry types. One copy, so
+      // the organizer sees the hall the way the buyer does (spec 26, principle P7).
+      "@seatmap": path.resolve(__dirname, "../widget/src"),
     },
   },
   server: {

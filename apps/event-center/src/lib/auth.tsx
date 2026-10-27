@@ -11,7 +11,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchMe, fetchOrgMe } from "@/lib/api/endpoints";
-import { ApiError, login as apiLogin, loginWithLink as apiLoginWithLink, logout as apiLogout, session } from "@/lib/api/http";
+import { ApiError, login as apiLogin, loginWithLink as apiLoginWithLink, loginWithTelegramMiniapp as apiLoginWithTelegram, logout as apiLogout, session } from "@/lib/api/http";
 import { forgetOrderSearches } from "@/lib/orderSearchMemory";
 import { stepUp } from "@/lib/stepUp";
 import type { MeOrganizationMembership, OrgMeResponse } from "@/lib/api/types";
@@ -23,6 +23,8 @@ interface AuthValue {
   login: (email: string, password: string) => Promise<void>;
   /** The one-time code of a bot link (spec 37 §4.3). */
   loginWithLink: (code: string) => Promise<void>;
+  /** The launch data of the Telegram mini app; answers the server's checked `next` ("" for none). */
+  loginWithTelegram: (initData: string, next: string | null) => Promise<string>;
   logout: () => Promise<void>;
 }
 
@@ -74,6 +76,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("signedIn");
   }, []);
 
+  const loginWithTelegram = useCallback(async (initData: string, next: string | null) => {
+    const to = await apiLoginWithTelegram(initData, next);
+    setStatus("signedIn");
+    return to;
+  }, []);
+
   const logout = useCallback(async () => {
     await apiLogout();
     queryClient.clear();
@@ -82,7 +90,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("signedOut");
   }, [queryClient]);
 
-  const value = useMemo(() => ({ status, login, loginWithLink, logout }), [status, login, loginWithLink, logout]);
+  const value = useMemo(
+    () => ({ status, login, loginWithLink, loginWithTelegram, logout }),
+    [status, login, loginWithLink, loginWithTelegram, logout],
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

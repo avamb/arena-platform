@@ -63,6 +63,13 @@ describe("nginx.conf.template", () => {
     expect(tgLocation).not.toContain("/index.html");
   });
 
+  it("serves /tg (the mini app entry, no trailing slash) the same way", () => {
+    const entry = block("location = /tg ");
+    expect(entry).toContain("include /etc/nginx/snippets/security-headers-tg.conf;");
+    expect(entry).toContain("try_files $uri @tg_index;");
+    expect(entry).not.toContain("security-headers.conf");
+  });
+
   it("@tg_index rewrites to the index with break and carries the tg headers", () => {
     const named = block("location @tg_index");
     expect(named).toContain("include /etc/nginx/snippets/security-headers-tg.conf;");
@@ -74,6 +81,6 @@ describe("nginx.conf.template", () => {
     expect(block("location / ")).toContain("include /etc/nginx/snippets/security-headers.conf;");
     expect(block("location = /index.html")).toContain("include /etc/nginx/snippets/security-headers.conf;");
     const withTg = [...nginx.matchAll(/security-headers-tg\.conf;/g)].length;
-    expect(withTg).toBe(2);
+    expect(withTg).toBe(3);
   });
 });

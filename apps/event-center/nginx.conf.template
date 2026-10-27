@@ -103,6 +103,13 @@ server {
         try_files $uri @tg_index;
     }
 
+    # /tg itself (no slash) is the entry the bot's web_app button opens
+    # (/tg?next=...): the same SPA, the same headers.
+    location = /tg {
+        include /etc/nginx/snippets/security-headers-tg.conf;
+        try_files $uri @tg_index;
+    }
+
     location @tg_index {
         include /etc/nginx/snippets/security-headers-tg.conf;
         expires -1;
