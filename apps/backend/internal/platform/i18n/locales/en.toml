@@ -4682,3 +4682,87 @@ other = "Plan «{{.Plan}}»: {{.Seats}} places, {{.Count}} categories with price
 
 ["bot.wz.t_date_seated_note"]
 other = "A date sold by a seating plan keeps its places and categories. Only the prices change."
+
+["bot.wz.plan_up_ask"]
+other = "«{{.Venue}}» has no hall plan yet. Send it as an SVG file and I will sell the seats by the plan, with a price for each category. Or go on without seats (free seating)."
+
+["bot.wz.plan_up_btn"]
+other = "Upload the hall plan (SVG)"
+
+["bot.wz.plan_up_skip_btn"]
+other = "Continue without a plan"
+
+["bot.wz.plan_up_more_btn"]
+other = "Upload another plan (SVG)"
+
+["bot.wz.plan_up_file"]
+other = "Send the hall plan as a file. It must be an SVG, up to {{.Limit}} MB.\n\nIn Telegram press the paperclip and choose “File”, not “Photo”.\n\nThe categories come from the colours of the seats: the file lists them in a group with the id “PriceCategory”. Seats of one colour make one category."
+
+["bot.wz.plan_up_need_file"]
+other = "That is not a file. Send the hall plan as an SVG file: paperclip → “File”."
+
+["bot.wz.plan_up_too_big"]
+other = "The file is too big. The limit is {{.Limit}} MB. Save a lighter SVG and send it again."
+
+["bot.wz.plan_up_failed"]
+other = "I could not save the plan. Nothing was changed. Please send the file again in a minute, or continue without a plan."
+
+["bot.wz.plan_up_not_svg"]
+other = "This is not an SVG. Send the hall plan as an SVG file, or continue without a plan."
+
+["bot.wz.plan_up_bad"]
+other = "I cannot use this file yet:\n{{.List}}\n\nFix the file and send it again, or continue without a plan."
+
+["bot.wz.plan_up_more_issues"]
+other = "…and {{.Count}} more."
+
+["bot.wz.plan_up_done"]
+other = "Plan «{{.Name}}» is saved: {{.Seats}} places in {{.Count}} categories."
+
+["bot.wz.plan_up_line"]
+other = "• {{.Name}}: {{.Places}} places"
+
+["bot.wz.plan_up_line_ga"]
+other = "• {{.Name}}: {{.Places}} places (standing)"
+
+["bot.wz.plan_up_one_category"]
+other = "All places are in one category, so the price will be the same for all. For different prices, colour the places differently, list the colours in the “PriceCategory” group and send the file again."
+
+["bot.wz.plan_up_warn_legend"]
+other = "The file has no “Legend” group. This is fine: the categories come from the “PriceCategory” group."
+
+["bot.wz.plan_up_warn_other"]
+other = "Note from reading the file: {{.Code}}."
+
+["bot.wz.plan_up_issue_invalid"]
+other = "The file cannot be read as an SVG."
+
+["bot.wz.plan_up_issue_canvas"]
+other = "The drawing has no size, or it is too big. Set the width and height of the drawing, 2000 at most."
+
+["bot.wz.plan_up_issue_categories"]
+other = "I cannot find the categories. Add a group with the id “PriceCategory”: one coloured swatch with a label “#Name” for each category."
+
+["bot.wz.plan_up_issue_seat_shape"]
+other = "Seat {{.Element}} is not a circle. Draw each seat as a circle."
+
+["bot.wz.plan_up_issue_row"]
+other = "A row or a sector has no proper label: {{.Element}}. Name each row and label each sector."
+
+["bot.wz.plan_up_issue_seat_number"]
+other = "A seat has no number, or the number repeats: {{.Element}}."
+
+["bot.wz.plan_up_issue_color"]
+other = "Seat {{.Element}} has a colour that is not in the “PriceCategory” group."
+
+["bot.wz.plan_up_issue_too_many"]
+other = "There are too many categories. The most is 15."
+
+["bot.wz.plan_up_issue_no_places"]
+other = "I found no places in the file. Draw the seats as circles inside labelled rows."
+
+["bot.wz.plan_up_issue_ga"]
+other = "A standing area is not set up fully: {{.Element}}. It needs a label “#GA Name”, a colour from the “PriceCategory” group and the number of places in its title."
+
+["bot.wz.plan_up_issue_other"]
+other = "The file has a problem ({{.Code}}): {{.Element}}."

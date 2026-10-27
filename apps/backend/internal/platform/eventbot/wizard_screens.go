@@ -343,6 +343,9 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 	case stSPlan, stSPlanPrice:
 		return w.renderSeated(loc, d, header, nav), nil
 
+	case stSPlanAsk, stSPlanFile:
+		return w.renderPlanUpload(loc, d, header, nav), nil
+
 	case stVName:
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_venue_name", nil), Buttons: nav()}, nil
 	case stVAddress:

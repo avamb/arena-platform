@@ -4676,3 +4676,87 @@ other = "Схема «{{.Plan}}»: мест {{.Seats}}, категорий с ц
 
 ["bot.wz.t_date_seated_note"]
 other = "У сеанса со схемой места и категории остаются как есть. Меняются только цены."
+
+["bot.wz.plan_up_ask"]
+other = "У площадки «{{.Venue}}» пока нет схемы зала. Пришлите её файлом SVG, и я буду продавать места по схеме, с ценой для каждой категории. Или продолжим без мест (свободная рассадка)."
+
+["bot.wz.plan_up_btn"]
+other = "Загрузить схему зала (SVG)"
+
+["bot.wz.plan_up_skip_btn"]
+other = "Продолжить без схемы"
+
+["bot.wz.plan_up_more_btn"]
+other = "Загрузить другую схему (SVG)"
+
+["bot.wz.plan_up_file"]
+other = "Пришлите схему зала файлом. Это должен быть SVG, до {{.Limit}} МБ.\n\nВ Telegram нажмите скрепку и выберите «Файл», а не «Фото».\n\nКатегории берутся из цветов мест: в файле их перечисляет группа с id «PriceCategory». Места одного цвета — одна категория."
+
+["bot.wz.plan_up_need_file"]
+other = "Это не файл. Пришлите схему зала файлом SVG: скрепка → «Файл»."
+
+["bot.wz.plan_up_too_big"]
+other = "Файл слишком большой. Предел — {{.Limit}} МБ. Сохраните SVG полегче и пришлите снова."
+
+["bot.wz.plan_up_failed"]
+other = "Не удалось сохранить схему. Ничего не изменилось. Пришлите файл ещё раз через минуту или продолжите без схемы."
+
+["bot.wz.plan_up_not_svg"]
+other = "Это не SVG. Пришлите схему зала файлом SVG или продолжите без схемы."
+
+["bot.wz.plan_up_bad"]
+other = "Пока не могу использовать этот файл:\n{{.List}}\n\nИсправьте файл и пришлите снова или продолжите без схемы."
+
+["bot.wz.plan_up_more_issues"]
+other = "…и ещё {{.Count}}."
+
+["bot.wz.plan_up_done"]
+other = "Схема «{{.Name}}» сохранена: мест — {{.Seats}}, категорий — {{.Count}}."
+
+["bot.wz.plan_up_line"]
+other = "• {{.Name}}: {{.Places}} мест"
+
+["bot.wz.plan_up_line_ga"]
+other = "• {{.Name}}: {{.Places}} мест (стоячие)"
+
+["bot.wz.plan_up_one_category"]
+other = "Все места в одной категории, поэтому цена будет одна на всех. Чтобы цены были разные, покрасьте места в разные цвета, перечислите цвета в группе «PriceCategory» и пришлите файл снова."
+
+["bot.wz.plan_up_warn_legend"]
+other = "В файле нет группы «Legend». Это не мешает: категории берутся из группы «PriceCategory»."
+
+["bot.wz.plan_up_warn_other"]
+other = "Замечание при чтении файла: {{.Code}}."
+
+["bot.wz.plan_up_issue_invalid"]
+other = "Файл не читается как SVG."
+
+["bot.wz.plan_up_issue_canvas"]
+other = "У рисунка нет размера или он слишком большой. Задайте ширину и высоту рисунка, не больше 2000."
+
+["bot.wz.plan_up_issue_categories"]
+other = "Не нашёл категории. Добавьте группу с id «PriceCategory»: по одному цветному образцу с подписью «#Название» на каждую категорию."
+
+["bot.wz.plan_up_issue_seat_shape"]
+other = "Место {{.Element}} — не круг. Рисуйте каждое место кругом."
+
+["bot.wz.plan_up_issue_row"]
+other = "Ряд или сектор без нужной подписи: {{.Element}}. Назовите каждый ряд и подпишите каждый сектор."
+
+["bot.wz.plan_up_issue_seat_number"]
+other = "У места нет номера или номер повторяется: {{.Element}}."
+
+["bot.wz.plan_up_issue_color"]
+other = "У места {{.Element}} цвет, которого нет в группе «PriceCategory»."
+
+["bot.wz.plan_up_issue_too_many"]
+other = "Категорий слишком много. Можно не больше 15."
+
+["bot.wz.plan_up_issue_no_places"]
+other = "Не нашёл ни одного места. Нарисуйте места кругами внутри подписанных рядов."
+
+["bot.wz.plan_up_issue_ga"]
+other = "Зона без номеров настроена не до конца: {{.Element}}. Нужны подпись «#GA Название», цвет из группы «PriceCategory» и число мест в заголовке зоны."
+
+["bot.wz.plan_up_issue_other"]
+other = "В файле есть проблема ({{.Code}}): {{.Element}}."

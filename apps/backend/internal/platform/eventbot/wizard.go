@@ -289,6 +289,11 @@ type DraftScratch struct {
 	SeatWork *DraftTickets `json:"seat_work,omitempty"`
 	SeatIdx  int           `json:"seat_idx,omitempty"`
 	SeatFor  int           `json:"seat_for,omitempty"`
+	// CanUpload marks the plan question as one that also offers a new plan
+	// (the source can store one); PlanAfter says where a date sold without a
+	// plan goes on (planAfterCapacity or planAfterFinish).
+	CanUpload bool   `json:"can_upload,omitempty"`
+	PlanAfter string `json:"plan_after,omitempty"`
 }
 
 // DraftSaved is what the non-atomic save already wrote.
@@ -398,6 +403,9 @@ type WizInput struct {
 	// ART that already went through the server's filter. It answers the
 	// description question.
 	Art string
+	// Plan is a hall plan the bot stored from a file the person sent
+	// (wizard_plan_upload.go).
+	Plan *PlanUploaded
 }
 
 // PosterAccepted is a poster the bot already validated and uploaded.
@@ -1199,6 +1207,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 					// plan of the first one does not belong to this one.
 					s.PlanVersionID, s.PlanName, s.Tickets = "", "", nil
 				}
+				d.Scratch.PlanAfter = planAfterCapacity
 				if w.offerPlans(ctx, ws, d) {
 					return "", nil
 				}
@@ -1288,7 +1297,13 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		}
 
 	case stSPlan, stSPlanPrice:
+		if data == "plan:upload" {
+			return w.applyPlanUpload(ctx, ws, d, in, data)
+		}
 		return w.applySeated(loc, d, text, data)
+
+	case stSPlanAsk, stSPlanFile:
+		return w.applyPlanUpload(ctx, ws, d, in, data)
 
 	case stTMode:
 		switch data {
@@ -1728,6 +1743,11 @@ func (w *Wizard) createVenue(ctx context.Context, ws WizSession, d *Draft) (stri
 		s.Capacity = v.Capacity
 	}
 	d.Scratch.NewVenue = VenueCreate{}
+	if w.canUploadPlans() {
+		// A venue made now has no hall plan: offer to send one.
+		d.planUploadAsk(planAfterFinish)
+		return "", nil
+	}
 	return w.finishSession(ws.Locale, d)
 }
 
