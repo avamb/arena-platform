@@ -164,6 +164,7 @@ var flatRouteFamilies = []flatFamily{
 	{"DELETE", "/v1/admin/networks/{id}/agents/{orgId}", flatPlatform, "superadmin or platform permission"},
 	{"DELETE", "/v1/admin/networks/{id}/organizers/{orgId}", flatPlatform, "superadmin or platform permission"},
 	{"DELETE", "/v1/admin/networks/{id}/users/{userId}", flatPlatform, "superadmin or platform permission"},
+	{"PATCH", "/v1/admin/venues/{id}/review", flatPlatform, "venue.curate + superadmin marker in the handler"},
 	{"DELETE", "/v1/admin/users/{user_id}", flatPlatform, "superadmin or platform permission"},
 	{"DELETE", "/v1/admin/users/{user_id}/global-roles/{role}", flatPlatform, "superadmin or platform permission"},
 	{"GET", "/v1/admin/customer-imports/{id}", flatPlatform, "superadmin or platform permission"},

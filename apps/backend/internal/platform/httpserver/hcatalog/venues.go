@@ -897,6 +897,22 @@ func (h *Handler) HandleDeleteVenue(w http.ResponseWriter, r *http.Request) {
 
 	qtx := h.venueQueries.WithTx(tx)
 
+	// A verified venue may hold other organizations' dates: it cannot vanish
+	// under them (migration 0172).
+	if foreign, err := qtx.CountForeignSessionsAtVenue(ctx, venueID, orgID); err != nil {
+		h.logger.Error("venue: foreign session check failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"venue.delete_failed", "failed to delete venue", r,
+		))
+		return
+	} else if foreign > 0 {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"venue.in_use_by_other_org", "other organizations hold dates at this venue, it cannot be deleted", r,
+			map[string]any{"sessions": foreign},
+		))
+		return
+	}
+
 	deleted, err := qtx.SoftDeleteVenue(ctx, venueID, orgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

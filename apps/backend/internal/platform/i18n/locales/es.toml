@@ -4618,3 +4618,6 @@ other = "Una zona de pie no está del todo configurada: {{.Element}}. Necesita l
 
 ["bot.wz.plan_up_issue_other"]
 other = "El archivo tiene un problema ({{.Code}}): {{.Element}}."
+
+["bot.wz.venue_shared_note"]
+other = "Los recintos con ✓ son de otros organizadores y los ha comprobado la plataforma. Puedes vender entradas allí. Solo su propietario puede modificar un recinto."

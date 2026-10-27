@@ -131,7 +131,8 @@ RETURNING id, display_number, org_id, city_id, name, address, capacity_default,
 --   recognized country — the operator must then supply the currency.
 SELECT v.org_id,
        v.capacity_default,
-       COALESCE(ci.currency_override, cc.currency, vc.currency)::text AS derived_currency
+       COALESCE(ci.currency_override, cc.currency, vc.currency)::text AS derived_currency,
+       (v.review_status = 'verified') AS verified
 FROM   venues v
 LEFT JOIN cities    ci ON ci.id   = v.city_id
 LEFT JOIN countries cc ON cc.id   = ci.country_id

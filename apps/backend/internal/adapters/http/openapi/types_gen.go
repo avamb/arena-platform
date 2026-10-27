@@ -18731,6 +18731,18 @@ type PostV1AdminUserReactivateParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// PatchV1AdminVenuesIdReviewJSONBody defines parameters for PatchV1AdminVenuesIdReview.
+type PatchV1AdminVenuesIdReviewJSONBody struct {
+	// ReviewStatus verified or unverified
+	ReviewStatus string `json:"review_status"`
+}
+
+// PatchV1AdminVenuesIdReviewParams defines parameters for PatchV1AdminVenuesIdReview.
+type PatchV1AdminVenuesIdReviewParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // GetV1AuthVerifyParams defines parameters for GetV1AuthVerify.
 type GetV1AuthVerifyParams struct {
 	// Token One-time verification token sent by email at registration
@@ -19571,6 +19583,18 @@ type GetV1OrganizationsOrgIdSessionsSessionIdTicketsParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdSharedVenuesParams defines parameters for GetV1OrganizationsOrgIdSharedVenues.
+type GetV1OrganizationsOrgIdSharedVenuesParams struct {
+	// CityId Only venues in this city (UUID from GET /v1/geo/cities)
+	CityId *openapi_types.UUID `form:"city_id,omitempty" json:"city_id,omitempty"`
+
+	// Country Only venues in this country (two-letter ISO 3166-1 code)
+	Country *string `form:"country,omitempty" json:"country,omitempty"`
+
+	// Limit Page size, 1 to 200 (default 100)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody struct {
 	// ConfirmUnattributed The unattributed amount (minor units) the operator was shown. Required when that amount is above zero.
@@ -19891,6 +19915,9 @@ type PatchV1AdminUserJSONRequestBody = AdminUserNameRequest
 
 // PostV1AdminUserGlobalRoleJSONRequestBody defines body for PostV1AdminUserGlobalRole for application/json ContentType.
 type PostV1AdminUserGlobalRoleJSONRequestBody PostV1AdminUserGlobalRoleJSONBody
+
+// PatchV1AdminVenuesIdReviewJSONRequestBody defines body for PatchV1AdminVenuesIdReview for application/json ContentType.
+type PatchV1AdminVenuesIdReviewJSONRequestBody PatchV1AdminVenuesIdReviewJSONBody
 
 // PostV1AuthLoginJSONRequestBody defines body for PostV1AuthLogin for application/json ContentType.
 type PostV1AuthLoginJSONRequestBody = AuthLoginRequest

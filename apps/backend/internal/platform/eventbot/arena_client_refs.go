@@ -317,3 +317,29 @@ func (c *ArenaClient) TierPriceSchedule(ctx context.Context, jwt string, orgID, 
 	}
 	return out.PriceSchedule.Windows, nil
 }
+
+// SharedVenues lists the venues of other organizations that the platform
+// verified (GET /v1/organizations/{org_id}/shared-venues), narrowed to a city
+// and/or a country.
+func (c *ArenaClient) SharedVenues(ctx context.Context, jwt string, orgID uuid.UUID, cityID, countryISO2 string) ([]VenueRef, error) {
+	var out struct {
+		Venues []openapi.VenueItem `json:"venues"`
+	}
+	q := url.Values{"limit": {"200"}}
+	if cityID != "" {
+		q.Set("city_id", cityID)
+	}
+	if countryISO2 != "" {
+		q.Set("country", countryISO2)
+	}
+	if err := c.do(ctx, http.MethodGet, "/v1/organizations/"+orgID.String()+"/shared-venues?"+q.Encode(), jwt, nil, &out); err != nil {
+		return nil, err
+	}
+	items := make([]VenueRef, 0, len(out.Venues))
+	for _, v := range out.Venues {
+		ref := venueRefFrom(v)
+		ref.Shared = true
+		items = append(items, ref)
+	}
+	return items, nil
+}

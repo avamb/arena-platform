@@ -300,7 +300,9 @@ func (h *Handler) resolveVenueContext(
 		))
 		return gen.VenueSessionContextRow{}, false
 	}
-	if venueCtx.OrgID != orgID && !auth.HasSuperadminOrgAccess(r.Context()) {
+	// A verified venue is open to every organization (migration 0172): a date
+	// may be held there, the owner stays the only one who edits the venue.
+	if venueCtx.OrgID != orgID && !venueCtx.Verified && !auth.HasSuperadminOrgAccess(r.Context()) {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 			"session.venue_org_mismatch",
 			"venue does not belong to the event's organization", r,
