@@ -1490,6 +1490,12 @@ type AuthStepUpResponse struct {
 	StepUpToken string `json:"step_up_token"`
 }
 
+// AuthTelegramMiniappRequest Body of POST /v1/auth/telegram-miniapp.
+type AuthTelegramMiniappRequest struct {
+	// InitData The launch data exactly as Telegram gave it to the Mini App page (`Telegram.WebApp.initData`, a URL-encoded query string with a `hash` field), not parsed or re-encoded. At most 4096 characters.
+	InitData string `json:"init_data"`
+}
+
 // AuthVerifyResponse defines model for AuthVerifyResponse.
 type AuthVerifyResponse struct {
 	// Email Verified email address
@@ -19601,6 +19607,9 @@ type PostV1AuthRegisterJSONRequestBody = AuthRegisterRequest
 
 // PostV1AuthStepUpJSONRequestBody defines body for PostV1AuthStepUp for application/json ContentType.
 type PostV1AuthStepUpJSONRequestBody = AuthStepUpRequest
+
+// PostV1AuthTelegramMiniappJSONRequestBody defines body for PostV1AuthTelegramMiniapp for application/json ContentType.
+type PostV1AuthTelegramMiniappJSONRequestBody = AuthTelegramMiniappRequest
 
 // PostV1AuthWebLinkJSONRequestBody defines body for PostV1AuthWebLink for application/json ContentType.
 type PostV1AuthWebLinkJSONRequestBody = AuthWebLinkRequest

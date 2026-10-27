@@ -1323,6 +1323,15 @@ components:
         code:
           type: string
           description: The one-time code from the bot's link, taken from the address after `#code=`.
+    AuthTelegramMiniappRequest:
+      type: object
+      required: [init_data]
+      additionalProperties: false
+      description: Body of POST /v1/auth/telegram-miniapp.
+      properties:
+        init_data:
+          type: string
+          description: The launch data exactly as Telegram gave it to the Mini App page (`Telegram.WebApp.initData`, a URL-encoded query string with a `hash` field), not parsed or re-encoded. At most 4096 characters.
     AuthWebSessionsRevokeResponse:
       type: object
       required: [revoked_sessions]
@@ -23815,6 +23824,76 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/auth/telegram-miniapp:
+    post:
+      operationId: postV1AuthTelegramMiniapp
+      summary: Sign in to the event center Mini App with Telegram launch data
+      description: |
+        Signs a person in from inside Telegram (task S3b). The page sends the
+        signed launch data Telegram gave it (`Telegram.WebApp.initData`). The
+        server checks Telegram's signature with the key derived from the bot
+        token (`TELEGRAM_MINIAPP_SECRET_KEY`; the token itself is never held
+        here), accepts data signed at most 5 minutes ago, and signs in the
+        person the bot has linked to that Telegram account. Nobody is created
+        or linked by this call. The session is the short one of the Mini App:
+        channel `event_center_tg`, 30 minutes from this call whatever refreshes
+        follow, not counted in the concurrent-session limit; its access token
+        marks the web channel, so a money route asks for the password again.
+        Malformed data and a wrong signature answer the same 401
+        `auth.telegram_init_data_invalid`. Data that is genuinely signed but
+        older than 5 minutes answers 401 `auth.telegram_init_data_expired`: the
+        person closes the Mini App and opens it again. A Telegram account that
+        the bot has not linked (or whose link was revoked) is 403
+        `auth.telegram_not_linked`. A deactivated account is 403
+        `auth.user_deactivated` and a platform superadmin 403
+        `auth.web_link_superadmin`. The route answers 503
+        `auth.telegram_miniapp_not_configured` until the key is set.
+      tags: [v1, auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthTelegramMiniappRequest"
+      responses:
+        "200":
+          description: Signed in. Same answer as POST /v1/auth/login.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthLoginResponse"
+        "400":
+          description: The body is not JSON (`http.invalid_json`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: The launch data is malformed or its signature is wrong (`auth.telegram_init_data_invalid`), or it is genuine but older than 5 minutes (`auth.telegram_init_data_expired`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The Telegram account is not linked to a person (`auth.telegram_not_linked`), the account is deactivated (`auth.user_deactivated`) or is a platform superadmin (`auth.web_link_superadmin`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many attempts from this address (`auth.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available, or the Mini App key is not configured (`auth.telegram_miniapp_not_configured`).
           content:
             application/json:
               schema:
