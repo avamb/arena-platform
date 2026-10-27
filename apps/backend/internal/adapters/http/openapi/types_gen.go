@@ -6389,6 +6389,9 @@ type CreateTicketTierRequest struct {
 	// `hybrid` in the same transaction.
 	Capacity *int32 `json:"capacity"`
 
+	// Color Optional colour of the category on the seat map, `#rrggbb` (stored lower-case). Null or an empty string means none. Anything else answers 400 `tier.invalid_color`.
+	Color *string `json:"color"`
+
 	// Name Tier name. Required, trimmed of whitespace.
 	Name string `json:"name"`
 
@@ -14807,6 +14810,45 @@ type SeatHistoryEntry struct {
 	To *SeatBatchSeatState `json:"to,omitempty"`
 }
 
+// SeatLayout A saved seat layout (task S1d).
+type SeatLayout struct {
+	// Algorithm Id of the allocator algorithm that made the layout, so it can be seen which are used. Null when none.
+	Algorithm *string `json:"algorithm"`
+
+	// CreatedAt When the layout was saved.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy Who saved the layout, null for a principal that is not a UUID.
+	CreatedBy *openapi_types.UUID `json:"created_by"`
+
+	// CreatedByLabel The kind of principal that saved the layout (`user`, `service`, ...).
+	CreatedByLabel string `json:"created_by_label"`
+
+	// Id UUID of the layout.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name, 1 to 120 characters, unique per organization and plan ignoring case and outer spaces.
+	Name string `json:"name"`
+
+	// OrgId UUID of the organization that owns the layout.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Params The algorithm's parameters as validated, defaults filled in. Null when `algorithm` is null.
+	Params *map[string]interface{} `json:"params"`
+
+	// Payload The categories, seat assignments and closed seats.
+	Payload SeatLayoutPayload `json:"payload"`
+
+	// SeatingPlanId UUID of the seating plan the layout is for.
+	SeatingPlanId openapi_types.UUID `json:"seating_plan_id"`
+
+	// Source `manual`, `geometry` (the plan's own categories), `allocator` (a saved proposal) or `copied_from_session`.
+	Source string `json:"source"`
+
+	// UpdatedAt When the layout was last renamed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // SeatLayoutAlgorithm One seat-layout algorithm of the registry with its parameter schema.
 type SeatLayoutAlgorithm struct {
 	// DescriptionKey i18n key of a short description of the algorithm.
@@ -14838,8 +14880,8 @@ type SeatLayoutAlgorithmsResponse struct {
 }
 
 // SeatLayoutAnnotations Plan facts the allocator may need that are not part of the geometry.
-// Until they are stored on the seating plan (S1d) they travel in the
-// suggest request.
+// They are stored with the seating plan (PATCH .../seating-plans/{plan_id}/annotations)
+// and may also travel in the suggest request, which then wins.
 type SeatLayoutAnnotations struct {
 	// FocalPoint The stage, in canvas coordinates. The desirability algorithm requires it.
 	FocalPoint *SeatLayoutPoint `json:"focal_point,omitempty"`
@@ -14849,6 +14891,91 @@ type SeatLayoutAnnotations struct {
 
 	// SectionWeights Section key to weight from 0 (least wanted) to 1 (as good as the geometry says). A section left out weighs 1.
 	SectionWeights *map[string]float32 `json:"section_weights,omitempty"`
+}
+
+// SeatLayoutApplyRequest Body of POST .../sessions/{session_id}/layouts/apply.
+type SeatLayoutApplyRequest struct {
+	// CreateMissingTiers Create a category for every used slot no category matches (by name, ignoring case). Without it such a slot answers 422 `seat_layout.slots_unmapped`.
+	CreateMissingTiers *bool `json:"create_missing_tiers,omitempty"`
+
+	// DryRun Run the whole call in a transaction that is rolled back and answer the diff.
+	DryRun *bool `json:"dry_run,omitempty"`
+
+	// LayoutId UUID of a layout of the organization, on the session's seating plan.
+	LayoutId openapi_types.UUID `json:"layout_id"`
+
+	// SlotTiers Slot key to the UUID of a live category of the session. A slot named here uses that category.
+	SlotTiers *map[string]openapi_types.UUID `json:"slot_tiers,omitempty"`
+}
+
+// SeatLayoutApplyResult The outcome of applying a layout. The change is one seat batch of kind
+// `apply_layout` (revert it with POST .../seat-batches/{batch_id}/revert);
+// `changes` and `skipped` are the batch's own lists. A sold or held seat
+// is skipped with a reason and the rest still applies. In a dry run
+// nothing was written and `batch_id` and `seat_status_version` are null.
+type SeatLayoutApplyResult struct {
+	// Algorithm The layout's algorithm id, null when it has none.
+	Algorithm *string `json:"algorithm"`
+
+	// BatchId UUID of the recorded batch, null in a dry run.
+	BatchId *openapi_types.UUID `json:"batch_id"`
+
+	// Changes The seats the batch changed.
+	Changes []SeatBatchChange `json:"changes"`
+
+	// DryRun True for a dry run.
+	DryRun bool `json:"dry_run"`
+
+	// LayoutId UUID of the applied layout.
+	LayoutId openapi_types.UUID `json:"layout_id"`
+
+	// SeatStatusVersion The session's seat_status_version after the batch (one bump), null in a dry run.
+	SeatStatusVersion *int64 `json:"seat_status_version"`
+
+	// Skipped The seats the batch left alone, with the reason.
+	Skipped []SeatBatchSkipped `json:"skipped"`
+
+	// Slots What each used slot became.
+	Slots []SeatLayoutSlotTier `json:"slots"`
+
+	// UnchangedSeatKeys Seats that already were as the layout wants them.
+	UnchangedSeatKeys []string `json:"unchanged_seat_keys"`
+}
+
+// SeatLayoutCreateRequest Body of POST .../seating-plans/{plan_id}/layouts. The layout is built
+// from `source`: `manual` and `allocator` take `payload`; `geometry`
+// builds one slot per seated category of the plan's current version
+// (the plan's category name overrides applied) with every seat in its
+// own category; `copied_from_session` builds the layout a session has
+// now from `session_id` (its used categories, their colours, every
+// categorised seat, the closed seats).
+type SeatLayoutCreateRequest struct {
+	// Algorithm Id of a registered allocator algorithm. Allowed with `manual` and `allocator`.
+	Algorithm *string `json:"algorithm,omitempty"`
+
+	// Name Name of the layout, 1 to 120 characters.
+	Name string `json:"name"`
+
+	// Params Parameter values by name, validated against the algorithm's schema. Needs `algorithm`.
+	Params *map[string]interface{} `json:"params,omitempty"`
+
+	// Payload The layout body. Required for `manual` and `allocator`, refused for the other sources.
+	Payload *SeatLayoutPayload `json:"payload,omitempty"`
+
+	// SessionId Session of the organization on this plan. Required for `copied_from_session`, refused for the other sources.
+	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
+
+	// Source `manual` (default), `allocator`, `geometry` or `copied_from_session`. `allocator` needs `algorithm`.
+	Source *string `json:"source,omitempty"`
+}
+
+// SeatLayoutList The layouts of an organization on a plan, newest first. There is no paging; a plan holds at most `max_layouts`.
+type SeatLayoutList struct {
+	// Layouts The layouts, without their seat maps.
+	Layouts []SeatLayoutSummary `json:"layouts"`
+
+	// MaxLayouts The most layouts one organization can keep on one plan.
+	MaxLayouts int32 `json:"max_layouts"`
 }
 
 // SeatLayoutMetrics Revenue estimate of a proposal, a reference figure and never an
@@ -14940,6 +15067,24 @@ type SeatLayoutParamOption struct {
 	Value string `json:"value"`
 }
 
+// SeatLayoutPayload The body of a saved layout: its categories (slots), the slot of each
+// seat and the seats to close. It is bound to a seating PLAN, not to a
+// version, and applied by `seat_key`. At least one seat must be named,
+// and at most 10 000 distinct seats (the cap of one batch).
+type SeatLayoutPayload struct {
+	// Assignments seat_key to slot key.
+	Assignments map[string]string `json:"assignments"`
+
+	// ClosedSeatKeys Seats the layout closes for sale. Applying never reopens a seat that is not listed here.
+	ClosedSeatKeys *[]string `json:"closed_seat_keys,omitempty"`
+
+	// FrozenSeatKeys Accepted so an allocator proposal can be saved as it came; dropped, never stored.
+	FrozenSeatKeys *[]string `json:"frozen_seat_keys,omitempty"`
+
+	// Slots The categories, 1 to 15.
+	Slots []SeatLayoutStoreSlot `json:"slots"`
+}
+
 // SeatLayoutPoint A point in canvas coordinates of the seating plan.
 type SeatLayoutPoint struct {
 	// X Horizontal canvas coordinate.
@@ -14959,6 +15104,12 @@ type SeatLayoutProposal struct {
 
 	// Slots The proposed categories.
 	Slots []SeatLayoutSlot `json:"slots"`
+}
+
+// SeatLayoutRenameRequest Body of PATCH .../layouts/{layout_id}.
+type SeatLayoutRenameRequest struct {
+	// Name New name, 1 to 120 characters.
+	Name string `json:"name"`
 }
 
 // SeatLayoutSlot One proposed category.
@@ -15000,6 +15151,45 @@ type SeatLayoutSlotMetrics struct {
 	SlotKey string `json:"slot_key"`
 }
 
+// SeatLayoutSlotTier What one used slot of the layout became in the session.
+type SeatLayoutSlotTier struct {
+	// Action `mapped` (named in slot_tiers), `existing` (a live category has the slot's name) or `create` (a category was created, or in a dry run would be).
+	Action string `json:"action"`
+
+	// Name Name of the category.
+	Name string `json:"name"`
+
+	// SlotKey The slot's key.
+	SlotKey string `json:"slot_key"`
+
+	// TierId The category. For a category a dry run creates it exists only inside the rolled-back transaction - show it, never keep it.
+	TierId *openapi_types.UUID `json:"tier_id"`
+}
+
+// SeatLayoutStoreSlot One category of a saved seat layout (task S1d).
+type SeatLayoutStoreSlot struct {
+	// Color Optional colour `#rrggbb`, stored lower-case.
+	Color *string `json:"color,omitempty"`
+
+	// Currency Optional ISO 4217 currency. When set it must be the session's currency for a category to be created from the slot.
+	Currency *string `json:"currency,omitempty"`
+
+	// Key Slot key, unique in the layout, `[A-Za-z0-9_-]` up to 40 characters.
+	Key string `json:"key"`
+
+	// Name Category name, 1 to 100 characters, unique in the layout ignoring case. Applying a layout matches a slot to a category of the session by this name.
+	Name string `json:"name"`
+
+	// PriceAmount Price in minor units, 0 to 1 000 000 000. Used only when a category is created from the slot.
+	PriceAmount int64 `json:"price_amount"`
+
+	// Share Target share of the hall, 0 to 1. Kept when an allocator proposal is saved; never read when applying.
+	Share *float32 `json:"share,omitempty"`
+
+	// SortOrder Display order of the category created from the slot.
+	SortOrder int32 `json:"sort_order"`
+}
+
 // SeatLayoutSuggestRequest Body of POST .../seat-layout/suggest (task S1e).
 type SeatLayoutSuggestRequest struct {
 	// Algorithm Id of the algorithm from GET .../seat-layout/algorithms.
@@ -15016,6 +15206,9 @@ type SeatLayoutSuggestRequest struct {
 type SeatLayoutSuggestResponse struct {
 	// Algorithm Id of the algorithm that made the proposal.
 	Algorithm string `json:"algorithm"`
+
+	// AnnotationsSource `request` when the body carried annotations, `plan` when the ones stored with the seating plan (S1d) were used, `none` when there were none.
+	AnnotationsSource string `json:"annotations_source"`
 
 	// Currency ISO 4217 currency of the session.
 	Currency string `json:"currency"`
@@ -15040,6 +15233,51 @@ type SeatLayoutSuggestResponse struct {
 
 	// SessionId UUIDv7 of the session.
 	SessionId openapi_types.UUID `json:"session_id"`
+}
+
+// SeatLayoutSummary One row of the layout list; the seat map is only in SeatLayout.
+type SeatLayoutSummary struct {
+	// Algorithm Id of the allocator algorithm that made the layout, null when none.
+	Algorithm *string `json:"algorithm"`
+
+	// AssignmentCount Number of seats the layout assigns to a slot.
+	AssignmentCount int32 `json:"assignment_count"`
+
+	// ClosedCount Number of seats the layout closes.
+	ClosedCount int32 `json:"closed_count"`
+
+	// CreatedAt When the layout was saved.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy Who saved the layout, null for a principal that is not a UUID.
+	CreatedBy *openapi_types.UUID `json:"created_by"`
+
+	// CreatedByLabel The kind of principal that saved the layout.
+	CreatedByLabel string `json:"created_by_label"`
+
+	// Id UUID of the layout.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the layout.
+	Name string `json:"name"`
+
+	// OrgId UUID of the organization that owns the layout.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Params The algorithm's parameters, null when `algorithm` is null.
+	Params *map[string]interface{} `json:"params"`
+
+	// SeatingPlanId UUID of the seating plan the layout is for.
+	SeatingPlanId openapi_types.UUID `json:"seating_plan_id"`
+
+	// Slots The categories of the layout.
+	Slots []SeatLayoutStoreSlot `json:"slots"`
+
+	// Source `manual`, `geometry`, `allocator` or `copied_from_session`.
+	Source string `json:"source"`
+
+	// UpdatedAt When the layout was last renamed.
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // SeatingCategoryPrice Resolved category → tier / price projection returned inside
@@ -15154,6 +15392,38 @@ type SeatingPlanStatus string
 // SeatingPlanVisibility Share scope. Defaults to private on create; move to shared_read
 // or public_template to enable cross-org read / fork.
 type SeatingPlanVisibility string
+
+// SeatingPlanAnnotations The allocator annotations stored with a seating plan (task S1d). They
+// never change the geometry or its checksum. The suggest route uses them
+// when its request carries none of its own.
+type SeatingPlanAnnotations struct {
+	// Annotations The stage, section weights and obstructed seats.
+	Annotations SeatLayoutAnnotations `json:"annotations"`
+
+	// SeatingPlanId UUID of the seating plan.
+	SeatingPlanId openapi_types.UUID `json:"seating_plan_id"`
+
+	// UpdatedAt When the plan row was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Writable True for the organization that owns the plan. Another organization reads a shared plan's annotations but forks the plan to change them.
+	Writable bool `json:"writable"`
+}
+
+// SeatingPlanAnnotationsPatch Body of PATCH .../seating-plans/{plan_id}/annotations. A key that is
+// absent keeps its stored value, `null` clears it, a value replaces it.
+// The result is checked against the plan's current version: a section or
+// a seat the plan does not have is refused.
+type SeatingPlanAnnotationsPatch struct {
+	// FocalPoint The stage, in canvas coordinates, or null to clear it.
+	FocalPoint *SeatLayoutPoint `json:"focal_point,omitempty"`
+
+	// ObstructedSeatKeys Seats with a restricted view (at most 10 000), or null to clear them.
+	ObstructedSeatKeys *[]string `json:"obstructed_seat_keys"`
+
+	// SectionWeights Section key to weight from 0 to 1, or null to clear them all.
+	SectionWeights *map[string]float32 `json:"section_weights"`
+}
 
 // SeatingPlanValidationIssue A single §6 rule violation returned by the SVG importer. `code` is a
 // stable identifier (e.g. `seat_not_circle`) that clients may key
@@ -16647,6 +16917,11 @@ type TicketTierItem struct {
 	// owns no place of its own.
 	Capacity *int32 `json:"capacity"`
 
+	// Color The category's own colour on the seat map, `#rrggbb` (lower-case),
+	// or null when it has none - then the colour of the geometry category
+	// is used (task S1d, migration 0171). Admin reads and writes only.
+	Color *string `json:"color"`
+
 	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
 
@@ -17505,6 +17780,12 @@ type UpdateTicketTierRequest struct {
 	// row on an `assigned_seats` session — one that owns no place
 	// at all — can have it cleared.
 	Capacity *int32 `json:"capacity"`
+
+	// Color Colour of the category on the seat map, `#rrggbb` (stored
+	// lower-case). `null` (or an empty string) clears it. Omitting the
+	// key leaves it unchanged. A malformed value answers 400
+	// `tier.invalid_color`.
+	Color *string `json:"color"`
 
 	// IsOpen Open (`true`) or close (`false`) the category. A closed
 	// category accepts no NEW hold on any sales path, while places
@@ -19920,8 +20201,20 @@ type CreateSalesLinkJSONRequestBody = SalesLinkCreateRequest
 // UpdateSalesLinkJSONRequestBody defines body for UpdateSalesLink for application/json ContentType.
 type UpdateSalesLinkJSONRequestBody = SalesLinkUpdateRequest
 
+// PatchV1OrganizationsOrgIdSeatingPlansPlanIdAnnotationsJSONRequestBody defines body for PatchV1OrganizationsOrgIdSeatingPlansPlanIdAnnotations for application/json ContentType.
+type PatchV1OrganizationsOrgIdSeatingPlansPlanIdAnnotationsJSONRequestBody = SeatingPlanAnnotationsPatch
+
+// PostV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsJSONRequestBody defines body for PostV1OrganizationsOrgIdSeatingPlansPlanIdLayouts for application/json ContentType.
+type PostV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsJSONRequestBody = SeatLayoutCreateRequest
+
+// PatchV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutIdJSONRequestBody defines body for PatchV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutId for application/json ContentType.
+type PatchV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutIdJSONRequestBody = SeatLayoutRenameRequest
+
 // UpdateSellerProfileJSONRequestBody defines body for UpdateSellerProfile for application/json ContentType.
 type UpdateSellerProfileJSONRequestBody = UpdateSellerProfileRequest
+
+// PostV1OrganizationsOrgIdSessionsSessionIdLayoutsApplyJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdLayoutsApply for application/json ContentType.
+type PostV1OrganizationsOrgIdSessionsSessionIdLayoutsApplyJSONRequestBody = SeatLayoutApplyRequest
 
 // PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatBatches for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody = SeatBatchRequest

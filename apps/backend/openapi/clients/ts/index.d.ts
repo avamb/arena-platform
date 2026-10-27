@@ -8343,6 +8343,139 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/seating-plans/{plan_id}/layouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the saved seat layouts of a seating plan
+         * @description The organization's saved layouts on the plan, newest first, without
+         *     their seat maps. A plan is usable when the organization owns it or it
+         *     is shared (visibility other than private). Requires the
+         *     `session.seats.manage` permission in the organization.
+         */
+        get: operations["getV1OrganizationsOrgIdSeatingPlansPlanIdLayouts"];
+        put?: never;
+        /**
+         * Save a seat layout on a seating plan
+         * @description Saves a layout from a payload (`manual`, `allocator`), from the plan's
+         *     own categories (`geometry`) or from the seats a session has now
+         *     (`copied_from_session`). The payload is checked and stored in its
+         *     canonical form (colours lower-case, closed seats sorted). A plan holds
+         *     at most 100 layouts per organization. Writes nothing to any session.
+         *     Requires the `session.seats.manage` permission in the organization.
+         *     Audited as `v1.seating_plan.seat_layout.create`.
+         */
+        post: operations["postV1OrganizationsOrgIdSeatingPlansPlanIdLayouts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/seating-plans/{plan_id}/layouts/{layout_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one saved seat layout
+         * @description The layout with its categories, seat assignments and closed seats.
+         *     Requires the `session.seats.manage` permission in the organization.
+         */
+        get: operations["getV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutId"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a saved seat layout
+         * @description Removes a layout. A layout is derived data: sessions that took it keep
+         *     their seats as the batch left them. Requires the `session.seats.manage`
+         *     permission in the organization. Audited as
+         *     `v1.seating_plan.seat_layout.delete`.
+         */
+        delete: operations["deleteV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutId"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a saved seat layout
+         * @description Changes the name of a layout. Requires the `session.seats.manage`
+         *     permission in the organization. Audited as
+         *     `v1.seating_plan.seat_layout.rename`.
+         */
+        patch: operations["patchV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutId"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/seating-plans/{plan_id}/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the allocator annotations of a seating plan
+         * @description The stage point, section weights and obstructed seats stored with the
+         *     plan. `writable` is true for the organization that owns the plan.
+         *     Requires the `session.seats.manage` permission in the organization.
+         */
+        get: operations["getV1OrganizationsOrgIdSeatingPlansPlanIdAnnotations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the allocator annotations of a seating plan
+         * @description Sets, replaces or clears the stage point, section weights and
+         *     obstructed seats of a plan the organization OWNS (a shared plan of
+         *     another organization answers 404: fork it). A key that is absent keeps
+         *     its stored value. The result is checked against the plan's current
+         *     version. The geometry and its checksum are untouched. Requires the
+         *     `session.seats.manage` permission in the organization. Audited as
+         *     `v1.seating_plan.annotations.update`.
+         */
+        patch: operations["patchV1OrganizationsOrgIdSeatingPlansPlanIdAnnotations"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/layouts/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply a saved seat layout to a session
+         * @description Applies a saved layout to a session as ONE seat batch of kind
+         *     `apply_layout` (seatlayout.ApplyLayout): the session row is locked
+         *     first and its `seat_status_version` is bumped exactly once, the seats
+         *     are locked in seat_key order, a sold or held seat is skipped with a
+         *     reason, a General Admission place is never repainted, and the batch
+         *     can be reverted from the batch history. Each used slot is tied to a
+         *     category of the session - by `slot_tiers`, else by name (ignoring
+         *     case), else created when `create_missing_tiers` is set (with the
+         *     slot's name, price and colour, in the session's currency); a slot
+         *     left without a category answers 422 `seat_layout.slots_unmapped` and
+         *     nothing is written. Applying never reopens a closed seat and never
+         *     edits an existing category. `dry_run` runs the same call in a
+         *     transaction that is rolled back (200, no batch, no category, no
+         *     version bump). Requires the `session.seats.manage` permission in the
+         *     organization. Audited as `v1.session.seat_layout.apply`.
+         */
+        post: operations["postV1OrganizationsOrgIdSessionsSessionIdLayoutsApply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/summary": {
         parameters: {
             query?: never;
@@ -14216,8 +14349,8 @@ export interface components {
         };
         /**
          * @description Plan facts the allocator may need that are not part of the geometry.
-         *     Until they are stored on the seating plan (S1d) they travel in the
-         *     suggest request.
+         *     They are stored with the seating plan (PATCH .../seating-plans/{plan_id}/annotations)
+         *     and may also travel in the suggest request, which then wins.
          */
         SeatLayoutAnnotations: {
             /** @description The stage, in canvas coordinates. The desirability algorithm requires it. */
@@ -14352,6 +14485,8 @@ export interface components {
             seating_plan_version_id: string;
             /** @description Checksum of that geometry. */
             geometry_checksum: string;
+            /** @description `request` when the body carried annotations, `plan` when the ones stored with the seating plan (S1d) were used, `none` when there were none. */
+            annotations_source: string;
             /**
              * Format: int64
              * @description The session's seat_status_version the proposal was made against.
@@ -14361,6 +14496,297 @@ export interface components {
             layout: components["schemas"]["SeatLayoutProposal"];
             /** @description Its revenue estimate. */
             metrics: components["schemas"]["SeatLayoutMetrics"];
+        };
+        /** @description One category of a saved seat layout (task S1d). */
+        SeatLayoutStoreSlot: {
+            /** @description Slot key, unique in the layout, `[A-Za-z0-9_-]` up to 40 characters. */
+            key: string;
+            /** @description Category name, 1 to 100 characters, unique in the layout ignoring case. Applying a layout matches a slot to a category of the session by this name. */
+            name: string;
+            /** @description Optional colour `#rrggbb`, stored lower-case. */
+            color?: string;
+            /**
+             * Format: int64
+             * @description Price in minor units, 0 to 1 000 000 000. Used only when a category is created from the slot.
+             */
+            price_amount: number;
+            /** @description Optional ISO 4217 currency. When set it must be the session's currency for a category to be created from the slot. */
+            currency?: string;
+            /**
+             * Format: int32
+             * @description Display order of the category created from the slot.
+             */
+            sort_order: number;
+            /** @description Target share of the hall, 0 to 1. Kept when an allocator proposal is saved; never read when applying. */
+            share?: number;
+        };
+        /**
+         * @description The body of a saved layout: its categories (slots), the slot of each
+         *     seat and the seats to close. It is bound to a seating PLAN, not to a
+         *     version, and applied by `seat_key`. At least one seat must be named,
+         *     and at most 10 000 distinct seats (the cap of one batch).
+         */
+        SeatLayoutPayload: {
+            /** @description The categories, 1 to 15. */
+            slots: components["schemas"]["SeatLayoutStoreSlot"][];
+            /** @description seat_key to slot key. */
+            assignments: {
+                [key: string]: string;
+            };
+            /** @description Seats the layout closes for sale. Applying never reopens a seat that is not listed here. */
+            closed_seat_keys?: string[];
+            /** @description Accepted so an allocator proposal can be saved as it came; dropped, never stored. */
+            frozen_seat_keys?: string[];
+        };
+        /** @description A saved seat layout (task S1d). */
+        SeatLayout: {
+            /**
+             * Format: uuid
+             * @description UUID of the layout.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the organization that owns the layout.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the seating plan the layout is for.
+             */
+            seating_plan_id: string;
+            /** @description Name, 1 to 120 characters, unique per organization and plan ignoring case and outer spaces. */
+            name: string;
+            /** @description `manual`, `geometry` (the plan's own categories), `allocator` (a saved proposal) or `copied_from_session`. */
+            source: string;
+            /** @description Id of the allocator algorithm that made the layout, so it can be seen which are used. Null when none. */
+            algorithm: string | null;
+            /** @description The algorithm's parameters as validated, defaults filled in. Null when `algorithm` is null. */
+            params: {
+                [key: string]: unknown;
+            } | null;
+            /** @description The categories, seat assignments and closed seats. */
+            payload: components["schemas"]["SeatLayoutPayload"];
+            /**
+             * Format: uuid
+             * @description Who saved the layout, null for a principal that is not a UUID.
+             */
+            created_by: string | null;
+            /** @description The kind of principal that saved the layout (`user`, `service`, ...). */
+            created_by_label: string;
+            /**
+             * Format: date-time
+             * @description When the layout was saved.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the layout was last renamed.
+             */
+            updated_at: string;
+        };
+        /** @description One row of the layout list; the seat map is only in SeatLayout. */
+        SeatLayoutSummary: {
+            /**
+             * Format: uuid
+             * @description UUID of the layout.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the organization that owns the layout.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the seating plan the layout is for.
+             */
+            seating_plan_id: string;
+            /** @description Name of the layout. */
+            name: string;
+            /** @description `manual`, `geometry`, `allocator` or `copied_from_session`. */
+            source: string;
+            /** @description Id of the allocator algorithm that made the layout, null when none. */
+            algorithm: string | null;
+            /** @description The algorithm's parameters, null when `algorithm` is null. */
+            params: {
+                [key: string]: unknown;
+            } | null;
+            /** @description The categories of the layout. */
+            slots: components["schemas"]["SeatLayoutStoreSlot"][];
+            /**
+             * Format: int32
+             * @description Number of seats the layout assigns to a slot.
+             */
+            assignment_count: number;
+            /**
+             * Format: int32
+             * @description Number of seats the layout closes.
+             */
+            closed_count: number;
+            /**
+             * Format: uuid
+             * @description Who saved the layout, null for a principal that is not a UUID.
+             */
+            created_by: string | null;
+            /** @description The kind of principal that saved the layout. */
+            created_by_label: string;
+            /**
+             * Format: date-time
+             * @description When the layout was saved.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the layout was last renamed.
+             */
+            updated_at: string;
+        };
+        /** @description The layouts of an organization on a plan, newest first. There is no paging; a plan holds at most `max_layouts`. */
+        SeatLayoutList: {
+            /** @description The layouts, without their seat maps. */
+            layouts: components["schemas"]["SeatLayoutSummary"][];
+            /**
+             * Format: int32
+             * @description The most layouts one organization can keep on one plan.
+             */
+            max_layouts: number;
+        };
+        /**
+         * @description Body of POST .../seating-plans/{plan_id}/layouts. The layout is built
+         *     from `source`: `manual` and `allocator` take `payload`; `geometry`
+         *     builds one slot per seated category of the plan's current version
+         *     (the plan's category name overrides applied) with every seat in its
+         *     own category; `copied_from_session` builds the layout a session has
+         *     now from `session_id` (its used categories, their colours, every
+         *     categorised seat, the closed seats).
+         */
+        SeatLayoutCreateRequest: {
+            /** @description Name of the layout, 1 to 120 characters. */
+            name: string;
+            /** @description `manual` (default), `allocator`, `geometry` or `copied_from_session`. `allocator` needs `algorithm`. */
+            source?: string;
+            /** @description Id of a registered allocator algorithm. Allowed with `manual` and `allocator`. */
+            algorithm?: string;
+            /** @description Parameter values by name, validated against the algorithm's schema. Needs `algorithm`. */
+            params?: {
+                [key: string]: unknown;
+            };
+            /** @description The layout body. Required for `manual` and `allocator`, refused for the other sources. */
+            payload?: components["schemas"]["SeatLayoutPayload"];
+            /**
+             * Format: uuid
+             * @description Session of the organization on this plan. Required for `copied_from_session`, refused for the other sources.
+             */
+            session_id?: string;
+        };
+        /** @description Body of PATCH .../layouts/{layout_id}. */
+        SeatLayoutRenameRequest: {
+            /** @description New name, 1 to 120 characters. */
+            name: string;
+        };
+        /** @description Body of POST .../sessions/{session_id}/layouts/apply. */
+        SeatLayoutApplyRequest: {
+            /**
+             * Format: uuid
+             * @description UUID of a layout of the organization, on the session's seating plan.
+             */
+            layout_id: string;
+            /** @description Slot key to the UUID of a live category of the session. A slot named here uses that category. */
+            slot_tiers?: {
+                [key: string]: string;
+            };
+            /** @description Create a category for every used slot no category matches (by name, ignoring case). Without it such a slot answers 422 `seat_layout.slots_unmapped`. */
+            create_missing_tiers?: boolean;
+            /** @description Run the whole call in a transaction that is rolled back and answer the diff. */
+            dry_run?: boolean;
+        };
+        /** @description What one used slot of the layout became in the session. */
+        SeatLayoutSlotTier: {
+            /** @description The slot's key. */
+            slot_key: string;
+            /** @description Name of the category. */
+            name: string;
+            /** @description `mapped` (named in slot_tiers), `existing` (a live category has the slot's name) or `create` (a category was created, or in a dry run would be). */
+            action: string;
+            /**
+             * Format: uuid
+             * @description The category. For a category a dry run creates it exists only inside the rolled-back transaction - show it, never keep it.
+             */
+            tier_id: string | null;
+        };
+        /**
+         * @description The outcome of applying a layout. The change is one seat batch of kind
+         *     `apply_layout` (revert it with POST .../seat-batches/{batch_id}/revert);
+         *     `changes` and `skipped` are the batch's own lists. A sold or held seat
+         *     is skipped with a reason and the rest still applies. In a dry run
+         *     nothing was written and `batch_id` and `seat_status_version` are null.
+         */
+        SeatLayoutApplyResult: {
+            /** @description True for a dry run. */
+            dry_run: boolean;
+            /**
+             * Format: uuid
+             * @description UUID of the applied layout.
+             */
+            layout_id: string;
+            /** @description The layout's algorithm id, null when it has none. */
+            algorithm: string | null;
+            /**
+             * Format: uuid
+             * @description UUID of the recorded batch, null in a dry run.
+             */
+            batch_id: string | null;
+            /**
+             * Format: int64
+             * @description The session's seat_status_version after the batch (one bump), null in a dry run.
+             */
+            seat_status_version: number | null;
+            /** @description What each used slot became. */
+            slots: components["schemas"]["SeatLayoutSlotTier"][];
+            /** @description The seats the batch changed. */
+            changes: components["schemas"]["SeatBatchChange"][];
+            /** @description The seats the batch left alone, with the reason. */
+            skipped: components["schemas"]["SeatBatchSkipped"][];
+            /** @description Seats that already were as the layout wants them. */
+            unchanged_seat_keys: string[];
+        };
+        /**
+         * @description The allocator annotations stored with a seating plan (task S1d). They
+         *     never change the geometry or its checksum. The suggest route uses them
+         *     when its request carries none of its own.
+         */
+        SeatingPlanAnnotations: {
+            /**
+             * Format: uuid
+             * @description UUID of the seating plan.
+             */
+            seating_plan_id: string;
+            /** @description The stage, section weights and obstructed seats. */
+            annotations: components["schemas"]["SeatLayoutAnnotations"];
+            /** @description True for the organization that owns the plan. Another organization reads a shared plan's annotations but forks the plan to change them. */
+            writable: boolean;
+            /**
+             * Format: date-time
+             * @description When the plan row was last changed.
+             */
+            updated_at: string;
+        };
+        /**
+         * @description Body of PATCH .../seating-plans/{plan_id}/annotations. A key that is
+         *     absent keeps its stored value, `null` clears it, a value replaces it.
+         *     The result is checked against the plan's current version: a section or
+         *     a seat the plan does not have is refused.
+         */
+        SeatingPlanAnnotationsPatch: {
+            /** @description The stage, in canvas coordinates, or null to clear it. */
+            focal_point?: components["schemas"]["SeatLayoutPoint"];
+            /** @description Section key to weight from 0 to 1, or null to clear them all. */
+            section_weights?: {
+                [key: string]: number;
+            } | null;
+            /** @description Seats with a restricted view (at most 10 000), or null to clear them. */
+            obstructed_seat_keys?: string[] | null;
         };
         /**
          * @description One-screen overview of a session: places by status, categories with
@@ -19002,6 +19428,12 @@ export interface components {
              */
             is_open?: boolean;
             /**
+             * @description The category's own colour on the seat map, `#rrggbb` (lower-case),
+             *     or null when it has none - then the colour of the geometry category
+             *     is used (task S1d, migration 0171). Admin reads and writes only.
+             */
+            color?: string | null;
+            /**
              * @description Admin list endpoint only - whether the category owns places
              *     from the seating-plan geometry ("seated", quantity read-only)
              *     or General Admission places of its own ("ga", quantity
@@ -19250,6 +19682,8 @@ export interface components {
              * @description Display order; defaults to 0 when omitted.
              */
             sort_order?: number;
+            /** @description Optional colour of the category on the seat map, `#rrggbb` (stored lower-case). Null or an empty string means none. Anything else answers 400 `tier.invalid_color`. */
+            color?: string | null;
         };
         /**
          * @description Partial update for PATCH
@@ -19339,6 +19773,13 @@ export interface components {
              *     unchanged.
              */
             is_open?: boolean | null;
+            /**
+             * @description Colour of the category on the seat map, `#rrggbb` (stored
+             *     lower-case). `null` (or an empty string) clears it. Omitting the
+             *     key leaves it unchanged. A malformed value answers 400
+             *     `tier.invalid_color`.
+             */
+            color?: string | null;
         };
         /** @description Single ticket-tier response envelope. */
         TicketTierEnvelope: {
@@ -57536,6 +57977,720 @@ export interface operations {
                 };
             };
             /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSeatingPlansPlanIdLayouts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the seating plan */
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The layouts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatLayoutList"];
+                };
+            };
+            /** @description Invalid path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Plan not found, or private to another organization (`seating_plan.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`seat_layout.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdSeatingPlansPlanIdLayouts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the seating plan */
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeatLayoutCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description The layout was saved. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatLayout"];
+                };
+            };
+            /**
+             * @description Invalid body (`seat_layout.invalid_body`, `seat_layout.invalid_source`,
+             *     `seat_layout.invalid_name`), an invalid payload
+             *     (`seat_layout.invalid_payload` with `details.field`,
+             *     `seat_layout.too_many_seats`), an unknown algorithm
+             *     (`seat_layout.unknown_algorithm`), a parameter outside its schema
+             *     (`seat_layout.invalid_param`) or an allocator layout without an
+             *     algorithm (`seat_layout.algorithm_required`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Plan not found or private to another organization (`seating_plan.not_found`), or the session of `copied_from_session` is not the organization's (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The name is taken on this plan (`seat_layout.duplicate_name`) or the plan already has the maximum number of layouts (`seat_layout.limit_reached`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session of `copied_from_session` is not on this plan (`seat_layout.plan_mismatch`) or the plan has no version (`seat_layout.plan_has_no_version`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`seat_layout.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the seating plan */
+                plan_id: string;
+                /** @description UUID of the layout */
+                layout_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The layout. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatLayout"];
+                };
+            };
+            /** @description Invalid path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Layout not found, not the organization's, or on another plan (`seat_layout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`seat_layout.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the seating plan */
+                plan_id: string;
+                /** @description UUID of the layout */
+                layout_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The layout was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Layout not found, not the organization's, or on another plan (`seat_layout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`seat_layout.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patchV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the seating plan */
+                plan_id: string;
+                /** @description UUID of the layout */
+                layout_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeatLayoutRenameRequest"];
+            };
+        };
+        responses: {
+            /** @description The renamed layout. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatLayout"];
+                };
+            };
+            /** @description Invalid body (`seat_layout.invalid_body`) or name (`seat_layout.invalid_name`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Layout not found, not the organization's, or on another plan (`seat_layout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The name is taken on this plan (`seat_layout.duplicate_name`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`seat_layout.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSeatingPlansPlanIdAnnotations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the seating plan */
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The annotations (an empty object when none were stored). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatingPlanAnnotations"];
+                };
+            };
+            /** @description Invalid path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Plan not found, or private to another organization (`seating_plan.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`seat_layout.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patchV1OrganizationsOrgIdSeatingPlansPlanIdAnnotations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the seating plan */
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeatingPlanAnnotationsPatch"];
+            };
+        };
+        responses: {
+            /** @description The stored annotations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatingPlanAnnotations"];
+                };
+            };
+            /** @description Invalid body, or an invalid annotation (`seat_layout.invalid_annotation` with `details.annotation`, for example a weight outside 0 to 1 or a section the plan does not have). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Plan not found, private to another organization, or owned by another organization (`seating_plan.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`seat_layout.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdSessionsSessionIdLayoutsApply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization */
+                org_id: string;
+                /** @description UUID of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeatLayoutApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description A dry run - nothing was written. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatLayoutApplyResult"];
+                };
+            };
+            /** @description The layout was applied and recorded as a batch. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatLayoutApplyResult"];
+                };
+            };
+            /** @description Invalid body (`seat_layout.invalid_body`, `seat_layout.unknown_slot`) or more changes than one batch holds (`seat_batch.too_many_changes`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found or not part of this organization (`session.not_found`), or layout not found (`seat_layout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The session has no seating plan (`seat_layout.no_seating_plan`),
+             *     the layout is for another plan (`seat_layout.plan_mismatch`),
+             *     slots have no category (`seat_layout.slots_unmapped`, with
+             *     `details.slots` listing `slot_key`, `name` and `reason` -
+             *     `no_match` or `ambiguous`), a `slot_tiers` category is not a live
+             *     category of the session (`seat_layout.tier_not_in_session`) or a
+             *     slot is priced in another currency than the session
+             *     (`seat_layout.currency_mismatch`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The layout could not be applied (`seat_batch.failed`, `seating.audit_failed`, `seat_layout.failed`). */
             500: {
                 headers: {
                     [name: string]: unknown;
