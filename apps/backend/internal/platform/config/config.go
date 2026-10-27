@@ -22,6 +22,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -503,6 +504,13 @@ type Config struct {
 	// outside a linked user's identity: POST /v1/bot/invitations/accept.
 	// Empty leaves that route answering 503, never open.
 	BotServiceToken string `env:"BOT_SERVICE_TOKEN" required:"false" default:""`
+	// TelegramMiniappSecretKey verifies the signed launch data (initData) of
+	// the Telegram Mini App on POST /v1/auth/telegram-miniapp. It is the
+	// DERIVED key Telegram signs with, HMAC-SHA256("WebAppData", bot token),
+	// as 64 hex characters, never the bot token itself: arena-api must not
+	// be able to speak as the bot. Empty leaves the route answering 503. How
+	// to derive it: deploy/DOKPLOY.md section 2.6.
+	TelegramMiniappSecretKey string `env:"TELEGRAM_MINIAPP_SECRET_KEY" required:"false" default:""`
 	// BotSelfOnboardingEnabled (read by arena-bot) lets a stranger who opens
 	// the event-center bot apply for an organization instead of being told
 	// to ask for an invitation. It needs ONBOARDING_ENABLED and
@@ -818,6 +826,7 @@ func LoadFor(role Role) (*Config, error) {
 		EventsTelegramBotToken:      getenv("EVENTS_TELEGRAM_BOT_TOKEN", ""),
 		EventsTelegramBotUsername:   getenv("EVENTS_TELEGRAM_BOT_USERNAME", ""),
 		BotServiceToken:             getenv("BOT_SERVICE_TOKEN", ""),
+		TelegramMiniappSecretKey:    strings.TrimSpace(getenv("TELEGRAM_MINIAPP_SECRET_KEY", "")),
 		BillingStripeSecretKey:      getenv("BILLING_STRIPE_SECRET_KEY", ""),
 		BillingStripeWebhookSecret:  getenv("BILLING_STRIPE_WEBHOOK_SECRET", ""),
 		BillingBankWebhookSecret:    getenv("BILLING_BANK_WEBHOOK_SECRET", ""),
@@ -1296,6 +1305,14 @@ func (c *Config) Validate() error {
 	// --- HTTP -----------------------------------------------------------------
 	if strings.TrimSpace(c.HTTPListenAddr) == "" {
 		errs = append(errs, errors.New("HTTP_LISTEN_ADDR is required"))
+	}
+
+	// The Mini App key has one shape in every environment: a wrong one would
+	// make every sign-in fail with a signature error nobody can trace to it.
+	if c.uses(capEdge) && c.TelegramMiniappSecretKey != "" && !ValidTelegramMiniappSecretKey(c.TelegramMiniappSecretKey) {
+		errs = append(errs, errors.New(
+			"TELEGRAM_MINIAPP_SECRET_KEY must be 64 hexadecimal characters:"+
+				" the derived key HMAC-SHA256(\"WebAppData\", bot token), not the bot token itself"))
 	}
 
 	// --- Database -------------------------------------------------------------
@@ -1901,6 +1918,16 @@ func validPosterProvider(v string, allowEmpty bool) bool {
 		return allowEmpty
 	}
 	return false
+}
+
+// ValidTelegramMiniappSecretKey reports whether v is a derived Mini App key:
+// exactly 32 bytes written as 64 hexadecimal characters.
+func ValidTelegramMiniappSecretKey(v string) bool {
+	if len(v) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(v)
+	return err == nil
 }
 
 // MinBrevoWebhookTokenLen is the shortest BREVO_WEBHOOK_TOKEN production

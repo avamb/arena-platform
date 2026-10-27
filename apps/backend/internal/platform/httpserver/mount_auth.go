@@ -33,6 +33,9 @@ func (s *Server) mountAuthRoutes(r chi.Router) {
 	r.Post("/auth/password-reset/confirm", h.PasswordResetConfirm)
 	// A one-time code from the bot's "Open in browser" (spec 37 §4.3).
 	r.Post("/auth/web/link", h.WebLink)
+	// The signed launch data of the Telegram Mini App (task S3b).
+	h.SetTelegramMiniapp(s.cfg.TelegramMiniappSecretKey, s.typedMetrics)
+	r.Post("/auth/telegram-miniapp", h.TelegramMiniapp)
 
 	if s.authEnabled() {
 		r.Group(func(pr chi.Router) {

@@ -140,9 +140,20 @@ api service's internal address) as the linked user, so it needs the API's
 | `EVENTS_TELEGRAM_BOT_TOKEN` | bot | the bot's token (secret) |
 | `EVENTS_TELEGRAM_BOT_USERNAME` | api, worker, bot | `ArenaEventsCentrBot` — the deep links in invitation e-mails |
 | `BOT_SERVICE_TOKEN` | api, bot | shared random secret of `POST /v1/bot/invitations/accept`; the route answers 503 while unset |
+| `TELEGRAM_MINIAPP_SECRET_KEY` | api | the DERIVED key Telegram signs Mini App launch data with (64 hex characters, never the bot token): `POST /v1/auth/telegram-miniapp` answers 503 while unset. How to make it: below the table |
 | `BOT_ARENA_API_URL` | bot | `http://<api service>:8080` |
 | `BOT_METRICS_ADDR` | bot | `:9092` |
 | `JWT_SIGNING_SECRET` | api, bot | the same value on both |
+
+**`TELEGRAM_MINIAPP_SECRET_KEY` (Telegram Mini App sign-in).** Telegram signs the launch data of a Mini App with a key derived from the bot token: `HMAC-SHA256(key = "WebAppData", message = bot token)`. arena-api gets only that derived value, so a leak of it lets nobody speak as the bot (it still lets a forger sign in as ANY linked person until it is replaced: treat it as a secret). Make it once in PowerShell on your own machine; the token is typed in, not saved, and the result is the value to paste into the api service's environment (api only, not the bot):
+
+```powershell
+$token = [Net.NetworkCredential]::new("", (Read-Host "Bot token (EVENTS_TELEGRAM_BOT_TOKEN)" -AsSecureString)).Password
+$hmac = [System.Security.Cryptography.HMACSHA256]::new([Text.Encoding]::UTF8.GetBytes("WebAppData"))
+-join ($hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($token)) | ForEach-Object { $_.ToString("x2") })
+```
+
+A new bot token (BotFather revoke) needs a new key. The route also needs the Mini App page to be served under the bot, `frame-ancestors` for `/tg` is the web side's (nginx of the event center).
 
 **Poster reading (since 2026-10-14) lives on `arena-api`, not on the bot.**
 The model key `POSTER_LLM_API_KEY` (and `POSTER_LLM_MODEL`,
@@ -336,6 +347,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `MEDIA_BACKEND`, `MEDIA_LOCAL_ROOT`, `MEDIA_S3_ENDPOINT`, `MEDIA_S3_REGION`, `MEDIA_S3_BUCKET`, `MEDIA_S3_ACCESS_KEY_ID`, `MEDIA_S3_SECRET_ACCESS_KEY`, `MEDIA_S3_USE_PATH_STYLE` | ● | ● | — | — |
 | `MEDIA_SIGNING_SECRET` (same value on api and worker) | ✅ with a media backend | ✅ with a media backend | — | — |
 | `BOT_SERVICE_TOKEN` | ● | — | ● | — |
+| `TELEGRAM_MINIAPP_SECRET_KEY` | ● | — | — | — |
 | `EVENTS_TELEGRAM_BOT_USERNAME` | ● | ● | — | — |
 | `METRICS_BEARER_TOKEN` | ● | ● | ● | — |
 | `EMAIL_MODE` (`smtp`), `SMTP_HOST`, `SMTP_FROM` | — | ✅ | — | — |

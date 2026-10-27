@@ -763,6 +763,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/telegram-miniapp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in to the event center Mini App with Telegram launch data
+         * @description Signs a person in from inside Telegram (task S3b). The page sends the
+         *     signed launch data Telegram gave it (`Telegram.WebApp.initData`). The
+         *     server checks Telegram's signature with the key derived from the bot
+         *     token (`TELEGRAM_MINIAPP_SECRET_KEY`; the token itself is never held
+         *     here), accepts data signed at most 5 minutes ago, and signs in the
+         *     person the bot has linked to that Telegram account. Nobody is created
+         *     or linked by this call. The session is the short one of the Mini App:
+         *     channel `event_center_tg`, 30 minutes from this call whatever refreshes
+         *     follow, not counted in the concurrent-session limit; its access token
+         *     marks the web channel, so a money route asks for the password again.
+         *     Malformed data and a wrong signature answer the same 401
+         *     `auth.telegram_init_data_invalid`. Data that is genuinely signed but
+         *     older than 5 minutes answers 401 `auth.telegram_init_data_expired`: the
+         *     person closes the Mini App and opens it again. A Telegram account that
+         *     the bot has not linked (or whose link was revoked) is 403
+         *     `auth.telegram_not_linked`. A deactivated account is 403
+         *     `auth.user_deactivated` and a platform superadmin 403
+         *     `auth.web_link_superadmin`. The route answers 503
+         *     `auth.telegram_miniapp_not_configured` until the key is set.
+         *
+         *     The answer also says where to go (`next`): the bot can open the Mini
+         *     App straight on a screen (for example the seat manager of one date)
+         *     by writing the path, base64url without padding, into the link's
+         *     `startapp` parameter; Telegram signs it as `start_param`, so it cannot
+         *     be changed on the way. The page may instead send the path in `next`.
+         *     Both are accepted only as event-center paths `/o/<organization uuid>/...`;
+         *     any other value (another site, `..`, a path outside `/o/`) gives an
+         *     empty `next` and the sign-in still succeeds.
+         */
+        post: operations["postV1AuthTelegramMiniapp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/web-sessions/revoke": {
         parameters: {
             query?: never;
@@ -11149,6 +11196,34 @@ export interface components {
         AuthWebLinkRequest: {
             /** @description The one-time code from the bot's link, taken from the address after `#code=`. */
             code: string;
+        };
+        /** @description Body of POST /v1/auth/telegram-miniapp. */
+        AuthTelegramMiniappRequest: {
+            /** @description The launch data exactly as Telegram gave it to the Mini App page (`Telegram.WebApp.initData`, a URL-encoded query string with a `hash` field), not parsed or re-encoded. At most 4096 characters. */
+            init_data: string;
+            /** @description Optional. The event-center page the person wants to land on, read from the Mini App's own address: a path of the shape `/o/<organization uuid>/...` (at most 300 characters, an optional `?query`). It is checked and echoed back in `next` of the answer; anything else (another site, `..`, a path outside `/o/`) is dropped and the answer's `next` is empty. The signed `start_param` of the launch data, when it holds a good path, wins over this field. */
+            next?: string;
+        };
+        /** @description Answer of POST /v1/auth/telegram-miniapp. The same session fields as a login, plus where the page goes now. */
+        AuthTelegramMiniappResponse: {
+            /** @description Short-lived HS256 JWT access token; it never outlives the 30-minute Mini App session. */
+            access_token: string;
+            /** @description Opaque refresh token of the Mini App session; refreshes never move the end of the session. */
+            refresh_token: string;
+            /** @description Token type, always "Bearer". */
+            token_type: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 expiry of the access token.
+             */
+            expires_at: string;
+            /**
+             * Format: uuid
+             * @description The signed-in person.
+             */
+            user_id: string;
+            /** @description The event-center path the page opens now (`/o/<organization uuid>/...`), taken from the signed `start_param` of the launch data or else from the request's `next`, after the same check. Empty when there is none or it was not a safe event-center path: the page then shows its own start screen. The person's access to that organization is still decided by the screen and the API. */
+            next: string;
         };
         /** @description Answer of POST /v1/auth/web-sessions/revoke. */
         AuthWebSessionsRevokeResponse: {
@@ -30911,6 +30986,75 @@ export interface operations {
                 };
             };
             /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AuthTelegramMiniapp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthTelegramMiniappRequest"];
+            };
+        };
+        responses: {
+            /** @description Signed in. The session fields of POST /v1/auth/login plus `next`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthTelegramMiniappResponse"];
+                };
+            };
+            /** @description The body is not JSON (`http.invalid_json`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The launch data is malformed or its signature is wrong (`auth.telegram_init_data_invalid`), or it is genuine but older than 5 minutes (`auth.telegram_init_data_expired`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Telegram account is not linked to a person (`auth.telegram_not_linked`), the account is deactivated (`auth.user_deactivated`) or is a platform superadmin (`auth.web_link_superadmin`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many attempts from this address (`auth.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available, or the Mini App key is not configured (`auth.telegram_miniapp_not_configured`). */
             503: {
                 headers: {
                     [name: string]: unknown;

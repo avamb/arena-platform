@@ -59,6 +59,13 @@ type Handler struct {
 	stepUpLimiter ratelimit.Limiter
 	// webLinkLimiter counts exchanges on POST /v1/auth/web/link per address.
 	webLinkLimiter ratelimit.Limiter
+	// miniappKey is the derived key Telegram signs Mini App launch data with
+	// (nil = POST /v1/auth/telegram-miniapp answers 503); miniappLimiter
+	// counts requests per client address; miniappNow is the clock (tests).
+	miniappKey     []byte
+	miniappLimiter ratelimit.Limiter
+	miniappMetrics MiniappMetrics
+	miniappNow     func() time.Time
 }
 
 // New creates a Handler. jwtSecret, issuer, and audience must be fully resolved
@@ -93,6 +100,7 @@ func New(
 		webSessionIdle: DefaultWebSessionIdle,
 		stepUpLimiter:  newStepUpLimiter(),
 		webLinkLimiter: newWebLinkLimiter(),
+		miniappLimiter: newMiniappLimiter(),
 	}
 }
 
@@ -122,5 +130,6 @@ func NewWithLimiter(
 		webSessionIdle:        DefaultWebSessionIdle,
 		stepUpLimiter:         newStepUpLimiter(),
 		webLinkLimiter:        newWebLinkLimiter(),
+		miniappLimiter:        newMiniappLimiter(),
 	}
 }
