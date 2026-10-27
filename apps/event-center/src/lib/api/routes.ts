@@ -28,6 +28,8 @@ export const API = {
   stepUp: { method: "POST", path: "/v1/auth/step-up" },
   // The bot's "Open in browser" link (spec 37 §4.3).
   webLink: { method: "POST", path: "/v1/auth/web/link" },
+  // The Telegram mini app page /tg signs in with the launch data Telegram gives it.
+  telegramMiniapp: { method: "POST", path: "/v1/auth/telegram-miniapp" },
   passwordResetConfirm: { method: "POST", path: "/v1/auth/password-reset/confirm" },
   me: { method: "GET", path: "/v1/me" },
   orgMe: { method: "GET", path: "/v1/organizations/{org_id}/me" },

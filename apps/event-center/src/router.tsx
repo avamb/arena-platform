@@ -8,6 +8,8 @@ import { RootLayout } from "@/screens/RootLayout";
 import { LoginScreen } from "@/screens/LoginScreen";
 import { LinkLoginScreen } from "@/screens/LinkLoginScreen";
 import { TgEditScreen } from "@/screens/TgEditScreen";
+import { TgEnterScreen } from "@/screens/TgEnterScreen";
+import { parseTgEnterSearch } from "@/lib/tgEnter";
 import { ForgotPasswordScreen } from "@/screens/ForgotPasswordScreen";
 import { SetPasswordScreen } from "@/screens/SetPasswordScreen";
 import { OrgsScreen } from "@/screens/OrgsScreen";
@@ -73,6 +75,17 @@ const tgEditRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/tg/edit",
   component: TgEditScreen,
+});
+
+// The entry of the Telegram mini app for every other screen (the bot's web_app
+// button opens /tg?next=<path>). Public: Telegram's signed launch data is the proof.
+const tgEnterRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tg",
+  validateSearch: parseTgEnterSearch,
+  component: function TgEnterRoute() {
+    return <TgEnterScreen next={tgEnterRoute.useSearch()} />;
+  },
 });
 
 const forgotRoute = createRoute({
@@ -269,6 +282,7 @@ export const routeTree = rootRoute.addChildren([
   loginRoute,
   linkLoginRoute,
   tgEditRoute,
+  tgEnterRoute,
   forgotRoute,
   resetPasswordRoute,
   acceptInviteRoute,

@@ -1,4 +1,8 @@
-import { Outlet } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { Outlet, useRouter } from "@tanstack/react-router";
+import { followHistory } from "@/lib/tgBack";
+import { bindBackButton } from "@/lib/tgEdit";
+import { wasEnteredThroughTelegram } from "@/lib/tgEnter";
 import { useI18n } from "@/lib/i18n";
 import { useFocusOnRouteChange } from "@/lib/routeFocus";
 
@@ -6,6 +10,12 @@ import { useFocusOnRouteChange } from "@/lib/routeFocus";
 export function RootLayout() {
   const { t } = useI18n();
   useFocusOnRouteChange();
+  const router = useRouter();
+  // Entered through /tg (the Telegram mini app): the Telegram back button walks the history.
+  useEffect(
+    () => followHistory(router.history, { active: wasEnteredThroughTelegram, bind: (h) => bindBackButton(h) }),
+    [router],
+  );
   return (
     <>
       <a className="skip-link" href="#main">

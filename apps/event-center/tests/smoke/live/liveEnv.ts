@@ -38,6 +38,8 @@ export interface LiveEnv {
   stripe_stub_url: string;
   /** The BOT_SERVICE_TOKEN of the harness API: the twin of the Telegram mini app plays the bot with it. */
   bot_service_token: string;
+  /** TELEGRAM_MINIAPP_SECRET_KEY of the harness API (hex): the twin of /tg signs launch data with it. */
+  telegram_miniapp_secret_key: string;
   people: Person[];
 }
 

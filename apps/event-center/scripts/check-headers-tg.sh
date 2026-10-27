@@ -16,7 +16,7 @@ lower() { tr 'A-Z' 'a-z'; }
 
 main_index="$(curl -fsS "$base/")"
 
-for path in /tg/edit "/tg/edit?x=1" /tg/other/deep/link; do
+for path in /tg "/tg?next=%2Fo%2Fx" /tg/edit "/tg/edit?x=1" /tg/other/deep/link; do
   headers="$(curl -fsSI "$base$path")"
   body="$(curl -fsS "$base$path")"
   for want in \
@@ -44,7 +44,7 @@ for path in /tg/edit "/tg/edit?x=1" /tg/other/deep/link; do
   fi
 done
 
-for path in / /index.html /o/any/events /tg; do
+for path in / /index.html /o/any/events /tgx; do
   headers="$(curl -fsSI "$base$path")"
   for want in "x-frame-options: deny" "frame-ancestors 'none'"; do
     if ! printf '%s\n' "$headers" | lower | grep -qF "$want"; then
@@ -71,6 +71,6 @@ if ! curl -fsSI "$base$script" | lower | grep -qF "content-type: application/jav
 fi
 
 if [ "$status" -eq 0 ]; then
-  echo "OK: /tg/edit has the tg headers and index.html, / /index.html /o/... /tg keep X-Frame-Options, $script is served"
+  echo "OK: /tg and /tg/edit have the tg headers and index.html, / /index.html /o/... keep X-Frame-Options, $script is served"
 fi
 exit "$status"

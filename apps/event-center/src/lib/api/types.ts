@@ -8,6 +8,7 @@ import type { components, paths } from "@openapi/index";
 type S = components["schemas"];
 
 export type AuthLoginResponse = S["AuthLoginResponse"];
+export type AuthTelegramMiniappResponse = S["AuthTelegramMiniappResponse"];
 export type AuthRefreshResponse = S["AuthRefreshResponse"];
 export type AuthStepUpResponse = S["AuthStepUpResponse"];
 export type MeResponse = S["MeResponse"];

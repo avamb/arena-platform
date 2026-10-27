@@ -118,6 +118,8 @@ interface TelegramBackButton {
 }
 
 interface TelegramWebApp {
+  /** The signed launch data; "" outside a Telegram client. */
+  initData?: string;
   /** "unknown" when the script runs outside a Telegram client (an ordinary browser); the real script always sets it. */
   platform?: string;
   close?: () => void;
@@ -133,6 +135,12 @@ type TelegramWindow = object;
 
 function webApp(win: TelegramWindow): TelegramWebApp | null {
   return (win as { Telegram?: { WebApp?: TelegramWebApp } }).Telegram?.WebApp ?? null;
+}
+
+/** The signed launch data Telegram gave the page, "" when there is none (an ordinary browser). */
+export function launchData(win: TelegramWindow = window): string {
+  const data = webApp(win)?.initData;
+  return typeof data === "string" ? data : "";
 }
 
 /** Tells Telegram the page is up and asks for the full height of the window. Nothing when there is no Telegram. */
