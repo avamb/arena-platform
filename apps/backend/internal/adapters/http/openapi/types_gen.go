@@ -1490,6 +1490,36 @@ type AuthStepUpResponse struct {
 	StepUpToken string `json:"step_up_token"`
 }
 
+// AuthTelegramMiniappRequest Body of POST /v1/auth/telegram-miniapp.
+type AuthTelegramMiniappRequest struct {
+	// InitData The launch data exactly as Telegram gave it to the Mini App page (`Telegram.WebApp.initData`, a URL-encoded query string with a `hash` field), not parsed or re-encoded. At most 4096 characters.
+	InitData string `json:"init_data"`
+
+	// Next Optional. The event-center page the person wants to land on, read from the Mini App's own address: a path of the shape `/o/<organization uuid>/...` (at most 300 characters, an optional `?query`). It is checked and echoed back in `next` of the answer; anything else (another site, `..`, a path outside `/o/`) is dropped and the answer's `next` is empty. The signed `start_param` of the launch data, when it holds a good path, wins over this field.
+	Next *string `json:"next,omitempty"`
+}
+
+// AuthTelegramMiniappResponse Answer of POST /v1/auth/telegram-miniapp. The same session fields as a login, plus where the page goes now.
+type AuthTelegramMiniappResponse struct {
+	// AccessToken Short-lived HS256 JWT access token; it never outlives the 30-minute Mini App session.
+	AccessToken string `json:"access_token"`
+
+	// ExpiresAt RFC 3339 expiry of the access token.
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Next The event-center path the page opens now (`/o/<organization uuid>/...`), taken from the signed `start_param` of the launch data or else from the request's `next`, after the same check. Empty when there is none or it was not a safe event-center path: the page then shows its own start screen. The person's access to that organization is still decided by the screen and the API.
+	Next string `json:"next"`
+
+	// RefreshToken Opaque refresh token of the Mini App session; refreshes never move the end of the session.
+	RefreshToken string `json:"refresh_token"`
+
+	// TokenType Token type, always "Bearer".
+	TokenType string `json:"token_type"`
+
+	// UserId The signed-in person.
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
 // AuthVerifyResponse defines model for AuthVerifyResponse.
 type AuthVerifyResponse struct {
 	// Email Verified email address
@@ -19882,6 +19912,9 @@ type PostV1AuthRegisterJSONRequestBody = AuthRegisterRequest
 
 // PostV1AuthStepUpJSONRequestBody defines body for PostV1AuthStepUp for application/json ContentType.
 type PostV1AuthStepUpJSONRequestBody = AuthStepUpRequest
+
+// PostV1AuthTelegramMiniappJSONRequestBody defines body for PostV1AuthTelegramMiniapp for application/json ContentType.
+type PostV1AuthTelegramMiniappJSONRequestBody = AuthTelegramMiniappRequest
 
 // PostV1AuthWebLinkJSONRequestBody defines body for PostV1AuthWebLink for application/json ContentType.
 type PostV1AuthWebLinkJSONRequestBody = AuthWebLinkRequest
