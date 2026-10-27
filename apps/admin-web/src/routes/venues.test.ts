@@ -13,11 +13,18 @@ import {
   VENUE_STATUSES,
   buildCreateVenueBody,
   buildUpdateVenueBody,
+  countVenuesByReview,
+  filterVenuesByReview,
   isVenueStatus,
   listIanaTimezones,
   mapServerError,
   nominatimSearchURL,
   normalizeCountry,
+  osmPointUrl,
+  reviewErrorMessage,
+  reviewRequestFor,
+  reviewStatusOf,
+  type Venue,
   validateVenueAddressLine,
   validateVenueContactEmail,
   validateVenueContactPhone,
@@ -400,5 +407,68 @@ describe("mapServerError", () => {
     expect(
       mapServerError(envelope("superadmin.missing_reason", "x")).form,
     ).toMatch(/audit reason/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Venue verification (migration 0172): only the platform operator verifies.
+// ---------------------------------------------------------------------------
+
+function venueWith(id: string, review?: "verified" | "unverified"): Venue {
+  return {
+    id,
+    display_number: 1,
+    org_id: "org-1",
+    city_id: null,
+    name: id,
+    address: null,
+    capacity_default: null,
+    created_at: "2026-10-01T00:00:00Z",
+    updated_at: "2026-10-01T00:00:00Z",
+    ...(review === undefined ? {} : { review_status: review }),
+  };
+}
+
+describe("venue verification helpers", () => {
+  it("a venue without a mark counts as not verified", () => {
+    expect(reviewStatusOf(venueWith("a"))).toBe("unverified");
+    expect(reviewStatusOf(venueWith("b", "verified"))).toBe("verified");
+  });
+
+  it("filters and counts by verification", () => {
+    const rows = [
+      venueWith("a"),
+      venueWith("b", "verified"),
+      venueWith("c", "unverified"),
+      venueWith("d", "verified"),
+    ];
+    expect(filterVenuesByReview(rows, "all")).toHaveLength(4);
+    expect(filterVenuesByReview(rows, "verified").map((v) => v.id)).toEqual(["b", "d"]);
+    expect(filterVenuesByReview(rows, "unverified").map((v) => v.id)).toEqual(["a", "c"]);
+    expect(countVenuesByReview(rows)).toEqual({ all: 4, verified: 2, unverified: 2 });
+    expect(countVenuesByReview([])).toEqual({ all: 0, verified: 0, unverified: 0 });
+  });
+
+  it("the request flips the current mark", () => {
+    expect(reviewRequestFor(venueWith("a"))).toEqual({ review_status: "verified" });
+    expect(reviewRequestFor(venueWith("b", "unverified"))).toEqual({ review_status: "verified" });
+    expect(reviewRequestFor(venueWith("c", "verified"))).toEqual({ review_status: "unverified" });
+  });
+
+  it("builds a map link only for a full coordinate pair", () => {
+    expect(osmPointUrl(50.08, 14.42)).toBe(
+      "https://www.openstreetmap.org/?mlat=50.08&mlon=14.42#map=17/50.08/14.42",
+    );
+    expect(osmPointUrl(null, 14.42)).toBeNull();
+    expect(osmPointUrl(50.08, undefined)).toBeNull();
+    expect(osmPointUrl(Number.NaN, 14.42)).toBeNull();
+  });
+
+  it("explains the refusals in plain words", () => {
+    const e = (code: string) => new ApiError(403, { code, message: "raw message" });
+    expect(reviewErrorMessage(e("venue.curate_superadmin_only"))).toMatch(/platform owner/);
+    expect(reviewErrorMessage(e("venue.not_found"))).toMatch(/no longer exists/);
+    expect(reviewErrorMessage(e("superadmin.missing_reason"))).toMatch(/reason/);
+    expect(reviewErrorMessage(e("something.else"))).toContain("something.else");
   });
 });

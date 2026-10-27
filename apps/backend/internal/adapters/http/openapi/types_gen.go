@@ -18084,6 +18084,15 @@ type VenueItem struct {
 	// not validated at the database layer.
 	PostalCode *string `json:"postal_code"`
 
+	// ReviewStatus Whether the platform operator verified the venue: `verified` or
+	// `unverified`. A verified venue is open to every organization
+	// (their dates may be held there); the owner stays its only editor.
+	// Only a platform superadmin changes it, through
+	// `PATCH /v1/admin/venues/{id}/review`. Present on the venue list,
+	// the venue card and the organization's venue list; the create and
+	// update answers leave it out.
+	ReviewStatus *string `json:"review_status,omitempty"`
+
 	// Status Lifecycle status. V-1 field. `active` (default) means
 	// published and bookable; `draft` means saved but not yet
 	// published; `archived` means no longer bookable but
@@ -18103,6 +18112,10 @@ type VenueItem struct {
 
 	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// VerifiedAt When the venue was verified. Absent while `review_status` is
+	// `unverified`.
+	VerifiedAt *time.Time `json:"verified_at,omitempty"`
 
 	// WebsiteUrl Public website URL for the venue. V-1 field. Optional.
 	WebsiteUrl *string `json:"website_url"`

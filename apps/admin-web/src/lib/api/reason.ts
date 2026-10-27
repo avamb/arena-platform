@@ -66,6 +66,9 @@ const REASON_REQUIRED_MUTATION_PREFIXES: readonly string[] = [
   // Price lists, individual rates and account terms (B1-5): the server demands
   // the header on every write and none on the reads.
   "/v1/admin/billing",
+  // Venue verification (migration 0172): only a platform superadmin verifies a
+  // venue, and the server demands the reason on the write.
+  "/v1/admin/venues",
 ];
 
 /**

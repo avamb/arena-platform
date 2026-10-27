@@ -15775,6 +15775,24 @@ export interface components {
              */
             capacity_default?: number | null;
             /**
+             * @description Whether the platform operator verified the venue: `verified` or
+             *     `unverified`. A verified venue is open to every organization
+             *     (their dates may be held there); the owner stays its only editor.
+             *     Only a platform superadmin changes it, through
+             *     `PATCH /v1/admin/venues/{id}/review`. Present on the venue list,
+             *     the venue card and the organization's venue list; the create and
+             *     update answers leave it out.
+             * @example verified
+             */
+            review_status?: string;
+            /**
+             * Format: date-time
+             * @description When the venue was verified. Absent while `review_status` is
+             *     `unverified`.
+             * @example 2026-10-27T10:00:00Z
+             */
+            verified_at?: string;
+            /**
              * Format: date-time
              * @description ISO 8601 / RFC 3339 timestamp of row creation
              * @example 2024-01-01T00:00:00Z

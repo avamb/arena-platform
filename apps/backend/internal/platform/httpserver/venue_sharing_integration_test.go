@@ -97,6 +97,71 @@ func TestVenueSharing_VerifiedVenueIsOpenToOtherOrganizations(t *testing.T) {
 		}
 		return false
 	}
+	// The venue list and the venue card show the verification mark, which the
+	// operator's screen reads.
+	reviewOf := func(path string, user uuid.UUID, single bool) (string, string) {
+		code, raw := call(user, "", http.MethodGet, path, "")
+		if code != http.StatusOK {
+			t.Fatalf("%s: %d %s", path, code, raw)
+		}
+		type venue struct {
+			ID           string  `json:"id"`
+			ReviewStatus *string `json:"review_status"`
+			VerifiedAt   *string `json:"verified_at"`
+		}
+		var v venue
+		if single {
+			var out struct {
+				Venue venue `json:"venue"`
+			}
+			if err := json.Unmarshal(raw, &out); err != nil {
+				t.Fatal(err)
+			}
+			v = out.Venue
+		} else {
+			var out struct {
+				Venues []venue `json:"venues"`
+			}
+			if err := json.Unmarshal(raw, &out); err != nil {
+				t.Fatal(err)
+			}
+			for _, x := range out.Venues {
+				if x.ID == venueA.String() {
+					v = x
+				}
+			}
+		}
+		if v.ReviewStatus == nil {
+			t.Fatalf("%s: no review_status for the venue: %s", path, raw)
+		}
+		at := ""
+		if v.VerifiedAt != nil {
+			at = *v.VerifiedAt
+		}
+		return *v.ReviewStatus, at
+	}
+	expectReview := func(want string) {
+		t.Helper()
+		for _, c := range []struct {
+			path   string
+			user   uuid.UUID
+			single bool
+		}{
+			{"/v1/venues", b.ownerID, false},
+			{"/v1/venues/" + venueA.String(), b.ownerID, true},
+			{"/v1/organizations/" + a.orgID.String() + "/venues", a.ownerID, false},
+		} {
+			status, at := reviewOf(c.path, c.user, c.single)
+			if status != want {
+				t.Errorf("%s: review_status = %q, want %q", c.path, status, want)
+			}
+			if (want == "verified") != (at != "") {
+				t.Errorf("%s: verified_at = %q with status %q", c.path, at, status)
+			}
+		}
+	}
+	expectReview("unverified")
+
 	start := time.Now().UTC().Add(72 * time.Hour).Truncate(time.Hour)
 	sessionBody := `{"venue_id":"` + venueA.String() + `","start_at":"` + start.Format(time.RFC3339) +
 		`","end_at":"` + start.Add(2*time.Hour).Format(time.RFC3339) + `","capacity_override":50,"currency":"EUR"}`
@@ -132,6 +197,8 @@ func TestVenueSharing_VerifiedVenueIsOpenToOtherOrganizations(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_events WHERE action = 'v1.venue.review' AND resource_id = $1`, venueA.String()).Scan(&audits); err != nil || audits < 1 {
 		t.Fatalf("audit rows = %d (%v)", audits, err)
 	}
+
+	expectReview("verified")
 
 	// Verified: listed for B (not for the owner), B holds a date there.
 	if !contains(sharedIDs(b.orgID, b.ownerID), venueA) {
@@ -177,6 +244,7 @@ func TestVenueSharing_VerifiedVenueIsOpenToOtherOrganizations(t *testing.T) {
 	if code, raw := review(admin.ID, "unverified"); code != http.StatusOK {
 		t.Fatalf("unverify: %d %s", code, raw)
 	}
+	expectReview("unverified")
 	if contains(sharedIDs(b.orgID, b.ownerID), venueA) {
 		t.Fatal("an unverified venue is still listed")
 	}

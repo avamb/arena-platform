@@ -36,3 +36,9 @@ JOIN   events  e ON e.id = s.event_id
 WHERE  s.venue_id = $1
   AND  s.deleted_at IS NULL
   AND  e.org_id <> $2;
+
+-- name: ListVenueReviewStates :many
+-- Verification state of the given venues (VenueRow does not carry it).
+SELECT id, review_status, verified_at
+FROM   venues
+WHERE  id = ANY($1::uuid[]);

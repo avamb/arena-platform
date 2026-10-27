@@ -80,6 +80,41 @@ func (q *Queries) SetVenueReviewStatus(ctx context.Context, id uuid.UUID, status
 	return r, err
 }
 
+// VenueReviewState is the verification state of one venue (migration 0172).
+type VenueReviewState struct {
+	ReviewStatus string     `json:"review_status"`
+	VerifiedAt   *time.Time `json:"verified_at"`
+}
+
+const listVenueReviewStates = `-- name: ListVenueReviewStates :many
+SELECT id, review_status, verified_at
+FROM   venues
+WHERE  id = ANY($1::uuid[])`
+
+// ListVenueReviewStates reads the verification state of the given venues in one
+// round trip. VenueRow does not carry it (scanVenueRow feeds many queries), so
+// the venue routes that show it hydrate it from here.
+func (q *Queries) ListVenueReviewStates(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]VenueReviewState, error) {
+	out := make(map[uuid.UUID]VenueReviewState, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := q.db.Query(ctx, listVenueReviewStates, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var s VenueReviewState
+		if err := rows.Scan(&id, &s.ReviewStatus, &s.VerifiedAt); err != nil {
+			return nil, err
+		}
+		out[id] = s
+	}
+	return out, rows.Err()
+}
+
 const countForeignSessionsAtVenue = `-- name: CountForeignSessionsAtVenue :one
 SELECT count(*)
 FROM   sessions s

@@ -99,10 +99,68 @@ export interface Venue {
   readonly contact_email?: string | null;
   readonly website_url?: string | null;
   readonly status?: VenueStatus;
+  /**
+   * Whether the platform operator verified the venue (migration 0172). A
+   * verified venue is open to every organization. Absent on the create and
+   * update answers and on an older server.
+   */
+  readonly review_status?: VenueReviewStatus;
+  readonly verified_at?: string | null;
 }
 
 export const VENUE_STATUSES = ["active", "draft", "archived"] as const;
 export type VenueStatus = (typeof VENUE_STATUSES)[number];
+
+export const VENUE_REVIEW_STATUSES = ["unverified", "verified"] as const;
+export type VenueReviewStatus = (typeof VENUE_REVIEW_STATUSES)[number];
+
+export type VenueReviewFilter = "all" | VenueReviewStatus;
+
+/** A venue with no mark (older server) counts as not verified. */
+export function reviewStatusOf(v: Pick<Venue, "review_status">): VenueReviewStatus {
+  return v.review_status === "verified" ? "verified" : "unverified";
+}
+
+export function filterVenuesByReview(
+  rows: readonly Venue[],
+  filter: VenueReviewFilter,
+): readonly Venue[] {
+  if (filter === "all") {
+    return rows;
+  }
+  return rows.filter((v) => reviewStatusOf(v) === filter);
+}
+
+export function countVenuesByReview(rows: readonly Venue[]): Record<VenueReviewFilter, number> {
+  let verified = 0;
+  for (const v of rows) {
+    if (reviewStatusOf(v) === "verified") {
+      verified += 1;
+    }
+  }
+  return { all: rows.length, verified, unverified: rows.length - verified };
+}
+
+/** Body of PATCH /v1/admin/venues/{id}/review that flips the current mark. */
+export function reviewRequestFor(v: Pick<Venue, "review_status">): {
+  readonly review_status: VenueReviewStatus;
+} {
+  return { review_status: reviewStatusOf(v) === "verified" ? "unverified" : "verified" };
+}
+
+/** OpenStreetMap page of the coordinates, or null when the pair is incomplete. */
+export function osmPointUrl(
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+): string | null {
+  if (typeof lat !== "number" || typeof lng !== "number") {
+    return null;
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+  return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=17/${lat}/${lng}`;
+}
 
 interface OrganizationSummary {
   readonly id: string;
@@ -506,6 +564,8 @@ function VenuesModule() {
   const canCreate = permissions.has("venue.create");
   const canUpdate = permissions.has("venue.update");
   const canDelete = permissions.has("venue.delete");
+  // Only the platform superadmin holds venue.curate (migration 0172).
+  const canCurate = permissions.has("venue.curate");
 
   const defaultOrgID =
     orgContextFromLocation() ||
@@ -516,6 +576,29 @@ function VenuesModule() {
   const [form, setForm] = useState<FormMode>({ kind: "closed" });
   const [pendingDelete, setPendingDelete] = useState<Venue | null>(null);
   const [plansVenue, setPlansVenue] = useState<Venue | null>(null);
+  const [reviewVenue, setReviewVenue] = useState<Venue | null>(null);
+  const [reviewFilter, setReviewFilter] = useState<VenueReviewFilter>("all");
+
+  // Owner names for the table; best effort, the short id stays when the list
+  // is not available to this account.
+  const orgNamesQuery = useQuery<OrganizationListEnvelope, ApiError>({
+    queryKey: ["organizations", "venue-owner-names"],
+    queryFn: () =>
+      authedFetch<OrganizationListEnvelope>({
+        method: "GET",
+        path: "/v1/organizations",
+      }),
+    enabled: canCurate,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const orgNames = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const o of orgNamesQuery.data?.organizations ?? []) {
+      out.set(o.id, o.name);
+    }
+    return out;
+  }, [orgNamesQuery.data]);
 
   const query = useQuery<VenueListEnvelope, ApiError>({
     queryKey: ["venues", "list"],
@@ -539,9 +622,13 @@ function VenuesModule() {
   });
 
   const rows = query.data?.venues ?? [];
+  const counts = useMemo(() => countVenuesByReview(rows), [rows]);
   const sorted = useMemo(
-    () => [...rows].sort((a, b) => a.name.localeCompare(b.name)),
-    [rows],
+    () =>
+      [...filterVenuesByReview(rows, reviewFilter)].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+    [rows, reviewFilter],
   );
 
   return (
@@ -554,12 +641,27 @@ function VenuesModule() {
           <p style={subheadingStyle}>
             Physical event locations. Reads are shared across organizations;
             writes are owner-gated -- a venue can only be created, edited, or
-            archived by the organization that owns it. The visual seating
-            editor remains explicitly deferred and is not part of this CRUD
-            scope.
+            archived by the organization that owns it. A venue the platform
+            operator has verified is open to every organization: they can
+            hold their dates there, but only the owner edits it. The visual
+            seating editor remains explicitly deferred and is not part of this
+            CRUD scope.
           </p>
         </div>
         <div style={refreshWrapStyle}>
+          <label style={filterLabelStyle}>
+            <span>Verification</span>
+            <select
+              value={reviewFilter}
+              onChange={(e) => setReviewFilter(e.target.value as VenueReviewFilter)}
+              style={filterSelectStyle}
+              data-testid="venues-review-filter"
+            >
+              <option value="all">All ({counts.all})</option>
+              <option value="unverified">Waiting for review ({counts.unverified})</option>
+              <option value="verified">Verified ({counts.verified})</option>
+            </select>
+          </label>
           <button
             type="button"
             onClick={() => query.refetch()}
@@ -591,10 +693,21 @@ function VenuesModule() {
         rows={sorted}
         canUpdate={canUpdate}
         canDelete={canDelete}
+        canCurate={canCurate}
+        orgNames={orgNames}
         onEdit={(venue) => setForm({ kind: "edit", venue })}
         onDelete={(venue) => setPendingDelete(venue)}
         onOpenPlans={(venue) => setPlansVenue(venue)}
+        onReview={(venue) => setReviewVenue(venue)}
       />
+
+      {reviewVenue !== null ? (
+        <VenueReviewDialog
+          venue={reviewVenue}
+          ownerName={orgNames.get(reviewVenue.org_id) ?? null}
+          onClose={() => setReviewVenue(null)}
+        />
+      ) : null}
 
       {plansVenue !== null ? (
         <VenueSeatingPlansDrawer
@@ -631,9 +744,12 @@ interface BodyProps {
   rows: readonly Venue[];
   canUpdate: boolean;
   canDelete: boolean;
+  canCurate: boolean;
+  orgNames: ReadonlyMap<string, string>;
   onEdit: (venue: Venue) => void;
   onDelete: (venue: Venue) => void;
   onOpenPlans: (venue: Venue) => void;
+  onReview: (venue: Venue) => void;
 }
 
 function VenuesBody({
@@ -641,9 +757,12 @@ function VenuesBody({
   rows,
   canUpdate,
   canDelete,
+  canCurate,
+  orgNames,
   onEdit,
   onDelete,
   onOpenPlans,
+  onReview,
 }: BodyProps) {
   if (query.isPending) {
     return (
@@ -658,8 +777,8 @@ function VenuesBody({
   if (rows.length === 0) {
     return (
       <div style={statusBoxStyle} role="status" data-testid="venues-empty">
-        No venues exist yet. Create the first venue to begin attaching events
-        and seating plans.
+        No venues match. Create the first venue to begin attaching events and
+        seating plans, or change the verification filter.
       </div>
     );
   }
@@ -675,7 +794,9 @@ function VenuesBody({
     {
       id: "org",
       header: "Organization",
-      renderCell: (v) => <span title={v.org_id}>{shortenUUID(v.org_id)}</span>,
+      renderCell: (v) => (
+        <span title={v.org_id}>{orgNames.get(v.org_id) ?? shortenUUID(v.org_id)}</span>
+      ),
     },
     {
       id: "city",
@@ -706,6 +827,11 @@ function VenuesBody({
       renderCell: (v) => <VenueStatusBadge status={v.status ?? "active"} />,
     },
     {
+      id: "review",
+      header: "Verification",
+      renderCell: (v) => <VenueReviewBadge venue={v} />,
+    },
+    {
       id: "updated",
       header: "Updated",
       renderCell: (v) => formatDate(v.updated_at),
@@ -716,6 +842,16 @@ function VenuesBody({
       hideOnMobile: true,
       renderCell: (v) => (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {canCurate ? (
+            <button
+              type="button"
+              style={rowActionButtonStyle}
+              onClick={() => onReview(v)}
+              data-testid={`venues-review-${v.id}`}
+            >
+              {reviewStatusOf(v) === "verified" ? "Review" : "Check and verify"}
+            </button>
+          ) : null}
           <button
             type="button"
             style={rowActionButtonStyle}
@@ -744,7 +880,7 @@ function VenuesBody({
               Archive
             </button>
           ) : null}
-          {!canUpdate && !canDelete ? (
+          {!canUpdate && !canDelete && !canCurate ? (
             <span style={mutedHintStyle}>read-only</span>
           ) : null}
         </div>
@@ -818,6 +954,209 @@ function VenueStatusBadge({ status }: { status: VenueStatus }) {
       {status}
     </span>
   );
+}
+
+function VenueReviewBadge({ venue }: { venue: Venue }) {
+  const verified = reviewStatusOf(venue) === "verified";
+  const style: CSSProperties = verified
+    ? { background: "#dcfce7", color: "#166534", borderColor: "#86efac" }
+    : { background: "#fef3c7", color: "#854d0e", borderColor: "#fde68a" };
+  return (
+    <span
+      style={{ ...statusBadgeStyle, ...style }}
+      title={
+        verified && venue.verified_at
+          ? `Verified ${formatDate(venue.verified_at)}`
+          : undefined
+      }
+      data-testid={`venues-review-badge-${venue.id}`}
+    >
+      {verified ? "verified" : "not verified"}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Verification dialog (platform superadmin only, migration 0172)
+//
+// The operator checks the address, the coordinates and the other attributes
+// here, then verifies the venue. The owner organization has already checked
+// the venue against its own hall plan; this is the platform's check before
+// every other organization may sell tickets there.
+// ---------------------------------------------------------------------------
+
+function VenueReviewDialog({
+  venue,
+  ownerName,
+  onClose,
+}: {
+  venue: Venue;
+  ownerName: string | null;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<ApiError | null>(null);
+  const verified = reviewStatusOf(venue) === "verified";
+  const mapUrl = osmPointUrl(venue.geo_lat, venue.geo_lng);
+  const hasPoint =
+    typeof venue.geo_lat === "number" && typeof venue.geo_lng === "number";
+
+  const mutation = useMutation<unknown, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<unknown>({
+        method: "PATCH",
+        path: `/v1/admin/venues/${venue.id}/review`,
+        body: reviewRequestFor(venue),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["venues"] });
+      onClose();
+    },
+    onError: (err) => setError(err),
+  });
+
+  const rowsToCheck: ReadonlyArray<readonly [string, string]> = [
+    ["Owner", ownerName ?? venue.org_id],
+    ["Name", venue.name],
+    ["Country", venue.country ?? "—"],
+    [
+      "Address",
+      [venue.address_line1, venue.address_line2, venue.postal_code]
+        .filter((p): p is string => typeof p === "string" && p.trim() !== "")
+        .join(", ") ||
+        (venue.address !== null && venue.address !== "" ? venue.address : "—"),
+    ],
+    [
+      "Coordinates",
+      hasPoint ? `${venue.geo_lat}, ${venue.geo_lng}` : "not set",
+    ],
+    ["Time zone", venue.timezone ?? "—"],
+    [
+      "Capacity",
+      venue.capacity_default !== null ? venue.capacity_default.toLocaleString() : "—",
+    ],
+    ["Website", venue.website_url ?? "—"],
+  ];
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="venues-review-title"
+      style={dialogBackdropStyle}
+      data-testid="venues-review-dialog"
+    >
+      <div style={dialogStyle}>
+        <header style={dialogHeaderStyle}>
+          <h2 id="venues-review-title" style={dialogTitleStyle}>
+            {verified ? "Verification of" : "Check"} {venue.name}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            style={dialogCloseStyle}
+            aria-label="Close"
+            data-testid="venues-review-close"
+          >
+            ×
+          </button>
+        </header>
+        <div style={archiveBodyStyle}>
+          <dl style={reviewListStyle}>
+            {rowsToCheck.map(([label, value]) => (
+              <div key={label} style={reviewRowStyle}>
+                <dt style={reviewTermStyle}>{label}</dt>
+                <dd style={reviewValueStyle}>{value}</dd>
+              </div>
+            ))}
+          </dl>
+          {mapUrl !== null ? (
+            <div style={mapPreviewStyle} data-testid="venues-review-map">
+              <a href={mapUrl} target="_blank" rel="noreferrer noopener">
+                Open the point on OpenStreetMap
+              </a>
+              <iframe
+                title="Venue location"
+                style={mapFrameStyle}
+                src={`https://www.openstreetmap.org/export/embed.html?layer=mapnik&marker=${encodeURIComponent(`${venue.geo_lat},${venue.geo_lng}`)}#map=16/${encodeURIComponent(String(venue.geo_lat))}/${encodeURIComponent(String(venue.geo_lng))}`}
+              />
+            </div>
+          ) : (
+            <p style={archiveParaStyle} data-testid="venues-review-no-point">
+              The venue has no coordinates yet. Ask the owner to add them
+              before you verify it.
+            </p>
+          )}
+          <p style={archiveParaStyle}>
+            {verified ? (
+              <>
+                This venue is <strong>verified</strong>: every organization can
+                hold its dates here. Taking the verification back stops{" "}
+                <strong>new</strong> dates only; dates already created stay,
+                and the owner still cannot delete the venue while another
+                organization has dates there.
+              </>
+            ) : (
+              <>
+                Verify the venue only after you have checked the address and
+                the coordinates, and the owner has confirmed that the venue
+                matches the hall plan it ordered. Once verified, every
+                organization sees the venue and can hold its dates here. Only
+                the owner edits it.
+              </>
+            )}{" "}
+            You will be asked for the reason, it is written to the audit log.
+          </p>
+          {error !== null ? (
+            <div style={formErrorStyle} role="alert" data-testid="venues-review-error">
+              {reviewErrorMessage(error)}
+            </div>
+          ) : null}
+          <div style={formActionsStyle}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={secondaryButtonStyle}
+              data-testid="venues-review-cancel"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                mutation.mutate();
+              }}
+              style={verified ? dangerButtonStyle : primaryButtonStyle}
+              disabled={mutation.isPending}
+              data-testid="venues-review-confirm"
+            >
+              {mutation.isPending
+                ? "Saving…"
+                : verified
+                  ? "Take back verification"
+                  : "Mark as verified"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function reviewErrorMessage(err: ApiError): string {
+  switch (err.code) {
+    case "venue.curate_superadmin_only":
+    case "permissions.denied":
+      return "Only the platform owner can verify venues.";
+    case "venue.not_found":
+      return "The venue no longer exists. Refresh the list.";
+    case "superadmin.missing_reason":
+    case "superadmin.reason_required":
+      return "An audit reason is required. Enter a reason and try again.";
+    default:
+      return `${err.message} (${err.code})`;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2640,6 +2979,49 @@ const mapFrameStyle: CSSProperties = {
   height: 220,
   border: 0,
   borderRadius: 3,
+};
+
+const filterLabelStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  fontSize: 12,
+  color: "#334155",
+};
+
+const filterSelectStyle: CSSProperties = {
+  fontSize: 12,
+  padding: "5px 8px",
+  border: "1px solid #cbd5e1",
+  borderRadius: 4,
+  background: "#ffffff",
+  color: "#0f172a",
+};
+
+const reviewListStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  margin: 0,
+};
+
+const reviewRowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "110px 1fr",
+  gap: 8,
+  fontSize: 13,
+};
+
+const reviewTermStyle: CSSProperties = {
+  margin: 0,
+  color: "#64748b",
+  fontWeight: 600,
+};
+
+const reviewValueStyle: CSSProperties = {
+  margin: 0,
+  color: "#0f172a",
+  overflowWrap: "anywhere",
 };
 
 const statusBadgeStyle: CSSProperties = {
