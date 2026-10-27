@@ -974,7 +974,7 @@
         {/if}
         <!-- Seat map (only for sessions with schema_url) -->
         {#if !salesClosed && selectedSession && selectedSession.schema_url}
-          <div class="arena-tickets-map-wrap">
+          <div class="arena-tickets-map-wrap" class:arena-tickets-map-wrap--hybrid={gaTiers.length > 0}>
             <SeatMapView
               session={selectedSession}
               locale={normLocale}
@@ -1197,6 +1197,13 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+  }
+  /* Hybrid session: the seat map shares the 400px frame with the category
+     cards, and as a flex:1 item it was left with whatever they did not use -
+     40px with two donation categories, so the buyer saw no seats at all.
+     Give the map a floor of its own; the frame grows to fit it. */
+  .arena-tickets-map-wrap--hybrid {
+    min-height: min(70vh, 520px);
   }
   .arena-tickets-map-wrap :global(.ga-popover) {
     top: 3rem;
