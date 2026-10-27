@@ -58,6 +58,29 @@ describe('sanitizeDecorSvg — pass-through of legitimate decor', () => {
   });
 });
 
+describe('sanitizeDecorSvg — prefixed decor as the backend stores it', () => {
+  it('keeps svg:-prefixed elements and drops inkscape:/sodipodi: ones', () => {
+    const input =
+      '<svg:g transform="translate(5 6)">' +
+      '<svg:rect x="0" y="0" width="10" height="4"/>' +
+      '<svg:text x="1" y="2">12</svg:text>' +
+      '<sodipodi:namedview id="nv"/>' +
+      '<inkscape:perspective id="p"/>' +
+      '</svg:g>';
+    const out = sanitizeDecorSvg(input);
+    expect(out).toContain('<text x="1" y="2">12</text>');
+    expect(out).toContain('<rect x="0" y="0" width="10" height="4"/>');
+    expect(out).not.toContain('namedview');
+    expect(out).not.toContain('perspective');
+    expect(out).not.toContain('svg:');
+  });
+
+  it('does not let a prefixed attribute through', () => {
+    const out = sanitizeDecorSvg('<svg:rect x="0" y="0" width="1" height="1" inkscape:label="x"/>');
+    expect(out).toBe('<rect x="0" y="0" width="1" height="1"/>');
+  });
+});
+
 describe('sanitizeDecorSvg — XSS fixtures', () => {
   it('strips onload event handler attributes', () => {
     const out = sanitizeDecorSvg('<rect x="0" y="0" width="10" height="10" onload="alert(1)"/>');

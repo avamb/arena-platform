@@ -32,7 +32,7 @@
     pinchZoom,
     pointerDist,
     pointerMid,
-    toSVGTransform,
+    toCSSTransform,
     type PanZoomState,
   } from '../lib/pan-zoom.js';
   import { SeatStatusPoller } from '../lib/poller.js';
@@ -483,8 +483,8 @@
     }
   });
 
-  // Computed SVG transform attribute.
-  const svgTransform = $derived(toSVGTransform(transform));
+  // Computed CSS transform for the HTML wrapper around the SVG.
+  const cssTransform = $derived(toCSSTransform(transform));
 
   // ── Canonical single-stop: restore container Tab stop on SVG reload ─────────
   // When the session changes, buildSeatMapSVG produces fresh HTML with all seats
@@ -562,6 +562,7 @@
        comment is needed.  The accessible name is supplied by aria-label. -->
   <div
     class="seat-map-container"
+    style="aspect-ratio: {canvasW} / {canvasH}"
     bind:this={svgContainer}
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
@@ -584,7 +585,7 @@
            NOT aria-hidden: the SVG inside carries interactive, focusable seats
            (role="button"/tabindex) and an accessible group name; only the
            decorative decor layer inside the SVG is aria-hidden. -->
-      <div class="seat-map-inner" style="transform: {svgTransform}">
+      <div class="seat-map-inner" style="transform: {cssTransform}">
         {@html svgHTML}
       </div>
     {/if}
@@ -626,8 +627,18 @@
     background: color-mix(in srgb, currentColor 8%, transparent);
   }
 
+  /* The box follows the plan: width comes from the frame, height from the
+     canvas proportions (aspect-ratio is set inline once the schema is
+     known), so a wide hall is a wide box and a tall one a tall box, on a
+     phone as on a desktop. The floor keeps a very wide plan usable, the
+     ceiling keeps a tall one from pushing the cart off the screen; the
+     fit transform scales the plan inside whatever box results. */
   .seat-map-container {
-    flex: 1;
+    flex: none;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 280px;
+    max-height: min(85vh, 900px);
     overflow: hidden;
     position: relative;
     touch-action: none; /* let pointer events handle pan/zoom */
