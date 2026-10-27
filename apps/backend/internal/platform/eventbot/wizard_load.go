@@ -54,9 +54,6 @@ func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, e
 		if string(s.Status) == "cancelled" {
 			continue
 		}
-		if s.SeatingPlanVersionId != nil || string(s.AdmissionMode) == "seated" {
-			return nil, nil, ErrNotEditable
-		}
 		live = append(live, s)
 	}
 	if len(live) == 0 {
@@ -144,6 +141,11 @@ func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, e
 			// A later date with no category yet: it sells nothing until one
 			// is given to it, in the first date's mode.
 			own = DraftTickets{Mode: d.Tickets.Mode}
+		case s.SeatingPlanVersionId != nil:
+			// Sold by a seating plan: the plan owns the places and the
+			// categories, the wizard changes the prices (wizard_seated.go).
+			own = loadSeatedTickets(tiers)
+			ds.PlanVersionID = s.SeatingPlanVersionId.String()
 		default:
 			own, err = w.loadTickets(ctx, io, ws, eventID, s, tiers, loc)
 			if err != nil {
@@ -163,6 +165,23 @@ func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, e
 		notes = append(notes, w.texts.T(ws.Locale, "bot.wz.edit_tickets_differ", nil))
 	}
 	return d, notes, nil
+}
+
+// loadSeatedTickets reads the categories of a date sold by a seating plan: one
+// parallel category per tier, each with the arena id the bundle addresses it
+// by. A tier's current price is read as it stands; a schedule is left alone
+// (the bundle sends none for a seated date).
+func loadSeatedTickets(tiers []openapi.TicketTierItem) DraftTickets {
+	sort.SliceStable(tiers, func(i, j int) bool { return tiers[i].SortOrder < tiers[j].SortOrder })
+	out := DraftTickets{Mode: ModeParallel}
+	for _, t := range tiers {
+		c := DraftCategory{TierID: t.Id.String(), Name: t.Name, PriceMinor: t.PriceAmount, GA: t.Kind == nil || *t.Kind != "seated"}
+		if t.Capacity != nil {
+			c.Places = int(*t.Capacity)
+		}
+		out.Categories = append(out.Categories, c)
+	}
+	return out
 }
 
 // loadTickets reads one session's categories into a ticket part,
@@ -264,13 +283,18 @@ func CopyDraft(src *Draft) *Draft {
 	d.Cur = 0
 	// A copy sells one set of categories on every date: the first date's.
 	d.Tickets = withoutTierIDs(src.Tickets)
+	if src.anySeated() {
+		// A copy is sold anew: the seated dates' plan categories are not a set
+		// of categories to sell on the new dates, so the copy asks for them.
+		d.Tickets = DraftTickets{}
+	}
 	d.Changed = nil
 	d.Loaded = nil
 	d.Channels = nil
 	d.Publish = true
 	// The tickets and the rest are already there: once the dates are in, the
 	// wizard shows the summary, where any part can still be changed.
-	d.Scratch = DraftScratch{ReturnToSummary: true}
+	d.Scratch = DraftScratch{ReturnToSummary: !src.anySeated()}
 	d.Saved = DraftSaved{}
 	return &d
 }

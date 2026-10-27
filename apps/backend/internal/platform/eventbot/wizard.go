@@ -56,6 +56,8 @@ const (
 	stVCapacity     = "v_capacity"
 	stVTz           = "v_tz"
 	stSCapacity     = "s_capacity"
+	stSPlan         = "s_plan"       // a venue with seating plans: sell by a plan or without seats
+	stSPlanPrice    = "s_plan_price" // the price of each category of the chosen plan
 	stSMore         = "s_more"
 	stTMode         = "t_mode"
 	stTName         = "t_name"
@@ -191,6 +193,10 @@ type DraftSession struct {
 	// CopiedFrom names the date ("18.12.2026 18:00") whose categories a date
 	// added to an edited event copied; "" when it has categories of its own.
 	CopiedFrom string `json:"copied_from,omitempty"`
+	// PlanVersionID is the seating plan version a date is sold by (wizard_seated.go);
+	// "" for a date sold without seats. PlanName is only for the screens.
+	PlanVersionID string `json:"plan_version_id,omitempty"`
+	PlanName      string `json:"plan_name,omitempty"`
 }
 
 // DraftTickets is the ticket part of the draft.
@@ -212,6 +218,10 @@ type DraftCategory struct {
 	Places     int    `json:"places"`     // parallel: its own places
 	SellUntil  string `json:"sell_until"` // sequence: YYYY-MM-DD inclusive, "" = none
 	SellLimit  int    `json:"sell_limit"` // sequence: first N tickets, 0 = none
+	// PlanIndex is the 1-based seating plan category a category of a seated
+	// date prices (new dates only); GA marks a standing zone of the plan.
+	PlanIndex int  `json:"plan_index,omitempty"`
+	GA        bool `json:"ga,omitempty"`
 }
 
 // DraftPriceStep is one "from date → price" row of the single category.
@@ -271,6 +281,14 @@ type DraftScratch struct {
 	Work    *DraftTickets `json:"work,omitempty"`
 	WorkFor int           `json:"work_for,omitempty"`
 	WorkAll bool          `json:"work_all,omitempty"`
+	// Plans are the seating plans of the venue just chosen; SeatWork the
+	// categories of a seated date being priced, SeatIdx the one asked now and
+	// SeatFor the date (1-based) of an edited event being re-priced (0 = the
+	// date being entered).
+	Plans    []PlanRef     `json:"plans,omitempty"`
+	SeatWork *DraftTickets `json:"seat_work,omitempty"`
+	SeatIdx  int           `json:"seat_idx,omitempty"`
+	SeatFor  int           `json:"seat_for,omitempty"`
 }
 
 // DraftSaved is what the non-atomic save already wrote.
@@ -1176,6 +1194,9 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 				if s.Capacity == 0 {
 					s.Capacity = v.Capacity
 				}
+				if w.offerPlans(ctx, ws, d) {
+					return "", nil
+				}
 				d.goTo(stSCapacity)
 				return "", nil
 			}
@@ -1251,8 +1272,18 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			d.Cur = len(d.Sessions)
 			d.goTo(stSDate)
 		case "next":
+			if d.Mode != ModeEdit && d.allDatesOwnTickets() {
+				// Every date is sold by a seating plan and was priced with it:
+				// there is nothing left for the shared ticket questions.
+				d.Tickets = cloneTickets(*d.Sessions[0].Tickets)
+				d.section(stXDescription)
+				break
+			}
 			d.section(stTMode)
 		}
+
+	case stSPlan, stSPlanPrice:
+		return w.applySeated(loc, d, text, data)
 
 	case stTMode:
 		switch data {
@@ -1545,6 +1576,9 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 	case stTDate:
 		// Which date's categories change: one date, or every date at once.
 		if data == "td:all" {
+			if d.anySeated() {
+				break // a date sold by a plan is re-priced on its own
+			}
 			d.goTo(d.startTickets(0, *d.ticketsOf(0), true))
 			break
 		}
@@ -1552,6 +1586,10 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			n, err := strconv.Atoi(raw)
 			if err != nil || n < 1 || n > len(d.Sessions) {
 				return "", nil
+			}
+			if d.Sessions[n-1].seated() {
+				d.startSeatPrices(n)
+				break
 			}
 			d.goTo(d.startTickets(n, *d.ticketsOf(n - 1), true))
 		}
@@ -1630,6 +1668,11 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			d.Scratch.ReturnToSummary = true
 			if d.Mode == ModeEdit {
 				d.openTicketsEdit()
+				break
+			}
+			if d.anySeated() {
+				d.Scratch.Edit = "tickets"
+				d.Step = stTDate
 				break
 			}
 			d.Step = stTMode

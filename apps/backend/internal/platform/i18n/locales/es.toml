@@ -4516,3 +4516,21 @@ other = "Extremos de fila más baratos"
 
 ["layoutgen.param.cheaper_row_edges.hint"]
 other = "El extremo de una fila larga nunca cuesta más que su centro."
+
+["bot.wz.ask_plan"]
+other = "El recinto «{{.Venue}}» tiene un plano de plazas. ¿Vendemos las plazas según el plano o sin plazas numeradas (entrada libre)?"
+
+["bot.wz.plan_btn"]
+other = "{{.Name}} · plazas: {{.Seats}}"
+
+["bot.wz.plan_none_btn"]
+other = "Sin plano: entrada libre"
+
+["bot.wz.ask_plan_price"]
+other = "Categoría «{{.Name}}» ({{.N}} de {{.Total}}), plazas: {{.Places}}. ¿Cuánto cuesta la entrada, en {{.Currency}}?"
+
+["bot.wz.plan_done_note"]
+other = "Plano «{{.Plan}}»: {{.Seats}} plazas, {{.Count}} categorías con precio. Más adelante puedes cambiar qué plazas van a cada categoría: pulsa “Distribución de plazas” en la ficha de la fecha."
+
+["bot.wz.t_date_seated_note"]
+other = "Una fecha vendida por plano mantiene sus plazas y categorías. Solo cambian los precios."

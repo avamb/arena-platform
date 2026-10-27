@@ -12,10 +12,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 )
 
 // The API's codes the layout screens give their own words to.
@@ -149,4 +152,76 @@ func boundsOfGeometry(raw json.RawMessage) (PlanBounds, bool) {
 		}
 	}
 	return b, b.Seats > 0
+}
+
+// VenuePlans lists the seating plans a new date at the venue can be sold by:
+// the organization's own active plans, each at its current version, with the
+// categories that have places. It is the PlanIO of the "+ Event" wizard.
+func (c *ArenaClient) VenuePlans(ctx context.Context, jwt string, orgID uuid.UUID, venueID string) ([]PlanRef, error) {
+	var plans struct {
+		Plans []openapi.SeatingPlan `json:"seating_plans"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/v1/venues/"+url.PathEscape(venueID)+"/seating-plans", jwt, nil, &plans); err != nil {
+		return nil, err
+	}
+	var out []PlanRef
+	for _, p := range plans.Plans {
+		if p.OwnerOrgId != orgID || string(p.Status) != "active" || p.CurrentVersionId == nil {
+			continue
+		}
+		var versions struct {
+			Versions []openapi.SeatingPlanVersion `json:"seating_plan_versions"`
+		}
+		if err := c.do(ctx, http.MethodGet, "/v1/seating-plans/"+p.Id.String()+"/versions", jwt, nil, &versions); err != nil {
+			return nil, err
+		}
+		for _, v := range versions.Versions {
+			if v.Id != *p.CurrentVersionId {
+				continue
+			}
+			if ref, ok := planRefOf(p, v); ok {
+				out = append(out, ref)
+			}
+		}
+	}
+	return out, nil
+}
+
+// planRefOf reads the categories with places out of a version's geometry:
+// seated ones count their seats, a standing zone its capacity. The plan's
+// display names win over the geometry's, as they do at the import.
+func planRefOf(p openapi.SeatingPlan, v openapi.SeatingPlanVersion) (PlanRef, bool) {
+	raw, err := json.Marshal(v.Geometry)
+	if err != nil {
+		return PlanRef{}, false
+	}
+	var g seating.Geometry
+	if err := json.Unmarshal(raw, &g); err != nil {
+		return PlanRef{}, false
+	}
+	seats := map[int]int{}
+	for _, sec := range g.Sections {
+		for _, row := range sec.Rows {
+			for _, s := range row.Seats {
+				seats[s.CategoryIndex]++
+			}
+		}
+	}
+	ref := PlanRef{VersionID: v.Id.String(), Name: p.Name}
+	for _, cat := range g.Categories {
+		places := seats[cat.Index]
+		if cat.IsGA() {
+			places = cat.Capacity
+		}
+		if places <= 0 {
+			continue
+		}
+		name := cat.Name
+		if n := p.CategoryNameOverrides[strconv.Itoa(cat.Index)]; strings.TrimSpace(n) != "" {
+			name = n
+		}
+		ref.Categories = append(ref.Categories, PlanCategory{Index: cat.Index, Name: name, Places: places, GA: cat.IsGA()})
+		ref.Seats += places
+	}
+	return ref, len(ref.Categories) > 0
 }

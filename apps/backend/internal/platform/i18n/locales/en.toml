@@ -4664,3 +4664,21 @@ other = "Cheaper row edges"
 
 ["layoutgen.param.cheaper_row_edges.hint"]
 other = "The edge of a long row never costs more than its middle."
+
+["bot.wz.ask_plan"]
+other = "«{{.Venue}}» has a seating plan. Sell the seats by the plan, or sell without seats (free seating)?"
+
+["bot.wz.plan_btn"]
+other = "{{.Name}} · {{.Seats}} places"
+
+["bot.wz.plan_none_btn"]
+other = "Without a plan: free seating"
+
+["bot.wz.ask_plan_price"]
+other = "Category «{{.Name}}» ({{.N}} of {{.Total}}), {{.Places}} places. What is the ticket price, in {{.Currency}}?"
+
+["bot.wz.plan_done_note"]
+other = "Plan «{{.Plan}}»: {{.Seats}} places, {{.Count}} categories with prices. You can change later which seats go to which category: press “Seat layout” on the date’s card."
+
+["bot.wz.t_date_seated_note"]
+other = "A date sold by a seating plan keeps its places and categories. Only the prices change."

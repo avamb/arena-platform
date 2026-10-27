@@ -287,6 +287,8 @@ var wizardKeys = []string{
 	"bot.wz.preview_unchanged", "bot.wz.preview_already", "bot.wz.preview_no_categories", "bot.wz.preview_warn_closed",
 	"bot.wz.preview_warn_renamed", "bot.wz.preview_warn_closed_many", "bot.wz.preview_warn_renamed_many", "bot.wz.preview_warn_places", "bot.wz.preview_footer", "bot.wz.preview_publish_btn", "bot.wz.preview_back_btn",
 	"bot.wz.warn_tier_not_in_payload",
+	// A date sold by a seating plan (wizard_seated.go):
+	"bot.wz.ask_plan", "bot.wz.plan_btn", "bot.wz.plan_none_btn", "bot.wz.ask_plan_price", "bot.wz.plan_done_note", "bot.wz.t_date_seated_note",
 }
 
 func init() {

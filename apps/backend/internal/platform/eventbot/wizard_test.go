@@ -24,6 +24,8 @@ type fakeRefs struct {
 	promoters []RefItem
 	channels  []RefItem
 	created   []string
+	// plans are the seating plans of a venue by its id (wizard_seated_test.go).
+	plans map[string][]PlanRef
 }
 
 func newFakeRefs() *fakeRefs {
