@@ -55,10 +55,11 @@ COPY apps/rich-editor/ /rich-editor/
 RUN npm --prefix /rich-editor run build
 
 # The seat map core of the widget (pure TypeScript, no Svelte): pan and zoom, the decor
-# sanitizer and the geometry types. The seat manager
+# sanitizer and the geometry types (types.ts imports the consent types, so consent.ts and its
+# consentI18n.ts come along). The seat manager
 # imports it through the @seatmap alias, which from /app is /widget/src.
 COPY apps/widget/src/types.ts /widget/src/types.ts
-COPY apps/widget/src/lib/pan-zoom.ts apps/widget/src/lib/svg-sanitize.ts /widget/src/lib/
+COPY apps/widget/src/lib/pan-zoom.ts apps/widget/src/lib/svg-sanitize.ts apps/widget/src/lib/consent.ts apps/widget/src/lib/consentI18n.ts /widget/src/lib/
 
 # Copy the OpenAPI TypeScript declarations (type-only; needed by tsc).
 COPY apps/backend/openapi/clients/ts/ /openapi-clients/ts/
