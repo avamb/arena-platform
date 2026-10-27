@@ -102,6 +102,40 @@ function escapeAttr(s: string): string {
   return escapeText(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+/** CSS properties of a `style` attribute that are carried over (as attributes). */
+const ALLOWED_STYLE_PROPERTIES: ReadonlySet<string> = new Set([
+  'fill',
+  'stroke',
+  'stroke-width',
+  'opacity',
+  'font-size',
+  'font-family',
+  'text-anchor',
+]);
+
+/**
+ * Read the declarations of an inline `style` attribute and keep only the
+ * allowlisted presentation properties with safe values. Authoring tools
+ * (Inkscape and the plan generators) put the fill of every shape in `style`,
+ * not in a `fill` attribute: dropping it left the hall background with the
+ * SVG default fill, black. The result is emitted as plain attributes, so
+ * nothing from `style` reaches the page as CSS.
+ */
+function parseStyleDeclarations(style: string): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  if (!style) return out;
+  for (const decl of style.split(';')) {
+    const at = decl.indexOf(':');
+    if (at < 0) continue;
+    const prop = decl.slice(0, at).trim().toLowerCase();
+    const value = decl.slice(at + 1).trim();
+    if (!ALLOWED_STYLE_PROPERTIES.has(prop) || value === '') continue;
+    if (!isSafeAttrValue(value) || /!important/i.test(value)) continue;
+    out.push([prop, value]);
+  }
+  return out;
+}
+
 /**
  * Reject attribute values that could trigger resource loading or script.
  * `url(...)` in paint/presentation values can fetch external resources in
@@ -142,15 +176,29 @@ function serializeNode(node: globalThis.Node, out: string[], inTextContainer: bo
     return;
   }
 
-  const attrs: string[] = [];
+  // Collected by name so a `style` declaration can override the presentation
+  // attribute of the same name, as it does in a browser.
+  const kept = new Map<string, string>();
+  let styleValue = '';
   for (const attr of Array.from(el.attributes)) {
     // Only plain (non-namespaced, non-prefixed) attributes are considered —
     // this drops xlink:href, xmlns declarations, and friends outright.
     if (attr.prefix || attr.namespaceURI) continue;
     const attrName = attr.localName;
-    if (!ALLOWED_ATTRIBUTES.has(attrName)) continue; // drops on*, href, style, id, class, …
+    if (attrName === 'style') {
+      styleValue = attr.value;
+      continue;
+    }
+    if (!ALLOWED_ATTRIBUTES.has(attrName)) continue; // drops on*, href, id, class, …
     if (!isSafeAttrValue(attr.value)) continue;
-    attrs.push(` ${attrName}="${escapeAttr(attr.value)}"`);
+    kept.set(attrName, attr.value);
+  }
+  for (const [prop, value] of parseStyleDeclarations(styleValue)) {
+    kept.set(prop, value);
+  }
+  const attrs: string[] = [];
+  for (const [attrName, value] of kept) {
+    attrs.push(` ${attrName}="${escapeAttr(value)}"`);
   }
 
   const children = Array.from(el.childNodes);
