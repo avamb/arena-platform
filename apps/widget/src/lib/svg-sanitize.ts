@@ -32,6 +32,20 @@
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
+/**
+ * Prefix declarations for the wrapper. The backend re-emits decor with the
+ * prefixes it knows (`svg:text`, `inkscape:...`, `sodipodi:...`) and leaves the
+ * declarations on the outer <svg> it does not store, so a strict XML parse of
+ * the bare fragment dies on "Namespace prefix svg ... is not defined" and the
+ * whole decor layer (row and seat numbers, the stage, the hall outline) was
+ * dropped. Declaring them here lets the fragment resolve; elements outside the
+ * SVG namespace (inkscape:, sodipodi:) are still rejected by the allowlist.
+ */
+const DECOR_XMLNS =
+  `xmlns:svg="${SVG_NS}" ` +
+  'xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" ' +
+  'xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"';
+
 /** Elements allowed in decor fragments (SVG namespace only). */
 const ALLOWED_ELEMENTS: ReadonlySet<string> = new Set([
   'g',
@@ -167,7 +181,7 @@ export function sanitizeDecorSvg(decor: string): string {
   let doc: Document;
   try {
     doc = new DOMParser().parseFromString(
-      `<svg xmlns="${SVG_NS}">${decor}</svg>`,
+      `<svg xmlns="${SVG_NS}" ${DECOR_XMLNS}>${decor}</svg>`,
       'application/xml',
     );
   } catch {
