@@ -198,10 +198,10 @@ func (h *Handler) proposedSessionState(w http.ResponseWriter, r *http.Request, o
 		if id != cur.VenueID {
 			var name, tz string
 			err := h.sessionQueries.DB().QueryRow(r.Context(),
-				`SELECT name, COALESCE(timezone, '') FROM venues WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`,
+				`SELECT name, COALESCE(timezone, '') FROM venues WHERE id = $1 AND (org_id = $2 OR review_status = 'verified') AND deleted_at IS NULL`,
 				id, orgID).Scan(&name, &tz)
 			if err != nil {
-				return invalid("session.invalid_venue_id", "venue_id is not a venue of this organization", "venue_id")
+				return invalid("session.invalid_venue_id", "venue_id is not a venue this organization may use", "venue_id")
 			}
 			next.VenueID, next.VenueName, next.Timezone = id, name, tz
 		}

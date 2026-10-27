@@ -80,6 +80,9 @@ var ForbiddenScopeExact = map[string]bool{
 	// legal.manage writes the terms template every organization's buyers
 	// accept (migration 0163, P3a): platform superadmin only.
 	"legal.manage": true,
+	// venue.curate verifies a venue for every organization (migration 0172):
+	// platform superadmin only.
+	"venue.curate": true,
 }
 
 // IsForbiddenScope reports whether scope may never be carried by an API key.

@@ -65,6 +65,9 @@ func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, e
 	if err != nil {
 		return nil, nil, err
 	}
+	// An event may sit at a venue another organization owns and the platform
+	// verified: its name and zone come from the shared list.
+	venues = append(venues, w.sharedVenues(ctx, ws, "", "")...)
 	byVenue := map[string]VenueRef{}
 	for _, v := range venues {
 		byVenue[v.ID] = v

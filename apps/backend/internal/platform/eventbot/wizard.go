@@ -335,6 +335,9 @@ type VenueRef struct {
 	CountryISO2 string
 	Timezone    string
 	Capacity    int
+	// Shared marks a venue of ANOTHER organization that the platform verified
+	// (migration 0172): the organization may hold dates there but not edit it.
+	Shared bool
 }
 
 // VenueCreate is the "+ new venue" form.
@@ -1196,6 +1199,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		if err != nil {
 			return "", err
 		}
+		venues = append(venues, w.sharedVenues(ctx, ws, s.CityID, "")...)
 		for _, v := range venues {
 			if v.ID == id {
 				s.VenueID, s.VenueName, s.Timezone = v.ID, v.Name, v.Timezone

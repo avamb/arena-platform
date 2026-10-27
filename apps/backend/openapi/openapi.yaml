@@ -6734,6 +6734,24 @@ components:
             unspecified. Individual events may override this with their own
             capacity.
           example: 1200
+        review_status:
+          type: string
+          description: |
+            Whether the platform operator verified the venue: `verified` or
+            `unverified`. A verified venue is open to every organization
+            (their dates may be held there); the owner stays its only editor.
+            Only a platform superadmin changes it, through
+            `PATCH /v1/admin/venues/{id}/review`. Present on the venue list,
+            the venue card and the organization's venue list; the create and
+            update answers leave it out.
+          example: "verified"
+        verified_at:
+          type: string
+          format: date-time
+          description: |
+            When the venue was verified. Absent while `review_status` is
+            `unverified`.
+          example: "2026-10-27T10:00:00Z"
         created_at:
           type: string
           format: date-time
@@ -29158,6 +29176,194 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Venue queries unavailable (database not wired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/shared-venues:
+    get:
+      operationId: getV1OrganizationsOrgIdSharedVenues
+      summary: List venues of other organizations that the platform verified
+      description: |
+        Returns the active venues of OTHER organizations that the platform
+        operator verified (migration 0172). Every organization may hold its dates
+        at such a venue; only the owner organization edits it. Contacts of a
+        foreign venue are never returned. Narrow the list with city_id or country.
+        Requires JWT and the "venue.read" permission in the path organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization that looks for a venue
+          schema:
+            type: string
+            format: uuid
+        - name: city_id
+          in: query
+          required: false
+          description: Only venues in this city (UUID from GET /v1/geo/cities)
+          schema:
+            type: string
+            format: uuid
+        - name: country
+          in: query
+          required: false
+          description: Only venues in this country (two-letter ISO 3166-1 code)
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1 to 200 (default 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Verified venues of other organizations, by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [venues]
+                properties:
+                  venues:
+                    type: array
+                    description: Venues the organization may use but does not own
+                    items:
+                      $ref: "#/components/schemas/VenueItem"
+        "400":
+          description: "A parameter is not valid (org_id, city_id, country or limit)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "The caller is not a member of the organization or lacks venue.read"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Database not wired"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/venues/{id}/review:
+    patch:
+      operationId: patchV1AdminVenuesIdReview
+      summary: Admin - verify a venue for every organization, or take the verification back
+      description: "Sets review_status of a venue. A verified venue is open to every organization: they list it in GET /v1/organizations/{org_id}/shared-venues and hold dates there, while the owner stays its only editor. Requires JWT, venue.curate, a platform superadmin and X-Admin-Reason. Writes an audit row."
+      tags: [v1, admin, venues]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Id of the venue."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log.
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [review_status]
+              properties:
+                review_status:
+                  type: string
+                  description: "verified or unverified"
+      responses:
+        "200":
+          description: "The venue with its new review status"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [venue_id, org_id, name, review_status]
+                properties:
+                  venue_id:
+                    type: string
+                    format: uuid
+                    description: "Id of the venue"
+                  org_id:
+                    type: string
+                    format: uuid
+                    description: "Owner organization of the venue"
+                  name:
+                    type: string
+                    description: "Name of the venue"
+                  review_status:
+                    type: string
+                    description: "verified or unverified"
+                  verified_at:
+                    type: [string, "null"]
+                    format: date-time
+                    description: "When the venue was verified, null when it is not"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "The caller lacks venue.curate or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Venue not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "review_status is not verified or unverified"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Database not wired"
           content:
             application/json:
               schema:

@@ -484,9 +484,9 @@ func (h *Handler) planArenaVenue(ctx context.Context, q *gen.Queries, tx pgx.Tx,
 		}
 		vctx, err := q.GetVenueImportContext(ctx, venueID)
 		switch {
-		case errors.Is(err, pgx.ErrNoRows), err == nil && vctx.OrgID != plan.OrgID:
+		case errors.Is(err, pgx.ErrNoRows), err == nil && vctx.OrgID != plan.OrgID && !vctx.Verified:
 			return venueDecision{}, failImportAt(http.StatusUnprocessableEntity, "import.invalid_venue", "/venue/arenaVenueId",
-				"venue.arenaVenueId "+raw+" is not a venue of this organization")
+				"venue.arenaVenueId "+raw+" is not a venue this organization may use")
 		case err != nil:
 			return venueDecision{}, fmt.Errorf("read venue %s: %w", venueID, err)
 		}

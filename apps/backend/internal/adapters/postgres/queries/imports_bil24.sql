@@ -21,7 +21,7 @@ WHERE  external_bil24_id = $1
   AND  deleted_at IS NULL;
 
 -- name: GetVenueImportContext :one
-SELECT org_id, timezone, external_bil24_id
+SELECT org_id, timezone, external_bil24_id, (review_status = 'verified')
 FROM   venues
 WHERE  id = $1
   AND  deleted_at IS NULL;

@@ -203,6 +203,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		if err != nil {
 			return Screen{}, err
 		}
+		venues = append(venues, w.sharedVenues(ctx, ws, "", "")...)
 		hasVenue := map[string]bool{}
 		for _, v := range venues {
 			hasVenue[strings.ToUpper(v.CountryISO2)] = true
@@ -272,6 +273,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		if err != nil {
 			return Screen{}, err
 		}
+		venues = append(venues, w.sharedVenues(ctx, ws, "", s.CountryISO2)...)
 		withVenue := map[string]bool{}
 		for _, v := range venues {
 			withVenue[v.CityID] = true
@@ -332,13 +334,24 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		if ws.Defaults.VenueID != "" && ws.Defaults.CityID == s.CityID {
 			rows = append(rows, []Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": ws.Defaults.VenueName}), Data: "keep"}})
 		}
+		text := t("bot.wz.ask_venue", nil)
+		shared := false
 		for _, v := range venues {
 			if v.CityID == s.CityID {
 				rows = append(rows, []Button{{Label: truncate(v.Name, 48), Data: "venue:" + v.ID}})
 			}
 		}
+		for _, v := range w.sharedVenues(ctx, ws, s.CityID, "") {
+			if !hasVenueID(venues, v.ID) {
+				rows = append(rows, []Button{{Label: sharedVenueMark + truncate(v.Name, 46), Data: "venue:" + v.ID}})
+				shared = true
+			}
+		}
+		if shared {
+			text += "\n\n" + t("bot.wz.venue_shared_note", nil)
+		}
 		rows = append(rows, []Button{btn("bot.wz.venue_new", "venue:new")})
-		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_venue", nil), Buttons: nav(rows...)}, nil
+		return Screen{Text: header(2, "bot.wz.title_when") + text, Buttons: nav(rows...)}, nil
 
 	case stSPlan, stSPlanPrice:
 		return w.renderSeated(loc, d, header, nav), nil

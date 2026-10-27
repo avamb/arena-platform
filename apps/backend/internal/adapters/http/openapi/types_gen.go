@@ -18084,6 +18084,15 @@ type VenueItem struct {
 	// not validated at the database layer.
 	PostalCode *string `json:"postal_code"`
 
+	// ReviewStatus Whether the platform operator verified the venue: `verified` or
+	// `unverified`. A verified venue is open to every organization
+	// (their dates may be held there); the owner stays its only editor.
+	// Only a platform superadmin changes it, through
+	// `PATCH /v1/admin/venues/{id}/review`. Present on the venue list,
+	// the venue card and the organization's venue list; the create and
+	// update answers leave it out.
+	ReviewStatus *string `json:"review_status,omitempty"`
+
 	// Status Lifecycle status. V-1 field. `active` (default) means
 	// published and bookable; `draft` means saved but not yet
 	// published; `archived` means no longer bookable but
@@ -18103,6 +18112,10 @@ type VenueItem struct {
 
 	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// VerifiedAt When the venue was verified. Absent while `review_status` is
+	// `unverified`.
+	VerifiedAt *time.Time `json:"verified_at,omitempty"`
 
 	// WebsiteUrl Public website URL for the venue. V-1 field. Optional.
 	WebsiteUrl *string `json:"website_url"`
@@ -18728,6 +18741,18 @@ type DeleteV1AdminUserGlobalRoleParams struct {
 // PostV1AdminUserReactivateParams defines parameters for PostV1AdminUserReactivate.
 type PostV1AdminUserReactivateParams struct {
 	// XAdminReason Human-readable business reason for this lifecycle action.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PatchV1AdminVenuesIdReviewJSONBody defines parameters for PatchV1AdminVenuesIdReview.
+type PatchV1AdminVenuesIdReviewJSONBody struct {
+	// ReviewStatus verified or unverified
+	ReviewStatus string `json:"review_status"`
+}
+
+// PatchV1AdminVenuesIdReviewParams defines parameters for PatchV1AdminVenuesIdReview.
+type PatchV1AdminVenuesIdReviewParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
@@ -19571,6 +19596,18 @@ type GetV1OrganizationsOrgIdSessionsSessionIdTicketsParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdSharedVenuesParams defines parameters for GetV1OrganizationsOrgIdSharedVenues.
+type GetV1OrganizationsOrgIdSharedVenuesParams struct {
+	// CityId Only venues in this city (UUID from GET /v1/geo/cities)
+	CityId *openapi_types.UUID `form:"city_id,omitempty" json:"city_id,omitempty"`
+
+	// Country Only venues in this country (two-letter ISO 3166-1 code)
+	Country *string `form:"country,omitempty" json:"country,omitempty"`
+
+	// Limit Page size, 1 to 200 (default 100)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody struct {
 	// ConfirmUnattributed The unattributed amount (minor units) the operator was shown. Required when that amount is above zero.
@@ -19891,6 +19928,9 @@ type PatchV1AdminUserJSONRequestBody = AdminUserNameRequest
 
 // PostV1AdminUserGlobalRoleJSONRequestBody defines body for PostV1AdminUserGlobalRole for application/json ContentType.
 type PostV1AdminUserGlobalRoleJSONRequestBody PostV1AdminUserGlobalRoleJSONBody
+
+// PatchV1AdminVenuesIdReviewJSONRequestBody defines body for PatchV1AdminVenuesIdReview for application/json ContentType.
+type PatchV1AdminVenuesIdReviewJSONRequestBody PatchV1AdminVenuesIdReviewJSONBody
 
 // PostV1AuthLoginJSONRequestBody defines body for PostV1AuthLogin for application/json ContentType.
 type PostV1AuthLoginJSONRequestBody = AuthLoginRequest

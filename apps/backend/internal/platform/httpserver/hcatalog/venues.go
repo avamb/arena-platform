@@ -27,6 +27,7 @@
 package hcatalog
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -74,6 +75,11 @@ type venueResponse struct {
 	CapacityDefault *int32   `json:"capacity_default"`
 	CreatedAt       string   `json:"created_at"`
 	UpdatedAt       string   `json:"updated_at"`
+	// ReviewStatus and VerifiedAt (migration 0172) are filled by
+	// hydrateVenueReview on the read routes; a route that does not read them
+	// leaves them out of the answer.
+	ReviewStatus *string `json:"review_status,omitempty"`
+	VerifiedAt   *string `json:"verified_at,omitempty"`
 }
 
 // VenueResponse is the exported alias of venueResponse for use by the httpserver
@@ -475,7 +481,44 @@ func (h *Handler) HandleListVenues(w http.ResponseWriter, r *http.Request) {
 		}
 		result = append(result, resp)
 	}
+	h.hydrateVenueReview(ctx, result)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"venues": result})
+}
+
+// hydrateVenueReview fills review_status / verified_at of the answers in one
+// query. It is best effort: a failed read only logs and leaves the fields out,
+// so a venue list never fails because of the verification mark.
+func (h *Handler) hydrateVenueReview(ctx context.Context, venues []venueResponse) {
+	if len(venues) == 0 || h.venueQueries == nil {
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(venues))
+	for _, v := range venues {
+		if id, err := uuid.Parse(v.ID); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	states, err := h.venueQueries.ListVenueReviewStates(ctx, ids)
+	if err != nil {
+		h.logger.Warn("venue: review state lookup failed", slog.String("error", err.Error()))
+		return
+	}
+	for i := range venues {
+		id, err := uuid.Parse(venues[i].ID)
+		if err != nil {
+			continue
+		}
+		s, ok := states[id]
+		if !ok {
+			continue
+		}
+		status := s.ReviewStatus
+		venues[i].ReviewStatus = &status
+		if s.VerifiedAt != nil {
+			at := s.VerifiedAt.UTC().Format(time.RFC3339)
+			venues[i].VerifiedAt = &at
+		}
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -513,8 +556,10 @@ func (h *Handler) HandleGetVenue(w http.ResponseWriter, r *http.Request) {
 	if !h.redactForeignVenueContacts(w, r, orgread.New(ctx, h.membershipQueries), v.OrgID, &resp) {
 		return
 	}
+	one := []venueResponse{resp}
+	h.hydrateVenueReview(ctx, one)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"venue": resp,
+		"venue": one[0],
 	})
 }
 
@@ -573,6 +618,7 @@ func (h *Handler) HandleListVenuesByOrg(w http.ResponseWriter, r *http.Request) 
 	for _, v := range rows {
 		result = append(result, venueFromRow(v))
 	}
+	h.hydrateVenueReview(ctx, result)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"venues": result})
 }
 
@@ -896,6 +942,22 @@ func (h *Handler) HandleDeleteVenue(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := h.venueQueries.WithTx(tx)
+
+	// A verified venue may hold other organizations' dates: it cannot vanish
+	// under them (migration 0172).
+	if foreign, err := qtx.CountForeignSessionsAtVenue(ctx, venueID, orgID); err != nil {
+		h.logger.Error("venue: foreign session check failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"venue.delete_failed", "failed to delete venue", r,
+		))
+		return
+	} else if foreign > 0 {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"venue.in_use_by_other_org", "other organizations hold dates at this venue, it cannot be deleted", r,
+			map[string]any{"sessions": foreign},
+		))
+		return
+	}
 
 	deleted, err := qtx.SoftDeleteVenue(ctx, venueID, orgID)
 	if err != nil {

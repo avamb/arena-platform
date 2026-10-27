@@ -104,6 +104,7 @@ var wizardKeys = []string{
 	"bot.wz.err_city_name",
 	"bot.wz.ask_venue",
 	"bot.wz.venue_new",
+	"bot.wz.venue_shared_note",
 	"bot.wz.ask_venue_name",
 	"bot.wz.err_venue_name",
 	"bot.wz.ask_venue_address",

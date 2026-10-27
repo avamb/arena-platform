@@ -343,12 +343,16 @@ type VenueSessionContextRow struct {
 	// geography (city.currency_override -> city country -> venues.country),
 	// or nil when the venue has no resolvable geography.
 	DerivedCurrency *string `json:"derived_currency"`
+	// Verified is true for a venue the platform operator verified: every
+	// organization may use it (migration 0172), its owner stays its editor.
+	Verified bool `json:"verified"`
 }
 
 const getVenueSessionContext = `-- name: GetVenueSessionContext :one
 SELECT v.org_id,
        v.capacity_default,
-       COALESCE(ci.currency_override, cc.currency, vc.currency)::text AS derived_currency
+       COALESCE(ci.currency_override, cc.currency, vc.currency)::text AS derived_currency,
+       (v.review_status = 'verified') AS verified
 FROM   venues v
 LEFT JOIN cities    ci ON ci.id   = v.city_id
 LEFT JOIN countries cc ON cc.id   = ci.country_id
@@ -362,7 +366,7 @@ WHERE  v.id = $1
 func (q *Queries) GetVenueSessionContext(ctx context.Context, id uuid.UUID) (VenueSessionContextRow, error) {
 	row := q.db.QueryRow(ctx, getVenueSessionContext, id)
 	var r VenueSessionContextRow
-	err := row.Scan(&r.OrgID, &r.CapacityDefault, &r.DerivedCurrency)
+	err := row.Scan(&r.OrgID, &r.CapacityDefault, &r.DerivedCurrency, &r.Verified)
 	return r, err
 }
 

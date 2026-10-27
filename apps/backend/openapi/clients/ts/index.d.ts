@@ -2296,6 +2296,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/shared-venues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List venues of other organizations that the platform verified
+         * @description Returns the active venues of OTHER organizations that the platform
+         *     operator verified (migration 0172). Every organization may hold its dates
+         *     at such a venue; only the owner organization edits it. Contacts of a
+         *     foreign venue are never returned. Narrow the list with city_id or country.
+         *     Requires JWT and the "venue.read" permission in the path organization.
+         */
+        get: operations["getV1OrganizationsOrgIdSharedVenues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/venues/{id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Admin - verify a venue for every organization, or take the verification back
+         * @description Sets review_status of a venue. A verified venue is open to every organization: they list it in GET /v1/organizations/{org_id}/shared-venues and hold dates there, while the owner stays its only editor. Requires JWT, venue.curate, a platform superadmin and X-Admin-Reason. Writes an audit row.
+         */
+        patch: operations["patchV1AdminVenuesIdReview"];
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/venues": {
         parameters: {
             query?: never;
@@ -15730,6 +15774,24 @@ export interface components {
              * @example 1200
              */
             capacity_default?: number | null;
+            /**
+             * @description Whether the platform operator verified the venue: `verified` or
+             *     `unverified`. A verified venue is open to every organization
+             *     (their dates may be held there); the owner stays its only editor.
+             *     Only a platform superadmin changes it, through
+             *     `PATCH /v1/admin/venues/{id}/review`. Present on the venue list,
+             *     the venue card and the organization's venue list; the create and
+             *     update answers leave it out.
+             * @example verified
+             */
+            review_status?: string;
+            /**
+             * Format: date-time
+             * @description When the venue was verified. Absent while `review_status` is
+             *     `unverified`.
+             * @example 2026-10-27T10:00:00Z
+             */
+            verified_at?: string;
             /**
              * Format: date-time
              * @description ISO 8601 / RFC 3339 timestamp of row creation
@@ -36503,6 +36565,200 @@ export interface operations {
                 };
             };
             /** @description Venue queries unavailable (database not wired) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSharedVenues: {
+        parameters: {
+            query?: {
+                /** @description Only venues in this city (UUID from GET /v1/geo/cities) */
+                city_id?: string;
+                /** @description Only venues in this country (two-letter ISO 3166-1 code) */
+                country?: string;
+                /** @description Page size, 1 to 200 (default 100) */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization that looks for a venue */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Verified venues of other organizations, by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Venues the organization may use but does not own */
+                        venues: components["schemas"]["VenueItem"][];
+                    };
+                };
+            };
+            /** @description A parameter is not valid (org_id, city_id, country or limit) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller is not a member of the organization or lacks venue.read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patchV1AdminVenuesIdReview: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the venue. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description verified or unverified */
+                    review_status: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The venue with its new review status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: uuid
+                         * @description Id of the venue
+                         */
+                        venue_id: string;
+                        /**
+                         * Format: uuid
+                         * @description Owner organization of the venue
+                         */
+                        org_id: string;
+                        /** @description Name of the venue */
+                        name: string;
+                        /** @description verified or unverified */
+                        review_status: string;
+                        /**
+                         * Format: date-time
+                         * @description When the venue was verified, null when it is not
+                         */
+                        verified_at?: string | null;
+                    };
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue.curate or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Venue not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description review_status is not verified or unverified */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
             503: {
                 headers: {
                     [name: string]: unknown;

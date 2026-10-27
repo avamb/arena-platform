@@ -47,10 +47,12 @@ type VenueImportContextRow struct {
 	OrgID           uuid.UUID `json:"org_id"`
 	Timezone        *string   `json:"timezone"`
 	ExternalBil24ID *string   `json:"external_bil24_id"`
+	// Verified: the venue is open to every organization (migration 0172).
+	Verified bool `json:"verified"`
 }
 
 const getVenueImportContext = `-- name: GetVenueImportContext :one
-SELECT org_id, timezone, external_bil24_id
+SELECT org_id, timezone, external_bil24_id, (review_status = 'verified')
 FROM   venues
 WHERE  id = $1
   AND  deleted_at IS NULL`
@@ -61,7 +63,7 @@ WHERE  id = $1
 func (q *Queries) GetVenueImportContext(ctx context.Context, id uuid.UUID) (VenueImportContextRow, error) {
 	row := q.db.QueryRow(ctx, getVenueImportContext, id)
 	var r VenueImportContextRow
-	err := row.Scan(&r.OrgID, &r.Timezone, &r.ExternalBil24ID)
+	err := row.Scan(&r.OrgID, &r.Timezone, &r.ExternalBil24ID, &r.Verified)
 	return r, err
 }
 
