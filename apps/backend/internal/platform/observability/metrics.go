@@ -302,6 +302,14 @@ type Metrics struct {
 	// Metric name: arena_short_link_total.
 	ShortLinkTotal *prometheus.CounterVec
 
+	// TelegramMiniappLoginTotal counts requests of the Telegram Mini App
+	// sign-in (POST /v1/auth/telegram-miniapp) by a closed outcome set (ok,
+	// invalid, expired, not_linked, forbidden, not_configured, rate_limited,
+	// error). Task S3b.
+	//
+	// Metric name: arena_auth_telegram_miniapp_login_total.
+	TelegramMiniappLoginTotal *prometheus.CounterVec
+
 	// IdempotencyCleanupDeletedTotal counts idempotency_keys rows deleted by
 	// the scheduled maintenance job (job_type='idempotency.cleanup'). Each
 	// cleanup run adds the number of rows purged. A rising value confirms the
@@ -523,6 +531,16 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 			[]string{LabelOutcome},
 		),
 
+		TelegramMiniappLoginTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: MetricsNamespace,
+				Subsystem: subsystemAuth,
+				Name:      "telegram_miniapp_login_total",
+				Help:      "Total Telegram Mini App sign-in requests, by outcome (ok, invalid, expired, not_linked, forbidden, not_configured, rate_limited, error).",
+			},
+			[]string{LabelOutcome},
+		),
+
 		RefundProviderCallsTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: MetricsNamespace,
@@ -557,6 +575,7 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 		m.EmailWebhookRejectedTotal,
 		m.PageTrackTotal,
 		m.ShortLinkTotal,
+		m.TelegramMiniappLoginTotal,
 	} {
 		if err := reg.Register(c); err != nil {
 			// If a peer test already registered the same metric on the

@@ -96,6 +96,7 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/auth/step-up", flatOwnAccount, "the caller's own password, checked against the caller's own account"},
 	{"POST", "/v1/auth/password-reset/confirm", flatPublic, "credentials in the request body"},
 	{"POST", "/v1/auth/web/link", flatPublic, "a one-time code from the bot in the request body, bound to one person"},
+	{"POST", "/v1/auth/telegram-miniapp", flatPublic, "Telegram-signed launch data in the request body, bound to the person the bot linked to that account"},
 	{"POST", "/v1/auth/web-sessions/revoke", flatOwnAccount, "ends the caller's own web sessions only"},
 	{"POST", "/v1/auth/password-reset/request", flatPublic, "credentials in the request body"},
 	{"POST", "/v1/auth/refresh", flatPublic, "credentials in the request body"},
