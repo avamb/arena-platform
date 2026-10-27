@@ -250,6 +250,20 @@ var orgIsolationAuditedSafe = map[string]string{
 	// foreign session and expects 404.
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms": "seat layout",
 	"POST /v1/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest":   "seat layout",
+	// S1d saved layouts and plan annotations (seating_layout_store_shims.go):
+	// the shim checks the membership of the path organization; hseating then
+	// loads the plan (the organization's own, or shared) and every layout
+	// query is scoped by (id, org_id, plan_id); the apply route also runs
+	// requireSessionInPathOrg and reads the layout by (id, org_id).
+	// Covered by TestS1d_LayoutRoutesStayInsideTheOrganization.
+	"GET /v1/organizations/{org_id}/seating-plans/{plan_id}/layouts":                "seat layouts",
+	"POST /v1/organizations/{org_id}/seating-plans/{plan_id}/layouts":               "seat layouts",
+	"GET /v1/organizations/{org_id}/seating-plans/{plan_id}/layouts/{layout_id}":    "seat layouts",
+	"PATCH /v1/organizations/{org_id}/seating-plans/{plan_id}/layouts/{layout_id}":  "seat layouts",
+	"DELETE /v1/organizations/{org_id}/seating-plans/{plan_id}/layouts/{layout_id}": "seat layouts",
+	"GET /v1/organizations/{org_id}/seating-plans/{plan_id}/annotations":            "seat layouts",
+	"PATCH /v1/organizations/{org_id}/seating-plans/{plan_id}/annotations":          "seat layouts",
+	"POST /v1/organizations/{org_id}/sessions/{session_id}/layouts/apply":           "seat layouts",
 	// hcatalog test letter of the event's own text (task 7-1,
 	// event_email_note.go): requireEventInOrg runs before anything is read or
 	// queued. event_email_note_integration_test.go drives a foreign event.

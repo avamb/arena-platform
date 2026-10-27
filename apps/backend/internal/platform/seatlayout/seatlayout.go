@@ -299,7 +299,13 @@ func ApplyBatchTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in BatchInpu
 	if err != nil {
 		return Batch{}, err
 	}
+	return applyChangesLocked(ctx, tx, txq, version, orgID, in)
+}
 
+// applyChangesLocked is ApplyBatchTx after the sessions row lock: check the
+// categories, lock the seats, decide, write. ApplyLayout calls it too, with
+// the changes it built under the same lock.
+func applyChangesLocked(ctx context.Context, tx pgx.Tx, txq *gen.Queries, version int64, orgID uuid.UUID, in BatchInput) (Batch, error) {
 	tierIDs := distinctTierIDs(in.Changes)
 	if len(tierIDs) > 0 {
 		live, err := txq.ListActiveSessionTierIDs(ctx, in.SessionID, tierIDs)

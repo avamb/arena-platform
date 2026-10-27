@@ -106,6 +106,9 @@ func (s *Server) mountSeatingRoutes(r chi.Router) {
 	// S1c: seat batches (apply, list, revert, per-seat history).
 	s.mountSeatBatchRoutes(r)
 
+	// S1d: saved layouts, applying one to a session, plan annotations.
+	s.mountSeatLayoutStoreRoutes(r)
+
 	// S1e: the seat-layout allocator (spec 26 §4.1). Read-only: the list of
 	// algorithms with their parameter schemas, and a proposal that writes
 	// nothing. Same gate as the seat routes above, session.seats.manage (S1f).

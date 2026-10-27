@@ -96,6 +96,9 @@ type tierResponse struct {
 	// OpenAPI schema long before the handler filled them.
 	CurrentPrice      *int64  `json:"current_price,omitempty"`
 	NextPriceChangeAt *string `json:"next_price_change_at,omitempty"`
+	// Color is the category's own #rrggbb colour on the seat map (migration
+	// 0171); null = use the colour of the geometry category.
+	Color *string `json:"color"`
 }
 
 // TierResponse is the exported alias of tierResponse for use by the httpserver
@@ -153,6 +156,8 @@ type createTierRequest struct {
 	SaleWindowStart *string `json:"sale_window_start"`
 	SaleWindowEnd   *string `json:"sale_window_end"`
 	SortOrder       int32   `json:"sort_order"`
+	// Color is the category's #rrggbb colour on the seat map; empty = none.
+	Color optionalString `json:"color"`
 }
 
 func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
@@ -276,6 +281,11 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	newColor, setNewColor, ok := parseTierColor(w, r, req.Color)
+	if !ok {
+		return
+	}
+
 	// The session must be this organization's (after the cheap 400s above).
 	if !h.requireSessionInOrg(w, r, sessionID, orgID) {
 		return
@@ -322,6 +332,11 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 			return insErr
 		}
 		tier = row
+		if setNewColor && newColor != nil {
+			if _, err := txq.SetTicketTierColor(ctx, row.ID, sessionID, newColor); err != nil {
+				return err
+			}
+		}
 		if quantity <= 0 {
 			// No quantity and none derivable: the tier is a pure pricing /
 			// geometry-mapping row (a seated session's category before its
@@ -352,7 +367,7 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
-		"tier": tierFromRow(tier),
+		"tier": h.withColor(ctx, tierFromRow(tier)),
 	})
 }
 
@@ -489,9 +504,20 @@ func (h *Handler) HandleListTiers(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("tier: effective prices failed (non-fatal)", slog.String("error", effErr.Error()))
 	}
 
+	// Category colours, one round trip for the whole list. Non-fatal: a
+	// failure leaves every colour null.
+	colors, colorErr := h.tierQueries.ListSessionTierColors(ctx, sessionID)
+	if colorErr != nil {
+		h.logger.Warn("tier: colours failed (non-fatal)", slog.String("error", colorErr.Error()))
+	}
+
 	result := make([]tierResponse, 0, len(rows))
 	for _, t := range rows {
 		tr := tierFromRow(t)
+		if c, ok := colors[t.ID]; ok {
+			cc := c
+			tr.Color = &cc
+		}
 		if eff, ok := effective[t.ID]; ok && effErr == nil {
 			amount := eff.Amount
 			tr.CurrentPrice = &amount
@@ -614,7 +640,7 @@ func (h *Handler) HandleGetTier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"tier": tierFromRow(tier),
+		"tier": h.withColor(ctx, tierFromRow(tier)),
 	})
 }
 
@@ -653,6 +679,9 @@ type updateTierRequest struct {
 	// sold stays untouched and an order already placed can still be paid.
 	// Optional — omitting the key leaves the flag alone.
 	IsOpen *bool `json:"is_open"`
+	// Color is the category's #rrggbb colour on the seat map: absent keeps
+	// it, null or "" clears it, a value sets it (migration 0171).
+	Color optionalString `json:"color"`
 }
 
 func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
@@ -721,6 +750,11 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 			"tier.invalid_capacity", "capacity must be greater than 0", r,
 			map[string]any{"field": "capacity"},
 		))
+		return
+	}
+
+	newColor, setColor, ok := parseTierColor(w, r, req.Color)
+	if !ok {
 		return
 	}
 
@@ -852,6 +886,11 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 			return updErr
 		}
 		updated = row
+		if setColor {
+			if _, err := txq.SetTicketTierColor(ctx, tierID, sessionID, newColor); err != nil {
+				return err
+			}
+		}
 		if req.IsOpen != nil && *req.IsOpen != row.IsOpen {
 			if err := gaquota.SetOpen(ctx, txq, sessionID, tierID, *req.IsOpen); err != nil {
 				return err
@@ -916,7 +955,7 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"tier": tierFromRow(updated),
+		"tier": h.withColor(ctx, tierFromRow(updated)),
 	})
 }
 
@@ -1184,7 +1223,7 @@ func (h *Handler) HandleDeleteTier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"tier":    tierFromRow(deleted),
+		"tier":    h.withColor(ctx, tierFromRow(deleted)),
 		"deleted": true,
 	})
 }
