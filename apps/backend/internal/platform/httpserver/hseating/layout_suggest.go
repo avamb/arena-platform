@@ -12,8 +12,10 @@
 // the seat-batch route of S1d, and the algorithm's id and parameters are
 // stored with a saved layout there.
 //
-// Until S1d stores seating_plans.annotations, the annotations (stage,
-// section weights, obstructed seats) arrive in the request body.
+// The annotations (stage, section weights, obstructed seats) are the ones a
+// request carries; a request without any uses the ones stored with the plan
+// (seating_plans.annotations, task S1d), pruned to what the session's plan
+// version still has.
 //
 // The shim (seating_shims.go) has already checked membership of {org_id}
 // and that the session belongs to it.
@@ -62,17 +64,27 @@ type LayoutSuggestRequest struct {
 	Annotations *layoutgen.Annotations     `json:"annotations"`
 }
 
+// Where the annotations of a suggestion came from.
+const (
+	annotationsFromRequest = "request"
+	annotationsFromPlan    = "plan"
+	annotationsFromNone    = "none"
+)
+
 // LayoutSuggestResponse is the answer of suggest.
 type LayoutSuggestResponse struct {
-	SessionID            string            `json:"session_id"`
-	Algorithm            string            `json:"algorithm"`
-	Params               layoutgen.Values  `json:"params"`
-	Currency             string            `json:"currency"`
-	SeatingPlanVersionID string            `json:"seating_plan_version_id"`
-	GeometryChecksum     string            `json:"geometry_checksum"`
-	SeatStatusVersion    int64             `json:"seat_status_version"`
-	Layout               layoutgen.Layout  `json:"layout"`
-	Metrics              layoutgen.Metrics `json:"metrics"`
+	SessionID            string           `json:"session_id"`
+	Algorithm            string           `json:"algorithm"`
+	Params               layoutgen.Values `json:"params"`
+	Currency             string           `json:"currency"`
+	SeatingPlanVersionID string           `json:"seating_plan_version_id"`
+	GeometryChecksum     string           `json:"geometry_checksum"`
+	// AnnotationsSource is "request" when the body carried annotations,
+	// "plan" when the ones stored with the plan were used, "none" otherwise.
+	AnnotationsSource string            `json:"annotations_source"`
+	SeatStatusVersion int64             `json:"seat_status_version"`
+	Layout            layoutgen.Layout  `json:"layout"`
+	Metrics           layoutgen.Metrics `json:"metrics"`
 }
 
 // LayoutAlgorithmItems lists the process-wide registry.
@@ -169,8 +181,10 @@ func (h *Handler) HandleSuggestLayout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var ann layoutgen.Annotations
+	annSource := annotationsFromNone
 	if req.Annotations != nil {
 		ann = *req.Annotations
+		annSource = annotationsFromRequest
 	}
 	if err := ann.Validate(); err != nil {
 		writeLayoutError(w, r, h.logger, err)
@@ -195,6 +209,12 @@ func (h *Handler) HandleSuggestLayout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Annotations == nil {
+		if stored, ok := h.storedAnnotations(r.Context(), in.planID, in.geometry); ok {
+			ann, annSource = stored, annotationsFromPlan
+		}
+	}
+
 	layout, metrics, err := layoutgen.Run(alg, in.geometry, ann, in.state, values)
 	if err != nil {
 		writeLayoutError(w, r, h.logger, err)
@@ -207,6 +227,7 @@ func (h *Handler) HandleSuggestLayout(w http.ResponseWriter, r *http.Request) {
 		Currency:             in.state.Currency,
 		SeatingPlanVersionID: in.versionID,
 		GeometryChecksum:     in.checksum,
+		AnnotationsSource:    annSource,
 		SeatStatusVersion:    in.seatStatusVersion,
 		Layout:               layout,
 		Metrics:              metrics,
@@ -218,6 +239,7 @@ type layoutInput struct {
 	geometry          seating.Geometry
 	state             layoutgen.SessionState
 	versionID         string
+	planID            uuid.UUID
 	checksum          string
 	seatStatusVersion int64
 }
@@ -265,6 +287,7 @@ func (h *Handler) loadLayoutInput(ctx context.Context, sessionID uuid.UUID) (lay
 		geometry:          g,
 		state:             SessionLayoutState(currency, rows),
 		versionID:         ver.ID.String(),
+		planID:            ver.SeatingPlanID,
 		checksum:          ver.GeometryChecksum,
 		seatStatusVersion: adm.SeatStatusVersion,
 	}, http.StatusOK, nil
@@ -340,4 +363,31 @@ func writeLayoutError(w http.ResponseWriter, r *http.Request, logger *slog.Logge
 			"seat_layout.suggest_failed", "failed to suggest a layout", r,
 		))
 	}
+}
+
+// storedAnnotations reads the annotations stored with a plan and prunes them
+// to the geometry of the version the session uses. ok is false when the plan
+// has none (or they cannot be read: a broken row must not stop a proposal,
+// which then asks for the stage as before).
+func (h *Handler) storedAnnotations(ctx context.Context, planID uuid.UUID, g seating.Geometry) (layoutgen.Annotations, bool) {
+	row, err := h.queries.GetSeatingPlanAnnotations(ctx, planID)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			h.logger.Warn("seating: stored annotations unreadable", slog.String("plan_id", planID.String()), slog.String("error", err.Error()))
+		}
+		return layoutgen.Annotations{}, false
+	}
+	var ann layoutgen.Annotations
+	if err := json.Unmarshal(row.Annotations, &ann); err != nil {
+		h.logger.Warn("seating: stored annotations undecodable", slog.String("plan_id", planID.String()), slog.String("error", err.Error()))
+		return layoutgen.Annotations{}, false
+	}
+	ann = ann.PruneTo(g)
+	if ann.Validate() != nil {
+		return layoutgen.Annotations{}, false
+	}
+	if ann.FocalPoint == nil && len(ann.SectionWeights) == 0 && len(ann.ObstructedSeatKeys) == 0 {
+		return layoutgen.Annotations{}, false
+	}
+	return ann, true
 }

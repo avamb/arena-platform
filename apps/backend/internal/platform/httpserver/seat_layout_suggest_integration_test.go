@@ -68,12 +68,15 @@ func (s1eFlat) Suggest(g seating.Geometry, _ layoutgen.Annotations, st layoutgen
 func init() { layoutgen.Register(s1eFlat{}) }
 
 type s1eEnv struct {
-	ts                 *httptest.Server
-	pool               *pgxpool.Pool
-	orgA, orgB         uuid.UUID
-	owner, mgr, agent  string
-	foreignOwner       string
-	seated, gaSession  uuid.UUID
+	ts                *httptest.Server
+	pool              *pgxpool.Pool
+	orgA, orgB        uuid.UUID
+	owner, mgr, agent string
+	foreignOwner      string
+	seated, gaSession uuid.UUID
+	// plan, event and tier are the seated session's plan, event and its one
+	// category ("Hall"); the S1d tests address them.
+	plan, event, tier  uuid.UUID
 	geometry           seating.Geometry
 	soldWithOrder      []string
 	soldUpstream, held []string
@@ -144,6 +147,7 @@ func newS1eEnv(t *testing.T) *s1eEnv {
 	venue, event, channel := uuid.New(), uuid.New(), uuid.New()
 	plan, version, tier := uuid.New(), uuid.New(), uuid.New()
 	e.seated, e.gaSession = uuid.New(), uuid.New()
+	e.plan, e.event, e.tier = plan, event, tier
 	start := time.Now().UTC().Add(96 * time.Hour).Truncate(time.Hour)
 
 	t.Cleanup(func() {
@@ -179,6 +183,7 @@ func newS1eEnv(t *testing.T) *s1eEnv {
 		plan, venue, e.orgA, "Akropolis "+suffix)
 	exec(`INSERT INTO seating_plan_versions (id, seating_plan_id, version_number, geometry, geometry_checksum, capacity_seated, capacity_standing)
 	      VALUES ($1, $2, 1, $3::jsonb, $4, $5, 0)`, version, plan, string(geoJSON), checksum, e.geometry.SeatCount())
+	exec(`UPDATE seating_plans SET current_version_id = $2 WHERE id = $1`, plan, version)
 	exec(`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, status, currency, currency_source, admission_mode, seating_plan_version_id)
 	      VALUES ($1, $2, $3, $4, $4::timestamptz + interval '2 hours', $5, 'scheduled', 'CZK', 'override', 'assigned_seats', $6)`,
 		e.seated, event, venue, start, e.geometry.SeatCount(), version)
