@@ -77,6 +77,13 @@ DATABASE_URL=<чистая база по рецепту CI из AGENTS.md> \
 software house (`tech@payplus.co.il`). Тестовые карты: 5326-1402-8077-9844
 (успех), 5326-1402-0001-0120 (отказ), 05/30, CVV 000.
 
+Ручной зонд (создаёт одну неоплаченную ссылку, печатает сырые ответы, ключи не
+печатает):
+
+```
+PAYPLUS_TEST_API_KEY=... PAYPLUS_TEST_SECRET_KEY=... PAYPLUS_TEST_PAGE_UID=...   go.exe test -tags paypluslive -run TestPayPlusLive -v ./apps/backend/internal/adapters/payplus/
+```
+
 1. **Байты подписи.** Поймать настоящий колбэк и посмотреть, какой вариант
    совпал: raw, compact или js_stringify (`payplus.VerifyHash` возвращает
    вариант). Если всегда raw — fallback-и можно убрать. Отдельно проверить
