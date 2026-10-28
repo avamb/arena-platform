@@ -138,13 +138,6 @@ func (r *Report) Write(w io.Writer) {
 	}
 	writeCounter(w, "settings", &r.Settings, r.DryRun)
 	writeCounter(w, "products", &r.Products, r.DryRun)
-	if len(r.SkippedByStatus) > 0 {
-		var parts []string
-		for _, k := range sortedKeys(r.SkippedByStatus) {
-			parts = append(parts, fmt.Sprintf("%s %d", k, r.SkippedByStatus[k]))
-		}
-		fmt.Fprintf(w, "               not selected by status: %s\n", strings.Join(parts, ", "))
-	}
 	writeCounter(w, "variants", &r.Variants, r.DryRun)
 	writeCounter(w, "images", &r.Images, r.DryRun)
 	writeCounter(w, "pages", &r.Pages, r.DryRun)

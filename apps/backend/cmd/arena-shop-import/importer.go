@@ -320,8 +320,10 @@ func (im *Importer) ImportProducts(ctx context.Context, pf *ProductsFile) {
 	}
 	keep, skipped := SelectProducts(pf.Products, im.opt.IncludeDrafts)
 	im.rep.SkippedByStatus = skipped
-	for n := range skipped {
-		im.rep.Products.add(outSkipped, "status "+n+" (use --include-drafts)")
+	for status, n := range skipped {
+		for i := 0; i < n; i++ {
+			im.rep.Products.add(outSkipped, "status "+status+" (use --include-drafts)")
+		}
 	}
 	for _, p := range keep {
 		for _, w := range p.Warnings {
@@ -460,6 +462,7 @@ func (im *Importer) syncImages(ctx context.Context, productID uuid.UUID, p Impor
 	}
 	imgs := append([]ImportImage(nil), p.Images...)
 	sort.SliceStable(imgs, func(i, j int) bool { return imgs[i].Position < imgs[j].Position })
+	listed := map[string]bool{}
 	for _, img := range imgs {
 		pos := img.Position - 1
 		if pos < 0 {
@@ -471,6 +474,11 @@ func (im *Importer) syncImages(ctx context.Context, productID uuid.UUID, p Impor
 			im.rep.MissingImages = append(im.rep.MissingImages, fmt.Sprintf("%s: %s (%v)", p.Handle, fileName(img.Src), err))
 			continue
 		}
+		if listed[data.Checksum] {
+			im.rep.Images.add(outSkipped, "the same picture is listed twice for a product")
+			continue
+		}
+		listed[data.Checksum] = true
 		if row, ok := byChecksum[data.Checksum]; ok {
 			if row.Position == pos && row.Alt == img.Alt {
 				im.rep.Images.add(outUnchanged, "")
