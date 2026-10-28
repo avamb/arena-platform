@@ -58,6 +58,10 @@ type imageJSON struct {
 	URL      string `json:"url"`
 	Position int32  `json:"position"`
 	Alt      string `json:"alt"`
+	// Width and Height are the picture's pixel size, for the card's aspect
+	// before it loads; absent when unknown.
+	Width  *int32 `json:"width,omitempty"`
+	Height *int32 `json:"height,omitempty"`
 }
 
 // variantJSON is one variant as the organization sees it.
@@ -115,7 +119,8 @@ func (h *Handler) images(ctx context.Context, rows []gen.ShopProductImageRow) []
 		if h.o.MediaURL != nil {
 			url = h.o.MediaURL(ctx, i.MediaID)
 		}
-		out = append(out, imageJSON{MediaID: i.MediaID.String(), URL: url, Position: i.Position, Alt: i.Alt})
+		out = append(out, imageJSON{MediaID: i.MediaID.String(), URL: url, Position: i.Position, Alt: i.Alt,
+			Width: i.Width, Height: i.Height})
 	}
 	return out
 }

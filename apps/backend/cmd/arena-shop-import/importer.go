@@ -538,6 +538,22 @@ func (im *Importer) syncImages(ctx context.Context, productID uuid.UUID, p Impor
 			byChecksum[obj.ChecksumSHA256] = h
 		}
 	}
+	// A re-run also fills the pixel size of pictures stored before it was
+	// recorded: the bytes were read again anyway, to recognise them.
+	fillSize := func(row gen.ShopProductImageRow, d imageData) {
+		if row.Width != nil && row.Height != nil {
+			return
+		}
+		w, h := mediastore.ImageDimensions(bytes.NewReader(d.Body))
+		if w == nil || h == nil {
+			return
+		}
+		if filled, err := im.media.SetDimensionsIfMissing(ctx, row.MediaID, *w, *h); err != nil {
+			im.log.Warn("recording a picture's size failed", "media_id", row.MediaID.String(), "error", err.Error())
+		} else if filled {
+			im.rep.Images.add("", "picture size filled in")
+		}
+	}
 	imgs := append([]ImportImage(nil), p.Images...)
 	sort.SliceStable(imgs, func(i, j int) bool { return imgs[i].Position < imgs[j].Position })
 	listed := map[string]bool{}
@@ -558,6 +574,7 @@ func (im *Importer) syncImages(ctx context.Context, productID uuid.UUID, p Impor
 		}
 		listed[data.Checksum] = true
 		if row, ok := byChecksum[data.Checksum]; ok {
+			fillSize(row, data)
 			if row.Position == pos && row.Alt == img.Alt {
 				im.rep.Images.add(outUnchanged, "")
 				continue
@@ -596,9 +613,11 @@ func (im *Importer) upload(ctx context.Context, productID uuid.UUID, d imageData
 		return uuid.Nil, errors.New("storage returned a different checksum than the bytes read")
 	}
 	org := im.opt.OrgID
+	width, height := mediastore.ImageDimensions(bytes.NewReader(d.Body))
 	obj, err := im.media.Insert(ctx, mediastore.InsertInput{
 		OrgID: &org, OwnerType: shopOwnerType, OwnerID: &productID, StorageBackend: im.media.Backend(),
 		StorageKey: key, ContentType: d.ContentType, ByteSize: size, ChecksumSHA256: sum,
+		Width: width, Height: height,
 	})
 	if err != nil {
 		return uuid.Nil, err

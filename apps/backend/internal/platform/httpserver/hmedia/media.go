@@ -196,6 +196,17 @@ func (h *Handler) CreateMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A picture's pixel size, read from its header (the upload is a
+	// seekable multipart file, so the bytes are read again from the start).
+	// The storefront reserves a card's aspect from it; a file that is not a
+	// readable picture simply has none.
+	var width, height *int32
+	if strings.HasPrefix(contentType, "image/") {
+		if _, serr := file.Seek(0, io.SeekStart); serr == nil {
+			width, height = mediastore.ImageDimensions(file)
+		}
+	}
+
 	obj, err := h.media.Insert(ctx, mediastore.InsertInput{
 		OrgID:          orgID,
 		OwnerType:      ownerType,
@@ -205,6 +216,8 @@ func (h *Handler) CreateMedia(w http.ResponseWriter, r *http.Request) {
 		ContentType:    contentType,
 		ByteSize:       size,
 		ChecksumSHA256: checksum,
+		Width:          width,
+		Height:         height,
 	})
 	if err != nil {
 		_ = h.media.Storage().Delete(ctx, key)
