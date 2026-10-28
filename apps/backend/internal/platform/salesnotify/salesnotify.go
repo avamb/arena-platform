@@ -15,6 +15,12 @@
 // whenever ANOTHER leg fails, every announcement is claimed once in
 // sales_notification_deliveries ('paid:<order>', 'refund:<ticket>').
 //
+// A subscription also says which announcements it hears (kinds, migration
+// 0173): "tickets" for the sales and refunds above, "shop" for the
+// merchandise shop's v1.shop.order.paid / v1.shop.order.refunded (shop.go,
+// claimed as shop_paid:<order> / shop_refund:<order>:<refunded so far>). One
+// chat is one row, so the logistics group is a row with kinds {shop}.
+//
 // It posts through its own bot (SALES_TELEGRAM_BOT_TOKEN), so organizers
 // never see the operator alerts the ops watchdog's bot sends.
 package salesnotify
@@ -42,6 +48,17 @@ const (
 	// EventScanExceptionGranted: a platform superadmin allowed one refund of
 	// a ticket that was already scanned. Routed like a refund.
 	EventScanExceptionGranted = "v1.refund.scan_exception_granted"
+	// EventShopOrderPaid / EventShopOrderRefunded: a merchandise shop order
+	// was paid or had money returned (internal/platform/shop). Routed to the
+	// subscriptions whose kinds include "shop".
+	EventShopOrderPaid     = "v1.shop.order.paid"
+	EventShopOrderRefunded = "v1.shop.order.refunded"
+)
+
+// Subscription kinds (sales_notification_subscriptions.kinds, migration 0173).
+const (
+	KindTickets = "tickets"
+	KindShop    = "shop"
 )
 
 // queueSize bounds the events waiting for Telegram. A burst beyond it is
@@ -54,6 +71,10 @@ type Trigger int
 const (
 	TriggerOrderPaid Trigger = iota
 	TriggerTicketRefunded
+	// TriggerShopOrderPaid / TriggerShopOrderRefunded are the shop's own
+	// triggers: they reach only subscriptions of kind "shop".
+	TriggerShopOrderPaid
+	TriggerShopOrderRefunded
 )
 
 // Subscription is one allowed row of sales_notification_subscriptions.
@@ -67,6 +88,23 @@ type Subscription struct {
 	// OnEventChanges: "event published / event changed" messages
 	// (migration 0124). Only an operator subscription ever gets them.
 	OnEventChanges bool
+	// Kinds says which announcements the chat hears (KindTickets,
+	// KindShop). Empty means tickets only, the meaning of every row created
+	// before migration 0173.
+	Kinds []string
+}
+
+// Hears reports whether the subscription listens to kind.
+func (s Subscription) Hears(kind string) bool {
+	if len(s.Kinds) == 0 {
+		return kind == KindTickets
+	}
+	for _, k := range s.Kinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
 }
 
 // RouteEventChanges returns the subscriptions that receive the "event
@@ -82,16 +120,32 @@ func RouteEventChanges(subs []Subscription) []Subscription {
 	return out
 }
 
-// Route returns the subscriptions that must receive trigger for orgID.
+// Route returns the subscriptions that must receive trigger for orgID. A
+// ticket trigger reaches subscriptions of kind "tickets", a shop trigger
+// those of kind "shop"; the per-chat paid / refunded switches apply to both.
 func Route(subs []Subscription, orgID string, trigger Trigger) []Subscription {
 	var out []Subscription
 	for _, s := range subs {
 		if s.OrgID != "" && s.OrgID != orgID {
 			continue
 		}
-		if (trigger == TriggerOrderPaid && s.OnOrderPaid) ||
-			(trigger == TriggerTicketRefunded && s.OnTicketRefunded) {
-			out = append(out, s)
+		switch trigger {
+		case TriggerOrderPaid:
+			if s.Hears(KindTickets) && s.OnOrderPaid {
+				out = append(out, s)
+			}
+		case TriggerTicketRefunded:
+			if s.Hears(KindTickets) && s.OnTicketRefunded {
+				out = append(out, s)
+			}
+		case TriggerShopOrderPaid:
+			if s.Hears(KindShop) && s.OnOrderPaid {
+				out = append(out, s)
+			}
+		case TriggerShopOrderRefunded:
+			if s.Hears(KindShop) && s.OnTicketRefunded {
+				out = append(out, s)
+			}
 		}
 	}
 	return out
@@ -104,6 +158,8 @@ var ErrNotFound = errors.New("salesnotify: not found")
 type Store interface {
 	Subscriptions(ctx context.Context) ([]Subscription, error)
 	SaleByOrder(ctx context.Context, orderID string) (Sale, error)
+	// ShopOrder reads one merchandise shop order of the organization.
+	ShopOrder(ctx context.Context, orgID, orderID string) (ShopOrder, error)
 	RefundByTicket(ctx context.Context, ticketID string) (Refund, error)
 	// Claim records key and reports whether this call was the first.
 	Claim(ctx context.Context, key string) (bool, error)
@@ -162,7 +218,8 @@ func (d *Dispatcher) Dispatch(_ context.Context, ev outbox.Event) error {
 		return nil
 	}
 	switch ev.EventType {
-	case EventOrderPaid, EventTicketRefunded, EventTicketCancelled, EventRefundBlockedScanned, EventScanExceptionGranted:
+	case EventOrderPaid, EventTicketRefunded, EventTicketCancelled, EventRefundBlockedScanned, EventScanExceptionGranted,
+		EventShopOrderPaid, EventShopOrderRefunded:
 	default:
 		return nil
 	}
@@ -231,6 +288,8 @@ func (d *Dispatcher) Handle(ctx context.Context, ev outbox.Event) {
 // compose loads what the event is about and renders the message.
 func (d *Dispatcher) compose(ctx context.Context, ev outbox.Event) (key string, trigger Trigger, text, orgID string, err error) {
 	switch ev.EventType {
+	case EventShopOrderPaid, EventShopOrderRefunded:
+		return d.composeShop(ctx, ev)
 	case EventOrderPaid:
 		id := payloadString(ev.Payload, "order_id", ev.AggregateID)
 		sale, err := d.store.SaleByOrder(ctx, id)
@@ -308,7 +367,9 @@ func (d *Dispatcher) AnnounceToOrg(ctx context.Context, orgID, text string) (cha
 		return 0, 0, err
 	}
 	for _, sub := range subs {
-		if sub.OrgID == orgID {
+		// A shop-only chat (the logistics group) is not where a buyer's
+		// message to the organizer belongs.
+		if sub.OrgID == orgID && sub.Hears(KindTickets) {
 			chats++
 			if d.deliver(ctx, sub, text) == nil {
 				delivered++
