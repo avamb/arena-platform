@@ -155,7 +155,17 @@ export type ApiErrorStem =
   | "seatTooMany"
   | "seatTierGone"
   | "seatStageNeeded"
-  | "seatNoPlan";
+  | "seatNoPlan"
+  // The shop (spec 47)
+  | "shopStockChanged"
+  | "shopDuplicateSlug"
+  | "shopVariantsInvalid"
+  | "shopMediaInvalid"
+  | "shopNotShippable"
+  | "shopNotCancellable"
+  | "shopNotRefundable"
+  | "shopRefundAmount"
+  | "shopCurrency";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -187,6 +197,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "emailNoteEmpty", "emailNoteRateLimited", "textRefused",
   // S2b/S2c
   "seatNothingToRevert", "seatTooMany", "seatTierGone", "seatStageNeeded", "seatNoPlan",
+  // The shop (spec 47)
+  "shopStockChanged", "shopDuplicateSlug", "shopVariantsInvalid", "shopMediaInvalid", "shopNotShippable", "shopNotCancellable", "shopNotRefundable", "shopRefundAmount", "shopCurrency",
 ];
 
 /**
@@ -320,6 +332,20 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "session.change_message_invalid": "textRefused",
   "text.too_long": "textRefused",
   "text.invalid": "textRefused",
+  // The shop (spec 47)
+  "shop.stock_changed": "shopStockChanged",
+  "shop.duplicate_slug": "shopDuplicateSlug",
+  "shop.invalid_variants": "shopVariantsInvalid",
+  "shop.invalid_variant": "shopVariantsInvalid",
+  "shop.invalid_media": "shopMediaInvalid",
+  "shop.order_not_shippable": "shopNotShippable",
+  "shop.order_not_cancellable": "shopNotCancellable",
+  "shop.order_not_refundable": "shopNotRefundable",
+  "shop.nothing_to_refund": "refundNothing",
+  "shop.invalid_refund_amount": "shopRefundAmount",
+  "shop.invalid_currency": "shopCurrency",
+  "shop.invalid_body_html": "textRefused",
+  "shop.text_too_long": "textRefused",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",
