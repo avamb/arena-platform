@@ -16482,7 +16482,7 @@ type StaffInvitationCancelResponse struct {
 	// OrderId Order id of the invitation.
 	OrderId openapi_types.UUID `json:"order_id"`
 
-	// OrderStatus Order status after the cancellation.
+	// OrderStatus Order status after the cancellation. A cancellation moves no money, so it stays `paid` even when every ticket is cancelled (the invitation is still billed); a client labels a fully cancelled invitation by its active ticket count.
 	OrderStatus string `json:"order_status"`
 
 	// SkippedTicketIds Named tickets that were already not active.
@@ -16557,7 +16557,7 @@ type StaffInvitationIssueResponse struct {
 	// Replayed True when the request_id was already used and this is the first invitation.
 	Replayed bool `json:"replayed"`
 
-	// Status Order status - paid for an issued invitation, cancelled once every ticket is cancelled.
+	// Status Order status - paid for an issued invitation; it stays paid after a cancellation (tickets_status and the ticket counts tell a cancelled invitation).
 	Status string `json:"status"`
 
 	// SystemId Order number shown to people.
@@ -16605,7 +16605,7 @@ type StaffInvitationListItem struct {
 	// Places The places of the invitation.
 	Places []StaffInvitationPlace `json:"places"`
 
-	// Status Order status - paid or cancelled.
+	// Status Order status - paid, also after every ticket is cancelled (an invitation stays billed); tickets_active = 0 marks a fully cancelled invitation.
 	Status string `json:"status"`
 
 	// SystemId Order number shown to people.

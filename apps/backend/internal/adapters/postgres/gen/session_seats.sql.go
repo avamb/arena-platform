@@ -1098,30 +1098,44 @@ func (q *Queries) ReleaseSoldGAUnitBySeatKey(ctx context.Context, sessionID uuid
 }
 
 const getTicketSeatOrigin = `-- name: GetTicketSeatOrigin :one
-SELECT oi.seat_origin
+SELECT (SELECT oi.seat_origin
+        FROM   order_items oi
+        WHERE  oi.order_id = COALESCE(t.order_id,
+                   (SELECT o.id FROM orders o WHERE o.checkout_session_id = t.checkout_session_id LIMIT 1))
+          AND  (oi.ticket_id = t.id
+                OR (oi.ticket_id IS NULL AND oi.session_seat_id IS NOT NULL
+                    AND oi.session_seat_id = (SELECT ss.id FROM session_seats ss
+                                              WHERE ss.session_id = t.session_id
+                                                AND ss.seat_key = t.seat_key)))
+        ORDER  BY (oi.ticket_id = t.id) DESC NULLS LAST
+        LIMIT  1) AS seat_origin,
+       EXISTS (SELECT 1 FROM orders o
+               WHERE  o.issued_via IS NOT NULL
+                 AND  (o.id = t.order_id
+                       OR (t.order_id IS NULL AND o.checkout_session_id = t.checkout_session_id))) AS staff_invitation
 FROM   tickets t
-JOIN   order_items oi ON oi.order_id = t.order_id
-WHERE  t.id = $1
-  AND  (oi.ticket_id = t.id
-        OR (oi.ticket_id IS NULL AND oi.session_seat_id IS NOT NULL
-            AND oi.session_seat_id = (SELECT ss.id FROM session_seats ss
-                                      WHERE ss.session_id = t.session_id
-                                        AND ss.seat_key = t.seat_key)))
-ORDER  BY (oi.ticket_id = t.id) DESC NULLS LAST
-LIMIT  1`
+WHERE  t.id = $1`
 
-// GetTicketSeatOrigin answers order_items.seat_origin of the order line
-// behind a ticket (INV-01): 'unavailable' when an invitation took the
-// place from the organizer's blocked places, 'available' when it came
-// from free stock, nil for a purchase (the column is NULL there).
-// pgx.ErrNoRows when the ticket has no order line (legacy rows) —
-// callers treat both nil and ErrNoRows as 'available'.
-func (q *Queries) GetTicketSeatOrigin(ctx context.Context, ticketID uuid.UUID) (*string, error) {
-	var origin *string
-	if err := q.db.QueryRow(ctx, getTicketSeatOrigin, ticketID).Scan(&origin); err != nil {
-		return nil, err
-	}
-	return origin, nil
+// TicketSeatOrigin is the release target evidence of one ticket (INV-01).
+type TicketSeatOrigin struct {
+	// SeatOrigin is order_items.seat_origin of the ticket's order line:
+	// 'unavailable' when an invitation took the place from the organizer's
+	// blocked places, 'available' when it came from free stock, nil for a
+	// purchase (the column is NULL there) or when no order line matches.
+	SeatOrigin *string
+	// StaffInvitation is true when the ticket's order (by tickets.order_id,
+	// or by its checkout session for a ticket without the link) is a staff
+	// invitation (orders.issued_via IS NOT NULL). Such a ticket MUST carry a
+	// seat origin; a missing one is an inconsistency, never 'available'.
+	StaffInvitation bool
+}
+
+// GetTicketSeatOrigin answers where a ticket's place came from.
+// pgx.ErrNoRows only when the ticket itself does not exist.
+func (q *Queries) GetTicketSeatOrigin(ctx context.Context, ticketID uuid.UUID) (TicketSeatOrigin, error) {
+	var r TicketSeatOrigin
+	err := q.db.QueryRow(ctx, getTicketSeatOrigin, ticketID).Scan(&r.SeatOrigin, &r.StaffInvitation)
+	return r, err
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -512,18 +512,26 @@ RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
 -- spec 46 (INV-01): the status the ticket's seat had before a staff
 -- invitation took it — order_items.seat_origin, matched by ticket_id first
 -- and by (order, seat) for an item that predates the ticket link. NULL for
--- every purchase; the caller then releases to 'available'.
-SELECT oi.seat_origin
+-- every purchase; the caller then releases to 'available'. staff_invitation
+-- tells the caller the ticket belongs to a staff invitation, whose missing
+-- origin is an inconsistency that must abort, never fall back.
+SELECT (SELECT oi.seat_origin
+        FROM   order_items oi
+        WHERE  oi.order_id = COALESCE(t.order_id,
+                   (SELECT o.id FROM orders o WHERE o.checkout_session_id = t.checkout_session_id LIMIT 1))
+          AND  (oi.ticket_id = t.id
+                OR (oi.ticket_id IS NULL AND oi.session_seat_id IS NOT NULL
+                    AND oi.session_seat_id = (SELECT ss.id FROM session_seats ss
+                                              WHERE ss.session_id = t.session_id
+                                                AND ss.seat_key = t.seat_key)))
+        ORDER  BY (oi.ticket_id = t.id) DESC NULLS LAST
+        LIMIT  1) AS seat_origin,
+       EXISTS (SELECT 1 FROM orders o
+               WHERE  o.issued_via IS NOT NULL
+                 AND  (o.id = t.order_id
+                       OR (t.order_id IS NULL AND o.checkout_session_id = t.checkout_session_id))) AS staff_invitation
 FROM   tickets t
-JOIN   order_items oi ON oi.order_id = t.order_id
-WHERE  t.id = $1
-  AND  (oi.ticket_id = t.id
-        OR (oi.ticket_id IS NULL AND oi.session_seat_id IS NOT NULL
-            AND oi.session_seat_id = (SELECT ss.id FROM session_seats ss
-                                      WHERE ss.session_id = t.session_id
-                                        AND ss.seat_key = t.seat_key)))
-ORDER  BY (oi.ticket_id = t.id) DESC NULLS LAST
-LIMIT  1;
+WHERE  t.id = $1;
 
 -- name: CountSessionSeatsByTier :many
 -- AB-48 step 3: per-tier inventory counts for the price forms ("Third:

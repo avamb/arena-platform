@@ -30,7 +30,7 @@ func (s *Server) mountInvitationRoutes(r chi.Router) {
 }
 
 func (s *Server) invitationsHandler() *hinvitations.Handler {
-	return hinvitations.New(s.pool, s.ticketQueries, s.audit, s.logger, s.ticketsHandler().CancelTicketTx)
+	return hinvitations.New(s.pool, s.ticketQueries, s.audit, s.logger, s.ticketsHandler())
 }
 
 func (s *Server) handleIssueInvitation(w http.ResponseWriter, r *http.Request) {

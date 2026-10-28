@@ -13,17 +13,19 @@ import (
 
 type fakeOriginReader struct {
 	origin *string
+	staff  bool
 	err    error
 }
 
-func (f fakeOriginReader) GetTicketSeatOrigin(context.Context, uuid.UUID) (*string, error) {
-	return f.origin, f.err
+func (f fakeOriginReader) GetTicketSeatOrigin(context.Context, uuid.UUID) (gen.TicketSeatOrigin, error) {
+	return gen.TicketSeatOrigin{SeatOrigin: f.origin, StaffInvitation: f.staff}, f.err
 }
 
 func strPtr(s string) *string { return &s }
 
 // TestSeatReleaseTarget_FollowsSeatOrigin pins owner decision R-2 of spec 46:
-// only a place an invitation took from the reserve goes back to the reserve.
+// only a place an invitation took from the reserve goes back to the reserve,
+// and a staff invitation whose origin is missing never falls back to sale.
 func TestSeatReleaseTarget_FollowsSeatOrigin(t *testing.T) {
 	boom := errors.New("connection lost")
 	cases := []struct {
@@ -32,11 +34,13 @@ func TestSeatReleaseTarget_FollowsSeatOrigin(t *testing.T) {
 		want    string
 		wantErr error
 	}{
-		{"from the reserve", fakeOriginReader{origin: strPtr("unavailable")}, gen.SeatReleaseUnavailable, nil},
-		{"from sale", fakeOriginReader{origin: strPtr("available")}, gen.SeatReleaseAvailable, nil},
+		{"from the reserve", fakeOriginReader{origin: strPtr("unavailable"), staff: true}, gen.SeatReleaseUnavailable, nil},
+		{"from sale", fakeOriginReader{origin: strPtr("available"), staff: true}, gen.SeatReleaseAvailable, nil},
 		{"a purchase", fakeOriginReader{origin: nil}, gen.SeatReleaseAvailable, nil},
-		{"legacy ticket without an order line", fakeOriginReader{err: pgx.ErrNoRows}, gen.SeatReleaseAvailable, nil},
-		{"unknown value never closes a seat", fakeOriginReader{origin: strPtr("held")}, gen.SeatReleaseAvailable, nil},
+		{"legacy ticket without a row", fakeOriginReader{err: pgx.ErrNoRows}, gen.SeatReleaseAvailable, nil},
+		{"unknown value never closes a purchase seat", fakeOriginReader{origin: strPtr("held")}, gen.SeatReleaseAvailable, nil},
+		{"invitation without an origin aborts", fakeOriginReader{origin: nil, staff: true}, "", ErrInvitationSeatOriginMissing},
+		{"invitation with an unknown origin aborts", fakeOriginReader{origin: strPtr("held"), staff: true}, "", ErrInvitationSeatOriginMissing},
 		{"lookup failure aborts", fakeOriginReader{err: boom}, "", boom},
 	}
 	for _, tc := range cases {

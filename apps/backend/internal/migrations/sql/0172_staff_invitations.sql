@@ -113,6 +113,15 @@ ALTER TABLE sales_channels
 CREATE UNIQUE INDEX sales_channels_one_internal_per_org_uq
     ON sales_channels (org_id) WHERE kind = 'internal';
 
+-- The hidden channel must never take a name an organizer can see: the name
+-- uniqueness of migration 0010 now covers sales channels only, so an
+-- organization that already sells through a channel called "Invitations"
+-- can still issue invitations, and the hidden channel never blocks (or
+-- reveals itself through a 409 on) a sales channel of that name.
+DROP INDEX IF EXISTS channels_name_org_unique_active;
+CREATE UNIQUE INDEX channels_name_org_unique_active ON sales_channels (org_id, name)
+    WHERE deleted_at IS NULL AND kind = 'sales';
+
 COMMENT ON COLUMN sales_channels.kind IS
     'sales = a channel the organizer sees and sells through; internal = the '
     'hidden channel "Invitations" that staff invitation orders are written '
@@ -135,6 +144,13 @@ WHERE  rp.role_id = r.id
   AND  r.name = 'organizer'
   AND  r.org_id IS NULL
   AND  p.name = 'complimentary.revoke';
+
+DROP INDEX IF EXISTS channels_name_org_unique_active;
+-- Orders point at the hidden channel, so it cannot be deleted: give it a
+-- name no sales channel can share before the old uniqueness comes back.
+UPDATE sales_channels SET name = name || ' ' || id::text WHERE kind = 'internal';
+CREATE UNIQUE INDEX channels_name_org_unique_active ON sales_channels (org_id, name)
+    WHERE deleted_at IS NULL;
 
 DROP INDEX IF EXISTS sales_channels_one_internal_per_org_uq;
 ALTER TABLE sales_channels DROP COLUMN IF EXISTS kind;

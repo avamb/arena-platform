@@ -51,6 +51,17 @@ SET    issued_via = $2,
        updated_at = now()
 WHERE  id = $1;
 
+-- name: SetInvitationOrderCustomer :exec
+-- The guest's customer row, linked only once the order is paid: a pending
+-- link would collide with orders_one_pending_per_customer_session_uq when
+-- the guest has an open purchase on the same session.
+UPDATE orders
+SET    customer_id = $2,
+       updated_at  = now()
+WHERE  id = $1
+  AND  status = 'paid'
+  AND  issued_via IS NOT NULL;
+
 -- name: SetOrderItemsSeatOrigin :exec
 -- Where each line's seat came from: available (sale) or unavailable
 -- (reserve). A cancelled ticket returns its seat there (INV-01).
@@ -64,7 +75,7 @@ WHERE  oi.order_id = $1
 -- The staff invitation an earlier request with the same request_id wrote
 -- (orders.external_ref = 'inv:' || request_id on the internal channel,
 -- unique per channel and so per organization).
-SELECT id, session_id
+SELECT id, session_id, metadata->'invitation'->>'fingerprint' AS fingerprint
 FROM   orders
 WHERE  org_id = $1
   AND  external_ref = $2

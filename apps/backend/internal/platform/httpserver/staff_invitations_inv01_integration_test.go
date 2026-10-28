@@ -143,7 +143,10 @@ func TestINV01_CancelledSeatReturnsToItsOrigin(t *testing.T) {
 	defer dropOrder()
 
 	unavailable, available := "unavailable", "available"
-	origins := []*string{&unavailable, &available, nil, &unavailable}
+	// Every line of a staff invitation carries its origin: a NULL origin is a
+	// purchase (seat_origin_test.go) and an error for an invitation
+	// (TestINV02Review_MissingSeatOriginAbortsTheCancellation).
+	origins := []*string{&unavailable, &available, &available, &unavailable}
 	want := []string{"unavailable", "available", "available", "unavailable"}
 	tickets := make([]uuid.UUID, len(keys))
 	for i, key := range keys {
@@ -222,8 +225,8 @@ func TestINV01_CancelledGAUnitReturnsToItsOrigin(t *testing.T) {
 	orderID, dropOrder := inv01Order(t, ctx, pool, f)
 	defer dropOrder()
 
-	unavailable := "unavailable"
-	origins := []*string{&unavailable, nil}
+	unavailable, available := "unavailable", "available"
+	origins := []*string{&unavailable, &available}
 	want := []string{"unavailable", "available"}
 	for i, u := range held {
 		key := u.SeatKey

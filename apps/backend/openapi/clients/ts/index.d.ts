@@ -7497,9 +7497,10 @@ export interface paths {
          * @description Cancels the named tickets of a staff invitation, or all of them,
          *     with no money involved. Each seat goes back where it came from: a
          *     seat taken from the reserve becomes `unavailable` again, a seat
-         *     taken from sale becomes `available`. The order becomes `cancelled`
-         *     once none of its tickets is active. A manager may cancel an
-         *     invitation issued by the owner.
+         *     taken from sale becomes `available`. Every named ticket is
+         *     cancelled in one transaction, or none is. The order keeps its
+         *     status (`paid`): an invitation stays billed after it is cancelled.
+         *     A manager may cancel an invitation issued by the owner.
          */
         post: operations["cancelStaffInvitation"];
         delete?: never;
@@ -24953,7 +24954,7 @@ export interface components {
              * @description Order number shown to people.
              */
             system_id: number;
-            /** @description Order status - paid for an issued invitation, cancelled once every ticket is cancelled. */
+            /** @description Order status - paid for an issued invitation; it stays paid after a cancellation (tickets_status and the ticket counts tell a cancelled invitation). */
             status: string;
             /** @description Guest name. */
             guest_name?: string | null;
@@ -24993,7 +24994,7 @@ export interface components {
              * @description Order number shown to people.
              */
             system_id: number;
-            /** @description Order status - paid or cancelled. */
+            /** @description Order status - paid, also after every ticket is cancelled (an invitation stays billed); tickets_active = 0 marks a fully cancelled invitation. */
             status: string;
             /** @description Guest name. */
             guest_name?: string | null;
@@ -25040,7 +25041,7 @@ export interface components {
              * @description Order id of the invitation.
              */
             order_id: string;
-            /** @description Order status after the cancellation. */
+            /** @description Order status after the cancellation. A cancellation moves no money, so it stays `paid` even when every ticket is cancelled (the invitation is still billed); a client labels a fully cancelled invitation by its active ticket count. */
             order_status: string;
             /** @description Tickets cancelled by this request. */
             cancelled_ticket_ids: string[];
@@ -55374,7 +55375,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description invitation.seats_taken (details.seat_keys - held or sold seats, including seats sold in an earlier system), invitation.not_enough_places (a GA category has fewer free or reserved places), invitation.capacity_exceeded, invitation.request_id_reused (the request_id was used for another session). */
+            /** @description invitation.seats_taken (details.seat_keys - held or sold seats, including seats sold in an earlier system), invitation.not_enough_places (a GA category has fewer free or reserved places), invitation.capacity_exceeded, invitation.request_id_reused (the request_id was used for another session or with a different request body). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -55475,7 +55476,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description invitation.tickets_not_issued - the tickets are still being issued, try again in a moment. */
+            /** @description invitation.tickets_not_issued - the tickets are still being issued, try again in a moment. invitation.ticket_scanned (details.ticket_id) - a ticket was already used at the door; nothing was cancelled. */
             409: {
                 headers: {
                     [name: string]: unknown;

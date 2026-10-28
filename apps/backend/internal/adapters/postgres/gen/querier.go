@@ -568,7 +568,7 @@ type Querier interface {
 	ReleaseSoldSessionSeat(ctx context.Context, sessionID uuid.UUID, seatKey string, statusVersion int64) (SessionSeatRow, error)
 	ReleaseSoldSessionSeatTo(ctx context.Context, sessionID uuid.UUID, seatKey string, statusVersion int64, target string) (SessionSeatRow, error)
 	ReleaseSoldGAUnitBySeatKeyTo(ctx context.Context, sessionID uuid.UUID, seatKey string, statusVersion int64, target string) (SessionSeatRow, error)
-	GetTicketSeatOrigin(ctx context.Context, ticketID uuid.UUID) (*string, error)
+	GetTicketSeatOrigin(ctx context.Context, ticketID uuid.UUID) (TicketSeatOrigin, error)
 	ReleaseSoldGAUnitForReservation(ctx context.Context, sessionID, reservationID uuid.UUID, tierID *uuid.UUID, statusVersion int64) (SessionSeatRow, error)
 	SellSessionSeat(ctx context.Context, id, reservationID uuid.UUID, statusVersion int64) (SessionSeatRow, error)
 	BlockSessionSeat(ctx context.Context, id uuid.UUID, statusVersion int64) (SessionSeatRow, error)

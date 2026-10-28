@@ -21,29 +21,34 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
-// CancelTicketFunc is htickets.Handler.CancelTicketTx: the one ticket
-// cancellation transaction (inventory release to seat_origin, capacity,
-// barcode revocation, audit, v1.ticket.cancelled).
-type CancelTicketFunc func(ctx context.Context, p htickets.CancelTicketParams) (htickets.CancelTicketOutcome, *htickets.CancelTicketError)
+// TicketCanceller is the one ticket cancellation of htickets.Handler
+// (inventory release to seat_origin, capacity, barcode revocation, audit),
+// run on the caller's transaction so every ticket of an invitation is
+// cancelled together; the v1.ticket.cancelled events fire after the commit.
+type TicketCanceller interface {
+	CancelTicketInTx(ctx context.Context, tx pgx.Tx, p htickets.CancelTicketParams) (htickets.CancelTicketOutcome, *htickets.CancelTicketError)
+	PublishTicketCancelled(ctx context.Context, out htickets.CancelTicketOutcome, p htickets.CancelTicketParams)
+}
 
 // Handler serves the staff invitation routes of spec 46 (task INV-02).
 type Handler struct {
-	pool         hcheckout.TxStarter
-	queries      *gen.Queries
-	audit        audit.Writer
-	logger       *slog.Logger
-	cancelTicket CancelTicketFunc
+	pool      hcheckout.TxStarter
+	queries   *gen.Queries
+	audit     audit.Writer
+	logger    *slog.Logger
+	canceller TicketCanceller
 }
 
-// New builds the handler. audit may be nil (no audit rows); cancelTicket
-// nil makes the cancel route answer 503.
-func New(pool hcheckout.TxStarter, queries *gen.Queries, auditWriter audit.Writer, logger *slog.Logger, cancelTicket CancelTicketFunc) *Handler {
+// New builds the handler. audit may be nil (no audit rows); canceller nil
+// makes the cancel route answer 503.
+func New(pool hcheckout.TxStarter, queries *gen.Queries, auditWriter audit.Writer, logger *slog.Logger, canceller TicketCanceller) *Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Handler{pool: pool, queries: queries, audit: auditWriter, logger: logger, cancelTicket: cancelTicket}
+	return &Handler{pool: pool, queries: queries, audit: auditWriter, logger: logger, canceller: canceller}
 }
 
 const (
@@ -432,7 +437,7 @@ type cancelResponse struct {
 // ticket cancellation transaction with no money (refund_mode none), so each
 // seat goes back where it came from (order_items.seat_origin, INV-01).
 func (h *Handler) HandleCancel(w http.ResponseWriter, r *http.Request) {
-	if h.queries == nil || h.cancelTicket == nil {
+	if h.queries == nil || h.pool == nil || h.canceller == nil {
 		unavailable(w, r)
 		return
 	}
@@ -497,35 +502,84 @@ func (h *Handler) HandleCancel(w http.ResponseWriter, r *http.Request) {
 			actorType, actorID = "user", actor.ID
 		}
 	}
-	resp := cancelResponse{OrderID: o.ID.String(), CancelledTicketIDs: []string{}, SkippedTicketIDs: []string{}, NotifyGuest: notify}
+	resp := cancelResponse{OrderID: o.ID.String(), OrderStatus: o.Status, CancelledTicketIDs: []string{}, SkippedTicketIDs: []string{}, NotifyGuest: notify}
+
+	// One transaction for every ticket, the order_events row and the audit:
+	// the invitation is cancelled as a whole or not at all.
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		h.internal(w, r, "cancel: begin", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+
+	// A ticket that was already used at the door is never cancelled: the
+	// guest is inside (spec 46, owner decision). The platform's one
+	// definition of "scanned" decides (refunds.TicketScannedTx).
+	for _, t := range targets {
+		if t.Status != "active" {
+			continue
+		}
+		scanned, serr := refunds.TicketScannedTx(ctx, tx, t.ID)
+		if serr != nil {
+			h.internal(w, r, "cancel: scan check", serr)
+			return
+		}
+		if scanned {
+			writeErr(w, r, http.StatusConflict, "invitation.ticket_scanned",
+				"a ticket of this invitation was already used at the door; nothing was cancelled",
+				map[string]any{"ticket_id": t.ID.String()})
+			return
+		}
+	}
+
+	type done struct {
+		out htickets.CancelTicketOutcome
+		p   htickets.CancelTicketParams
+	}
+	var cancelled []done
 	for _, t := range targets {
 		if t.Status != "active" {
 			resp.SkippedTicketIDs = append(resp.SkippedTicketIDs, t.ID.String())
 			continue
 		}
-		_, cerr := h.cancelTicket(ctx, htickets.CancelTicketParams{
+		p := htickets.CancelTicketParams{
 			TicketID:   t.ID,
 			Reason:     cancelReason,
 			RefundMode: htickets.RefundModeNone,
 			ActorType:  actorType,
 			ActorID:    actorID,
-		})
+		}
+		out, cerr := h.canceller.CancelTicketInTx(ctx, tx, p)
 		if cerr != nil {
 			if cerr.Code == "ticket.not_active" {
+				// Lost a race with another cancellation: the UPDATE matched
+				// no row, which does not abort the transaction.
 				resp.SkippedTicketIDs = append(resp.SkippedTicketIDs, t.ID.String())
 				continue
 			}
 			h.logger.Error("invitation.cancel: ticket cancel failed",
 				slog.String("order_id", o.ID.String()), slog.String("ticket_id", t.ID.String()), slog.String("error", cerr.Error()))
-			writeErr(w, r, cerr.Status, cerr.Code, cerr.Message, map[string]any{
-				"cancelled_ticket_ids": resp.CancelledTicketIDs,
-			})
+			writeErr(w, r, cerr.Status, cerr.Code, cerr.Message, map[string]any{"ticket_id": t.ID.String()})
 			return
 		}
+		cancelled = append(cancelled, done{out: out, p: p})
 		resp.CancelledTicketIDs = append(resp.CancelledTicketIDs, t.ID.String())
 	}
 
-	resp.OrderStatus = h.projectCancel(ctx, o, orgID, resp, actorType, actorID)
+	if len(cancelled) > 0 {
+		if err := h.recordCancel(ctx, tx, o, resp, actorType, actorID); err != nil {
+			h.internal(w, r, "cancel: record", err)
+			return
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		h.internal(w, r, "cancel: commit", err)
+		return
+	}
+	for _, c := range cancelled {
+		h.canceller.PublishTicketCancelled(ctx, c.out, c.p)
+	}
 	// TODO(INV-03): send the guest the `cancel` letter when notify_guest is
 	// true and the order carries the guest's e-mail (spec 46, section 3.4,
 	// decision R-9). The choice is recorded on order_events above so the
@@ -533,65 +587,47 @@ func (h *Handler) HandleCancel(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
-// projectCancel moves the order to 'cancelled' once none of its tickets is
-// active, records the cancellation on order_events and audits it. A failure
-// here is logged: the tickets are already cancelled and their seats back.
-func (h *Handler) projectCancel(ctx context.Context, o gen.InvitationOrderRow, orgID uuid.UUID, resp cancelResponse, actorType, actorID string) string {
-	status := o.Status
-	tickets, err := h.queries.ListTicketsByCheckoutSession(ctx, o.CheckoutSessionID)
-	if err == nil && len(resp.CancelledTicketIDs) > 0 {
-		active := 0
-		for _, t := range tickets {
-			if t.Status == "active" {
-				active++
-			}
-		}
-		if active == 0 && status != "cancelled" {
-			now := time.Now().UTC()
-			if row, uerr := h.queries.UpdateOrderStatus(ctx, o.ID, orgID, "cancelled", nil, &now); uerr == nil {
-				status = row.Status
-			} else {
-				h.logger.Warn("invitation.cancel: order status update failed",
-					slog.String("order_id", o.ID.String()), slog.String("error", uerr.Error()))
-			}
-		}
-	}
-	if len(resp.CancelledTicketIDs) == 0 {
-		return status
-	}
-	payload, _ := json.Marshal(map[string]any{
+// recordCancel writes the order_events row and the audit of a cancellation
+// on the cancellation's own transaction. The order's status is NOT changed:
+// a cancellation without money leaves an order paid, exactly as the
+// operator's refund_mode none cancel does, so an invitation whose tickets
+// are all cancelled is still billed (the charge for a cancelled invitation
+// always stays, owner rule). A client tells a fully cancelled invitation by
+// its active ticket count, not by the order status.
+func (h *Handler) recordCancel(ctx context.Context, tx pgx.Tx, o gen.InvitationOrderRow, resp cancelResponse, actorType, actorID string) error {
+	payload, err := json.Marshal(map[string]any{
 		"ticket_ids":   resp.CancelledTicketIDs,
 		"notify_guest": resp.NotifyGuest,
 	})
+	if err != nil {
+		return err
+	}
 	actor := "system"
 	if actorType == "user" {
 		actor = "user:" + actorID
 	}
-	if _, eerr := h.queries.InsertOrderEvent(ctx, o.ID, "invitation_cancelled", actor, payload); eerr != nil {
-		h.logger.Warn("invitation.cancel: order event insert failed",
-			slog.String("order_id", o.ID.String()), slog.String("error", eerr.Error()))
+	if _, err := h.queries.WithTx(tx).InsertOrderEvent(ctx, o.ID, "invitation_cancelled", actor, payload); err != nil {
+		return err
 	}
-	if h.audit != nil {
-		if aerr := h.audit.Write(ctx, audit.Event{
-			OccurredAt:   time.Now().UTC(),
-			ActorType:    actorType,
-			ActorID:      actorID,
-			Action:       "v1.invitation.cancel",
-			ResourceType: "order",
-			ResourceID:   o.ID.String(),
-			RequestID:    logging.RequestID(ctx),
-			TraceID:      logging.TraceID(ctx),
-			Metadata: map[string]any{
-				"session_id":   o.SessionID.String(),
-				"tickets":      len(resp.CancelledTicketIDs),
-				"notify_guest": resp.NotifyGuest,
-				"order_status": status,
-			},
-		}); aerr != nil {
-			h.logger.Warn("invitation.cancel: audit failed", slog.String("error", aerr.Error()))
-		}
+	if h.audit == nil {
+		return nil
 	}
-	return status
+	return h.audit.WriteTx(ctx, tx, audit.Event{
+		OccurredAt:   time.Now().UTC(),
+		ActorType:    actorType,
+		ActorID:      actorID,
+		Action:       "v1.invitation.cancel",
+		ResourceType: "order",
+		ResourceID:   o.ID.String(),
+		RequestID:    logging.RequestID(ctx),
+		TraceID:      logging.TraceID(ctx),
+		Metadata: map[string]any{
+			"session_id":   o.SessionID.String(),
+			"tickets":      len(resp.CancelledTicketIDs),
+			"notify_guest": resp.NotifyGuest,
+			"order_status": resp.OrderStatus,
+		},
+	})
 }
 
 func trimPtr(p *string) string {

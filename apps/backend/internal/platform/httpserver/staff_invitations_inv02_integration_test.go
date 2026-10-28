@@ -9,8 +9,10 @@ package httpserver
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -39,7 +41,15 @@ type inv02Fx struct {
 	seatTier, gaTier      uuid.UUID
 	ownerID               uuid.UUID
 	manager, agent        string
+	// phone is this fixture's guest phone: customer_identities is GLOBALLY
+	// unique on the normalized value, so a fixed literal would resolve to a
+	// leftover customer of an earlier run (AGENTS.md).
+	phone string
 }
+
+// inv02PhonePlaceholder is the phone inv02Body writes; f.do swaps it for
+// the fixture's random one.
+const inv02PhonePlaceholder = "+34600111222"
 
 // newINV02Fx builds an organization with a hybrid session: eight seats
 // A|1|1..A|1|8 (A|1|1..A|1|3 held back as the organizer's reserve) and a GA
@@ -53,6 +63,8 @@ func newINV02Fx(t *testing.T, start time.Duration) *inv02Fx {
 	pool := srv.pgxPool
 	ctx := context.Background()
 	f := &inv02Fx{t: t, srv: srv, ts: ts, pool: pool, secret: secret}
+	rnd := uuid.New()
+	f.phone = fmt.Sprintf("+3469%07d", binary.BigEndian.Uint32(rnd[:4])%10_000_000)
 	f.o = newINV01Org(t, ctx, pool, secret)
 	if err := pool.QueryRow(ctx, `SELECT user_id FROM memberships WHERE org_id = $1 AND role = 'org_admin'`, f.o.org).Scan(&f.ownerID); err != nil {
 		t.Fatalf("owner id: %v", err)
@@ -123,7 +135,27 @@ func (f *inv02Fx) member(role string) string {
 // first (AGENTS.md: keyed by JSON payload, no FK to clean them up).
 func (f *inv02Fx) cleanup() {
 	ctx := context.Background()
+	// The guests' customer rows: captured before the orders go, deleted
+	// after them (orders.customer_id has no cascade).
+	var customerIDs []uuid.UUID
+	if rows, err := f.pool.Query(ctx, `SELECT customer_id FROM customer_org_links WHERE org_id = $1`, f.o.org); err == nil {
+		for rows.Next() {
+			var id uuid.UUID
+			if rows.Scan(&id) == nil {
+				customerIDs = append(customerIDs, id)
+			}
+		}
+		rows.Close()
+	}
 	for _, sql := range []string{
+		`DELETE FROM outbox_events WHERE aggregate_id IN (
+		   SELECT id::text FROM orders WHERE session_id = $1
+		   UNION ALL SELECT id::text FROM tickets WHERE session_id = $1
+		   UNION ALL SELECT checkout_session_id::text FROM orders WHERE session_id = $1)`,
+		`DELETE FROM outbox WHERE aggregate_id IN (
+		   SELECT id FROM orders WHERE session_id = $1
+		   UNION ALL SELECT id FROM tickets WHERE session_id = $1)`,
+		`DELETE FROM order_events WHERE order_id IN (SELECT id FROM orders WHERE session_id = $1)`,
 		`DELETE FROM worker_jobs WHERE payload->>'checkout_session_id' IN (
 		   SELECT cs.id::text FROM checkout_sessions cs JOIN reservations r ON r.id = cs.reservation_id WHERE r.session_id = $1)
 		   OR payload->>'reservation_id' IN (SELECT id::text FROM reservations WHERE session_id = $1)
@@ -150,6 +182,7 @@ func (f *inv02Fx) cleanup() {
 		arg uuid.UUID
 	}{
 		{`DELETE FROM customer_org_links WHERE org_id = $1`, f.o.org},
+		{`DELETE FROM outbox_events WHERE aggregate_id = $1::text`, f.o.org},
 		{`DELETE FROM seating_plan_versions WHERE id = $1`, f.planVer},
 		{`DELETE FROM seating_plans WHERE id = $1`, f.plan},
 		{`DELETE FROM events WHERE id = $1`, f.event},
@@ -159,10 +192,21 @@ func (f *inv02Fx) cleanup() {
 			f.t.Logf("INV02 cleanup: %v", err)
 		}
 	}
+	// Only customers no other organization knows (identities cascade).
+	if len(customerIDs) > 0 {
+		if _, err := f.pool.Exec(ctx, `
+			DELETE FROM customers c
+			WHERE  c.id = ANY($1::uuid[])
+			  AND  NOT EXISTS (SELECT 1 FROM customer_org_links l WHERE l.customer_id = c.id)
+			  AND  NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id)`, customerIDs); err != nil {
+			f.t.Logf("INV02 cleanup customers: %v", err)
+		}
+	}
 }
 
 func (f *inv02Fx) do(token, method, path, body string) (int, map[string]any) {
 	f.t.Helper()
+	body = strings.ReplaceAll(body, inv02PhonePlaceholder, f.phone)
 	req, err := http.NewRequestWithContext(context.Background(), method, f.ts.URL+path, strings.NewReader(body))
 	if err != nil {
 		f.t.Fatalf("NewRequest: %v", err)
@@ -203,7 +247,7 @@ func (f *inv02Fx) seat(key string) gen.SessionSeatRow {
 func inv02Body(requestID uuid.UUID, seats []string, gaTier *uuid.UUID, gaQty int, delivery, email string) string {
 	b := map[string]any{
 		"request_id": requestID.String(),
-		"guest":      map[string]any{"name": "Ana López", "phone": "+34600111222", "locale": "es-ES"},
+		"guest":      map[string]any{"name": "Ana López", "phone": inv02PhonePlaceholder, "locale": "es-ES"},
 		"delivery":   delivery,
 		"note":       "front row for the press",
 	}
@@ -340,9 +384,12 @@ func TestINV02_IssueFromReserveAndSale_CancelReturnsEachSeatToItsOrigin(t *testi
 	if code != http.StatusOK {
 		t.Fatalf("manager cancel: %d %s", code, body["_raw"])
 	}
-	if body["order_status"] != "cancelled" || len(body["cancelled_ticket_ids"].([]any)) != 5 || body["notify_guest"] != false {
+	// A cancellation moves no money: the order stays paid, so the
+	// invitation is still billed (owner rule: the charge stays).
+	if body["order_status"] != "paid" || len(body["cancelled_ticket_ids"].([]any)) != 5 || body["notify_guest"] != false {
 		t.Fatalf("cancel answer: %s", body["_raw"])
 	}
+	inv02AssertBilled(t, f, orderID, 5)
 	want := map[string]string{
 		"A|1|1": "unavailable", "A|1|5": "available",
 		"ga|t1|000001": "available", "ga|t1|000002": "available", "ga|t1|000003": "unavailable",

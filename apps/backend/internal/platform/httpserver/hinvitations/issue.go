@@ -16,6 +16,7 @@ package hinvitations
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -166,7 +167,7 @@ func Issue(ctx context.Context, pool hcheckout.TxStarter, q *gen.Queries, in Iss
 
 		id, err := issueTx(ctx, tx, q.WithTx(tx), in, ref)
 		if err != nil {
-			return err
+			return err // a replayHit rolls the version bump back too
 		}
 		if err := tx.Commit(ctx); err != nil {
 			if isRequestRace(err) {
@@ -177,6 +178,10 @@ func Issue(ctx context.Context, pool hcheckout.TxStarter, q *gen.Queries, in Iss
 		orderID = id
 		return nil
 	})
+	var hit *replayHit
+	if errors.As(err, &hit) {
+		return hit.res, nil
+	}
 	if errors.Is(err, errRequestRace) {
 		res, ok, rerr := replay(ctx, q, in, ref)
 		if rerr != nil {
@@ -208,7 +213,59 @@ func replay(ctx context.Context, q *gen.Queries, in IssueInput, ref string) (Iss
 		return IssueResult{}, false, refuse(http.StatusConflict, "invitation.request_id_reused",
 			"this request_id was already used for another session", nil)
 	}
+	if prev.Fingerprint != nil && *prev.Fingerprint != Fingerprint(in) {
+		return IssueResult{}, false, refuse(http.StatusConflict, "invitation.request_id_reused",
+			"this request_id was already used with a different request", nil)
+	}
 	return IssueResult{OrderID: prev.ID, Replayed: true}, true, nil
+}
+
+// replayHit carries a replay found INSIDE the issue transaction (after the
+// sessions row lock) out of it; the transaction is rolled back.
+type replayHit struct{ res IssueResult }
+
+func (h *replayHit) Error() string { return "hinvitations: request already issued" }
+
+// Fingerprint is the digest of what an issue request asks for: the session,
+// the seats and General Admission lines in a canonical order, the guest and
+// the delivery. A request_id replayed with a different body is refused
+// instead of silently answering the first invitation.
+func Fingerprint(in IssueInput) string {
+	seats := append([]string(nil), in.SeatKeys...)
+	sort.Strings(seats)
+	type gaLine struct {
+		TierID   string `json:"tier_id"`
+		Quantity int32  `json:"qty"`
+	}
+	ga := make([]gaLine, 0, len(in.GA))
+	for _, l := range in.GA {
+		ga = append(ga, gaLine{TierID: l.TierID.String(), Quantity: l.Quantity})
+	}
+	sort.Slice(ga, func(i, j int) bool {
+		if ga[i].TierID != ga[j].TierID {
+			return ga[i].TierID < ga[j].TierID
+		}
+		return ga[i].Quantity < ga[j].Quantity
+	})
+	raw, _ := json.Marshal(struct {
+		SessionID string   `json:"session_id"`
+		Seats     []string `json:"seat_keys"`
+		GA        []gaLine `json:"ga"`
+		Name      string   `json:"guest_name"`
+		Email     string   `json:"guest_email"`
+		Phone     string   `json:"guest_phone"`
+		Delivery  string   `json:"delivery"`
+	}{
+		SessionID: in.SessionID.String(),
+		Seats:     seats,
+		GA:        ga,
+		Name:      strings.TrimSpace(in.Guest.Name),
+		Email:     strings.ToLower(strings.TrimSpace(in.Guest.Email)),
+		Phone:     strings.TrimSpace(in.Guest.Phone),
+		Delivery:  in.Delivery,
+	})
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }
 
 func isRequestRace(err error) bool {
@@ -233,6 +290,15 @@ func issueTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in IssueInput, re
 	}
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("hinvitations: bump seat_status_version: %w", err)
+	}
+	// 1b. The same request_id again, now under the sessions row lock: a
+	// concurrent twin that held the lock first has committed by now, so its
+	// order is visible here and this request answers it as a replay instead
+	// of finding its seats sold (409 invitation.seats_taken).
+	if res, ok, err := replay(ctx, txq, in, ref); err != nil {
+		return uuid.Nil, err
+	} else if ok {
+		return uuid.Nil, &replayHit{res: res}
 	}
 
 	// 2. Only a cancelled or deleted session refuses. No sales window, no
@@ -346,8 +412,11 @@ func issueTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in IssueInput, re
 	// 7. The guest as a customer of the organization, best effort.
 	customerID := resolveGuest(ctx, tx, in, channelID)
 
-	// 8. The order.
-	order, err := writeOrder(ctx, txq, in, ref, cs.ID, target.EventID, customerID, tierPrices)
+	// 8. The order, WITHOUT the customer: it is born pending_payment, and a
+	// guest with an open purchase of their own on this session would trip
+	// orders_one_pending_per_customer_session_uq. Step 10b links it once
+	// the order is paid, in this same transaction.
+	order, err := writeOrder(ctx, txq, in, ref, cs.ID, target.EventID, tierPrices)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -374,6 +443,12 @@ func issueTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in IssueInput, re
 	// 10. Completed for 0: ticket issuance job, order paid.
 	if _, err := hcheckout.CompleteFreeCheckoutTx(ctx, tx, txq, cs.ID); err != nil {
 		return uuid.Nil, fmt.Errorf("hinvitations: complete free checkout: %w", err)
+	}
+	// 10b. The guest's customer row, now that the order is paid.
+	if customerID != nil {
+		if err := txq.SetInvitationOrderCustomer(ctx, order.ID, *customerID); err != nil {
+			return uuid.Nil, fmt.Errorf("hinvitations: link guest: %w", err)
+		}
 	}
 
 	// 11. Audit: counts and the delivery mode, never the guest's address.
@@ -564,12 +639,12 @@ func writeOrder(
 	in IssueInput,
 	ref string,
 	checkoutSessionID, eventID uuid.UUID,
-	customerID *uuid.UUID,
 	tierPrices map[uuid.UUID]int64,
 ) (gen.OrderRow, error) {
 	meta := map[string]any{
-		"delivery":   in.Delivery,
-		"request_id": in.RequestID.String(),
+		"delivery":    in.Delivery,
+		"request_id":  in.RequestID.String(),
+		"fingerprint": Fingerprint(in),
 	}
 	if n := strings.TrimSpace(in.Note); n != "" {
 		meta["note"] = n
@@ -593,7 +668,6 @@ func writeOrder(
 	out, err := ordering.CreateOrderFromCheckout(ctx, txq, ordering.CreateInput{
 		CheckoutSessionID: checkoutSessionID,
 		EventID:           eventID,
-		CustomerID:        customerID,
 		Source:            ordering.SourceComplimentary,
 		Actor:             in.Actor,
 		ExternalRef:       &ref,

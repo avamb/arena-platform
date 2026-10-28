@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // InvitationSessionTarget is the session a staff invitation is issued for
@@ -104,6 +105,31 @@ func (q *Queries) SetOrderStaffIssuance(ctx context.Context, orderID uuid.UUID, 
 	return err
 }
 
+const setInvitationOrderCustomer = `-- name: SetInvitationOrderCustomer :exec
+UPDATE orders
+SET    customer_id = $2,
+       updated_at  = now()
+WHERE  id = $1
+  AND  status = 'paid'
+  AND  issued_via IS NOT NULL`
+
+// SetInvitationOrderCustomer links a staff invitation to the guest's
+// customer row AFTER the order is paid, on the issue transaction. Linking
+// it while the order is still pending_payment would collide with
+// orders_one_pending_per_customer_session_uq when the guest has an open
+// purchase of their own on the same session. pgx.ErrNoRows when the order
+// is not a paid staff invitation.
+func (q *Queries) SetInvitationOrderCustomer(ctx context.Context, orderID, customerID uuid.UUID) error {
+	tag, err := q.db.Exec(ctx, setInvitationOrderCustomer, orderID, customerID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 const setOrderItemsSeatOrigin = `-- name: SetOrderItemsSeatOrigin :exec
 UPDATE order_items oi
 SET    seat_origin = v.origin
@@ -123,10 +149,13 @@ func (q *Queries) SetOrderItemsSeatOrigin(ctx context.Context, orderID uuid.UUID
 type InvitationRequestRef struct {
 	ID        uuid.UUID
 	SessionID uuid.UUID
+	// Fingerprint is orders.metadata.invitation.fingerprint, the digest of
+	// the request body; nil for an order written before it was stored.
+	Fingerprint *string
 }
 
 const getInvitationOrderByRequest = `-- name: GetInvitationOrderByRequest :one
-SELECT id, session_id
+SELECT id, session_id, metadata->'invitation'->>'fingerprint' AS fingerprint
 FROM   orders
 WHERE  org_id = $1
   AND  external_ref = $2
@@ -136,7 +165,7 @@ WHERE  org_id = $1
 // reference; pgx.ErrNoRows when the request has not been seen.
 func (q *Queries) GetInvitationOrderByRequest(ctx context.Context, orgID uuid.UUID, externalRef string) (InvitationRequestRef, error) {
 	var r InvitationRequestRef
-	err := q.db.QueryRow(ctx, getInvitationOrderByRequest, orgID, externalRef).Scan(&r.ID, &r.SessionID)
+	err := q.db.QueryRow(ctx, getInvitationOrderByRequest, orgID, externalRef).Scan(&r.ID, &r.SessionID, &r.Fingerprint)
 	return r, err
 }
 
