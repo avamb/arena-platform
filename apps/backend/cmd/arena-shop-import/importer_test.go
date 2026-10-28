@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
 
 func sp(s string) *string { return &s }
@@ -117,5 +118,27 @@ func mustWrite(t *testing.T, path string, b []byte) {
 	t.Helper()
 	if err := os.WriteFile(path, b, 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSanitizeBody_UsesTheShopSanitizerAndReports(t *testing.T) {
+	im := NewImporter(Options{DryRun: true}, nil, nil, nil, nil)
+	got, err := im.sanitizeBody("description", `<h1>Title</h1><p onclick="x()">Dry <b>red</b></p><img src="https://cdn.example.com/a.jpg"><script>alert(1)</script>`, shop.ProductBodyProfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "script") || strings.Contains(got, "onclick") || strings.Contains(got, "<img") {
+		t.Errorf("sanitizer let something through: %q", got)
+	}
+	if !strings.Contains(got, "Dry") {
+		t.Errorf("text lost: %q", got)
+	}
+	if im.rep.BodyImagesDropped != 1 {
+		t.Errorf("the dropped picture must be counted, got %d", im.rep.BodyImagesDropped)
+	}
+	// A text longer than the profile allows is refused with an error, never cut.
+	huge := "<p>" + strings.Repeat("x", shop.MaxBodyHTMLLen+10) + "</p>"
+	if _, err := im.sanitizeBody("description", huge, shop.ProductBodyProfile); err == nil {
+		t.Error("an oversized text must be refused")
 	}
 }

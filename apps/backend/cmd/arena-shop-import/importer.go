@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +17,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
 
@@ -163,9 +165,19 @@ func (im *Importer) ImportPages(ctx context.Context, pages []ImportPage) error {
 		}
 	}
 	for _, p := range pages {
-		if p.RemoteImages > 0 {
-			im.rep.Pages.add("", fmt.Sprintf("a page picture still points at the old store's CDN (%s)", p.Slug))
+		// The shop stores a page through the same sanitizer the API uses, so
+		// the text is reduced here to compare with what is stored and to
+		// report a text the sanitizer refuses (it is never dropped silently).
+		body, lost, err := im.sanitizeBodyCounting("page "+p.Slug, p.BodyHTML, shop.PageBodyProfile)
+		if lost != "" {
+			im.rep.Pages.add("", fmt.Sprintf("page %s loses %s (the shop's page profile has none)", p.Slug, lost))
 		}
+		if err != nil {
+			im.rep.Pages.add(outFailed, "text refused by the shop's sanitizer")
+			im.rep.problem("page %q: %v", p.Slug, err)
+			continue
+		}
+		p.BodyHTML = body
 		cur, ok := existing[p.Slug]
 		outcome := outCreated
 		switch {
@@ -304,11 +316,66 @@ func planVariants(existing []gen.ShopVariantRow, want []ImportVariant, syncStock
 	return plan
 }
 
-func (im *Importer) productInput(p ImportProduct, body string) shop.ProductInput {
+// sanitizeBody runs a description or page text through shop.SanitizeBody, the
+// very function the API's write path uses (richtext.Sanitize with the shop
+// profile), after the Shopify-specific cleanup. A text the sanitizer refuses
+// comes back as an error naming the reason. Pictures and tables the profile
+// removes are counted in the report: they are not an error, but not silent.
+func (im *Importer) sanitizeBody(what, src string, prof richtext.Profile) (string, error) {
+	out, _, err := im.sanitizeBodyCounting(what, src, prof)
+	return out, err
+}
+
+// sanitizeBodyCounting is sanitizeBody that also tells how many pictures and
+// tables the profile removed from this one text.
+func (im *Importer) sanitizeBodyCounting(what, src string, prof richtext.Profile) (string, string, error) {
+	cleaned := CleanHTML(src, cleanOptions{BaseURL: im.opt.SiteURL, KeepImages: true})
+	out, err := shop.SanitizeBody(cleaned, prof)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", what, err)
+	}
+	var lost []string
+	if n := strings.Count(cleaned, "<img") - strings.Count(out, "<img"); n > 0 {
+		im.rep.BodyImagesDropped += n
+		lost = append(lost, fmt.Sprintf("%d pictures", n))
+	}
+	if n := strings.Count(cleaned, "<table") - strings.Count(out, "<table"); n > 0 {
+		im.rep.BodyTablesDropped += n
+		lost = append(lost, fmt.Sprintf("%d tables", n))
+	}
+	return out, strings.Join(lost, " and "), nil
+}
+
+// productInput builds the product write. A new product is physical (the
+// export has no digital goods or services); an existing one keeps its kind.
+func (im *Importer) productInput(p ImportProduct, body string, create bool) shop.ProductInput {
 	slug, title, status := p.Slug, p.Title, p.Status
 	vendor, typ := p.Vendor, p.Type
 	sort := p.SortOrder
-	return shop.ProductInput{Slug: &slug, Title: &title, BodyHTML: &body, Status: &status, ProductType: &typ, Vendor: &vendor, SortOrder: &sort}
+	names := append([]string{}, p.OptionNames...)
+	in := shop.ProductInput{
+		Slug: &slug, Title: &title, BodyHTML: &body, Status: &status, ProductType: &typ, Vendor: &vendor,
+		SortOrder: &sort, OptionNames: &names,
+	}
+	if create {
+		kind := shop.KindPhysical
+		in.Kind = &kind
+	}
+	return in
+}
+
+func optionNamesOf(p gen.ShopProductRow) []string { return shop.OptionNames(p) }
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // ImportProducts creates or updates every selected product with its variants
@@ -344,12 +411,15 @@ func (im *Importer) countMoney(p ImportProduct) {
 }
 
 func (im *Importer) importProduct(ctx context.Context, p ImportProduct) error {
-	body := CleanHTML(p.BodyHTML, cleanOptions{BaseURL: im.opt.SiteURL, KeepImages: true})
-	if len(body) > shop.MaxBodyHTMLLen {
-		im.rep.Products.add(outSkipped, "description is longer than the shop allows")
-		return fmt.Errorf("description is %d characters after cleaning, the shop allows %d", len(body), shop.MaxBodyHTMLLen)
+	body, lost, err := im.sanitizeBodyCounting("description", p.BodyHTML, shop.ProductBodyProfile)
+	if lost != "" {
+		im.rep.Products.add("", fmt.Sprintf("%s: description loses %s (the shop's description profile has none)", p.Handle, lost))
 	}
-	in := im.productInput(p, body)
+	if err != nil {
+		im.rep.Products.add(outFailed, "description refused by the shop's sanitizer")
+		im.rep.problem("product %q: %v", p.Handle, err)
+		return nil
+	}
 
 	var cur *gen.ShopProductRow
 	if !im.offline() {
@@ -364,6 +434,7 @@ func (im *Importer) importProduct(ctx context.Context, p ImportProduct) error {
 
 	// New product.
 	if cur == nil {
+		in := im.productInput(p, body, true)
 		if im.opt.DryRun {
 			im.countMoney(p)
 			im.rep.Variants.Created += len(p.Variants)
@@ -390,7 +461,8 @@ func (im *Importer) importProduct(ctx context.Context, p ImportProduct) error {
 	if err != nil {
 		return err
 	}
-	fieldsSame := cur.Title == p.Title && cur.BodyHTML == body && cur.Status == p.Status &&
+	in := im.productInput(p, body, false)
+	fieldsSame := sameStrings(optionNamesOf(*cur), p.OptionNames) && cur.Title == p.Title && cur.BodyHTML == body && cur.Status == p.Status &&
 		cur.ProductType == p.Type && cur.Vendor == p.Vendor && cur.SortOrder == p.SortOrder
 	plan := planVariants(view.Variants, p.Variants, im.opt.SyncStock)
 	im.rep.Variants.Created += plan.Created
@@ -545,18 +617,22 @@ func (im *Importer) ImportCustomers(ctx context.Context, cf *CustomersFile) erro
 	for i := 0; i < cf.Duplicates; i++ {
 		im.rep.Customers.add(outSkipped, "e-mail appears twice in the file")
 	}
+	if cf.MarketingNo > 0 {
+		im.rep.Consents.add("", fmt.Sprintf("%d customers do not accept e-mail marketing, no consent row is recorded for them", cf.MarketingNo))
+	}
 	if im.offline() {
 		for _, c := range cf.Customers {
-			im.rep.Customers.add(outCreated, "")
-			if c.MarketingEmail {
-				im.rep.Consents.add(outCreated, "")
+			for _, w := range c.Warnings {
+				im.rep.Customers.add("", w)
 			}
+			im.rep.Customers.add(outCreated, "")
+			im.noteConsents(c)
 		}
 		return nil
 	}
 	for _, c := range cf.Customers {
-		if len(c.Warnings) > 0 {
-			im.rep.Customers.add("", "an invalid e-mail was ignored")
+		for _, w := range c.Warnings {
+			im.rep.Customers.add("", w)
 		}
 		if im.opt.DryRun {
 			im.dryCustomer(ctx, c)
@@ -592,9 +668,49 @@ func (im *Importer) dryCustomer(ctx context.Context, c ImportCustomer) {
 	} else {
 		im.rep.Customers.add(outCreated, "")
 	}
+	im.noteConsents(c)
+}
+
+// noteConsents counts the consents a customer carries as "would be created"
+// (a dry run, or an offline one where nothing is compared).
+func (im *Importer) noteConsents(c ImportCustomer) {
 	if c.MarketingEmail {
 		im.rep.Consents.add(outCreated, "")
 	}
+	if c.MarketingSMS {
+		im.rep.ConsentsSMS.add(outCreated, "")
+	}
+	if c.MarketingWhatsApp {
+		im.rep.ConsentsWhatsApp.add(outCreated, "")
+	}
+}
+
+// Consent attribute keys for the channels customer_consents cannot name.
+const (
+	attrConsentSMS      = "marketing_consent_sms"
+	attrConsentWhatsApp = "marketing_consent_whatsapp"
+)
+
+// recordChannelConsent stores a SMS or WhatsApp marketing consent as an
+// organization-scoped customer attribute. customer_consents has only the
+// kinds terms and marketing, no channel, and a "marketing" row would read as
+// consent to e-mail, so granting it for a phone-only channel would over-grant.
+// First record wins, like InsertCustomerConsent. The export carries no
+// timestamp, so given_at is the import time.
+func (im *Importer) recordChannelConsent(ctx context.Context, tx pgx.Tx, customerID uuid.UUID, key, channel string, now time.Time) (bool, error) {
+	var exists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM customer_attributes
+		WHERE customer_id = $1 AND org_id = $2 AND key = $3)`, customerID, im.opt.OrgID, key).Scan(&exists); err != nil {
+		return false, fmt.Errorf("read %s consent: %w", channel, err)
+	}
+	if exists {
+		return false, nil
+	}
+	value := fmt.Sprintf(`{"given":true,"channel":%q,"given_at":%q,"given_at_is_import_time":true}`, channel, now.Format(time.RFC3339))
+	if err := gen.New(tx).InsertCustomerAttribute(ctx, customerID, &im.opt.OrgID, key, value, importSource); err != nil {
+		return false, fmt.Errorf("record %s consent: %w", channel, err)
+	}
+	return true, nil
 }
 
 func (im *Importer) importCustomer(ctx context.Context, c ImportCustomer) error {
@@ -630,6 +746,17 @@ func (im *Importer) importCustomer(ctx context.Context, c ImportCustomer) error 
 			newConsent = true
 		}
 	}
+	newSMS, newWA := false, false
+	if c.MarketingSMS {
+		if newSMS, err = im.recordChannelConsent(ctx, tx, res.Customer.ID, attrConsentSMS, "sms", now); err != nil {
+			return err
+		}
+	}
+	if c.MarketingWhatsApp {
+		if newWA, err = im.recordChannelConsent(ctx, tx, res.Customer.ID, attrConsentWhatsApp, "whatsapp", now); err != nil {
+			return err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
@@ -646,7 +773,18 @@ func (im *Importer) importCustomer(ctx context.Context, c ImportCustomer) error 
 	} else if c.MarketingEmail {
 		im.rep.Consents.add(outUnchanged, "consent row already exists")
 	}
+	countChannel(&im.rep.ConsentsSMS, c.MarketingSMS, newSMS)
+	countChannel(&im.rep.ConsentsWhatsApp, c.MarketingWhatsApp, newWA)
 	return nil
+}
+
+func countChannel(c *Counter, wanted, created bool) {
+	switch {
+	case created:
+		c.add(outCreated, "")
+	case wanted:
+		c.add(outUnchanged, "consent already recorded")
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

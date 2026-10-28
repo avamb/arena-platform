@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
@@ -48,9 +49,13 @@ type ImportProduct struct {
 	ShopifyStatus string // active, draft, archived, unlisted
 	Status        string // shop status: active, draft or archived
 	SortOrder     int32
-	Variants      []ImportVariant
-	Images        []ImportImage
-	Warnings      []string
+	// OptionNames are the labels of the variant options (Option1 Name..
+	// Option3 Name), in order. Shopify's placeholder "Title" (the option of
+	// a product that has only the Default Title variant) is left out.
+	OptionNames []string
+	Variants    []ImportVariant
+	Images      []ImportImage
+	Warnings    []string
 }
 
 // ProductsFile is the parsed Products CSV.
@@ -174,6 +179,7 @@ func ParseProducts(r io.Reader, currency string) (*ProductsFile, error) {
 				p.Warnings = append(p.Warnings, "no Status value, treated as draft")
 			}
 			p.Status = shopStatus(p.ShopifyStatus)
+			p.OptionNames = parseOptionNames(h, rec)
 			slug, ok := shop.NormalizeSlug(handle)
 			if !ok {
 				bad[handle] = fmt.Sprintf("line %d: handle %q cannot be used as a slug", line, handle)
@@ -232,6 +238,28 @@ func ParseProducts(r io.Reader, currency string) (*ProductsFile, error) {
 		out.Products = append(out.Products, *p)
 	}
 	return out, nil
+}
+
+// parseOptionNames reads Option1 Name..Option3 Name of a product's first row.
+// The names stay positional (a gap ends the list: the shop has no hole in its
+// three slots), and Shopify's "Title" placeholder of a Default Title product
+// is not an option at all.
+func parseOptionNames(h csvHeader, rec []string) []string {
+	var names []string
+	for i := 1; i <= shop.MaxOptionNames; i++ {
+		n := h.get(rec, fmt.Sprintf("Option%d Name", i))
+		if n == "" {
+			break
+		}
+		if i == 1 && n == "Title" && h.get(rec, "Option1 Value") == shop.DefaultVariantTitle {
+			break
+		}
+		if utf8.RuneCountInString(n) > 100 {
+			n = string([]rune(n)[:100])
+		}
+		names = append(names, n)
+	}
+	return names
 }
 
 func parseVariant(h csvHeader, rec []string, currency string, line int, position int32) (ImportVariant, error) {

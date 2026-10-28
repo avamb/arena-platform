@@ -110,12 +110,12 @@ func TestShopImport_IsIdempotent(t *testing.T) {
 
 	customersCSV := filepath.Join(dir, "customers.csv")
 	writeCSV(t, customersCSV, [][]string{
-		{"Customer ID", "First Name", "Last Name", "Email", "Accepts Email Marketing", "Default Address Country Code", "Default Address Phone", "Phone"},
-		{"'1", "Dina", "Levi", "dina." + nonce + "@example.com", "yes", "IL", "", ""},
-		{"'2", "Ivan", "", "ivan." + nonce + "@example.com", "no", "IL", "", ""},
-		{"'3", "Marina", "K", "marina." + nonce + "@example.com", "yes", "IL", "", ""},
-		{"'4", "Dup", "", "DINA." + nonce + "@example.com", "yes", "IL", "", ""},
-		{"'5", "", "", "", "no", "IL", "", ""},
+		{"Customer ID", "First Name", "Last Name", "Email", "Accepts Email Marketing", "Default Address Country Code", "Default Address Phone", "Phone", "Accepts SMS Marketing", "Accepts WhatsApp Marketing"},
+		{"'1", "Dina", "Levi", "dina." + nonce + "@example.com", "yes", "IL", "", fmt.Sprintf("+9725%08d", orgID.ID()%100000000), "yes", "no"},
+		{"'2", "Ivan", "", "ivan." + nonce + "@example.com", "no", "IL", "", "", "no", "no"},
+		{"'3", "Marina", "K", "marina." + nonce + "@example.com", "yes", "IL", "", "", "no", "no"},
+		{"'4", "Dup", "", "DINA." + nonce + "@example.com", "yes", "IL", "", "", "no", "no"},
+		{"'5", "", "", "", "no", "IL", "", "", "no", "no"},
 	})
 
 	pagesDir := filepath.Join(dir, "pages")
@@ -189,6 +189,34 @@ func TestShopImport_IsIdempotent(t *testing.T) {
 	}
 	if n := count(`SELECT count(*) FROM shop_products WHERE org_id = $1 AND slug = $2`, orgID, "набор-"+nonce); n != 1 {
 		t.Errorf("the Cyrillic handle must be the slug")
+	}
+	// Schema of the final shop core: kind, option names, closed shop, default line cap.
+	var kind string
+	var opt1Name *string
+	if err := pool.QueryRow(ctx, `SELECT kind, option1_name FROM shop_products WHERE org_id = $1 AND slug = $2`, orgID, "red-wine-"+nonce).Scan(&kind, &opt1Name); err != nil {
+		t.Fatal(err)
+	}
+	if kind != "physical" || opt1Name == nil || *opt1Name != "Size" {
+		t.Errorf("kind/option1_name: %q %v", kind, opt1Name)
+	}
+	// Shopify's "Title" placeholder is not an option.
+	if n := count(`SELECT count(*) FROM shop_products WHERE org_id = $1 AND slug = $2 AND option1_name IS NULL`, orgID, "набор-"+nonce); n != 1 {
+		t.Errorf("a Default Title product must carry no option name")
+	}
+	var enabled bool
+	var maxLine int
+	if err := pool.QueryRow(ctx, `SELECT enabled, max_line_qty FROM shop_settings WHERE org_id = $1`, orgID).Scan(&enabled, &maxLine); err != nil {
+		t.Fatal(err)
+	}
+	if enabled || maxLine != 24 {
+		t.Errorf("the importer must leave the shop closed with the default line cap: enabled=%v max_line_qty=%d", enabled, maxLine)
+	}
+	// Consents: e-mail marketing as customer_consents, SMS as an attribute.
+	if n := count(`SELECT count(*) FROM customer_attributes WHERE org_id = $1 AND key = 'marketing_consent_sms'`, orgID); n != 1 {
+		t.Errorf("sms consent attributes: %d", n)
+	}
+	if n := count(`SELECT count(*) FROM customer_attributes WHERE org_id = $1 AND key = 'marketing_consent_whatsapp'`, orgID); n != 0 {
+		t.Errorf("whatsapp consent attributes: %d", n)
 	}
 
 	// ── Second run: nothing changes.
@@ -268,6 +296,7 @@ func cleanupOrg(pool *pgxpool.Pool, orgID uuid.UUID, t *testing.T) {
 		`CREATE TEMP TABLE IF NOT EXISTS shop_import_cust AS SELECT customer_id FROM customer_org_links WHERE false`,
 		`INSERT INTO shop_import_cust SELECT customer_id FROM customer_org_links WHERE org_id = $1`,
 		`DELETE FROM customer_consents WHERE org_id = $1`,
+		`DELETE FROM customer_attributes WHERE org_id = $1`,
 		`DELETE FROM customer_org_links WHERE org_id = $1`,
 		`DELETE FROM customer_attributes WHERE customer_id IN (SELECT customer_id FROM shop_import_cust)`,
 		`DELETE FROM customer_identities WHERE customer_id IN (SELECT customer_id FROM shop_import_cust)`,

@@ -20,7 +20,11 @@ type ImportCustomer struct {
 	Name           string
 	Region         string // ISO 3166-1 alpha-2 for reading a national phone number
 	MarketingEmail bool   // "Accepts Email Marketing" = yes
-	Warnings       []string
+	// MarketingSMS and MarketingWhatsApp are the same flags of the optional
+	// "Accepts SMS Marketing" and "Accepts WhatsApp Marketing" columns.
+	MarketingSMS      bool
+	MarketingWhatsApp bool
+	Warnings          []string
 }
 
 // CustomersFile is the parsed Customers CSV.
@@ -34,6 +38,9 @@ type CustomersFile struct {
 	Duplicates int
 	// MarketingYes counts imported rows that accept e-mail marketing.
 	MarketingYes int
+	// MarketingNo counts imported rows that do not (nothing is recorded for
+	// them: a "no" is the absence of a consent row).
+	MarketingNo int
 }
 
 // cleanPhone drops the leading apostrophe Shopify adds so a spreadsheet does
@@ -86,6 +93,8 @@ func ParseCustomers(r io.Reader, defaultRegion string) (*CustomersFile, error) {
 		c := ImportCustomer{Line: line, ShopifyID: strings.TrimLeft(h.get(rec, "Customer ID"), "'")}
 		c.Name = strings.TrimSpace(h.get(rec, "First Name") + " " + h.get(rec, "Last Name"))
 		c.MarketingEmail = strings.EqualFold(h.get(rec, "Accepts Email Marketing"), "yes")
+		c.MarketingSMS = strings.EqualFold(h.get(rec, "Accepts SMS Marketing"), "yes")
+		c.MarketingWhatsApp = strings.EqualFold(h.get(rec, "Accepts WhatsApp Marketing"), "yes")
 
 		if e := strings.ToLower(h.get(rec, "Email")); e != "" {
 			if shop.ValidEmail(e) {
@@ -114,11 +123,20 @@ func ParseCustomers(r io.Reader, defaultRegion string) (*CustomersFile, error) {
 			}
 			seen[c.Email] = true
 		}
-		if c.MarketingEmail && c.Email != "" {
-			out.MarketingYes++
-		}
 		if c.MarketingEmail && c.Email == "" {
-			c.MarketingEmail = false // consent to e-mail marketing needs an e-mail
+			c.MarketingEmail = false  // consent to e-mail marketing needs an e-mail
+			if len(c.Warnings) == 0 { // an ignored invalid e-mail already said so
+				c.Warnings = append(c.Warnings, "e-mail marketing consent without an e-mail, not recorded")
+			}
+		}
+		if (c.MarketingSMS || c.MarketingWhatsApp) && c.Phone == "" {
+			c.MarketingSMS, c.MarketingWhatsApp = false, false // those channels need a number
+			c.Warnings = append(c.Warnings, "SMS or WhatsApp consent without a phone number, not recorded")
+		}
+		if c.MarketingEmail {
+			out.MarketingYes++
+		} else {
+			out.MarketingNo++
 		}
 		out.Customers = append(out.Customers, c)
 	}

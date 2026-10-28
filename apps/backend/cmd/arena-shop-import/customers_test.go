@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -100,5 +102,52 @@ func TestParseOrders_ContinuationRowsRepeatingTheName(t *testing.T) {
 	}
 	if o := of.Orders[0]; len(o.Lines) != 2 || o.Lines[1].Qty != 2 || o.TotalMinor != 30000 {
 		t.Errorf("%+v", o)
+	}
+}
+
+func TestParseCustomers_AllMarketingChannels(t *testing.T) {
+	const csvText = "Customer ID,First Name,Last Name,Email,Accepts Email Marketing,Phone,Accepts SMS Marketing,Accepts WhatsApp Marketing\n" +
+		"'1,A,B,a@example.com,yes,'+972501234567,yes,yes\n" +
+		"'2,C,D,c@example.com,no,,yes,yes\n" + // channels that need a number, without one
+		"'3,E,F,e@example.com,no,'+972507654321,no,no\n"
+	cf, err := ParseCustomers(strings.NewReader(csvText), "IL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cf.Customers) != 3 {
+		t.Fatalf("customers %d", len(cf.Customers))
+	}
+	if a := cf.Customers[0]; !a.MarketingEmail || !a.MarketingSMS || !a.MarketingWhatsApp {
+		t.Errorf("all three channels must be read: %+v", a)
+	}
+	if c := cf.Customers[1]; c.MarketingSMS || c.MarketingWhatsApp || len(c.Warnings) != 1 {
+		t.Errorf("sms/whatsapp consent without a phone is dropped with a warning: %+v", c)
+	}
+	if cf.MarketingYes != 1 || cf.MarketingNo != 2 {
+		t.Errorf("yes %d no %d", cf.MarketingYes, cf.MarketingNo)
+	}
+}
+
+func TestUseSiblingCustomers(t *testing.T) {
+	dir := t.TempDir()
+	products := filepath.Join(dir, "products_export_1.csv")
+	sibling := filepath.Join(dir, customersFileName)
+	if err := os.WriteFile(sibling, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f := &cliFlags{products: products}
+	f.useSiblingCustomers()
+	if f.customers != sibling {
+		t.Errorf("customers must be on by default next to the products file, got %q", f.customers)
+	}
+	f = &cliFlags{products: products, skipCustomers: true}
+	f.useSiblingCustomers()
+	if f.customers != "" {
+		t.Errorf("--skip-customers must switch it off, got %q", f.customers)
+	}
+	f = &cliFlags{products: products, customers: "other.csv"}
+	f.useSiblingCustomers()
+	if f.customers != "other.csv" {
+		t.Errorf("an explicit --customers wins, got %q", f.customers)
 	}
 }

@@ -40,6 +40,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -78,6 +79,7 @@ type cliFlags struct {
 	syncStock     bool
 	skipImages    bool
 	skipSettings  bool
+	skipCustomers bool
 
 	shippingFee  string
 	country      string
@@ -106,6 +108,7 @@ func parseFlags(args []string) (*cliFlags, error) {
 	fs.BoolVar(&f.onlyNew, "only-new", false, "leave products and pages that already exist untouched")
 	fs.BoolVar(&f.syncStock, "sync-stock", false, "overwrite the stock of existing variants with the CSV's")
 	fs.BoolVar(&f.skipImages, "skip-images", false, "do not import pictures")
+	fs.BoolVar(&f.skipCustomers, "skip-customers", false, "do not import customers (by default customers_export.csv next to --products is imported with all marketing consents)")
 	fs.BoolVar(&f.skipSettings, "skip-settings", false, "do not write the shop settings")
 	fs.StringVar(&f.shippingFee, "shipping-fee", "50.00", "flat shipping fee for the new settings, in major units")
 	fs.StringVar(&f.country, "country", "IL", "shop country for the new settings")
@@ -129,11 +132,30 @@ func (f *cliFlags) validate() (uuid.UUID, error) {
 	if f.pagesDir != "" && f.pagesMap == "" {
 		return uuid.Nil, errors.New("--pages needs --pages-map, the JSON file that names the page files and slugs")
 	}
+	f.useSiblingCustomers()
 	f.currency = strings.ToUpper(strings.TrimSpace(f.currency))
 	if !shop.ValidCurrency(f.currency) {
 		return uuid.Nil, fmt.Errorf("--currency %q is not a three-letter code", f.currency)
 	}
 	return org, nil
+}
+
+// customersFileName is the Shopify admin export's own name for the customers.
+const customersFileName = "customers_export.csv"
+
+// useSiblingCustomers makes the customers part of a run the default (owner
+// decision 2026-10-28: ALL customers move, with ALL their marketing
+// consents). When --products is given and --customers is not, the
+// customers_export.csv that Shopify wrote into the same folder is used;
+// --skip-customers opts out.
+func (f *cliFlags) useSiblingCustomers() {
+	if f.customers != "" || f.skipCustomers || f.products == "" {
+		return
+	}
+	cand := filepath.Join(filepath.Dir(f.products), customersFileName)
+	if st, err := os.Stat(cand); err == nil && !st.IsDir() {
+		f.customers = cand
+	}
 }
 
 func run(args []string, out io.Writer) error {
@@ -161,6 +183,9 @@ func run(args []string, out io.Writer) error {
 		if pf, err = ParseProductsFile(f.products, f.currency); err != nil {
 			return fmt.Errorf("--products: %w", err)
 		}
+	}
+	if f.customers != "" && f.skipCustomers {
+		return errors.New("--customers and --skip-customers contradict each other")
 	}
 	if f.customers != "" {
 		if cf, err = ParseCustomersFile(f.customers, f.defaultRegion); err != nil {

@@ -184,3 +184,28 @@ func TestParseProducts_RejectsForeignCSV(t *testing.T) {
 		t.Fatal("a CSV without Shopify columns must be refused")
 	}
 }
+
+func TestParseOptionNames(t *testing.T) {
+	const csvText = "Handle,Title,Variant Price,Option1 Name,Option1 Value,Option2 Name,Option2 Value,Option3 Name,Option3 Value\n" +
+		"plain,Plain,10.00,Title,Default Title,,,,\n" +
+		"sized,Sized,10.00,Size,0.75,Colour,Red,,\n" +
+		"sized,,12.00,,1.5,,Red,,\n" +
+		"titled,Titled,10.00,Title,Special,,,,\n"
+	pf, err := ParseProducts(strings.NewReader(csvText), "ILS")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string][]string{}
+	for _, p := range pf.Products {
+		got[p.Handle] = p.OptionNames
+	}
+	if len(got["plain"]) != 0 {
+		t.Errorf("the Title/Default Title placeholder is not an option: %v", got["plain"])
+	}
+	if strings.Join(got["sized"], "|") != "Size|Colour" {
+		t.Errorf("option names: %v", got["sized"])
+	}
+	if strings.Join(got["titled"], "|") != "Title" {
+		t.Errorf("a real option called Title is kept: %v", got["titled"])
+	}
+}

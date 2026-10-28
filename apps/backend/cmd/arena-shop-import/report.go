@@ -58,9 +58,14 @@ type Report struct {
 	Variants  Counter
 	Images    Counter
 	Customers Counter
-	Consents  Counter // marketing consents: Created = new rows
-	Pages     Counter
-	Settings  Counter
+	Consents  Counter // e-mail marketing consents (customer_consents, kind marketing): Created = new rows
+	// ConsentsSMS and ConsentsWhatsApp are the other two marketing channels of
+	// the export. customer_consents has no channel, so they live in
+	// customer_attributes (see importCustomer).
+	ConsentsSMS      Counter
+	ConsentsWhatsApp Counter
+	Pages            Counter
+	Settings         Counter
 
 	SkippedByStatus map[string]int // Shopify status of products left out
 	// MissingImages lists "handle: file" of pictures that could not be read.
@@ -70,8 +75,12 @@ type Report struct {
 	MinPriceMinor   int64
 	MaxPriceMinor   int64
 	Orders          *OrdersSummary
-	Problems        []string
-	Notes           []string
+	// BodyImagesDropped and BodyTablesDropped count pictures and tables the
+	// shop's rich-text profile removed from descriptions and pages.
+	BodyImagesDropped int
+	BodyTablesDropped int
+	Problems          []string
+	Notes             []string
 }
 
 func (r *Report) note(format string, args ...any) {
@@ -143,6 +152,12 @@ func (r *Report) Write(w io.Writer) {
 	writeCounter(w, "pages", &r.Pages, r.DryRun)
 	writeCounter(w, "customers", &r.Customers, r.DryRun)
 	writeCounter(w, "consents", &r.Consents, r.DryRun)
+	writeCounter(w, "sms", &r.ConsentsSMS, r.DryRun)
+	writeCounter(w, "whatsapp", &r.ConsentsWhatsApp, r.DryRun)
+	if r.BodyImagesDropped > 0 || r.BodyTablesDropped > 0 {
+		fmt.Fprintf(w, "  texts: the shop's sanitizer removed %d pictures and %d tables from descriptions and pages\n",
+			r.BodyImagesDropped, r.BodyTablesDropped)
+	}
 	if r.StockValueMinor != 0 || r.MaxPriceMinor != 0 {
 		fmt.Fprintf(w, "  money (%s): prices %s - %s, stock value %s\n", r.Currency,
 			FormatMinor(r.MinPriceMinor, r.Currency), FormatMinor(r.MaxPriceMinor, r.Currency),
