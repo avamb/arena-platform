@@ -41,9 +41,9 @@ const (
 // The rich-text profiles of a product description and a static page: the
 // event description's tags and link schemes (richtext.ProfileDescription),
 // with the shop's own length limits and no limit on visible text or links.
-// Everything outside the white list is dropped on write: images, tables,
+// A product description drops everything outside that list: images, tables,
 // <section>, <style>, inline styles and classes (a Shopify body keeps its
-// text, not its layout). The storefront renders the stored ART as is.
+// text, not its layout). A page also keeps img and tables (SanitizePageBody).
 var (
 	ProductBodyProfile = richtext.Profile{
 		Name:    "shop_product_body",
@@ -61,7 +61,14 @@ var (
 
 // SanitizeBody reduces body_html to the profile's rich-text subset; a text
 // the sanitizer refuses is a 422 shop.invalid_body_html naming the reason.
+//
+// The page profile goes to SanitizePageBody, which also keeps pictures
+// (https src only) and tables: a page is operator-authored content of a
+// storefront, unlike a product description.
 func SanitizeBody(in string, p richtext.Profile) (string, error) {
+	if p.Name == PageBodyProfile.Name {
+		return SanitizePageBody(in)
+	}
 	if strings.TrimSpace(in) == "" {
 		return "", nil
 	}

@@ -16806,7 +16806,7 @@ type ShopOrderPayment struct {
 
 // ShopPage A static storefront page.
 type ShopPage struct {
-	// BodyHtml Page text, sanitized rich-text HTML.
+	// BodyHtml Page text, sanitized HTML (the rich-text tags plus pictures and tables).
 	BodyHtml string `json:"body_html"`
 
 	// Position Display order.
@@ -16839,7 +16839,7 @@ type ShopPageList struct {
 
 // ShopPagePutRequest A page's content.
 type ShopPagePutRequest struct {
-	// BodyHtml Page text, HTML, up to 200000 characters. Sanitized on write like a product description; a text the sanitizer refuses answers 422 `shop.invalid_body_html`.
+	// BodyHtml Page text, HTML, up to 200000 characters. Sanitized on write to the product description's tags plus pictures (img with an https src, alt, width, height, loading) and tables (table, thead, tbody, tfoot, tr, th, td with colspan and rowspan); every other tag, attribute and URL scheme is dropped. A text the sanitizer refuses answers 422 `shop.invalid_body_html`.
 	BodyHtml *string `json:"body_html,omitempty"`
 
 	// Position Display order.
