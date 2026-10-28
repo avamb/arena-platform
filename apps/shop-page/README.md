@@ -1,0 +1,114 @@
+# Arena Sold Out — organizer storefront (shop page)
+
+A static Vite + vanilla TypeScript app that reproduces the Shopify storefront of
+the first client (Einat Winery, Dawn 11, Russian) **one to one** and renders it
+from the platform's public shop API (spec
+`08_architecture/47_merch_shop_module_ru.md`, sections 4 and 5).
+
+- Served at `https://shop.arenasoldout.com/{org_slug}/...` (stand:
+  `shop-staging.arenasoldout.com`), or at the organizer's own domain
+  (`einatwinery.com`) with root paths: the app reads `location.host`, asks
+  `GET /v1/public/shop/by-host?host=` and caches the answer for an hour.
+- Dawn is MIT: its CSS (`src/theme/`), its scripts (`public/theme/`, unmodified:
+  header drawer, search modal, quantity input, slider, gallery, share) and the
+  markup structure (`src/views/`) are reused directly. See `LICENSE-Dawn.txt`.
+- Russian only in this version.
+
+## Pages
+
+| Path (Shopify shapes kept)         | What                                                                      |
+| ---------------------------------- | ------------------------------------------------------------------------- |
+| `/`                                | announcement bar, header, image banner, featured collection, footer       |
+| `/collections/all`                 | all products (card grid, quick add)                                       |
+| `/products/{slug}`                 | gallery, price, variant pills, quantity, add to cart, description, share  |
+| `/cart`                            | cart page (plus the "item added" notification, as on the live theme)      |
+| `/checkout`                        | our own page: contacts, address, flat delivery, 18+ consent, "Оплатить"   |
+| `/checkout/{order_token}`          | status: pending (link back to payment) / paid / expired / cancelled       |
+| `/checkout/result`                 | the provider's `return_url`; forwards to `/checkout/{token}`              |
+| `/pages/{slug}`, `/policies/{slug}`| static pages and policies from the API                                    |
+| `/search?q=`                       | client-side search over the catalog                                       |
+| anything else                      | 404 in the theme                                                          |
+
+Handles may be Cyrillic; paths are percent-encoded once (`src/lib/route.ts`).
+The 18+ gate (Hebrew text, as on the live site) is remembered in `localStorage`.
+
+## Local development
+
+```
+npm install
+npm run dev:mock                                   # mock API on http://localhost:8787
+VITE_API_BASE_URL=http://localhost:8787 npm run dev   # http://localhost:5173/einatwinery/
+```
+
+(PowerShell: `$env:VITE_API_BASE_URL="http://localhost:8787"; npm run dev`.)
+
+The mock (`mock/mock-api.cjs`) serves the 7 live products, the pages and
+policies, and a fake hosted payment page (`/mock-pay/{token}` with Pay / Expire /
+Cancel links) so the whole flow can be walked without the backend. Fixtures in
+`mock/fixtures/` are built from the offline Shopify export:
+
+```
+npm run fixtures -- C:/Projects/arena_new/.local/einatwinery_export
+```
+
+Against the real API set `VITE_API_BASE_URL` to its origin (for example
+`https://api-staging.arenasoldout.com`). The API must answer CORS for the shop
+origin and `return_url` of the checkout must be on its allow-list.
+
+## Scripts
+
+- `npm run dev` — Vite dev server.
+- `npm run dev:mock` — mock shop API.
+- `npm run build` — type-check, then production build into `dist/`.
+- `npm test` — Vitest (jsdom): money formatting, routing, cart logic, image
+  URLs, sanitizer, view rendering.
+- `npm run type-check` — `tsc --noEmit`.
+
+## Docker image
+
+Build context is the **repo root**:
+
+```
+docker build -f apps/shop-page/Dockerfile \
+  --build-arg VITE_API_BASE_URL=https://api.arenasoldout.com \
+  -t arena-shop-page:dev .
+```
+
+nginx 1.27 on port 8080 (non-root), `/health`, SPA fallback, hashed assets
+cached for a year, `/theme/*` (Dawn scripts) for five minutes, CSP built from
+`VITE_API_BASE_URL` (`security-headers.conf.template`). The CI job
+`shop-page-build` runs type-check, tests, build and a container smoke test.
+
+## How it is put together
+
+- `src/lib/` — pure logic with unit tests: `money.ts` (minor units to
+  `250.00 NIS`), `route.ts`, `cart.ts` (basket, totals, checkout form),
+  `cdn.ts` (responsive image URLs), `sanitize.ts`, `api.ts` (types and client).
+- `src/views/` — functions returning Dawn's markup as strings. `common.ts` holds
+  the price block and the product card (Dawn `price` / `card-product` snippets).
+- `src/main.ts` — boot, router, delegated event handlers (add to cart, variant
+  pills, cart quantity, checkout, age gate, notification). Every navigation
+  re-renders the page; Dawn's custom elements upgrade as they appear.
+- `src/lib/theme.ts` — what Shopify's theme editor held and the API has no field
+  for: logo, banner, footer logo, social links, the age-gate texts.
+
+## API contract notes (what the storefront assumes)
+
+Fields beyond the spec 47 sketch that it uses when present and tolerates when
+absent: `settings.shop_name`, `products[].vendor`, `products[].option_name`,
+`products[].images[].width/height` (card aspect ratio before the image loads),
+`pages/{slug}.kind`. Pages and policies share one slug namespace in the
+`pages/{slug}` route. A page built from theme sections is delivered as that
+section markup in `body_html` (see "Pages" in the open questions of the
+hand-over notes); plain pages are wrapped in Dawn's page template.
+`409 shop.out_of_stock` may carry `error.details.items`; the page only refreshes
+the catalog and asks the buyer to check the cart.
+
+## Before the domain moves
+
+- Logo, banner and footer logo (`src/lib/theme.ts`) and the product pictures
+  (fixtures) still point at the old shop's CDN (`www.einatwinery.com/cdn`,
+  `cdn.shopify.com`). Re-upload them as arena media first; the CSP already
+  allows `https:` images.
+- The age-gate texts and contact e-mail are static / from settings.
+- Old URL shapes and their fate: `docs/redirects_301.md`.
