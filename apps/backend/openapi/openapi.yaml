@@ -22912,6 +22912,15 @@ components:
         option3:
           type: [string, "null"]
           description: Third option value.
+        expected_stock:
+          type: [integer, "null"]
+          format: int32
+          description: |
+            The stock this variant had when the editor loaded it; only with `id`.
+            The event center sends the loaded value. When the stock changed since
+            (a sale, an import, another editor) the whole request is refused with
+            409 `shop.stock_changed`, whose details list each variant's current
+            stock, and nothing is applied. Absent skips the check.
 
     ShopProductCreateRequest:
       type: object
@@ -57281,6 +57290,12 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "422":
           description: The list is empty or too long, a value is invalid (`shop.invalid_variants`), or an id is not a variant of this product (`shop.invalid_variant`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The stock of a variant changed since the editor loaded it (`shop.stock_changed`, details list each variant's current stock); nothing was applied.
           content:
             application/json:
               schema:

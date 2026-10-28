@@ -476,6 +476,33 @@ func (q *Queries) UpdateShopVariant(ctx context.Context, p ShopVariantParams) (p
 	return previousStock, err
 }
 
+const lockShopProductVariants = `-- name: LockShopProductVariants :many
+SELECT id, stock FROM shop_variants
+WHERE  product_id = $1 AND deleted_at IS NULL
+ORDER  BY id
+FOR UPDATE`
+
+// LockShopProductVariants locks the product's live variants in id order (the
+// order the checkout and the payment take them in) and returns each one's
+// stock as it is under the lock.
+func (q *Queries) LockShopProductVariants(ctx context.Context, productID uuid.UUID) (map[uuid.UUID]int32, error) {
+	rows, err := q.db.Query(ctx, lockShopProductVariants, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[uuid.UUID]int32{}
+	for rows.Next() {
+		var id uuid.UUID
+		var stock int32
+		if err := rows.Scan(&id, &stock); err != nil {
+			return nil, err
+		}
+		out[id] = stock
+	}
+	return out, rows.Err()
+}
+
 const softDeleteShopVariantsExcept = `-- name: SoftDeleteShopVariantsExcept :execrows
 UPDATE shop_variants SET deleted_at = now(), updated_at = now()
 WHERE  product_id = $1 AND deleted_at IS NULL AND NOT (id = ANY($2::uuid[]))`

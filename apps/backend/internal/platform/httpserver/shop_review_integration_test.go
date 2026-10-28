@@ -223,3 +223,31 @@ func TestShop_SweepLeavesAProcessingPaymentAlone(t *testing.T) {
 		t.Fatalf("status after the sweep = %s; want pending_payment", got.Status)
 	}
 }
+
+// TestShop_VariantsRefuseAStaleStock: the editor sends the stock it loaded;
+// once a sale moved it, the write is refused as a whole.
+func TestShop_VariantsRefuseAStaleStock(t *testing.T) {
+	f := newShopFixture(t)
+	product, variant := f.openShop(4500, 5)
+	path := f.orgPath(f.orgA, "/products/"+product+"/variants")
+
+	code, body, _ := f.do(http.MethodPut, path, f.ownerA,
+		`{"variants":[{"id":"`+variant+`","price_minor":4600,"stock":6,"expected_stock":5}]}`)
+	if code != http.StatusOK {
+		t.Fatalf("write with the loaded stock = %d %v", code, body)
+	}
+	f.pay(f.placed(variant, 2).OrderToken)
+
+	code, body, _ = f.do(http.MethodPut, path, f.ownerA,
+		`{"variants":[{"id":"`+variant+`","price_minor":9900,"stock":10,"expected_stock":6}]}`)
+	if code != http.StatusConflict || shopErrCode(body) != "shop.stock_changed" {
+		t.Fatalf("write with a stale stock = %d %v; want 409 shop.stock_changed", code, body)
+	}
+	if v := f.variant(variant); v.Stock != 4 || v.PriceMinor != 4600 {
+		t.Fatalf("variant after the refused write: stock %d price %d; want 4 and 4600", v.Stock, v.PriceMinor)
+	}
+	if code, body, _ := f.do(http.MethodPut, path, f.ownerA,
+		`{"variants":[{"price_minor":100,"stock":1,"expected_stock":1}]}`); code != http.StatusBadRequest && code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected_stock without an id = %d %v; want a validation error", code, body)
+	}
+}

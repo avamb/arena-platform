@@ -99,6 +99,7 @@ type variantBody struct {
 	Option1        *string    `json:"option1"`
 	Option2        *string    `json:"option2"`
 	Option3        *string    `json:"option3"`
+	ExpectedStock  *int32     `json:"expected_stock"`
 }
 
 func toVariantInputs(bs []variantBody) []shop.VariantInput {
@@ -107,7 +108,7 @@ func toVariantInputs(bs []variantBody) []shop.VariantInput {
 		out = append(out, shop.VariantInput{
 			ID: b.ID, Title: b.Title, SKU: b.SKU, PriceMinor: b.PriceMinor, CompareAtMinor: b.CompareAtMinor,
 			Stock: b.Stock, TrackStock: b.TrackStock, Position: b.Position,
-			Option1: b.Option1, Option2: b.Option2, Option3: b.Option3,
+			Option1: b.Option1, Option2: b.Option2, Option3: b.Option3, ExpectedStock: b.ExpectedStock,
 		})
 	}
 	return out

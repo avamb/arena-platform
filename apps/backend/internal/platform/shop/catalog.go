@@ -500,6 +500,11 @@ type VariantInput struct {
 	Option1        *string
 	Option2        *string
 	Option3        *string
+	// ExpectedStock is the stock the editor loaded for this variant. When it
+	// is set and the stock has changed since (a sale, an import, another
+	// editor), the whole write is refused with 409 shop.stock_changed and
+	// nothing is applied, so a stale screen cannot overwrite a sale.
+	ExpectedStock *int32
 }
 
 func validateVariants(vs []VariantInput) error {
@@ -538,6 +543,9 @@ func validateVariants(vs []VariantInput) error {
 		if v.Stock < 0 {
 			return invalid("shop.invalid_variants", "stock must be zero or more")
 		}
+		if v.ExpectedStock != nil && v.ID == nil {
+			return invalid("shop.invalid_variants", "expected_stock is only for an existing variant (with its id)")
+		}
 		for _, o := range []*string{v.Option1, v.Option2, v.Option3} {
 			if o != nil && !textOK(*o, MaxShortTextLen) {
 				return invalid("shop.invalid_variants", "an option value is limited to 200 characters")
@@ -549,8 +557,35 @@ func validateVariants(vs []VariantInput) error {
 
 // writeVariants makes the product's live variants exactly vs: named ones are
 // updated, new ones inserted, the rest soft-deleted. A stock change is
-// journaled as a manual move.
+// journaled as a manual move. The live variants are locked in id order first
+// and every expected_stock is checked against the locked stock before
+// anything is written.
 func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UUID, vs []VariantInput) error {
+	current, err := q.LockShopProductVariants(ctx, productID)
+	if err != nil {
+		return err
+	}
+	var changed []map[string]any
+	for _, v := range vs {
+		if v.ID == nil || v.ExpectedStock == nil {
+			continue
+		}
+		stock, ok := current[*v.ID]
+		if !ok {
+			return invalid("shop.invalid_variant", "variant "+v.ID.String()+" is not a variant of this product")
+		}
+		if stock != *v.ExpectedStock {
+			changed = append(changed, map[string]any{
+				"id": v.ID.String(), "expected_stock": *v.ExpectedStock, "stock": stock,
+			})
+		}
+	}
+	if len(changed) > 0 {
+		e := newErr(http.StatusConflict, "shop.stock_changed",
+			"the stock of a variant changed since it was loaded; reload the product and apply the change again")
+		e.Details = map[string]any{"variants": changed}
+		return e
+	}
 	keep := make([]uuid.UUID, 0, len(vs))
 	for i, v := range vs {
 		pos := int32(i) //nolint:gosec // bounded by MaxVariants
@@ -594,7 +629,7 @@ func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UU
 		}
 		keep = append(keep, id)
 	}
-	_, err := q.SoftDeleteShopVariantsExcept(ctx, productID, keep)
+	_, err = q.SoftDeleteShopVariantsExcept(ctx, productID, keep)
 	return err
 }
 

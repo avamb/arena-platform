@@ -30085,6 +30085,15 @@ export interface components {
             option2?: string | null;
             /** @description Third option value. */
             option3?: string | null;
+            /**
+             * Format: int32
+             * @description The stock this variant had when the editor loaded it; only with `id`.
+             *     The event center sends the loaded value. When the stock changed since
+             *     (a sale, an import, another editor) the whole request is refused with
+             *     409 `shop.stock_changed`, whose details list each variant's current
+             *     stock, and nothing is applied. Absent skips the check.
+             */
+            expected_stock?: number | null;
         };
         /** @description A new product. */
         ShopProductCreateRequest: {
@@ -65691,6 +65700,15 @@ export interface operations {
             };
             /** @description No such product in this organization (`shop.product_not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The stock of a variant changed since the editor loaded it (`shop.stock_changed`, details list each variant's current stock); nothing was applied. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -17194,6 +17194,13 @@ type ShopVariantInput struct {
 	// CompareAtMinor Former price, or null.
 	CompareAtMinor *int64 `json:"compare_at_minor"`
 
+	// ExpectedStock The stock this variant had when the editor loaded it; only with `id`.
+	// The event center sends the loaded value. When the stock changed since
+	// (a sale, an import, another editor) the whole request is refused with
+	// 409 `shop.stock_changed`, whose details list each variant's current
+	// stock, and nothing is applied. Absent skips the check.
+	ExpectedStock *int32 `json:"expected_stock"`
+
 	// Id An existing variant of the product to update; absent creates one.
 	Id *openapi_types.UUID `json:"id,omitempty"`
 
