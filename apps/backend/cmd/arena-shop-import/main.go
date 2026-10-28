@@ -153,7 +153,7 @@ func (f *cliFlags) useSiblingCustomers() {
 		return
 	}
 	cand := filepath.Join(filepath.Dir(f.products), customersFileName)
-	if st, err := os.Stat(cand); err == nil && !st.IsDir() {
+	if st, err := os.Stat(cand); err == nil && !st.IsDir() { //nolint:gosec // sibling of the operator-given --products path
 		f.customers = cand
 	}
 }
