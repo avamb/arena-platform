@@ -22826,7 +22826,7 @@ components:
           description: Product title.
         body_html:
           type: string
-          description: Description, HTML.
+          description: Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote).
         status:
           type: string
           description: "`draft`, `active` (on sale) or `archived`."
@@ -22926,7 +22926,7 @@ components:
           description: Product title, up to 300 characters.
         body_html:
           type: string
-          description: Description, HTML, up to 100000 characters.
+          description: Description, HTML, up to 100000 characters. Sanitized on write to the rich-text subset (p, br, strong, em, u, a with https or mailto, ul, ol, li, h3, h4, blockquote); images, tables, section, style, classes and inline styles are dropped. A text the sanitizer refuses answers 422 `shop.invalid_body_html`.
         status:
           type: string
           description: "`draft` (default), `active` or `archived`."
@@ -22958,7 +22958,7 @@ components:
           description: Product title.
         body_html:
           type: string
-          description: Description, HTML.
+          description: Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote).
         status:
           type: string
           description: "`draft`, `active` or `archived`."
@@ -23014,7 +23014,7 @@ components:
           description: Page title.
         body_html:
           type: string
-          description: Page text, HTML.
+          description: Page text, sanitized rich-text HTML.
         position:
           type: integer
           format: int32
@@ -23045,7 +23045,7 @@ components:
           description: Page title, up to 300 characters.
         body_html:
           type: string
-          description: Page text, HTML, up to 200000 characters.
+          description: Page text, HTML, up to 200000 characters. Sanitized on write like a product description; a text the sanitizer refuses answers 422 `shop.invalid_body_html`.
         position:
           type: integer
           format: int32
@@ -23421,7 +23421,7 @@ components:
           description: Product title.
         body_html:
           type: string
-          description: Description, HTML.
+          description: Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote).
         product_type:
           type: string
           description: Product type label.

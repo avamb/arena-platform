@@ -226,3 +226,35 @@ func TestNewOrderToken(t *testing.T) {
 		t.Errorf("tokens %q %q: want 64 hex characters, distinct", a, b)
 	}
 }
+
+func TestSanitizeBody_KeepsTheRichTextSubsetAndDropsTheRest(t *testing.T) {
+	in := `<section style="color:red"><h3>Rosé</h3><p class="x">Dry <b>and</b> <a href="https://vino.example/x" onclick="steal()">fresh</a></p>` +
+		`<img src="https://cdn.example/a.png"><script>alert(1)</script><style>p{}</style><table><tr><td>cell</td></tr></table></section>`
+	out, err := SanitizeBody(in, ProductBodyProfile)
+	if err != nil {
+		t.Fatalf("SanitizeBody: %v", err)
+	}
+	for _, gone := range []string{"<section", "style", "class=", "onclick", "<img", "<script", "alert(1)", "<table", "<td"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("sanitized body still holds %q: %s", gone, out)
+		}
+	}
+	for _, kept := range []string{"<h3>Rosé</h3>", "<strong>and</strong>", `href="https://vino.example/x"`, "cell"} {
+		if !strings.Contains(out, kept) {
+			t.Errorf("sanitized body lost %q: %s", kept, out)
+		}
+	}
+	if again, _ := SanitizeBody(out, ProductBodyProfile); again != out {
+		t.Errorf("sanitizing twice changed the text:\n%s\n%s", out, again)
+	}
+	if out, err := SanitizeBody("  ", PageBodyProfile); err != nil || out != "" {
+		t.Errorf("blank body = %q %v", out, err)
+	}
+}
+
+func TestSanitizeBody_RefusesWhatTheSanitizerRefuses(t *testing.T) {
+	_, err := SanitizeBody("<p>"+strings.Repeat("a", MaxBodyHTMLLen+1)+"</p>", ProductBodyProfile)
+	if e, ok := AsError(err); !ok || e.Code != "shop.invalid_body_html" || e.Status != 422 {
+		t.Fatalf("over-long body = %v; want 422 shop.invalid_body_html", err)
+	}
+}

@@ -3,6 +3,7 @@ package shop
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/mail"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/geoslug"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 )
 
 // Limits shared by the service and its tests. They mirror the CHECK
@@ -35,6 +37,45 @@ const (
 	MaxImageAltLen    = 500
 	MaxPageListLength = 100
 )
+
+// The rich-text profiles of a product description and a static page: the
+// event description's tags and link schemes (richtext.ProfileDescription),
+// with the shop's own length limits and no limit on visible text or links.
+// Everything outside the white list is dropped on write: images, tables,
+// <section>, <style>, inline styles and classes (a Shopify body keeps its
+// text, not its layout). The storefront renders the stored ART as is.
+var (
+	ProductBodyProfile = richtext.Profile{
+		Name:    "shop_product_body",
+		Tags:    richtext.ProfileDescription.Tags,
+		Schemes: richtext.ProfileDescription.Schemes,
+		MaxHTML: MaxBodyHTMLLen,
+	}
+	PageBodyProfile = richtext.Profile{
+		Name:    "shop_page_body",
+		Tags:    richtext.ProfileDescription.Tags,
+		Schemes: richtext.ProfileDescription.Schemes,
+		MaxHTML: MaxPageBodyLen,
+	}
+)
+
+// SanitizeBody reduces body_html to the profile's rich-text subset; a text
+// the sanitizer refuses is a 422 shop.invalid_body_html naming the reason.
+func SanitizeBody(in string, p richtext.Profile) (string, error) {
+	if strings.TrimSpace(in) == "" {
+		return "", nil
+	}
+	out, err := richtext.Sanitize(in, p)
+	if err != nil {
+		e := invalid("shop.invalid_body_html", fmt.Sprintf("body_html was refused (%v); it is limited to %d characters of HTML", err, p.MaxHTML))
+		var re *richtext.Error
+		if errors.As(err, &re) {
+			e.Details = map[string]any{"reason": re.Reason}
+		}
+		return "", e
+	}
+	return out, nil
+}
 
 var (
 	currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)

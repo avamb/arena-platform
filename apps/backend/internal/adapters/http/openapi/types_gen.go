@@ -16762,7 +16762,7 @@ type ShopOrderPayment struct {
 
 // ShopPage A static storefront page.
 type ShopPage struct {
-	// BodyHtml Page text, HTML.
+	// BodyHtml Page text, sanitized rich-text HTML.
 	BodyHtml string `json:"body_html"`
 
 	// Position Display order.
@@ -16795,7 +16795,7 @@ type ShopPageList struct {
 
 // ShopPagePutRequest A page's content.
 type ShopPagePutRequest struct {
-	// BodyHtml Page text, HTML, up to 200000 characters.
+	// BodyHtml Page text, HTML, up to 200000 characters. Sanitized on write like a product description; a text the sanitizer refuses answers 422 `shop.invalid_body_html`.
 	BodyHtml *string `json:"body_html,omitempty"`
 
 	// Position Display order.
@@ -16807,7 +16807,7 @@ type ShopPagePutRequest struct {
 
 // ShopProduct A shop product with its pictures and variants.
 type ShopProduct struct {
-	// BodyHtml Description, HTML.
+	// BodyHtml Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote).
 	BodyHtml string `json:"body_html"`
 
 	// CreatedAt Creation time.
@@ -16849,7 +16849,7 @@ type ShopProduct struct {
 
 // ShopProductCreateRequest A new product.
 type ShopProductCreateRequest struct {
-	// BodyHtml Description, HTML, up to 100000 characters.
+	// BodyHtml Description, HTML, up to 100000 characters. Sanitized on write to the rich-text subset (p, br, strong, em, u, a with https or mailto, ul, ol, li, h3, h4, blockquote); images, tables, section, style, classes and inline styles are dropped. A text the sanitizer refuses answers 422 `shop.invalid_body_html`.
 	BodyHtml *string `json:"body_html,omitempty"`
 
 	// ProductType Free product type label.
@@ -16882,7 +16882,7 @@ type ShopProductList struct {
 
 // ShopProductPatchRequest The product fields to change; absent fields keep their value.
 type ShopProductPatchRequest struct {
-	// BodyHtml Description, HTML.
+	// BodyHtml Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote).
 	BodyHtml *string `json:"body_html,omitempty"`
 
 	// ProductType Free product type label.
@@ -16933,7 +16933,7 @@ type ShopPublicOrg struct {
 
 // ShopPublicProduct A product on the storefront.
 type ShopPublicProduct struct {
-	// BodyHtml Description, HTML.
+	// BodyHtml Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote).
 	BodyHtml string `json:"body_html"`
 
 	// Images Pictures in display order.

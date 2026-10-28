@@ -300,10 +300,11 @@ func (in ProductInput) apply(p *gen.ShopProductParams) error {
 		p.Slug = SlugFromTitle(p.Title)
 	}
 	if in.BodyHTML != nil {
-		p.BodyHTML = *in.BodyHTML
-	}
-	if len(p.BodyHTML) > MaxBodyHTMLLen {
-		return invalid("shop.text_too_long", "body_html is limited to 100000 characters")
+		body, err := SanitizeBody(*in.BodyHTML, ProductBodyProfile)
+		if err != nil {
+			return err
+		}
+		p.BodyHTML = body
 	}
 	if in.Status != nil {
 		p.Status = strings.TrimSpace(*in.Status)
@@ -642,8 +643,9 @@ func (s *Service) PutPage(ctx context.Context, orgID uuid.UUID, slug, title, bod
 	if title == "" || !textOK(title, MaxTitleLen) {
 		return gen.ShopPageRow{}, invalid("shop.invalid_title", "title is required and limited to 300 characters")
 	}
-	if len(body) > MaxPageBodyLen {
-		return gen.ShopPageRow{}, invalid("shop.text_too_long", "body_html is limited to 200000 characters")
+	body, err := SanitizeBody(body, PageBodyProfile)
+	if err != nil {
+		return gen.ShopPageRow{}, err
 	}
 	return s.q.UpsertShopPage(ctx, orgID, norm, title, body, position)
 }
