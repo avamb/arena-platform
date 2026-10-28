@@ -227,6 +227,10 @@ func (r *runner) checkManualReview(ctx context.Context) error {
 		  FROM orders o JOIN organizations org ON org.id = o.org_id
 		 WHERE o.status = 'manual_review'
 		UNION ALL
+		SELECT 'shop_order' AS kind, so.id::text, org.name, so.total, so.currency
+		  FROM shop_orders so JOIN organizations org ON org.id = so.org_id
+		 WHERE so.status = 'manual_review'
+		UNION ALL
 		SELECT 'payment_intent' AS kind, pi.id::text, org.name, pi.amount, pi.currency
 		  FROM payment_intents pi JOIN organizations org ON org.id = pi.org_id
 		 WHERE pi.state = 'manual_review'

@@ -138,7 +138,7 @@ func PublicStatus(o gen.ShopOrderRow, holdPassed bool) string {
 			return "expired"
 		}
 		return "pending"
-	case StatusPaid, StatusShipped, StatusRefunded, StatusPartiallyRefunded:
+	case StatusPaid, StatusShipped, StatusRefunded, StatusPartiallyRefunded, StatusManualReview:
 		return "paid"
 	case StatusExpired:
 		return "expired"

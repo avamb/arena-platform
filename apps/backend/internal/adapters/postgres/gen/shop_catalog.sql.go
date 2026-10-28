@@ -498,20 +498,30 @@ type ShopCheckoutVariantRow struct {
 	OrgID         uuid.UUID
 }
 
-const lockShopVariantsForCheckout = `-- name: LockShopVariantsForCheckout :many
+const lockShopVariantRows = `-- name: LockShopVariantRows :exec
+SELECT id FROM shop_variants WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`
+
+const readShopVariantsForCheckout = `-- name: ReadShopVariantsForCheckout :many
 SELECT ` + shopVariantColumns + `, p.title, p.status, p.org_id
 FROM   shop_variants v
 JOIN   shop_products p ON p.id = v.product_id
 WHERE  v.id = ANY($1::uuid[]) AND v.deleted_at IS NULL AND p.deleted_at IS NULL AND p.org_id = $2
-ORDER  BY v.id
-FOR UPDATE OF v`
+ORDER  BY v.id`
 
-// LockShopVariantsForCheckout locks the live variants of the organization's
-// live products among ids, in id order (one lock order for every checkout,
-// so two carts never deadlock), and reports their held quantity. A variant
-// that is not there (deleted, another organization's) is simply absent.
+// LockShopVariantsForCheckout locks the variant rows among ids in id order
+// (one lock order for every writer, so two carts never deadlock) in ONE
+// statement, and only then reads the live variants of the organization's
+// live products with their held quantity in a SECOND statement. The split is
+// the point: under READ COMMITTED a statement that waited on a row lock
+// re-checks only the locked row, so a held subquery evaluated in the locking
+// statement itself would read the hold of the order that just committed as
+// absent and both carts would sell the last unit. A variant that is not there
+// (deleted, another organization's) is simply absent from the result.
 func (q *Queries) LockShopVariantsForCheckout(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) ([]ShopCheckoutVariantRow, error) {
-	rows, err := q.db.Query(ctx, lockShopVariantsForCheckout, ids, orgID)
+	if _, err := q.db.Exec(ctx, lockShopVariantRows, ids); err != nil {
+		return nil, err
+	}
+	rows, err := q.db.Query(ctx, readShopVariantsForCheckout, ids, orgID)
 	if err != nil {
 		return nil, err
 	}
