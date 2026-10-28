@@ -62,6 +62,9 @@ func ProviderDescriptor() payments.Descriptor {
 				Label:      "PayPlus API key (dashboard → Settings → API keys)",
 				Required:   true,
 				Credential: true,
+				// Half of the pair every request is authorized with: never
+				// echoed back, like Stripe's api_key.
+				Hidden: true,
 			},
 			{
 				Key:           SecretKey,

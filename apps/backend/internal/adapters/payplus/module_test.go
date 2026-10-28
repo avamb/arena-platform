@@ -69,6 +69,11 @@ func TestPayPlusModule_ModeSelectsHost(t *testing.T) {
 		}
 	}
 	d := ProviderDescriptor()
+	for _, key := range []string{SecretAPIKey, SecretKey} {
+		if f, _ := d.Secret(key); !f.Hidden {
+			t.Errorf("%s is not Hidden; a config read would echo it", key)
+		}
+	}
 	if d.WebhookSecretKey() != SecretKey || !d.Capabilities.WebhookConfigRouteOnly {
 		t.Errorf("descriptor = %+v; the secret key must verify callbacks on the config route only", d)
 	}
