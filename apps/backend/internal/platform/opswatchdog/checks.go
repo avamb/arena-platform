@@ -176,6 +176,12 @@ func (r *runner) checkPaymentNotCompleted(ctx context.Context) error {
 		   AND pi.succeeded_at IS NOT NULL
 		   AND pi.succeeded_at < $1
 		   AND (cs.id IS NULL OR cs.state <> 'completed')
+		   -- A merchandise shop payment has no checkout session (migration
+		   -- 0172): it is complete once its shop order left the pending,
+		   -- expired and cancelled states.
+		   AND NOT EXISTS (SELECT 1 FROM shop_orders so
+		                   WHERE so.payment_intent_id = pi.id
+		                     AND so.status NOT IN ('pending_payment', 'expired', 'cancelled'))
 		 ORDER BY pi.succeeded_at ASC
 		 LIMIT $2
 	`
