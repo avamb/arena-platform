@@ -92,17 +92,36 @@ cached for a year, `/theme/*` (Dawn scripts) for five minutes, CSP built from
 - `src/lib/theme.ts` — what Shopify's theme editor held and the API has no field
   for: logo, banner, footer logo, social links, the age-gate texts.
 
-## API contract notes (what the storefront assumes)
+## API contract notes (the real API, backend lane feat/shop-core)
 
-Fields beyond the spec 47 sketch that it uses when present and tolerates when
-absent: `settings.shop_name`, `products[].vendor`, `products[].option_name`,
-`products[].images[].width/height` (card aspect ratio before the image loads),
-`pages/{slug}.kind`. Pages and policies share one slug namespace in the
-`pages/{slug}` route. A page built from theme sections is delivered as that
-section markup in `body_html` (see "Pages" in the open questions of the
-hand-over notes); plain pages are wrapped in Dawn's page template.
-`409 shop.out_of_stock` may carry `error.details.items`; the page only refreshes
-the catalog and asks the buyer to check the cart.
+`src/lib/api.ts` is the only file that knows the wire shapes; it maps them to
+the model the views use. Read it with `apps/backend/internal/platform/httpserver/hshop/`.
+
+- Catalog `GET /v1/public/shop/{org}` answers `{org, settings, products, pages}`.
+  There is **no menus block**: the header menu is "Магазин" plus every static page,
+  the footer menu is the four policy pages (`POLICY_SLUGS`: privacy-policy,
+  refund-policy, terms-of-service, contact-information), in API order.
+- Pages come from `GET /v1/public/shop/pages/{org}` (all pages with text, one call,
+  kept in memory for the tab). Policies are ordinary pages, told apart by slug.
+  The backend stores `body_html` as sent (no sanitizer): the storefront's own
+  sanitizer (`src/lib/sanitize.ts`) is the only filter, and it keeps `<style>` and `<section>`.
+- A product answers `{currency, product}`; a variant has `in_stock` (the storefront's
+  `available`) and `available` = units left or null. There is no product id (the slug
+  stands in), no option name (variants carry `option1..3`) and no picture size.
+- Picture URLs are signed and short-lived: never persisted (the basket stores variant ids
+  and quantities only; the host cache stores the org slug only).
+- Checkout body is decoded strictly (unknown members are 400): `items`, `buyer`, `ship`,
+  `delivery_note`, `locale`, `return_url`, `age_confirmed` (true is required while the shop
+  has an age gate). Answer: `order_token, number, status, payment_url, currency, subtotal,
+  shipping_fee, total, expires_at`; a free order is already `paid` with an empty
+  `payment_url` and goes straight to its status page.
+- `return_url` is `<origin><base>/checkout/result`; the provider appends `?checkout_token=`
+  and the app forwards to `/checkout/{token}` (a missing token falls back to the one kept
+  in localStorage). The origin must be on the backend's return-URL allow-list.
+- `409 shop.out_of_stock` carries `error.details.items[{variant_id, requested, available}]`;
+  the page refreshes the catalog and asks the buyer to check the cart.
+- Optional extensions used when present: `products[].option_name`, `related_slugs`,
+  `images[].width/height`, `settings.shop_name` (else `org.name`).
 
 ## Before the domain moves
 

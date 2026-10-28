@@ -2,7 +2,8 @@
  * theme.ts - what the Shopify theme editor held for Einat Winery
  * (config/settings_data.json, header-group.json, footer-group.json) and the
  * public API has no field for. It is a static default, merged under whatever
- * the API sends later; moving it into organization data is a follow-up.
+ * the API sends later. TODO: this becomes per-organization settings (logo, banner,
+ * social links, age-gate texts) served by the API; accepted as static for this version.
  *
  * Images still point at the old shop's CDN. Before the domain moves they have
  * to be re-uploaded as arena media (README, "Before the domain moves").

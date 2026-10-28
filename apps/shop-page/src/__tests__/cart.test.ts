@@ -125,6 +125,7 @@ describe('checkout form', () => {
       ship: { address1: 'Герцль 1, кв. 5', address2: 'подъезд 2', city: 'Тель-Авив', country: 'IL' },
       locale: 'ru',
       return_url: 'https://x.test/e/checkout/result',
+      age_confirmed: good.consent18,
     });
   });
 });

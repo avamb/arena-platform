@@ -147,7 +147,7 @@ export type FormErrors = Partial<Record<keyof CheckoutForm, string>>;
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-export function validateCheckoutForm(f: CheckoutForm, minAge: number | undefined): FormErrors {
+export function validateCheckoutForm(f: CheckoutForm, minAge: number | null | undefined): FormErrors {
   const e: FormErrors = {};
   if (f.name.trim().length < 2) e.name = 'Укажите имя и фамилию';
   if (!EMAIL.test(f.email.trim())) e.email = 'Укажите адрес электронной почты';
@@ -174,5 +174,6 @@ export function buildCheckoutRequest(
     ship,
     locale,
     return_url: returnUrl,
+    age_confirmed: f.consent18,
   };
 }

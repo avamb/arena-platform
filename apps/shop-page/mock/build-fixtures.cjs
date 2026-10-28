@@ -20,7 +20,7 @@ if (!exportDir) {
   process.exit(1);
 }
 const outDir = path.join(__dirname, 'fixtures');
-fs.mkdirSync(path.join(outDir, 'pages'), { recursive: true });
+fs.mkdirSync(outDir, { recursive: true });
 
 // The order the live storefront shows the products in (home and /collections/all).
 const ORDER = [
@@ -50,31 +50,43 @@ const byHandle = new Map(src.map((p) => [p.handle, p]));
 
 const minor = (price) => Math.round(parseFloat(price) * 100);
 
+// The shape of GET /v1/public/shop/{org} products (hshop/views.go publicProductJSON).
+// option_name, related_slugs and images[].width/height are storefront extensions the
+// real API may not send; the storefront falls back without them.
 const products = ORDER.map((handle) => {
   const p = byHandle.get(handle);
   if (!p) throw new Error('product missing in export: ' + handle);
   const multi = p.variants.length > 1;
+  const variants = p.variants.map((v) => ({
+    id: String(v.id),
+    title: v.title,
+    sku: null,
+    price_minor: minor(v.price),
+    compare_at_minor: v.compare_at_price ? minor(v.compare_at_price) : null,
+    available: null,
+    in_stock: !!v.available,
+    option1: multi ? v.title : null,
+    option2: null,
+    option3: null,
+  }));
   return {
-    id: String(p.id),
     slug: p.handle,
     title: p.title,
-    vendor: p.vendor || 'Einat Winery',
     body_html: p.body_html || '',
-    option_name: multi ? p.options[0].name : null,
-    related_slugs: RELATED[handle] || [],
-    images: p.images.map((i) => ({
+    product_type: p.product_type || '',
+    vendor: p.vendor || 'Einat Winery',
+    price_min_minor: Math.min(...variants.map((v) => v.price_minor)),
+    images: p.images.map((i, n) => ({
+      media_id: String(i.id),
       url: i.src,
+      position: n,
       alt: i.alt || '',
       width: i.width,
       height: i.height,
     })),
-    variants: p.variants.map((v) => ({
-      id: String(v.id),
-      title: v.title,
-      price_minor: minor(v.price),
-      compare_at_minor: v.compare_at_price ? minor(v.compare_at_price) : null,
-      available: !!v.available,
-    })),
+    variants,
+    option_name: multi ? p.options[0].name : null,
+    related_slugs: RELATED[handle] || [],
   };
 });
 
@@ -129,45 +141,38 @@ const titleFix = {
 };
 for (const p of pages) if (titleFix[p.slug]) p.title = titleFix[p.slug];
 
-for (const p of pages) {
-  fs.writeFileSync(
-    path.join(outDir, 'pages', encodeURIComponent(p.slug) + '.json'),
-    JSON.stringify({ slug: p.slug, title: p.title, kind: p.kind, body_html: p.body_html }, null, 1),
-  );
-}
+// GET /v1/public/shop/pages/{org}: every page with its text, in menu order.
+const PAGE_ORDER = [
+  'наши-мероприятия', 'частные-мероприятия', 'наши-партнеры', 'о-нас', 'contact',
+  'privacy-policy', 'refund-policy', 'terms-of-service', 'contact-information',
+];
+pages.sort((a, b) => PAGE_ORDER.indexOf(a.slug) - PAGE_ORDER.indexOf(b.slug));
+const wirePages = pages.map((p, n) => ({
+  slug: p.slug,
+  title: p.title,
+  body_html: p.body_html,
+  position: n,
+  updated_at: '2026-10-28T00:00:00Z',
+}));
+fs.rmSync(path.join(outDir, 'pages'), { recursive: true, force: true });
+fs.writeFileSync(path.join(outDir, 'pages.json'), JSON.stringify({ pages: wirePages }, null, 1));
 
 // ---- shop ------------------------------------------------------------------
 
-const enc = (s) => s.split('/').map((x) => (x === '' ? x : encodeURIComponent(x))).join('/');
+// GET /v1/public/shop/{org}: the API has no menus, the storefront builds them from the page list.
 const shop = {
+  org: { slug: 'einatwinery', name: 'Einat Winery', shop_domain: 'einatwinery.com' },
   settings: {
     currency: 'ILS',
     shipping_fee_minor: 5000,
     shipping_label: 'Доставка по Израилю',
+    country_iso2: 'IL',
     age_gate_min_age: 18,
     announcement_text: 'Special discount 15% on gift sets',
     contact_email: 'sales@einatwinery.com',
-    shop_name: 'Einat Winery',
   },
   products,
-  pages: pages.filter((p) => p.kind === 'pages').map((p) => ({ slug: p.slug, title: p.title })),
-  menus: {
-    main: [
-      { title: 'Магазин', url: '/collections/all' },
-      { title: 'Публичные мероприятия', url: enc('/pages/наши-мероприятия') },
-      { title: 'Частные мероприятия', url: enc('/pages/частные-мероприятия') },
-      { title: 'Наши партнеры', url: enc('/pages/наши-партнеры') },
-      { title: 'О нас', url: enc('/pages/о-нас') },
-      { title: 'Свяжитесь с нами', url: '/pages/contact' },
-    ],
-    footer_rules: [
-      { title: 'Privacy Policy', url: '/policies/privacy-policy' },
-      { title: 'Refund Policy', url: '/policies/refund-policy' },
-      { title: 'Terms of Service', url: '/policies/terms-of-service' },
-      { title: 'Contact Information', url: '/policies/contact-information' },
-    ],
-    footer_info: [],
-  },
+  pages: wirePages.map((p) => ({ slug: p.slug, title: p.title })),
 };
 fs.writeFileSync(path.join(outDir, 'shop.json'), JSON.stringify(shop, null, 1));
 console.log('products', products.length, 'pages', pages.length);

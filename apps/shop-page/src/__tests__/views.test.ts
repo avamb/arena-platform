@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { ShopData } from '../lib/api';
+import { normalizeCatalog } from '../lib/api';
 import { resolveLines } from '../lib/cart';
 import { EINAT_THEME } from '../lib/theme';
 import { cartView } from '../views/cart';
@@ -12,7 +12,7 @@ import { layout } from '../views/layout';
 import { productView } from '../views/product';
 import { notFoundView, pageView, policyView, searchProducts, searchView } from '../views/static';
 
-const shop = JSON.parse(readFileSync(join(__dirname, '../../mock/fixtures/shop.json'), 'utf8')) as ShopData;
+const shop = normalizeCatalog(JSON.parse(readFileSync(join(__dirname, '../../mock/fixtures/shop.json'), 'utf8')));
 
 function ctx(cart: Ctx['cart'] = [], base = '/einatwinery'): Ctx {
   return { org: 'einatwinery', base, shop, theme: EINAT_THEME, cart };

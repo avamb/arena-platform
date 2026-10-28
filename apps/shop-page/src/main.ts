@@ -587,6 +587,7 @@ async function submitCheckout(form: HTMLFormElement): Promise<void> {
       values,
       location.origin + buildHref(s.base, '/checkout/result'),
       'ru',
+      s.shop.settings.country_iso2 || 'IL',
     );
     const created = await createCheckout(s.org, req);
     try {
@@ -595,7 +596,12 @@ async function submitCheckout(form: HTMLFormElement): Promise<void> {
       /* the return page then finds the token in the query */
     }
     checkoutState = { values, errors: {} };
-    window.location.assign(created.payment_url);
+    if (created.payment_url) {
+      window.location.assign(created.payment_url);
+    } else {
+      // A free order is paid on the spot: no payment page, straight to its status.
+      await navigate(buildHref(s.base, '/checkout/' + created.order_token));
+    }
   } catch (e) {
     let message = 'Не удалось оформить заказ. Проверьте соединение и попробуйте ещё раз.';
     if (e instanceof ApiError) {
