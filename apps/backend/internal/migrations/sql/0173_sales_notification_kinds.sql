@@ -14,7 +14,7 @@
 -- per-chat mute switches and apply to both kinds.
 --
 -- No permission: the table is still reachable only through SQL (see
--- docs/ops/shop_notifications.md for the logistics group row).
+-- docs/ops/shop_notifications_ru.md for the logistics group row).
 
 -- +goose Up
 
