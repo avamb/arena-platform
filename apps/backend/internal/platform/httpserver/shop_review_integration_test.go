@@ -675,3 +675,33 @@ func TestShop_SameCallbackTwiceAtOnce(t *testing.T) {
 		t.Fatalf("stock = %d; want 1", v.Stock)
 	}
 }
+
+// TestShop_ShipOfAParkedOrderNeedsFreeGoods: a parked order cannot take the
+// unit another pending order holds; once stock is added it ships.
+func TestShop_ShipOfAParkedOrderNeedsFreeGoods(t *testing.T) {
+	f := newShopFixture(t)
+	_, variant := f.openShop(4500, 1)
+	late := f.placed(variant, 1)
+	f.expireOrder(late.ID)
+	holder := f.placed(variant, 1) // pending, holds the last unit
+	f.pay(late.OrderToken)
+	if got, _ := f.q.GetShopOrder(context.Background(), late.ID, f.orgA); got.Status != shop.StatusManualReview {
+		t.Fatalf("late order = %s; want manual_review", got.Status)
+	}
+	ship := f.orgPath(f.orgA, "/orders/"+late.ID.String()+"/ship")
+	code, body, _ := f.do(http.MethodPost, ship, f.ownerA, `{}`)
+	if code != http.StatusConflict || shopErrCode(body) != "shop.out_of_stock" {
+		t.Fatalf("ship over another order's hold = %d %v; want 409 shop.out_of_stock", code, body)
+	}
+	f.pay(holder.OrderToken)
+	if v := f.variant(variant); v.Stock != 0 {
+		t.Fatalf("stock after the holder paid = %d; want 0", v.Stock)
+	}
+	f.exec(`UPDATE shop_variants SET stock = stock + 1 WHERE id = $1`, variant)
+	if code, body, _ := f.do(http.MethodPost, ship, f.ownerA, `{}`); code != http.StatusOK {
+		t.Fatalf("ship with the goods back = %d %v", code, body)
+	}
+	if v := f.variant(variant); v.Stock != 0 {
+		t.Fatalf("stock after shipping = %d; want 0", v.Stock)
+	}
+}

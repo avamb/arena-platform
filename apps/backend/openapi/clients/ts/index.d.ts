@@ -10408,8 +10408,9 @@ export interface paths {
          * @description Moves a paid (or partially refunded) order to `shipped`, stores the
          *     optional tracking note and writes the `v1.shop.order.shipped` event. Shipping
          *     a shipped order again only updates the note. Shipping an order in
-         *     `manual_review` takes its goods off the shelf at that moment. The body may
-         *     be empty.
+         *     `manual_review` takes its goods off the shelf at that moment, only when they
+         *     are free after every live hold (409 `shop.out_of_stock` otherwise). The body
+         *     may be empty.
          *
          *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
          */
@@ -66296,7 +66297,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The order is not paid (`shop.order_not_shippable`). */
+            /** @description The order is not paid (`shop.order_not_shippable`), or it is parked in `manual_review` and its goods are not free on the shelf (`shop.out_of_stock`, `details.items` lists the short lines). */
             409: {
                 headers: {
                     [name: string]: unknown;
