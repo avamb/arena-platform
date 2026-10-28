@@ -16644,6 +16644,9 @@ type ShopImage struct {
 	// Alt Alternative text.
 	Alt string `json:"alt"`
 
+	// Height Height of the picture in pixels, read from its header at upload; absent when the size was never recorded.
+	Height *int32 `json:"height"`
+
 	// MediaId The media object.
 	MediaId openapi_types.UUID `json:"media_id"`
 
@@ -16652,6 +16655,9 @@ type ShopImage struct {
 
 	// Url Signed download address of the picture; empty when it cannot be signed.
 	Url string `json:"url"`
+
+	// Width Width of the picture in pixels, read from its header at upload; absent when the size was never recorded (a picture uploaded before sizes were read and not yet re-imported).
+	Width *int32 `json:"width"`
 }
 
 // ShopImageAddRequest A picture to attach.

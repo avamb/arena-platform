@@ -30015,6 +30015,16 @@ export interface components {
             position: number;
             /** @description Alternative text. */
             alt: string;
+            /**
+             * Format: int32
+             * @description Width of the picture in pixels, read from its header at upload; absent when the size was never recorded (a picture uploaded before sizes were read and not yet re-imported).
+             */
+            width?: number | null;
+            /**
+             * Format: int32
+             * @description Height of the picture in pixels, read from its header at upload; absent when the size was never recorded.
+             */
+            height?: number | null;
         };
         /** @description A variant as the organization sees it. */
         ShopVariant: {

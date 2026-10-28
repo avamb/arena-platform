@@ -22773,6 +22773,14 @@ components:
         alt:
           type: string
           description: Alternative text.
+        width:
+          type: [integer, "null"]
+          format: int32
+          description: Width of the picture in pixels, read from its header at upload; absent when the size was never recorded (a picture uploaded before sizes were read and not yet re-imported).
+        height:
+          type: [integer, "null"]
+          format: int32
+          description: Height of the picture in pixels, read from its header at upload; absent when the size was never recorded.
 
     ShopVariant:
       type: object

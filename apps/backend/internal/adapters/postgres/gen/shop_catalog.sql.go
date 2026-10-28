@@ -365,13 +365,19 @@ type ShopProductImageRow struct {
 	Position  int32     `json:"position"`
 	Alt       string    `json:"alt"`
 	CreatedAt time.Time `json:"created_at"`
+	// Width and Height are the picture's pixel size from its media object;
+	// nil when it was not recorded (an upload older than the dimensions).
+	Width  *int32 `json:"width"`
+	Height *int32 `json:"height"`
 }
 
-const shopImageColumns = `id, product_id, media_id, position, alt, created_at`
+const shopImageColumns = `id, product_id, media_id, position, alt, created_at,
+       (SELECT m.width FROM media_objects m WHERE m.id = shop_product_images.media_id),
+       (SELECT m.height FROM media_objects m WHERE m.id = shop_product_images.media_id)`
 
 func scanShopProductImageRow(row interface{ Scan(dest ...any) error }) (ShopProductImageRow, error) {
 	var i ShopProductImageRow
-	err := row.Scan(&i.ID, &i.ProductID, &i.MediaID, &i.Position, &i.Alt, &i.CreatedAt)
+	err := row.Scan(&i.ID, &i.ProductID, &i.MediaID, &i.Position, &i.Alt, &i.CreatedAt, &i.Width, &i.Height)
 	return i, err
 }
 
