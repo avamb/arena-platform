@@ -288,7 +288,7 @@ components:
             assets (default branding, system icons).
         owner_type:
           type: string
-          enum: [org_logo, event_poster, artist_photo, seating_plan_svg, session_poster, event_gallery, event_report]
+          enum: [org_logo, event_poster, artist_photo, seating_plan_svg, session_poster, event_gallery, event_report, shop_product]
           description: |
             Polymorphic owner kind. Future migrations widen the
             enumeration as new media-bearing surfaces appear.
@@ -296,7 +296,8 @@ components:
             referenced by a seating_plan_versions row. `session_poster`
             is a session-level poster. `event_gallery` and `event_report`
             (migration 0153) are photos of an event page gallery and of its
-            photo report.
+            photo report. `shop_product` (migration 0172) is a picture of a
+            merchandise shop product.
         owner_id:
           type: string
           format: uuid
@@ -22644,6 +22645,988 @@ components:
           items:
             $ref: "#/components/schemas/BillingBankTransaction"
 
+    ShopSettings:
+      type: object
+      description: The shop settings of an organization (migration 0172). Money in minor units of `currency`.
+      required: [org_id, configured, currency, shipping_fee_minor, shipping_label, announcement_text, logistics_note]
+      properties:
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        configured:
+          type: boolean
+          description: False while the settings were never saved (defaults are shown and the storefront is closed).
+        currency:
+          type: string
+          description: ISO 4217 code of every price in the shop.
+        shipping_fee_minor:
+          type: integer
+          format: int64
+          description: Flat delivery fee added to every order, minor units.
+        shipping_label:
+          type: string
+          description: How the delivery is called on the storefront.
+        country_iso2:
+          type: [string, "null"]
+          description: The shop's country (ISO 3166-1 alpha-2), or null.
+        age_gate_min_age:
+          type: [integer, "null"]
+          format: int32
+          description: Minimum buyer age the storefront asks to confirm, or null for no age gate.
+        announcement_text:
+          type: string
+          description: Text of the storefront's announcement bar.
+        contact_email:
+          type: [string, "null"]
+          description: Address buyers may write to, or null.
+        logistics_note:
+          type: string
+          description: Internal note for whoever ships the orders.
+        sales_channel_id:
+          type: [string, "null"]
+          format: uuid
+          description: Sales channel whose payment provider takes the shop's money; null means the organization's oldest channel.
+        shop_domain:
+          type: [string, "null"]
+          description: Host name of the storefront, set by the platform operator; null when none.
+        updated_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the settings were last saved; null when never.
+
+    ShopSettingsUpdateRequest:
+      type: object
+      description: The whole settings row (PUT replaces it).
+      required: [currency]
+      properties:
+        currency:
+          type: string
+          description: ISO 4217 code, e.g. EUR or ILS.
+        shipping_fee_minor:
+          type: integer
+          format: int64
+          description: Flat delivery fee, minor units, zero or more.
+        shipping_label:
+          type: string
+          description: How the delivery is called on the storefront, up to 200 characters.
+        country_iso2:
+          type: [string, "null"]
+          description: Two-letter country code, or null.
+        age_gate_min_age:
+          type: [integer, "null"]
+          format: int32
+          description: 1-99, or null for no age gate.
+        announcement_text:
+          type: string
+          description: Announcement bar text, up to 500 characters.
+        contact_email:
+          type: [string, "null"]
+          description: Contact address, or null.
+        logistics_note:
+          type: string
+          description: Internal note for the logistician, up to 2000 characters.
+        sales_channel_id:
+          type: [string, "null"]
+          format: uuid
+          description: A sales channel of this organization, or null for the oldest one.
+        shop_domain:
+          type: [string, "null"]
+          description: Storefront host (platform superadmin only); absent or null keeps it, an empty string clears it.
+
+    ShopImage:
+      type: object
+      description: A picture of a product.
+      required: [media_id, url, position, alt]
+      properties:
+        media_id:
+          type: string
+          format: uuid
+          description: The media object.
+        url:
+          type: string
+          description: Signed download address of the picture; empty when it cannot be signed.
+        position:
+          type: integer
+          format: int32
+          description: Display order, lowest first.
+        alt:
+          type: string
+          description: Alternative text.
+
+    ShopVariant:
+      type: object
+      description: A variant as the organization sees it.
+      required: [id, title, price_minor, stock, track_stock, held, position]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The variant.
+        title:
+          type: string
+          description: Variant title; `Default Title` for the one variant of a simple product.
+        sku:
+          type: [string, "null"]
+          description: Stock keeping unit, or null.
+        price_minor:
+          type: integer
+          format: int64
+          description: Price, minor units of the shop currency.
+        compare_at_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Former price shown struck through, or null.
+        stock:
+          type: integer
+          format: int32
+          description: Units on the shelf; may go below zero after an oversell.
+        track_stock:
+          type: boolean
+          description: False when the variant sells without a stock limit.
+        held:
+          type: integer
+          format: int32
+          description: Units unpaid orders hold right now.
+        available:
+          type: [integer, "null"]
+          description: Units still for sale (stock minus held, never below zero); null when the variant does not track stock.
+        position:
+          type: integer
+          format: int32
+          description: Display order, lowest first.
+        option1:
+          type: [string, "null"]
+          description: First option value, or null.
+        option2:
+          type: [string, "null"]
+          description: Second option value, or null.
+        option3:
+          type: [string, "null"]
+          description: Third option value, or null.
+
+    ShopProduct:
+      type: object
+      description: A shop product with its pictures and variants.
+      required: [id, org_id, slug, title, body_html, status, product_type, vendor, sort_order, images, variants, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The product.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        slug:
+          type: string
+          description: Address of the product on the storefront (`/products/{slug}`).
+        title:
+          type: string
+          description: Product title.
+        body_html:
+          type: string
+          description: Description, HTML.
+        status:
+          type: string
+          description: "`draft`, `active` (on sale) or `archived`."
+        product_type:
+          type: string
+          description: Free product type label.
+        vendor:
+          type: string
+          description: Free vendor label.
+        sort_order:
+          type: integer
+          format: int32
+          description: Display order, lowest first.
+        images:
+          type: array
+          description: Pictures in display order.
+          items:
+            $ref: "#/components/schemas/ShopImage"
+        variants:
+          type: array
+          description: Live variants in display order.
+          items:
+            $ref: "#/components/schemas/ShopVariant"
+        created_at:
+          type: string
+          format: date-time
+          description: Creation time.
+        updated_at:
+          type: string
+          format: date-time
+          description: Last change.
+
+    ShopProductList:
+      type: object
+      description: The products of a shop.
+      required: [products]
+      properties:
+        products:
+          type: array
+          description: Products in display order.
+          items:
+            $ref: "#/components/schemas/ShopProduct"
+
+    ShopVariantInput:
+      type: object
+      description: One variant of a create or replace request.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: An existing variant of the product to update; absent creates one.
+        title:
+          type: string
+          description: Variant title; empty means `Default Title`.
+        sku:
+          type: [string, "null"]
+          description: Stock keeping unit, up to 100 characters.
+        price_minor:
+          type: integer
+          format: int64
+          description: Price, minor units, zero or more.
+        compare_at_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Former price, or null.
+        stock:
+          type: integer
+          format: int32
+          description: Units on the shelf, zero or more.
+        track_stock:
+          type: boolean
+          description: Whether stock limits sales; absent means true.
+        position:
+          type: integer
+          format: int32
+          description: Display order; absent means the place in the list.
+        option1:
+          type: [string, "null"]
+          description: First option value.
+        option2:
+          type: [string, "null"]
+          description: Second option value.
+        option3:
+          type: [string, "null"]
+          description: Third option value.
+
+    ShopProductCreateRequest:
+      type: object
+      description: A new product.
+      required: [title]
+      properties:
+        slug:
+          type: string
+          description: Storefront address; absent derives it from the title.
+        title:
+          type: string
+          description: Product title, up to 300 characters.
+        body_html:
+          type: string
+          description: Description, HTML, up to 100000 characters.
+        status:
+          type: string
+          description: "`draft` (default), `active` or `archived`."
+        product_type:
+          type: string
+          description: Free product type label.
+        vendor:
+          type: string
+          description: Free vendor label.
+        sort_order:
+          type: integer
+          format: int32
+          description: Display order.
+        variants:
+          type: array
+          description: The variants, 1-100; absent creates one `Default Title` variant at price 0.
+          items:
+            $ref: "#/components/schemas/ShopVariantInput"
+
+    ShopProductPatchRequest:
+      type: object
+      description: The product fields to change; absent fields keep their value.
+      properties:
+        slug:
+          type: string
+          description: Storefront address.
+        title:
+          type: string
+          description: Product title.
+        body_html:
+          type: string
+          description: Description, HTML.
+        status:
+          type: string
+          description: "`draft`, `active` or `archived`."
+        product_type:
+          type: string
+          description: Free product type label.
+        vendor:
+          type: string
+          description: Free vendor label.
+        sort_order:
+          type: integer
+          format: int32
+          description: Display order.
+
+    ShopVariantsReplaceRequest:
+      type: object
+      description: The complete variant list of a product.
+      required: [variants]
+      properties:
+        variants:
+          type: array
+          description: 1-100 variants; variants left out are deleted.
+          items:
+            $ref: "#/components/schemas/ShopVariantInput"
+
+    ShopImageAddRequest:
+      type: object
+      description: A picture to attach.
+      required: [media_id]
+      properties:
+        media_id:
+          type: string
+          format: uuid
+          description: A live media object of this organization.
+        position:
+          type: integer
+          format: int32
+          description: Display order; absent appends.
+        alt:
+          type: string
+          description: Alternative text, up to 500 characters.
+
+    ShopPage:
+      type: object
+      description: A static storefront page.
+      required: [slug, title, body_html, position, updated_at]
+      properties:
+        slug:
+          type: string
+          description: Address of the page.
+        title:
+          type: string
+          description: Page title.
+        body_html:
+          type: string
+          description: Page text, HTML.
+        position:
+          type: integer
+          format: int32
+          description: Display order.
+        updated_at:
+          type: string
+          format: date-time
+          description: Last change.
+
+    ShopPageList:
+      type: object
+      description: Storefront pages.
+      required: [pages]
+      properties:
+        pages:
+          type: array
+          description: Pages in display order.
+          items:
+            $ref: "#/components/schemas/ShopPage"
+
+    ShopPagePutRequest:
+      type: object
+      description: A page's content.
+      required: [title]
+      properties:
+        title:
+          type: string
+          description: Page title, up to 300 characters.
+        body_html:
+          type: string
+          description: Page text, HTML, up to 200000 characters.
+        position:
+          type: integer
+          format: int32
+          description: Display order.
+
+    ShopOrderItem:
+      type: object
+      description: One line of an order, as sold.
+      required: [product_title, variant_title, qty, unit_price_minor, total_minor]
+      properties:
+        variant_id:
+          type: [string, "null"]
+          format: uuid
+          description: The variant sold, or null for an imported line.
+        product_title:
+          type: string
+          description: Product title at the time of sale.
+        variant_title:
+          type: string
+          description: Variant title at the time of sale.
+        sku:
+          type: [string, "null"]
+          description: Stock keeping unit at the time of sale.
+        qty:
+          type: integer
+          format: int32
+          description: Units.
+        unit_price_minor:
+          type: integer
+          format: int64
+          description: Price of one unit, minor units.
+        total_minor:
+          type: integer
+          format: int64
+          description: unit_price_minor x qty.
+
+    ShopBuyer:
+      type: object
+      description: Who pays.
+      required: [name, email]
+      properties:
+        name:
+          type: string
+          description: Buyer's name.
+        email:
+          type: string
+          description: Buyer's e-mail.
+        phone:
+          type: string
+          description: Buyer's phone.
+
+    ShopAddress:
+      type: object
+      description: Where the goods go.
+      required: [address1, city, country]
+      properties:
+        name:
+          type: string
+          description: Recipient; empty means the buyer.
+        address1:
+          type: string
+          description: Street and number.
+        address2:
+          type: string
+          description: Apartment, floor, building.
+        city:
+          type: string
+          description: City.
+        postal:
+          type: string
+          description: Postal code.
+        country:
+          type: string
+          description: Two-letter country code.
+
+    ShopOrderPayment:
+      type: object
+      description: The payment of an order.
+      required: [id, provider, state, amount, currency]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The payment intent.
+        provider:
+          type: string
+          description: Payment provider.
+        state:
+          type: string
+          description: Payment intent state, e.g. `created`, `succeeded`, `failed`.
+        amount:
+          type: integer
+          format: int64
+          description: Amount charged, minor units.
+        currency:
+          type: string
+          description: ISO 4217 code.
+
+    ShopOrder:
+      type: object
+      description: A shop order. total = subtotal - discount + shipping_fee.
+      required: [id, org_id, number, status, source, buyer, ship, delivery_kind, delivery_note, currency, subtotal, discount, shipping_fee, total, refunded_minor, tracking_note, items, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The order.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        number:
+          type: integer
+          format: int64
+          description: Order number shown to people.
+        status:
+          type: string
+          description: "`pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded` or `partially_refunded`."
+        source:
+          type: string
+          description: "`web` (the storefront) or `shopify` (imported)."
+        external_ref:
+          type: [string, "null"]
+          description: Order number in the system the order was imported from.
+        buyer:
+          allOf:
+            - $ref: "#/components/schemas/ShopBuyer"
+          description: Who paid.
+        ship:
+          allOf:
+            - $ref: "#/components/schemas/ShopAddress"
+          description: Where the goods go.
+        delivery_kind:
+          type: string
+          description: "`shipping` (the only kind in this version) or `pickup`."
+        delivery_note:
+          type: string
+          description: The buyer's comment.
+        currency:
+          type: string
+          description: ISO 4217 code of every amount.
+        subtotal:
+          type: integer
+          format: int64
+          description: Sum of the lines, minor units.
+        discount:
+          type: integer
+          format: int64
+          description: Discount, minor units.
+        shipping_fee:
+          type: integer
+          format: int64
+          description: Delivery fee, minor units.
+        total:
+          type: integer
+          format: int64
+          description: What the buyer paid, minor units.
+        refunded_minor:
+          type: integer
+          format: int64
+          description: What the provider has returned so far, minor units.
+        buyer_locale:
+          type: [string, "null"]
+          description: Language the buyer shopped in.
+        tracking_note:
+          type: string
+          description: Tracking number or note given when shipped.
+        items:
+          type: array
+          description: The lines in order.
+          items:
+            $ref: "#/components/schemas/ShopOrderItem"
+        payment:
+          oneOf:
+            - $ref: "#/components/schemas/ShopOrderPayment"
+            - type: "null"
+          description: The payment, or null when the order has none.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: Until when an unpaid order holds its goods.
+        paid_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the payment arrived.
+        shipped_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the order was shipped.
+        cancelled_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the order was cancelled.
+        created_at:
+          type: string
+          format: date-time
+          description: Creation time.
+        updated_at:
+          type: string
+          format: date-time
+          description: Last change.
+
+    ShopOrderList:
+      type: object
+      description: One page of orders.
+      required: [orders]
+      properties:
+        orders:
+          type: array
+          description: Orders, newest first.
+          items:
+            $ref: "#/components/schemas/ShopOrder"
+        next_offset:
+          type: [integer, "null"]
+          description: Offset of the next page; null on the last page.
+
+    ShopShipRequest:
+      type: object
+      description: Shipping details (the body may be empty).
+      properties:
+        tracking_note:
+          type: string
+          description: Tracking number or note, up to 2000 characters.
+
+    ShopRefundRequest:
+      type: object
+      description: A refund of a shop order (the body may be empty to refund everything left).
+      properties:
+        amount_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Amount to return, minor units; absent refunds what is left.
+        reason:
+          type: string
+          description: Why, up to 2000 characters.
+
+    ShopRefund:
+      type: object
+      description: A refund of a shop order's payment.
+      required: [id, state, amount, currency]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The refund.
+        state:
+          type: string
+          description: "`provider_pending`, `succeeded`, `failed` or `manual_review`."
+        amount:
+          type: integer
+          format: int64
+          description: Amount, minor units.
+        currency:
+          type: string
+          description: ISO 4217 code.
+        provider_refund_id:
+          type: [string, "null"]
+          description: The provider's refund id, once it accepted.
+        failure_code:
+          type: [string, "null"]
+          description: Why the refund failed.
+        failure_reason:
+          type: [string, "null"]
+          description: The failure in words.
+
+    ShopRefundResponse:
+      type: object
+      description: The order after a refund, and the refund.
+      required: [order, refund]
+      properties:
+        order:
+          allOf:
+            - $ref: "#/components/schemas/ShopOrder"
+          description: The order.
+        refund:
+          allOf:
+            - $ref: "#/components/schemas/ShopRefund"
+          description: The refund.
+
+    ShopPublicSettings:
+      type: object
+      description: What the storefront needs of the shop settings.
+      required: [currency, shipping_fee_minor, shipping_label, announcement_text]
+      properties:
+        currency:
+          type: string
+          description: ISO 4217 code of every price.
+        shipping_fee_minor:
+          type: integer
+          format: int64
+          description: Flat delivery fee, minor units.
+        shipping_label:
+          type: string
+          description: How the delivery is called.
+        country_iso2:
+          type: [string, "null"]
+          description: The shop's country.
+        age_gate_min_age:
+          type: [integer, "null"]
+          format: int32
+          description: Minimum age to confirm, or null.
+        announcement_text:
+          type: string
+          description: Announcement bar text.
+        contact_email:
+          type: [string, "null"]
+          description: Contact address, or null.
+
+    ShopPublicOrg:
+      type: object
+      description: The organization behind a storefront.
+      required: [slug, name]
+      properties:
+        slug:
+          type: string
+          description: Organization slug.
+        name:
+          type: string
+          description: Organization name.
+        shop_domain:
+          type: [string, "null"]
+          description: Storefront host, or null.
+
+    ShopPublicVariant:
+      type: object
+      description: A variant on the storefront.
+      required: [id, title, price_minor, in_stock]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The variant (what checkout takes as `variant_id`).
+        title:
+          type: string
+          description: Variant title.
+        sku:
+          type: [string, "null"]
+          description: Stock keeping unit.
+        price_minor:
+          type: integer
+          format: int64
+          description: Price, minor units.
+        compare_at_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Former price, or null.
+        available:
+          type: [integer, "null"]
+          description: Units still for sale; null when unlimited.
+        in_stock:
+          type: boolean
+          description: Whether at least one unit can be bought.
+        option1:
+          type: [string, "null"]
+          description: First option value.
+        option2:
+          type: [string, "null"]
+          description: Second option value.
+        option3:
+          type: [string, "null"]
+          description: Third option value.
+
+    ShopPublicProduct:
+      type: object
+      description: A product on the storefront.
+      required: [slug, title, body_html, product_type, vendor, price_min_minor, images, variants]
+      properties:
+        slug:
+          type: string
+          description: Product address.
+        title:
+          type: string
+          description: Product title.
+        body_html:
+          type: string
+          description: Description, HTML.
+        product_type:
+          type: string
+          description: Product type label.
+        vendor:
+          type: string
+          description: Vendor label.
+        price_min_minor:
+          type: integer
+          format: int64
+          description: Lowest variant price, minor units.
+        images:
+          type: array
+          description: Pictures in display order.
+          items:
+            $ref: "#/components/schemas/ShopImage"
+        variants:
+          type: array
+          description: Variants in display order.
+          items:
+            $ref: "#/components/schemas/ShopPublicVariant"
+
+    ShopPageLink:
+      type: object
+      description: A page in the catalog's page list.
+      required: [slug, title]
+      properties:
+        slug:
+          type: string
+          description: Page address.
+        title:
+          type: string
+          description: Page title.
+
+    ShopPublicCatalog:
+      type: object
+      description: A storefront's catalog.
+      required: [org, settings, products, pages]
+      properties:
+        org:
+          allOf:
+            - $ref: "#/components/schemas/ShopPublicOrg"
+          description: The organization.
+        settings:
+          allOf:
+            - $ref: "#/components/schemas/ShopPublicSettings"
+          description: Public settings.
+        products:
+          type: array
+          description: Active products in display order.
+          items:
+            $ref: "#/components/schemas/ShopPublicProduct"
+        pages:
+          type: array
+          description: Static pages.
+          items:
+            $ref: "#/components/schemas/ShopPageLink"
+
+    ShopPublicProductResponse:
+      type: object
+      description: One storefront product.
+      required: [currency, product]
+      properties:
+        currency:
+          type: string
+          description: ISO 4217 code of the prices.
+        product:
+          allOf:
+            - $ref: "#/components/schemas/ShopPublicProduct"
+          description: The product.
+
+    ShopByHostResponse:
+      type: object
+      description: The organization a storefront host belongs to.
+      required: [org_slug]
+      properties:
+        org_slug:
+          type: string
+          description: Organization slug for the other public shop routes.
+
+    ShopCheckoutLine:
+      type: object
+      description: One cart line.
+      required: [variant_id, qty]
+      properties:
+        variant_id:
+          type: string
+          format: uuid
+          description: The variant.
+        qty:
+          type: integer
+          description: Units, 1-99 (repeated variants are added up).
+
+    ShopCheckoutRequest:
+      type: object
+      description: A storefront purchase.
+      required: [items, buyer, ship]
+      properties:
+        items:
+          type: array
+          description: The cart, 1-50 lines.
+          items:
+            $ref: "#/components/schemas/ShopCheckoutLine"
+        buyer:
+          allOf:
+            - $ref: "#/components/schemas/ShopBuyer"
+          description: Who pays.
+        ship:
+          allOf:
+            - $ref: "#/components/schemas/ShopAddress"
+          description: Where the goods go.
+        delivery_note:
+          type: string
+          description: Comment for the delivery, up to 2000 characters.
+        locale:
+          type: string
+          description: Language of the storefront (two letters); the payment page uses it.
+        return_url:
+          type: string
+          description: Storefront page the provider sends the buyer back to (an allowed origin), with `checkout_token`.
+        age_confirmed:
+          type: boolean
+          description: The buyer confirmed the shop's minimum age; required when the shop has an age gate.
+
+    ShopCheckoutResponse:
+      type: object
+      description: A placed order and where to pay it.
+      required: [order_token, number, status, payment_url, currency, subtotal, shipping_fee, total]
+      properties:
+        order_token:
+          type: string
+          description: The buyer's handle on the order (for GET /v1/public/shop/checkout/{order_token}).
+        number:
+          type: integer
+          format: int64
+          description: Order number.
+        status:
+          type: string
+          description: "`pending`, or `paid` for an order that cost nothing."
+        payment_url:
+          type: string
+          description: Provider-hosted payment page; empty for an order that cost nothing.
+        currency:
+          type: string
+          description: ISO 4217 code.
+        subtotal:
+          type: integer
+          format: int64
+          description: Sum of the lines, minor units.
+        shipping_fee:
+          type: integer
+          format: int64
+          description: Delivery fee, minor units.
+        total:
+          type: integer
+          format: int64
+          description: Amount to pay, minor units.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: Until when the order holds its goods.
+
+    ShopCheckoutStatus:
+      type: object
+      description: Where a storefront order stands.
+      required: [status, number, currency, subtotal, shipping_fee, total, items, payment_url]
+      properties:
+        status:
+          type: string
+          description: "`pending`, `paid`, `expired` or `cancelled`."
+        number:
+          type: integer
+          format: int64
+          description: Order number.
+        currency:
+          type: string
+          description: ISO 4217 code.
+        subtotal:
+          type: integer
+          format: int64
+          description: Sum of the lines, minor units.
+        shipping_fee:
+          type: integer
+          format: int64
+          description: Delivery fee, minor units.
+        total:
+          type: integer
+          format: int64
+          description: Total, minor units.
+        items:
+          type: array
+          description: The lines.
+          items:
+            $ref: "#/components/schemas/ShopOrderItem"
+        payment_url:
+          type: string
+          description: Payment page to go back to while pending; empty otherwise.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: Until when the order holds its goods.
+        paid_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the payment arrived.
+
 paths:
   /healthz:
     get:
@@ -43621,7 +44604,7 @@ paths:
                   format: binary
                 owner_type:
                   type: string
-                  enum: [org_logo, event_poster, artist_photo, seating_plan_svg, session_poster, event_gallery, event_report]
+                  enum: [org_logo, event_poster, artist_photo, seating_plan_svg, session_poster, event_gallery, event_report, shop_product]
                 owner_id:
                   type: string
                   format: uuid
@@ -55602,6 +56585,1750 @@ paths:
                 $ref: "#/components/schemas/OnboardingBotNoticesResponse"
         "401":
           description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/settings:
+    get:
+      operationId: getShopSettings
+      summary: Read the shop settings
+      description: |
+        The shop settings of the organization: currency, flat shipping fee,
+        age gate, announcement, contact, logistics note, the sales channel whose
+        payment provider takes the money, and the storefront domain (read only for
+        the organization). `configured` is false while the settings were never
+        saved; the defaults are shown and the public storefront answers 404 until
+        they are.
+
+        Requires JWT or API key + the `shop.read` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopSettings"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: putShopSettings
+      summary: Replace the shop settings
+      description: |
+        Writes the whole settings row and opens the storefront. Money is in
+        minor units of `currency`. `sales_channel_id` names the channel whose payment
+        provider and the organization's payment config take the shop's money (absent:
+        the organization's oldest channel). `shop_domain` may be changed by a platform
+        superadmin only (absent keeps it, `""` clears it).
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopSettingsUpdateRequest"
+      responses:
+        "200":
+          description: The settings as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopSettings"
+        "400":
+          description: The body is not valid JSON for this route (`shop.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Another organization already uses this domain (`shop.duplicate_domain`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `shop.manage`, is not a member, or is not a platform superadmin and tried to change `shop_domain` (`shop.domain_superadmin_only`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/products:
+    get:
+      operationId: listShopProducts
+      summary: List the shop products
+      description: |
+        Every live product of the organization in display order, with its
+        pictures and variants. `status` filters to `draft`, `active` or `archived`.
+
+        Requires JWT or API key + the `shop.read` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          description: "Only products of this status: `draft`, `active` or `archived`."
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The products.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopProductList"
+        "400":
+          description: Unknown status (`shop.invalid_status`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: createShopProduct
+      summary: Create a shop product
+      description: |
+        Creates a product with its variants (one `Default Title` variant at
+        price 0 when `variants` is left out) and the shop settings row when this is
+        the organization's first product. `slug` defaults to a slug of the title;
+        `status` defaults to `draft`. A stock above zero is journaled as a manual
+        stock move.
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopProductCreateRequest"
+      responses:
+        "201":
+          description: The new product.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopProduct"
+        "400":
+          description: The body is not valid JSON for this route (`shop.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Another live product of the shop uses this slug (`shop.duplicate_slug`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: A field is invalid (`shop.invalid_title`, `shop.invalid_slug`, `shop.invalid_status`, `shop.text_too_long`, `shop.invalid_variants`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.manage` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/products/{product_id}:
+    get:
+      operationId: getShopProduct
+      summary: Read a shop product
+      description: |
+        One product with its pictures and variants.
+
+        Requires JWT or API key + the `shop.read` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: product_id
+          in: path
+          required: true
+          description: UUID of the shop product (a product of another organization answers 404).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The product.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopProduct"
+        "404":
+          description: No such product in this organization (`shop.product_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: patchShopProduct
+      summary: Edit a shop product
+      description: |
+        Changes the fields present in the body; absent fields keep their value.
+        Variants are replaced with `PUT .../variants`, not here (a body carrying
+        `variants` answers 400).
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: product_id
+          in: path
+          required: true
+          description: UUID of the shop product (a product of another organization answers 404).
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopProductPatchRequest"
+      responses:
+        "200":
+          description: The product as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopProduct"
+        "400":
+          description: The body is not valid JSON for this route, or carries `variants` (`shop.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such product in this organization (`shop.product_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Another live product of the shop uses this slug (`shop.duplicate_slug`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: A field is invalid (`shop.invalid_title`, `shop.invalid_slug`, `shop.invalid_status`, `shop.text_too_long`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.manage` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteShopProduct
+      summary: Delete a shop product
+      description: |
+        Removes the product from the shop (soft delete): its slug is free again
+        and past orders keep their own copy of its title and price.
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: product_id
+          in: path
+          required: true
+          description: UUID of the shop product (a product of another organization answers 404).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Done; no body.
+        "404":
+          description: No such product in this organization (`shop.product_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.manage` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/products/{product_id}/images:
+    post:
+      operationId: addShopProductImage
+      summary: Attach a picture to a product
+      description: |
+        Attaches a media object the organization uploaded (`POST /v1/media`,
+        owner type `shop_product`) to the product. `position` left out appends it;
+        attaching a picture again moves and relabels it.
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: product_id
+          in: path
+          required: true
+          description: UUID of the shop product (a product of another organization answers 404).
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopImageAddRequest"
+      responses:
+        "200":
+          description: The product with its pictures.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopProduct"
+        "400":
+          description: The body is not valid JSON for this route (`shop.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such product in this organization (`shop.product_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The media object is missing, deleted or another organization's (`shop.invalid_media`), or `alt` is too long (`shop.text_too_long`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.manage` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/products/{product_id}/images/{media_id}:
+    delete:
+      operationId: removeShopProductImage
+      summary: Detach a picture from a product
+      description: |
+        Detaches the picture from the product; the media object itself stays.
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: product_id
+          in: path
+          required: true
+          description: UUID of the shop product (a product of another organization answers 404).
+          schema:
+            type: string
+            format: uuid
+        - name: media_id
+          in: path
+          required: true
+          description: UUID of the attached media object.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The product with its remaining pictures.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopProduct"
+        "404":
+          description: No such product (`shop.product_not_found`) or the picture is not attached to it (`shop.image_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.manage` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/products/{product_id}/variants:
+    put:
+      operationId: replaceShopProductVariants
+      summary: Replace the variants of a product
+      description: |
+        Makes the product's variants exactly the list sent (1 to 100): an item
+        with `id` updates that variant, one without creates a variant, and every
+        variant left out is deleted (orders keep pointing at it). A stock change is
+        journaled as a manual stock move. Stock never comes back automatically after
+        a refund: correct it here.
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: product_id
+          in: path
+          required: true
+          description: UUID of the shop product (a product of another organization answers 404).
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopVariantsReplaceRequest"
+      responses:
+        "200":
+          description: The product with its variants.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopProduct"
+        "400":
+          description: The body is not valid JSON for this route (`shop.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such product in this organization (`shop.product_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The list is empty or too long, a value is invalid (`shop.invalid_variants`), or an id is not a variant of this product (`shop.invalid_variant`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.manage` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/pages:
+    get:
+      operationId: listShopPages
+      summary: List the storefront pages
+      description: |
+        The static pages of the storefront (about, contacts, policies) in
+        display order.
+
+        Requires JWT or API key + the `shop.read` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The pages.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopPageList"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/pages/{slug}:
+    put:
+      operationId: putShopPage
+      summary: Create or replace a storefront page
+      description: |
+        Creates the page with this slug or replaces its title, text and
+        position.
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: slug
+          in: path
+          required: true
+          description: Slug of the page (lower case, no spaces, '/', '?' or '#').
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopPagePutRequest"
+      responses:
+        "200":
+          description: The page as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopPage"
+        "400":
+          description: The body is not valid JSON for this route (`shop.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The slug or title is invalid or the text too long (`shop.invalid_slug`, `shop.invalid_title`, `shop.text_too_long`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.manage` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteShopPage
+      summary: Delete a storefront page
+      description: |
+        Removes the page.
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: slug
+          in: path
+          required: true
+          description: Slug of the page (lower case, no spaces, '/', '?' or '#').
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Done; no body.
+        "404":
+          description: No such page (`shop.page_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.manage` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/orders:
+    get:
+      operationId: listShopOrders
+      summary: List the shop orders
+      description: |
+        Newest first, with their lines. `q` matches the order number exactly or
+        the buyer's e-mail or name as a substring; `from` and `to` bound the creation
+        time. A full page carries `next_offset`.
+
+        Requires JWT or API key + the `shop.read` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          description: "Only orders of this status: `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded` or `partially_refunded`."
+          schema:
+            type: string
+        - name: q
+          in: query
+          required: false
+          description: Order number, or part of the buyer's e-mail or name.
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          description: Created at or after this instant (RFC 3339, or YYYY-MM-DD for UTC midnight).
+          schema:
+            type: string
+        - name: to
+          in: query
+          required: false
+          description: Created before this instant (RFC 3339, or YYYY-MM-DD for UTC midnight).
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1-200 (default 50).
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          description: How many orders to skip (the previous page's `next_offset`).
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: One page of orders.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopOrderList"
+        "400":
+          description: A filter is malformed (`shop.invalid_filter`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/orders/{order_id}:
+    get:
+      operationId: getShopOrder
+      summary: Read a shop order
+      description: |
+        One order with its lines and payment. Refunds the provider settled
+        since the last look (a pending refund that completed, one made in the
+        provider's dashboard) are folded into `refunded_minor` and the status first.
+
+        Requires JWT or API key + the `shop.read` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: order_id
+          in: path
+          required: true
+          description: UUID of the shop order (an order of another organization answers 404).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopOrder"
+        "404":
+          description: No such order in this organization (`shop.order_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/orders/{order_id}/ship:
+    post:
+      operationId: shipShopOrder
+      summary: Mark a shop order shipped
+      description: |
+        Moves a paid (or partially refunded) order to `shipped`, stores the
+        optional tracking note and writes the `v1.shop.order.shipped` event. Shipping
+        a shipped order again only updates the note. The body may be empty.
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: order_id
+          in: path
+          required: true
+          description: UUID of the shop order (an order of another organization answers 404).
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopShipRequest"
+      responses:
+        "200":
+          description: The order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopOrder"
+        "400":
+          description: The body is not valid JSON for this route (`shop.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such order in this organization (`shop.order_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The order is not paid (`shop.order_not_shippable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The tracking note is too long (`shop.text_too_long`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.manage` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/orders/{order_id}/cancel:
+    post:
+      operationId: cancelShopOrder
+      summary: Cancel an unpaid shop order
+      description: |
+        Cancels an order that is still waiting for its payment; its goods go
+        back on sale. A paid order is refunded instead. From the web event center the
+        request needs a fresh password confirmation (`X-Step-Up-Token`).
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: order_id
+          in: path
+          required: true
+          description: UUID of the shop order (an order of another organization answers 404).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The cancelled order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopOrder"
+        "404":
+          description: No such order in this organization (`shop.order_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The order is not waiting for its payment, or the buyer has paid it already (`shop.order_not_cancellable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `shop.manage` or is not a member (`permissions.denied`), or the web did not confirm the password (`auth.step_up_required`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/orders/{order_id}/refund:
+    post:
+      operationId: refundShopOrder
+      summary: Refund a shop order
+      description: |
+        Returns money of a paid order through the organization's payment
+        provider: a refund is recorded on the order's payment, approved and driven
+        to the provider (the same refund engine as tickets). `amount_minor` left out
+        refunds what is left. The answer carries the order and the refund's state:
+        `succeeded`, `provider_pending` (no answer yet; refund.sweep follows it up),
+        `failed` or `manual_review`. The order becomes `refunded` when all of it went
+        back and `partially_refunded` when some did, and `v1.shop.order.refunded` is
+        written. Stock is not put back. From the web event center the request needs
+        a fresh password confirmation (`X-Step-Up-Token`).
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: order_id
+          in: path
+          required: true
+          description: UUID of the shop order (an order of another organization answers 404).
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopRefundRequest"
+      responses:
+        "200":
+          description: The order after the refund, and the refund.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopRefundResponse"
+        "400":
+          description: The body is not valid JSON for this route (`shop.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such order in this organization (`shop.order_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The order is not paid or not paid through arena (`shop.order_not_refundable`), or nothing is left to refund (`shop.nothing_to_refund`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The amount is not between 1 and what is left (`shop.invalid_refund_amount`, details carry `refundable_minor`) or the reason is too long (`shop.text_too_long`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `shop.manage` or is not a member (`permissions.denied`), or the web did not confirm the password (`auth.step_up_required`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/orders/{order_id}/courier-text:
+    get:
+      operationId: getShopOrderCourierText
+      summary: Courier text of a shop order
+      description: |
+        The delivery details one per line, ready to paste into a courier form:
+        name, phone, city, address, postal code, each line of the order, the total,
+        the buyer's comment. Empty fields are left out.
+
+        Requires JWT or API key + the `shop.read` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: order_id
+          in: path
+          required: true
+          description: UUID of the shop order (an order of another organization answers 404).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The courier text.
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: No such order in this organization (`shop.order_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/shop/by-host:
+    get:
+      operationId: getPublicShopByHost
+      summary: Resolve a storefront host
+      description: |
+        The organization slug whose storefront lives on `host`
+        (`organizations.shop_domain`); a `www.` prefix and a port are ignored. No
+        login; rate-limited per client address.
+      tags: [v1]
+      security: []
+      parameters:
+        - name: host
+          in: query
+          required: true
+          description: The storefront host name, e.g. `einatwinery.com`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The organization slug.
+          headers:
+            Cache-Control:
+              description: "`public, max-age=30`: the answer may be cached for 30 seconds."
+              schema:
+                type: string
+            Vary:
+              description: Includes `Origin`.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopByHostResponse"
+        "404":
+          description: No shop lives on this host (`shop.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/shop/checkout/{order_token}:
+    get:
+      operationId: getPublicShopCheckoutStatus
+      summary: Status of a storefront order
+      description: |
+        Where the buyer's order stands: `pending` (with `payment_url` to go
+        back to the payment page), `paid`, `expired` or `cancelled`. The token in the
+        path is the credential; the provider sends the buyer back to the storefront
+        with it as `checkout_token`. No login; rate-limited per address and per
+        token.
+      tags: [v1]
+      security: []
+      parameters:
+        - name: order_token
+          in: path
+          required: true
+          description: The order token checkout answered (64 hex characters).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The order status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopCheckoutStatus"
+        "404":
+          description: No order with this token (`shop.order_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/shop/pages/{org_slug}:
+    get:
+      operationId: listPublicShopPages
+      summary: Storefront pages
+      description: |
+        Every static page of the shop with its text. No login; rate-limited
+        per client address.
+      tags: [v1]
+      security: []
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          description: Slug of the organization that owns the shop.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The pages.
+          headers:
+            Cache-Control:
+              description: "`public, max-age=30`: the answer may be cached for 30 seconds."
+              schema:
+                type: string
+            Vary:
+              description: Includes `Origin`.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopPageList"
+        "404":
+          description: No shop with this slug (`shop.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/shop/{org_slug}:
+    get:
+      operationId: getPublicShopCatalog
+      summary: Storefront catalog
+      description: |
+        The shop's public settings, its active products with their variants
+        and pictures, and the list of its static pages. A variant's `available` is
+        null when it does not track stock. No login; rate-limited per client
+        address.
+      tags: [v1]
+      security: []
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          description: Slug of the organization that owns the shop.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The catalog.
+          headers:
+            Cache-Control:
+              description: "`public, max-age=30`: the answer may be cached for 30 seconds."
+              schema:
+                type: string
+            Vary:
+              description: Includes `Origin`.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopPublicCatalog"
+        "404":
+          description: No shop with this slug (`shop.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/shop/{org_slug}/products/{slug}:
+    get:
+      operationId: getPublicShopProduct
+      summary: Storefront product
+      description: |
+        One active product by its slug (the Shopify handle for an imported
+        shop). No login; rate-limited per client address.
+      tags: [v1]
+      security: []
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          description: Slug of the organization that owns the shop.
+          schema:
+            type: string
+        - name: slug
+          in: path
+          required: true
+          description: Slug of the product.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The product.
+          headers:
+            Cache-Control:
+              description: "`public, max-age=30`: the answer may be cached for 30 seconds."
+              schema:
+                type: string
+            Vary:
+              description: Includes `Origin`.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopPublicProductResponse"
+        "404":
+          description: No shop with this slug (`shop.not_found`) or no active product with this slug (`shop.product_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/shop/{org_slug}/checkout:
+    post:
+      operationId: createPublicShopCheckout
+      summary: Place a storefront order
+      description: |
+        Creates the order from the cart, holds its goods for the payment window
+        plus a grace, and starts the payment on the shop's provider-hosted page
+        (`payment_url`). The payment configuration and `return_url` are checked
+        before any stock is held; the hosted page is created after the order
+        commits. A cart one of whose lines cannot be served answers 409
+        `shop.out_of_stock` with `details.items` = [{variant_id, requested,
+        available}] and holds nothing. A cart that costs nothing is completed at
+        once (`status` paid, empty `payment_url`). The provider sends the buyer back
+        to `return_url` with `checkout_token` = the order token. No login;
+        rate-limited per client address.
+      tags: [v1]
+      security: []
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          description: Slug of the organization that owns the shop.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopCheckoutRequest"
+      responses:
+        "201":
+          description: The order and where to pay.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopCheckoutResponse"
+        "400":
+          description: The body is not valid JSON for this route (`shop.invalid_body`), or `return_url` is not allowed and no fallback is configured (`checkout.invalid_return_url`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No shop with this slug (`shop.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Some items are not available in the quantity requested (`shop.out_of_stock`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The cart, buyer or address is invalid (`shop.invalid_items`, `shop.invalid_item`, `shop.invalid_buyer`, `shop.invalid_address`, `shop.text_too_long`, `shop.age_confirmation_required`), or online payment is not set up (`checkout.payment_not_configured`, `checkout.payment_provider_unsupported`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`, `checkout.payment_start_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`), or the payment provider could not start the payment (`checkout.payment_start_failed`, `checkout.payment_not_configured`).
           content:
             application/json:
               schema:

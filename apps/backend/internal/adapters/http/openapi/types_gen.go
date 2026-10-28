@@ -477,6 +477,7 @@ const (
 	MediaObjectOwnerTypeOrgLogo        MediaObjectOwnerType = "org_logo"
 	MediaObjectOwnerTypeSeatingPlanSvg MediaObjectOwnerType = "seating_plan_svg"
 	MediaObjectOwnerTypeSessionPoster  MediaObjectOwnerType = "session_poster"
+	MediaObjectOwnerTypeShopProduct    MediaObjectOwnerType = "shop_product"
 )
 
 // Defines values for MediaObjectStorageBackend.
@@ -976,6 +977,7 @@ const (
 	PostV1MediaMultipartBodyOwnerTypeOrgLogo        PostV1MediaMultipartBodyOwnerType = "org_logo"
 	PostV1MediaMultipartBodyOwnerTypeSeatingPlanSvg PostV1MediaMultipartBodyOwnerType = "seating_plan_svg"
 	PostV1MediaMultipartBodyOwnerTypeSessionPoster  PostV1MediaMultipartBodyOwnerType = "session_poster"
+	PostV1MediaMultipartBodyOwnerTypeShopProduct    PostV1MediaMultipartBodyOwnerType = "shop_product"
 )
 
 // Defines values for GetSessionMACSExportParamsDownload.
@@ -9845,7 +9847,8 @@ type MediaObject struct {
 	// referenced by a seating_plan_versions row. `session_poster`
 	// is a session-level poster. `event_gallery` and `event_report`
 	// (migration 0153) are photos of an event page gallery and of its
-	// photo report.
+	// photo report. `shop_product` (migration 0172) is a picture of a
+	// merchandise shop product.
 	OwnerType MediaObjectOwnerType `json:"owner_type"`
 
 	// SignedUrl Short-lived download URL. Present on `GET /v1/media/{id}`
@@ -9877,7 +9880,8 @@ type MediaObject struct {
 // referenced by a seating_plan_versions row. `session_poster`
 // is a session-level poster. `event_gallery` and `event_report`
 // (migration 0153) are photos of an event page gallery and of its
-// photo report.
+// photo report. `shop_product` (migration 0172) is a picture of a
+// merchandise shop product.
 type MediaObjectOwnerType string
 
 // MediaObjectStorageBackend Which storage adapter holds the bytes. `s3` covers any
@@ -16462,6 +16466,771 @@ type SetEventPromoterRequest struct {
 	PromoterId *openapi_types.UUID `json:"promoter_id"`
 }
 
+// ShopAddress Where the goods go.
+type ShopAddress struct {
+	// Address1 Street and number.
+	Address1 string `json:"address1"`
+
+	// Address2 Apartment, floor, building.
+	Address2 *string `json:"address2,omitempty"`
+
+	// City City.
+	City string `json:"city"`
+
+	// Country Two-letter country code.
+	Country string `json:"country"`
+
+	// Name Recipient; empty means the buyer.
+	Name *string `json:"name,omitempty"`
+
+	// Postal Postal code.
+	Postal *string `json:"postal,omitempty"`
+}
+
+// ShopBuyer Who pays.
+type ShopBuyer struct {
+	// Email Buyer's e-mail.
+	Email string `json:"email"`
+
+	// Name Buyer's name.
+	Name string `json:"name"`
+
+	// Phone Buyer's phone.
+	Phone *string `json:"phone,omitempty"`
+}
+
+// ShopByHostResponse The organization a storefront host belongs to.
+type ShopByHostResponse struct {
+	// OrgSlug Organization slug for the other public shop routes.
+	OrgSlug string `json:"org_slug"`
+}
+
+// ShopCheckoutLine One cart line.
+type ShopCheckoutLine struct {
+	// Qty Units, 1-99 (repeated variants are added up).
+	Qty int `json:"qty"`
+
+	// VariantId The variant.
+	VariantId openapi_types.UUID `json:"variant_id"`
+}
+
+// ShopCheckoutRequest A storefront purchase.
+type ShopCheckoutRequest struct {
+	// AgeConfirmed The buyer confirmed the shop's minimum age; required when the shop has an age gate.
+	AgeConfirmed *bool `json:"age_confirmed,omitempty"`
+
+	// Buyer Who pays.
+	Buyer ShopBuyer `json:"buyer"`
+
+	// DeliveryNote Comment for the delivery, up to 2000 characters.
+	DeliveryNote *string `json:"delivery_note,omitempty"`
+
+	// Items The cart, 1-50 lines.
+	Items []ShopCheckoutLine `json:"items"`
+
+	// Locale Language of the storefront (two letters); the payment page uses it.
+	Locale *string `json:"locale,omitempty"`
+
+	// ReturnUrl Storefront page the provider sends the buyer back to (an allowed origin), with `checkout_token`.
+	ReturnUrl *string `json:"return_url,omitempty"`
+
+	// Ship Where the goods go.
+	Ship ShopAddress `json:"ship"`
+}
+
+// ShopCheckoutResponse A placed order and where to pay it.
+type ShopCheckoutResponse struct {
+	// Currency ISO 4217 code.
+	Currency string `json:"currency"`
+
+	// ExpiresAt Until when the order holds its goods.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// Number Order number.
+	Number int64 `json:"number"`
+
+	// OrderToken The buyer's handle on the order (for GET /v1/public/shop/checkout/{order_token}).
+	OrderToken string `json:"order_token"`
+
+	// PaymentUrl Provider-hosted payment page; empty for an order that cost nothing.
+	PaymentUrl string `json:"payment_url"`
+
+	// ShippingFee Delivery fee, minor units.
+	ShippingFee int64 `json:"shipping_fee"`
+
+	// Status `pending`, or `paid` for an order that cost nothing.
+	Status string `json:"status"`
+
+	// Subtotal Sum of the lines, minor units.
+	Subtotal int64 `json:"subtotal"`
+
+	// Total Amount to pay, minor units.
+	Total int64 `json:"total"`
+}
+
+// ShopCheckoutStatus Where a storefront order stands.
+type ShopCheckoutStatus struct {
+	// Currency ISO 4217 code.
+	Currency string `json:"currency"`
+
+	// ExpiresAt Until when the order holds its goods.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// Items The lines.
+	Items []ShopOrderItem `json:"items"`
+
+	// Number Order number.
+	Number int64 `json:"number"`
+
+	// PaidAt When the payment arrived.
+	PaidAt *time.Time `json:"paid_at"`
+
+	// PaymentUrl Payment page to go back to while pending; empty otherwise.
+	PaymentUrl string `json:"payment_url"`
+
+	// ShippingFee Delivery fee, minor units.
+	ShippingFee int64 `json:"shipping_fee"`
+
+	// Status `pending`, `paid`, `expired` or `cancelled`.
+	Status string `json:"status"`
+
+	// Subtotal Sum of the lines, minor units.
+	Subtotal int64 `json:"subtotal"`
+
+	// Total Total, minor units.
+	Total int64 `json:"total"`
+}
+
+// ShopImage A picture of a product.
+type ShopImage struct {
+	// Alt Alternative text.
+	Alt string `json:"alt"`
+
+	// MediaId The media object.
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Position Display order, lowest first.
+	Position int32 `json:"position"`
+
+	// Url Signed download address of the picture; empty when it cannot be signed.
+	Url string `json:"url"`
+}
+
+// ShopImageAddRequest A picture to attach.
+type ShopImageAddRequest struct {
+	// Alt Alternative text, up to 500 characters.
+	Alt *string `json:"alt,omitempty"`
+
+	// MediaId A live media object of this organization.
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Position Display order; absent appends.
+	Position *int32 `json:"position,omitempty"`
+}
+
+// ShopOrder A shop order. total = subtotal - discount + shipping_fee.
+type ShopOrder struct {
+	// Buyer Who paid.
+	Buyer ShopBuyer `json:"buyer"`
+
+	// BuyerLocale Language the buyer shopped in.
+	BuyerLocale *string `json:"buyer_locale"`
+
+	// CancelledAt When the order was cancelled.
+	CancelledAt *time.Time `json:"cancelled_at"`
+
+	// CreatedAt Creation time.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 code of every amount.
+	Currency string `json:"currency"`
+
+	// DeliveryKind `shipping` (the only kind in this version) or `pickup`.
+	DeliveryKind string `json:"delivery_kind"`
+
+	// DeliveryNote The buyer's comment.
+	DeliveryNote string `json:"delivery_note"`
+
+	// Discount Discount, minor units.
+	Discount int64 `json:"discount"`
+
+	// ExpiresAt Until when an unpaid order holds its goods.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// ExternalRef Order number in the system the order was imported from.
+	ExternalRef *string `json:"external_ref"`
+
+	// Id The order.
+	Id openapi_types.UUID `json:"id"`
+
+	// Items The lines in order.
+	Items []ShopOrderItem `json:"items"`
+
+	// Number Order number shown to people.
+	Number int64 `json:"number"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PaidAt When the payment arrived.
+	PaidAt *time.Time `json:"paid_at"`
+
+	// Payment The payment, or null when the order has none.
+	Payment *ShopOrderPayment `json:"payment"`
+
+	// RefundedMinor What the provider has returned so far, minor units.
+	RefundedMinor int64 `json:"refunded_minor"`
+
+	// Ship Where the goods go.
+	Ship ShopAddress `json:"ship"`
+
+	// ShippedAt When the order was shipped.
+	ShippedAt *time.Time `json:"shipped_at"`
+
+	// ShippingFee Delivery fee, minor units.
+	ShippingFee int64 `json:"shipping_fee"`
+
+	// Source `web` (the storefront) or `shopify` (imported).
+	Source string `json:"source"`
+
+	// Status `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded` or `partially_refunded`.
+	Status string `json:"status"`
+
+	// Subtotal Sum of the lines, minor units.
+	Subtotal int64 `json:"subtotal"`
+
+	// Total What the buyer paid, minor units.
+	Total int64 `json:"total"`
+
+	// TrackingNote Tracking number or note given when shipped.
+	TrackingNote string `json:"tracking_note"`
+
+	// UpdatedAt Last change.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ShopOrderItem One line of an order, as sold.
+type ShopOrderItem struct {
+	// ProductTitle Product title at the time of sale.
+	ProductTitle string `json:"product_title"`
+
+	// Qty Units.
+	Qty int32 `json:"qty"`
+
+	// Sku Stock keeping unit at the time of sale.
+	Sku *string `json:"sku"`
+
+	// TotalMinor unit_price_minor x qty.
+	TotalMinor int64 `json:"total_minor"`
+
+	// UnitPriceMinor Price of one unit, minor units.
+	UnitPriceMinor int64 `json:"unit_price_minor"`
+
+	// VariantId The variant sold, or null for an imported line.
+	VariantId *openapi_types.UUID `json:"variant_id"`
+
+	// VariantTitle Variant title at the time of sale.
+	VariantTitle string `json:"variant_title"`
+}
+
+// ShopOrderList One page of orders.
+type ShopOrderList struct {
+	// NextOffset Offset of the next page; null on the last page.
+	NextOffset *int `json:"next_offset"`
+
+	// Orders Orders, newest first.
+	Orders []ShopOrder `json:"orders"`
+}
+
+// ShopOrderPayment The payment of an order.
+type ShopOrderPayment struct {
+	// Amount Amount charged, minor units.
+	Amount int64 `json:"amount"`
+
+	// Currency ISO 4217 code.
+	Currency string `json:"currency"`
+
+	// Id The payment intent.
+	Id openapi_types.UUID `json:"id"`
+
+	// Provider Payment provider.
+	Provider string `json:"provider"`
+
+	// State Payment intent state, e.g. `created`, `succeeded`, `failed`.
+	State string `json:"state"`
+}
+
+// ShopPage A static storefront page.
+type ShopPage struct {
+	// BodyHtml Page text, HTML.
+	BodyHtml string `json:"body_html"`
+
+	// Position Display order.
+	Position int32 `json:"position"`
+
+	// Slug Address of the page.
+	Slug string `json:"slug"`
+
+	// Title Page title.
+	Title string `json:"title"`
+
+	// UpdatedAt Last change.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ShopPageLink A page in the catalog's page list.
+type ShopPageLink struct {
+	// Slug Page address.
+	Slug string `json:"slug"`
+
+	// Title Page title.
+	Title string `json:"title"`
+}
+
+// ShopPageList Storefront pages.
+type ShopPageList struct {
+	// Pages Pages in display order.
+	Pages []ShopPage `json:"pages"`
+}
+
+// ShopPagePutRequest A page's content.
+type ShopPagePutRequest struct {
+	// BodyHtml Page text, HTML, up to 200000 characters.
+	BodyHtml *string `json:"body_html,omitempty"`
+
+	// Position Display order.
+	Position *int32 `json:"position,omitempty"`
+
+	// Title Page title, up to 300 characters.
+	Title string `json:"title"`
+}
+
+// ShopProduct A shop product with its pictures and variants.
+type ShopProduct struct {
+	// BodyHtml Description, HTML.
+	BodyHtml string `json:"body_html"`
+
+	// CreatedAt Creation time.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id The product.
+	Id openapi_types.UUID `json:"id"`
+
+	// Images Pictures in display order.
+	Images []ShopImage `json:"images"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// ProductType Free product type label.
+	ProductType string `json:"product_type"`
+
+	// Slug Address of the product on the storefront (`/products/{slug}`).
+	Slug string `json:"slug"`
+
+	// SortOrder Display order, lowest first.
+	SortOrder int32 `json:"sort_order"`
+
+	// Status `draft`, `active` (on sale) or `archived`.
+	Status string `json:"status"`
+
+	// Title Product title.
+	Title string `json:"title"`
+
+	// UpdatedAt Last change.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Variants Live variants in display order.
+	Variants []ShopVariant `json:"variants"`
+
+	// Vendor Free vendor label.
+	Vendor string `json:"vendor"`
+}
+
+// ShopProductCreateRequest A new product.
+type ShopProductCreateRequest struct {
+	// BodyHtml Description, HTML, up to 100000 characters.
+	BodyHtml *string `json:"body_html,omitempty"`
+
+	// ProductType Free product type label.
+	ProductType *string `json:"product_type,omitempty"`
+
+	// Slug Storefront address; absent derives it from the title.
+	Slug *string `json:"slug,omitempty"`
+
+	// SortOrder Display order.
+	SortOrder *int32 `json:"sort_order,omitempty"`
+
+	// Status `draft` (default), `active` or `archived`.
+	Status *string `json:"status,omitempty"`
+
+	// Title Product title, up to 300 characters.
+	Title string `json:"title"`
+
+	// Variants The variants, 1-100; absent creates one `Default Title` variant at price 0.
+	Variants *[]ShopVariantInput `json:"variants,omitempty"`
+
+	// Vendor Free vendor label.
+	Vendor *string `json:"vendor,omitempty"`
+}
+
+// ShopProductList The products of a shop.
+type ShopProductList struct {
+	// Products Products in display order.
+	Products []ShopProduct `json:"products"`
+}
+
+// ShopProductPatchRequest The product fields to change; absent fields keep their value.
+type ShopProductPatchRequest struct {
+	// BodyHtml Description, HTML.
+	BodyHtml *string `json:"body_html,omitempty"`
+
+	// ProductType Free product type label.
+	ProductType *string `json:"product_type,omitempty"`
+
+	// Slug Storefront address.
+	Slug *string `json:"slug,omitempty"`
+
+	// SortOrder Display order.
+	SortOrder *int32 `json:"sort_order,omitempty"`
+
+	// Status `draft`, `active` or `archived`.
+	Status *string `json:"status,omitempty"`
+
+	// Title Product title.
+	Title *string `json:"title,omitempty"`
+
+	// Vendor Free vendor label.
+	Vendor *string `json:"vendor,omitempty"`
+}
+
+// ShopPublicCatalog A storefront's catalog.
+type ShopPublicCatalog struct {
+	// Org The organization.
+	Org ShopPublicOrg `json:"org"`
+
+	// Pages Static pages.
+	Pages []ShopPageLink `json:"pages"`
+
+	// Products Active products in display order.
+	Products []ShopPublicProduct `json:"products"`
+
+	// Settings Public settings.
+	Settings ShopPublicSettings `json:"settings"`
+}
+
+// ShopPublicOrg The organization behind a storefront.
+type ShopPublicOrg struct {
+	// Name Organization name.
+	Name string `json:"name"`
+
+	// ShopDomain Storefront host, or null.
+	ShopDomain *string `json:"shop_domain"`
+
+	// Slug Organization slug.
+	Slug string `json:"slug"`
+}
+
+// ShopPublicProduct A product on the storefront.
+type ShopPublicProduct struct {
+	// BodyHtml Description, HTML.
+	BodyHtml string `json:"body_html"`
+
+	// Images Pictures in display order.
+	Images []ShopImage `json:"images"`
+
+	// PriceMinMinor Lowest variant price, minor units.
+	PriceMinMinor int64 `json:"price_min_minor"`
+
+	// ProductType Product type label.
+	ProductType string `json:"product_type"`
+
+	// Slug Product address.
+	Slug string `json:"slug"`
+
+	// Title Product title.
+	Title string `json:"title"`
+
+	// Variants Variants in display order.
+	Variants []ShopPublicVariant `json:"variants"`
+
+	// Vendor Vendor label.
+	Vendor string `json:"vendor"`
+}
+
+// ShopPublicProductResponse One storefront product.
+type ShopPublicProductResponse struct {
+	// Currency ISO 4217 code of the prices.
+	Currency string `json:"currency"`
+
+	// Product The product.
+	Product ShopPublicProduct `json:"product"`
+}
+
+// ShopPublicSettings What the storefront needs of the shop settings.
+type ShopPublicSettings struct {
+	// AgeGateMinAge Minimum age to confirm, or null.
+	AgeGateMinAge *int32 `json:"age_gate_min_age"`
+
+	// AnnouncementText Announcement bar text.
+	AnnouncementText string `json:"announcement_text"`
+
+	// ContactEmail Contact address, or null.
+	ContactEmail *string `json:"contact_email"`
+
+	// CountryIso2 The shop's country.
+	CountryIso2 *string `json:"country_iso2"`
+
+	// Currency ISO 4217 code of every price.
+	Currency string `json:"currency"`
+
+	// ShippingFeeMinor Flat delivery fee, minor units.
+	ShippingFeeMinor int64 `json:"shipping_fee_minor"`
+
+	// ShippingLabel How the delivery is called.
+	ShippingLabel string `json:"shipping_label"`
+}
+
+// ShopPublicVariant A variant on the storefront.
+type ShopPublicVariant struct {
+	// Available Units still for sale; null when unlimited.
+	Available *int `json:"available"`
+
+	// CompareAtMinor Former price, or null.
+	CompareAtMinor *int64 `json:"compare_at_minor"`
+
+	// Id The variant (what checkout takes as `variant_id`).
+	Id openapi_types.UUID `json:"id"`
+
+	// InStock Whether at least one unit can be bought.
+	InStock bool `json:"in_stock"`
+
+	// Option1 First option value.
+	Option1 *string `json:"option1"`
+
+	// Option2 Second option value.
+	Option2 *string `json:"option2"`
+
+	// Option3 Third option value.
+	Option3 *string `json:"option3"`
+
+	// PriceMinor Price, minor units.
+	PriceMinor int64 `json:"price_minor"`
+
+	// Sku Stock keeping unit.
+	Sku *string `json:"sku"`
+
+	// Title Variant title.
+	Title string `json:"title"`
+}
+
+// ShopRefund A refund of a shop order's payment.
+type ShopRefund struct {
+	// Amount Amount, minor units.
+	Amount int64 `json:"amount"`
+
+	// Currency ISO 4217 code.
+	Currency string `json:"currency"`
+
+	// FailureCode Why the refund failed.
+	FailureCode *string `json:"failure_code"`
+
+	// FailureReason The failure in words.
+	FailureReason *string `json:"failure_reason"`
+
+	// Id The refund.
+	Id openapi_types.UUID `json:"id"`
+
+	// ProviderRefundId The provider's refund id, once it accepted.
+	ProviderRefundId *string `json:"provider_refund_id"`
+
+	// State `provider_pending`, `succeeded`, `failed` or `manual_review`.
+	State string `json:"state"`
+}
+
+// ShopRefundRequest A refund of a shop order (the body may be empty to refund everything left).
+type ShopRefundRequest struct {
+	// AmountMinor Amount to return, minor units; absent refunds what is left.
+	AmountMinor *int64 `json:"amount_minor"`
+
+	// Reason Why, up to 2000 characters.
+	Reason *string `json:"reason,omitempty"`
+}
+
+// ShopRefundResponse The order after a refund, and the refund.
+type ShopRefundResponse struct {
+	// Order The order.
+	Order ShopOrder `json:"order"`
+
+	// Refund The refund.
+	Refund ShopRefund `json:"refund"`
+}
+
+// ShopSettings The shop settings of an organization (migration 0172). Money in minor units of `currency`.
+type ShopSettings struct {
+	// AgeGateMinAge Minimum buyer age the storefront asks to confirm, or null for no age gate.
+	AgeGateMinAge *int32 `json:"age_gate_min_age"`
+
+	// AnnouncementText Text of the storefront's announcement bar.
+	AnnouncementText string `json:"announcement_text"`
+
+	// Configured False while the settings were never saved (defaults are shown and the storefront is closed).
+	Configured bool `json:"configured"`
+
+	// ContactEmail Address buyers may write to, or null.
+	ContactEmail *string `json:"contact_email"`
+
+	// CountryIso2 The shop's country (ISO 3166-1 alpha-2), or null.
+	CountryIso2 *string `json:"country_iso2"`
+
+	// Currency ISO 4217 code of every price in the shop.
+	Currency string `json:"currency"`
+
+	// LogisticsNote Internal note for whoever ships the orders.
+	LogisticsNote string `json:"logistics_note"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// SalesChannelId Sales channel whose payment provider takes the shop's money; null means the organization's oldest channel.
+	SalesChannelId *openapi_types.UUID `json:"sales_channel_id"`
+
+	// ShippingFeeMinor Flat delivery fee added to every order, minor units.
+	ShippingFeeMinor int64 `json:"shipping_fee_minor"`
+
+	// ShippingLabel How the delivery is called on the storefront.
+	ShippingLabel string `json:"shipping_label"`
+
+	// ShopDomain Host name of the storefront, set by the platform operator; null when none.
+	ShopDomain *string `json:"shop_domain"`
+
+	// UpdatedAt When the settings were last saved; null when never.
+	UpdatedAt *time.Time `json:"updated_at"`
+}
+
+// ShopSettingsUpdateRequest The whole settings row (PUT replaces it).
+type ShopSettingsUpdateRequest struct {
+	// AgeGateMinAge 1-99, or null for no age gate.
+	AgeGateMinAge *int32 `json:"age_gate_min_age"`
+
+	// AnnouncementText Announcement bar text, up to 500 characters.
+	AnnouncementText *string `json:"announcement_text,omitempty"`
+
+	// ContactEmail Contact address, or null.
+	ContactEmail *string `json:"contact_email"`
+
+	// CountryIso2 Two-letter country code, or null.
+	CountryIso2 *string `json:"country_iso2"`
+
+	// Currency ISO 4217 code, e.g. EUR or ILS.
+	Currency string `json:"currency"`
+
+	// LogisticsNote Internal note for the logistician, up to 2000 characters.
+	LogisticsNote *string `json:"logistics_note,omitempty"`
+
+	// SalesChannelId A sales channel of this organization, or null for the oldest one.
+	SalesChannelId *openapi_types.UUID `json:"sales_channel_id"`
+
+	// ShippingFeeMinor Flat delivery fee, minor units, zero or more.
+	ShippingFeeMinor *int64 `json:"shipping_fee_minor,omitempty"`
+
+	// ShippingLabel How the delivery is called on the storefront, up to 200 characters.
+	ShippingLabel *string `json:"shipping_label,omitempty"`
+
+	// ShopDomain Storefront host (platform superadmin only); absent or null keeps it, an empty string clears it.
+	ShopDomain *string `json:"shop_domain"`
+}
+
+// ShopShipRequest Shipping details (the body may be empty).
+type ShopShipRequest struct {
+	// TrackingNote Tracking number or note, up to 2000 characters.
+	TrackingNote *string `json:"tracking_note,omitempty"`
+}
+
+// ShopVariant A variant as the organization sees it.
+type ShopVariant struct {
+	// Available Units still for sale (stock minus held, never below zero); null when the variant does not track stock.
+	Available *int `json:"available"`
+
+	// CompareAtMinor Former price shown struck through, or null.
+	CompareAtMinor *int64 `json:"compare_at_minor"`
+
+	// Held Units unpaid orders hold right now.
+	Held int32 `json:"held"`
+
+	// Id The variant.
+	Id openapi_types.UUID `json:"id"`
+
+	// Option1 First option value, or null.
+	Option1 *string `json:"option1"`
+
+	// Option2 Second option value, or null.
+	Option2 *string `json:"option2"`
+
+	// Option3 Third option value, or null.
+	Option3 *string `json:"option3"`
+
+	// Position Display order, lowest first.
+	Position int32 `json:"position"`
+
+	// PriceMinor Price, minor units of the shop currency.
+	PriceMinor int64 `json:"price_minor"`
+
+	// Sku Stock keeping unit, or null.
+	Sku *string `json:"sku"`
+
+	// Stock Units on the shelf; may go below zero after an oversell.
+	Stock int32 `json:"stock"`
+
+	// Title Variant title; `Default Title` for the one variant of a simple product.
+	Title string `json:"title"`
+
+	// TrackStock False when the variant sells without a stock limit.
+	TrackStock bool `json:"track_stock"`
+}
+
+// ShopVariantInput One variant of a create or replace request.
+type ShopVariantInput struct {
+	// CompareAtMinor Former price, or null.
+	CompareAtMinor *int64 `json:"compare_at_minor"`
+
+	// Id An existing variant of the product to update; absent creates one.
+	Id *openapi_types.UUID `json:"id,omitempty"`
+
+	// Option1 First option value.
+	Option1 *string `json:"option1"`
+
+	// Option2 Second option value.
+	Option2 *string `json:"option2"`
+
+	// Option3 Third option value.
+	Option3 *string `json:"option3"`
+
+	// Position Display order; absent means the place in the list.
+	Position *int32 `json:"position,omitempty"`
+
+	// PriceMinor Price, minor units, zero or more.
+	PriceMinor *int64 `json:"price_minor,omitempty"`
+
+	// Sku Stock keeping unit, up to 100 characters.
+	Sku *string `json:"sku"`
+
+	// Stock Units on the shelf, zero or more.
+	Stock *int32 `json:"stock,omitempty"`
+
+	// Title Variant title; empty means `Default Title`.
+	Title *string `json:"title,omitempty"`
+
+	// TrackStock Whether stock limits sales; absent means true.
+	TrackStock *bool `json:"track_stock,omitempty"`
+}
+
+// ShopVariantsReplaceRequest The complete variant list of a product.
+type ShopVariantsReplaceRequest struct {
+	// Variants 1-100 variants; variants left out are deleted.
+	Variants []ShopVariantInput `json:"variants"`
+}
+
 // StartCheckoutRequest Request body for `POST /v1/checkout/start`. Creates a new checkout
 // session in state `created` linked to an existing reservation. The
 // optional `user_id` attaches the session to an authenticated buyer;
@@ -19571,6 +20340,33 @@ type GetV1OrganizationsOrgIdSessionsSessionIdTicketsParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListShopOrdersParams defines parameters for ListShopOrders.
+type ListShopOrdersParams struct {
+	// Status Only orders of this status: `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded` or `partially_refunded`.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// Q Order number, or part of the buyer's e-mail or name.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// From Created at or after this instant (RFC 3339, or YYYY-MM-DD for UTC midnight).
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Created before this instant (RFC 3339, or YYYY-MM-DD for UTC midnight).
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+
+	// Limit Page size, 1-200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset How many orders to skip (the previous page's `next_offset`).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListShopProductsParams defines parameters for ListShopProducts.
+type ListShopProductsParams struct {
+	// Status Only products of this status: `draft`, `active` or `archived`.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+}
+
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody struct {
 	// ConfirmUnattributed The unattributed amount (minor units) the operator was shown. Required when that amount is above zero.
@@ -19663,6 +20459,12 @@ type PostPublicPaymentReturnParams struct {
 	// `A-Za-z0-9_-`), appended to the destination so the widget resumes
 	// the order.
 	CheckoutToken string `form:"checkout_token" json:"checkout_token"`
+}
+
+// GetPublicShopByHostParams defines parameters for GetPublicShopByHost.
+type GetPublicShopByHostParams struct {
+	// Host The storefront host name, e.g. `einatwinery.com`.
+	Host string `form:"host" json:"host"`
 }
 
 // SubmitReconciliationReportJSONBody defines parameters for SubmitReconciliationReport.
@@ -20255,6 +21057,30 @@ type PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody = SeatB
 // PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody = SeatLayoutSuggestRequest
 
+// RefundShopOrderJSONRequestBody defines body for RefundShopOrder for application/json ContentType.
+type RefundShopOrderJSONRequestBody = ShopRefundRequest
+
+// ShipShopOrderJSONRequestBody defines body for ShipShopOrder for application/json ContentType.
+type ShipShopOrderJSONRequestBody = ShopShipRequest
+
+// PutShopPageJSONRequestBody defines body for PutShopPage for application/json ContentType.
+type PutShopPageJSONRequestBody = ShopPagePutRequest
+
+// CreateShopProductJSONRequestBody defines body for CreateShopProduct for application/json ContentType.
+type CreateShopProductJSONRequestBody = ShopProductCreateRequest
+
+// PatchShopProductJSONRequestBody defines body for PatchShopProduct for application/json ContentType.
+type PatchShopProductJSONRequestBody = ShopProductPatchRequest
+
+// AddShopProductImageJSONRequestBody defines body for AddShopProductImage for application/json ContentType.
+type AddShopProductImageJSONRequestBody = ShopImageAddRequest
+
+// ReplaceShopProductVariantsJSONRequestBody defines body for ReplaceShopProductVariants for application/json ContentType.
+type ReplaceShopProductVariantsJSONRequestBody = ShopVariantsReplaceRequest
+
+// PutShopSettingsJSONRequestBody defines body for PutShopSettings for application/json ContentType.
+type PutShopSettingsJSONRequestBody = ShopSettingsUpdateRequest
+
 // PostV1OrganizationsOrgIdTextsFormatJSONRequestBody defines body for PostV1OrganizationsOrgIdTextsFormat for application/json ContentType.
 type PostV1OrganizationsOrgIdTextsFormatJSONRequestBody = TextFormatRequest
 
@@ -20299,6 +21125,9 @@ type SendOrganizerContactJSONRequestBody = OrganizerContactRequest
 
 // PostPublicPageTrackJSONRequestBody defines body for PostPublicPageTrack for application/json ContentType.
 type PostPublicPageTrackJSONRequestBody = PageTrackRequest
+
+// CreatePublicShopCheckoutJSONRequestBody defines body for CreatePublicShopCheckout for application/json ContentType.
+type CreatePublicShopCheckoutJSONRequestBody = ShopCheckoutRequest
 
 // SubmitReconciliationReportJSONRequestBody defines body for SubmitReconciliationReport for application/json ContentType.
 type SubmitReconciliationReportJSONRequestBody SubmitReconciliationReportJSONBody
