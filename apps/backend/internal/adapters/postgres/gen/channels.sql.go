@@ -85,17 +85,45 @@ func (q *Queries) InsertSalesChannel(ctx context.Context, orgID uuid.UUID, name,
 // GetSalesChannelByID
 // ─────────────────────────────────────────────────────────────────────────────
 
+// channelIsSales is the one predicate that keeps the hidden "Invitations"
+// channel (sales_channels.kind = 'internal', migration 0172, spec 46 section
+// 3.3) out of every channel read an organizer, a site, an API key or a buyer
+// can reach. Order processing that resolves the channel of an EXISTING order
+// uses GetSalesChannelByIDAnyKind instead.
+const channelIsSales = `kind = 'sales'`
+
 const getSalesChannelByID = `-- name: GetSalesChannelByID :one
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+FROM   sales_channels
+WHERE  id = $1
+  AND  org_id = $2
+  AND  deleted_at IS NULL
+  AND  ` + channelIsSales
+
+// GetSalesChannelByID fetches an active sales channel by its UUID primary key,
+// scoped to the given org. Returns pgx.ErrNoRows when not found, deleted or
+// the organization's internal "Invitations" channel: every organizer-, site-
+// and buyer-facing lookup (channel routes, API-key binding, event-bundle
+// channelIds, feed tokens, reservations) must not see it.
+func (q *Queries) GetSalesChannelByID(ctx context.Context, id, orgID uuid.UUID) (SalesChannelRow, error) {
+	row := q.db.QueryRow(ctx, getSalesChannelByID, id, orgID)
+	return scanSalesChannelRow(row)
+}
+
+const getSalesChannelByIDAnyKind = `-- name: GetSalesChannelByIDAnyKind :one
 SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
 FROM   sales_channels
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL`
 
-// GetSalesChannelByID fetches an active sales channel by its UUID primary key,
-// scoped to the given org. Returns pgx.ErrNoRows when not found or deleted.
-func (q *Queries) GetSalesChannelByID(ctx context.Context, id, orgID uuid.UUID) (SalesChannelRow, error) {
-	row := q.db.QueryRow(ctx, getSalesChannelByID, id, orgID)
+// GetSalesChannelByIDAnyKind is GetSalesChannelByID without the internal-
+// channel filter. Only order processing that resolves the channel of an
+// EXISTING order or checkout (order card, order creation's fee snapshot,
+// provider resolution) may call it, because a staff invitation order is
+// written on the internal channel (spec 46).
+func (q *Queries) GetSalesChannelByIDAnyKind(ctx context.Context, id, orgID uuid.UUID) (SalesChannelRow, error) {
+	row := q.db.QueryRow(ctx, getSalesChannelByIDAnyKind, id, orgID)
 	return scanSalesChannelRow(row)
 }
 
@@ -107,7 +135,8 @@ const getSalesChannelByDisplayNumber = `-- name: GetSalesChannelByDisplayNumber 
 SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
 FROM   sales_channels
 WHERE  display_number = $1
-  AND  deleted_at IS NULL`
+  AND  deleted_at IS NULL
+  AND  ` + channelIsSales
 
 // GetSalesChannelByDisplayNumber fetches an active sales channel by its
 // human-facing display_number (0072). Used by the Bil24-compatibility gateway
@@ -128,10 +157,12 @@ SELECT id, display_number, org_id, name, payment_mode, provider, provider_accoun
 FROM   sales_channels
 WHERE  org_id = $1
   AND  deleted_at IS NULL
+  AND  ` + channelIsSales + `
 ORDER  BY created_at ASC, id ASC`
 
 // ListSalesChannelsByOrg returns all active (non-deleted) sales channels for
-// the given organization, ordered by creation time ascending then by id.
+// the given organization, ordered by creation time ascending then by id. The
+// internal "Invitations" channel is never listed.
 func (q *Queries) ListSalesChannelsByOrg(ctx context.Context, orgID uuid.UUID) ([]SalesChannelRow, error) {
 	rows, err := q.db.Query(ctx, listSalesChannelsByOrg, orgID)
 	if err != nil {
@@ -167,6 +198,7 @@ SET    name                     = COALESCE(NULLIF($3, ''), name),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
+  AND  ` + channelIsSales + `
 RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at`
 
 // UpdateSalesChannel applies a partial update to an active sales channel.
@@ -199,6 +231,7 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
+  AND  ` + channelIsSales + `
 RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at`
 
 // SoftDeleteSalesChannel marks a sales channel as deleted by setting deleted_at.
@@ -231,6 +264,7 @@ WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
   AND  COALESCE(settings #>> '{hosted_page,enabled}', '') <> 'true'
+  AND  ` + channelIsSales + `
   AND  ` + channelHasNoGatewayCredential
 
 // EnableChannelHostedPage turns on settings.hosted_page.enabled for a channel
@@ -261,6 +295,7 @@ SELECT id, COALESCE(settings #>> '{hosted_page,enabled}', '') = 'true'
 FROM   sales_channels
 WHERE  org_id = $1
   AND  deleted_at IS NULL
+  AND  ` + channelIsSales + `
   AND  ` + channelHasNoGatewayCredential + `
 ORDER  BY created_at ASC, id ASC`
 

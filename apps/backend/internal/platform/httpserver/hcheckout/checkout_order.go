@@ -85,7 +85,7 @@ func (h *Handler) confirmAndCreateOrder(
 	// ordering.ChargePercentBP).
 	var chargePercentBP int32
 	if h.channelQueries != nil {
-		if ch, chErr := txq.GetSalesChannelByID(ctx, cs.ChannelID, cs.OrgID); chErr == nil {
+		if ch, chErr := txq.GetSalesChannelByIDAnyKind(ctx, cs.ChannelID, cs.OrgID); chErr == nil {
 			chargePercentBP = ordering.ChargePercentBP(ch.FeePercent)
 		}
 	}
