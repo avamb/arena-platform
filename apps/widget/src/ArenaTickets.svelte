@@ -978,22 +978,9 @@
         {#if cartLimitNotice}
           <p class="arena-tickets-limit" role="status">{cartLimitNotice}</p>
         {/if}
-        <!-- GA tier cards (above the map: places that need no seat must be seen first, a buyer who scrolls the plan never finds them) -->
-        {#if !salesClosed && gaTiers.length > 0}
-          <div class="ga-tiers-section">
-            {#each gaTiers as tier (tier.id)}
-              <GaTierCard
-                {tier}
-                quantity={gaQuantities.get(tier.id) ?? 0}
-                onQuantityChange={onGaQuantityChange}
-              />
-            {/each}
-          </div>
-        {/if}
-
         <!-- The seated category has no stepper, so it gets a card of the same kind that says where it is taken. -->
         {#if !salesClosed && selectedSession?.schema_url && seatedTiers.length > 0}
-          <div class="ga-tiers-section" class:ga-tiers-section--joined={gaTiers.length > 0}>
+          <div class="ga-tiers-section">
             <SeatedTierCard
               tiers={seatedTiers}
               note={tiersAreFree(seatedTiers) ? t.seat_hint_free : t.seat_hint_paid}
@@ -1023,6 +1010,19 @@
                 onClose={closeGaAreaPopover}
               />
             {/if}
+          </div>
+        {/if}
+
+        <!-- GA tier cards (below the map; the card above the map tells a buyer where the seated category is taken) -->
+        {#if !salesClosed && gaTiers.length > 0}
+          <div class="ga-tiers-section">
+            {#each gaTiers as tier (tier.id)}
+              <GaTierCard
+                {tier}
+                quantity={gaQuantities.get(tier.id) ?? 0}
+                onQuantityChange={onGaQuantityChange}
+              />
+            {/each}
           </div>
         {/if}
 
@@ -1241,11 +1241,6 @@
     display: none;
   }
 
-  /* Directly under the donation cards: one group, one divider. */
-  .ga-tiers-section--joined {
-    border-top: none;
-    padding-top: 0;
-  }
   .ga-tiers-section {
     display: flex;
     flex-direction: column;
