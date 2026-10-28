@@ -38,6 +38,7 @@ import {
   type CheckoutForm,
 } from './lib/cart';
 import { T } from './lib/i18n';
+import { fitLoadedImages, watchImageRatios } from './lib/ratio';
 import { applyTheme } from './theme';
 import { href as buildHref, locate, type Route } from './lib/route';
 import { EINAT_THEME } from './lib/theme';
@@ -248,6 +249,7 @@ function draw(kind: Route['kind'], ctx: Ctx, main: string, title: string, descri
   setMeta(title, description);
   fixContentLinks(ctx.base);
   applyAgeGate();
+  fitLoadedImages();
 }
 
 function currentRoute(): Route {
@@ -750,6 +752,7 @@ async function boot(): Promise<void> {
     return;
   }
 
+  watchImageRatios();
   document.addEventListener('click', onClick);
   document.addEventListener('submit', onSubmit);
   document.addEventListener('change', onChange);
