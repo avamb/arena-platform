@@ -70,7 +70,7 @@ function socialList(ctx: Ctx, cls: string, linkCls: string): string {
   const item = (href: string, ic: string, label: string): string =>
     href
       ? `<li class="list-social__item">
-      <a href="${esc(href)}" class="${linkCls}">${icon(ic).replace('<svg\n', '<svg\n')}
+      <a href="${esc(href)}" class="${linkCls}">${icon(ic)}
 <span class="visually-hidden">${label}</span>
       </a>
     </li>`

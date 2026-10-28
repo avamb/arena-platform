@@ -95,13 +95,44 @@ const products = ORDER.map((handle) => {
 const pagesDir = path.join(exportDir, 'theme_live', 'pages');
 const decode = (s) => decodeURIComponent(s);
 
+/**
+ * Drops every <tag ...>...</tag> element (or just the start tag when `isVoid`),
+ * found by index over the lower-cased text instead of a regexp: tag names are
+ * case-insensitive, a start tag may be followed by whitespace, "/" or ">", and an
+ * end tag may be written "</script >". An element that is never closed is dropped
+ * to the end of the text. (The export is our own; this only trims the fixtures,
+ * the storefront sanitizes what it renders on its own.)
+ */
+function dropElements(html, tag, isVoid = false) {
+  const lower = html.toLowerCase();
+  const open = '<' + tag;
+  let out = '';
+  let pos = 0;
+  for (;;) {
+    let start = lower.indexOf(open, pos);
+    while (start !== -1 && !/[\s/>]/.test(lower.charAt(start + open.length))) start = lower.indexOf(open, start + 1);
+    if (start === -1) break;
+    out += html.slice(pos, start);
+    const startTagEnd = lower.indexOf('>', start);
+    if (startTagEnd === -1) return out;
+    if (isVoid) {
+      pos = startTagEnd + 1;
+      continue;
+    }
+    const close = lower.indexOf('</' + tag, startTagEnd);
+    if (close === -1) return out;
+    const closeEnd = lower.indexOf('>', close);
+    if (closeEnd === -1) return out;
+    pos = closeEnd + 1;
+  }
+  return out + html.slice(pos);
+}
+
 function mainOf(html) {
-  html = html.replace(/<script[\s\S]*?<\/script>/g, '');
+  html = dropElements(html, 'script');
   const m = html.match(/<main[^>]*>([\s\S]*?)<\/main>/);
   if (!m) throw new Error('no <main>');
-  return m[1]
-    .replace(/<link [^>]*>/g, '')
-    .replace(/<noscript>[\s\S]*?<\/noscript>/g, '')
+  return dropElements(dropElements(m[1], 'link', true), 'noscript')
     .replace(/(src|srcset)="\/\//g, '$1="https://')
     .replace(/, \/\/www\.einatwinery\.com/g, ', https://www.einatwinery.com')
     .replace(/\n\s*\n+/g, '\n')
