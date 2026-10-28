@@ -298,13 +298,25 @@ func TestShop_CheckoutLimits(t *testing.T) {
 	if code, body := f.checkoutAs(variant, 1, email); code != http.StatusConflict || shopErrCode(body) != "shop.too_many_pending" {
 		t.Fatalf("one pending order too many = %d %v; want 409 shop.too_many_pending", code, body)
 	}
+	// An abandoned page stops counting as soon as its hold ends.
+	f.exec(`UPDATE shop_orders SET expires_at = now() - interval '1 second'
+	        WHERE id = (SELECT id FROM shop_orders WHERE org_id = $1 AND lower(buyer_email) = lower($2) LIMIT 1)`, f.orgA, email)
+	if code, body := f.checkoutAs(variant, 1, email); code != http.StatusCreated {
+		t.Fatalf("checkout after one hold ended = %d %v; want 201", code, body)
+	}
 }
 
-// TestShop_CheckoutHasItsOwnAddressBudget: an address may start
-// DefaultCheckoutIPLimit checkouts a minute, valid or not.
+// TestShop_CheckoutHasItsOwnAddressBudget: an address may send
+// DefaultCheckoutIPLimit well-formed checkouts a minute to one shop; a body
+// that is not JSON is not counted, and another shop has its own budget.
 func TestShop_CheckoutHasItsOwnAddressBudget(t *testing.T) {
 	f := newShopFixture(t)
 	path := "/v1/public/shop/" + f.orgASlug + "/checkout"
+	for i := 0; i < 5; i++ {
+		if code, _, _ := f.do(http.MethodPost, path, "", `not json`); code != http.StatusBadRequest {
+			t.Fatalf("broken body = %d; want 400", code)
+		}
+	}
 	for i := 0; i < hshop.DefaultCheckoutIPLimit; i++ {
 		if code, body, _ := f.do(http.MethodPost, path, "", `{}`); code == http.StatusTooManyRequests {
 			t.Fatalf("checkout %d refused inside the budget: %v", i+1, body)
@@ -313,6 +325,9 @@ func TestShop_CheckoutHasItsOwnAddressBudget(t *testing.T) {
 	code, body, hdr := f.do(http.MethodPost, path, "", `{}`)
 	if code != http.StatusTooManyRequests || shopErrCode(body) != "shop.rate_limited" || hdr.Get("Retry-After") == "" {
 		t.Fatalf("checkout over the budget = %d %v; want 429 shop.rate_limited with Retry-After", code, body)
+	}
+	if code, _, _ := f.do(http.MethodPost, "/v1/public/shop/another-"+f.orgASlug+"/checkout", "", `{}`); code == http.StatusTooManyRequests {
+		t.Fatal("another shop shares the budget")
 	}
 	// The catalog is not on the checkout's budget.
 	if code, _, _ := f.do(http.MethodGet, "/v1/public/shop/"+f.orgASlug, "", ""); code == http.StatusTooManyRequests {
@@ -553,8 +568,8 @@ func TestShop_DigitalProductCheckoutAndDownloads(t *testing.T) {
 		"items":[{"variant_id":%q,"qty":2}],
 		"buyer":{"name":"Anna","email":"digital-%s@example.test"},
 		"return_url":"%s/checkout"}`, variantID, uuid.NewString()[:6], shopTestBase))
-	if code != http.StatusCreated || body["shipping_fee"].(float64) != 0 || body["total"].(float64) != 3000 {
-		t.Fatalf("digital checkout = %d %v; want 201 with no shipping and total 3000", code, body)
+	if code != http.StatusCreated || body["shipping_fee"].(float64) != 0 || body["total"].(float64) != 3000 || body["delivery_kind"] != "none" {
+		t.Fatalf("digital checkout = %d %v; want 201 with no shipping, total 3000, delivery_kind none", code, body)
 	}
 	token := body["order_token"].(string)
 	o, _ := f.q.GetShopOrderByToken(context.Background(), token)
@@ -616,5 +631,92 @@ func TestShop_MixedCartNeedsAnAddress(t *testing.T) {
 	code, body = cart(true)
 	if code != http.StatusCreated || body["shipping_fee"].(float64) != 5000 || body["total"].(float64) != 11500 {
 		t.Fatalf("mixed cart = %d %v; want 201 with shipping 5000 and total 11500", code, body)
+	}
+}
+
+// TestShop_PaymentAtTheHoldBoundaryNeverOversells: the order's hold ends on
+// the database clock (expires_at = now()), another buyer takes and pays the
+// last unit, then the first payment arrives. It is parked, never sold twice.
+func TestShop_PaymentAtTheHoldBoundaryNeverOversells(t *testing.T) {
+	f := newShopFixture(t)
+	_, variant := f.openShop(4500, 1)
+	late := f.placed(variant, 1)
+	f.exec(`UPDATE shop_orders SET expires_at = now() WHERE id = $1`, late.ID)
+	f.pay(f.placed(variant, 1).OrderToken)
+	f.pay(late.OrderToken)
+	got, _ := f.q.GetShopOrder(context.Background(), late.ID, f.orgA)
+	if got.Status != shop.StatusManualReview {
+		t.Fatalf("payment at the boundary: status %s; want manual_review", got.Status)
+	}
+	if v := f.variant(variant); v.Stock != 0 {
+		t.Fatalf("stock = %d; want 0", v.Stock)
+	}
+}
+
+// TestShop_SameCallbackTwiceAtOnce: two deliveries of one paid callback race;
+// the order is paid once and its goods leave the shelf once.
+func TestShop_SameCallbackTwiceAtOnce(t *testing.T) {
+	f := newShopFixture(t)
+	_, variant := f.openShop(4500, 3)
+	o := f.placed(variant, 2)
+	pi, err := f.q.GetPaymentIntentByID(context.Background(), *o.PaymentIntentID)
+	if err != nil {
+		t.Fatalf("payment intent: %v", err)
+	}
+	event := sessionCompletedEvent(*pi.ProviderPaymentID, "pi_shop_race_"+uuid.NewString()[:8], "paid")
+	var wg sync.WaitGroup
+	codes := make([]int, 2)
+	for i := range codes {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			codes[i], _ = postSignedWebhookTo(t, f.srv, "/v1/payment-intents/webhook/"+f.configA.String(), event, f.webhookSecretA)
+		}(i)
+	}
+	wg.Wait()
+	for i, c := range codes {
+		if c >= 500 {
+			t.Fatalf("delivery %d = %d", i, c)
+		}
+	}
+	got, _ := f.q.GetShopOrder(context.Background(), o.ID, f.orgA)
+	if got.Status != shop.StatusPaid {
+		t.Fatalf("status = %s; want paid", got.Status)
+	}
+	if n := f.outboxCount(shop.EventOrderPaid, o.ID); n != 1 {
+		t.Fatalf("paid events = %d; want 1", n)
+	}
+	if v := f.variant(variant); v.Stock != 1 {
+		t.Fatalf("stock = %d; want 1", v.Stock)
+	}
+}
+
+// TestShop_ShipOfAParkedOrderNeedsFreeGoods: a parked order cannot take the
+// unit another pending order holds; once stock is added it ships.
+func TestShop_ShipOfAParkedOrderNeedsFreeGoods(t *testing.T) {
+	f := newShopFixture(t)
+	_, variant := f.openShop(4500, 1)
+	late := f.placed(variant, 1)
+	f.expireOrder(late.ID)
+	holder := f.placed(variant, 1) // pending, holds the last unit
+	f.pay(late.OrderToken)
+	if got, _ := f.q.GetShopOrder(context.Background(), late.ID, f.orgA); got.Status != shop.StatusManualReview {
+		t.Fatalf("late order = %s; want manual_review", got.Status)
+	}
+	ship := f.orgPath(f.orgA, "/orders/"+late.ID.String()+"/ship")
+	code, body, _ := f.do(http.MethodPost, ship, f.ownerA, `{}`)
+	if code != http.StatusConflict || shopErrCode(body) != "shop.out_of_stock" {
+		t.Fatalf("ship over another order's hold = %d %v; want 409 shop.out_of_stock", code, body)
+	}
+	f.pay(holder.OrderToken)
+	if v := f.variant(variant); v.Stock != 0 {
+		t.Fatalf("stock after the holder paid = %d; want 0", v.Stock)
+	}
+	f.exec(`UPDATE shop_variants SET stock = stock + 1 WHERE id = $1`, variant)
+	if code, body, _ := f.do(http.MethodPost, ship, f.ownerA, `{}`); code != http.StatusOK {
+		t.Fatalf("ship with the goods back = %d %v", code, body)
+	}
+	if v := f.variant(variant); v.Stock != 0 {
+		t.Fatalf("stock after shipping = %d; want 0", v.Stock)
 	}
 }

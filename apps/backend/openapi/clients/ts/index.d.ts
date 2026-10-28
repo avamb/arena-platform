@@ -10408,8 +10408,9 @@ export interface paths {
          * @description Moves a paid (or partially refunded) order to `shipped`, stores the
          *     optional tracking note and writes the `v1.shop.order.shipped` event. Shipping
          *     a shipped order again only updates the note. Shipping an order in
-         *     `manual_review` takes its goods off the shelf at that moment. The body may
-         *     be empty.
+         *     `manual_review` takes its goods off the shelf at that moment, only when they
+         *     are free after every live hold (409 `shop.out_of_stock` otherwise). The body
+         *     may be empty.
          *
          *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
          */
@@ -10664,8 +10665,8 @@ export interface paths {
          *     at most the shop's `max_line_qty` units (422 `shop.invalid_items` with
          *     `details.max_line_qty`), and one buyer e-mail may have at most 3 orders
          *     waiting for payment in the shop (409 `shop.too_many_pending`). No login;
-         *     rate-limited per client address: 10 checkouts a minute, on top of the
-         *     public routes' shared budget.
+         *     rate-limited per client address: 30 valid checkout requests a minute per
+         *     shop, on top of the public routes' shared budget.
          */
         post: operations["createPublicShopCheckout"];
         delete?: never;
@@ -30288,7 +30289,7 @@ export interface components {
         /** @description One line of an order, as sold. */
         ShopOrderItem: {
             /** @description The product's kind when the line was bought: `physical`, `digital` or `service`. */
-            product_kind?: string;
+            product_kind: string;
             /**
              * Format: uuid
              * @description The variant sold, or null for an imported line.
@@ -30654,8 +30655,8 @@ export interface components {
             items: components["schemas"]["ShopCheckoutLine"][];
             /** @description Who pays. */
             buyer: components["schemas"]["ShopBuyer"];
-            /** @description Where the goods go. */
-            ship: components["schemas"]["ShopAddress"];
+            /** @description Where the goods go. Required when the cart holds a physical product (422 `shop.invalid_address` without it); left out for a cart of digital products and services only. */
+            ship?: components["schemas"]["ShopAddress"];
             /** @description Comment for the delivery, up to 2000 characters. */
             delivery_note?: string;
             /** @description Language of the storefront (two letters); the payment page uses it. */
@@ -30667,6 +30668,8 @@ export interface components {
         };
         /** @description A placed order and where to pay it. */
         ShopCheckoutResponse: {
+            /** @description `shipping` when the order holds a physical product, `none` for digital products and services only. */
+            delivery_kind: string;
             /** @description The buyer's handle on the order (for GET /v1/public/shop/checkout/{order_token}). */
             order_token: string;
             /**
@@ -30722,6 +30725,8 @@ export interface components {
         };
         /** @description Where a storefront order stands. */
         ShopCheckoutStatus: {
+            /** @description `shipping` when the order holds a physical product, `none` for digital products and services only. */
+            delivery_kind: string;
             /** @description `pending`, `paid`, `expired` or `cancelled`. */
             status: string;
             /**
@@ -66296,7 +66301,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The order is not paid (`shop.order_not_shippable`). */
+            /** @description The order is not paid (`shop.order_not_shippable`), or it is parked in `manual_review` and its goods are not free on the shelf (`shop.out_of_stock`, `details.items` lists the short lines). */
             409: {
                 headers: {
                     [name: string]: unknown;

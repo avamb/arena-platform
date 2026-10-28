@@ -1434,3 +1434,39 @@ fieldset legend {
     min-height: 16rem;
   }
 }
+
+/* The shop's order filters: one field per cell, stacked on a phone. */
+.shop-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0 1rem;
+  align-items: end;
+  margin-block-end: 1rem;
+}
+
+.shop-filters input,
+.shop-filters select {
+  width: 100%;
+}
+
+.shop-filters-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-start: 0.75rem;
+}
+
+/* The shop screens: a fieldset must not grow to its widest child, and controls fill their column (a long option or font never widens the page). */
+.shop-page fieldset {
+  min-inline-size: 0;
+}
+
+.shop-page select,
+.shop-page textarea,
+.shop-page input:not([type="checkbox"]):not([type="file"]) {
+  width: 100%;
+}
+
+.shop-page .actions select {
+  width: auto;
+}

@@ -23121,7 +23121,7 @@ components:
     ShopOrderItem:
       type: object
       description: One line of an order, as sold.
-      required: [product_title, variant_title, qty, unit_price_minor, total_minor]
+      required: [product_title, variant_title, qty, unit_price_minor, total_minor, product_kind]
       properties:
         product_kind:
           type: string
@@ -23603,7 +23603,7 @@ components:
     ShopCheckoutRequest:
       type: object
       description: A storefront purchase.
-      required: [items, buyer, ship]
+      required: [items, buyer]
       properties:
         items:
           type: array
@@ -23617,7 +23617,7 @@ components:
         ship:
           allOf:
             - $ref: "#/components/schemas/ShopAddress"
-          description: Where the goods go.
+          description: Where the goods go. Required when the cart holds a physical product (422 `shop.invalid_address` without it); left out for a cart of digital products and services only.
         delivery_note:
           type: string
           description: Comment for the delivery, up to 2000 characters.
@@ -23634,8 +23634,11 @@ components:
     ShopCheckoutResponse:
       type: object
       description: A placed order and where to pay it.
-      required: [order_token, number, status, payment_url, currency, subtotal, shipping_fee, total]
+      required: [order_token, number, status, payment_url, currency, subtotal, shipping_fee, total, delivery_kind]
       properties:
+        delivery_kind:
+          type: string
+          description: "`shipping` when the order holds a physical product, `none` for digital products and services only."
         order_token:
           type: string
           description: The buyer's handle on the order (for GET /v1/public/shop/checkout/{order_token}).
@@ -23702,8 +23705,11 @@ components:
     ShopCheckoutStatus:
       type: object
       description: Where a storefront order stands.
-      required: [status, number, currency, subtotal, shipping_fee, total, items, payment_url]
+      required: [status, number, currency, subtotal, shipping_fee, total, items, payment_url, delivery_kind]
       properties:
+        delivery_kind:
+          type: string
+          description: "`shipping` when the order holds a physical product, `none` for digital products and services only."
         status:
           type: string
           description: "`pending`, `paid`, `expired` or `cancelled`."
@@ -57793,8 +57799,9 @@ paths:
         Moves a paid (or partially refunded) order to `shipped`, stores the
         optional tracking note and writes the `v1.shop.order.shipped` event. Shipping
         a shipped order again only updates the note. Shipping an order in
-        `manual_review` takes its goods off the shelf at that moment. The body may
-        be empty.
+        `manual_review` takes its goods off the shelf at that moment, only when they
+        are free after every live hold (409 `shop.out_of_stock` otherwise). The body
+        may be empty.
 
         Requires JWT or API key + the `shop.manage` permission and membership of the organization.
       tags: [v1]
@@ -57841,7 +57848,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
-          description: The order is not paid (`shop.order_not_shippable`).
+          description: The order is not paid (`shop.order_not_shippable`), or it is parked in `manual_review` and its goods are not free on the shelf (`shop.out_of_stock`, `details.items` lists the short lines).
           content:
             application/json:
               schema:
@@ -58465,8 +58472,8 @@ paths:
         at most the shop's `max_line_qty` units (422 `shop.invalid_items` with
         `details.max_line_qty`), and one buyer e-mail may have at most 3 orders
         waiting for payment in the shop (409 `shop.too_many_pending`). No login;
-        rate-limited per client address: 10 checkouts a minute, on top of the
-        public routes' shared budget.
+        rate-limited per client address: 30 valid checkout requests a minute per
+        shop, on top of the public routes' shared budget.
       tags: [v1]
       security: []
       parameters:

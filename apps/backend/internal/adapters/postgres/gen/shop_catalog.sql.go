@@ -60,6 +60,15 @@ func (q *Queries) GetShopSettings(ctx context.Context, orgID uuid.UUID) (ShopSet
 	return scanShopSettingsRow(q.db.QueryRow(ctx, getShopSettings, orgID))
 }
 
+const getShopSettingsForUpdate = getShopSettings + `
+FOR UPDATE OF s`
+
+// GetShopSettingsForUpdate is GetShopSettings with the settings row locked,
+// so a save cannot write a stale value back over a concurrent change.
+func (q *Queries) GetShopSettingsForUpdate(ctx context.Context, orgID uuid.UUID) (ShopSettingsRow, error) {
+	return scanShopSettingsRow(q.db.QueryRow(ctx, getShopSettingsForUpdate, orgID))
+}
+
 const ensureShopSettings = `-- name: EnsureShopSettings :exec
 INSERT INTO shop_settings (org_id) VALUES ($1)
 ON CONFLICT (org_id) DO NOTHING`
@@ -287,6 +296,16 @@ func (q *Queries) GetShopProduct(ctx context.Context, id, orgID uuid.UUID) (Shop
 	return scanShopProductRow(q.db.QueryRow(ctx, getShopProduct, id, orgID))
 }
 
+const getShopProductForUpdate = getShopProduct + `
+FOR UPDATE`
+
+// GetShopProductForUpdate is GetShopProduct with the product row locked, so
+// a kind change and a variant replace of one product run one after the
+// other.
+func (q *Queries) GetShopProductForUpdate(ctx context.Context, id, orgID uuid.UUID) (ShopProductRow, error) {
+	return scanShopProductRow(q.db.QueryRow(ctx, getShopProductForUpdate, id, orgID))
+}
+
 const getShopProductBySlug = `-- name: GetShopProductBySlug :one
 SELECT ` + shopProductColumns + `
 FROM   shop_products
@@ -424,10 +443,12 @@ func (q *Queries) ShopDigitalMediaUsable(ctx context.Context, mediaID, orgID uui
 
 const untrackShopProductVariants = `-- name: UntrackShopProductVariants :exec
 UPDATE shop_variants SET track_stock = false, updated_at = now()
-WHERE  product_id = $1 AND deleted_at IS NULL AND track_stock`
+WHERE  id IN (SELECT id FROM shop_variants
+              WHERE product_id = $1 AND deleted_at IS NULL AND track_stock
+              ORDER BY id FOR UPDATE)`
 
 // UntrackShopProductVariants stops every live variant of a product from
-// tracking stock (a product that became digital).
+// tracking stock (a product that became digital), locking them in id order.
 func (q *Queries) UntrackShopProductVariants(ctx context.Context, productID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, untrackShopProductVariants, productID)
 	return err

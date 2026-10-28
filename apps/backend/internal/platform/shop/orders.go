@@ -117,7 +117,8 @@ func (s *Service) ListOrders(ctx context.Context, orgID uuid.UUID, f OrderFilter
 // Ship marks a paid order shipped and writes v1.shop.order.shipped. Shipping
 // an order that is shipped already only updates its tracking note. Shipping
 // an order parked in manual_review means the operator found the goods: they
-// are taken off the shelf now.
+// are taken off the shelf now, but only when they are free (stock left after
+// every live hold); otherwise 409 shop.out_of_stock lists the short lines.
 func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote string) (OrderView, error) {
 	trackingNote = strings.TrimSpace(trackingNote)
 	if !textOK(trackingNote, MaxNoteLen) {
@@ -138,6 +139,19 @@ func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote st
 			return err
 		case StatusPaid, StatusPartiallyRefunded:
 		case StatusManualReview:
+			if err := q.LockShopOrderVariants(ctx, o.ID); err != nil {
+				return err
+			}
+			lines, err := q.ShopOrderShortages(ctx, o.ID)
+			if err != nil {
+				return err
+			}
+			if short := shortLines(lines); len(short) > 0 {
+				e := newErr(http.StatusConflict, "shop.out_of_stock",
+					"the goods of this order are not free on the shelf; add stock or refund the order")
+				e.Details = map[string]any{"items": short}
+				return e
+			}
 			if err := s.applySaleTx(ctx, q, o); err != nil {
 				return err
 			}
@@ -191,6 +205,9 @@ func (s *Service) Cancel(ctx context.Context, orgID, id uuid.UUID) (OrderView, e
 		}
 		out, err = q.SetShopOrderStatus(ctx, o.ID, StatusCancelled, nil, nil)
 		if err != nil {
+			return err
+		}
+		if err := q.LockShopOrderVariants(ctx, o.ID); err != nil {
 			return err
 		}
 		return q.JournalShopOrderHold(ctx, o.ID, o.OrgID, MoveRelease)
