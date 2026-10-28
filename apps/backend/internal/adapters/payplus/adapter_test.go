@@ -208,6 +208,14 @@ func TestNormalizeCallback_DeclinedAttemptIsNotAFailure(t *testing.T) {
 	}
 }
 
+func TestNormalizeCallback_CancelledChargeIsNotAPayment(t *testing.T) {
+	body := strings.Replace(callbackBody, `"status_code":"000"`, `"status_code":"000","transaction_is_cancelled":true`, 1)
+	cb, _ := ParseCallback([]byte(body))
+	if ev := NormalizeCallback(cb, []byte(body)); ev.Kind != payments.EventUnknown {
+		t.Fatalf("cancelled charge = %s; want unknown, it must not pay the order", ev.Kind)
+	}
+}
+
 func TestNormalizeCallback_RefundIsNeverAPayment(t *testing.T) {
 	body := strings.Replace(callbackBody, `"transaction_type":"Charge"`, `"transaction_type":"Refund"`, 1)
 	cb, _ := ParseCallback([]byte(body))

@@ -201,7 +201,8 @@ func (a *Adapter) VerifyAndParse(_ context.Context, in payments.WebhookInput) (p
 //     through. ProviderEventID is the same uid: it identifies the delivery
 //     (PayPlus does not document retries; a replay repeats the uid and the
 //     core's (payment, event type) key makes it a no-op).
-//   - A Charge with status_code 000 is the money settled.
+//   - A Charge with status_code 000 is the money settled, unless PayPlus
+//     marks it transaction_is_cancelled: then it moves nothing.
 //   - Any other status_code is ONE failed attempt (send_failure_callback):
 //     EventPaymentDeclined, which moves nothing. The link stays valid until
 //     expiry_datetime and the buyer may try another card on it; failing the
@@ -234,6 +235,10 @@ func NormalizeCallback(cb *Callback, body []byte) payments.NormalizedEvent {
 		ev.Type = eventTypePrefix + strings.ReplaceAll(kind, " ", "_")
 	case tx.PaymentRequestUID == "":
 		ev.Type = eventTypePrefix + "charge.no_payment_page"
+	case tx.StatusCode == StatusCodeApproved && tx.Cancelled:
+		// Approved and then cancelled (Transactions/Cancel before the
+		// nightly deposit): no money stays with the merchant.
+		ev.Type = eventTypePrefix + "charge.cancelled"
 	case tx.StatusCode == StatusCodeApproved:
 		ev.Kind = payments.EventPaymentSucceeded
 		ev.Type = EventTypeApproved
