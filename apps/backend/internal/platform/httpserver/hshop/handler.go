@@ -76,10 +76,23 @@ type Options struct {
 	IPLimit        func(ip string) (bool, int)
 	TokenLimit     func(token string) (bool, int)
 	TrustedProxies int
+	// CheckoutIPLimit is the checkout's own per-address budget, counted
+	// before the shared bucket: placing an order holds stock, so it is far
+	// tighter than reading the catalog. 0 means DefaultCheckoutIPLimit, a
+	// negative value switches it off.
+	CheckoutIPLimit int
 }
 
-// Handler serves the shop routes.
-type Handler struct{ o Options }
+// DefaultCheckoutIPLimit is how many checkouts one client address may start
+// per minute.
+const DefaultCheckoutIPLimit = 10
+
+// Handler serves the shop routes. It is built once per server: the checkout
+// limiter lives on it.
+type Handler struct {
+	o        Options
+	checkout *minuteLimiter
+}
 
 // New builds the handler.
 func New(o Options) *Handler {
@@ -92,7 +105,14 @@ func New(o Options) *Handler {
 	if o.Grace < 0 {
 		o.Grace = 0
 	}
-	return &Handler{o: o}
+	h := &Handler{o: o}
+	switch {
+	case o.CheckoutIPLimit == 0:
+		h.checkout = newMinuteLimiter(DefaultCheckoutIPLimit)
+	case o.CheckoutIPLimit > 0:
+		h.checkout = newMinuteLimiter(o.CheckoutIPLimit)
+	}
+	return h
 }
 
 func writeErr(w http.ResponseWriter, r *http.Request, status int, code, msg string) {
@@ -226,6 +246,21 @@ func (h *Handler) limited(w http.ResponseWriter, r *http.Request, token string) 
 	retry := max(1, retryIP, retryTok)
 	w.Header().Set("Retry-After", strconv.Itoa(retry))
 	writeErr(w, r, http.StatusTooManyRequests, "shop.rate_limited", "Too many requests. Wait one minute and try again.")
+	return true
+}
+
+// checkoutLimited applies the checkout's own per-address budget. It answers
+// 429 itself.
+func (h *Handler) checkoutLimited(w http.ResponseWriter, r *http.Request) bool {
+	if h.checkout == nil {
+		return false
+	}
+	ok, retry := h.checkout.allow(h.clientIP(r), time.Now())
+	if ok {
+		return false
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(retry))
+	writeErr(w, r, http.StatusTooManyRequests, "shop.rate_limited", "Too many orders from this address. Wait one minute and try again.")
 	return true
 }
 

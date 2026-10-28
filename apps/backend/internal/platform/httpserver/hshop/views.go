@@ -24,6 +24,7 @@ type settingsJSON struct {
 	LogisticsNote    string     `json:"logistics_note"`
 	SalesChannelID   *string    `json:"sales_channel_id"`
 	ShopDomain       *string    `json:"shop_domain"`
+	MaxLineQty       int32      `json:"max_line_qty"`
 	UpdatedAt        *time.Time `json:"updated_at"`
 }
 
@@ -41,6 +42,7 @@ func toSettingsJSON(v shop.SettingsView) settingsJSON {
 		ShippingFeeMinor: v.ShippingFeeMinor, ShippingLabel: v.ShippingLabel, CountryISO2: v.CountryISO2,
 		AgeGateMinAge: v.AgeGateMinAge, AnnouncementText: v.AnnouncementText, ContactEmail: v.ContactEmail,
 		LogisticsNote: v.LogisticsNote, SalesChannelID: uuidPtrStr(v.SalesChannelID), ShopDomain: v.ShopDomain,
+		MaxLineQty: v.MaxLineQty,
 	}
 	if v.Configured {
 		t := v.UpdatedAt

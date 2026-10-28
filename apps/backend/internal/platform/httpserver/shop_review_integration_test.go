@@ -8,6 +8,7 @@ package httpserver
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hshop"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
 
@@ -249,5 +251,69 @@ func TestShop_VariantsRefuseAStaleStock(t *testing.T) {
 	if code, body, _ := f.do(http.MethodPut, path, f.ownerA,
 		`{"variants":[{"price_minor":100,"stock":1,"expected_stock":1}]}`); code != http.StatusBadRequest && code != http.StatusUnprocessableEntity {
 		t.Fatalf("expected_stock without an id = %d %v; want a validation error", code, body)
+	}
+}
+
+// checkoutAs places a one-line cart for the given buyer e-mail.
+func (f *shopFixture) checkoutAs(variantID string, qty int, email string) (int, map[string]any) {
+	f.t.Helper()
+	code, body, _ := f.do(http.MethodPost, "/v1/public/shop/"+f.orgASlug+"/checkout", "", fmt.Sprintf(`{
+		"items":[{"variant_id":%q,"qty":%d}],
+		"buyer":{"name":"Anna","email":%q},
+		"ship":{"address1":"Herzl 1","city":"Haifa","country":"IL"},
+		"return_url":"%s/checkout"}`, variantID, qty, email, shopTestBase))
+	return code, body
+}
+
+// TestShop_CheckoutLimits: the per-line cap from the settings and the cap on
+// one buyer's orders waiting for payment.
+func TestShop_CheckoutLimits(t *testing.T) {
+	f := newShopFixture(t)
+	_, variant := f.openShop(4500, 100)
+
+	if code, body := f.checkout(variant, shop.DefaultMaxLineQty+1); code != http.StatusUnprocessableEntity || shopErrCode(body) != "shop.invalid_items" {
+		t.Fatalf("qty over the default cap = %d %v; want 422 shop.invalid_items", code, body)
+	}
+	code, body, _ := f.do(http.MethodPut, f.orgPath(f.orgA, "/settings"), f.ownerA,
+		`{"currency":"ILS","shipping_fee_minor":5000,"max_line_qty":2}`)
+	if code != http.StatusOK || body["max_line_qty"].(float64) != 2 {
+		t.Fatalf("PUT settings with max_line_qty = %d %v", code, body)
+	}
+	if code, body := f.checkout(variant, 3); code != http.StatusUnprocessableEntity || shopErrCode(body) != "shop.invalid_items" {
+		t.Fatalf("qty over the shop's cap = %d %v; want 422", code, body)
+	}
+	if code, body, _ := f.do(http.MethodPut, f.orgPath(f.orgA, "/settings"), f.ownerA,
+		`{"currency":"ILS","max_line_qty":100}`); code != http.StatusUnprocessableEntity {
+		t.Fatalf("max_line_qty 100 = %d %v; want 422", code, body)
+	}
+
+	email := "same-" + uuid.NewString()[:6] + "@example.test"
+	for i := 0; i < shop.MaxPendingPerBuyer; i++ {
+		if code, body := f.checkoutAs(variant, 1, strings.ToUpper(email[:1])+email[1:]); code != http.StatusCreated {
+			t.Fatalf("pending order %d = %d %v", i+1, code, body)
+		}
+	}
+	if code, body := f.checkoutAs(variant, 1, email); code != http.StatusConflict || shopErrCode(body) != "shop.too_many_pending" {
+		t.Fatalf("one pending order too many = %d %v; want 409 shop.too_many_pending", code, body)
+	}
+}
+
+// TestShop_CheckoutHasItsOwnAddressBudget: an address may start
+// DefaultCheckoutIPLimit checkouts a minute, valid or not.
+func TestShop_CheckoutHasItsOwnAddressBudget(t *testing.T) {
+	f := newShopFixture(t)
+	path := "/v1/public/shop/" + f.orgASlug + "/checkout"
+	for i := 0; i < hshop.DefaultCheckoutIPLimit; i++ {
+		if code, body, _ := f.do(http.MethodPost, path, "", `{}`); code == http.StatusTooManyRequests {
+			t.Fatalf("checkout %d refused inside the budget: %v", i+1, body)
+		}
+	}
+	code, body, hdr := f.do(http.MethodPost, path, "", `{}`)
+	if code != http.StatusTooManyRequests || shopErrCode(body) != "shop.rate_limited" || hdr.Get("Retry-After") == "" {
+		t.Fatalf("checkout over the budget = %d %v; want 429 shop.rate_limited with Retry-After", code, body)
+	}
+	// The catalog is not on the checkout's budget.
+	if code, _, _ := f.do(http.MethodGet, "/v1/public/shop/"+f.orgASlug, "", ""); code == http.StatusTooManyRequests {
+		t.Fatal("the catalog was refused by the checkout's budget")
 	}
 }

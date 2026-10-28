@@ -60,6 +60,11 @@ type CheckoutInput struct {
 	Now time.Time
 }
 
+// MaxPendingPerBuyer is how many orders one buyer e-mail may have waiting
+// for payment in one shop at a time; the next checkout answers 409
+// shop.too_many_pending until one is paid or expires.
+const MaxPendingPerBuyer = 3
+
 // PlacedOrder is the committed order with its lines. Paid is true when the
 // order cost nothing and was completed inline.
 type PlacedOrder struct {
@@ -186,6 +191,26 @@ func (s *Service) PlaceOrder(ctx context.Context, in CheckoutInput) (PlacedOrder
 		if settings.AgeGateMinAge != nil && !in.AgeConfirmed {
 			return invalid("shop.age_confirmation_required",
 				fmt.Sprintf("confirm that you are at least %d years old to buy here", *settings.AgeGateMinAge))
+		}
+		if limit := int(settings.MaxLineQty); limit > 0 {
+			for _, it := range in.Items {
+				if it.Qty > limit {
+					e := invalid("shop.invalid_items", fmt.Sprintf("at most %d of one item per order", limit))
+					e.Details = map[string]any{"max_line_qty": limit, "variant_id": it.VariantID.String()}
+					return e
+				}
+			}
+		}
+		if err := q.LockShopBuyer(ctx, in.OrgID, in.Buyer.Email); err != nil {
+			return err
+		}
+		pending, err := q.CountLivePendingShopOrders(ctx, in.OrgID, in.Buyer.Email)
+		if err != nil {
+			return err
+		}
+		if pending >= MaxPendingPerBuyer {
+			return newErr(http.StatusConflict, "shop.too_many_pending",
+				fmt.Sprintf("you already have %d orders waiting for payment here; pay or wait for one of them to expire", pending))
 		}
 
 		ids := make([]uuid.UUID, len(in.Items))

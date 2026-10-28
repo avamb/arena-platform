@@ -26,6 +26,7 @@ type publicSettingsJSON struct {
 	AgeGateMinAge    *int32  `json:"age_gate_min_age"`
 	AnnouncementText string  `json:"announcement_text"`
 	ContactEmail     *string `json:"contact_email"`
+	MaxLineQty       int32   `json:"max_line_qty"`
 }
 
 // publicOrgJSON names the shop's organization.
@@ -77,7 +78,7 @@ func (h *Handler) HandlePublicCatalog(w http.ResponseWriter, r *http.Request) {
 		"settings": publicSettingsJSON{
 			Currency: st.Currency, ShippingFeeMinor: st.ShippingFeeMinor, ShippingLabel: st.ShippingLabel,
 			CountryISO2: st.CountryISO2, AgeGateMinAge: st.AgeGateMinAge, AnnouncementText: st.AnnouncementText,
-			ContactEmail: st.ContactEmail,
+			ContactEmail: st.ContactEmail, MaxLineQty: st.MaxLineQty,
 		},
 		"products": products,
 		"pages":    links,
@@ -179,7 +180,7 @@ type checkoutBody struct {
 // commit, never inside it. A page that cannot be created expires the order at
 // once, so its goods go straight back on sale.
 func (h *Handler) HandlePublicCheckout(w http.ResponseWriter, r *http.Request) {
-	if h.limited(w, r, "") {
+	if h.checkoutLimited(w, r) || h.limited(w, r, "") {
 		return
 	}
 	ctx := r.Context()

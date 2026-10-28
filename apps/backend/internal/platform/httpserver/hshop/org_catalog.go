@@ -38,6 +38,7 @@ type settingsBody struct {
 	LogisticsNote    string     `json:"logistics_note"`
 	SalesChannelID   *uuid.UUID `json:"sales_channel_id"`
 	ShopDomain       *string    `json:"shop_domain"`
+	MaxLineQty       *int32     `json:"max_line_qty"`
 }
 
 // HandlePutSettings serves PUT .../shop/settings. shop_domain may be changed
@@ -56,6 +57,7 @@ func (h *Handler) HandlePutSettings(w http.ResponseWriter, r *http.Request) {
 		CountryISO2: b.CountryISO2, AgeGateMinAge: b.AgeGateMinAge, AnnouncementText: b.AnnouncementText,
 		ContactEmail: b.ContactEmail, LogisticsNote: b.LogisticsNote, SalesChannelID: b.SalesChannelID,
 		ShopDomain: b.ShopDomain, MayChangeDomain: auth.HasSuperadminOrgAccess(r.Context()),
+		MaxLineQty: b.MaxLineQty,
 	})
 	if err != nil {
 		h.fail(w, r, "write settings", err)

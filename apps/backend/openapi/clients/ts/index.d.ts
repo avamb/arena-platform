@@ -10619,8 +10619,12 @@ export interface paths {
          *     `shop.out_of_stock` with `details.items` = [{variant_id, requested,
          *     available}] and holds nothing. A cart that costs nothing is completed at
          *     once (`status` paid, empty `payment_url`). The provider sends the buyer back
-         *     to `return_url` with `checkout_token` = the order token. No login;
-         *     rate-limited per client address.
+         *     to `return_url` with `checkout_token` = the order token. A line may hold
+         *     at most the shop's `max_line_qty` units (422 `shop.invalid_items` with
+         *     `details.max_line_qty`), and one buyer e-mail may have at most 3 orders
+         *     waiting for payment in the shop (409 `shop.too_many_pending`). No login;
+         *     rate-limited per client address: 10 checkouts a minute, on top of the
+         *     public routes' shared budget.
          */
         post: operations["createPublicShopCheckout"];
         delete?: never;
@@ -29896,6 +29900,11 @@ export interface components {
             /** @description Host name of the storefront, set by the platform operator; null when none. */
             shop_domain?: string | null;
             /**
+             * Format: int32
+             * @description How many units of one variant an order may hold (1-99, 24 by default).
+             */
+            max_line_qty: number;
+            /**
              * Format: date-time
              * @description When the settings were last saved; null when never.
              */
@@ -29932,6 +29941,11 @@ export interface components {
             sales_channel_id?: string | null;
             /** @description Storefront host (platform superadmin only); absent or null keeps it, an empty string clears it. */
             shop_domain?: string | null;
+            /**
+             * Format: int32
+             * @description How many units of one variant an order may hold, 1-99; absent or null keeps the stored value (24 for a new shop).
+             */
+            max_line_qty?: number | null;
         };
         /** @description A picture of a product. */
         ShopImage: {
@@ -30436,6 +30450,11 @@ export interface components {
             announcement_text: string;
             /** @description Contact address, or null. */
             contact_email?: string | null;
+            /**
+             * Format: int32
+             * @description How many units of one variant an order may hold; the quantity picker stops there.
+             */
+            max_line_qty?: number;
         };
         /** @description The organization behind a storefront. */
         ShopPublicOrg: {
@@ -65051,7 +65070,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`). */
+            /** @description A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -66813,7 +66832,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Some items are not available in the quantity requested (`shop.out_of_stock`). */
+            /** @description Some items are not available in the quantity requested (`shop.out_of_stock`), or the buyer already has 3 orders waiting for payment here (`shop.too_many_pending`). */
             409: {
                 headers: {
                     [name: string]: unknown;

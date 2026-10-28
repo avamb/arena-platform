@@ -16984,6 +16984,9 @@ type ShopPublicSettings struct {
 	// Currency ISO 4217 code of every price.
 	Currency string `json:"currency"`
 
+	// MaxLineQty How many units of one variant an order may hold; the quantity picker stops there.
+	MaxLineQty *int32 `json:"max_line_qty,omitempty"`
+
 	// ShippingFeeMinor Flat delivery fee, minor units.
 	ShippingFeeMinor int64 `json:"shipping_fee_minor"`
 
@@ -17089,6 +17092,9 @@ type ShopSettings struct {
 	// LogisticsNote Internal note for whoever ships the orders.
 	LogisticsNote string `json:"logistics_note"`
 
+	// MaxLineQty How many units of one variant an order may hold (1-99, 24 by default).
+	MaxLineQty int32 `json:"max_line_qty"`
+
 	// OrgId The organization.
 	OrgId openapi_types.UUID `json:"org_id"`
 
@@ -17127,6 +17133,9 @@ type ShopSettingsUpdateRequest struct {
 
 	// LogisticsNote Internal note for the logistician, up to 2000 characters.
 	LogisticsNote *string `json:"logistics_note,omitempty"`
+
+	// MaxLineQty How many units of one variant an order may hold, 1-99; absent or null keeps the stored value (24 for a new shop).
+	MaxLineQty *int32 `json:"max_line_qty"`
 
 	// SalesChannelId A sales channel of this organization, or null for the oldest one.
 	SalesChannelId *openapi_types.UUID `json:"sales_channel_id"`

@@ -22648,7 +22648,7 @@ components:
     ShopSettings:
       type: object
       description: The shop settings of an organization (migration 0172). Money in minor units of `currency`.
-      required: [org_id, configured, currency, shipping_fee_minor, shipping_label, announcement_text, logistics_note]
+      required: [org_id, configured, currency, shipping_fee_minor, shipping_label, announcement_text, logistics_note, max_line_qty]
       properties:
         org_id:
           type: string
@@ -22690,6 +22690,10 @@ components:
         shop_domain:
           type: [string, "null"]
           description: Host name of the storefront, set by the platform operator; null when none.
+        max_line_qty:
+          type: integer
+          format: int32
+          description: How many units of one variant an order may hold (1-99, 24 by default).
         updated_at:
           type: [string, "null"]
           format: date-time
@@ -22733,6 +22737,10 @@ components:
         shop_domain:
           type: [string, "null"]
           description: Storefront host (platform superadmin only); absent or null keeps it, an empty string clears it.
+        max_line_qty:
+          type: [integer, "null"]
+          format: int32
+          description: How many units of one variant an order may hold, 1-99; absent or null keeps the stored value (24 for a new shop).
 
     ShopImage:
       type: object
@@ -23362,6 +23370,10 @@ components:
         contact_email:
           type: [string, "null"]
           description: Contact address, or null.
+        max_line_qty:
+          type: integer
+          format: int32
+          description: How many units of one variant an order may hold; the quantity picker stops there.
 
     ShopPublicOrg:
       type: object
@@ -56701,7 +56713,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "422":
-          description: A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`).
+          description: A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`).
           content:
             application/json:
               schema:
@@ -58287,8 +58299,12 @@ paths:
         `shop.out_of_stock` with `details.items` = [{variant_id, requested,
         available}] and holds nothing. A cart that costs nothing is completed at
         once (`status` paid, empty `payment_url`). The provider sends the buyer back
-        to `return_url` with `checkout_token` = the order token. No login;
-        rate-limited per client address.
+        to `return_url` with `checkout_token` = the order token. A line may hold
+        at most the shop's `max_line_qty` units (422 `shop.invalid_items` with
+        `details.max_line_qty`), and one buyer e-mail may have at most 3 orders
+        waiting for payment in the shop (409 `shop.too_many_pending`). No login;
+        rate-limited per client address: 10 checkouts a minute, on top of the
+        public routes' shared budget.
       tags: [v1]
       security: []
       parameters:
@@ -58324,7 +58340,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
-          description: Some items are not available in the quantity requested (`shop.out_of_stock`).
+          description: Some items are not available in the quantity requested (`shop.out_of_stock`), or the buyer already has 3 orders waiting for payment here (`shop.too_many_pending`).
           content:
             application/json:
               schema:

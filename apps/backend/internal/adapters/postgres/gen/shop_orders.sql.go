@@ -115,6 +115,28 @@ type InsertShopOrderParams struct {
 	ExpiresAt    *time.Time
 }
 
+const lockShopBuyer = `-- name: LockShopBuyer :exec
+SELECT pg_advisory_xact_lock(hashtextextended('shop_buyer:' || $1::text || ':' || lower($2::text), 0))`
+
+// LockShopBuyer serializes the checkouts of one buyer e-mail in one shop for
+// the rest of the transaction, so the pending-order cap cannot be raced.
+func (q *Queries) LockShopBuyer(ctx context.Context, orgID uuid.UUID, email string) error {
+	_, err := q.db.Exec(ctx, lockShopBuyer, orgID, email)
+	return err
+}
+
+const countLivePendingShopOrders = `-- name: CountLivePendingShopOrders :one
+SELECT count(*)::int FROM shop_orders
+WHERE  org_id = $1 AND lower(buyer_email) = lower($2) AND status = 'pending_payment' AND expires_at > now()`
+
+// CountLivePendingShopOrders counts a buyer's orders in one shop that still
+// hold goods.
+func (q *Queries) CountLivePendingShopOrders(ctx context.Context, orgID uuid.UUID, email string) (int, error) {
+	var n int
+	err := q.db.QueryRow(ctx, countLivePendingShopOrders, orgID, email).Scan(&n)
+	return n, err
+}
+
 const insertShopOrder = `-- name: InsertShopOrder :one
 INSERT INTO shop_orders (org_id, order_token, status, buyer_name, buyer_email, buyer_phone, ship_name,
                          ship_address1, ship_address2, ship_city, ship_postal, ship_country,

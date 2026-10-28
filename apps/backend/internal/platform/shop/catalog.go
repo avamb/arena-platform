@@ -15,6 +15,10 @@ import (
 // DefaultCurrency is the currency of a shop whose settings were never saved.
 const DefaultCurrency = "EUR"
 
+// DefaultMaxLineQty is how many units of one variant an order may hold when
+// the settings say nothing else (shop_settings.max_line_qty).
+const DefaultMaxLineQty = 24
+
 // DefaultVariantTitle is the title of the one variant a simple product has
 // (the Shopify and Dawn convention).
 const DefaultVariantTitle = "Default Title"
@@ -47,7 +51,7 @@ func (s *Service) GetSettings(ctx context.Context, orgID uuid.UUID) (SettingsVie
 		return SettingsView{}, derr
 	}
 	return SettingsView{ShopSettingsRow: gen.ShopSettingsRow{
-		OrgID: orgID, Currency: DefaultCurrency, ShopDomain: domain,
+		OrgID: orgID, Currency: DefaultCurrency, ShopDomain: domain, MaxLineQty: DefaultMaxLineQty,
 	}}, nil
 }
 
@@ -66,6 +70,9 @@ type SettingsInput struct {
 	SalesChannelID   *uuid.UUID
 	ShopDomain       *string
 	MayChangeDomain  bool
+	// MaxLineQty caps the units of one variant per order (1-99); nil keeps
+	// the stored value (24 for a new shop).
+	MaxLineQty *int32
 }
 
 func invalid(code, msg string) *Error { return newErr(http.StatusUnprocessableEntity, code, msg) }
@@ -88,6 +95,9 @@ func validateSettings(in *SettingsInput) error {
 		} else {
 			in.CountryISO2 = &c
 		}
+	}
+	if in.MaxLineQty != nil && (*in.MaxLineQty < 1 || *in.MaxLineQty > MaxLineQty) {
+		return invalid("shop.invalid_max_line_qty", "max_line_qty must be between 1 and 99")
 	}
 	if in.AgeGateMinAge != nil && (*in.AgeGateMinAge < 1 || *in.AgeGateMinAge > 99) {
 		return invalid("shop.invalid_age_gate", "age_gate_min_age must be between 1 and 99, or null for no age gate")
@@ -114,6 +124,16 @@ func (s *Service) PutSettings(ctx context.Context, orgID uuid.UUID, in SettingsI
 		return SettingsView{}, err
 	}
 	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
+		cur, err := q.GetShopSettings(ctx, orgID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			cur = gen.ShopSettingsRow{MaxLineQty: DefaultMaxLineQty}
+		} else if err != nil {
+			return err
+		}
+		maxLine := cur.MaxLineQty
+		if in.MaxLineQty != nil {
+			maxLine = *in.MaxLineQty
+		}
 		if in.SalesChannelID != nil {
 			if _, err := q.GetSalesChannelByID(ctx, *in.SalesChannelID, orgID); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
@@ -156,6 +176,7 @@ func (s *Service) PutSettings(ctx context.Context, orgID uuid.UUID, in SettingsI
 			ShippingLabel: in.ShippingLabel, CountryISO2: in.CountryISO2, AgeGateMinAge: in.AgeGateMinAge,
 			AnnouncementText: in.AnnouncementText, ContactEmail: in.ContactEmail,
 			LogisticsNote: in.LogisticsNote, SalesChannelID: in.SalesChannelID,
+			Enabled: cur.Enabled, MaxLineQty: maxLine,
 		})
 	})
 	if err != nil {
