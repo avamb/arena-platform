@@ -260,9 +260,10 @@ const (
 
 // Defines values for CreateChannelRequestProvider.
 const (
-	CreateChannelRequestProviderAllpay CreateChannelRequestProvider = "allpay"
-	CreateChannelRequestProviderFlitt  CreateChannelRequestProvider = "flitt"
-	CreateChannelRequestProviderStripe CreateChannelRequestProvider = "stripe"
+	CreateChannelRequestProviderAllpay  CreateChannelRequestProvider = "allpay"
+	CreateChannelRequestProviderFlitt   CreateChannelRequestProvider = "flitt"
+	CreateChannelRequestProviderPayplus CreateChannelRequestProvider = "payplus"
+	CreateChannelRequestProviderStripe  CreateChannelRequestProvider = "stripe"
 )
 
 // Defines values for CreateCustomerImportRequestLegalBasis.
@@ -477,6 +478,7 @@ const (
 	MediaObjectOwnerTypeOrgLogo        MediaObjectOwnerType = "org_logo"
 	MediaObjectOwnerTypeSeatingPlanSvg MediaObjectOwnerType = "seating_plan_svg"
 	MediaObjectOwnerTypeSessionPoster  MediaObjectOwnerType = "session_poster"
+	MediaObjectOwnerTypeShopDigital    MediaObjectOwnerType = "shop_digital"
 	MediaObjectOwnerTypeShopProduct    MediaObjectOwnerType = "shop_product"
 )
 
@@ -840,9 +842,10 @@ const (
 
 // Defines values for UpdateChannelRequestProvider.
 const (
-	UpdateChannelRequestProviderAllpay UpdateChannelRequestProvider = "allpay"
-	UpdateChannelRequestProviderFlitt  UpdateChannelRequestProvider = "flitt"
-	UpdateChannelRequestProviderStripe UpdateChannelRequestProvider = "stripe"
+	UpdateChannelRequestProviderAllpay  UpdateChannelRequestProvider = "allpay"
+	UpdateChannelRequestProviderFlitt   UpdateChannelRequestProvider = "flitt"
+	UpdateChannelRequestProviderPayplus UpdateChannelRequestProvider = "payplus"
+	UpdateChannelRequestProviderStripe  UpdateChannelRequestProvider = "stripe"
 )
 
 // Defines values for UpdateEventRequestVisibility.
@@ -977,6 +980,7 @@ const (
 	PostV1MediaMultipartBodyOwnerTypeOrgLogo        PostV1MediaMultipartBodyOwnerType = "org_logo"
 	PostV1MediaMultipartBodyOwnerTypeSeatingPlanSvg PostV1MediaMultipartBodyOwnerType = "seating_plan_svg"
 	PostV1MediaMultipartBodyOwnerTypeSessionPoster  PostV1MediaMultipartBodyOwnerType = "session_poster"
+	PostV1MediaMultipartBodyOwnerTypeShopDigital    PostV1MediaMultipartBodyOwnerType = "shop_digital"
 	PostV1MediaMultipartBodyOwnerTypeShopProduct    PostV1MediaMultipartBodyOwnerType = "shop_product"
 )
 
@@ -6067,7 +6071,7 @@ type CreatePaymentProviderConfigRequest struct {
 	// Mode Operating mode for the credential set.
 	Mode *CreatePaymentProviderConfigRequestMode `json:"mode,omitempty"`
 
-	// Provider Provider slug (one of stripe, allpay, flitt, cloudpayments, yookassa, manual).
+	// Provider Provider slug (one of stripe, allpay, flitt, payplus, cloudpayments, yookassa, manual).
 	Provider string `json:"provider"`
 
 	// ProviderAccountId Optional public account identifier.
@@ -6079,7 +6083,8 @@ type CreatePaymentProviderConfigRequest struct {
 	// Secrets Map of secret credential fields to values. Stripe expects
 	// api_key + webhook_secret; AllPay expects merchant_id (the API
 	// login) + secret_key (the API key), optionally vat,
-	// max_installments and installments_min_amount; etc. Values are
+	// max_installments and installments_min_amount; PayPlus expects
+	// api_key + secret_key + payment_page_uid; etc. Values are
 	// never returned.
 	Secrets *map[string]string `json:"secrets,omitempty"`
 }
@@ -9848,7 +9853,8 @@ type MediaObject struct {
 	// is a session-level poster. `event_gallery` and `event_report`
 	// (migration 0153) are photos of an event page gallery and of its
 	// photo report. `shop_product` (migration 0172) is a picture of a
-	// merchandise shop product.
+	// merchandise shop product; `shop_digital` is the file a digital
+	// shop product sells (offered to the buyer only after payment).
 	OwnerType MediaObjectOwnerType `json:"owner_type"`
 
 	// SignedUrl Short-lived download URL. Present on `GET /v1/media/{id}`
@@ -9881,7 +9887,8 @@ type MediaObject struct {
 // is a session-level poster. `event_gallery` and `event_report`
 // (migration 0153) are photos of an event page gallery and of its
 // photo report. `shop_product` (migration 0172) is a picture of a
-// merchandise shop product.
+// merchandise shop product; `shop_digital` is the file a digital
+// shop product sells (offered to the buyer only after payment).
 type MediaObjectOwnerType string
 
 // MediaObjectStorageBackend Which storage adapter holds the bytes. `s3` covers any
@@ -12651,7 +12658,7 @@ type PaymentProviderConfigItem struct {
 	// OrgId Owning organization. Immutable after creation.
 	OrgId openapi_types.UUID `json:"org_id"`
 
-	// Provider Provider slug. Must be one of: stripe, allpay, flitt,
+	// Provider Provider slug. Must be one of: stripe, allpay, flitt, payplus,
 	// cloudpayments, yookassa, manual. `flitt` needs the secrets
 	// `merchant_id` and `payment_key` (the portal's payment key signs
 	// requests and callbacks; there is no separate webhook secret).
@@ -12659,7 +12666,11 @@ type PaymentProviderConfigItem struct {
 	// `secret_key` (its API key, which also signs webhooks); `vat`
 	// (0, 1 or 3), `max_installments` (2 to 12) and
 	// `installments_min_amount` (the smallest order total in shekels
-	// that offers installments) are optional.
+	// that offers installments) are optional. `payplus` needs
+	// `api_key` and `secret_key` (the dashboard's key pair; the secret
+	// key also signs callbacks) and `payment_page_uid` (the payment page
+	// links are generated from); a `test` config talks to
+	// restapidev.payplus.co.il, a `live` one to restapi.payplus.co.il.
 	Provider string `json:"provider"`
 
 	// ProviderAccountId Optional public account identifier (e.g. Stripe acct_..., AllPay
@@ -16601,6 +16612,27 @@ type ShopCheckoutStatus struct {
 	Total int64 `json:"total"`
 }
 
+// ShopDownload One file a buyer bought.
+type ShopDownload struct {
+	// ExpiresAt When `url` stops working; read the list again for a fresh one.
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// ProductTitle The product, as sold.
+	ProductTitle string `json:"product_title"`
+
+	// Url Absolute signed download URL of the file; it works for 15 minutes.
+	Url string `json:"url"`
+
+	// VariantTitle The variant, as sold.
+	VariantTitle string `json:"variant_title"`
+}
+
+// ShopDownloadList The files of a paid order's digital lines.
+type ShopDownloadList struct {
+	// Downloads One entry per digital line whose product has a file, in the order's line order.
+	Downloads []ShopDownload `json:"downloads"`
+}
+
 // ShopImage A picture of a product.
 type ShopImage struct {
 	// Alt Alternative text.
@@ -16648,7 +16680,7 @@ type ShopOrder struct {
 	// CustomerId The buyer's customer, resolved from the e-mail and phone at checkout; null when the resolution failed or for an imported order.
 	CustomerId *openapi_types.UUID `json:"customer_id"`
 
-	// DeliveryKind `shipping` (the only kind in this version) or `pickup`.
+	// DeliveryKind `shipping`, `pickup`, or `none` for an order of digital products and services only (no address, no shipping fee).
 	DeliveryKind string `json:"delivery_kind"`
 
 	// DeliveryNote The buyer's comment.
@@ -16714,6 +16746,9 @@ type ShopOrder struct {
 
 // ShopOrderItem One line of an order, as sold.
 type ShopOrderItem struct {
+	// ProductKind The product's kind when the line was bought: `physical`, `digital` or `service`.
+	ProductKind *string `json:"product_kind,omitempty"`
+
 	// ProductTitle Product title at the time of sale.
 	ProductTitle string `json:"product_title"`
 
@@ -16816,11 +16851,20 @@ type ShopProduct struct {
 	// CreatedAt Creation time.
 	CreatedAt time.Time `json:"created_at"`
 
+	// DigitalMediaId The file a digital product sells (owner_type `shop_digital`); null for other kinds or when none is attached. Never shown on the storefront.
+	DigitalMediaId *openapi_types.UUID `json:"digital_media_id"`
+
 	// Id The product.
 	Id openapi_types.UUID `json:"id"`
 
 	// Images Pictures in display order.
 	Images []ShopImage `json:"images"`
+
+	// Kind `physical`, `digital` or `service` (spec 47 section 1b).
+	Kind string `json:"kind"`
+
+	// OptionNames Names of the product's options, in the order of the variants' option1..option3.
+	OptionNames []string `json:"option_names"`
 
 	// OrgId The organization.
 	OrgId openapi_types.UUID `json:"org_id"`
@@ -16855,6 +16899,15 @@ type ShopProductCreateRequest struct {
 	// BodyHtml Description, HTML, up to 100000 characters. Sanitized on write to the rich-text subset (p, br, strong, em, u, a with https or mailto, ul, ol, li, h3, h4, blockquote); images, tables, section, style, classes and inline styles are dropped. A text the sanitizer refuses answers 422 `shop.invalid_body_html`.
 	BodyHtml *string `json:"body_html,omitempty"`
 
+	// DigitalMediaId The file a digital product sells, a media object of the organization uploaded with owner_type `shop_digital` (a `shop_product` picture is refused, 422 `shop.invalid_digital_media`). Only for kind digital; absent keeps it, null removes it. Turning the product away from digital removes it.
+	DigitalMediaId *openapi_types.UUID `json:"digital_media_id"`
+
+	// Kind `physical` (tracks stock, ships to an address), `digital` (sells the file `digital_media_id`, never tracks stock, needs no address or shipping) or `service` (needs no address or shipping; its variants may track stock or not). Absent keeps it; a new product is physical.
+	Kind *string `json:"kind,omitempty"`
+
+	// OptionNames Names of the product's options (up to 3, e.g. Size, Colour), matched by position with the variants' option1..option3 values. Absent keeps them; an empty list removes them.
+	OptionNames *[]string `json:"option_names,omitempty"`
+
 	// ProductType Free product type label.
 	ProductType *string `json:"product_type,omitempty"`
 
@@ -16887,6 +16940,15 @@ type ShopProductList struct {
 type ShopProductPatchRequest struct {
 	// BodyHtml Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote).
 	BodyHtml *string `json:"body_html,omitempty"`
+
+	// DigitalMediaId The file a digital product sells, a media object of the organization uploaded with owner_type `shop_digital` (a `shop_product` picture is refused, 422 `shop.invalid_digital_media`). Only for kind digital; absent keeps it, null removes it. Turning the product away from digital removes it.
+	DigitalMediaId *openapi_types.UUID `json:"digital_media_id"`
+
+	// Kind `physical` (tracks stock, ships to an address), `digital` (sells the file `digital_media_id`, never tracks stock, needs no address or shipping) or `service` (needs no address or shipping; its variants may track stock or not). Absent keeps it; a new product is physical.
+	Kind *string `json:"kind,omitempty"`
+
+	// OptionNames Names of the product's options (up to 3, e.g. Size, Colour), matched by position with the variants' option1..option3 values. Absent keeps them; an empty list removes them.
+	OptionNames *[]string `json:"option_names,omitempty"`
 
 	// ProductType Free product type label.
 	ProductType *string `json:"product_type,omitempty"`
@@ -16941,6 +17003,12 @@ type ShopPublicProduct struct {
 
 	// Images Pictures in display order.
 	Images []ShopImage `json:"images"`
+
+	// Kind `physical` (ships, the checkout asks for an address), `digital` (a file offered after payment) or `service`.
+	Kind string `json:"kind"`
+
+	// OptionNames Names of the product's options, in the order of the variants' option1..option3.
+	OptionNames []string `json:"option_names"`
 
 	// PriceMinMinor Lowest variant price, minor units.
 	PriceMinMinor int64 `json:"price_min_minor"`

@@ -78,7 +78,22 @@ func (s *Server) hostedPaymentStarter() hfeed.PaymentStarter {
 	}
 	return hfeed.NewStripePaymentStarter(s.orgQueries, s.channelQueries, s.stripeBaseURL()).
 		WithFlitt(s.flittBaseURL(), callbackBase).
-		WithAllPay(s.allpayBaseURL())
+		WithAllPay(s.allpayBaseURL()).
+		WithPayPlus(s.payplusBaseURL())
+}
+
+// payplusBaseURL resolves the PayPlus endpoint with the same precedence as
+// flittBaseURL: the in-process override, then PAYPLUS_API_BASE_URL (refused
+// by config.Validate in production). Empty means the real hosts, picked by
+// the configuration's mode (restapidev for test, restapi for live).
+func (s *Server) payplusBaseURL() string {
+	if s.payplusAPIBaseURL != "" {
+		return s.payplusAPIBaseURL
+	}
+	if s.cfg != nil {
+		return s.cfg.PayPlusAPIBaseURL
+	}
+	return ""
 }
 
 // allpayBaseURL resolves the AllPay endpoint with the same precedence as

@@ -163,7 +163,6 @@ func TestNormalizeCheckout_Refusals(t *testing.T) {
 		"merged > 99":   func(in *CheckoutInput) { in.Items[0].Qty, in.Items[1].Qty = 50, 50 },
 		"bad email":     func(in *CheckoutInput) { in.Buyer.Email = "nope" },
 		"no name":       func(in *CheckoutInput) { in.Buyer.Name = " " },
-		"no address":    func(in *CheckoutInput) { in.Ship.Address1 = "" },
 		"bad country":   func(in *CheckoutInput) { in.Ship.Country = "Israel" },
 		"note too long": func(in *CheckoutInput) { in.DeliveryNote = strings.Repeat("x", 2001) },
 	} {
@@ -283,6 +282,50 @@ func TestRefundStatus(t *testing.T) {
 	for _, c := range cases {
 		if got := refundStatus(c.o, c.accepted); got != c.want {
 			t.Errorf("%s: refundStatus = %s; want %s", c.name, got, c.want)
+		}
+	}
+}
+
+func TestRequireShipping(t *testing.T) {
+	if err := requireShipping(Address{Address1: "Herzl 1", City: "Haifa", Country: "IL"}); err != nil {
+		t.Fatalf("full address refused: %v", err)
+	}
+	for name, a := range map[string]Address{
+		"no street":  {City: "Haifa", Country: "IL"},
+		"no city":    {Address1: "Herzl 1", Country: "IL"},
+		"no country": {Address1: "Herzl 1", City: "Haifa"},
+	} {
+		if e, ok := AsError(requireShipping(a)); !ok || e.Code != "shop.invalid_address" {
+			t.Errorf("%s: %v; want shop.invalid_address", name, e)
+		}
+	}
+}
+
+func TestProductInput_KindsAndOptionNames(t *testing.T) {
+	str := func(s string) *string { return &s }
+	media := uuid.New()
+	p := gen.ShopProductParams{Title: "E-book"}
+	if err := (ProductInput{Kind: str("digital"), DigitalMediaID: &media, OptionNames: &[]string{" Format ", "Language"}}).apply(&p); err != nil {
+		t.Fatalf("digital product: %v", err)
+	}
+	if p.Kind != KindDigital || p.DigitalMediaID == nil || *p.Option1Name != "Format" || *p.Option2Name != "Language" || p.Option3Name != nil {
+		t.Fatalf("applied = %+v", p)
+	}
+	if err := (ProductInput{Kind: str("physical")}).apply(&p); err != nil || p.DigitalMediaID != nil {
+		t.Fatalf("turning physical kept the file: %v %v", err, p.DigitalMediaID)
+	}
+	if err := (ProductInput{OptionNames: &[]string{}}).apply(&p); err != nil || p.Option1Name != nil {
+		t.Fatalf("empty option names did not clear them: %v", err)
+	}
+	for name, in := range map[string]ProductInput{
+		"bad kind":          {Kind: str("ticket")},
+		"file on physical":  {Kind: str("physical"), DigitalMediaID: &media},
+		"four option names": {OptionNames: &[]string{"a", "b", "c", "d"}},
+		"blank option name": {OptionNames: &[]string{" "}},
+	} {
+		q := gen.ShopProductParams{Title: "x"}
+		if _, ok := AsError(in.apply(&q)); !ok {
+			t.Errorf("%s: accepted", name)
 		}
 	}
 }

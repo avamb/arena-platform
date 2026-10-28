@@ -35,6 +35,15 @@ func NewRefundModuleSource(q *gen.Queries, opts payments.Options) *RefundModuleS
 	return &RefundModuleSource{queries: q, opts: opts}
 }
 
+// optsFor is the module options for one configuration: the deployment's
+// test seams plus that configuration's mode, so a provider with separate test
+// and live hosts (PayPlus) refunds a test payment on its test host.
+func (s *RefundModuleSource) optsFor(mode string) payments.Options {
+	o := s.opts
+	o.Mode = mode
+	return o
+}
+
 // Descriptor implements refunds.ModuleSource.
 func (s *RefundModuleSource) Descriptor(provider string) (payments.Descriptor, bool) {
 	e, ok := paymodules.Registry().Get(provider)
@@ -58,7 +67,7 @@ func (s *RefundModuleSource) Build(ctx context.Context, orgID uuid.UUID, provide
 		}
 		return nil, &refunds.ConfigError{Code: cfgErr.Code, Message: cfgErr.Message}
 	}
-	return paymodules.Registry().Build(provider, payments.SecretsFromJSON(cfg.Secrets), s.opts)
+	return paymodules.Registry().Build(provider, payments.SecretsFromJSON(cfg.Secrets), s.optsFor(cfg.Mode))
 }
 
 // buildFromConfig builds the module from one named configuration of the
@@ -74,7 +83,7 @@ func (s *RefundModuleSource) buildFromConfig(ctx context.Context, orgID uuid.UUI
 	if err != nil {
 		return nil, fmt.Errorf("refunds: load payment configuration: %w", err)
 	}
-	return paymodules.Registry().Build(provider, payments.SecretsFromJSON(cfg.Secrets), s.opts)
+	return paymodules.Registry().Build(provider, payments.SecretsFromJSON(cfg.Secrets), s.optsFor(cfg.Mode))
 }
 
 // WithRefundEngine wires the refund engine into the flat refund routes.

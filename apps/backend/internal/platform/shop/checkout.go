@@ -120,8 +120,8 @@ func normalizeCheckout(in *CheckoutInput) error {
 	if a.Name == "" {
 		a.Name = b.Name
 	}
-	if a.Address1 == "" || a.City == "" || !ValidCountry(a.Country) {
-		return invalid("shop.invalid_address", "ship.address1, ship.city and a two-letter ship.country are required")
+	if a.Country != "" && !ValidCountry(a.Country) {
+		return invalid("shop.invalid_address", "ship.country must be a two-letter country code")
 	}
 	if !textOK(a.Name, MaxShortTextLen) || !textOK(a.Address1, MaxAddressLen) || !textOK(a.Address2, MaxAddressLen) ||
 		!textOK(a.City, MaxCityLen) || !textOK(a.Postal, MaxPostalLen) {
@@ -137,6 +137,14 @@ func normalizeCheckout(in *CheckoutInput) error {
 	}
 	if in.HoldFor <= 0 {
 		return fmt.Errorf("shop: checkout without a hold duration")
+	}
+	return nil
+}
+
+// requireShipping refuses a cart with physical goods and no full address.
+func requireShipping(a Address) error {
+	if a.Address1 == "" || a.City == "" || !ValidCountry(a.Country) {
+		return invalid("shop.invalid_address", "ship.address1, ship.city and a two-letter ship.country are required")
 	}
 	return nil
 }
@@ -236,6 +244,7 @@ func (s *Service) PlaceOrder(ctx context.Context, in CheckoutInput) (PlacedOrder
 		var short []shortage
 		lines := make([]gen.ShopOrderItemRow, 0, len(in.Items))
 		var subtotal int64
+		needsShipping := false
 		for i, it := range in.Items {
 			v, ok := byID[it.VariantID]
 			if !ok || v.ProductStatus != ProductActive {
@@ -250,8 +259,16 @@ func (s *Service) PlaceOrder(ctx context.Context, in CheckoutInput) (PlacedOrder
 			vid := v.ID
 			total := v.PriceMinor * int64(it.Qty)
 			subtotal += total
+			kind := v.ProductKind
+			if kind == "" {
+				kind = KindPhysical
+			}
+			if kind == KindPhysical {
+				needsShipping = true
+			}
 			lines = append(lines, gen.ShopOrderItemRow{
-				VariantID: &vid, ProductTitle: v.ProductTitle, VariantTitle: v.Title, SKU: v.SKU,
+				ProductKind: kind,
+				VariantID:   &vid, ProductTitle: v.ProductTitle, VariantTitle: v.Title, SKU: v.SKU,
 				Qty: int32(it.Qty), UnitPriceMinor: v.PriceMinor, TotalMinor: total, //nolint:gosec // qty <= 99
 				Ordinal: int32(i + 1), //nolint:gosec // lines <= 50
 			})
@@ -262,7 +279,18 @@ func (s *Service) PlaceOrder(ctx context.Context, in CheckoutInput) (PlacedOrder
 			e.Details = map[string]any{"items": short}
 			return e
 		}
-		total := subtotal + settings.ShippingFeeMinor
+		// Only physical goods travel: a cart of digital goods and services
+		// takes no address and pays no shipping.
+		shippingFee, deliveryKind := settings.ShippingFeeMinor, "shipping"
+		if needsShipping {
+			if err := requireShipping(in.Ship); err != nil {
+				return err
+			}
+		} else {
+			shippingFee, deliveryKind = 0, "none"
+			in.Ship = Address{}
+		}
+		total := subtotal + shippingFee
 		if total > 0 && in.PaymentReady != nil {
 			return in.PaymentReady
 		}
@@ -278,8 +306,8 @@ func (s *Service) PlaceOrder(ctx context.Context, in CheckoutInput) (PlacedOrder
 			BuyerName: in.Buyer.Name, BuyerEmail: in.Buyer.Email, BuyerPhone: in.Buyer.Phone,
 			ShipName: in.Ship.Name, ShipAddress1: in.Ship.Address1, ShipAddress2: in.Ship.Address2,
 			ShipCity: in.Ship.City, ShipPostal: in.Ship.Postal, ShipCountry: in.Ship.Country,
-			DeliveryNote: in.DeliveryNote, Currency: settings.Currency,
-			Subtotal: subtotal, ShippingFee: settings.ShippingFeeMinor, Total: total,
+			DeliveryKind: deliveryKind, DeliveryNote: in.DeliveryNote, Currency: settings.Currency,
+			Subtotal: subtotal, ShippingFee: shippingFee, Total: total,
 			BuyerLocale: locale, ExpiresAt: &expires, CustomerID: customerID,
 		})
 		if err != nil {
@@ -385,6 +413,42 @@ func (s *Service) AbandonOrder(ctx context.Context, orderID, orgID uuid.UUID) er
 		}
 		return q.JournalShopOrderHold(ctx, o.ID, o.OrgID, MoveRelease)
 	})
+}
+
+// Download is one digital line of a paid order and the file it sells.
+type Download struct {
+	ProductTitle string
+	VariantTitle string
+	MediaID      uuid.UUID
+}
+
+// Downloads lists the files a buyer bought, by order token: only for an
+// order whose payment went through (paid, shipped or partially refunded),
+// only its digital lines, and only those whose product still has a file.
+// Any other order answers ErrOrderNotFound, so an unpaid order cannot be
+// told from a missing one.
+func (s *Service) Downloads(ctx context.Context, token string) ([]Download, error) {
+	v, err := s.OrderByToken(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	switch v.Status {
+	case StatusPaid, StatusShipped, StatusPartiallyRefunded:
+	default:
+		return nil, ErrOrderNotFound
+	}
+	rows, err := s.q.ListShopOrderDownloads(ctx, v.ID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Download, 0, len(rows))
+	for _, r := range rows {
+		if r.MediaID == nil {
+			continue
+		}
+		out = append(out, Download{ProductTitle: r.ProductTitle, VariantTitle: r.VariantTitle, MediaID: *r.MediaID})
+	}
+	return out, nil
 }
 
 // OrderByToken reads the order a buyer holds the token of, with its lines and

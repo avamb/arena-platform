@@ -202,15 +202,22 @@ type ShopProductRow struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	DeletedAt   *time.Time `json:"deleted_at"`
+	// Kind is physical, digital or service (spec 47 section 1b).
+	Kind           string     `json:"kind"`
+	DigitalMediaID *uuid.UUID `json:"digital_media_id"`
+	Option1Name    *string    `json:"option1_name"`
+	Option2Name    *string    `json:"option2_name"`
+	Option3Name    *string    `json:"option3_name"`
 }
 
 const shopProductColumns = `id, org_id, slug, title, body_html, status, product_type, vendor, sort_order,
-       created_at, updated_at, deleted_at`
+       created_at, updated_at, deleted_at, kind, digital_media_id, option1_name, option2_name, option3_name`
 
 func scanShopProductRow(row interface{ Scan(dest ...any) error }) (ShopProductRow, error) {
 	var p ShopProductRow
 	err := row.Scan(&p.ID, &p.OrgID, &p.Slug, &p.Title, &p.BodyHTML, &p.Status, &p.ProductType,
-		&p.Vendor, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt)
+		&p.Vendor, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt,
+		&p.Kind, &p.DigitalMediaID, &p.Option1Name, &p.Option2Name, &p.Option3Name)
 	return p, err
 }
 
@@ -225,24 +232,40 @@ type ShopProductParams struct {
 	ProductType string
 	Vendor      string
 	SortOrder   int32
+	// Kind "" means physical.
+	Kind           string
+	DigitalMediaID *uuid.UUID
+	Option1Name    *string
+	Option2Name    *string
+	Option3Name    *string
+}
+
+func (p ShopProductParams) kind() string {
+	if p.Kind == "" {
+		return "physical"
+	}
+	return p.Kind
 }
 
 const insertShopProduct = `-- name: InsertShopProduct :one
-INSERT INTO shop_products (org_id, slug, title, body_html, status, product_type, vendor, sort_order)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO shop_products (org_id, slug, title, body_html, status, product_type, vendor, sort_order,
+                           kind, digital_media_id, option1_name, option2_name, option3_name)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING ` + shopProductColumns
 
 // InsertShopProduct creates a product (ID is ignored). A slug already used by
 // a live product of the organization is a 23505 on shop_products_org_slug_uq.
 func (q *Queries) InsertShopProduct(ctx context.Context, p ShopProductParams) (ShopProductRow, error) {
 	return scanShopProductRow(q.db.QueryRow(ctx, insertShopProduct, p.OrgID, p.Slug, p.Title, p.BodyHTML,
-		p.Status, p.ProductType, p.Vendor, p.SortOrder))
+		p.Status, p.ProductType, p.Vendor, p.SortOrder, p.kind(), p.DigitalMediaID,
+		p.Option1Name, p.Option2Name, p.Option3Name))
 }
 
 const updateShopProduct = `-- name: UpdateShopProduct :one
 UPDATE shop_products
 SET    slug = $3, title = $4, body_html = $5, status = $6, product_type = $7, vendor = $8,
-       sort_order = $9, updated_at = now()
+       sort_order = $9, kind = $10, digital_media_id = $11, option1_name = $12, option2_name = $13,
+       option3_name = $14, updated_at = now()
 WHERE  id = $1 AND org_id = $2 AND deleted_at IS NULL
 RETURNING ` + shopProductColumns
 
@@ -250,7 +273,8 @@ RETURNING ` + shopProductColumns
 // organization. pgx.ErrNoRows when it does not exist there.
 func (q *Queries) UpdateShopProduct(ctx context.Context, p ShopProductParams) (ShopProductRow, error) {
 	return scanShopProductRow(q.db.QueryRow(ctx, updateShopProduct, p.ID, p.OrgID, p.Slug, p.Title,
-		p.BodyHTML, p.Status, p.ProductType, p.Vendor, p.SortOrder))
+		p.BodyHTML, p.Status, p.ProductType, p.Vendor, p.SortOrder, p.kind(), p.DigitalMediaID,
+		p.Option1Name, p.Option2Name, p.Option3Name))
 }
 
 const getShopProduct = `-- name: GetShopProduct :one
@@ -379,14 +403,34 @@ func (q *Queries) ListShopProductImages(ctx context.Context, productIDs []uuid.U
 
 const shopMediaUsable = `-- name: ShopMediaUsable :one
 SELECT EXISTS (SELECT 1 FROM media_objects
-               WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL)`
+               WHERE id = $1 AND org_id = $2 AND owner_type = $3 AND deleted_at IS NULL)`
 
-// ShopMediaUsable reports whether a media object is a live file of the
-// organization (a product picture must be the organization's own upload).
+// ShopMediaUsable reports whether a media object is a live picture of the
+// organization: its own upload with owner_type shop_product.
 func (q *Queries) ShopMediaUsable(ctx context.Context, mediaID, orgID uuid.UUID) (bool, error) {
 	var ok bool
-	err := q.db.QueryRow(ctx, shopMediaUsable, mediaID, orgID).Scan(&ok)
+	err := q.db.QueryRow(ctx, shopMediaUsable, mediaID, orgID, "shop_product").Scan(&ok)
 	return ok, err
+}
+
+// ShopDigitalMediaUsable reports whether a media object is a live file of the
+// organization uploaded as a digital product's file (owner_type
+// shop_digital), never a picture.
+func (q *Queries) ShopDigitalMediaUsable(ctx context.Context, mediaID, orgID uuid.UUID) (bool, error) {
+	var ok bool
+	err := q.db.QueryRow(ctx, shopMediaUsable, mediaID, orgID, "shop_digital").Scan(&ok)
+	return ok, err
+}
+
+const untrackShopProductVariants = `-- name: UntrackShopProductVariants :exec
+UPDATE shop_variants SET track_stock = false, updated_at = now()
+WHERE  product_id = $1 AND deleted_at IS NULL AND track_stock`
+
+// UntrackShopProductVariants stops every live variant of a product from
+// tracking stock (a product that became digital).
+func (q *Queries) UntrackShopProductVariants(ctx context.Context, productID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, untrackShopProductVariants, productID)
+	return err
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -554,13 +598,14 @@ type ShopCheckoutVariantRow struct {
 	ProductTitle  string
 	ProductStatus string
 	OrgID         uuid.UUID
+	ProductKind   string
 }
 
 const lockShopVariantRows = `-- name: LockShopVariantRows :exec
 SELECT id FROM shop_variants WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`
 
 const readShopVariantsForCheckout = `-- name: ReadShopVariantsForCheckout :many
-SELECT ` + shopVariantColumns + `, p.title, p.status, p.org_id
+SELECT ` + shopVariantColumns + `, p.title, p.status, p.org_id, p.kind
 FROM   shop_variants v
 JOIN   shop_products p ON p.id = v.product_id
 WHERE  v.id = ANY($1::uuid[]) AND v.deleted_at IS NULL AND p.deleted_at IS NULL AND p.org_id = $2
@@ -590,7 +635,7 @@ func (q *Queries) LockShopVariantsForCheckout(ctx context.Context, orgID uuid.UU
 		v := &c.ShopVariantRow
 		if err := rows.Scan(&v.ID, &v.ProductID, &v.Title, &v.SKU, &v.PriceMinor, &v.CompareAtMinor, &v.Stock,
 			&v.TrackStock, &v.Position, &v.Option1, &v.Option2, &v.Option3, &v.CreatedAt, &v.UpdatedAt, &v.Held,
-			&c.ProductTitle, &c.ProductStatus, &c.OrgID); err != nil {
+			&c.ProductTitle, &c.ProductStatus, &c.OrgID, &c.ProductKind); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
