@@ -405,6 +405,68 @@ jobs:
           done
 
   # ─────────────────────────────────────────────────────────────────
+  # Job: Shop page (apps/shop-page) - the organizer storefront (merch shop,
+  # spec 47). A static Vite + TypeScript app that ports the Shopify Dawn theme
+  # one to one and renders it from the public shop API.
+  #
+  # install -> type-check -> vitest -> vite build -> container smoke test.
+  # ─────────────────────────────────────────────────────────────────
+  shop-page-build:
+    name: Shop page (unit / build / container smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/shop-page/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix apps/shop-page ci
+
+      - name: Type-check
+        run: npm --prefix apps/shop-page run type-check
+
+      - name: Unit tests (vitest)
+        run: npm --prefix apps/shop-page test
+
+      - name: Production build
+        run: npm --prefix apps/shop-page run build
+
+      - name: Container smoke test
+        run: |
+          docker build \
+            --build-arg VITE_API_BASE_URL=http://localhost:8080 \
+            -t arena-shop-page:ci \
+            -f apps/shop-page/Dockerfile \
+            .
+          docker run -d --name arena-shop-page-smoke -p 8091:8080 arena-shop-page:ci
+          echo "Waiting for shop-page container to become healthy..."
+          for i in $(seq 1 60); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' arena-shop-page-smoke 2>/dev/null || echo "starting")
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Container is healthy after ${i}s"
+              docker rm -f arena-shop-page-smoke
+              exit 0
+            fi
+            if [ "$i" = "60" ]; then
+              echo "ERROR: Container did not become healthy within 60s"
+              docker logs arena-shop-page-smoke
+              docker rm -f arena-shop-page-smoke
+              exit 1
+            fi
+            sleep 1
+          done
+
+  # ─────────────────────────────────────────────────────────────────
   # Job: Rich editor — the one editor library of every interface
   # (apps/rich-editor, spec 44 RT-10). Tiptap core, ESM for the web event
   # center, IIFE for WordPress.

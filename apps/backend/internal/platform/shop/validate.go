@@ -3,6 +3,7 @@ package shop
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/mail"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/geoslug"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 )
 
 // Limits shared by the service and its tests. They mirror the CHECK
@@ -35,6 +37,45 @@ const (
 	MaxImageAltLen    = 500
 	MaxPageListLength = 100
 )
+
+// The rich-text profiles of a product description and a static page: the
+// event description's tags and link schemes (richtext.ProfileDescription),
+// with the shop's own length limits and no limit on visible text or links.
+// Everything outside the white list is dropped on write: images, tables,
+// <section>, <style>, inline styles and classes (a Shopify body keeps its
+// text, not its layout). The storefront renders the stored ART as is.
+var (
+	ProductBodyProfile = richtext.Profile{
+		Name:    "shop_product_body",
+		Tags:    richtext.ProfileDescription.Tags,
+		Schemes: richtext.ProfileDescription.Schemes,
+		MaxHTML: MaxBodyHTMLLen,
+	}
+	PageBodyProfile = richtext.Profile{
+		Name:    "shop_page_body",
+		Tags:    richtext.ProfileDescription.Tags,
+		Schemes: richtext.ProfileDescription.Schemes,
+		MaxHTML: MaxPageBodyLen,
+	}
+)
+
+// SanitizeBody reduces body_html to the profile's rich-text subset; a text
+// the sanitizer refuses is a 422 shop.invalid_body_html naming the reason.
+func SanitizeBody(in string, p richtext.Profile) (string, error) {
+	if strings.TrimSpace(in) == "" {
+		return "", nil
+	}
+	out, err := richtext.Sanitize(in, p)
+	if err != nil {
+		e := invalid("shop.invalid_body_html", fmt.Sprintf("body_html was refused (%v); it is limited to %d characters of HTML", err, p.MaxHTML))
+		var re *richtext.Error
+		if errors.As(err, &re) {
+			e.Details = map[string]any{"reason": re.Reason}
+		}
+		return "", e
+	}
+	return out, nil
+}
 
 var (
 	currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
@@ -128,6 +169,38 @@ func RefundedStatus(current string, total, refunded int64) string {
 	}
 }
 
+// refundStatus is the status an order takes when accepted (succeeded) of
+// its total went back: refunded when all of it did; partially_refunded when
+// some did (an order parked in manual_review stays there until all of it
+// went back); and the status it had before any refund when nothing did (a
+// refund that was reversed). An order that was never paid keeps its status.
+func refundStatus(o gen.ShopOrderRow, accepted int64) string {
+	base := o.Status
+	switch o.Status {
+	case StatusPaid, StatusShipped, StatusManualReview:
+	case StatusRefunded, StatusPartiallyRefunded:
+		base = StatusPaid
+		switch {
+		case o.ShippedAt != nil:
+			base = StatusShipped
+		case strings.Contains(string(o.Metadata), `"review_reason"`):
+			base = StatusManualReview
+		}
+	default:
+		return o.Status
+	}
+	switch {
+	case accepted >= o.Total && accepted > 0:
+		return StatusRefunded
+	case accepted > 0 && base == StatusManualReview:
+		return StatusManualReview
+	case accepted > 0:
+		return StatusPartiallyRefunded
+	default:
+		return base
+	}
+}
+
 // PublicStatus maps an order status to the buyer-facing checkout status:
 // pending, paid, expired or cancelled. A pending order whose hold has passed
 // already reads as expired, before the sweep flips it.
@@ -138,7 +211,7 @@ func PublicStatus(o gen.ShopOrderRow, holdPassed bool) string {
 			return "expired"
 		}
 		return "pending"
-	case StatusPaid, StatusShipped, StatusRefunded, StatusPartiallyRefunded:
+	case StatusPaid, StatusShipped, StatusRefunded, StatusPartiallyRefunded, StatusManualReview:
 		return "paid"
 	case StatusExpired:
 		return "expired"

@@ -30,19 +30,21 @@ type ShopSettingsRow struct {
 	ContactEmail     *string    `json:"contact_email"`
 	LogisticsNote    string     `json:"logistics_note"`
 	SalesChannelID   *uuid.UUID `json:"sales_channel_id"`
+	Enabled          bool       `json:"enabled"`
+	MaxLineQty       int32      `json:"max_line_qty"`
 	UpdatedAt        time.Time  `json:"updated_at"`
 	ShopDomain       *string    `json:"shop_domain"`
 }
 
 const shopSettingsColumns = `s.org_id, s.currency, s.shipping_fee_minor, s.shipping_label, s.country_iso2,
        s.age_gate_min_age, s.announcement_text, s.contact_email, s.logistics_note,
-       s.sales_channel_id, s.updated_at, o.shop_domain`
+       s.sales_channel_id, s.enabled, s.max_line_qty, s.updated_at, o.shop_domain`
 
 func scanShopSettingsRow(row interface{ Scan(dest ...any) error }) (ShopSettingsRow, error) {
 	var s ShopSettingsRow
 	err := row.Scan(&s.OrgID, &s.Currency, &s.ShippingFeeMinor, &s.ShippingLabel, &s.CountryISO2,
 		&s.AgeGateMinAge, &s.AnnouncementText, &s.ContactEmail, &s.LogisticsNote,
-		&s.SalesChannelID, &s.UpdatedAt, &s.ShopDomain)
+		&s.SalesChannelID, &s.Enabled, &s.MaxLineQty, &s.UpdatedAt, &s.ShopDomain)
 	return s, err
 }
 
@@ -72,14 +74,15 @@ func (q *Queries) EnsureShopSettings(ctx context.Context, orgID uuid.UUID) error
 const upsertShopSettings = `-- name: UpsertShopSettings :exec
 INSERT INTO shop_settings (org_id, currency, shipping_fee_minor, shipping_label, country_iso2,
                            age_gate_min_age, announcement_text, contact_email, logistics_note,
-                           sales_channel_id, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+                           sales_channel_id, enabled, max_line_qty, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
 ON CONFLICT (org_id) DO UPDATE SET
     currency = EXCLUDED.currency, shipping_fee_minor = EXCLUDED.shipping_fee_minor,
     shipping_label = EXCLUDED.shipping_label, country_iso2 = EXCLUDED.country_iso2,
     age_gate_min_age = EXCLUDED.age_gate_min_age, announcement_text = EXCLUDED.announcement_text,
     contact_email = EXCLUDED.contact_email, logistics_note = EXCLUDED.logistics_note,
-    sales_channel_id = EXCLUDED.sales_channel_id, updated_at = now()`
+    sales_channel_id = EXCLUDED.sales_channel_id, enabled = EXCLUDED.enabled,
+    max_line_qty = EXCLUDED.max_line_qty, updated_at = now()`
 
 // UpsertShopSettingsParams is the whole settings row (PUT replaces it).
 type UpsertShopSettingsParams struct {
@@ -93,12 +96,15 @@ type UpsertShopSettingsParams struct {
 	ContactEmail     *string
 	LogisticsNote    string
 	SalesChannelID   *uuid.UUID
+	Enabled          bool
+	MaxLineQty       int32
 }
 
 // UpsertShopSettings writes the settings row of an organization.
 func (q *Queries) UpsertShopSettings(ctx context.Context, p UpsertShopSettingsParams) error {
 	_, err := q.db.Exec(ctx, upsertShopSettings, p.OrgID, p.Currency, p.ShippingFeeMinor, p.ShippingLabel,
-		p.CountryISO2, p.AgeGateMinAge, p.AnnouncementText, p.ContactEmail, p.LogisticsNote, p.SalesChannelID)
+		p.CountryISO2, p.AgeGateMinAge, p.AnnouncementText, p.ContactEmail, p.LogisticsNote, p.SalesChannelID,
+		p.Enabled, p.MaxLineQty)
 	return err
 }
 
@@ -128,10 +134,10 @@ const getOrganizationByShopDomain = `-- name: GetOrganizationByShopDomain :one
 SELECT o.id, o.slug
 FROM   organizations o
 JOIN   shop_settings s ON s.org_id = o.id
-WHERE  o.shop_domain = $1 AND o.deleted_at IS NULL`
+WHERE  o.shop_domain = $1 AND o.deleted_at IS NULL AND s.enabled`
 
 // GetOrganizationByShopDomain resolves a storefront host to the organization
-// that owns it (only an organization with a shop). pgx.ErrNoRows when none.
+// that owns it (only an organization whose shop is enabled). pgx.ErrNoRows when none.
 func (q *Queries) GetOrganizationByShopDomain(ctx context.Context, host string) (uuid.UUID, string, error) {
 	var id uuid.UUID
 	var slug string
@@ -145,12 +151,37 @@ WHERE  org_id = $1 AND deleted_at IS NULL
 ORDER  BY created_at, id
 LIMIT  1`
 
-// GetFirstSalesChannelID is the organization's oldest live sales channel, the
-// fallback whose provider takes shop payments when the settings name none.
+// GetFirstSalesChannelID is the organization's oldest live sales channel.
 func (q *Queries) GetFirstSalesChannelID(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := q.db.QueryRow(ctx, getFirstSalesChannelID, orgID).Scan(&id)
 	return id, err
+}
+
+const listLiveSalesChannelIDs = `-- name: ListLiveSalesChannelIDs :many
+SELECT id FROM sales_channels
+WHERE  org_id = $1 AND deleted_at IS NULL
+ORDER  BY created_at, id
+LIMIT  $2`
+
+// ListLiveSalesChannelIDs lists at most limit live sales channels of the
+// organization, oldest first: the candidates whose provider may take shop
+// payments when the settings name none.
+func (q *Queries) ListLiveSalesChannelIDs(ctx context.Context, orgID uuid.UUID, limit int32) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listLiveSalesChannelIDs, orgID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,15 +202,22 @@ type ShopProductRow struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	DeletedAt   *time.Time `json:"deleted_at"`
+	// Kind is physical, digital or service (spec 47 section 1b).
+	Kind           string     `json:"kind"`
+	DigitalMediaID *uuid.UUID `json:"digital_media_id"`
+	Option1Name    *string    `json:"option1_name"`
+	Option2Name    *string    `json:"option2_name"`
+	Option3Name    *string    `json:"option3_name"`
 }
 
 const shopProductColumns = `id, org_id, slug, title, body_html, status, product_type, vendor, sort_order,
-       created_at, updated_at, deleted_at`
+       created_at, updated_at, deleted_at, kind, digital_media_id, option1_name, option2_name, option3_name`
 
 func scanShopProductRow(row interface{ Scan(dest ...any) error }) (ShopProductRow, error) {
 	var p ShopProductRow
 	err := row.Scan(&p.ID, &p.OrgID, &p.Slug, &p.Title, &p.BodyHTML, &p.Status, &p.ProductType,
-		&p.Vendor, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt)
+		&p.Vendor, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt,
+		&p.Kind, &p.DigitalMediaID, &p.Option1Name, &p.Option2Name, &p.Option3Name)
 	return p, err
 }
 
@@ -194,24 +232,40 @@ type ShopProductParams struct {
 	ProductType string
 	Vendor      string
 	SortOrder   int32
+	// Kind "" means physical.
+	Kind           string
+	DigitalMediaID *uuid.UUID
+	Option1Name    *string
+	Option2Name    *string
+	Option3Name    *string
+}
+
+func (p ShopProductParams) kind() string {
+	if p.Kind == "" {
+		return "physical"
+	}
+	return p.Kind
 }
 
 const insertShopProduct = `-- name: InsertShopProduct :one
-INSERT INTO shop_products (org_id, slug, title, body_html, status, product_type, vendor, sort_order)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO shop_products (org_id, slug, title, body_html, status, product_type, vendor, sort_order,
+                           kind, digital_media_id, option1_name, option2_name, option3_name)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING ` + shopProductColumns
 
 // InsertShopProduct creates a product (ID is ignored). A slug already used by
 // a live product of the organization is a 23505 on shop_products_org_slug_uq.
 func (q *Queries) InsertShopProduct(ctx context.Context, p ShopProductParams) (ShopProductRow, error) {
 	return scanShopProductRow(q.db.QueryRow(ctx, insertShopProduct, p.OrgID, p.Slug, p.Title, p.BodyHTML,
-		p.Status, p.ProductType, p.Vendor, p.SortOrder))
+		p.Status, p.ProductType, p.Vendor, p.SortOrder, p.kind(), p.DigitalMediaID,
+		p.Option1Name, p.Option2Name, p.Option3Name))
 }
 
 const updateShopProduct = `-- name: UpdateShopProduct :one
 UPDATE shop_products
 SET    slug = $3, title = $4, body_html = $5, status = $6, product_type = $7, vendor = $8,
-       sort_order = $9, updated_at = now()
+       sort_order = $9, kind = $10, digital_media_id = $11, option1_name = $12, option2_name = $13,
+       option3_name = $14, updated_at = now()
 WHERE  id = $1 AND org_id = $2 AND deleted_at IS NULL
 RETURNING ` + shopProductColumns
 
@@ -219,7 +273,8 @@ RETURNING ` + shopProductColumns
 // organization. pgx.ErrNoRows when it does not exist there.
 func (q *Queries) UpdateShopProduct(ctx context.Context, p ShopProductParams) (ShopProductRow, error) {
 	return scanShopProductRow(q.db.QueryRow(ctx, updateShopProduct, p.ID, p.OrgID, p.Slug, p.Title,
-		p.BodyHTML, p.Status, p.ProductType, p.Vendor, p.SortOrder))
+		p.BodyHTML, p.Status, p.ProductType, p.Vendor, p.SortOrder, p.kind(), p.DigitalMediaID,
+		p.Option1Name, p.Option2Name, p.Option3Name))
 }
 
 const getShopProduct = `-- name: GetShopProduct :one
@@ -348,14 +403,34 @@ func (q *Queries) ListShopProductImages(ctx context.Context, productIDs []uuid.U
 
 const shopMediaUsable = `-- name: ShopMediaUsable :one
 SELECT EXISTS (SELECT 1 FROM media_objects
-               WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL)`
+               WHERE id = $1 AND org_id = $2 AND owner_type = $3 AND deleted_at IS NULL)`
 
-// ShopMediaUsable reports whether a media object is a live file of the
-// organization (a product picture must be the organization's own upload).
+// ShopMediaUsable reports whether a media object is a live picture of the
+// organization: its own upload with owner_type shop_product.
 func (q *Queries) ShopMediaUsable(ctx context.Context, mediaID, orgID uuid.UUID) (bool, error) {
 	var ok bool
-	err := q.db.QueryRow(ctx, shopMediaUsable, mediaID, orgID).Scan(&ok)
+	err := q.db.QueryRow(ctx, shopMediaUsable, mediaID, orgID, "shop_product").Scan(&ok)
 	return ok, err
+}
+
+// ShopDigitalMediaUsable reports whether a media object is a live file of the
+// organization uploaded as a digital product's file (owner_type
+// shop_digital), never a picture.
+func (q *Queries) ShopDigitalMediaUsable(ctx context.Context, mediaID, orgID uuid.UUID) (bool, error) {
+	var ok bool
+	err := q.db.QueryRow(ctx, shopMediaUsable, mediaID, orgID, "shop_digital").Scan(&ok)
+	return ok, err
+}
+
+const untrackShopProductVariants = `-- name: UntrackShopProductVariants :exec
+UPDATE shop_variants SET track_stock = false, updated_at = now()
+WHERE  product_id = $1 AND deleted_at IS NULL AND track_stock`
+
+// UntrackShopProductVariants stops every live variant of a product from
+// tracking stock (a product that became digital).
+func (q *Queries) UntrackShopProductVariants(ctx context.Context, productID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, untrackShopProductVariants, productID)
+	return err
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -476,6 +551,33 @@ func (q *Queries) UpdateShopVariant(ctx context.Context, p ShopVariantParams) (p
 	return previousStock, err
 }
 
+const lockShopProductVariants = `-- name: LockShopProductVariants :many
+SELECT id, stock FROM shop_variants
+WHERE  product_id = $1 AND deleted_at IS NULL
+ORDER  BY id
+FOR UPDATE`
+
+// LockShopProductVariants locks the product's live variants in id order (the
+// order the checkout and the payment take them in) and returns each one's
+// stock as it is under the lock.
+func (q *Queries) LockShopProductVariants(ctx context.Context, productID uuid.UUID) (map[uuid.UUID]int32, error) {
+	rows, err := q.db.Query(ctx, lockShopProductVariants, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[uuid.UUID]int32{}
+	for rows.Next() {
+		var id uuid.UUID
+		var stock int32
+		if err := rows.Scan(&id, &stock); err != nil {
+			return nil, err
+		}
+		out[id] = stock
+	}
+	return out, rows.Err()
+}
+
 const softDeleteShopVariantsExcept = `-- name: SoftDeleteShopVariantsExcept :execrows
 UPDATE shop_variants SET deleted_at = now(), updated_at = now()
 WHERE  product_id = $1 AND deleted_at IS NULL AND NOT (id = ANY($2::uuid[]))`
@@ -496,22 +598,33 @@ type ShopCheckoutVariantRow struct {
 	ProductTitle  string
 	ProductStatus string
 	OrgID         uuid.UUID
+	ProductKind   string
 }
 
-const lockShopVariantsForCheckout = `-- name: LockShopVariantsForCheckout :many
-SELECT ` + shopVariantColumns + `, p.title, p.status, p.org_id
+const lockShopVariantRows = `-- name: LockShopVariantRows :exec
+SELECT id FROM shop_variants WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`
+
+const readShopVariantsForCheckout = `-- name: ReadShopVariantsForCheckout :many
+SELECT ` + shopVariantColumns + `, p.title, p.status, p.org_id, p.kind
 FROM   shop_variants v
 JOIN   shop_products p ON p.id = v.product_id
 WHERE  v.id = ANY($1::uuid[]) AND v.deleted_at IS NULL AND p.deleted_at IS NULL AND p.org_id = $2
-ORDER  BY v.id
-FOR UPDATE OF v`
+ORDER  BY v.id`
 
-// LockShopVariantsForCheckout locks the live variants of the organization's
-// live products among ids, in id order (one lock order for every checkout,
-// so two carts never deadlock), and reports their held quantity. A variant
-// that is not there (deleted, another organization's) is simply absent.
+// LockShopVariantsForCheckout locks the variant rows among ids in id order
+// (one lock order for every writer, so two carts never deadlock) in ONE
+// statement, and only then reads the live variants of the organization's
+// live products with their held quantity in a SECOND statement. The split is
+// the point: under READ COMMITTED a statement that waited on a row lock
+// re-checks only the locked row, so a held subquery evaluated in the locking
+// statement itself would read the hold of the order that just committed as
+// absent and both carts would sell the last unit. A variant that is not there
+// (deleted, another organization's) is simply absent from the result.
 func (q *Queries) LockShopVariantsForCheckout(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) ([]ShopCheckoutVariantRow, error) {
-	rows, err := q.db.Query(ctx, lockShopVariantsForCheckout, ids, orgID)
+	if _, err := q.db.Exec(ctx, lockShopVariantRows, ids); err != nil {
+		return nil, err
+	}
+	rows, err := q.db.Query(ctx, readShopVariantsForCheckout, ids, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -522,7 +635,7 @@ func (q *Queries) LockShopVariantsForCheckout(ctx context.Context, orgID uuid.UU
 		v := &c.ShopVariantRow
 		if err := rows.Scan(&v.ID, &v.ProductID, &v.Title, &v.SKU, &v.PriceMinor, &v.CompareAtMinor, &v.Stock,
 			&v.TrackStock, &v.Position, &v.Option1, &v.Option2, &v.Option3, &v.CreatedAt, &v.UpdatedAt, &v.Held,
-			&c.ProductTitle, &c.ProductStatus, &c.OrgID); err != nil {
+			&c.ProductTitle, &c.ProductStatus, &c.OrgID, &c.ProductKind); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

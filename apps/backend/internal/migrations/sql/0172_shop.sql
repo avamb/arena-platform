@@ -26,15 +26,27 @@
 -- availability = stock - held. shop_stock_moves rows with reason
 -- reserve/release journal the hold (they never change stock); sale, refund,
 -- manual and import rows journal a change of shop_variants.stock. stock is
--- deliberately not CHECKed >= 0: a payment that arrives after its hold
--- expired is still recorded (the money was taken) and may oversell.
+-- deliberately not CHECKed >= 0 (an operator may correct it either way). A
+-- payment that arrives after its hold expired is recorded; when the goods
+-- are no longer there the order is parked in manual_review instead of
+-- overselling, and the operator ships or refunds it.
+--
+-- Product kinds (spec 47 section 1b): physical goods track stock and need a
+-- shipping address; digital goods (a file, digital_media_id) and services
+-- never track stock and need no address. A checkout of digital and service
+-- lines only has no shipping fee.
+--
+-- shop_settings.enabled opens the storefront and its checkout; only a
+-- platform superadmin changes it (like shop_domain).
 --
 -- All money is bigint minor units with a char(3) currency.
 --
 -- Permissions shop.read / shop.manage are granted to org_admin, organizer and
 -- platform_superadmin in this same migration (the 532 parity guard).
--- media_objects.owner_type gains 'shop_product' (mediastore.AllowedOwnerTypes
--- mirrors it).
+-- media_objects.owner_type gains 'shop_product' (a product picture) and
+-- 'shop_digital' (the file a digital product sells), kept apart so a picture
+-- can never be served as a paid file and a paid file never as a picture
+-- (mediastore.AllowedOwnerTypes mirrors the list).
 -- =====================================================================
 SET LOCAL lock_timeout = '5s';
 
@@ -59,7 +71,8 @@ ALTER TABLE media_objects
             'session_poster',
             'event_gallery',
             'event_report',
-            'shop_product'
+            'shop_product',
+            'shop_digital'
         ));
 
 CREATE TABLE shop_settings (
@@ -73,11 +86,14 @@ CREATE TABLE shop_settings (
     contact_email      text,
     logistics_note     text        NOT NULL DEFAULT '',
     sales_channel_id   uuid        REFERENCES sales_channels(id),
+    enabled            boolean     NOT NULL DEFAULT false,
+    max_line_qty       integer     NOT NULL DEFAULT 24,
     updated_at         timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT shop_settings_currency_check CHECK (currency ~ '^[A-Z]{3}$'),
     CONSTRAINT shop_settings_shipping_fee_check CHECK (shipping_fee_minor >= 0),
     CONSTRAINT shop_settings_country_check CHECK (country_iso2 IS NULL OR country_iso2 ~ '^[A-Z]{2}$'),
     CONSTRAINT shop_settings_age_gate_check CHECK (age_gate_min_age IS NULL OR age_gate_min_age BETWEEN 1 AND 99),
+    CONSTRAINT shop_settings_max_line_qty_check CHECK (max_line_qty BETWEEN 1 AND 99),
     CONSTRAINT shop_settings_texts_check CHECK (
         length(shipping_label) <= 200 AND length(announcement_text) <= 500
         AND length(logistics_note) <= 2000 AND (contact_email IS NULL OR length(contact_email) <= 254))
@@ -90,6 +106,11 @@ CREATE TABLE shop_products (
     title        text        NOT NULL,
     body_html    text        NOT NULL DEFAULT '',
     status       text        NOT NULL DEFAULT 'draft',
+    kind         text        NOT NULL DEFAULT 'physical',
+    digital_media_id uuid    REFERENCES media_objects(id),
+    option1_name text,
+    option2_name text,
+    option3_name text,
     product_type text        NOT NULL DEFAULT '',
     vendor       text        NOT NULL DEFAULT '',
     sort_order   integer     NOT NULL DEFAULT 0,
@@ -100,6 +121,12 @@ CREATE TABLE shop_products (
         length(slug) BETWEEN 1 AND 200 AND slug = lower(slug) AND slug !~ '[/?#[:space:]]'),
     CONSTRAINT shop_products_title_check CHECK (length(title) BETWEEN 1 AND 300),
     CONSTRAINT shop_products_status_check CHECK (status IN ('draft', 'active', 'archived')),
+    CONSTRAINT shop_products_kind_check CHECK (kind IN ('physical', 'digital', 'service')),
+    CONSTRAINT shop_products_digital_media_check CHECK (digital_media_id IS NULL OR kind = 'digital'),
+    CONSTRAINT shop_products_option_names_check CHECK (
+        (option1_name IS NULL OR length(option1_name) BETWEEN 1 AND 100)
+        AND (option2_name IS NULL OR length(option2_name) BETWEEN 1 AND 100)
+        AND (option3_name IS NULL OR length(option3_name) BETWEEN 1 AND 100)),
     CONSTRAINT shop_products_texts_check CHECK (
         length(body_html) <= 100000 AND length(product_type) <= 200 AND length(vendor) <= 200)
 );
@@ -186,8 +213,9 @@ CREATE TABLE shop_orders (
     created_at        timestamptz NOT NULL DEFAULT now(),
     updated_at        timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT shop_orders_status_check CHECK (status IN (
-        'pending_payment', 'paid', 'shipped', 'cancelled', 'expired', 'refunded', 'partially_refunded')),
-    CONSTRAINT shop_orders_delivery_kind_check CHECK (delivery_kind IN ('shipping', 'pickup')),
+        'pending_payment', 'paid', 'shipped', 'cancelled', 'expired', 'refunded', 'partially_refunded',
+        'manual_review')),
+    CONSTRAINT shop_orders_delivery_kind_check CHECK (delivery_kind IN ('shipping', 'pickup', 'none')),
     CONSTRAINT shop_orders_source_check CHECK (source IN ('web', 'shopify')),
     CONSTRAINT shop_orders_currency_check CHECK (currency ~ '^[A-Z]{3}$'),
     CONSTRAINT shop_orders_amounts_check CHECK (
@@ -220,7 +248,9 @@ CREATE TABLE shop_order_items (
     unit_price_minor bigint  NOT NULL,
     total_minor      bigint  NOT NULL,
     ordinal          integer NOT NULL,
+    product_kind     text    NOT NULL DEFAULT 'physical',
     CONSTRAINT shop_order_items_qty_check CHECK (qty > 0),
+    CONSTRAINT shop_order_items_product_kind_check CHECK (product_kind IN ('physical', 'digital', 'service')),
     CONSTRAINT shop_order_items_price_check CHECK (unit_price_minor >= 0),
     CONSTRAINT shop_order_items_total_check CHECK (total_minor = unit_price_minor * qty),
     CONSTRAINT shop_order_items_ordinal_uq UNIQUE (order_id, ordinal)
@@ -295,7 +325,7 @@ DROP TABLE IF EXISTS shop_product_images;
 DROP TABLE IF EXISTS shop_products;
 DROP TABLE IF EXISTS shop_settings;
 
-DELETE FROM media_objects WHERE owner_type = 'shop_product';
+DELETE FROM media_objects WHERE owner_type IN ('shop_product', 'shop_digital');
 
 ALTER TABLE media_objects
     DROP CONSTRAINT IF EXISTS media_objects_owner_type_check;

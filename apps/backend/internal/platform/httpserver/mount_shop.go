@@ -11,7 +11,16 @@ package httpserver
 // intent without a checkout session to the shop on the webhook transaction.
 
 import (
+	"context"
+	"strings"
+	"time"
+
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hshop"
@@ -30,7 +39,36 @@ func (s *Server) shopService() *shop.Service {
 	if eng := s.refundEngine(); eng != nil {
 		svc = svc.WithRefunds(eng)
 	}
+	if s.pgxPool != nil {
+		svc = svc.WithPageExpirer(shopPageExpirer{modules: hcheckout.NewRefundModuleSource(gen.New(s.pgxPool), s.paymentModuleOptions())})
+	}
 	return svc
+}
+
+// shopPageExpirer closes a cancelled shop order's hosted payment page through
+// the organization's own payment module, when the provider can do it
+// (payments.HostedCheckoutExpirer: Stripe). Other providers are left to let
+// their page expire on its own.
+type shopPageExpirer struct {
+	modules *hcheckout.RefundModuleSource
+}
+
+func (e shopPageExpirer) ExpireHostedPage(ctx context.Context, orgID uuid.UUID, provider, providerPaymentID string) error {
+	if e.modules == nil {
+		return nil
+	}
+	if d, ok := e.modules.Descriptor(provider); !ok || !d.Capabilities.HostedCheckout {
+		return nil
+	}
+	mod, err := e.modules.Build(ctx, orgID, provider)
+	if err != nil {
+		return err
+	}
+	expirer, ok := mod.(payments.HostedCheckoutExpirer)
+	if !ok {
+		return nil
+	}
+	return expirer.ExpireCheckoutSession(ctx, providerPaymentID)
 }
 
 // shopPayments is the webhook's hand-off to the shop, nil without a raw pool
@@ -48,6 +86,7 @@ func (s *Server) shopHandler() *hshop.Handler {
 		Audit:        s.audit,
 		Logger:       s.logger,
 		MediaURL:     s.signedMediaURL,
+		DownloadURL:  s.shopDownloadURL,
 		ReturnPolicy: s.checkoutReturnURLPolicy(),
 		Window:       widgetPaymentWindow(s.cfg),
 		Grace:        widgetPaymentGrace(s.cfg),
@@ -65,6 +104,30 @@ func (s *Server) shopHandler() *hshop.Handler {
 	return hshop.New(opts)
 }
 
+// shopDownloadTTL is how long a digital product's download link works.
+const shopDownloadTTL = 15 * time.Minute
+
+// shopDownloadURL signs a short-lived download URL of a digital product's
+// file, absolute like signedMediaURL; "" when the server has no media store
+// or signing fails.
+func (s *Server) shopDownloadURL(ctx context.Context, id uuid.UUID) (string, time.Time) {
+	until := time.Now().Add(shopDownloadTTL)
+	if s.media == nil {
+		return "", until
+	}
+	raw, err := s.media.SignedDownloadURL(ctx, id, shopDownloadTTL)
+	if err != nil || raw == "" {
+		if err != nil && s.logger != nil {
+			s.logger.Warn("shop: signing a download failed", "media_id", id.String(), "error", err.Error())
+		}
+		return "", until
+	}
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+		return raw, until
+	}
+	return s.apiPublicURL() + raw, until
+}
+
 func (s *Server) mountShopRoutes(r chi.Router) {
 	h := s.shopHandler()
 
@@ -72,6 +135,7 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 	// The static segments (by-host, checkout, pages) win over {org_slug}.
 	r.Get("/public/shop/by-host", h.HandleByHost)
 	r.Get("/public/shop/checkout/{order_token}", h.HandlePublicCheckoutStatus)
+	r.Get("/public/shop/checkout/{order_token}/downloads", h.HandlePublicCheckoutDownloads)
 	r.Get("/public/shop/pages/{org_slug}", h.HandlePublicPages)
 	r.Get("/public/shop/{org_slug}", h.HandlePublicCatalog)
 	r.Get("/public/shop/{org_slug}/products/{slug}", h.HandlePublicProduct)
@@ -109,6 +173,16 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 		// Money: the web asks for the password again (spec 37 section 4.5).
 		pr.Use(s.requireWebStepUp)
 		pr.Post(base+"/orders/{order_id}/cancel", s.orgGated(h.HandleCancelOrder))
+	})
+	r.Group(func(pr chi.Router) {
+		// A refund writes and approves a refunds row in one step, so it
+		// needs the refund permissions a ticket refund needs as well.
+		s.applyAuth(pr, "shop.manage", "shop")
+		pr.Use(s.orgScoped("refund.create"))
+		pr.Use(permissions.RequirePermission(s.perms, "refund.create", "refunds"))
+		pr.Use(s.orgScoped("refund.approve"))
+		pr.Use(permissions.RequirePermission(s.perms, "refund.approve", "refunds"))
+		pr.Use(s.requireWebStepUp)
 		pr.Post(base+"/orders/{order_id}/refund", s.orgGated(h.HandleRefundOrder))
 	})
 }

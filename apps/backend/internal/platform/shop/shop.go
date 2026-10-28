@@ -47,6 +47,31 @@ const (
 	StatusExpired           = "expired"
 	StatusRefunded          = "refunded"
 	StatusPartiallyRefunded = "partially_refunded"
+	// StatusManualReview is a payment that arrived after the order's hold
+	// ended while its goods were no longer there: the money is recorded,
+	// nothing was taken off the shelf, and the operator ships (when the
+	// goods turn up) or refunds it. The ops watchdog alerts on it.
+	StatusManualReview = "manual_review"
+)
+
+// Product kinds (shop_products_kind_check, spec 47 section 1b). A physical
+// product tracks stock and needs a shipping address; a digital one sells a
+// file (owner_type shop_digital) and never tracks stock; a service needs no
+// address and may track stock or not.
+const (
+	KindPhysical = "physical"
+	KindDigital  = "digital"
+	KindService  = "service"
+)
+
+// MaxOptionNames is how many option names (size, colour, ...) a product has.
+const MaxOptionNames = 3
+
+// DigitalOwnerType is the media owner_type of a digital product's file;
+// PictureOwnerType that of a product picture. They never mix.
+const (
+	DigitalOwnerType = "shop_digital"
+	PictureOwnerType = "shop_product"
 )
 
 // Product statuses (shop_products_status_check).
@@ -62,6 +87,8 @@ const (
 	EventOrderPaid     = "v1.shop.order.paid"
 	EventOrderShipped  = "v1.shop.order.shipped"
 	EventOrderRefunded = "v1.shop.order.refunded"
+	// EventOrderManualReview: a late payment was parked in manual_review.
+	EventOrderManualReview = "v1.shop.order.manual_review"
 )
 
 // Stock move reasons (shop_stock_moves_reason_check).
@@ -126,7 +153,17 @@ type Service struct {
 	q       *gen.Queries
 	events  outbox.Writer
 	refunds RefundDriver
+	pages   PageExpirer
 	logger  *slog.Logger
+}
+
+// PageExpirer closes a provider's hosted payment page before its own expiry
+// (Stripe's checkout session expire). providerPaymentID is the stored
+// payment_intents.provider_payment_id. A provider that cannot do it answers
+// nil; an error is logged, never surfaced: a payment that still arrives is a
+// late payment and FulfillPaidOrderTx handles it without overselling.
+type PageExpirer interface {
+	ExpireHostedPage(ctx context.Context, orgID uuid.UUID, provider, providerPaymentID string) error
 }
 
 // New builds the service. db may be nil: every call then fails with
@@ -146,6 +183,12 @@ func New(db DB, logger *slog.Logger) *Service {
 // recorded.
 func (s *Service) WithRefunds(d RefundDriver) *Service {
 	s.refunds = d
+	return s
+}
+
+// WithPageExpirer sets what closes a cancelled order's hosted payment page.
+func (s *Service) WithPageExpirer(e PageExpirer) *Service {
+	s.pages = e
 	return s
 }
 

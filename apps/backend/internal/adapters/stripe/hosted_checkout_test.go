@@ -246,3 +246,28 @@ func TestCreateCheckoutSession_SendsValidJSONParseableBody(t *testing.T) {
 		t.Fatalf("test fixture is not valid JSON: %v", err)
 	}
 }
+
+func TestExpireCheckoutSession_PostsToTheSessionExpireEndpoint(t *testing.T) {
+	stub := newStripeStub(t, http.StatusOK, `{"id":"cs_test_1","status":"expired"}`)
+	var _ payments.HostedCheckoutExpirer = stub.adapter()
+	if err := stub.adapter().ExpireCheckoutSession(context.Background(), "cs_test_1"); err != nil {
+		t.Fatalf("ExpireCheckoutSession: %v", err)
+	}
+	if stub.lastURL != "/v1/checkout/sessions/cs_test_1/expire" {
+		t.Fatalf("path = %q", stub.lastURL)
+	}
+	if stub.lastAuth != "Bearer sk_test_abc" {
+		t.Fatalf("auth = %q", stub.lastAuth)
+	}
+}
+
+func TestExpireCheckoutSession_RefusesWhatStripeRefuses(t *testing.T) {
+	stub := newStripeStub(t, http.StatusBadRequest,
+		`{"error":{"type":"invalid_request_error","message":"Only Checkout Sessions with a status of open can be expired."}}`)
+	if err := stub.adapter().ExpireCheckoutSession(context.Background(), "cs_test_1"); err == nil {
+		t.Fatal("want an error for a session Stripe would not expire")
+	}
+	if err := stub.adapter().ExpireCheckoutSession(context.Background(), "pi_123"); err == nil {
+		t.Fatal("want an error for an id that is not a checkout session")
+	}
+}

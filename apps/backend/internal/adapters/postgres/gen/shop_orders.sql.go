@@ -113,14 +113,72 @@ type InsertShopOrderParams struct {
 	Source       string
 	ExternalRef  *string
 	ExpiresAt    *time.Time
+	CustomerID   *uuid.UUID
+}
+
+const lockShopBuyer = `-- name: LockShopBuyer :exec
+SELECT pg_advisory_xact_lock(hashtextextended('shop_buyer:' || $1::text || ':' || lower($2::text), 0))`
+
+// LockShopBuyer serializes the checkouts of one buyer e-mail in one shop for
+// the rest of the transaction, so the pending-order cap cannot be raced.
+func (q *Queries) LockShopBuyer(ctx context.Context, orgID uuid.UUID, email string) error {
+	_, err := q.db.Exec(ctx, lockShopBuyer, orgID, email)
+	return err
+}
+
+const countLivePendingShopOrders = `-- name: CountLivePendingShopOrders :one
+SELECT count(*)::int FROM shop_orders
+WHERE  org_id = $1 AND lower(buyer_email) = lower($2) AND status = 'pending_payment' AND expires_at > now()`
+
+// CountLivePendingShopOrders counts a buyer's orders in one shop that still
+// hold goods.
+func (q *Queries) CountLivePendingShopOrders(ctx context.Context, orgID uuid.UUID, email string) (int, error) {
+	var n int
+	err := q.db.QueryRow(ctx, countLivePendingShopOrders, orgID, email).Scan(&n)
+	return n, err
+}
+
+const listShopOrderDownloads = `-- name: ListShopOrderDownloads :many
+SELECT oi.product_title, oi.variant_title, p.digital_media_id
+FROM   shop_order_items oi
+JOIN   shop_variants v ON v.id = oi.variant_id
+JOIN   shop_products p ON p.id = v.product_id
+WHERE  oi.order_id = $1 AND oi.product_kind = 'digital'
+ORDER  BY oi.ordinal`
+
+// ShopOrderDownload is one digital line of an order and the file its product
+// sells now (nil when the product has no file).
+type ShopOrderDownload struct {
+	ProductTitle string
+	VariantTitle string
+	MediaID      *uuid.UUID
+}
+
+// ListShopOrderDownloads lists the digital lines of an order with their
+// product's file.
+func (q *Queries) ListShopOrderDownloads(ctx context.Context, orderID uuid.UUID) ([]ShopOrderDownload, error) {
+	rows, err := q.db.Query(ctx, listShopOrderDownloads, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ShopOrderDownload
+	for rows.Next() {
+		var d ShopOrderDownload
+		if err := rows.Scan(&d.ProductTitle, &d.VariantTitle, &d.MediaID); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
 }
 
 const insertShopOrder = `-- name: InsertShopOrder :one
 INSERT INTO shop_orders (org_id, order_token, status, buyer_name, buyer_email, buyer_phone, ship_name,
                          ship_address1, ship_address2, ship_city, ship_postal, ship_country,
                          delivery_kind, delivery_note, currency, subtotal, discount, shipping_fee, total,
-                         buyer_locale, source, external_ref, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+                         buyer_locale, source, external_ref, expires_at, customer_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
 RETURNING ` + shopOrderColumns
 
 // InsertShopOrder creates an order; its number comes from
@@ -138,7 +196,7 @@ func (q *Queries) InsertShopOrder(ctx context.Context, p InsertShopOrderParams) 
 	return scanShopOrderRow(q.db.QueryRow(ctx, insertShopOrder, p.OrgID, p.OrderToken, p.Status, p.BuyerName,
 		p.BuyerEmail, p.BuyerPhone, p.ShipName, p.ShipAddress1, p.ShipAddress2, p.ShipCity, p.ShipPostal,
 		p.ShipCountry, p.DeliveryKind, p.DeliveryNote, p.Currency, p.Subtotal, p.Discount, p.ShippingFee,
-		p.Total, p.BuyerLocale, p.Source, p.ExternalRef, p.ExpiresAt))
+		p.Total, p.BuyerLocale, p.Source, p.ExternalRef, p.ExpiresAt, p.CustomerID))
 }
 
 // ShopOrderItemRow is one line of an order.
@@ -153,22 +211,30 @@ type ShopOrderItemRow struct {
 	UnitPriceMinor int64      `json:"unit_price_minor"`
 	TotalMinor     int64      `json:"total_minor"`
 	Ordinal        int32      `json:"ordinal"`
+	// ProductKind is the product's kind when the line was bought; "" on
+	// insert means physical.
+	ProductKind string `json:"product_kind"`
 }
 
 const insertShopOrderItem = `-- name: InsertShopOrderItem :exec
 INSERT INTO shop_order_items (order_id, variant_id, product_title, variant_title, sku, qty,
-                              unit_price_minor, total_minor, ordinal)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+                              unit_price_minor, total_minor, ordinal, product_kind)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 
 // InsertShopOrderItem adds a line to an order (ID is ignored).
 func (q *Queries) InsertShopOrderItem(ctx context.Context, it ShopOrderItemRow) error {
+	kind := it.ProductKind
+	if kind == "" {
+		kind = "physical"
+	}
 	_, err := q.db.Exec(ctx, insertShopOrderItem, it.OrderID, it.VariantID, it.ProductTitle, it.VariantTitle,
-		it.SKU, it.Qty, it.UnitPriceMinor, it.TotalMinor, it.Ordinal)
+		it.SKU, it.Qty, it.UnitPriceMinor, it.TotalMinor, it.Ordinal, kind)
 	return err
 }
 
 const listShopOrderItems = `-- name: ListShopOrderItems :many
-SELECT id, order_id, variant_id, product_title, variant_title, sku, qty, unit_price_minor, total_minor, ordinal
+SELECT id, order_id, variant_id, product_title, variant_title, sku, qty, unit_price_minor, total_minor, ordinal,
+       product_kind
 FROM   shop_order_items
 WHERE  order_id = ANY($1::uuid[])
 ORDER  BY order_id, ordinal`
@@ -184,7 +250,7 @@ func (q *Queries) ListShopOrderItems(ctx context.Context, orderIDs []uuid.UUID) 
 	for rows.Next() {
 		var it ShopOrderItemRow
 		if err := rows.Scan(&it.ID, &it.OrderID, &it.VariantID, &it.ProductTitle, &it.VariantTitle, &it.SKU,
-			&it.Qty, &it.UnitPriceMinor, &it.TotalMinor, &it.Ordinal); err != nil {
+			&it.Qty, &it.UnitPriceMinor, &it.TotalMinor, &it.Ordinal, &it.ProductKind); err != nil {
 			return nil, err
 		}
 		out = append(out, it)
@@ -282,7 +348,7 @@ func (q *Queries) SetShopOrderPayment(ctx context.Context, id, paymentIntentID u
 const setShopOrderStatus = `-- name: SetShopOrderStatus :one
 UPDATE shop_orders
 SET    status = $2,
-       paid_at = CASE WHEN $2 = 'paid' THEN COALESCE(paid_at, now()) ELSE paid_at END,
+       paid_at = CASE WHEN $2 IN ('paid', 'manual_review') THEN COALESCE(paid_at, now()) ELSE paid_at END,
        shipped_at = CASE WHEN $2 = 'shipped' THEN now() ELSE shipped_at END,
        cancelled_at = CASE WHEN $2 = 'cancelled' THEN now() ELSE cancelled_at END,
        tracking_note = COALESCE($3, tracking_note),
@@ -291,7 +357,8 @@ SET    status = $2,
 WHERE  id = $1
 RETURNING ` + shopOrderColumns
 
-// SetShopOrderStatus moves an order to status, stamping paid_at, shipped_at or
+// SetShopOrderStatus moves an order to status, stamping paid_at (paid, and
+// manual_review: a late payment parked for the operator), shipped_at or
 // cancelled_at for those statuses. trackingNote nil keeps the note; meta is
 // merged into metadata (nil merges nothing). The caller decides whether the
 // transition is allowed, under the order's lock.
@@ -310,6 +377,60 @@ func (q *Queries) SetShopOrderRefunded(ctx context.Context, id uuid.UUID, status
 	return scanShopOrderRow(q.db.QueryRow(ctx, setShopOrderRefunded, id, status, refunded))
 }
 
+const lockShopOrderVariants = `-- name: LockShopOrderVariants :exec
+SELECT v.id FROM shop_variants v
+WHERE  v.id IN (SELECT oi.variant_id FROM shop_order_items oi WHERE oi.order_id = $1 AND oi.variant_id IS NOT NULL)
+ORDER  BY v.id
+FOR UPDATE OF v`
+
+// LockShopOrderVariants locks the variant rows of an order's lines, in id
+// order like the checkout, before anything reads or changes their stock.
+func (q *Queries) LockShopOrderVariants(ctx context.Context, orderID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockShopOrderVariants, orderID)
+	return err
+}
+
+const shopOrderShortages = `-- name: ShopOrderShortages :many
+SELECT l.variant_id, l.qty, v.stock, ` + ShopHeldSQL + `
+FROM   (SELECT oi.variant_id, sum(oi.qty)::int AS qty
+        FROM   shop_order_items oi
+        WHERE  oi.order_id = $1 AND oi.variant_id IS NOT NULL
+        GROUP  BY oi.variant_id) l
+JOIN   shop_variants v ON v.id = l.variant_id
+WHERE  v.track_stock
+ORDER  BY v.id`
+
+// ShopOrderLine is one tracked variant of an order with its shelf stock and
+// what other pending orders hold of it.
+type ShopOrderLine struct {
+	VariantID uuid.UUID `json:"variant_id"`
+	Qty       int32     `json:"qty"`
+	Stock     int32     `json:"stock"`
+	Held      int32     `json:"held"`
+}
+
+// ShopOrderShortages reads, for every stock-tracking variant of the order,
+// the ordered quantity, the stock and the quantity live holds keep. Call it
+// after LockShopOrderVariants, as its own statement, so the held quantity is
+// read after the lock (READ COMMITTED: a locking statement keeps its older
+// snapshot for everything but the locked rows).
+func (q *Queries) ShopOrderShortages(ctx context.Context, orderID uuid.UUID) ([]ShopOrderLine, error) {
+	rows, err := q.db.Query(ctx, shopOrderShortages, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ShopOrderLine
+	for rows.Next() {
+		var l ShopOrderLine
+		if err := rows.Scan(&l.VariantID, &l.Qty, &l.Stock, &l.Held); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
 const applyShopOrderSale = `-- name: ApplyShopOrderSale :exec
 WITH lines AS (
     SELECT oi.variant_id, sum(oi.qty)::int AS qty
@@ -326,7 +447,8 @@ INSERT INTO shop_stock_moves (org_id, variant_id, order_id, delta, reason)
 SELECT $2, id, $1, -qty, 'sale' FROM moved`
 
 // ApplyShopOrderSale takes a paid order's quantities off the shelf (variants
-// that track stock) and journals each as a sale. The order's hold ends by
+// that track stock) and journals each as a sale. Call LockShopOrderVariants
+// first so concurrent writers take the variant locks in one order. The order's hold ends by
 // itself when its status leaves pending_payment.
 func (q *Queries) ApplyShopOrderSale(ctx context.Context, orderID, orgID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, applyShopOrderSale, orderID, orgID)
@@ -337,11 +459,13 @@ const journalShopOrderHold = `-- name: JournalShopOrderHold :exec
 INSERT INTO shop_stock_moves (org_id, variant_id, order_id, delta, reason)
 SELECT $2, oi.variant_id, $1, CASE WHEN $3 = 'reserve' THEN -sum(oi.qty) ELSE sum(oi.qty) END, $3
 FROM   shop_order_items oi
-WHERE  oi.order_id = $1 AND oi.variant_id IS NOT NULL
+JOIN   shop_variants v ON v.id = oi.variant_id
+WHERE  oi.order_id = $1 AND v.track_stock
 GROUP  BY oi.variant_id`
 
 // JournalShopOrderHold journals the start (reason "reserve") or the end
-// ("release") of an order's hold, one row per variant.
+// ("release") of an order's hold, one row per variant that tracks stock (a
+// digital product never moves stock).
 func (q *Queries) JournalShopOrderHold(ctx context.Context, orderID, orgID uuid.UUID, reason string) error {
 	_, err := q.db.Exec(ctx, journalShopOrderHold, orderID, orgID, reason)
 	return err
@@ -353,7 +477,7 @@ WITH due AS (
     FROM   shop_orders o
     WHERE  o.status = 'pending_payment' AND o.expires_at <= now()
       AND  NOT EXISTS (SELECT 1 FROM payment_intents pi
-                       WHERE pi.id = o.payment_intent_id AND pi.state IN ('succeeded', 'manual_review'))
+                       WHERE pi.id = o.payment_intent_id AND pi.state IN ('processing', 'succeeded', 'manual_review'))
     ORDER  BY o.expires_at
     LIMIT  $1
     FOR UPDATE SKIP LOCKED
@@ -364,9 +488,9 @@ WHERE  o.id = due.id
 RETURNING o.id, o.org_id`
 
 // ExpireShopOrders flips at most limit pending orders whose hold passed to
-// expired and returns them (id, org id). An order whose payment already
-// succeeded, or is parked for review, is left for the webhook and the
-// operator. The caller journals the releases in the same transaction.
+// expired and returns them (id, org id). An order whose payment is still
+// processing (an asynchronous method on its way), already succeeded, or is
+// parked for review, is left for the webhook and the operator. The caller journals the releases in the same transaction.
 func (q *Queries) ExpireShopOrders(ctx context.Context, limit int32) ([][2]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, expireShopOrders, limit)
 	if err != nil {
@@ -385,15 +509,14 @@ func (q *Queries) ExpireShopOrders(ctx context.Context, limit int32) ([][2]uuid.
 }
 
 const sumShopPaymentRefunds = `-- name: SumShopPaymentRefunds :one
-SELECT COALESCE(sum(amount) FILTER (WHERE state = 'succeeded'
-                OR (state = 'provider_pending' AND provider_refund_id IS NOT NULL)), 0)::bigint,
+SELECT COALESCE(sum(amount) FILTER (WHERE state = 'succeeded'), 0)::bigint,
        COALESCE(sum(amount) FILTER (WHERE state NOT IN ('failed', 'rejected')), 0)::bigint
 FROM   refunds
 WHERE  payment_intent_id = $1`
 
-// SumShopPaymentRefunds sums a payment's refunds: accepted is what the
-// provider took back (succeeded, or pending with a provider refund id), live
-// every refund that may still return money (not failed or rejected).
+// SumShopPaymentRefunds sums a payment's refunds: accepted is what went back
+// (succeeded refunds only: a pending one may still fail), live every refund
+// that may still return money (not failed or rejected).
 func (q *Queries) SumShopPaymentRefunds(ctx context.Context, paymentIntentID uuid.UUID) (accepted, live int64, err error) {
 	err = q.db.QueryRow(ctx, sumShopPaymentRefunds, paymentIntentID).Scan(&accepted, &live)
 	return accepted, live, err

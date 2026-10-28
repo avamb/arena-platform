@@ -5358,6 +5358,15 @@ export interface paths {
          *     whose amount or currency differs from the payment parks the
          *     payment in `manual_review` (failure code `paid_amount_mismatch`)
          *     and issues no tickets.
+         *
+         *     **PayPlus** signs its callback in the `hash` header,
+         *     base64(HMAC-SHA256(secret_key, body)), and is likewise accepted on
+         *     this route only (`400 webhook.payplus_requires_config_route` on the
+         *     un-suffixed one). A Charge with `status_code` `000` pays the order;
+         *     any other status code is one failed attempt on a link that stays
+         *     open and moves nothing; a Refund callback is acknowledged without a
+         *     transition. Amounts arrive in major units and are compared with the
+         *     payment like Flitt's and AllPay's.
          */
         post: operations["paymentIntentWebhookForConfig"];
         delete?: never;
@@ -10124,11 +10133,13 @@ export interface paths {
         get: operations["getShopSettings"];
         /**
          * Replace the shop settings
-         * @description Writes the whole settings row and opens the storefront. Money is in
-         *     minor units of `currency`. `sales_channel_id` names the channel whose payment
-         *     provider and the organization's payment config take the shop's money (absent:
-         *     the organization's oldest channel). `shop_domain` may be changed by a platform
-         *     superadmin only (absent keeps it, `""` clears it).
+         * @description Writes the whole settings row. Money is in minor units of `currency`.
+         *     `sales_channel_id` names the channel whose payment provider and the
+         *     organization's payment config take the shop's money (absent: the
+         *     organization's oldest channel whose provider can host a payment page with a
+         *     configured provider account). `shop_domain` and `enabled` (the switch that
+         *     opens the storefront and its checkout) may be changed by a platform
+         *     superadmin only (absent keeps them, `""` clears the domain).
          *
          *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
          */
@@ -10367,9 +10378,10 @@ export interface paths {
         };
         /**
          * Read a shop order
-         * @description One order with its lines and payment. Refunds the provider settled
-         *     since the last look (a pending refund that completed, one made in the
-         *     provider's dashboard) are folded into `refunded_minor` and the status first.
+         * @description One order with its lines and payment. Reading never changes the order:
+         *     refunds reach `refunded_minor` and the status when they succeed, through the
+         *     refund engine (a pending refund counts once the provider confirms it, a
+         *     reversed one stops counting).
          *
          *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
          */
@@ -10395,7 +10407,9 @@ export interface paths {
          * Mark a shop order shipped
          * @description Moves a paid (or partially refunded) order to `shipped`, stores the
          *     optional tracking note and writes the `v1.shop.order.shipped` event. Shipping
-         *     a shipped order again only updates the note. The body may be empty.
+         *     a shipped order again only updates the note. Shipping an order in
+         *     `manual_review` takes its goods off the shelf at that moment. The body may
+         *     be empty.
          *
          *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
          */
@@ -10418,8 +10432,10 @@ export interface paths {
         /**
          * Cancel an unpaid shop order
          * @description Cancels an order that is still waiting for its payment; its goods go
-         *     back on sale. A paid order is refunded instead. From the web event center the
-         *     request needs a fresh password confirmation (`X-Step-Up-Token`).
+         *     back on sale, and the provider's hosted payment page is closed where the
+         *     provider supports it (Stripe). A paid order is refunded instead. From the web
+         *     event center the request needs a fresh password confirmation
+         *     (`X-Step-Up-Token`).
          *
          *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
          */
@@ -10446,12 +10462,14 @@ export interface paths {
          *     to the provider (the same refund engine as tickets). `amount_minor` left out
          *     refunds what is left. The answer carries the order and the refund's state:
          *     `succeeded`, `provider_pending` (no answer yet; refund.sweep follows it up),
-         *     `failed` or `manual_review`. The order becomes `refunded` when all of it went
-         *     back and `partially_refunded` when some did, and `v1.shop.order.refunded` is
-         *     written. Stock is not put back. From the web event center the request needs
+         *     `failed` or `manual_review`. Only succeeded refunds count: the order becomes
+         *     `refunded` when all of it went back and `partially_refunded` when some did (an
+         *     order in `manual_review` stays there until all of it went back), and
+         *     `v1.shop.order.refunded` is written; a pending refund changes the order when
+         *     the provider confirms it. Stock is not put back. From the web event center the request needs
          *     a fresh password confirmation (`X-Step-Up-Token`).
          *
-         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         *     Requires JWT or API key + the `shop.manage`, `refund.create` and `refund.approve` permissions and membership of the organization.
          */
         post: operations["refundShopOrder"];
         delete?: never;
@@ -10522,6 +10540,31 @@ export interface paths {
          *     token.
          */
         get: operations["getPublicShopCheckoutStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/shop/checkout/{order_token}/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Files of a paid storefront order
+         * @description The files the buyer bought: one short-lived signed URL per digital line
+         *     of the order (spec 47 section 1b). Only while the order's payment stands
+         *     (`paid`, `shipped` or `partially_refunded`); an order that is pending,
+         *     expired, cancelled, refunded or parked for review answers 404 like a
+         *     token that names nothing. The token in the path is the credential. No
+         *     login; rate-limited per address and per token; never cached.
+         */
+        get: operations["listPublicShopCheckoutDownloads"];
         put?: never;
         post?: never;
         delete?: never;
@@ -10614,8 +10657,15 @@ export interface paths {
          *     `shop.out_of_stock` with `details.items` = [{variant_id, requested,
          *     available}] and holds nothing. A cart that costs nothing is completed at
          *     once (`status` paid, empty `payment_url`). The provider sends the buyer back
-         *     to `return_url` with `checkout_token` = the order token. No login;
-         *     rate-limited per client address.
+         *     to `return_url` with `checkout_token` = the order token. `ship` is required
+         *     only when the cart holds a physical product; a cart of digital products and
+         *     services takes no address, pays no shipping and gets delivery_kind `none`.
+         *     A line may hold
+         *     at most the shop's `max_line_qty` units (422 `shop.invalid_items` with
+         *     `details.max_line_qty`), and one buyer e-mail may have at most 3 orders
+         *     waiting for payment in the shop (409 `shop.too_many_pending`). No login;
+         *     rate-limited per client address: 10 checkouts a minute, on top of the
+         *     public routes' shared budget.
          */
         post: operations["createPublicShopCheckout"];
         delete?: never;
@@ -10790,10 +10840,11 @@ export interface components {
              *     is a session-level poster. `event_gallery` and `event_report`
              *     (migration 0153) are photos of an event page gallery and of its
              *     photo report. `shop_product` (migration 0172) is a picture of a
-             *     merchandise shop product.
+             *     merchandise shop product; `shop_digital` is the file a digital
+             *     shop product sells (offered to the buyer only after payment).
              * @enum {string}
              */
-            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product";
+            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product" | "shop_digital";
             /**
              * Format: uuid
              * @description UUID of the owning row in the table implied by
@@ -16497,7 +16548,7 @@ export interface components {
              */
             org_id: string;
             /**
-             * @description Provider slug. Must be one of: stripe, allpay, flitt,
+             * @description Provider slug. Must be one of: stripe, allpay, flitt, payplus,
              *     cloudpayments, yookassa, manual. `flitt` needs the secrets
              *     `merchant_id` and `payment_key` (the portal's payment key signs
              *     requests and callbacks; there is no separate webhook secret).
@@ -16505,7 +16556,11 @@ export interface components {
              *     `secret_key` (its API key, which also signs webhooks); `vat`
              *     (0, 1 or 3), `max_installments` (2 to 12) and
              *     `installments_min_amount` (the smallest order total in shekels
-             *     that offers installments) are optional.
+             *     that offers installments) are optional. `payplus` needs
+             *     `api_key` and `secret_key` (the dashboard's key pair; the secret
+             *     key also signs callbacks) and `payment_page_uid` (the payment page
+             *     links are generated from); a `test` config talks to
+             *     restapidev.payplus.co.il, a `live` one to restapi.payplus.co.il.
              * @example stripe
              */
             provider: string;
@@ -16612,7 +16667,7 @@ export interface components {
          */
         CreatePaymentProviderConfigRequest: {
             /**
-             * @description Provider slug (one of stripe, allpay, flitt, cloudpayments, yookassa, manual).
+             * @description Provider slug (one of stripe, allpay, flitt, payplus, cloudpayments, yookassa, manual).
              * @example stripe
              */
             provider: string;
@@ -16641,7 +16696,8 @@ export interface components {
              * @description Map of secret credential fields to values. Stripe expects
              *     api_key + webhook_secret; AllPay expects merchant_id (the API
              *     login) + secret_key (the API key), optionally vat,
-             *     max_installments and installments_min_amount; etc. Values are
+             *     max_installments and installments_min_amount; PayPlus expects
+             *     api_key + secret_key + payment_page_uid; etc. Values are
              *     never returned.
              * @example {
              *       "api_key": "sk_live_xxx",
@@ -24985,7 +25041,7 @@ export interface components {
              *     needs no database migration.
              * @enum {string}
              */
-            provider?: "stripe" | "allpay" | "flitt";
+            provider?: "stripe" | "allpay" | "flitt" | "payplus";
             /**
              * @description Merchant account identifier at the provider. Required
              *     (non-empty after trim) when `payment_mode` is
@@ -25047,7 +25103,7 @@ export interface components {
              *     `channel.invalid_config`.
              * @enum {string}
              */
-            provider?: "stripe" | "allpay" | "flitt";
+            provider?: "stripe" | "allpay" | "flitt" | "payplus";
             /**
              * @description New merchant account identifier. Omitting the key OR sending
              *     JSON `null` both leave the stored value unchanged (the
@@ -29885,11 +29941,18 @@ export interface components {
             logistics_note: string;
             /**
              * Format: uuid
-             * @description Sales channel whose payment provider takes the shop's money; null means the organization's oldest channel.
+             * @description Sales channel whose payment provider takes the shop's money; null means the organization's oldest channel whose provider can host a payment page with a configured provider account.
              */
             sales_channel_id?: string | null;
             /** @description Host name of the storefront, set by the platform operator; null when none. */
             shop_domain?: string | null;
+            /**
+             * Format: int32
+             * @description How many units of one variant an order may hold (1-99, 24 by default).
+             */
+            max_line_qty: number;
+            /** @description Whether the storefront and its checkout are open. Only the platform operator opens or closes a shop; it starts closed. */
+            enabled: boolean;
             /**
              * Format: date-time
              * @description When the settings were last saved; null when never.
@@ -29922,11 +29985,18 @@ export interface components {
             logistics_note?: string;
             /**
              * Format: uuid
-             * @description A sales channel of this organization, or null for the oldest one.
+             * @description A sales channel of this organization, or null for the oldest one whose provider can take the payment.
              */
             sales_channel_id?: string | null;
             /** @description Storefront host (platform superadmin only); absent or null keeps it, an empty string clears it. */
             shop_domain?: string | null;
+            /**
+             * Format: int32
+             * @description How many units of one variant an order may hold, 1-99; absent or null keeps the stored value (24 for a new shop).
+             */
+            max_line_qty?: number | null;
+            /** @description Opens (true) or closes (false) the storefront and its checkout, platform superadmin only; absent, null or the current value keeps it. */
+            enabled?: boolean | null;
         };
         /** @description A picture of a product. */
         ShopImage: {
@@ -29994,6 +30064,15 @@ export interface components {
         };
         /** @description A shop product with its pictures and variants. */
         ShopProduct: {
+            /** @description `physical`, `digital` or `service` (spec 47 section 1b). */
+            kind: string;
+            /**
+             * Format: uuid
+             * @description The file a digital product sells (owner_type `shop_digital`); null for other kinds or when none is attached. Never shown on the storefront.
+             */
+            digital_media_id?: string | null;
+            /** @description Names of the product's options, in the order of the variants' option1..option3. */
+            option_names: string[];
             /**
              * Format: uuid
              * @description The product.
@@ -30008,7 +30087,7 @@ export interface components {
             slug: string;
             /** @description Product title. */
             title: string;
-            /** @description Description, HTML. */
+            /** @description Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote). */
             body_html: string;
             /** @description `draft`, `active` (on sale) or `archived`. */
             status: string;
@@ -30080,14 +30159,32 @@ export interface components {
             option2?: string | null;
             /** @description Third option value. */
             option3?: string | null;
+            /**
+             * Format: int32
+             * @description The stock this variant had when the editor loaded it; only with `id`.
+             *     The event center sends the loaded value. When the stock changed since
+             *     (a sale, an import, another editor) the whole request is refused with
+             *     409 `shop.stock_changed`, whose details list each variant's current
+             *     stock, and nothing is applied. Absent skips the check.
+             */
+            expected_stock?: number | null;
         };
         /** @description A new product. */
         ShopProductCreateRequest: {
+            /** @description `physical` (tracks stock, ships to an address), `digital` (sells the file `digital_media_id`, never tracks stock, needs no address or shipping) or `service` (needs no address or shipping; its variants may track stock or not). Absent keeps it; a new product is physical. */
+            kind?: string;
+            /**
+             * Format: uuid
+             * @description The file a digital product sells, a media object of the organization uploaded with owner_type `shop_digital` (a `shop_product` picture is refused, 422 `shop.invalid_digital_media`). Only for kind digital; absent keeps it, null removes it. Turning the product away from digital removes it.
+             */
+            digital_media_id?: string | null;
+            /** @description Names of the product's options (up to 3, e.g. Size, Colour), matched by position with the variants' option1..option3 values. Absent keeps them; an empty list removes them. */
+            option_names?: string[];
             /** @description Storefront address; absent derives it from the title. */
             slug?: string;
             /** @description Product title, up to 300 characters. */
             title: string;
-            /** @description Description, HTML, up to 100000 characters. */
+            /** @description Description, HTML, up to 100000 characters. Sanitized on write to the rich-text subset (p, br, strong, em, u, a with https or mailto, ul, ol, li, h3, h4, blockquote); images, tables, section, style, classes and inline styles are dropped. A text the sanitizer refuses answers 422 `shop.invalid_body_html`. */
             body_html?: string;
             /** @description `draft` (default), `active` or `archived`. */
             status?: string;
@@ -30105,11 +30202,20 @@ export interface components {
         };
         /** @description The product fields to change; absent fields keep their value. */
         ShopProductPatchRequest: {
+            /** @description `physical` (tracks stock, ships to an address), `digital` (sells the file `digital_media_id`, never tracks stock, needs no address or shipping) or `service` (needs no address or shipping; its variants may track stock or not). Absent keeps it; a new product is physical. */
+            kind?: string;
+            /**
+             * Format: uuid
+             * @description The file a digital product sells, a media object of the organization uploaded with owner_type `shop_digital` (a `shop_product` picture is refused, 422 `shop.invalid_digital_media`). Only for kind digital; absent keeps it, null removes it. Turning the product away from digital removes it.
+             */
+            digital_media_id?: string | null;
+            /** @description Names of the product's options (up to 3, e.g. Size, Colour), matched by position with the variants' option1..option3 values. Absent keeps them; an empty list removes them. */
+            option_names?: string[];
             /** @description Storefront address. */
             slug?: string;
             /** @description Product title. */
             title?: string;
-            /** @description Description, HTML. */
+            /** @description Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote). */
             body_html?: string;
             /** @description `draft`, `active` or `archived`. */
             status?: string;
@@ -30149,7 +30255,7 @@ export interface components {
             slug: string;
             /** @description Page title. */
             title: string;
-            /** @description Page text, HTML. */
+            /** @description Page text, sanitized rich-text HTML. */
             body_html: string;
             /**
              * Format: int32
@@ -30171,7 +30277,7 @@ export interface components {
         ShopPagePutRequest: {
             /** @description Page title, up to 300 characters. */
             title: string;
-            /** @description Page text, HTML, up to 200000 characters. */
+            /** @description Page text, HTML, up to 200000 characters. Sanitized on write like a product description; a text the sanitizer refuses answers 422 `shop.invalid_body_html`. */
             body_html?: string;
             /**
              * Format: int32
@@ -30181,6 +30287,8 @@ export interface components {
         };
         /** @description One line of an order, as sold. */
         ShopOrderItem: {
+            /** @description The product's kind when the line was bought: `physical`, `digital` or `service`. */
+            product_kind?: string;
             /**
              * Format: uuid
              * @description The variant sold, or null for an imported line.
@@ -30268,17 +30376,22 @@ export interface components {
              * @description Order number shown to people.
              */
             number: number;
-            /** @description `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded` or `partially_refunded`. */
+            /** @description `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review` (a payment that arrived after the hold ended while the goods were gone: the money is recorded, nothing left the shelf, the operator ships or refunds it). */
             status: string;
             /** @description `web` (the storefront) or `shopify` (imported). */
             source: string;
+            /**
+             * Format: uuid
+             * @description The buyer's customer, resolved from the e-mail and phone at checkout; null when the resolution failed or for an imported order.
+             */
+            customer_id?: string | null;
             /** @description Order number in the system the order was imported from. */
             external_ref?: string | null;
             /** @description Who paid. */
             buyer: components["schemas"]["ShopBuyer"];
             /** @description Where the goods go. */
             ship: components["schemas"]["ShopAddress"];
-            /** @description `shipping` (the only kind in this version) or `pickup`. */
+            /** @description `shipping`, `pickup`, or `none` for an order of digital products and services only (no address, no shipping fee). */
             delivery_kind: string;
             /** @description The buyer's comment. */
             delivery_note: string;
@@ -30306,7 +30419,7 @@ export interface components {
             total: number;
             /**
              * Format: int64
-             * @description What the provider has returned so far, minor units.
+             * @description What succeeded refunds have returned so far, minor units.
              */
             refunded_minor: number;
             /** @description Language the buyer shopped in. */
@@ -30422,6 +30535,11 @@ export interface components {
             announcement_text: string;
             /** @description Contact address, or null. */
             contact_email?: string | null;
+            /**
+             * Format: int32
+             * @description How many units of one variant an order may hold; the quantity picker stops there.
+             */
+            max_line_qty?: number;
         };
         /** @description The organization behind a storefront. */
         ShopPublicOrg: {
@@ -30466,11 +30584,15 @@ export interface components {
         };
         /** @description A product on the storefront. */
         ShopPublicProduct: {
+            /** @description `physical` (ships, the checkout asks for an address), `digital` (a file offered after payment) or `service`. */
+            kind: string;
+            /** @description Names of the product's options, in the order of the variants' option1..option3. */
+            option_names: string[];
             /** @description Product address. */
             slug: string;
             /** @description Product title. */
             title: string;
-            /** @description Description, HTML. */
+            /** @description Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote). */
             body_html: string;
             /** @description Product type label. */
             product_type: string;
@@ -30578,6 +30700,25 @@ export interface components {
              * @description Until when the order holds its goods.
              */
             expires_at?: string | null;
+        };
+        /** @description One file a buyer bought. */
+        ShopDownload: {
+            /** @description The product, as sold. */
+            product_title: string;
+            /** @description The variant, as sold. */
+            variant_title: string;
+            /** @description Absolute signed download URL of the file; it works for 15 minutes. */
+            url: string;
+            /**
+             * Format: date-time
+             * @description When `url` stops working; read the list again for a fresh one.
+             */
+            expires_at: string;
+        };
+        /** @description The files of a paid order's digital lines. */
+        ShopDownloadList: {
+            /** @description One entry per digital line whose product has a file, in the order's line order. */
+            downloads: components["schemas"]["ShopDownload"][];
         };
         /** @description Where a storefront order stands. */
         ShopCheckoutStatus: {
@@ -52292,7 +52433,7 @@ export interface operations {
                     /** Format: binary */
                     file: string;
                     /** @enum {string} */
-                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product";
+                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product" | "shop_digital";
                     /** Format: uuid */
                     owner_id?: string;
                     /** Format: uuid */
@@ -65019,7 +65160,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks `shop.manage`, is not a member, or is not a platform superadmin and tried to change `shop_domain` (`shop.domain_superadmin_only`). */
+            /** @description Caller lacks `shop.manage`, is not a member, or is not a platform superadmin and tried to change `shop_domain` (`shop.domain_superadmin_only`) or `enabled` (`shop.enabled_superadmin_only`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -65037,7 +65178,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`). */
+            /** @description A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -65693,6 +65834,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description The stock of a variant changed since the editor loaded it (`shop.stock_changed`, details list each variant's current stock); nothing was applied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description The list is empty or too long, a value is invalid (`shop.invalid_variants`), or an id is not a variant of this product (`shop.invalid_variant`). */
             422: {
                 headers: {
@@ -65935,7 +66085,7 @@ export interface operations {
     listShopOrders: {
         parameters: {
             query?: {
-                /** @description Only orders of this status: `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded` or `partially_refunded`. */
+                /** @description Only orders of this status: `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review`. */
                 status?: string;
                 /** @description Order number, or part of the buyer's e-mail or name. */
                 q?: string;
@@ -66308,7 +66458,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks `shop.manage` or is not a member (`permissions.denied`), or the web did not confirm the password (`auth.step_up_required`). */
+            /** @description Caller lacks `shop.manage`, `refund.create` or `refund.approve`, or is not a member (`permissions.denied`), or the web did not confirm the password (`auth.step_up_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -66459,7 +66609,7 @@ export interface operations {
                     "application/json": components["schemas"]["ShopByHostResponse"];
                 };
             };
-            /** @description No shop lives on this host (`shop.not_found`). */
+            /** @description No open shop lives on this host (`shop.not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -66556,6 +66706,65 @@ export interface operations {
             };
         };
     };
+    listPublicShopCheckoutDownloads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The order token checkout answered (64 hex characters). */
+                order_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The files. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopDownloadList"];
+                };
+            };
+            /** @description No paid order with this token (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`), or a file cannot be signed right now (`shop.download_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listPublicShopPages: {
         parameters: {
             query?: never;
@@ -66581,7 +66790,7 @@ export interface operations {
                     "application/json": components["schemas"]["ShopPageList"];
                 };
             };
-            /** @description No shop with this slug (`shop.not_found`). */
+            /** @description No open shop with this slug (`shop.not_found`); a shop the platform operator has not enabled reads as missing. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -66644,7 +66853,7 @@ export interface operations {
                     "application/json": components["schemas"]["ShopPublicCatalog"];
                 };
             };
-            /** @description No shop with this slug (`shop.not_found`). */
+            /** @description No open shop with this slug (`shop.not_found`); a shop the platform operator has not enabled reads as missing. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -66709,7 +66918,7 @@ export interface operations {
                     "application/json": components["schemas"]["ShopPublicProductResponse"];
                 };
             };
-            /** @description No shop with this slug (`shop.not_found`) or no active product with this slug (`shop.product_not_found`). */
+            /** @description No open shop with this slug (`shop.not_found`) or no active product with this slug (`shop.product_not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -66781,7 +66990,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description No shop with this slug (`shop.not_found`). */
+            /** @description No open shop with this slug (`shop.not_found`); a shop the platform operator has not enabled reads as missing. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -66790,7 +66999,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Some items are not available in the quantity requested (`shop.out_of_stock`). */
+            /** @description Some items are not available in the quantity requested (`shop.out_of_stock`), or the buyer already has 3 orders waiting for payment here (`shop.too_many_pending`). */
             409: {
                 headers: {
                     [name: string]: unknown;

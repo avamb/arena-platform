@@ -83,6 +83,15 @@ type stubStripe struct {
 	refundObjects map[string]string
 	// refundReadKeys records the bearer key each GET /v1/refunds/{id} used.
 	refundReadKeys map[string]string
+	// expiredSessions records every POST /v1/checkout/sessions/{id}/expire.
+	expiredSessions []string
+}
+
+// expired is the list of checkout sessions the server asked Stripe to close.
+func (s *stubStripe) expired() []string {
+	s.refundMu.Lock()
+	defer s.refundMu.Unlock()
+	return append([]string(nil), s.expiredSessions...)
 }
 
 // refundReadKey is the API key the last read of refund id was made with.
@@ -108,6 +117,15 @@ func newStubStripe(t *testing.T) *stubStripe {
 	s := &stubStripe{}
 	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/expire") && strings.Contains(r.URL.Path, "/checkout/sessions/"):
+			id := strings.TrimSuffix(r.URL.Path, "/expire")
+			id = id[strings.LastIndex(id, "/")+1:]
+			s.refundMu.Lock()
+			s.expiredSessions = append(s.expiredSessions, id)
+			s.refundMu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{"id":%q,"status":"expired"}`, id)
+			return
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/refunds") && s.refundHandler != nil:
 			s.refundHandler(w, r)
 			return

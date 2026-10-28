@@ -179,6 +179,9 @@ type Server struct {
 	// allpayAPIBaseURL overrides allpay.to/app the same way; in a deployed
 	// process ALLPAY_API_BASE_URL (cfg.AllPayAPIBaseURL) is the seam.
 	allpayAPIBaseURL string
+	// payplusAPIBaseURL overrides both PayPlus hosts the same way; in a
+	// deployed process PAYPLUS_API_BASE_URL (cfg.PayPlusAPIBaseURL) is the seam.
+	payplusAPIBaseURL string
 	// exportMaxRows lowers the CSV exports' row cap (hexport.DefaultMaxRows)
 	// when positive. Tests set it directly after New to reach the 413 path.
 	exportMaxRows int64

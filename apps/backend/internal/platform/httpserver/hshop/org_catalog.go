@@ -1,6 +1,7 @@
 package hshop
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -38,6 +39,8 @@ type settingsBody struct {
 	LogisticsNote    string     `json:"logistics_note"`
 	SalesChannelID   *uuid.UUID `json:"sales_channel_id"`
 	ShopDomain       *string    `json:"shop_domain"`
+	MaxLineQty       *int32     `json:"max_line_qty"`
+	Enabled          *bool      `json:"enabled"`
 }
 
 // HandlePutSettings serves PUT .../shop/settings. shop_domain may be changed
@@ -56,6 +59,7 @@ func (h *Handler) HandlePutSettings(w http.ResponseWriter, r *http.Request) {
 		CountryISO2: b.CountryISO2, AgeGateMinAge: b.AgeGateMinAge, AnnouncementText: b.AnnouncementText,
 		ContactEmail: b.ContactEmail, LogisticsNote: b.LogisticsNote, SalesChannelID: b.SalesChannelID,
 		ShopDomain: b.ShopDomain, MayChangeDomain: auth.HasSuperadminOrgAccess(r.Context()),
+		MaxLineQty: b.MaxLineQty, Enabled: b.Enabled,
 	})
 	if err != nil {
 		h.fail(w, r, "write settings", err)
@@ -99,6 +103,7 @@ type variantBody struct {
 	Option1        *string    `json:"option1"`
 	Option2        *string    `json:"option2"`
 	Option3        *string    `json:"option3"`
+	ExpectedStock  *int32     `json:"expected_stock"`
 }
 
 func toVariantInputs(bs []variantBody) []shop.VariantInput {
@@ -107,26 +112,51 @@ func toVariantInputs(bs []variantBody) []shop.VariantInput {
 		out = append(out, shop.VariantInput{
 			ID: b.ID, Title: b.Title, SKU: b.SKU, PriceMinor: b.PriceMinor, CompareAtMinor: b.CompareAtMinor,
 			Stock: b.Stock, TrackStock: b.TrackStock, Position: b.Position,
-			Option1: b.Option1, Option2: b.Option2, Option3: b.Option3,
+			Option1: b.Option1, Option2: b.Option2, Option3: b.Option3, ExpectedStock: b.ExpectedStock,
 		})
 	}
 	return out
 }
 
 type productBody struct {
-	Slug        *string       `json:"slug"`
-	Title       *string       `json:"title"`
-	BodyHTML    *string       `json:"body_html"`
-	Status      *string       `json:"status"`
-	ProductType *string       `json:"product_type"`
-	Vendor      *string       `json:"vendor"`
-	SortOrder   *int32        `json:"sort_order"`
-	Variants    []variantBody `json:"variants"`
+	Slug           *string       `json:"slug"`
+	Title          *string       `json:"title"`
+	BodyHTML       *string       `json:"body_html"`
+	Status         *string       `json:"status"`
+	ProductType    *string       `json:"product_type"`
+	Vendor         *string       `json:"vendor"`
+	SortOrder      *int32        `json:"sort_order"`
+	Kind           *string       `json:"kind"`
+	DigitalMediaID optionalUUID  `json:"digital_media_id"`
+	OptionNames    *[]string     `json:"option_names"`
+	Variants       []variantBody `json:"variants"`
+}
+
+// optionalUUID tells an absent key (keep) from null (clear) and a value.
+type optionalUUID struct {
+	Set   bool
+	Value *uuid.UUID
+}
+
+func (o *optionalUUID) UnmarshalJSON(b []byte) error {
+	o.Set = true
+	if string(b) == "null" {
+		o.Value = nil
+		return nil
+	}
+	var id uuid.UUID
+	if err := json.Unmarshal(b, &id); err != nil {
+		return err
+	}
+	o.Value = &id
+	return nil
 }
 
 func (b productBody) input() shop.ProductInput {
 	return shop.ProductInput{Slug: b.Slug, Title: b.Title, BodyHTML: b.BodyHTML, Status: b.Status,
-		ProductType: b.ProductType, Vendor: b.Vendor, SortOrder: b.SortOrder}
+		ProductType: b.ProductType, Vendor: b.Vendor, SortOrder: b.SortOrder, Kind: b.Kind,
+		DigitalMediaID: b.DigitalMediaID.Value, ClearDigitalMedia: b.DigitalMediaID.Set && b.DigitalMediaID.Value == nil,
+		OptionNames: b.OptionNames}
 }
 
 // HandleCreateProduct serves POST .../shop/products.
