@@ -90,7 +90,7 @@ export function cartBubble(count: number): string {
   }`;
 }
 
-function header(ctx: Ctx): string {
+function header(ctx: Ctx, home: boolean): string {
   const menu: MenuItem[] = ctx.shop.menus.main;
   const logo = ctx.theme.logo;
   const name = ctx.shop.settings.shop_name || ctx.theme.shopName;
@@ -156,10 +156,10 @@ ${T.login}</a><div class="menu-drawer__localization header-localization">
     </div>
   </details>
 </header-drawer>
-<h1 class="header__heading"><a href="${esc(url(ctx, '/'))}" class="header__heading-link link link--text focus-inset"><div class="header__heading-logo-wrapper">
+${home ? '<h1 class="header__heading">' : ''}<a href="${esc(url(ctx, '/'))}" class="header__heading-link link link--text focus-inset"><div class="header__heading-logo-wrapper">
 
                 <img src="${esc(sized(logo.url, 600))}" alt="${esc(name)}" srcset="${esc(sized(logo.url, 110))} 110w, ${esc(sized(logo.url, 165))} 165w, ${esc(sized(logo.url, 220))} 220w" width="${logo.width}" height="${logo.height}" loading="eager" class="header__heading-logo motion-reduce" sizes="(max-width: 220px) 50vw, ${logo.displayWidth}px">
-              </div></a></h1>
+              </div></a>${home ? '</h1>' : ''}
 
 <nav class="header__inline-menu">
   <ul class="list-menu list-menu--inline" role="list">${inlineItems}</ul>
@@ -394,10 +394,10 @@ function ageGate(ctx: Ctx): string {
     </div>`;
 }
 
-export function layout(ctx: Ctx, mainHtml: string): string {
+export function layout(ctx: Ctx, mainHtml: string, home = false): string {
   return `<a class="skip-to-content-link button visually-hidden" href="#MainContent">
       ${T.skipToContent}
-    </a>${announcementBar(ctx)}${header(ctx)}
+    </a>${announcementBar(ctx)}${header(ctx, home)}
     <main id="MainContent" class="content-for-layout focus-none" role="main" tabindex="-1">${mainHtml}</main>
     ${footer(ctx)}
     <ul hidden>

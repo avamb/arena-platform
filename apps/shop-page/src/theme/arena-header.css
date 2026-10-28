@@ -1,4 +1,4 @@
-/* Inline <style> blocks of the live header and sections (Dawn 11, MIT) plus the shop's own custom CSS. Imported LAST, like the live page applies them after the component stylesheets. */
+/* Inline <style> blocks of the live header (Dawn 11, MIT): they come right after the header's own component stylesheets. */
   header-drawer {
     justify-self: start;
     margin-left: -1.2rem;
@@ -68,28 +68,3 @@
     }
   }
 
-/* ---- inline blocks of the live theme.liquid / sections (custom CSS of the shop) ---- */
-.section-header .header__menu-item { font-size: 18px; }
-.page-title { text-align: center; }
-.card-wrapper { border: 2px solid grey; }
-
-/* featured collection on the home page (custom_css of templates/index.json) */
-@media (min-width: 912px) {
-  #shopify-section-home__featured_collection .grid { position: relative; width: 60%; left: 21%; }
-  #shopify-section-home__featured_collection .card-wrapper { margin-right: 18px; }
-}
-@media (max-width: 512px) {
-  #shopify-section-home__featured_collection .card-wrapper { left: 5%; margin-right: 10px; }
-}
-
-/* product page (custom_css of templates/product.json) */
-@media (max-width: 767px) {
-  #shopify-section-product__main .product { margin: 20PX; }
-}
-
-/* the shop root takes part in the body grid exactly like Dawn's direct children */
-#shop-root { display: contents; }
-
-/* variant picker: the live page's <variant-radios> element is a plain block here */
-.variant-radios { display: block; }
-.quick-add__opener { display: contents; }

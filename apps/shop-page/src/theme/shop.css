@@ -173,3 +173,51 @@
   margin-left: auto;
   margin-right: auto;
 }
+
+/* the 404 template's spacing, shared by the status and empty-checkout pages */
+.template-404 .title + * {
+  margin-top: 1rem;
+}
+
+@media screen and (min-width: 750px) {
+  .template-404 .title + * {
+    margin-top: 2rem;
+  }
+}
+
+/*
+ * Shopify's platform stylesheet for policy pages (storefront/policy-*.css on the
+ * live shop), which the theme assets do not carry.
+ */
+.shopify-policy__container {
+  max-width: 65ch;
+  margin: 0 auto;
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+.shopify-policy__title {
+  text-align: center;
+}
+
+/* "Купить" under "Добавить в корзину": the live shop's accelerated-checkout button, unbranded */
+.shopify-payment-button__button--unbranded {
+  display: block;
+  width: 100%;
+  padding: 15px 30px;
+  font-family: inherit;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: 0.1rem;
+  line-height: 1.8rem;
+  text-align: center;
+  background-color: rgb(var(--color-button));
+  color: rgb(var(--color-button-text));
+  border: 0;
+  cursor: pointer;
+}
+
+.shopify-payment-button__button--unbranded[disabled] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
