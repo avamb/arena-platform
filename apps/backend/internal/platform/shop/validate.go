@@ -240,25 +240,11 @@ func CourierText(o gen.ShopOrderRow, items []gen.ShopOrderItemRow) string {
 			b.WriteByte('\n')
 		}
 	}
-	name := o.ShipName
-	if strings.TrimSpace(name) == "" {
-		name = o.BuyerName
+	for _, l := range CourierFieldsOf(o).JoinedLines() {
+		line(l)
 	}
-	line(name)
-	line(o.BuyerPhone)
-	line(o.ShipCity)
-	addr := strings.TrimSpace(o.ShipAddress1)
-	if a2 := strings.TrimSpace(o.ShipAddress2); a2 != "" {
-		addr = strings.TrimSpace(addr + ", " + a2)
-	}
-	line(addr)
-	line(o.ShipPostal)
 	for _, it := range items {
-		title := it.ProductTitle
-		if it.VariantTitle != "" && it.VariantTitle != "Default Title" {
-			title += " (" + it.VariantTitle + ")"
-		}
-		line(fmt.Sprintf("%s x %d", title, it.Qty))
+		line(fmt.Sprintf("%s x %d", ItemLabel(it), it.Qty))
 	}
 	line(FormatMinor(o.Total, o.Currency))
 	line(o.DeliveryNote)

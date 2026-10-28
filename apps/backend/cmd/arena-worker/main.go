@@ -621,6 +621,11 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		DB:             pool,
 	}))
 
+	// shop.order_email is the buyer's letter of a merchandise shop order
+	// (received when it is paid, shipped when the organizer ships it); the
+	// shop queues it in the same transaction as the status change.
+	registerShopEmailHandler(reg, pool, cfg, deliveryOpts)
+
 	// refund.scanned_alert_email tells an organization's owners that a refund
 	// of an already scanned ticket was refused (refunds.RecordScannedBlock
 	// queues it, at most once a day per ticket and actor).

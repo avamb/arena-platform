@@ -162,7 +162,11 @@ func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote st
 		if err != nil {
 			return err
 		}
-		return s.appendEvent(ctx, tx, EventOrderShipped, out, map[string]any{"tracking_note": trackingNote})
+		if err := s.appendEvent(ctx, tx, EventOrderShipped, out, map[string]any{"tracking_note": trackingNote}); err != nil {
+			return err
+		}
+		s.enqueueOrderEmailTx(ctx, tx, EmailShipped, out)
+		return nil
 	})
 	if err != nil {
 		return OrderView{}, err

@@ -17,6 +17,7 @@ func TestNew_ParsesAllEmbeddedFiles(t *testing.T) {
 	for _, kind := range []string{
 		TemplateKindTicket, TemplateKindInvitation,
 		TemplateKindChange, TemplateKindCancel, TemplateKindRefundBlocked, TemplateKindScanException, TemplateKindRefund,
+		TemplateKindShopOrderReceived, TemplateKindShopOrderShipped,
 	} {
 		for _, loc := range SupportedLocales {
 			want = append(want, kind+"."+loc)
@@ -37,6 +38,7 @@ func TestSupportedLocalesMatchEmbeddedFiles(t *testing.T) {
 		for _, kind := range []string{
 			TemplateKindTicket, TemplateKindInvitation,
 			TemplateKindChange, TemplateKindCancel, TemplateKindRefundBlocked, TemplateKindScanException, TemplateKindRefund,
+			TemplateKindShopOrderReceived, TemplateKindShopOrderShipped,
 		} {
 			if r.ResolveLocale(kind, loc) != loc {
 				t.Errorf("ResolveLocale(%q,%q): expected %q to be present",

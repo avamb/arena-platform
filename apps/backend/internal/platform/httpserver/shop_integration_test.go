@@ -135,6 +135,16 @@ func (f *shopFixture) cleanup() {
 	c := context.Background()
 	orgs := []uuid.UUID{f.orgA, f.orgB}
 	for _, st := range []string{
+		// shop.order_email jobs name the order in their payload and have no
+		// FK: a leftover makes a generic worker_jobs drain (the auth e-mail
+		// test) fail with "no handler for job type".
+		`DELETE FROM worker_jobs WHERE job_type = 'shop.order_email' AND payload->>'org_id' IN (
+		   SELECT id::text FROM organizations WHERE id = ANY($1))`,
+		`DELETE FROM sales_notification_subscriptions WHERE org_id = ANY($1)`,
+		`DELETE FROM sales_notification_deliveries WHERE key IN (
+		   SELECT 'shop_paid:' || id::text FROM shop_orders WHERE org_id = ANY($1)
+		   UNION ALL SELECT 'shop_review:' || id::text FROM shop_orders WHERE org_id = ANY($1)
+		   UNION ALL SELECT 'shop_refund:' || id::text || ':' || refunded_minor::text FROM shop_orders WHERE org_id = ANY($1))`,
 		`DELETE FROM outbox_events WHERE aggregate_type = 'shop_order'
 		   AND aggregate_id IN (SELECT id::text FROM shop_orders WHERE org_id = ANY($1))`,
 		`DELETE FROM shop_stock_moves WHERE org_id = ANY($1)`,
