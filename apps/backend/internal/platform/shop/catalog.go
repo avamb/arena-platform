@@ -15,6 +15,10 @@ import (
 // DefaultCurrency is the currency of a shop whose settings were never saved.
 const DefaultCurrency = "EUR"
 
+// DefaultMaxLineQty is how many units of one variant an order may hold when
+// the settings say nothing else (shop_settings.max_line_qty).
+const DefaultMaxLineQty = 24
+
 // DefaultVariantTitle is the title of the one variant a simple product has
 // (the Shopify and Dawn convention).
 const DefaultVariantTitle = "Default Title"
@@ -47,7 +51,7 @@ func (s *Service) GetSettings(ctx context.Context, orgID uuid.UUID) (SettingsVie
 		return SettingsView{}, derr
 	}
 	return SettingsView{ShopSettingsRow: gen.ShopSettingsRow{
-		OrgID: orgID, Currency: DefaultCurrency, ShopDomain: domain,
+		OrgID: orgID, Currency: DefaultCurrency, ShopDomain: domain, MaxLineQty: DefaultMaxLineQty,
 	}}, nil
 }
 
@@ -66,6 +70,13 @@ type SettingsInput struct {
 	SalesChannelID   *uuid.UUID
 	ShopDomain       *string
 	MayChangeDomain  bool
+	// MaxLineQty caps the units of one variant per order (1-99); nil keeps
+	// the stored value (24 for a new shop).
+	MaxLineQty *int32
+	// Enabled opens (true) or closes (false) the storefront and its
+	// checkout; nil keeps it. Like ShopDomain, only a caller with
+	// MayChangeDomain (a platform superadmin) may change it.
+	Enabled *bool
 }
 
 func invalid(code, msg string) *Error { return newErr(http.StatusUnprocessableEntity, code, msg) }
@@ -88,6 +99,9 @@ func validateSettings(in *SettingsInput) error {
 		} else {
 			in.CountryISO2 = &c
 		}
+	}
+	if in.MaxLineQty != nil && (*in.MaxLineQty < 1 || *in.MaxLineQty > MaxLineQty) {
+		return invalid("shop.invalid_max_line_qty", "max_line_qty must be between 1 and 99")
 	}
 	if in.AgeGateMinAge != nil && (*in.AgeGateMinAge < 1 || *in.AgeGateMinAge > 99) {
 		return invalid("shop.invalid_age_gate", "age_gate_min_age must be between 1 and 99, or null for no age gate")
@@ -114,6 +128,23 @@ func (s *Service) PutSettings(ctx context.Context, orgID uuid.UUID, in SettingsI
 		return SettingsView{}, err
 	}
 	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
+		cur, err := q.GetShopSettings(ctx, orgID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			cur = gen.ShopSettingsRow{MaxLineQty: DefaultMaxLineQty}
+		} else if err != nil {
+			return err
+		}
+		maxLine := cur.MaxLineQty
+		if in.MaxLineQty != nil {
+			maxLine = *in.MaxLineQty
+		}
+		enabled := cur.Enabled
+		if in.Enabled != nil && *in.Enabled != cur.Enabled {
+			if !in.MayChangeDomain {
+				return newErr(http.StatusForbidden, "shop.enabled_superadmin_only", "only the platform operator can open or close the shop")
+			}
+			enabled = *in.Enabled
+		}
 		if in.SalesChannelID != nil {
 			if _, err := q.GetSalesChannelByID(ctx, *in.SalesChannelID, orgID); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
@@ -156,6 +187,7 @@ func (s *Service) PutSettings(ctx context.Context, orgID uuid.UUID, in SettingsI
 			ShippingLabel: in.ShippingLabel, CountryISO2: in.CountryISO2, AgeGateMinAge: in.AgeGateMinAge,
 			AnnouncementText: in.AnnouncementText, ContactEmail: in.ContactEmail,
 			LogisticsNote: in.LogisticsNote, SalesChannelID: in.SalesChannelID,
+			Enabled: enabled, MaxLineQty: maxLine,
 		})
 	})
 	if err != nil {
@@ -279,6 +311,19 @@ type ProductInput struct {
 	ProductType *string
 	Vendor      *string
 	SortOrder   *int32
+	// Kind is physical, digital or service; nil keeps it (physical on
+	// create). Turning a product digital stops its variants tracking stock;
+	// turning it away from digital drops its file.
+	Kind *string
+	// DigitalMediaID names the file a digital product sells (a media object
+	// of the organization with owner_type shop_digital); nil keeps it,
+	// ClearDigitalMedia removes it.
+	DigitalMediaID    *uuid.UUID
+	ClearDigitalMedia bool
+	// OptionNames names the product's options (up to 3, e.g. Size, Colour),
+	// matched by position with the variants' option1..option3 values; nil
+	// keeps them, an empty list removes them.
+	OptionNames *[]string
 }
 
 // apply merges the input over p and validates the result.
@@ -300,10 +345,11 @@ func (in ProductInput) apply(p *gen.ShopProductParams) error {
 		p.Slug = SlugFromTitle(p.Title)
 	}
 	if in.BodyHTML != nil {
-		p.BodyHTML = *in.BodyHTML
-	}
-	if len(p.BodyHTML) > MaxBodyHTMLLen {
-		return invalid("shop.text_too_long", "body_html is limited to 100000 characters")
+		body, err := SanitizeBody(*in.BodyHTML, ProductBodyProfile)
+		if err != nil {
+			return err
+		}
+		p.BodyHTML = body
 	}
 	if in.Status != nil {
 		p.Status = strings.TrimSpace(*in.Status)
@@ -326,7 +372,71 @@ func (in ProductInput) apply(p *gen.ShopProductParams) error {
 	if in.SortOrder != nil {
 		p.SortOrder = *in.SortOrder
 	}
+	if in.Kind != nil {
+		p.Kind = strings.TrimSpace(*in.Kind)
+	}
+	if p.Kind == "" {
+		p.Kind = KindPhysical
+	}
+	if p.Kind != KindPhysical && p.Kind != KindDigital && p.Kind != KindService {
+		return invalid("shop.invalid_kind", "kind must be physical, digital or service")
+	}
+	if in.ClearDigitalMedia {
+		p.DigitalMediaID = nil
+	}
+	if in.DigitalMediaID != nil {
+		if p.Kind != KindDigital {
+			return invalid("shop.invalid_digital_media", "only a digital product sells a file (digital_media_id needs kind digital)")
+		}
+		id := *in.DigitalMediaID
+		p.DigitalMediaID = &id
+	}
+	if p.Kind != KindDigital {
+		p.DigitalMediaID = nil
+	}
+	if in.OptionNames != nil {
+		names := *in.OptionNames
+		if len(names) > MaxOptionNames {
+			return invalid("shop.invalid_option_names", "a product has at most 3 option names")
+		}
+		slots := [MaxOptionNames]*string{}
+		for i, n := range names {
+			n = strings.TrimSpace(n)
+			if n == "" || !textOK(n, 100) {
+				return invalid("shop.invalid_option_names", "an option name is 1-100 characters")
+			}
+			slots[i] = &n
+		}
+		p.Option1Name, p.Option2Name, p.Option3Name = slots[0], slots[1], slots[2]
+	}
 	return nil
+}
+
+// checkDigitalMedia refuses a file that is not the organization's own
+// shop_digital upload, when the product names one it did not name before.
+func checkDigitalMedia(ctx context.Context, q *gen.Queries, orgID uuid.UUID, p gen.ShopProductParams, before *uuid.UUID) error {
+	if p.DigitalMediaID == nil || (before != nil && *before == *p.DigitalMediaID) {
+		return nil
+	}
+	ok, err := q.ShopDigitalMediaUsable(ctx, *p.DigitalMediaID, orgID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return invalid("shop.invalid_digital_media", "digital_media_id is not a file this organization uploaded with owner_type shop_digital")
+	}
+	return nil
+}
+
+// OptionNames lists a product's option names in order.
+func OptionNames(p gen.ShopProductRow) []string {
+	out := make([]string, 0, MaxOptionNames)
+	for _, n := range []*string{p.Option1Name, p.Option2Name, p.Option3Name} {
+		if n != nil {
+			out = append(out, *n)
+		}
+	}
+	return out
 }
 
 var errDuplicateSlug = newErr(http.StatusConflict, "shop.duplicate_slug", "another product of this shop already uses this slug")
@@ -349,6 +459,9 @@ func (s *Service) CreateProduct(ctx context.Context, orgID uuid.UUID, in Product
 		if err := q.EnsureShopSettings(ctx, orgID); err != nil {
 			return err
 		}
+		if err := checkDigitalMedia(ctx, q, orgID, p, nil); err != nil {
+			return err
+		}
 		row, err := q.InsertShopProduct(ctx, p)
 		if err != nil {
 			if isUniqueViolation(err, "shop_products_org_slug_uq") {
@@ -357,7 +470,7 @@ func (s *Service) CreateProduct(ctx context.Context, orgID uuid.UUID, in Product
 			return err
 		}
 		id = row.ID
-		return writeVariants(ctx, q, orgID, row.ID, variants)
+		return writeVariants(ctx, q, orgID, row.ID, row.Kind, variants)
 	})
 	if err != nil {
 		return ProductView{}, err
@@ -378,8 +491,13 @@ func (s *Service) UpdateProduct(ctx context.Context, orgID, id uuid.UUID, in Pro
 		p := gen.ShopProductParams{
 			ID: id, OrgID: orgID, Slug: cur.Slug, Title: cur.Title, BodyHTML: cur.BodyHTML,
 			Status: cur.Status, ProductType: cur.ProductType, Vendor: cur.Vendor, SortOrder: cur.SortOrder,
+			Kind: cur.Kind, DigitalMediaID: cur.DigitalMediaID,
+			Option1Name: cur.Option1Name, Option2Name: cur.Option2Name, Option3Name: cur.Option3Name,
 		}
 		if err := in.apply(&p); err != nil {
+			return err
+		}
+		if err := checkDigitalMedia(ctx, q, orgID, p, cur.DigitalMediaID); err != nil {
 			return err
 		}
 		if _, err := q.UpdateShopProduct(ctx, p); err != nil {
@@ -387,6 +505,9 @@ func (s *Service) UpdateProduct(ctx context.Context, orgID, id uuid.UUID, in Pro
 				return errDuplicateSlug
 			}
 			return err
+		}
+		if p.Kind == KindDigital && cur.Kind != KindDigital {
+			return q.UntrackShopProductVariants(ctx, id)
 		}
 		return nil
 	})
@@ -499,6 +620,11 @@ type VariantInput struct {
 	Option1        *string
 	Option2        *string
 	Option3        *string
+	// ExpectedStock is the stock the editor loaded for this variant. When it
+	// is set and the stock has changed since (a sale, an import, another
+	// editor), the whole write is refused with 409 shop.stock_changed and
+	// nothing is applied, so a stale screen cannot overwrite a sale.
+	ExpectedStock *int32
 }
 
 func validateVariants(vs []VariantInput) error {
@@ -537,6 +663,9 @@ func validateVariants(vs []VariantInput) error {
 		if v.Stock < 0 {
 			return invalid("shop.invalid_variants", "stock must be zero or more")
 		}
+		if v.ExpectedStock != nil && v.ID == nil {
+			return invalid("shop.invalid_variants", "expected_stock is only for an existing variant (with its id)")
+		}
 		for _, o := range []*string{v.Option1, v.Option2, v.Option3} {
 			if o != nil && !textOK(*o, MaxShortTextLen) {
 				return invalid("shop.invalid_variants", "an option value is limited to 200 characters")
@@ -548,8 +677,44 @@ func validateVariants(vs []VariantInput) error {
 
 // writeVariants makes the product's live variants exactly vs: named ones are
 // updated, new ones inserted, the rest soft-deleted. A stock change is
-// journaled as a manual move.
-func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UUID, vs []VariantInput) error {
+// journaled as a manual move. The live variants are locked in id order first
+// and every expected_stock is checked against the locked stock before
+// anything is written. A digital product's variants never track stock: they
+// are written untracked with stock 0 and journal nothing.
+func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UUID, kind string, vs []VariantInput) error {
+	if kind == KindDigital {
+		untracked := false
+		for i := range vs {
+			vs[i].TrackStock = &untracked
+			vs[i].Stock = 0
+			vs[i].ExpectedStock = nil
+		}
+	}
+	current, err := q.LockShopProductVariants(ctx, productID)
+	if err != nil {
+		return err
+	}
+	var changed []map[string]any
+	for _, v := range vs {
+		if v.ID == nil || v.ExpectedStock == nil {
+			continue
+		}
+		stock, ok := current[*v.ID]
+		if !ok {
+			return invalid("shop.invalid_variant", "variant "+v.ID.String()+" is not a variant of this product")
+		}
+		if stock != *v.ExpectedStock {
+			changed = append(changed, map[string]any{
+				"id": v.ID.String(), "expected_stock": *v.ExpectedStock, "stock": stock,
+			})
+		}
+	}
+	if len(changed) > 0 {
+		e := newErr(http.StatusConflict, "shop.stock_changed",
+			"the stock of a variant changed since it was loaded; reload the product and apply the change again")
+		e.Details = map[string]any{"variants": changed}
+		return e
+	}
 	keep := make([]uuid.UUID, 0, len(vs))
 	for i, v := range vs {
 		pos := int32(i) //nolint:gosec // bounded by MaxVariants
@@ -574,7 +739,7 @@ func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UU
 			if err != nil {
 				return err
 			}
-			if d := v.Stock - prev; d != 0 {
+			if d := v.Stock - prev; d != 0 && kind != KindDigital {
 				if err := q.InsertShopStockMove(ctx, orgID, p.ID, nil, d, MoveManual); err != nil {
 					return err
 				}
@@ -593,7 +758,7 @@ func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UU
 		}
 		keep = append(keep, id)
 	}
-	_, err := q.SoftDeleteShopVariantsExcept(ctx, productID, keep)
+	_, err = q.SoftDeleteShopVariantsExcept(ctx, productID, keep)
 	return err
 }
 
@@ -603,13 +768,14 @@ func (s *Service) ReplaceVariants(ctx context.Context, orgID, productID uuid.UUI
 		return ProductView{}, err
 	}
 	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
-		if _, err := q.GetShopProduct(ctx, productID, orgID); err != nil {
+		cur, err := q.GetShopProduct(ctx, productID, orgID)
+		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrProductNotFound
 			}
 			return err
 		}
-		return writeVariants(ctx, q, orgID, productID, vs)
+		return writeVariants(ctx, q, orgID, productID, cur.Kind, vs)
 	})
 	if err != nil {
 		return ProductView{}, err
@@ -642,8 +808,9 @@ func (s *Service) PutPage(ctx context.Context, orgID uuid.UUID, slug, title, bod
 	if title == "" || !textOK(title, MaxTitleLen) {
 		return gen.ShopPageRow{}, invalid("shop.invalid_title", "title is required and limited to 300 characters")
 	}
-	if len(body) > MaxPageBodyLen {
-		return gen.ShopPageRow{}, invalid("shop.text_too_long", "body_html is limited to 200000 characters")
+	body, err := SanitizeBody(body, PageBodyProfile)
+	if err != nil {
+		return gen.ShopPageRow{}, err
 	}
 	return s.q.UpsertShopPage(ctx, orgID, norm, title, body, position)
 }
@@ -678,8 +845,9 @@ type Storefront struct {
 }
 
 // StorefrontBySlug resolves the public shop of an organization slug. An
-// organization without saved shop settings has no storefront (404
-// shop.not_found), whatever products it may have drafted.
+// organization without saved shop settings, or whose shop the platform
+// operator has not enabled, has no storefront (404 shop.not_found), whatever
+// products it may have drafted.
 func (s *Service) StorefrontBySlug(ctx context.Context, orgSlug string) (Storefront, error) {
 	if err := s.ready(); err != nil {
 		return Storefront{}, err
@@ -699,7 +867,7 @@ func (s *Service) StorefrontBySlug(ctx context.Context, orgSlug string) (Storefr
 	if err != nil {
 		return Storefront{}, err
 	}
-	if !st.Configured {
+	if !st.Configured || !st.Enabled {
 		return Storefront{}, ErrShopNotFound
 	}
 	return Storefront{Org: org, Settings: st}, nil
@@ -731,8 +899,35 @@ func (s *Service) SlugForHost(ctx context.Context, host string) (string, error) 
 	return "", ErrShopNotFound
 }
 
-// PaymentChannel is the sales channel whose payment provider takes the shop's
-// money: the one the settings name, else the organization's oldest channel.
+// MaxPaymentChannelCandidates bounds how many channels the checkout tries
+// when the settings name none.
+const MaxPaymentChannelCandidates = 20
+
+// PaymentChannelCandidates are the sales channels that may take the shop's
+// money, in the order to try them: only the one the settings name when they
+// name one, else the organization's live channels oldest first. The caller
+// keeps the first whose provider can host a payment page with a configured
+// provider account (the payment pre-flight), so an older channel on a
+// provider that is not set up does not block the shop.
+func (s *Service) PaymentChannelCandidates(ctx context.Context, st SettingsView) ([]uuid.UUID, error) {
+	if err := s.ready(); err != nil {
+		return nil, err
+	}
+	if st.SalesChannelID != nil {
+		return []uuid.UUID{*st.SalesChannelID}, nil
+	}
+	ids, err := s.q.ListLiveSalesChannelIDs(ctx, st.OrgID, MaxPaymentChannelCandidates)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, newErr(http.StatusUnprocessableEntity, "checkout.payment_not_configured",
+			"online payment for this shop is not set up yet, contact the shop")
+	}
+	return ids, nil
+}
+
+// PaymentChannel is the first of PaymentChannelCandidates.
 func (s *Service) PaymentChannel(ctx context.Context, st SettingsView) (uuid.UUID, error) {
 	if err := s.ready(); err != nil {
 		return uuid.Nil, err

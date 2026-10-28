@@ -1,6 +1,7 @@
 package hshop
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -26,6 +27,7 @@ type publicSettingsJSON struct {
 	AgeGateMinAge    *int32  `json:"age_gate_min_age"`
 	AnnouncementText string  `json:"announcement_text"`
 	ContactEmail     *string `json:"contact_email"`
+	MaxLineQty       int32   `json:"max_line_qty"`
 }
 
 // publicOrgJSON names the shop's organization.
@@ -77,7 +79,7 @@ func (h *Handler) HandlePublicCatalog(w http.ResponseWriter, r *http.Request) {
 		"settings": publicSettingsJSON{
 			Currency: st.Currency, ShippingFeeMinor: st.ShippingFeeMinor, ShippingLabel: st.ShippingLabel,
 			CountryISO2: st.CountryISO2, AgeGateMinAge: st.AgeGateMinAge, AnnouncementText: st.AnnouncementText,
-			ContactEmail: st.ContactEmail,
+			ContactEmail: st.ContactEmail, MaxLineQty: st.MaxLineQty,
 		},
 		"products": products,
 		"pages":    links,
@@ -179,7 +181,7 @@ type checkoutBody struct {
 // commit, never inside it. A page that cannot be created expires the order at
 // once, so its goods go straight back on sale.
 func (h *Handler) HandlePublicCheckout(w http.ResponseWriter, r *http.Request) {
-	if h.limited(w, r, "") {
+	if h.checkoutLimited(w, r) || h.limited(w, r, "") {
 		return
 	}
 	ctx := r.Context()
@@ -195,16 +197,9 @@ func (h *Handler) HandlePublicCheckout(w http.ResponseWriter, r *http.Request) {
 
 	// Pre-flight, on the pool, before the transaction.
 	returnBase, ready := h.o.ReturnPolicy.Resolve(b.ReturnURL)
-	channelID, chErr := h.o.Service.PaymentChannel(ctx, sf.Settings)
-	switch {
-	case ready != nil:
-	case chErr != nil:
-		ready = chErr
-	case h.o.Payments == nil:
-		ready = &hfeed.PaymentStartError{Code: hfeed.ErrCodePaymentNotConfigured,
-			Message: "Online payment is not set up here yet. Contact the shop.", Status: http.StatusServiceUnavailable}
-	default:
-		ready = h.o.Payments.CheckPaymentConfigured(ctx, sf.Org.ID, channelID)
+	var channelID uuid.UUID
+	if ready == nil {
+		channelID, ready = h.paymentChannel(ctx, sf)
 	}
 
 	in := shop.CheckoutInput{
@@ -216,6 +211,7 @@ func (h *Handler) HandlePublicCheckout(w http.ResponseWriter, r *http.Request) {
 		AgeConfirmed: b.AgeConfirmed,
 		HoldFor:      h.o.Window + h.o.Grace,
 		PaymentReady: ready,
+		ChannelID:    channelID,
 	}
 	for _, it := range b.Items {
 		in.Items = append(in.Items, shop.CheckoutItem{VariantID: it.VariantID, Qty: it.Qty})
@@ -273,6 +269,74 @@ func (h *Handler) HandlePublicCheckout(w http.ResponseWriter, r *http.Request) {
 	h.o.Logger.Info("shop checkout: hosted payment started",
 		slog.String("order_id", o.ID.String()), slog.Int64("total", o.Total), slog.String("currency", o.Currency))
 	httputil.WriteJSON(w, http.StatusCreated, checkoutAnswer(o, res.RedirectURL))
+}
+
+// paymentChannel picks the sales channel whose provider takes the payment:
+// the first candidate the payment pre-flight accepts (a provider that can
+// host a page, with a configured provider account). When none does, the
+// first candidate's refusal is the answer.
+func (h *Handler) paymentChannel(ctx context.Context, sf shop.Storefront) (uuid.UUID, error) {
+	candidates, err := h.o.Service.PaymentChannelCandidates(ctx, sf.Settings)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if h.o.Payments == nil {
+		return candidates[0], &hfeed.PaymentStartError{Code: hfeed.ErrCodePaymentNotConfigured,
+			Message: "Online payment is not set up here yet. Contact the shop.", Status: http.StatusServiceUnavailable}
+	}
+	var first error
+	for _, id := range candidates {
+		err := h.o.Payments.CheckPaymentConfigured(ctx, sf.Org.ID, id)
+		if err == nil {
+			return id, nil
+		}
+		if first == nil {
+			first = err
+		}
+	}
+	return candidates[0], first
+}
+
+// HandlePublicCheckoutDownloads serves GET
+// /v1/public/shop/checkout/{order_token}/downloads: the files of the digital
+// lines of a paid order, each behind a short-lived signed URL. An order that
+// is not paid (pending, expired, cancelled, refunded) is the route's 404,
+// like a token that names nothing.
+func (h *Handler) HandlePublicCheckoutDownloads(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimSpace(chi.URLParam(r, "order_token"))
+	if h.limited(w, r, token) {
+		return
+	}
+	downloads, err := h.o.Service.Downloads(r.Context(), token)
+	if err != nil {
+		if errors.Is(err, shop.ErrOrderNotFound) {
+			writeErr(w, r, http.StatusNotFound, "shop.order_not_found", "order not found")
+			return
+		}
+		h.fail(w, r, "downloads", err)
+		return
+	}
+	type downloadJSON struct {
+		ProductTitle string    `json:"product_title"`
+		VariantTitle string    `json:"variant_title"`
+		URL          string    `json:"url"`
+		ExpiresAt    time.Time `json:"expires_at"`
+	}
+	out := make([]downloadJSON, 0, len(downloads))
+	for _, d := range downloads {
+		if h.o.DownloadURL == nil {
+			writeErr(w, r, http.StatusServiceUnavailable, "shop.download_unavailable", "The files cannot be served right now. Try again in a minute.")
+			return
+		}
+		url, until := h.o.DownloadURL(r.Context(), d.MediaID)
+		if url == "" {
+			writeErr(w, r, http.StatusServiceUnavailable, "shop.download_unavailable", "The files cannot be served right now. Try again in a minute.")
+			return
+		}
+		out = append(out, downloadJSON{ProductTitle: d.ProductTitle, VariantTitle: d.VariantTitle, URL: url, ExpiresAt: until})
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"downloads": out})
 }
 
 // abandon expires an order whose payment could not be started. Best effort:

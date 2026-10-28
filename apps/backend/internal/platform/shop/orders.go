@@ -40,9 +40,8 @@ func (s *Service) view(ctx context.Context, q *gen.Queries, o gen.ShopOrderRow) 
 	return v, nil
 }
 
-// GetOrder reads one order of the organization. Refunds the provider settled
-// since the last look (a pending refund that completed, a refund made in the
-// provider's dashboard) are folded into the order first.
+// GetOrder reads one order of the organization. It never writes: refunds
+// reach the order through the refund engine's projection (ProjectPaymentTx).
 func (s *Service) GetOrder(ctx context.Context, orgID, id uuid.UUID) (OrderView, error) {
 	if err := s.ready(); err != nil {
 		return OrderView{}, err
@@ -53,13 +52,6 @@ func (s *Service) GetOrder(ctx context.Context, orgID, id uuid.UUID) (OrderView,
 	}
 	if err != nil {
 		return OrderView{}, err
-	}
-	if o.PaymentIntentID != nil && o.PaidAt != nil {
-		if synced, err := s.SyncRefunds(ctx, orgID, id); err == nil {
-			o = synced
-		} else {
-			s.logger.Warn("shop: refund sync failed; showing the stored order", "order_id", id.String(), "error", err.Error())
-		}
 	}
 	return s.view(ctx, s.q, o)
 }
@@ -258,13 +250,34 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, err
 		amount   int64
 		currency string
 	)
-	err := s.inTx(ctx, func(tx pgx.Tx, q *gen.Queries) error {
+	if err := s.ready(); err != nil {
+		return RefundResult{}, err
+	}
+	// The payment's refund lock is taken before the order's row lock, the
+	// order every refund writer follows (the engine's reversal projects the
+	// order under the payment lock).
+	peek, err := s.q.GetShopOrder(ctx, in.OrderID, in.OrgID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return RefundResult{}, ErrOrderNotFound
+	}
+	if err != nil {
+		return RefundResult{}, err
+	}
+	err = s.inTx(ctx, func(tx pgx.Tx, q *gen.Queries) error {
+		if peek.PaymentIntentID != nil {
+			if err := refunds.LockPayment(ctx, tx, *peek.PaymentIntentID); err != nil {
+				return err
+			}
+		}
 		o, err := q.GetShopOrderForUpdate(ctx, in.OrderID, in.OrgID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrOrderNotFound
 		}
 		if err != nil {
 			return err
+		}
+		if !sameUUID(o.PaymentIntentID, peek.PaymentIntentID) {
+			return newErr(http.StatusConflict, "shop.order_changed", "the order changed while the refund was being prepared; try again")
 		}
 		switch o.Status {
 		case StatusPaid, StatusShipped, StatusPartiallyRefunded, StatusManualReview:
@@ -280,9 +293,6 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, err
 		}
 		if pi.State != "succeeded" {
 			return newErr(http.StatusConflict, "shop.order_not_refundable", "the payment of this order is "+pi.State+", not succeeded")
-		}
-		if err := refunds.LockPayment(ctx, tx, pi.ID); err != nil {
-			return err
 		}
 		_, live, err := q.SumShopPaymentRefunds(ctx, pi.ID)
 		if err != nil {
@@ -346,10 +356,8 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, err
 	return RefundResult{Order: view, Refund: r}, nil
 }
 
-// SyncRefunds folds what the provider has accepted for the order's payment
-// into the order: refunded_minor and the status that follows. When more went
-// back than the order knew, v1.shop.order.refunded is written in the same
-// transaction. A refund that is still on its way changes nothing.
+// SyncRefunds folds the order's succeeded refunds into it (see
+// syncRefundsTx), in a transaction of its own.
 func (s *Service) SyncRefunds(ctx context.Context, orgID, id uuid.UUID) (gen.ShopOrderRow, error) {
 	var out gen.ShopOrderRow
 	err := s.inTx(ctx, func(tx pgx.Tx, q *gen.Queries) error {
@@ -360,37 +368,69 @@ func (s *Service) SyncRefunds(ctx context.Context, orgID, id uuid.UUID) (gen.Sho
 		if err != nil {
 			return err
 		}
-		out = o
-		if o.PaymentIntentID == nil {
-			return nil
-		}
-		accepted, _, err := q.SumShopPaymentRefunds(ctx, *o.PaymentIntentID)
-		if err != nil {
-			return err
-		}
-		accepted = min(accepted, o.Total)
-		if accepted <= o.RefundedMinor {
-			return nil
-		}
-		status := o.Status
-		switch o.Status {
-		case StatusPaid, StatusShipped, StatusPartiallyRefunded, StatusRefunded:
-			status = RefundedStatus(o.Status, o.Total, accepted)
-		case StatusManualReview:
-			// A parked order stays parked until all of it went back.
-			if accepted >= o.Total {
-				status = StatusRefunded
-			}
-		}
-		out, err = q.SetShopOrderRefunded(ctx, o.ID, status, accepted)
-		if err != nil {
-			return err
-		}
-		return s.appendEvent(ctx, tx, EventOrderRefunded, out, map[string]any{
-			"refunded_now": accepted - o.RefundedMinor,
-		})
+		out, err = s.syncRefundsTx(ctx, tx, q, o)
+		return err
 	})
 	return out, err
+}
+
+// ProjectPaymentTx is the refund engine's projection hook
+// (refunds.Options.ProjectPayment): on the engine's transaction it folds the
+// payment's succeeded refunds into the shop order the payment paid for. A
+// payment of no shop order is left alone.
+func (s *Service) ProjectPaymentTx(ctx context.Context, tx pgx.Tx, paymentIntentID uuid.UUID) error {
+	q := gen.New(tx)
+	o, err := q.GetShopOrderByPaymentIntentForUpdate(ctx, paymentIntentID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = s.syncRefundsTx(ctx, tx, q, o)
+	return err
+}
+
+// syncRefundsTx sets refunded_minor to what the order's payment got back
+// through SUCCEEDED refunds (a pending refund may still fail) and the status
+// that follows (refundStatus); o must be locked. When more went back than the
+// order knew, v1.shop.order.refunded is written; when less (a succeeded
+// refund the provider reversed), the order returns to the status it had.
+func (s *Service) syncRefundsTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, o gen.ShopOrderRow) (gen.ShopOrderRow, error) {
+	if o.PaymentIntentID == nil {
+		return o, nil
+	}
+	accepted, _, err := q.SumShopPaymentRefunds(ctx, *o.PaymentIntentID)
+	if err != nil {
+		return o, err
+	}
+	accepted = min(accepted, o.Total)
+	status := refundStatus(o, accepted)
+	if accepted == o.RefundedMinor && status == o.Status {
+		return o, nil
+	}
+	out, err := q.SetShopOrderRefunded(ctx, o.ID, status, accepted)
+	if err != nil {
+		return o, err
+	}
+	if accepted < o.RefundedMinor {
+		s.logger.Warn("shop: a refund the order counted did not go through; its refunded amount went down",
+			"order_id", o.ID.String(), "was", o.RefundedMinor, "now", accepted, "status", status)
+		return out, nil
+	}
+	if accepted > o.RefundedMinor {
+		return out, s.appendEvent(ctx, tx, EventOrderRefunded, out, map[string]any{
+			"refunded_now": accepted - o.RefundedMinor,
+		})
+	}
+	return out, nil
+}
+
+func sameUUID(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // CourierTextFor is the courier text of one order of the organization.

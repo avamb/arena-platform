@@ -43,8 +43,10 @@
 --
 -- Permissions shop.read / shop.manage are granted to org_admin, organizer and
 -- platform_superadmin in this same migration (the 532 parity guard).
--- media_objects.owner_type gains 'shop_product' (mediastore.AllowedOwnerTypes
--- mirrors it).
+-- media_objects.owner_type gains 'shop_product' (a product picture) and
+-- 'shop_digital' (the file a digital product sells), kept apart so a picture
+-- can never be served as a paid file and a paid file never as a picture
+-- (mediastore.AllowedOwnerTypes mirrors the list).
 -- =====================================================================
 SET LOCAL lock_timeout = '5s';
 
@@ -69,7 +71,8 @@ ALTER TABLE media_objects
             'session_poster',
             'event_gallery',
             'event_report',
-            'shop_product'
+            'shop_product',
+            'shop_digital'
         ));
 
 CREATE TABLE shop_settings (
@@ -212,7 +215,7 @@ CREATE TABLE shop_orders (
     CONSTRAINT shop_orders_status_check CHECK (status IN (
         'pending_payment', 'paid', 'shipped', 'cancelled', 'expired', 'refunded', 'partially_refunded',
         'manual_review')),
-    CONSTRAINT shop_orders_delivery_kind_check CHECK (delivery_kind IN ('shipping', 'pickup')),
+    CONSTRAINT shop_orders_delivery_kind_check CHECK (delivery_kind IN ('shipping', 'pickup', 'none')),
     CONSTRAINT shop_orders_source_check CHECK (source IN ('web', 'shopify')),
     CONSTRAINT shop_orders_currency_check CHECK (currency ~ '^[A-Z]{3}$'),
     CONSTRAINT shop_orders_amounts_check CHECK (
@@ -245,7 +248,9 @@ CREATE TABLE shop_order_items (
     unit_price_minor bigint  NOT NULL,
     total_minor      bigint  NOT NULL,
     ordinal          integer NOT NULL,
+    product_kind     text    NOT NULL DEFAULT 'physical',
     CONSTRAINT shop_order_items_qty_check CHECK (qty > 0),
+    CONSTRAINT shop_order_items_product_kind_check CHECK (product_kind IN ('physical', 'digital', 'service')),
     CONSTRAINT shop_order_items_price_check CHECK (unit_price_minor >= 0),
     CONSTRAINT shop_order_items_total_check CHECK (total_minor = unit_price_minor * qty),
     CONSTRAINT shop_order_items_ordinal_uq UNIQUE (order_id, ordinal)
@@ -320,7 +325,7 @@ DROP TABLE IF EXISTS shop_product_images;
 DROP TABLE IF EXISTS shop_products;
 DROP TABLE IF EXISTS shop_settings;
 
-DELETE FROM media_objects WHERE owner_type = 'shop_product';
+DELETE FROM media_objects WHERE owner_type IN ('shop_product', 'shop_digital');
 
 ALTER TABLE media_objects
     DROP CONSTRAINT IF EXISTS media_objects_owner_type_check;

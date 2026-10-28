@@ -163,7 +163,6 @@ func TestNormalizeCheckout_Refusals(t *testing.T) {
 		"merged > 99":   func(in *CheckoutInput) { in.Items[0].Qty, in.Items[1].Qty = 50, 50 },
 		"bad email":     func(in *CheckoutInput) { in.Buyer.Email = "nope" },
 		"no name":       func(in *CheckoutInput) { in.Buyer.Name = " " },
-		"no address":    func(in *CheckoutInput) { in.Ship.Address1 = "" },
 		"bad country":   func(in *CheckoutInput) { in.Ship.Country = "Israel" },
 		"note too long": func(in *CheckoutInput) { in.DeliveryNote = strings.Repeat("x", 2001) },
 	} {
@@ -224,5 +223,109 @@ func TestNewOrderToken(t *testing.T) {
 	b, _ := NewOrderToken()
 	if len(a) != 64 || a == b {
 		t.Errorf("tokens %q %q: want 64 hex characters, distinct", a, b)
+	}
+}
+
+func TestSanitizeBody_KeepsTheRichTextSubsetAndDropsTheRest(t *testing.T) {
+	in := `<section style="color:red"><h3>Rosé</h3><p class="x">Dry <b>and</b> <a href="https://vino.example/x" onclick="steal()">fresh</a></p>` +
+		`<img src="https://cdn.example/a.png"><script>alert(1)</script><style>p{}</style><table><tr><td>cell</td></tr></table></section>`
+	out, err := SanitizeBody(in, ProductBodyProfile)
+	if err != nil {
+		t.Fatalf("SanitizeBody: %v", err)
+	}
+	for _, gone := range []string{"<section", "style", "class=", "onclick", "<img", "<script", "alert(1)", "<table", "<td"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("sanitized body still holds %q: %s", gone, out)
+		}
+	}
+	for _, kept := range []string{"<h3>Rosé</h3>", "<strong>and</strong>", `href="https://vino.example/x"`, "cell"} {
+		if !strings.Contains(out, kept) {
+			t.Errorf("sanitized body lost %q: %s", kept, out)
+		}
+	}
+	if again, _ := SanitizeBody(out, ProductBodyProfile); again != out {
+		t.Errorf("sanitizing twice changed the text:\n%s\n%s", out, again)
+	}
+	if out, err := SanitizeBody("  ", PageBodyProfile); err != nil || out != "" {
+		t.Errorf("blank body = %q %v", out, err)
+	}
+}
+
+func TestSanitizeBody_RefusesWhatTheSanitizerRefuses(t *testing.T) {
+	_, err := SanitizeBody("<p>"+strings.Repeat("a", MaxBodyHTMLLen+1)+"</p>", ProductBodyProfile)
+	if e, ok := AsError(err); !ok || e.Code != "shop.invalid_body_html" || e.Status != 422 {
+		t.Fatalf("over-long body = %v; want 422 shop.invalid_body_html", err)
+	}
+}
+
+func TestRefundStatus(t *testing.T) {
+	shipped := time.Now()
+	paid := gen.ShopOrderRow{Status: StatusPaid, Total: 1000}
+	cases := []struct {
+		name     string
+		o        gen.ShopOrderRow
+		accepted int64
+		want     string
+	}{
+		{"paid, nothing back", paid, 0, StatusPaid},
+		{"paid, part back", paid, 400, StatusPartiallyRefunded},
+		{"paid, all back", paid, 1000, StatusRefunded},
+		{"refunded, reversed", gen.ShopOrderRow{Status: StatusRefunded, Total: 1000, RefundedMinor: 1000}, 0, StatusPaid},
+		{"refunded shipped, reversed to part", gen.ShopOrderRow{Status: StatusRefunded, Total: 1000, ShippedAt: &shipped}, 300, StatusPartiallyRefunded},
+		{"partially refunded shipped, reversed", gen.ShopOrderRow{Status: StatusPartiallyRefunded, Total: 1000, ShippedAt: &shipped}, 0, StatusShipped},
+		{"manual review, part back", gen.ShopOrderRow{Status: StatusManualReview, Total: 1000}, 300, StatusManualReview},
+		{"manual review, all back", gen.ShopOrderRow{Status: StatusManualReview, Total: 1000}, 1000, StatusRefunded},
+		{"refunded parked order, reversed", gen.ShopOrderRow{Status: StatusRefunded, Total: 1000,
+			Metadata: []byte(`{"review_reason": "stock_short"}`)}, 0, StatusManualReview},
+		{"expired keeps its status", gen.ShopOrderRow{Status: StatusExpired, Total: 1000}, 1000, StatusExpired},
+	}
+	for _, c := range cases {
+		if got := refundStatus(c.o, c.accepted); got != c.want {
+			t.Errorf("%s: refundStatus = %s; want %s", c.name, got, c.want)
+		}
+	}
+}
+
+func TestRequireShipping(t *testing.T) {
+	if err := requireShipping(Address{Address1: "Herzl 1", City: "Haifa", Country: "IL"}); err != nil {
+		t.Fatalf("full address refused: %v", err)
+	}
+	for name, a := range map[string]Address{
+		"no street":  {City: "Haifa", Country: "IL"},
+		"no city":    {Address1: "Herzl 1", Country: "IL"},
+		"no country": {Address1: "Herzl 1", City: "Haifa"},
+	} {
+		if e, ok := AsError(requireShipping(a)); !ok || e.Code != "shop.invalid_address" {
+			t.Errorf("%s: %v; want shop.invalid_address", name, e)
+		}
+	}
+}
+
+func TestProductInput_KindsAndOptionNames(t *testing.T) {
+	str := func(s string) *string { return &s }
+	media := uuid.New()
+	p := gen.ShopProductParams{Title: "E-book"}
+	if err := (ProductInput{Kind: str("digital"), DigitalMediaID: &media, OptionNames: &[]string{" Format ", "Language"}}).apply(&p); err != nil {
+		t.Fatalf("digital product: %v", err)
+	}
+	if p.Kind != KindDigital || p.DigitalMediaID == nil || *p.Option1Name != "Format" || *p.Option2Name != "Language" || p.Option3Name != nil {
+		t.Fatalf("applied = %+v", p)
+	}
+	if err := (ProductInput{Kind: str("physical")}).apply(&p); err != nil || p.DigitalMediaID != nil {
+		t.Fatalf("turning physical kept the file: %v %v", err, p.DigitalMediaID)
+	}
+	if err := (ProductInput{OptionNames: &[]string{}}).apply(&p); err != nil || p.Option1Name != nil {
+		t.Fatalf("empty option names did not clear them: %v", err)
+	}
+	for name, in := range map[string]ProductInput{
+		"bad kind":          {Kind: str("ticket")},
+		"file on physical":  {Kind: str("physical"), DigitalMediaID: &media},
+		"four option names": {OptionNames: &[]string{"a", "b", "c", "d"}},
+		"blank option name": {OptionNames: &[]string{" "}},
+	} {
+		q := gen.ShopProductParams{Title: "x"}
+		if _, ok := AsError(in.apply(&q)); !ok {
+			t.Errorf("%s: accepted", name)
+		}
 	}
 }
