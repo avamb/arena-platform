@@ -1,0 +1,95 @@
+/* Inline <style> blocks of the live header and sections (Dawn 11, MIT) plus the shop's own custom CSS. Imported LAST, like the live page applies them after the component stylesheets. */
+  header-drawer {
+    justify-self: start;
+    margin-left: -1.2rem;
+  }.scrolled-past-header .header__heading-logo-wrapper {
+      width: 75%;
+    }@media screen and (min-width: 990px) {
+      header-drawer {
+        display: none;
+      }
+    }.menu-drawer-container {
+    display: flex;
+  }
+
+  .list-menu {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .list-menu--inline {
+    display: inline-flex;
+    flex-wrap: wrap;
+  }
+
+  summary.list-menu__item {
+    padding-right: 2.7rem;
+  }
+
+  .list-menu__item {
+    display: flex;
+    align-items: center;
+    line-height: calc(1 + 0.3 / var(--font-body-scale));
+  }
+
+  .list-menu__item--link {
+    text-decoration: none;
+    padding-bottom: 1rem;
+    padding-top: 1rem;
+    line-height: calc(1 + 0.8 / var(--font-body-scale));
+  }
+
+  @media screen and (min-width: 750px) {
+    .list-menu__item--link {
+      padding-bottom: 0.5rem;
+      padding-top: 0.5rem;
+    }
+  }
+.header {
+    padding: 0px 3rem 0px 3rem;
+  }
+
+  .section-header {
+    position: sticky; /* This is for fixing a Safari z-index issue. PR #2147 */
+    margin-bottom: 0px;
+  }
+
+  @media screen and (min-width: 750px) {
+    .section-header {
+      margin-bottom: 0px;
+    }
+  }
+
+  @media screen and (min-width: 990px) {
+    .header {
+      padding-top: 0px;
+      padding-bottom: 0px;
+    }
+  }
+
+/* ---- inline blocks of the live theme.liquid / sections (custom CSS of the shop) ---- */
+.section-header .header__menu-item { font-size: 18px; }
+.page-title { text-align: center; }
+.card-wrapper { border: 2px solid grey; }
+
+/* featured collection on the home page (custom_css of templates/index.json) */
+@media (min-width: 912px) {
+  #shopify-section-home__featured_collection .grid { position: relative; width: 60%; left: 21%; }
+  #shopify-section-home__featured_collection .card-wrapper { margin-right: 18px; }
+}
+@media (max-width: 512px) {
+  #shopify-section-home__featured_collection .card-wrapper { left: 5%; margin-right: 10px; }
+}
+
+/* product page (custom_css of templates/product.json) */
+@media (max-width: 767px) {
+  #shopify-section-product__main .product { margin: 20PX; }
+}
+
+/* the shop root takes part in the body grid exactly like Dawn's direct children */
+#shop-root { display: contents; }
+
+/* variant picker: the live page's <variant-radios> element is a plain block here */
+.variant-radios { display: block; }
+.quick-add__opener { display: contents; }
