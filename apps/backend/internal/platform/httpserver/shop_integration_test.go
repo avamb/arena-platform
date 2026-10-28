@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -143,6 +144,7 @@ func (f *shopFixture) cleanup() {
 		`DELETE FROM payment_intent_events WHERE payment_intent_id IN (SELECT id FROM payment_intents WHERE org_id = ANY($1))`,
 		`DELETE FROM payment_intents WHERE org_id = ANY($1)`,
 		`DELETE FROM shop_orders WHERE org_id = ANY($1)`,
+		`DELETE FROM customer_org_links WHERE org_id = ANY($1)`,
 		`DELETE FROM shop_product_images WHERE product_id IN (SELECT id FROM shop_products WHERE org_id = ANY($1))`,
 		`DELETE FROM shop_variants WHERE product_id IN (SELECT id FROM shop_products WHERE org_id = ANY($1))`,
 		`DELETE FROM shop_products WHERE org_id = ANY($1)`,
@@ -197,7 +199,8 @@ func shopErrCode(body map[string]any) string {
 	return ""
 }
 
-// openShop saves settings and creates one active product with one variant of
+// openShop saves settings, opens the storefront (the platform operator's
+// switch, set directly) and creates one active product with one variant of
 // the given price and stock; it returns the product id and the variant id.
 func (f *shopFixture) openShop(price, stock int) (string, string) {
 	f.t.Helper()
@@ -206,6 +209,7 @@ func (f *shopFixture) openShop(price, stock int) (string, string) {
 	if code != http.StatusOK {
 		f.t.Fatalf("PUT settings = %d %v", code, body)
 	}
+	f.exec(`UPDATE shop_settings SET enabled = true WHERE org_id = $1`, f.orgA)
 	code, body, _ = f.do(http.MethodPost, f.orgPath(f.orgA, "/products"), f.ownerA, fmt.Sprintf(
 		`{"title":"Rosé %s","status":"active","variants":[{"price_minor":%d,"stock":%d,"sku":"ROSE"}]}`,
 		uuid.NewString()[:6], price, stock))
@@ -220,10 +224,10 @@ func (f *shopFixture) checkout(variantID string, qty int) (int, map[string]any) 
 	f.t.Helper()
 	code, body, _ := f.do(http.MethodPost, "/v1/public/shop/"+f.orgASlug+"/checkout", "", fmt.Sprintf(`{
 		"items":[{"variant_id":%q,"qty":%d}],
-		"buyer":{"name":"Anna","email":"anna-%s@example.test","phone":"+972500000000"},
+		"buyer":{"name":"Anna","email":"anna-%s@example.test","phone":"+97250%07d"},
 		"ship":{"address1":"Herzl 1","city":"Haifa","postal":"3100000","country":"IL"},
 		"delivery_note":"call before","locale":"ru","return_url":"%s/checkout"}`,
-		variantID, qty, uuid.NewString()[:6], shopTestBase))
+		variantID, qty, uuid.NewString()[:6], rand.IntN(10_000_000), shopTestBase))
 	return code, body
 }
 
@@ -349,6 +353,7 @@ func TestShop_ProductCRUD(t *testing.T) {
 	if code, body, _ := f.do(http.MethodPut, f.orgPath(f.orgA, "/pages/about"), f.ownerA, `{"title":"About us","body_html":"<p>Winery</p>"}`); code != http.StatusOK {
 		t.Fatalf("PUT page = %d %v", code, body)
 	}
+	f.exec(`UPDATE shop_settings SET enabled = true WHERE org_id = $1`, f.orgA)
 	code, body, hdr := f.do(http.MethodGet, "/v1/public/shop/pages/"+f.orgASlug, "", "")
 	if code != http.StatusOK || len(body["pages"].([]any)) != 1 || hdr.Get("Cache-Control") != "public, max-age=30" {
 		t.Fatalf("public pages = %d %v %v", code, body, hdr)

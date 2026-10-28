@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 )
 
 // CheckoutItem is one line of the buyer's cart.
@@ -56,6 +57,9 @@ type CheckoutInput struct {
 	// pool BEFORE the transaction (never inside it). A non-nil value refuses
 	// a cart with a total above zero before it takes any stock.
 	PaymentReady error
+	// ChannelID is the sales channel taking the payment, when known; it is
+	// only passed on to the customer resolution.
+	ChannelID uuid.UUID
 	// Now is the clock (tests); zero means time.Now().
 	Now time.Time
 }
@@ -188,6 +192,9 @@ func (s *Service) PlaceOrder(ctx context.Context, in CheckoutInput) (PlacedOrder
 		if err != nil {
 			return err
 		}
+		if !settings.Enabled {
+			return ErrShopNotFound
+		}
 		if settings.AgeGateMinAge != nil && !in.AgeConfirmed {
 			return invalid("shop.age_confirmation_required",
 				fmt.Sprintf("confirm that you are at least %d years old to buy here", *settings.AgeGateMinAge))
@@ -264,6 +271,7 @@ func (s *Service) PlaceOrder(ctx context.Context, in CheckoutInput) (PlacedOrder
 		if in.Locale != "" {
 			locale = &in.Locale
 		}
+		customerID := s.resolveCustomerTx(ctx, tx, in, now)
 		expires := now.Add(in.HoldFor)
 		o, err := q.InsertShopOrder(ctx, gen.InsertShopOrderParams{
 			OrgID: in.OrgID, OrderToken: token,
@@ -272,7 +280,7 @@ func (s *Service) PlaceOrder(ctx context.Context, in CheckoutInput) (PlacedOrder
 			ShipCity: in.Ship.City, ShipPostal: in.Ship.Postal, ShipCountry: in.Ship.Country,
 			DeliveryNote: in.DeliveryNote, Currency: settings.Currency,
 			Subtotal: subtotal, ShippingFee: settings.ShippingFeeMinor, Total: total,
-			BuyerLocale: locale, ExpiresAt: &expires,
+			BuyerLocale: locale, ExpiresAt: &expires, CustomerID: customerID,
 		})
 		if err != nil {
 			return err
@@ -300,6 +308,41 @@ func (s *Service) PlaceOrder(ctx context.Context, in CheckoutInput) (PlacedOrder
 		return PlacedOrder{}, err
 	}
 	return placed, nil
+}
+
+// resolveCustomerTx finds or creates the buyer's customer (e-mail and phone
+// identities) and links it to the organization, inside a SAVEPOINT of the
+// checkout transaction: a failure is logged and discarded, never fails the
+// order (AGENTS.md: best-effort writes inside a money transaction).
+func (s *Service) resolveCustomerTx(ctx context.Context, tx pgx.Tx, in CheckoutInput, now time.Time) *uuid.UUID {
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		s.logger.Warn("shop: customer resolution skipped, no savepoint", "error", err.Error())
+		return nil
+	}
+	var id uuid.UUID
+	err = func() error {
+		store := customers.NewStoreFromQueries(gen.New(sp))
+		res, err := customers.Resolve(ctx, store, customers.ResolveInput{
+			Email: in.Buyer.Email, Phone: in.Buyer.Phone, Name: in.Buyer.Name,
+			ChannelID: in.ChannelID, DefaultRegion: in.Ship.Country, Locale: in.Locale, Now: now.UTC(),
+		})
+		if err != nil {
+			return fmt.Errorf("resolve customer: %w", err)
+		}
+		id = res.Customer.ID
+		return customers.LinkOrg(ctx, store, id, in.OrgID, "order")
+	}()
+	if err != nil {
+		_ = sp.Rollback(ctx)
+		s.logger.Warn("shop: customer resolution failed and was discarded (non-fatal)", "org_id", in.OrgID.String(), "error", err.Error())
+		return nil
+	}
+	if err := sp.Commit(ctx); err != nil {
+		s.logger.Warn("shop: customer resolution savepoint did not commit (non-fatal)", "error", err.Error())
+		return nil
+	}
+	return &id
 }
 
 // HostedPayment is what the provider answered for an order's hosted page.

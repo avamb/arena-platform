@@ -10124,11 +10124,13 @@ export interface paths {
         get: operations["getShopSettings"];
         /**
          * Replace the shop settings
-         * @description Writes the whole settings row and opens the storefront. Money is in
-         *     minor units of `currency`. `sales_channel_id` names the channel whose payment
-         *     provider and the organization's payment config take the shop's money (absent:
-         *     the organization's oldest channel). `shop_domain` may be changed by a platform
-         *     superadmin only (absent keeps it, `""` clears it).
+         * @description Writes the whole settings row. Money is in minor units of `currency`.
+         *     `sales_channel_id` names the channel whose payment provider and the
+         *     organization's payment config take the shop's money (absent: the
+         *     organization's oldest channel whose provider can host a payment page with a
+         *     configured provider account). `shop_domain` and `enabled` (the switch that
+         *     opens the storefront and its checkout) may be changed by a platform
+         *     superadmin only (absent keeps them, `""` clears the domain).
          *
          *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
          */
@@ -29894,7 +29896,7 @@ export interface components {
             logistics_note: string;
             /**
              * Format: uuid
-             * @description Sales channel whose payment provider takes the shop's money; null means the organization's oldest channel.
+             * @description Sales channel whose payment provider takes the shop's money; null means the organization's oldest channel whose provider can host a payment page with a configured provider account.
              */
             sales_channel_id?: string | null;
             /** @description Host name of the storefront, set by the platform operator; null when none. */
@@ -29904,6 +29906,8 @@ export interface components {
              * @description How many units of one variant an order may hold (1-99, 24 by default).
              */
             max_line_qty: number;
+            /** @description Whether the storefront and its checkout are open. Only the platform operator opens or closes a shop; it starts closed. */
+            enabled: boolean;
             /**
              * Format: date-time
              * @description When the settings were last saved; null when never.
@@ -29936,7 +29940,7 @@ export interface components {
             logistics_note?: string;
             /**
              * Format: uuid
-             * @description A sales channel of this organization, or null for the oldest one.
+             * @description A sales channel of this organization, or null for the oldest one whose provider can take the payment.
              */
             sales_channel_id?: string | null;
             /** @description Storefront host (platform superadmin only); absent or null keeps it, an empty string clears it. */
@@ -29946,6 +29950,8 @@ export interface components {
              * @description How many units of one variant an order may hold, 1-99; absent or null keeps the stored value (24 for a new shop).
              */
             max_line_qty?: number | null;
+            /** @description Opens (true) or closes (false) the storefront and its checkout, platform superadmin only; absent, null or the current value keeps it. */
+            enabled?: boolean | null;
         };
         /** @description A picture of a product. */
         ShopImage: {
@@ -30300,6 +30306,11 @@ export interface components {
             status: string;
             /** @description `web` (the storefront) or `shopify` (imported). */
             source: string;
+            /**
+             * Format: uuid
+             * @description The buyer's customer, resolved from the e-mail and phone at checkout; null when the resolution failed or for an imported order.
+             */
+            customer_id?: string | null;
             /** @description Order number in the system the order was imported from. */
             external_ref?: string | null;
             /** @description Who paid. */
@@ -65052,7 +65063,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks `shop.manage`, is not a member, or is not a platform superadmin and tried to change `shop_domain` (`shop.domain_superadmin_only`). */
+            /** @description Caller lacks `shop.manage`, is not a member, or is not a platform superadmin and tried to change `shop_domain` (`shop.domain_superadmin_only`) or `enabled` (`shop.enabled_superadmin_only`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -66501,7 +66512,7 @@ export interface operations {
                     "application/json": components["schemas"]["ShopByHostResponse"];
                 };
             };
-            /** @description No shop lives on this host (`shop.not_found`). */
+            /** @description No open shop lives on this host (`shop.not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -66623,7 +66634,7 @@ export interface operations {
                     "application/json": components["schemas"]["ShopPageList"];
                 };
             };
-            /** @description No shop with this slug (`shop.not_found`). */
+            /** @description No open shop with this slug (`shop.not_found`); a shop the platform operator has not enabled reads as missing. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -66686,7 +66697,7 @@ export interface operations {
                     "application/json": components["schemas"]["ShopPublicCatalog"];
                 };
             };
-            /** @description No shop with this slug (`shop.not_found`). */
+            /** @description No open shop with this slug (`shop.not_found`); a shop the platform operator has not enabled reads as missing. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -66751,7 +66762,7 @@ export interface operations {
                     "application/json": components["schemas"]["ShopPublicProductResponse"];
                 };
             };
-            /** @description No shop with this slug (`shop.not_found`) or no active product with this slug (`shop.product_not_found`). */
+            /** @description No open shop with this slug (`shop.not_found`) or no active product with this slug (`shop.product_not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -66823,7 +66834,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description No shop with this slug (`shop.not_found`). */
+            /** @description No open shop with this slug (`shop.not_found`); a shop the platform operator has not enabled reads as missing. */
             404: {
                 headers: {
                     [name: string]: unknown;

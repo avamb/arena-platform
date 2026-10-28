@@ -113,6 +113,7 @@ type InsertShopOrderParams struct {
 	Source       string
 	ExternalRef  *string
 	ExpiresAt    *time.Time
+	CustomerID   *uuid.UUID
 }
 
 const lockShopBuyer = `-- name: LockShopBuyer :exec
@@ -141,8 +142,8 @@ const insertShopOrder = `-- name: InsertShopOrder :one
 INSERT INTO shop_orders (org_id, order_token, status, buyer_name, buyer_email, buyer_phone, ship_name,
                          ship_address1, ship_address2, ship_city, ship_postal, ship_country,
                          delivery_kind, delivery_note, currency, subtotal, discount, shipping_fee, total,
-                         buyer_locale, source, external_ref, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+                         buyer_locale, source, external_ref, expires_at, customer_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
 RETURNING ` + shopOrderColumns
 
 // InsertShopOrder creates an order; its number comes from
@@ -160,7 +161,7 @@ func (q *Queries) InsertShopOrder(ctx context.Context, p InsertShopOrderParams) 
 	return scanShopOrderRow(q.db.QueryRow(ctx, insertShopOrder, p.OrgID, p.OrderToken, p.Status, p.BuyerName,
 		p.BuyerEmail, p.BuyerPhone, p.ShipName, p.ShipAddress1, p.ShipAddress2, p.ShipCity, p.ShipPostal,
 		p.ShipCountry, p.DeliveryKind, p.DeliveryNote, p.Currency, p.Subtotal, p.Discount, p.ShippingFee,
-		p.Total, p.BuyerLocale, p.Source, p.ExternalRef, p.ExpiresAt))
+		p.Total, p.BuyerLocale, p.Source, p.ExternalRef, p.ExpiresAt, p.CustomerID))
 }
 
 // ShopOrderItemRow is one line of an order.

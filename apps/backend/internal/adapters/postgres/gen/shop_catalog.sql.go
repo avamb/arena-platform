@@ -134,10 +134,10 @@ const getOrganizationByShopDomain = `-- name: GetOrganizationByShopDomain :one
 SELECT o.id, o.slug
 FROM   organizations o
 JOIN   shop_settings s ON s.org_id = o.id
-WHERE  o.shop_domain = $1 AND o.deleted_at IS NULL`
+WHERE  o.shop_domain = $1 AND o.deleted_at IS NULL AND s.enabled`
 
 // GetOrganizationByShopDomain resolves a storefront host to the organization
-// that owns it (only an organization with a shop). pgx.ErrNoRows when none.
+// that owns it (only an organization whose shop is enabled). pgx.ErrNoRows when none.
 func (q *Queries) GetOrganizationByShopDomain(ctx context.Context, host string) (uuid.UUID, string, error) {
 	var id uuid.UUID
 	var slug string
@@ -151,12 +151,37 @@ WHERE  org_id = $1 AND deleted_at IS NULL
 ORDER  BY created_at, id
 LIMIT  1`
 
-// GetFirstSalesChannelID is the organization's oldest live sales channel, the
-// fallback whose provider takes shop payments when the settings name none.
+// GetFirstSalesChannelID is the organization's oldest live sales channel.
 func (q *Queries) GetFirstSalesChannelID(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := q.db.QueryRow(ctx, getFirstSalesChannelID, orgID).Scan(&id)
 	return id, err
+}
+
+const listLiveSalesChannelIDs = `-- name: ListLiveSalesChannelIDs :many
+SELECT id FROM sales_channels
+WHERE  org_id = $1 AND deleted_at IS NULL
+ORDER  BY created_at, id
+LIMIT  $2`
+
+// ListLiveSalesChannelIDs lists at most limit live sales channels of the
+// organization, oldest first: the candidates whose provider may take shop
+// payments when the settings name none.
+func (q *Queries) ListLiveSalesChannelIDs(ctx context.Context, orgID uuid.UUID, limit int32) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listLiveSalesChannelIDs, orgID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

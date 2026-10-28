@@ -16645,6 +16645,9 @@ type ShopOrder struct {
 	// Currency ISO 4217 code of every amount.
 	Currency string `json:"currency"`
 
+	// CustomerId The buyer's customer, resolved from the e-mail and phone at checkout; null when the resolution failed or for an imported order.
+	CustomerId *openapi_types.UUID `json:"customer_id"`
+
 	// DeliveryKind `shipping` (the only kind in this version) or `pickup`.
 	DeliveryKind string `json:"delivery_kind"`
 
@@ -17089,6 +17092,9 @@ type ShopSettings struct {
 	// Currency ISO 4217 code of every price in the shop.
 	Currency string `json:"currency"`
 
+	// Enabled Whether the storefront and its checkout are open. Only the platform operator opens or closes a shop; it starts closed.
+	Enabled bool `json:"enabled"`
+
 	// LogisticsNote Internal note for whoever ships the orders.
 	LogisticsNote string `json:"logistics_note"`
 
@@ -17098,7 +17104,7 @@ type ShopSettings struct {
 	// OrgId The organization.
 	OrgId openapi_types.UUID `json:"org_id"`
 
-	// SalesChannelId Sales channel whose payment provider takes the shop's money; null means the organization's oldest channel.
+	// SalesChannelId Sales channel whose payment provider takes the shop's money; null means the organization's oldest channel whose provider can host a payment page with a configured provider account.
 	SalesChannelId *openapi_types.UUID `json:"sales_channel_id"`
 
 	// ShippingFeeMinor Flat delivery fee added to every order, minor units.
@@ -17131,13 +17137,16 @@ type ShopSettingsUpdateRequest struct {
 	// Currency ISO 4217 code, e.g. EUR or ILS.
 	Currency string `json:"currency"`
 
+	// Enabled Opens (true) or closes (false) the storefront and its checkout, platform superadmin only; absent, null or the current value keeps it.
+	Enabled *bool `json:"enabled"`
+
 	// LogisticsNote Internal note for the logistician, up to 2000 characters.
 	LogisticsNote *string `json:"logistics_note,omitempty"`
 
 	// MaxLineQty How many units of one variant an order may hold, 1-99; absent or null keeps the stored value (24 for a new shop).
 	MaxLineQty *int32 `json:"max_line_qty"`
 
-	// SalesChannelId A sales channel of this organization, or null for the oldest one.
+	// SalesChannelId A sales channel of this organization, or null for the oldest one whose provider can take the payment.
 	SalesChannelId *openapi_types.UUID `json:"sales_channel_id"`
 
 	// ShippingFeeMinor Flat delivery fee, minor units, zero or more.

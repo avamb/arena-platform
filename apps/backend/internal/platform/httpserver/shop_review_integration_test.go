@@ -317,3 +317,66 @@ func TestShop_CheckoutHasItsOwnAddressBudget(t *testing.T) {
 		t.Fatal("the catalog was refused by the checkout's budget")
 	}
 }
+
+// TestShop_StorefrontOpensOnlyWhenEnabled: saved settings alone do not open
+// the storefront; the owner cannot flip the switch.
+func TestShop_StorefrontOpensOnlyWhenEnabled(t *testing.T) {
+	f := newShopFixture(t)
+	_, variant := f.openShop(4500, 2)
+	f.exec(`UPDATE shop_settings SET enabled = false WHERE org_id = $1`, f.orgA)
+
+	if code, body, _ := f.do(http.MethodGet, "/v1/public/shop/"+f.orgASlug, "", ""); code != http.StatusNotFound || shopErrCode(body) != "shop.not_found" {
+		t.Fatalf("catalog of a closed shop = %d %v; want 404 shop.not_found", code, body)
+	}
+	if code, body := f.checkout(variant, 1); code != http.StatusNotFound {
+		t.Fatalf("checkout in a closed shop = %d %v; want 404", code, body)
+	}
+	code, body, _ := f.do(http.MethodPut, f.orgPath(f.orgA, "/settings"), f.ownerA, `{"currency":"ILS","enabled":true}`)
+	if code != http.StatusForbidden || shopErrCode(body) != "shop.enabled_superadmin_only" {
+		t.Fatalf("owner opening the shop = %d %v; want 403 shop.enabled_superadmin_only", code, body)
+	}
+	// Repeating the current value is not a change.
+	code, body, _ = f.do(http.MethodPut, f.orgPath(f.orgA, "/settings"), f.ownerA, `{"currency":"ILS","enabled":false}`)
+	if code != http.StatusOK || body["enabled"] != false {
+		t.Fatalf("owner saving with the current switch = %d %v", code, body)
+	}
+	f.exec(`UPDATE shop_settings SET enabled = true WHERE org_id = $1`, f.orgA)
+	if code, _, _ := f.do(http.MethodGet, "/v1/public/shop/"+f.orgASlug, "", ""); code != http.StatusOK {
+		t.Fatalf("catalog of an open shop = %d; want 200", code)
+	}
+}
+
+// TestShop_CheckoutResolvesTheCustomer: the order carries the buyer's
+// customer, linked to the organization.
+func TestShop_CheckoutResolvesTheCustomer(t *testing.T) {
+	f := newShopFixture(t)
+	_, variant := f.openShop(4500, 2)
+	o := f.placed(variant, 1)
+	if o.CustomerID == nil {
+		t.Fatal("the order has no customer")
+	}
+	var linked int
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM customer_org_links
+		WHERE customer_id = $1 AND org_id = $2`, *o.CustomerID, f.orgA).Scan(&linked); err != nil || linked != 1 {
+		t.Fatalf("customer_org_links = %d (%v); want 1", linked, err)
+	}
+	var email string
+	if err := f.pool.QueryRow(context.Background(), `SELECT value_normalized FROM customer_identities
+		WHERE customer_id = $1 AND kind = 'email'`, *o.CustomerID).Scan(&email); err != nil || !strings.EqualFold(email, o.BuyerEmail) {
+		t.Fatalf("customer e-mail identity = %q (%v); want %q", email, err, o.BuyerEmail)
+	}
+}
+
+// TestShop_PaymentFallsBackToAChannelThatCanTakeIt: the settings name no
+// channel and the organization's oldest channel is on a provider that is not
+// set up; the checkout takes the next channel that can host a payment page.
+func TestShop_PaymentFallsBackToAChannelThatCanTakeIt(t *testing.T) {
+	f := newShopFixture(t)
+	_, variant := f.openShop(4500, 2)
+	f.exec(`INSERT INTO sales_channels (id, org_id, name, provider, created_at)
+	        VALUES ($1, $2, 'Old Flitt channel', 'flitt', now() - interval '1 year')`, uuid.New(), f.orgA)
+	code, body := f.checkout(variant, 1)
+	if code != http.StatusCreated || body["payment_url"] == "" {
+		t.Fatalf("checkout with an unconfigured oldest channel = %d %v; want 201 with a payment page", code, body)
+	}
+}

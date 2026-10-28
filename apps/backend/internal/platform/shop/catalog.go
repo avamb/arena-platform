@@ -73,6 +73,10 @@ type SettingsInput struct {
 	// MaxLineQty caps the units of one variant per order (1-99); nil keeps
 	// the stored value (24 for a new shop).
 	MaxLineQty *int32
+	// Enabled opens (true) or closes (false) the storefront and its
+	// checkout; nil keeps it. Like ShopDomain, only a caller with
+	// MayChangeDomain (a platform superadmin) may change it.
+	Enabled *bool
 }
 
 func invalid(code, msg string) *Error { return newErr(http.StatusUnprocessableEntity, code, msg) }
@@ -134,6 +138,13 @@ func (s *Service) PutSettings(ctx context.Context, orgID uuid.UUID, in SettingsI
 		if in.MaxLineQty != nil {
 			maxLine = *in.MaxLineQty
 		}
+		enabled := cur.Enabled
+		if in.Enabled != nil && *in.Enabled != cur.Enabled {
+			if !in.MayChangeDomain {
+				return newErr(http.StatusForbidden, "shop.enabled_superadmin_only", "only the platform operator can open or close the shop")
+			}
+			enabled = *in.Enabled
+		}
 		if in.SalesChannelID != nil {
 			if _, err := q.GetSalesChannelByID(ctx, *in.SalesChannelID, orgID); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
@@ -176,7 +187,7 @@ func (s *Service) PutSettings(ctx context.Context, orgID uuid.UUID, in SettingsI
 			ShippingLabel: in.ShippingLabel, CountryISO2: in.CountryISO2, AgeGateMinAge: in.AgeGateMinAge,
 			AnnouncementText: in.AnnouncementText, ContactEmail: in.ContactEmail,
 			LogisticsNote: in.LogisticsNote, SalesChannelID: in.SalesChannelID,
-			Enabled: cur.Enabled, MaxLineQty: maxLine,
+			Enabled: enabled, MaxLineQty: maxLine,
 		})
 	})
 	if err != nil {
@@ -736,8 +747,9 @@ type Storefront struct {
 }
 
 // StorefrontBySlug resolves the public shop of an organization slug. An
-// organization without saved shop settings has no storefront (404
-// shop.not_found), whatever products it may have drafted.
+// organization without saved shop settings, or whose shop the platform
+// operator has not enabled, has no storefront (404 shop.not_found), whatever
+// products it may have drafted.
 func (s *Service) StorefrontBySlug(ctx context.Context, orgSlug string) (Storefront, error) {
 	if err := s.ready(); err != nil {
 		return Storefront{}, err
@@ -757,7 +769,7 @@ func (s *Service) StorefrontBySlug(ctx context.Context, orgSlug string) (Storefr
 	if err != nil {
 		return Storefront{}, err
 	}
-	if !st.Configured {
+	if !st.Configured || !st.Enabled {
 		return Storefront{}, ErrShopNotFound
 	}
 	return Storefront{Org: org, Settings: st}, nil
@@ -789,8 +801,35 @@ func (s *Service) SlugForHost(ctx context.Context, host string) (string, error) 
 	return "", ErrShopNotFound
 }
 
-// PaymentChannel is the sales channel whose payment provider takes the shop's
-// money: the one the settings name, else the organization's oldest channel.
+// MaxPaymentChannelCandidates bounds how many channels the checkout tries
+// when the settings name none.
+const MaxPaymentChannelCandidates = 20
+
+// PaymentChannelCandidates are the sales channels that may take the shop's
+// money, in the order to try them: only the one the settings name when they
+// name one, else the organization's live channels oldest first. The caller
+// keeps the first whose provider can host a payment page with a configured
+// provider account (the payment pre-flight), so an older channel on a
+// provider that is not set up does not block the shop.
+func (s *Service) PaymentChannelCandidates(ctx context.Context, st SettingsView) ([]uuid.UUID, error) {
+	if err := s.ready(); err != nil {
+		return nil, err
+	}
+	if st.SalesChannelID != nil {
+		return []uuid.UUID{*st.SalesChannelID}, nil
+	}
+	ids, err := s.q.ListLiveSalesChannelIDs(ctx, st.OrgID, MaxPaymentChannelCandidates)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, newErr(http.StatusUnprocessableEntity, "checkout.payment_not_configured",
+			"online payment for this shop is not set up yet, contact the shop")
+	}
+	return ids, nil
+}
+
+// PaymentChannel is the first of PaymentChannelCandidates.
 func (s *Service) PaymentChannel(ctx context.Context, st SettingsView) (uuid.UUID, error) {
 	if err := s.ready(); err != nil {
 		return uuid.Nil, err
