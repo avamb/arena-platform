@@ -4,12 +4,12 @@
  * order). Dawn's form, button and typography classes keep it inside the theme;
  * the page layout itself has no Shopify original (Shopify hosts its checkout).
  */
-import { subtotalMinor, shippingMinor, totalMinor, type CartLine, type CheckoutForm, type FormErrors } from '../lib/cart';
-import type { OrderStatus } from '../lib/api';
+import { needsShipping, subtotalMinor, shippingMinor, totalMinor, type CartLine, type CheckoutForm, type FormErrors } from '../lib/cart';
+import type { DownloadLink, OrderStatus } from '../lib/api';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
 import { T } from '../lib/i18n';
-import { icon, money, ratioOf, url, type Ctx } from './common';
+import { icon, money, optionPairs, ratioOf, url, type Ctx } from './common';
 
 export const EMPTY_FORM: CheckoutForm = {
   name: '',
@@ -52,7 +52,8 @@ function summaryRow(ctx: Ctx, line: CartLine): string {
   const image = img
     ? `<div class="shop-checkout__thumb"><img src="${esc(sized(img.url, 140))}" alt="${esc(img.alt ?? '')}" width="70" height="${Math.ceil(70 / ratioOf(img))}" loading="lazy"><span class="shop-checkout__qty">${line.qty}</span></div>`
     : '';
-  const variant = line.product.variants.length > 1 ? `<div class="product-option">${esc(line.variant.title)}</div>` : '';
+  const picked = optionPairs(line.product, line.variant).map(([, v]) => v).join(' / ');
+  const variant = picked ? `<div class="product-option">${esc(picked)}</div>` : '';
   return `<li class="shop-checkout__line">${image}<div class="shop-checkout__line-name"><span class="h5">${esc(line.product.title)}</span>${variant}</div><span class="shop-checkout__line-price">${esc(money(ctx, line.lineMinor))}</span></li>`;
 }
 
@@ -62,6 +63,21 @@ export interface CheckoutViewState {
   /** A request-level problem (out of stock, payment unavailable, network). */
   message?: string;
   submitting?: boolean;
+}
+
+/** Address and delivery fee: only for a cart that holds a physical product. */
+function addressBlock(ctx: Ctx, st: CheckoutViewState, label: string, shipping: number): string {
+  const e = st.errors;
+  return `<h2 class="shop-checkout__heading h3">Адрес доставки</h2>
+      ${field('address1', 'Улица, дом, квартира', st.values, e, { autocomplete: 'address-line1', required: true })}
+      ${field('address2', 'Дополнительно (подъезд, этаж, комментарий курьеру)', st.values, e, { autocomplete: 'address-line2' })}
+      ${field('city', 'Город', st.values, e, { autocomplete: 'address-level2', required: true })}
+      ${field('postal', 'Почтовый индекс', st.values, e, { autocomplete: 'postal-code', inputmode: 'numeric' })}
+      <h2 class="shop-checkout__heading h3">Доставка</h2>
+      <div class="shop-checkout__delivery">
+        <span class="shop-checkout__delivery-name">${label}</span>
+        <span>${esc(money(ctx, shipping))}</span>
+      </div>`;
 }
 
 export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState): string {
@@ -87,6 +103,7 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
   const shipping = shippingMinor(s, lines);
   const total = totalMinor(s, lines);
   const minAge = s.age_gate_min_age ?? 0;
+  const ships = needsShipping(lines);
   const e = st.errors;
   const label = esc(s.shipping_label || 'Доставка');
   return `<div id="shopify-section-checkout__main" class="shopify-section">${style}<div class="page-width section-checkout-padding shop-checkout">
@@ -100,16 +117,7 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
       ${field('name', 'Имя и фамилия', st.values, e, { autocomplete: 'name', required: true })}
       ${field('email', 'Адрес электронной почты', st.values, e, { type: 'email', autocomplete: 'email', required: true })}
       ${field('phone', 'Номер телефона', st.values, e, { type: 'tel', autocomplete: 'tel', required: true, inputmode: 'tel' })}
-      <h2 class="shop-checkout__heading h3">Адрес доставки</h2>
-      ${field('address1', 'Улица, дом, квартира', st.values, e, { autocomplete: 'address-line1', required: true })}
-      ${field('address2', 'Дополнительно (подъезд, этаж, комментарий курьеру)', st.values, e, { autocomplete: 'address-line2' })}
-      ${field('city', 'Город', st.values, e, { autocomplete: 'address-level2', required: true })}
-      ${field('postal', 'Почтовый индекс', st.values, e, { autocomplete: 'postal-code', inputmode: 'numeric' })}
-      <h2 class="shop-checkout__heading h3">Доставка</h2>
-      <div class="shop-checkout__delivery">
-        <span class="shop-checkout__delivery-name">${label}</span>
-        <span>${esc(money(ctx, shipping))}</span>
-      </div>${
+      ${ships ? addressBlock(ctx, st, label, shipping) : ''}${
         minAge > 0
           ? `
       <div class="shop-checkout__consent">
@@ -128,7 +136,7 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
       <ul class="shop-checkout__lines list-unstyled" role="list">${lines.map((l) => summaryRow(ctx, l)).join('')}</ul>
       <dl class="shop-checkout__totals">
         <div><dt>Товары</dt><dd>${esc(money(ctx, subtotal))}</dd></div>
-        <div><dt>${label}</dt><dd>${esc(money(ctx, shipping))}</dd></div>
+        ${ships ? `<div><dt>${label}</dt><dd>${esc(money(ctx, shipping))}</dd></div>` : ''}
         <div class="shop-checkout__total"><dt>Итого</dt><dd>${esc(money(ctx, total))}</dd></div>
       </dl>
     </aside>
@@ -136,7 +144,51 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
 </div></div>`;
 }
 
-export function statusView(ctx: Ctx, st: OrderStatus | 'loading' | 'error'): string {
+/** Where the paid order's files stand: asked for, not ready yet, failed, or listed. */
+export type DownloadsState = { state: 'loading' | 'waiting' | 'error' } | { state: 'ready'; links: DownloadLink[] };
+
+/** The order holds a digital line (or the API did not say what kind the lines are). */
+export function hasDigitalLines(st: OrderStatus): boolean {
+  const items = st.items ?? [];
+  return items.length === 0 || items.some((i) => !i.product_kind || i.product_kind === 'digital');
+}
+
+function hasPhysicalLines(st: OrderStatus): boolean {
+  const items = st.items ?? [];
+  return items.length === 0 || items.some((i) => !i.product_kind || i.product_kind === 'physical');
+}
+
+const safeHref = (u: string): boolean => /^https?:\/\//i.test(u);
+
+/** The links are signed for 15 minutes, so the block always offers a refresh. */
+function downloadsBlock(dl: DownloadsState): string {
+  const refresh = `<button type="button" class="button button--secondary" data-refresh-downloads>Обновить ссылки</button>`;
+  let body: string;
+  switch (dl.state) {
+    case 'loading':
+    case 'waiting':
+      body = `<p>Готовим ваши файлы. Это займёт несколько секунд.</p>`;
+      break;
+    case 'error':
+      body = `<p>Не удалось получить ссылки. Попробуйте ещё раз.</p>${refresh}`;
+      break;
+    default: {
+      const items = dl.links
+        .filter((l) => safeHref(l.url))
+        .map((l) => {
+          const name = l.variant_title ? `${l.product_title} — ${l.variant_title}` : l.product_title;
+          return `<li><a href="${esc(l.url)}" class="link" rel="noopener" download>${esc(name)}</a></li>`;
+        })
+        .join('');
+      body = items
+        ? `<ul class="shop-downloads__list list-unstyled" role="list">${items}</ul><p class="caption">Ссылки действуют 15 минут. Если время вышло, обновите их.</p>${refresh}`
+        : '';
+    }
+  }
+  return body ? `<div class="shop-downloads"><h2 class="h3">Ваши файлы</h2>${body}</div>` : '';
+}
+
+export function statusView(ctx: Ctx, st: OrderStatus | 'loading' | 'error', dl?: DownloadsState): string {
   const all = esc(url(ctx, '/collections/all'));
   const wrap = (title: string, body: string): string => `<div class="template-404 page-width page-margin center shop-status">
   <h1 class="title">${esc(title)}</h1>${body}
@@ -150,7 +202,7 @@ export function statusView(ctx: Ctx, st: OrderStatus | 'loading' | 'error'): str
     case 'paid':
       return wrap(
         'Спасибо за заказ!',
-        `<p>Заказ${number} оплачен. Мы отправили подтверждение на вашу почту и свяжемся с вами по доставке.</p><a href="${all}" class="button">${T.continueShopping}</a>`,
+        `<p>Заказ${number} оплачен. Мы отправили подтверждение на вашу почту${hasPhysicalLines(st) ? ' и свяжемся с вами по доставке' : ''}.</p>${dl ? downloadsBlock(dl) : ''}<a href="${all}" class="button">${T.continueShopping}</a>`,
       );
     case 'pending':
       return wrap(

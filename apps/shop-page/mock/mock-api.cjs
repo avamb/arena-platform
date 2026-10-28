@@ -19,11 +19,17 @@
  *                                               body is decoded strictly: an unknown member is 400 shop.invalid_body
  *   GET  /v1/public/shop/checkout/{token}       {status, number, currency, subtotal, shipping_fee, total,
  *                                                items[], payment_url, expires_at, paid_at}
+ *   GET  /v1/public/shop/checkout/{token}/downloads
+ *                                               {downloads: [{product_title, variant_title, url, expires_at}]}
+ *                                               for a PAID order's digital lines, 404 while it is not paid
  *   GET  /mock-pay/{token}                      stand-in for the provider's hosted page:
  *                                               "pay" marks the order paid and goes back to
  *                                               return_url?checkout_token=..., "expire" and "cancel" do the rest.
  *
- * The data is public (the 7 live products); nothing here is secret.
+ * The catalog is the 7 live products plus three products of other kinds (a digital
+ * file, a service, a two-option physical product) from fixtures/extras.json; start
+ * with --live to serve the live catalog only (the screenshot comparison does).
+ * The data is public; nothing here is secret.
  */
 const http = require('http');
 const fs = require('fs');
@@ -34,6 +40,8 @@ const PORT = Number(process.env.PORT || 8787);
 const ORG = 'einatwinery';
 const dir = path.join(__dirname, 'fixtures');
 const shop = JSON.parse(fs.readFileSync(path.join(dir, 'shop.json'), 'utf8'));
+const LIVE_ONLY = process.argv.includes('--live');
+if (!LIVE_ONLY) shop.products.push(...JSON.parse(fs.readFileSync(path.join(dir, 'extras.json'), 'utf8')).products);
 const pagesFile = JSON.parse(fs.readFileSync(path.join(dir, 'pages.json'), 'utf8'));
 
 /** token -> order */
@@ -89,6 +97,18 @@ http
 
     if (req.method === 'OPTIONS') return send(res, 204, '');
 
+    // ---- a "signed" file of a digital product (mock) ----
+    if (parts[0] === 'mock-files' && parts[1] && parts[2]) {
+      const o = orders.get(parts[1]);
+      const exp = Number(url.searchParams.get('exp'));
+      if (!o || o.status !== 'paid' || !(exp > Date.now())) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        return res.end('link expired');
+      }
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': 'attachment; filename="file.txt"' });
+      return res.end('Mock file: ' + parts[2] + '\n');
+    }
+
     // ---- the provider's hosted page (mock) ----
     if (parts[0] === 'mock-pay' && parts[1]) {
       const order = orders.get(parts[1]);
@@ -120,6 +140,22 @@ http
       const host = (url.searchParams.get('host') || '').toLowerCase();
       if (/(^|\.)einatwinery\.com$/.test(host) || host.endsWith('.localhost')) return send(res, 200, { org_slug: ORG });
       return err(res, 404, 'shop.host_not_found', 'unknown host');
+    }
+
+    // GET /v1/public/shop/checkout/{token}/downloads
+    if (parts[3] === 'checkout' && parts[4] && parts[5] === 'downloads' && req.method === 'GET') {
+      const o = orders.get(parts[4]);
+      if (!o || o.status !== 'paid') return err(res, 404, 'shop.order_not_found', 'order not found');
+      const exp = new Date(Date.now() + 15 * 60 * 1000);
+      const downloads = o.items
+        .filter((i) => i.product_kind === 'digital')
+        .map((i) => ({
+          product_title: i.product_title,
+          variant_title: i.variant_title,
+          url: 'http://localhost:' + PORT + '/mock-files/' + o.token + '/' + encodeURIComponent(i.product_title) + '.txt?exp=' + exp.getTime(),
+          expires_at: exp.toISOString(),
+        }));
+      return send(res, 200, { downloads }, { 'Cache-Control': 'no-store' });
     }
 
     // GET /v1/public/shop/checkout/{token}
@@ -174,13 +210,14 @@ http
       }
       if (!Array.isArray(body.items) || body.items.length === 0) return err(res, 422, 'shop.invalid_items', 'the cart must hold between 1 and 50 lines');
       if (!body.buyer || !body.buyer.name || !body.buyer.email) return err(res, 422, 'shop.invalid_buyer', 'buyer.name and buyer.email are required');
-      if (!body.ship || !body.ship.address1 || !body.ship.city || !/^[A-Za-z]{2}$/.test(body.ship.country || '')) {
+      const idx = variantIndex();
+      const physical = body.items.some((it) => (idx.get(String(it.variant_id)) || { p: {} }).p.kind === 'physical');
+      if (physical && (!body.ship || !body.ship.address1 || !body.ship.city || !/^[A-Za-z]{2}$/.test(body.ship.country || ''))) {
         return err(res, 422, 'shop.invalid_address', 'ship.address1, ship.city and a two-letter ship.country are required');
       }
       if (shop.settings.age_gate_min_age != null && !body.age_confirmed) {
         return err(res, 422, 'shop.age_confirmation_required', 'confirm that you are at least ' + shop.settings.age_gate_min_age + ' years old to buy here');
       }
-      const idx = variantIndex();
       let subtotal = 0;
       const short = [];
       const lines = [];
@@ -188,12 +225,16 @@ http
         const hit = idx.get(String(it.variant_id));
         if (!hit) return err(res, 422, 'shop.invalid_item', 'a product in the cart is no longer sold, remove it and try again', { variant_id: it.variant_id });
         const qty = Math.max(1, Number(it.qty) || 1);
+        if (qty > shop.settings.max_line_qty) {
+          return err(res, 422, 'shop.invalid_items', 'at most ' + shop.settings.max_line_qty + ' of one variant per order', { max_line_qty: shop.settings.max_line_qty });
+        }
         if (!hit.v.in_stock) {
           short.push({ variant_id: hit.v.id, requested: qty, available: 0 });
           continue;
         }
         subtotal += hit.v.price_minor * qty;
         lines.push({
+          product_kind: hit.p.kind,
           variant_id: hit.v.id,
           product_title: hit.p.title,
           variant_title: hit.p.variants.length > 1 ? hit.v.title : '',
@@ -204,6 +245,8 @@ http
         });
       }
       if (short.length) return err(res, 409, 'shop.out_of_stock', 'some items are not available in the quantity requested', { items: short });
+      // A cart with no physical line pays no shipping (delivery_kind none).
+      const shipping = physical ? shop.settings.shipping_fee_minor : 0;
       const token = crypto.randomBytes(32).toString('hex');
       const order = {
         token,
@@ -211,8 +254,8 @@ http
         number: ++counter,
         currency: shop.settings.currency,
         subtotal,
-        shipping_fee: shop.settings.shipping_fee_minor,
-        total: subtotal + shop.settings.shipping_fee_minor,
+        shipping_fee: shipping,
+        total: subtotal + shipping,
         items: lines,
         expires_at: new Date(Date.now() + 32 * 60 * 1000).toISOString(),
         paid_at: null,

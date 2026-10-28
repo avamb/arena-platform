@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { normalizeCatalog } from '../lib/api';
+import { normalizeCatalog, type ShopData } from '../lib/api';
 import { resolveLines } from '../lib/cart';
 import { EINAT_THEME } from '../lib/theme';
 import { cartView } from '../views/cart';
@@ -13,6 +13,10 @@ import { productView } from '../views/product';
 import { notFoundView, pageView, policyView, searchProducts, searchView } from '../views/static';
 
 const shop = normalizeCatalog(JSON.parse(readFileSync(join(__dirname, '../../mock/fixtures/shop.json'), 'utf8')));
+
+const extraProducts = JSON.parse(readFileSync(join(__dirname, '../../mock/fixtures/extras.json'), 'utf8')).products;
+const wireShop = JSON.parse(readFileSync(join(__dirname, '../../mock/fixtures/shop.json'), 'utf8'));
+const shopWithExtras: ShopData = normalizeCatalog({ ...wireShop, products: [...wireShop.products, ...extraProducts] });
 
 function ctx(cart: Ctx['cart'] = [], base = '/einatwinery'): Ctx {
   return { org: 'einatwinery', base, shop, theme: EINAT_THEME, cart };
@@ -164,5 +168,62 @@ describe('layout', () => {
     const noGate = { ...shop, settings: { ...shop.settings, age_gate_min_age: 0 } };
     const doc = dom(layout({ ...ctx(), shop: noGate }, ''));
     expect(doc.querySelector('#popup')).toBeNull();
+  });
+});
+
+describe('kinds, options and caps', () => {
+  const xctx = (cart: Ctx['cart'] = []): Ctx => ({ ...ctx(cart), shop: shopWithExtras });
+  const box = shopWithExtras.products.find((p) => p.slug === 'gift-box')!;
+  const guide = shopWithExtras.products.find((p) => p.slug === 'wine-guide-pdf')!;
+
+  it('labels one group of pills per option with the option names', () => {
+    const doc = dom(productView(xctx(), box));
+    const legends = Array.from(doc.querySelectorAll('.variant-radios legend')).map((l) => l.textContent?.trim());
+    expect(legends).toEqual(['Размер', 'Цвет']);
+    const sizes = Array.from(doc.querySelectorAll('input[data-option-index="0"]')).map((i) => (i as HTMLInputElement).value);
+    expect(sizes).toEqual(['Малая', 'Большая']);
+    expect(doc.querySelectorAll('input[data-option-index]:checked').length).toBe(2);
+  });
+
+  it('keeps the single group for a one-option product', () => {
+    const wine = shopWithExtras.products.find((p) => p.slug === 'wineandglassesset')!;
+    const doc = dom(productView(xctx(), wine));
+    expect(doc.querySelectorAll('.variant-radios fieldset').length).toBe(1);
+    expect(doc.querySelector('.variant-radios legend')?.textContent?.trim()).toBe(wine.option_names[0]);
+  });
+
+  it('caps the quantity controls with max_line_qty', () => {
+    expect(dom(productView(xctx(), guide)).querySelector('.quantity__input')?.getAttribute('max')).toBe('20');
+    const lines = resolveLines([{ variant_id: guide.variants[0].id, qty: 2 }], shopWithExtras.products);
+    expect(dom(cartView(xctx([{ variant_id: guide.variants[0].id, qty: 2 }]), lines)).querySelector('.quantity__input')?.getAttribute('max')).toBe('20');
+  });
+
+  it('shows the cart line of a two-option variant with both options', () => {
+    const v = box.variants[0];
+    const lines = resolveLines([{ variant_id: v.id, qty: 1 }], shopWithExtras.products);
+    const html = cartView(xctx([{ variant_id: v.id, qty: 1 }]), lines);
+    expect(html).toContain('Размер:');
+    expect(html).toContain('Цвет:');
+  });
+
+  it('asks no address and shows no delivery for a digital-only cart', () => {
+    const lines = resolveLines([{ variant_id: guide.variants[0].id, qty: 1 }], shopWithExtras.products);
+    const doc = dom(checkoutView(xctx([{ variant_id: guide.variants[0].id, qty: 1 }]), lines, { values: { ...EMPTY_FORM }, errors: {} }));
+    expect(doc.querySelector('#Checkout-address1')).toBeNull();
+    expect(doc.querySelector('.shop-checkout__delivery')).toBeNull();
+    expect(doc.querySelector('.shop-checkout__totals')?.textContent).not.toContain('Доставка');
+    const phys = resolveLines([{ variant_id: box.variants[0].id, qty: 1 }], shopWithExtras.products);
+    expect(dom(checkoutView(xctx(), phys, { values: { ...EMPTY_FORM }, errors: {} })).querySelector('#Checkout-address1')).not.toBeNull();
+  });
+
+  it('renders the paid order downloads as links with a refresh action', () => {
+    const paid = { status: 'paid' as const, number: 7, items: [{ product_kind: 'digital' as const, product_title: 'Гид', variant_title: '', qty: 1, unit_price_minor: 3000, total_minor: 3000 }] };
+    const html = statusView(xctx(), paid, { state: 'ready', links: [{ product_title: 'Гид', variant_title: 'PDF', url: 'https://files.test/g?sig=1', expires_at: '2026-10-28T12:00:00Z' }, { product_title: 'Bad', variant_title: '', url: 'javascript:alert(1)', expires_at: '' }] });
+    const doc = dom(html);
+    const links = Array.from(doc.querySelectorAll('.shop-downloads a')).map((a) => a.getAttribute('href'));
+    expect(links).toEqual(['https://files.test/g?sig=1']);
+    expect(doc.querySelector('[data-refresh-downloads]')).not.toBeNull();
+    expect(html).not.toContain('по доставке');
+    expect(dom(statusView(xctx(), paid, { state: 'waiting' })).querySelectorAll('.shop-downloads a').length).toBe(0);
   });
 });

@@ -36,6 +36,8 @@ export interface ShopSettings {
   country_iso2?: string | null;
   /** The organization's display name (header logo alt, footer copyright). */
   shop_name?: string;
+  /** How many units of one variant an order may hold (the API refuses more). */
+  max_line_qty: number;
 }
 
 export interface ShopImage {
@@ -55,7 +57,14 @@ export interface ShopVariant {
   available: boolean;
   /** Units still for sale, null = unlimited (wire: available). */
   max?: number | null;
+  /** Option values, in the order of the product's option_names. */
+  option1?: string | null;
+  option2?: string | null;
+  option3?: string | null;
 }
+
+/** physical ships (the checkout asks for an address), digital is a file after payment, service is neither. */
+export type ProductKind = 'physical' | 'digital' | 'service';
 
 export interface ShopProduct {
   /** The API has no product id: the slug stands in. */
@@ -67,7 +76,10 @@ export interface ShopProduct {
   variants: ShopVariant[];
   /** Printed above the title ("Einat Winery"). */
   vendor?: string;
-  /** Optional extension: name of the variant option, for the picker's legend. */
+  kind: ProductKind;
+  /** Names of the options (up to 3), in the order of the variants' option1..option3. */
+  option_names: string[];
+  /** The first option's name (the single picker's legend). */
   option_name?: string | null;
   /** Optional extension: slugs shown under "You may also like". Absent = the next products of the catalog. */
   related_slugs?: string[];
@@ -98,7 +110,8 @@ export interface ShopPage {
 export interface CheckoutRequest {
   items: { variant_id: string; qty: number }[];
   buyer: { name: string; email: string; phone: string };
-  ship: { address1: string; address2?: string; city: string; postal?: string; country: string };
+  /** Omitted when the cart holds no physical product. */
+  ship?: { address1: string; address2?: string; city: string; postal?: string; country: string };
   delivery_note?: string;
   locale: string;
   return_url: string;
@@ -119,6 +132,8 @@ export interface CheckoutCreated {
 export type OrderStatusName = 'pending' | 'paid' | 'expired' | 'cancelled';
 
 export interface OrderLine {
+  /** The product's kind when it was bought; absent on an older API. */
+  product_kind?: ProductKind;
   product_title: string;
   variant_title: string;
   qty: number;
@@ -136,6 +151,14 @@ export interface OrderStatus {
   shipping_fee_minor?: number | null;
   currency?: string | null;
   items?: OrderLine[];
+}
+
+export interface DownloadLink {
+  product_title: string;
+  variant_title: string;
+  /** Absolute signed URL, good for 15 minutes. Never stored. */
+  url: string;
+  expires_at: string;
 }
 
 export class ApiError extends Error {
@@ -174,6 +197,8 @@ interface WireVariant {
   option3?: string | null;
 }
 interface WireProduct {
+  kind?: string;
+  option_names?: string[];
   slug: string;
   title: string;
   body_html: string;
@@ -194,6 +219,7 @@ interface WireSettings {
   announcement_text?: string;
   contact_email?: string | null;
   shop_name?: string;
+  max_line_qty?: number;
 }
 interface WireCatalog {
   org?: { slug: string; name: string; shop_domain?: string | null };
@@ -209,6 +235,7 @@ interface WirePage {
   updated_at?: string;
 }
 interface WireOrderLine {
+  product_kind?: string;
   product_title: string;
   variant_title: string;
   qty: number;
@@ -301,14 +328,24 @@ export function buildMenus(pages: { slug: string; title: string }[]): ShopData['
   };
 }
 
+export function productKind(k: string | undefined): ProductKind {
+  return k === 'digital' || k === 'service' ? k : 'physical';
+}
+
+/** The API's own default for a quantity cap, used when an older answer has none. */
+export const DEFAULT_MAX_LINE_QTY = 99;
+
 export function normalizeProduct(p: WireProduct): ShopProduct {
+  const option_names = (p.option_names ?? (p.option_name ? [p.option_name] : [])).slice(0, 3);
   return {
     id: p.slug,
     slug: p.slug,
     title: p.title,
     body_html: p.body_html ?? '',
     vendor: p.vendor || undefined,
-    option_name: p.option_name ?? null,
+    kind: productKind(p.kind),
+    option_names,
+    option_name: option_names[0] ?? p.option_name ?? null,
     related_slugs: p.related_slugs,
     images: (p.images ?? [])
       .slice()
@@ -321,6 +358,9 @@ export function normalizeProduct(p: WireProduct): ShopProduct {
       compare_at_minor: v.compare_at_minor ?? null,
       available: v.in_stock,
       max: v.available ?? null,
+      option1: v.option1 ?? null,
+      option2: v.option2 ?? null,
+      option3: v.option3 ?? null,
     })),
   };
 }
@@ -338,6 +378,7 @@ export function normalizeCatalog(c: WireCatalog): ShopData {
       contact_email: s.contact_email ?? null,
       country_iso2: s.country_iso2 ?? null,
       shop_name: s.shop_name || c.org?.name || undefined,
+      max_line_qty: s.max_line_qty && s.max_line_qty > 0 ? s.max_line_qty : DEFAULT_MAX_LINE_QTY,
     },
     products: (c.products ?? []).map(normalizeProduct),
     pages: links.filter((p) => !isPolicySlug(p.slug)),
@@ -354,7 +395,7 @@ export function normalizeStatus(s: WireStatus): OrderStatus {
     subtotal_minor: s.subtotal ?? null,
     shipping_fee_minor: s.shipping_fee ?? null,
     currency: s.currency ?? null,
-    items: s.items,
+    items: s.items?.map((i) => ({ ...i, product_kind: i.product_kind ? productKind(i.product_kind) : undefined })),
   };
 }
 
@@ -411,4 +452,16 @@ export async function createCheckout(orgSlug: string, body: CheckoutRequest): Pr
 
 export async function getOrderStatus(orderToken: string): Promise<OrderStatus> {
   return normalizeStatus(await request<WireStatus>(`/v1/public/shop/checkout/${seg(orderToken)}`));
+}
+
+/**
+ * The files of a paid order's digital lines. 404 means the order is not paid (yet):
+ * the caller keeps polling the status. The URLs are signed for 15 minutes and are
+ * never stored; call again for fresh ones.
+ */
+export async function getDownloads(orderToken: string): Promise<DownloadLink[]> {
+  const r = await request<{ downloads?: DownloadLink[] }>(`/v1/public/shop/checkout/${seg(orderToken)}/downloads`, {
+    cache: 'no-store',
+  });
+  return r.downloads ?? [];
 }

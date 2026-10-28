@@ -50,9 +50,9 @@ const byHandle = new Map(src.map((p) => [p.handle, p]));
 
 const minor = (price) => Math.round(parseFloat(price) * 100);
 
-// The shape of GET /v1/public/shop/{org} products (hshop/views.go publicProductJSON).
-// option_name, related_slugs and images[].width/height are storefront extensions the
-// real API may not send; the storefront falls back without them.
+// The shape of GET /v1/public/shop/{org} products (ShopPublicProduct in openapi.yaml).
+// related_slugs and images[].width/height are storefront extensions the real API may
+// not send; the storefront falls back without them.
 const products = ORDER.map((handle) => {
   const p = byHandle.get(handle);
   if (!p) throw new Error('product missing in export: ' + handle);
@@ -74,6 +74,8 @@ const products = ORDER.map((handle) => {
     title: p.title,
     body_html: p.body_html || '',
     product_type: p.product_type || '',
+    kind: 'physical',
+    option_names: multi ? [p.options[0].name] : [],
     vendor: p.vendor || 'Einat Winery',
     price_min_minor: Math.min(...variants.map((v) => v.price_minor)),
     images: p.images.map((i, n) => ({
@@ -85,7 +87,6 @@ const products = ORDER.map((handle) => {
       height: i.height,
     })),
     variants,
-    option_name: multi ? p.options[0].name : null,
     related_slugs: RELATED[handle] || [],
   };
 });
@@ -198,6 +199,7 @@ const shop = {
     shipping_fee_minor: 5000,
     shipping_label: 'Доставка по Израилю',
     country_iso2: 'IL',
+    max_line_qty: 20,
     age_gate_min_age: 18,
     announcement_text: 'Special discount 15% on gift sets',
     contact_email: 'sales@einatwinery.com',
@@ -207,3 +209,51 @@ const shop = {
 };
 fs.writeFileSync(path.join(outDir, 'shop.json'), JSON.stringify(shop, null, 1));
 console.log('products', products.length, 'pages', pages.length);
+
+// ---- extras ------------------------------------------------------------------
+// Products the live shop does not have, for exercising the kinds: a digital product
+// (a file after payment), a service and a two-option physical product. The mock adds
+// them to the catalog unless it is started with --live (the screenshot comparison
+// against the live shop needs the live catalog only).
+const pic = products[0].images[0];
+let extraCounter = 0;
+const extra = (slug, title, kind, optionNames, variants, body) => ({
+  slug,
+  title,
+  body_html: body,
+  product_type: '',
+  kind,
+  option_names: optionNames,
+  vendor: 'Einat Winery',
+  price_min_minor: Math.min(...variants.map((v) => v.price_minor)),
+  images: [{ media_id: 'extra-' + slug, url: pic.url, position: 0, alt: title, width: pic.width, height: pic.height }],
+  variants: variants.map((v) => ({
+    id: '00000000-0000-4000-8000-' + String(900000000000 + (extraCounter += 1)).padStart(12, '0'),
+    title: v.title,
+    sku: null,
+    price_minor: v.price_minor,
+    compare_at_minor: null,
+    available: null,
+    in_stock: true,
+    option1: v.o1 ?? null,
+    option2: v.o2 ?? null,
+    option3: null,
+  })),
+});
+const extras = [
+  extra('wine-guide-pdf', 'Гид по винам Эйнат (PDF)', 'digital', [], [{ title: 'Default Title', price_minor: 3000 }], '<p>Электронный гид по нашим винам. Файл придёт ссылкой после оплаты.</p>'),
+  extra('tasting-voucher', 'Сертификат на дегустацию', 'service', [], [{ title: 'Default Title', price_minor: 12000 }], '<p>Сертификат на дегустацию на винодельне. Адрес не нужен.</p>'),
+  extra(
+    'gift-box',
+    'Подарочная коробка',
+    'physical',
+    ['Размер', 'Цвет'],
+    [
+      { title: 'Малая / Чёрная', price_minor: 4000, o1: 'Малая', o2: 'Чёрная' },
+      { title: 'Малая / Красная', price_minor: 4000, o1: 'Малая', o2: 'Красная' },
+      { title: 'Большая / Чёрная', price_minor: 6000, o1: 'Большая', o2: 'Чёрная' },
+    ],
+    '<p>Коробка с двумя опциями: размер и цвет.</p>',
+  ),
+];
+fs.writeFileSync(path.join(outDir, 'extras.json'), JSON.stringify({ products: extras }, null, 1));

@@ -221,3 +221,18 @@
   cursor: not-allowed;
   opacity: 0.5;
 }
+
+/* Files of a paid order (digital products): signed links, refreshed on demand. */
+.shop-downloads {
+  margin: 2rem auto;
+  max-width: 50rem;
+}
+.shop-downloads__list {
+  margin: 1rem 0;
+}
+.shop-downloads__list li {
+  margin: 0.6rem 0;
+}
+.shop-downloads .button {
+  margin-top: 1rem;
+}

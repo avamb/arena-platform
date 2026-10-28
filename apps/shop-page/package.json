@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "dev:mock": "node mock/mock-api.cjs",
+    "dev:mock:live": "node mock/mock-api.cjs --live",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",

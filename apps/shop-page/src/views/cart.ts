@@ -8,7 +8,7 @@ import { subtotalMinor, type CartLine } from '../lib/cart';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
 import { T } from '../lib/i18n';
-import { icon, money, ratioOf, spinner, url, type Ctx } from './common';
+import { icon, money, optionPairs, ratioOf, spinner, url, type Ctx } from './common';
 
 function sectionPadding(cls: string, top: number, bottom: number): string {
   return `<style data-shopify>.${cls} {
@@ -24,11 +24,16 @@ function sectionPadding(cls: string, top: number, bottom: number): string {
 }
 
 function optionLines(line: CartLine): string {
-  if (line.product.variants.length < 2) return '';
-  return `<dl><div class="product-option">
-                              <dt>${esc(line.product.option_name || '')}:</dt>
-                              <dd>${esc(line.variant.title)}</dd>
-                            </div></dl>
+  const pairs = optionPairs(line.product, line.variant);
+  if (pairs.length === 0) return '';
+  return `<dl>${pairs
+    .map(
+      ([name, value]) => `<div class="product-option">
+                              <dt>${esc(name)}:</dt>
+                              <dd>${esc(value)}</dd>
+                            </div>`,
+    )
+    .join('')}</dl>
 
                       <p class="product-option"></p>`;
 }
@@ -97,6 +102,7 @@ function lineRow(ctx: Ctx, line: CartLine, index: number): string {
                               value="${line.qty}"
                               data-cart-quantity="${line.qty}"
                               min="1"
+                              max="${ctx.shop.settings.max_line_qty}"
                               step="1"
                               aria-label="Количество: ${title}"
                               id="Quantity-${n}"
@@ -234,13 +240,14 @@ export function notificationProduct(line: CartLine): string {
           >
         </div>`
     : '';
-  const option =
-    line.product.variants.length > 1
-      ? `<div class="product-option">
-                <dt>${esc(line.product.option_name || '')}:</dt>
-                <dd>${esc(line.variant.title)}</dd>
-              </div>`
-      : '';
+  const option = optionPairs(line.product, line.variant)
+    .map(
+      ([name, value]) => `<div class="product-option">
+                <dt>${esc(name)}:</dt>
+                <dd>${esc(value)}</dd>
+              </div>`,
+    )
+    .join('');
   // Dawn puts the INNER html of #cart-notification-product-{key} into the flex row, so no wrapper here.
   return `${image}
       <div>

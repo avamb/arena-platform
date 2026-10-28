@@ -1,0 +1,133 @@
+{
+ "products": [
+  {
+   "slug": "wine-guide-pdf",
+   "title": "Гид по винам Эйнат (PDF)",
+   "body_html": "<p>Электронный гид по нашим винам. Файл придёт ссылкой после оплаты.</p>",
+   "product_type": "",
+   "kind": "digital",
+   "option_names": [],
+   "vendor": "Einat Winery",
+   "price_min_minor": 3000,
+   "images": [
+    {
+     "media_id": "extra-wine-guide-pdf",
+     "url": "https://cdn.shopify.com/s/files/1/0836/1574/4285/files/GN3A8431.jpg?v=1711115096",
+     "position": 0,
+     "alt": "Гид по винам Эйнат (PDF)",
+     "width": 3648,
+     "height": 5472
+    }
+   ],
+   "variants": [
+    {
+     "id": "00000000-0000-4000-8000-900000000001",
+     "title": "Default Title",
+     "sku": null,
+     "price_minor": 3000,
+     "compare_at_minor": null,
+     "available": null,
+     "in_stock": true,
+     "option1": null,
+     "option2": null,
+     "option3": null
+    }
+   ]
+  },
+  {
+   "slug": "tasting-voucher",
+   "title": "Сертификат на дегустацию",
+   "body_html": "<p>Сертификат на дегустацию на винодельне. Адрес не нужен.</p>",
+   "product_type": "",
+   "kind": "service",
+   "option_names": [],
+   "vendor": "Einat Winery",
+   "price_min_minor": 12000,
+   "images": [
+    {
+     "media_id": "extra-tasting-voucher",
+     "url": "https://cdn.shopify.com/s/files/1/0836/1574/4285/files/GN3A8431.jpg?v=1711115096",
+     "position": 0,
+     "alt": "Сертификат на дегустацию",
+     "width": 3648,
+     "height": 5472
+    }
+   ],
+   "variants": [
+    {
+     "id": "00000000-0000-4000-8000-900000000002",
+     "title": "Default Title",
+     "sku": null,
+     "price_minor": 12000,
+     "compare_at_minor": null,
+     "available": null,
+     "in_stock": true,
+     "option1": null,
+     "option2": null,
+     "option3": null
+    }
+   ]
+  },
+  {
+   "slug": "gift-box",
+   "title": "Подарочная коробка",
+   "body_html": "<p>Коробка с двумя опциями: размер и цвет.</p>",
+   "product_type": "",
+   "kind": "physical",
+   "option_names": [
+    "Размер",
+    "Цвет"
+   ],
+   "vendor": "Einat Winery",
+   "price_min_minor": 4000,
+   "images": [
+    {
+     "media_id": "extra-gift-box",
+     "url": "https://cdn.shopify.com/s/files/1/0836/1574/4285/files/GN3A8431.jpg?v=1711115096",
+     "position": 0,
+     "alt": "Подарочная коробка",
+     "width": 3648,
+     "height": 5472
+    }
+   ],
+   "variants": [
+    {
+     "id": "00000000-0000-4000-8000-900000000003",
+     "title": "Малая / Чёрная",
+     "sku": null,
+     "price_minor": 4000,
+     "compare_at_minor": null,
+     "available": null,
+     "in_stock": true,
+     "option1": "Малая",
+     "option2": "Чёрная",
+     "option3": null
+    },
+    {
+     "id": "00000000-0000-4000-8000-900000000004",
+     "title": "Малая / Красная",
+     "sku": null,
+     "price_minor": 4000,
+     "compare_at_minor": null,
+     "available": null,
+     "in_stock": true,
+     "option1": "Малая",
+     "option2": "Красная",
+     "option3": null
+    },
+    {
+     "id": "00000000-0000-4000-8000-900000000005",
+     "title": "Большая / Чёрная",
+     "sku": null,
+     "price_minor": 6000,
+     "compare_at_minor": null,
+     "available": null,
+     "in_stock": true,
+     "option1": "Большая",
+     "option2": "Чёрная",
+     "option3": null
+    }
+   ]
+  }
+ ]
+}

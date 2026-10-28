@@ -9,6 +9,7 @@
 import {
   ApiError,
   createCheckout,
+  getDownloads,
   getOrderStatus,
   getPage,
   getProduct,
@@ -16,13 +17,17 @@ import {
   resolveHost,
   type OrderStatus,
   type ShopData,
+  type ShopProduct,
+  type ShopVariant,
   type ShopPage,
 } from './lib/api';
 import {
   addItem,
   allAvailable,
   buildCheckoutRequest,
+  capCart,
   itemCount,
+  needsShipping,
   loadCart,
   removeItem,
   resolveLines,
@@ -38,7 +43,7 @@ import { href as buildHref, locate, type Route } from './lib/route';
 import { EINAT_THEME } from './lib/theme';
 import { cartView, notificationProduct } from './views/cart';
 import { collectionView, homeView } from './views/catalog';
-import { checkoutView, EMPTY_FORM, statusView, type CheckoutViewState } from './views/checkout';
+import { checkoutView, EMPTY_FORM, hasDigitalLines, statusView, type CheckoutViewState, type DownloadsState } from './views/checkout';
 import { priceBlock, type Ctx } from './views/common';
 import { cartBubble, layout } from './views/layout';
 import { buyButtonHtml, productView } from './views/product';
@@ -55,6 +60,9 @@ let state: State | null = null;
 let pollTimer: number | undefined;
 let checkoutState: CheckoutViewState = { values: { ...EMPTY_FORM }, errors: {} };
 const pageCache = new Map<string, ShopPage>();
+/** The files of the order the status page shows; the signed links are kept in memory only. */
+let downloads: DownloadsState | undefined;
+let lastStatus: OrderStatus | undefined;
 
 const root = (): HTMLElement => document.getElementById('shop-root') as HTMLElement;
 
@@ -259,9 +267,27 @@ async function navigate(to: string, replace = false): Promise<void> {
 
 // ---- status polling -------------------------------------------------------------
 
-async function pollStatus(token: string, attempt = 0): Promise<void> {
+/** The files of a paid order. 404: not paid yet, keep polling. No digital line: nothing to show. */
+async function loadDownloads(token: string, st: OrderStatus): Promise<DownloadsState | undefined> {
+  if (!hasDigitalLines(st)) return undefined;
+  try {
+    const links = await getDownloads(token);
+    return links.length > 0 ? { state: 'ready', links } : undefined;
+  } catch (e) {
+    return e instanceof ApiError && e.status === 404 ? { state: 'waiting' } : { state: 'error' };
+  }
+}
+
+function paintStatus(view: string): void {
   const s = state as State;
   const ctx = ctxOf(s);
+  root().innerHTML = layout(ctx, view);
+  fixContentLinks(ctx.base);
+  applyAgeGate();
+}
+
+async function pollStatus(token: string, attempt = 0): Promise<void> {
+  const s = state as State;
   let st: OrderStatus | 'error';
   try {
     st = await getOrderStatus(token);
@@ -271,6 +297,8 @@ async function pollStatus(token: string, attempt = 0): Promise<void> {
   // The buyer may have navigated away while the request was in flight.
   const r = currentRoute();
   if (r.kind !== 'status' || r.token !== token) return;
+  lastStatus = st === 'error' ? undefined : st;
+  downloads = undefined;
   if (st !== 'error' && st.status === 'paid') {
     s.cart = [];
     saveCart(s.org, []);
@@ -279,14 +307,26 @@ async function pollStatus(token: string, attempt = 0): Promise<void> {
     } catch {
       /* ignore */
     }
+    downloads = await loadDownloads(token, st);
+    if (currentRoute().kind !== 'status') return;
   }
-  const view = statusView(ctxOf(s), st);
-  root().innerHTML = layout(ctxOf(s), view);
-  fixContentLinks(ctx.base);
-  applyAgeGate();
-  if (st !== 'error' && st.status === 'pending' && attempt < 90) {
+  paintStatus(statusView(ctxOf(s), st, downloads));
+  const waiting = st !== 'error' && (st.status === 'pending' || (st.status === 'paid' && downloads?.state === 'waiting'));
+  if (waiting && attempt < 90) {
     pollTimer = window.setTimeout(() => void pollStatus(token, attempt + 1), 4000);
   }
+}
+
+/** "Обновить ссылки": the signed URLs live 15 minutes, so ask for new ones. */
+async function refreshDownloads(): Promise<void> {
+  const r = currentRoute();
+  if (!state || r.kind !== 'status' || !lastStatus) return;
+  const st = lastStatus;
+  downloads = { state: 'loading' };
+  paintStatus(statusView(ctxOf(state), st, downloads));
+  downloads = await loadDownloads(r.token, st);
+  if (currentRoute().kind !== 'status') return;
+  paintStatus(statusView(ctxOf(state), st, downloads));
 }
 
 // ---- age gate -------------------------------------------------------------------
@@ -338,7 +378,7 @@ function addToCart(variantId: string, qty: number): void {
   const s = state as State;
   const hit = resolveLines([{ variant_id: variantId, qty: 1 }], s.shop.products)[0];
   if (!hit || !hit.variant.available) return;
-  commitCart(addItem(s.cart, variantId, qty));
+  commitCart(addItem(s.cart, variantId, qty, s.shop.settings.max_line_qty));
   syncInCart(variantId);
   openNotification(variantId);
 }
@@ -400,9 +440,16 @@ function onClick(e: MouseEvent): void {
     if (form && id && state) {
       const qtyInput = form.elements.namedItem('quantity') as HTMLInputElement | null;
       const qty = Math.max(1, parseInt(qtyInput?.value ?? '1', 10) || 1);
-      commitCart(addItem(state.cart, id, qty));
+      commitCart(addItem(state.cart, id, qty, state.shop.settings.max_line_qty));
       void navigate(buildHref(state.base, '/checkout'));
     }
+    return;
+  }
+
+  // Fresh download links on the paid order page
+  if (target.closest('[data-refresh-downloads]')) {
+    e.preventDefault();
+    void refreshDownloads();
     return;
   }
 
@@ -484,6 +531,59 @@ function onSubmit(e: Event): void {
   }
 }
 
+/** The option values the buyer has picked, per option group, in option order. */
+function pickedOptions(): (string | null)[] {
+  const out: (string | null)[] = [null, null, null];
+  document.querySelectorAll<HTMLInputElement>('.variant-radios input[type="radio"][data-option-index]:checked').forEach((r) => {
+    out[Number(r.dataset.optionIndex)] = r.value;
+  });
+  return out;
+}
+
+const optionValues = (v: ShopVariant): (string | null)[] => [v.option1 ?? null, v.option2 ?? null, v.option3 ?? null];
+
+/**
+ * Several options: the variant whose values all match the picks. When that combination
+ * is not sold, fall back to the first variant that has the value just picked and move
+ * the other groups to it.
+ */
+function variantForOptionPick(product: ShopProduct, changed: HTMLInputElement): ShopVariant | undefined {
+  const picked = pickedOptions();
+  const exact = product.variants.find((v) => optionValues(v).every((val, i) => i >= product.option_names.length || val === picked[i]));
+  if (exact) return exact;
+  const idx = Number(changed.dataset.optionIndex);
+  const near = product.variants.find((v) => optionValues(v)[idx] === changed.value);
+  if (near) {
+    optionValues(near).forEach((val, i) => {
+      document
+        .querySelectorAll<HTMLInputElement>(`.variant-radios input[data-option-index="${i}"]`)
+        .forEach((r) => (r.checked = r.value === val));
+    });
+  }
+  return near;
+}
+
+/** Everything on the product page that follows the chosen variant. */
+function applyVariant(product: ShopProduct, variant: ShopVariant): void {
+  const s = state as State;
+  const priceHost = document.getElementById('price-product__main');
+  if (priceHost) priceHost.innerHTML = priceBlock(ctxOf(s), product, { variant, showBadges: true, large: true });
+  const form = document.getElementById('product-form-product__main') as HTMLFormElement | null;
+  if (form) {
+    form.dataset.variantId = variant.id;
+    const hidden = form.querySelector<HTMLInputElement>('input.product-variant-id');
+    if (hidden) hidden.value = variant.id;
+  }
+  const btn = document.getElementById('ProductSubmitButton-product__main') as HTMLButtonElement | null;
+  if (btn) {
+    btn.disabled = !variant.available;
+    btn.innerHTML = buyButtonHtml(variant);
+  }
+  syncInCart(variant.id);
+  const buyNow = document.querySelector<HTMLElement>('.shopify-payment-button');
+  if (buyNow) buyNow.hidden = !variant.available;
+}
+
 function onChange(e: Event): void {
   if (!state) return;
   const el = e.target as HTMLInputElement;
@@ -493,33 +593,18 @@ function onChange(e: Event): void {
   if (el.matches('.cart-item .quantity__input')) {
     const id = el.dataset.quantityVariantId as string;
     const qty = parseInt(el.value, 10);
-    commitCart(setQty(s.cart, id, Number.isFinite(qty) ? qty : 1));
+    commitCart(setQty(s.cart, id, Number.isFinite(qty) ? qty : 1, s.shop.settings.max_line_qty));
     void rerender();
     return;
   }
 
-  // Variant pills on the product page
+  // Variant pills on the product page: one group for a single option, one group per option for several
   if (el.matches('.variant-radios input[type="radio"]')) {
     const info = document.querySelector<HTMLElement>('product-info[data-product-slug]');
     const product = s.shop.products.find((p) => p.slug === info?.dataset.productSlug);
-    const variant = product?.variants.find((v) => v.id === el.dataset.variantId);
-    if (!product || !variant) return;
-    const priceHost = document.getElementById('price-product__main');
-    if (priceHost) priceHost.innerHTML = priceBlock(ctxOf(s), product, { variant, showBadges: true, large: true });
-    const form = document.getElementById('product-form-product__main') as HTMLFormElement | null;
-    if (form) {
-      form.dataset.variantId = variant.id;
-      const hidden = form.querySelector<HTMLInputElement>('input.product-variant-id');
-      if (hidden) hidden.value = variant.id;
-    }
-    const btn = document.getElementById('ProductSubmitButton-product__main') as HTMLButtonElement | null;
-    if (btn) {
-      btn.disabled = !variant.available;
-      btn.innerHTML = buyButtonHtml(variant);
-    }
-    syncInCart(variant.id);
-    const buyNow = document.querySelector<HTMLElement>('.shopify-payment-button');
-    if (buyNow) buyNow.hidden = !variant.available;
+    if (!product) return;
+    const variant = el.dataset.optionIndex !== undefined ? variantForOptionPick(product, el) : product.variants.find((v) => v.id === el.dataset.variantId);
+    if (variant) applyVariant(product, variant);
     return;
   }
 
@@ -564,14 +649,16 @@ function readCheckoutForm(form: HTMLFormElement): CheckoutForm {
 async function submitCheckout(form: HTMLFormElement): Promise<void> {
   const s = state as State;
   const values = readCheckoutForm(form);
-  const errors = validateCheckoutForm(values, s.shop.settings.age_gate_min_age);
+  const lines = resolveLines(s.cart, s.shop.products);
+  // A cart without a physical product takes no address and no delivery fee.
+  const ships = needsShipping(lines);
+  const errors = validateCheckoutForm(values, s.shop.settings.age_gate_min_age, ships);
   checkoutState = { values, errors };
   if (Object.keys(errors).length > 0) {
     await rerender();
     (document.querySelector('.field--with-error input, [aria-invalid="true"]') as HTMLElement | null)?.focus();
     return;
   }
-  const lines = resolveLines(s.cart, s.shop.products);
   if (lines.length === 0) return;
   if (!allAvailable(lines)) {
     checkoutState = { values, errors: {}, message: 'Некоторых товаров из вашей корзины уже нет в наличии. Удалите их из корзины.' };
@@ -588,6 +675,7 @@ async function submitCheckout(form: HTMLFormElement): Promise<void> {
       location.origin + buildHref(s.base, '/checkout/result'),
       'ru',
       s.shop.settings.country_iso2 || 'IL',
+      ships,
     );
     const created = await createCheckout(s.org, req);
     try {
@@ -655,7 +743,7 @@ async function boot(): Promise<void> {
       return;
     }
     const shop = await getShop(org);
-    state = { org, base: loc.base, shop, cart: loadCart(org) };
+    state = { org, base: loc.base, shop, cart: capCart(loadCart(org), shop.settings.max_line_qty) };
   } catch (e) {
     console.error(e);
     fatal(e instanceof ApiError && e.status === 404 ? T.notFoundTitle : 'Магазин временно недоступен');
