@@ -391,7 +391,11 @@ func (q *Queries) LockShopOrderVariants(ctx context.Context, orderID uuid.UUID) 
 }
 
 const shopOrderShortages = `-- name: ShopOrderShortages :many
-SELECT l.variant_id, l.qty, v.stock, ` + ShopHeldSQL + `
+SELECT l.variant_id, l.qty, v.stock,
+       COALESCE((SELECT sum(ooi.qty) FROM shop_order_items ooi
+                 JOIN shop_orders oo ON oo.id = ooi.order_id
+                 WHERE ooi.variant_id = v.id AND oo.id <> $1
+                   AND oo.status = 'pending_payment' AND oo.expires_at > now()), 0)::int
 FROM   (SELECT oi.variant_id, sum(oi.qty)::int AS qty
         FROM   shop_order_items oi
         WHERE  oi.order_id = $1 AND oi.variant_id IS NOT NULL
@@ -401,7 +405,8 @@ WHERE  v.track_stock
 ORDER  BY v.id`
 
 // ShopOrderLine is one tracked variant of an order with its shelf stock and
-// what other pending orders hold of it.
+// what OTHER live pending orders hold of it (the order's own hold is left
+// out, so a still-held order is never short of its own goods).
 type ShopOrderLine struct {
 	VariantID uuid.UUID `json:"variant_id"`
 	Qty       int32     `json:"qty"`
@@ -410,7 +415,8 @@ type ShopOrderLine struct {
 }
 
 // ShopOrderShortages reads, for every stock-tracking variant of the order,
-// the ordered quantity, the stock and the quantity live holds keep. Call it
+// the ordered quantity, the stock and the quantity the live holds of other
+// orders keep. Call it
 // after LockShopOrderVariants, as its own statement, so the held quantity is
 // read after the lock (READ COMMITTED: a locking statement keeps its older
 // snapshot for everything but the locked rows).
@@ -429,6 +435,18 @@ func (q *Queries) ShopOrderShortages(ctx context.Context, orderID uuid.UUID) ([]
 		out = append(out, l)
 	}
 	return out, rows.Err()
+}
+
+const shopOrderHoldLive = `-- name: ShopOrderHoldLive :one
+SELECT status = 'pending_payment' AND expires_at IS NOT NULL AND expires_at > now()
+FROM   shop_orders WHERE id = $1`
+
+// ShopOrderHoldLive says, on the transaction's own clock (the clock
+// ShopHeldSQL uses), whether the order still holds its goods.
+func (q *Queries) ShopOrderHoldLive(ctx context.Context, orderID uuid.UUID) (bool, error) {
+	var live bool
+	err := q.db.QueryRow(ctx, shopOrderHoldLive, orderID).Scan(&live)
+	return live, err
 }
 
 const applyShopOrderSale = `-- name: ApplyShopOrderSale :exec

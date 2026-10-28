@@ -618,3 +618,60 @@ func TestShop_MixedCartNeedsAnAddress(t *testing.T) {
 		t.Fatalf("mixed cart = %d %v; want 201 with shipping 5000 and total 11500", code, body)
 	}
 }
+
+// TestShop_PaymentAtTheHoldBoundaryNeverOversells: the order's hold ends on
+// the database clock (expires_at = now()), another buyer takes and pays the
+// last unit, then the first payment arrives. It is parked, never sold twice.
+func TestShop_PaymentAtTheHoldBoundaryNeverOversells(t *testing.T) {
+	f := newShopFixture(t)
+	_, variant := f.openShop(4500, 1)
+	late := f.placed(variant, 1)
+	f.exec(`UPDATE shop_orders SET expires_at = now() WHERE id = $1`, late.ID)
+	f.pay(f.placed(variant, 1).OrderToken)
+	f.pay(late.OrderToken)
+	got, _ := f.q.GetShopOrder(context.Background(), late.ID, f.orgA)
+	if got.Status != shop.StatusManualReview {
+		t.Fatalf("payment at the boundary: status %s; want manual_review", got.Status)
+	}
+	if v := f.variant(variant); v.Stock != 0 {
+		t.Fatalf("stock = %d; want 0", v.Stock)
+	}
+}
+
+// TestShop_SameCallbackTwiceAtOnce: two deliveries of one paid callback race;
+// the order is paid once and its goods leave the shelf once.
+func TestShop_SameCallbackTwiceAtOnce(t *testing.T) {
+	f := newShopFixture(t)
+	_, variant := f.openShop(4500, 3)
+	o := f.placed(variant, 2)
+	pi, err := f.q.GetPaymentIntentByID(context.Background(), *o.PaymentIntentID)
+	if err != nil {
+		t.Fatalf("payment intent: %v", err)
+	}
+	event := sessionCompletedEvent(*pi.ProviderPaymentID, "pi_shop_race_"+uuid.NewString()[:8], "paid")
+	var wg sync.WaitGroup
+	codes := make([]int, 2)
+	for i := range codes {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			codes[i], _ = postSignedWebhookTo(t, f.srv, "/v1/payment-intents/webhook/"+f.configA.String(), event, f.webhookSecretA)
+		}(i)
+	}
+	wg.Wait()
+	for i, c := range codes {
+		if c >= 500 {
+			t.Fatalf("delivery %d = %d", i, c)
+		}
+	}
+	got, _ := f.q.GetShopOrder(context.Background(), o.ID, f.orgA)
+	if got.Status != shop.StatusPaid {
+		t.Fatalf("status = %s; want paid", got.Status)
+	}
+	if n := f.outboxCount(shop.EventOrderPaid, o.ID); n != 1 {
+		t.Fatalf("paid events = %d; want 1", n)
+	}
+	if v := f.variant(variant); v.Stock != 1 {
+		t.Fatalf("stock = %d; want 1", v.Stock)
+	}
+}

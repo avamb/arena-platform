@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -20,13 +19,14 @@ import (
 // a sale and writes v1.shop.order.paid, all on tx. It is idempotent: an order
 // already paid (or shipped, refunded, parked for review) is left alone.
 //
-// A payment that arrives after the order's hold ended (the order expired,
-// was cancelled, or is still pending past its expiry) never oversells: the
-// order's variants are locked and their availability read again. When every
-// tracked line is still there the order is paid as usual (metadata.paid_after
-// names the status it had); when one is not, the order is parked in
-// manual_review with the payment recorded, nothing taken off the shelf, and
-// v1.shop.order.manual_review written for the operator.
+// Every payment, on time or late, locks the order's variants in id order and
+// reads their free stock again, leaving the order's own hold out: when every
+// tracked line is still there the order is paid (a late one with
+// metadata.paid_after naming the status it had); when one is not, the order
+// is parked in manual_review with the payment recorded, nothing taken off the
+// shelf, and v1.shop.order.manual_review written for the operator. Whether
+// the hold was still live is decided in SQL on the transaction's clock, the
+// clock the held quantities use, never on the Go clock.
 func (s *Service) FulfillPaidOrderTx(ctx context.Context, tx pgx.Tx, paymentIntentID uuid.UUID, meta map[string]any) (handled bool, err error) {
 	q := gen.New(tx)
 	o, err := q.GetShopOrderByPaymentIntentForUpdate(ctx, paymentIntentID)
@@ -43,25 +43,30 @@ func (s *Service) FulfillPaidOrderTx(ctx context.Context, tx pgx.Tx, paymentInte
 	if meta == nil {
 		meta = map[string]any{}
 	}
-	holdLive := o.Status == StatusPendingPayment && o.ExpiresAt != nil && o.ExpiresAt.After(time.Now())
+	if err := q.LockShopOrderVariants(ctx, o.ID); err != nil {
+		return true, fmt.Errorf("shop: lock the paid order's goods: %w", err)
+	}
+	holdLive, err := q.ShopOrderHoldLive(ctx, o.ID)
+	if err != nil {
+		return true, fmt.Errorf("shop: read the order's hold: %w", err)
+	}
 	if !holdLive {
 		after := o.Status
 		if after == StatusPendingPayment {
 			after = "hold_expired"
 		}
 		meta["paid_after"] = after
-		if err := q.LockShopOrderVariants(ctx, o.ID); err != nil {
-			return true, fmt.Errorf("shop: lock the late order's goods: %w", err)
-		}
-		lines, err := q.ShopOrderShortages(ctx, o.ID)
-		if err != nil {
-			return true, fmt.Errorf("shop: read the late order's goods: %w", err)
-		}
-		if short := shortLines(lines); len(short) > 0 {
-			s.logger.Warn("shop: late payment for goods that are gone; order parked for review",
-				"order_id", o.ID.String(), "status", o.Status)
-			return true, s.parkForReviewTx(ctx, tx, q, o, meta, short)
-		}
+	}
+	lines, err := q.ShopOrderShortages(ctx, o.ID)
+	if err != nil {
+		return true, fmt.Errorf("shop: read the paid order's goods: %w", err)
+	}
+	if short := shortLines(lines); len(short) > 0 {
+		s.logger.Warn("shop: payment for goods that are gone; order parked for review",
+			"order_id", o.ID.String(), "status", o.Status, "hold_live", holdLive)
+		return true, s.parkForReviewTx(ctx, tx, q, o, meta, short)
+	}
+	if !holdLive {
 		s.logger.Warn("shop: payment arrived after the order's hold ended; the goods are still there",
 			"order_id", o.ID.String(), "status", o.Status)
 	}
