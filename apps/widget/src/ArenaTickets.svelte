@@ -1214,6 +1214,11 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    /* A host with a fixed height squeezes this box; what no longer fits is
+       clipped here instead of spilling over the category cards below it
+       (this box is positioned, so it would paint ON TOP of them and
+       swallow their clicks). */
+    overflow: hidden;
   }
   .arena-tickets-map-wrap :global(.ga-popover) {
     top: 3rem;
