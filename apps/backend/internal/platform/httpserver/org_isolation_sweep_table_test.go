@@ -234,6 +234,24 @@ func sweepRouteSet() map[string]bool {
 // handler really loads the child and compares its organization to {org_id}; if
 // in doubt add a sweepRows entry instead — a failing row is cheaper than a leak.
 var orgIsolationAuditedSafe = map[string]string{
+	// Merchandise shop (spec 47, migration 0172): internal/platform/shop loads
+	// every product and order by (id, org_id) and answers the route's own 404;
+	// a page is keyed by (org_id, slug), a picture's media must be the
+	// organization's own. shop_integration_test.go TestShop_OrganizationIsolation.
+	"DELETE /v1/organizations/{org_id}/shop/pages/{slug}":                            "shop",
+	"DELETE /v1/organizations/{org_id}/shop/products/{product_id}":                   "shop",
+	"DELETE /v1/organizations/{org_id}/shop/products/{product_id}/images/{media_id}": "shop",
+	"GET /v1/organizations/{org_id}/shop/orders/{order_id}":                          "shop",
+	"GET /v1/organizations/{org_id}/shop/orders/{order_id}/courier-text":             "shop",
+	"GET /v1/organizations/{org_id}/shop/products/{product_id}":                      "shop",
+	"PATCH /v1/organizations/{org_id}/shop/products/{product_id}":                    "shop",
+	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/cancel":                  "shop",
+	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/refund":                  "shop",
+	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/ship":                    "shop",
+	"POST /v1/organizations/{org_id}/shop/products/{product_id}/images":              "shop",
+	"PUT /v1/organizations/{org_id}/shop/pages/{slug}":                               "shop",
+	"PUT /v1/organizations/{org_id}/shop/products/{product_id}/variants":             "shop",
+
 	// hcatalog tiers, price schedules, bulk pricing: requireSessionInOrg
 	// (hcatalog/tier_org.go, EC-15) and requireEventInOrg; tier_org_isolation_integration_test.go.
 	"DELETE /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}":             "tiers",

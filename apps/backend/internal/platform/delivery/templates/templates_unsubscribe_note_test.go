@@ -28,11 +28,13 @@ var unsubscribeNotes = map[string]string{
 func buyerLetterKinds() map[string]Data {
 	base := Data{TicketID: "id", EventName: "E", RecipientEmail: "x@y.z"}
 	return map[string]Data{
-		TemplateKindTicket:     base,
-		TemplateKindInvitation: base,
-		TemplateKindChange:     changeTestData(),
-		TemplateKindCancel:     changeTestData(),
-		TemplateKindRefund:     refundData(),
+		TemplateKindTicket:            base,
+		TemplateKindInvitation:        base,
+		TemplateKindChange:            changeTestData(),
+		TemplateKindCancel:            changeTestData(),
+		TemplateKindRefund:            refundData(),
+		TemplateKindShopOrderReceived: shopTestData(),
+		TemplateKindShopOrderShipped:  shopTestData(),
 	}
 }
 

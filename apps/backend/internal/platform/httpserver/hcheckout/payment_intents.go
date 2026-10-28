@@ -1293,6 +1293,23 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
+	// Step 2a: a payment intent without a checkout session may pay for a
+	// merchandise shop order (spec 47 section 3). The shop's writes run on
+	// THIS transaction, so the order is paid exactly when the intent is;
+	// a failure answers 500 and the provider redelivers. Ticket payments
+	// always carry a checkout session and never reach the shop.
+	shopOrderHandled, shopErr := h.applyShopPayment(ctx, tx, pi.ID, updated, req)
+	if shopErr != nil {
+		h.logger.Error("webhook: shop order update failed; rolling back so the provider redelivers",
+			slog.String("payment_intent_id", pi.ID.String()),
+			slog.String("target_state", updated.State),
+			slog.String("error", shopErr.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"webhook.shop_order_failed", "failed to update the shop order of this payment", r))
+		return
+	}
+
 	// Step 2b (HIGH-severity fix, 2026-09-13): complete the linked checkout
 	// session in the SAME transaction as the intent's succeeded transition.
 	// Before this fix checkout_sessions.state never left 'pricing_confirmed'
@@ -1458,13 +1475,17 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 	// Delivery jobs are enqueued inside IssueTicketsForCheckout (feature #367).
 
 	h.recordWebhookEvent(req.EventType, webhookOutcomeProcessed)
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"acknowledged":       true,
 		"event_type":         req.EventType,
 		"processed":          true,
 		"payment_intent":     paymentIntentFromRow(updated),
 		"checkout_completed": checkoutCompleted,
-	})
+	}
+	if shopOrderHandled {
+		resp["shop_order_updated"] = true
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 // writeNotOurPayment answers a verified event that does not belong to arena:

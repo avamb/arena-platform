@@ -213,6 +213,25 @@ export const API = {
     path: "/v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms",
   },
   seatLayoutSuggest: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest" },
+  // The shop (spec 47): settings, products with pictures and variants, orders and their actions.
+  // Reads need shop.read, writes shop.manage. Cancel and refund also ask for the password again.
+  channels: { method: "GET", path: "/v1/organizations/{org_id}/channels" },
+  shopSettings: { method: "GET", path: "/v1/organizations/{org_id}/shop/settings" },
+  shopSettingsPut: { method: "PUT", path: "/v1/organizations/{org_id}/shop/settings" },
+  shopProducts: { method: "GET", path: "/v1/organizations/{org_id}/shop/products" },
+  shopProductCreate: { method: "POST", path: "/v1/organizations/{org_id}/shop/products" },
+  shopProduct: { method: "GET", path: "/v1/organizations/{org_id}/shop/products/{product_id}" },
+  shopProductPatch: { method: "PATCH", path: "/v1/organizations/{org_id}/shop/products/{product_id}" },
+  shopProductDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/shop/products/{product_id}" },
+  shopImageAdd: { method: "POST", path: "/v1/organizations/{org_id}/shop/products/{product_id}/images" },
+  shopImageRemove: { method: "DELETE", path: "/v1/organizations/{org_id}/shop/products/{product_id}/images/{media_id}" },
+  shopVariantsReplace: { method: "PUT", path: "/v1/organizations/{org_id}/shop/products/{product_id}/variants" },
+  shopOrders: { method: "GET", path: "/v1/organizations/{org_id}/shop/orders" },
+  shopOrder: { method: "GET", path: "/v1/organizations/{org_id}/shop/orders/{order_id}" },
+  shopOrderShip: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/ship" },
+  shopOrderCancel: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/cancel" },
+  shopOrderRefund: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/refund" },
+  shopCourierText: { method: "GET", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/courier-text" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;

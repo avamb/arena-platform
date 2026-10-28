@@ -94,6 +94,7 @@ func (s *Server) mountV1Routes() {
 		s.mountSeatingRoutes(r)
 		s.mountImportRoutes(r)
 		s.mountCustomerImportRoutes(r)
+		s.mountShopRoutes(r)
 	})
 }
 

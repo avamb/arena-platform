@@ -11,7 +11,19 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
+
+// paymentModuleOptions are the provider base URLs (the test seams) every
+// payment module the server builds is given.
+func (s *Server) paymentModuleOptions() payments.Options {
+	return payments.Options{
+		StripeAPIBaseURL:  s.stripeBaseURL(),
+		FlittAPIBaseURL:   s.flittBaseURL(),
+		AllPayAPIBaseURL:  s.allpayBaseURL(),
+		PayPlusAPIBaseURL: s.payplusBaseURL(),
+	}
+}
 
 // refundEngine builds the engine, or nil when the server has no raw pool
 // (unit-test servers) — the approve route then refuses a refundable payment
@@ -21,14 +33,10 @@ func (s *Server) refundEngine() *refunds.Engine {
 		return nil
 	}
 	return refunds.New(refunds.Options{
-		DB: s.pgxPool,
-		Modules: hcheckout.NewRefundModuleSource(gen.New(s.pgxPool), payments.Options{
-			StripeAPIBaseURL:  s.stripeBaseURL(),
-			FlittAPIBaseURL:   s.flittBaseURL(),
-			AllPayAPIBaseURL:  s.allpayBaseURL(),
-			PayPlusAPIBaseURL: s.payplusBaseURL(),
-		}),
+		DB:              s.pgxPool,
+		Modules:         hcheckout.NewRefundModuleSource(gen.New(s.pgxPool), s.paymentModuleOptions()),
 		CancelTicket:    s.ticketsHandler().RefundCanceller(),
+		ProjectPayment:  shop.New(s.pgxPool, s.logger).ProjectPaymentTx,
 		PublishRefunded: s.publishTicketRefundedV1Events,
 		Audit:           s.audit,
 		Metrics:         s.typedMetrics,

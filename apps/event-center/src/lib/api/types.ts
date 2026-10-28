@@ -167,3 +167,20 @@ export type SeatLayoutSuggestResponse = S["SeatLayoutSuggestResponse"];
 export type SeatLayoutProposal = S["SeatLayoutProposal"];
 export type SeatLayoutMetrics = S["SeatLayoutMetrics"];
 export type SeatLayoutSlot = S["SeatLayoutSlot"];
+
+// ─── The shop (spec 47) ──────────────────────────────────────────────────────
+export type ShopSettings = S["ShopSettings"];
+export type ShopSettingsUpdateRequest = S["ShopSettingsUpdateRequest"];
+export type ShopImage = S["ShopImage"];
+export type ShopVariant = S["ShopVariant"];
+export type ShopProduct = S["ShopProduct"];
+export type ShopProductList = S["ShopProductList"];
+export type ShopVariantInput = S["ShopVariantInput"];
+export type ShopProductCreateRequest = S["ShopProductCreateRequest"];
+export type ShopProductPatchRequest = S["ShopProductPatchRequest"];
+export type ShopOrderItem = S["ShopOrderItem"];
+export type ShopOrder = S["ShopOrder"];
+export type ShopOrderList = S["ShopOrderList"];
+export type ShopRefund = S["ShopRefund"];
+export type ShopRefundResponse = S["ShopRefundResponse"];
+export type SalesChannelItem = S["Channel"];

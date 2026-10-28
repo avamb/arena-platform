@@ -327,6 +327,7 @@ func run() error {
 		logger.Info("reservation expire sweep job scheduled at startup")
 	}
 	scheduleRefundSweep(rootCtx, pool.Pool, logger)
+	scheduleShopSweep(rootCtx, pool.Pool, logger)
 
 	// billing.collect writes the billable events the rate job turns into
 	// charges. It runs only once the owner names the date X
@@ -542,6 +543,10 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		Logger:    logger,
 		Scheduler: ordering.NewPGSweepScheduler(pool),
 	}))
+	// shop.order.expire_sweep is the same sweep for the merchandise shop: an
+	// unpaid shop order whose hold passed expires and its goods go back on
+	// sale (spec 47, migration 0172).
+	registerShopSweepHandler(reg, pool, logger)
 
 	// reservation.expire_sweep releases the inventory (held session_seats /
 	// ga_unit rows plus the inventory_ledger.capacity_held counter) behind a
@@ -615,6 +620,11 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		HandlerOptions: deliveryOpts,
 		DB:             pool,
 	}))
+
+	// shop.order_email is the buyer's letter of a merchandise shop order
+	// (received when it is paid, shipped when the organizer ships it); the
+	// shop queues it in the same transaction as the status change.
+	registerShopEmailHandler(reg, pool, cfg, deliveryOpts)
 
 	// refund.scanned_alert_email tells an organization's owners that a refund
 	// of an already scanned ticket was refused (refunds.RecordScannedBlock
