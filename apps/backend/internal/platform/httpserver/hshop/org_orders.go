@@ -202,6 +202,7 @@ func (h *Handler) HandleCourierText(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(text))
+	_, _ = w.Write([]byte(text)) //nolint:gosec // G705 false positive: text/plain with nosniff, never rendered as HTML
 }
