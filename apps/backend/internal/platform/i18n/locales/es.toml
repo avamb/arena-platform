@@ -4534,3 +4534,87 @@ other = "Plano «{{.Plan}}»: {{.Seats}} plazas, {{.Count}} categorías con prec
 
 ["bot.wz.t_date_seated_note"]
 other = "Una fecha vendida por plano mantiene sus plazas y categorías. Solo cambian los precios."
+
+["bot.wz.plan_up_ask"]
+other = "El recinto «{{.Venue}}» aún no tiene plano. Envíalo como archivo SVG y venderé las plazas según el plano, con un precio para cada categoría. O seguimos sin plazas numeradas (entrada libre)."
+
+["bot.wz.plan_up_btn"]
+other = "Subir el plano del recinto (SVG)"
+
+["bot.wz.plan_up_skip_btn"]
+other = "Continuar sin plano"
+
+["bot.wz.plan_up_more_btn"]
+other = "Subir otro plano (SVG)"
+
+["bot.wz.plan_up_file"]
+other = "Envía el plano del recinto como archivo. Debe ser un SVG de hasta {{.Limit}} MB.\n\nEn Telegram pulsa el clip y elige «Archivo», no «Foto».\n\nLas categorías salen de los colores de las plazas: el archivo las enumera en el grupo con id «PriceCategory». Las plazas del mismo color forman una categoría."
+
+["bot.wz.plan_up_need_file"]
+other = "Eso no es un archivo. Envía el plano como archivo SVG: clip → «Archivo»."
+
+["bot.wz.plan_up_too_big"]
+other = "El archivo es demasiado grande. El límite es {{.Limit}} MB. Guarda un SVG más ligero y envíalo otra vez."
+
+["bot.wz.plan_up_failed"]
+other = "No he podido guardar el plano. No se ha cambiado nada. Envía el archivo otra vez en un minuto o continúa sin plano."
+
+["bot.wz.plan_up_not_svg"]
+other = "Esto no es un SVG. Envía el plano como archivo SVG o continúa sin plano."
+
+["bot.wz.plan_up_bad"]
+other = "Todavía no puedo usar este archivo:\n{{.List}}\n\nCorrige el archivo y envíalo otra vez, o continúa sin plano."
+
+["bot.wz.plan_up_more_issues"]
+other = "…y {{.Count}} más."
+
+["bot.wz.plan_up_done"]
+other = "Plano «{{.Name}}» guardado: {{.Seats}} plazas en {{.Count}} categorías."
+
+["bot.wz.plan_up_line"]
+other = "• {{.Name}}: {{.Places}} plazas"
+
+["bot.wz.plan_up_line_ga"]
+other = "• {{.Name}}: {{.Places}} plazas (de pie)"
+
+["bot.wz.plan_up_one_category"]
+other = "Todas las plazas están en una sola categoría, así que el precio será el mismo para todas. Para precios distintos, pinta las plazas de colores distintos, enumera los colores en el grupo «PriceCategory» y envía el archivo otra vez."
+
+["bot.wz.plan_up_warn_legend"]
+other = "El archivo no tiene el grupo «Legend». No pasa nada: las categorías salen del grupo «PriceCategory»."
+
+["bot.wz.plan_up_warn_other"]
+other = "Aviso al leer el archivo: {{.Code}}."
+
+["bot.wz.plan_up_issue_invalid"]
+other = "El archivo no se puede leer como SVG."
+
+["bot.wz.plan_up_issue_canvas"]
+other = "El dibujo no tiene tamaño o es demasiado grande. Define el ancho y el alto del dibujo, de 2000 como máximo."
+
+["bot.wz.plan_up_issue_categories"]
+other = "No encuentro las categorías. Añade un grupo con id «PriceCategory»: una muestra de color con la etiqueta «#Nombre» por cada categoría."
+
+["bot.wz.plan_up_issue_seat_shape"]
+other = "La plaza {{.Element}} no es un círculo. Dibuja cada plaza como un círculo."
+
+["bot.wz.plan_up_issue_row"]
+other = "Una fila o un sector no tiene la etiqueta necesaria: {{.Element}}. Pon nombre a cada fila y etiqueta a cada sector."
+
+["bot.wz.plan_up_issue_seat_number"]
+other = "Una plaza no tiene número o el número se repite: {{.Element}}."
+
+["bot.wz.plan_up_issue_color"]
+other = "La plaza {{.Element}} tiene un color que no está en el grupo «PriceCategory»."
+
+["bot.wz.plan_up_issue_too_many"]
+other = "Hay demasiadas categorías. El máximo es 15."
+
+["bot.wz.plan_up_issue_no_places"]
+other = "No he encontrado ninguna plaza. Dibuja las plazas como círculos dentro de filas con etiqueta."
+
+["bot.wz.plan_up_issue_ga"]
+other = "Una zona de pie no está del todo configurada: {{.Element}}. Necesita la etiqueta «#GA Nombre», un color del grupo «PriceCategory» y el número de plazas en su título."
+
+["bot.wz.plan_up_issue_other"]
+other = "El archivo tiene un problema ({{.Code}}): {{.Element}}."

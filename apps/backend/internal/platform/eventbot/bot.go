@@ -531,7 +531,7 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		return
 	}
 	if m.Document != nil || len(m.Photo) > 0 {
-		if b.wizardPoster(ctx, chatID, from, m) {
+		if b.wizardPlanFile(ctx, chatID, from, m) || b.wizardPoster(ctx, chatID, from, m) {
 			return
 		}
 	} else if text != "" && b.wizardText(ctx, chatID, from, text) {

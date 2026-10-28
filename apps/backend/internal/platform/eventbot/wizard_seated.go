@@ -76,15 +76,23 @@ func (d *Draft) allDatesOwnTickets() bool {
 // venuePlans reads the plans of a venue; an unreadable list is no plans, so a
 // failing lookup never blocks a general-admission event.
 func (w *Wizard) venuePlans(ctx context.Context, ws WizSession, venueID string) []PlanRef {
+	plans, _ := w.venuePlansRead(ctx, ws, venueID)
+	return plans
+}
+
+// venuePlansRead is venuePlans that also says whether the lookup worked: an
+// empty answer of a failing lookup is not "the venue has no plan", and must not
+// invite a second plan next to one that exists.
+func (w *Wizard) venuePlansRead(ctx context.Context, ws WizSession, venueID string) ([]PlanRef, bool) {
 	pio, ok := w.refs.(PlanIO)
 	if !ok || venueID == "" {
-		return nil
+		return nil, false
 	}
 	plans, err := pio.VenuePlans(ctx, ws.JWT, ws.OrgID, venueID)
 	if err != nil {
-		return nil
+		return nil, false
 	}
-	return plans
+	return plans, true
 }
 
 // seatedTickets are the categories of a plan, still unpriced.
@@ -100,9 +108,15 @@ func seatedTickets(p PlanRef) *DraftTickets {
 // It reports whether it did.
 func (w *Wizard) offerPlans(ctx context.Context, ws WizSession, d *Draft) bool {
 	s := d.session()
-	plans := w.venuePlans(ctx, ws, s.VenueID)
+	plans, listed := w.venuePlansRead(ctx, ws, s.VenueID)
+	d.Scratch.CanUpload = w.canUploadPlans()
 	if len(plans) == 0 {
-		return false
+		if !d.Scratch.CanUpload || !listed {
+			return false
+		}
+		// No plan yet: the venue's hall can be sent as a file.
+		d.planUploadAsk(planAfterCapacity)
+		return true
 	}
 	d.Scratch.Plans = plans
 	d.goTo(stSPlan)
@@ -128,8 +142,7 @@ func (w *Wizard) applySeated(loc string, d *Draft, text, data string) (string, e
 			if s.seated() {
 				s.PlanVersionID, s.PlanName, s.Tickets = "", "", nil
 			}
-			d.goTo(stSCapacity)
-			return "", nil
+			return w.withoutPlan(loc, d)
 		}
 		raw, ok := strings.CutPrefix(data, "plan:")
 		if !ok {
@@ -212,6 +225,9 @@ func (w *Wizard) renderSeated(loc string, d *Draft, header func(int, string) str
 				Label: truncate(t("bot.wz.plan_btn", map[string]any{"Name": p.Name, "Seats": p.Seats}), 56),
 				Data:  "plan:" + strconv.Itoa(i),
 			}})
+		}
+		if d.Scratch.CanUpload {
+			rows = append(rows, []Button{{Label: t("bot.wz.plan_up_more_btn", nil), Data: "plan:upload"}})
 		}
 		rows = append(rows, []Button{{Label: t("bot.wz.plan_none_btn", nil), Data: "plan:none"}})
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_plan", map[string]any{"Venue": Esc(s.VenueName)}), Buttons: nav(rows...)}

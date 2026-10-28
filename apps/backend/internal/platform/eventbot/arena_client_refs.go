@@ -181,10 +181,19 @@ func (c *ArenaClient) UploadPoster(ctx context.Context, jwt string, orgID uuid.U
 // UploadMedia stores bytes as a media object of the organization under the
 // given owner type (event_poster, event_gallery, event_report) and returns it.
 func (c *ArenaClient) UploadMedia(ctx context.Context, jwt string, orgID uuid.UUID, ownerType, filename, contentType string, data []byte) (UploadedMedia, error) {
+	return c.UploadOwnedMedia(ctx, jwt, orgID, ownerType, "", filename, contentType, data)
+}
+
+// UploadOwnedMedia is UploadMedia for an object that belongs to one row (a
+// seating plan's SVG names its plan); ownerID may be empty.
+func (c *ArenaClient) UploadOwnedMedia(ctx context.Context, jwt string, orgID uuid.UUID, ownerType, ownerID, filename, contentType string, data []byte) (UploadedMedia, error) {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	_ = mw.WriteField("owner_type", ownerType)
 	_ = mw.WriteField("org_id", orgID.String())
+	if ownerID != "" {
+		_ = mw.WriteField("owner_id", ownerID)
+	}
 	// The type must travel: CreateFormFile labels the part
 	// application/octet-stream, and a poster stored under that type was
 	// skipped by the import's side-load ("not an image") until 2026-09-30.

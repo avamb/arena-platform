@@ -289,6 +289,14 @@ var wizardKeys = []string{
 	"bot.wz.warn_tier_not_in_payload",
 	// A date sold by a seating plan (wizard_seated.go):
 	"bot.wz.ask_plan", "bot.wz.plan_btn", "bot.wz.plan_none_btn", "bot.wz.ask_plan_price", "bot.wz.plan_done_note", "bot.wz.t_date_seated_note",
+	// A hall plan sent from the wizard (wizard_plan_upload.go, plan_upload.go):
+	"bot.wz.plan_up_ask", "bot.wz.plan_up_btn", "bot.wz.plan_up_skip_btn", "bot.wz.plan_up_more_btn", "bot.wz.plan_up_file",
+	"bot.wz.plan_up_need_file", "bot.wz.plan_up_too_big", "bot.wz.plan_up_failed", "bot.wz.plan_up_not_svg", "bot.wz.plan_up_bad",
+	"bot.wz.plan_up_more_issues", "bot.wz.plan_up_done", "bot.wz.plan_up_line", "bot.wz.plan_up_line_ga", "bot.wz.plan_up_one_category",
+	"bot.wz.plan_up_warn_legend", "bot.wz.plan_up_warn_other", "bot.wz.plan_up_issue_invalid", "bot.wz.plan_up_issue_canvas",
+	"bot.wz.plan_up_issue_categories", "bot.wz.plan_up_issue_seat_shape", "bot.wz.plan_up_issue_row", "bot.wz.plan_up_issue_seat_number",
+	"bot.wz.plan_up_issue_color", "bot.wz.plan_up_issue_too_many", "bot.wz.plan_up_issue_no_places", "bot.wz.plan_up_issue_ga",
+	"bot.wz.plan_up_issue_other",
 }
 
 func init() {
