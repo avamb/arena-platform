@@ -403,7 +403,7 @@ function ProductPage({ productId }: { productId: string | null }) {
   const ready = currency !== undefined && (productId === null || product.data !== undefined);
 
   return (
-    <section aria-labelledby="shop-product-title-h">
+    <section className="shop-page" aria-labelledby="shop-product-title-h">
       <h1 id="shop-product-title-h">{productId === null ? t("shop.product.titleNew") : (product.data?.title ?? t("shop.title"))}</h1>
       <ShopNav orgId={orgId} />
       <p>

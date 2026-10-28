@@ -299,7 +299,7 @@ export function ShopSettingsScreen() {
   const settings = useQuery({ queryKey: ["shopSettings", orgId], queryFn: () => fetchShopSettings(orgId), enabled: canRead });
   if (!canRead) return <NoShopAccess />;
   return (
-    <section aria-labelledby="shop-settings-title">
+    <section className="shop-page" aria-labelledby="shop-settings-title">
       <h1 id="shop-settings-title">{t("shop.settings.title")}</h1>
       <ShopNav orgId={orgId} />
       {!access.can("shop.manage") && <ShopReadOnlyNote />}

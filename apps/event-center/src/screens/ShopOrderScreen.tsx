@@ -34,7 +34,7 @@ export function ShopOrderCard({ order, orgId, actions }: { order: ShopOrder; org
   const payState = order.payment !== null && order.payment !== undefined ? order.payment.state : null;
 
   return (
-    <article aria-labelledby="shop-order-title" data-testid="shop-order-card">
+    <article className="shop-page" aria-labelledby="shop-order-title" data-testid="shop-order-card">
       <p>
         <Link to="/o/$orgId/shop/orders" params={{ orgId }} search={{}}>
           {t("shop.order.back")}

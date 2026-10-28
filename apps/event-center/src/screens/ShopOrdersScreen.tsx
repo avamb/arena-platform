@@ -54,7 +54,7 @@ export function ShopOrdersScreen() {
   };
 
   return (
-    <section aria-labelledby="shop-orders-title">
+    <section className="shop-page" aria-labelledby="shop-orders-title">
       <h1 id="shop-orders-title">{t("shop.orders.title")}</h1>
       <ShopNav orgId={orgId} />
       <form className="shop-filters" role="search" onSubmit={onSearch} data-testid="shop-orders-filters">

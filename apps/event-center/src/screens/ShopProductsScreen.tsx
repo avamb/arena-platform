@@ -84,7 +84,7 @@ export function ShopProductsScreen() {
   if (!canRead) return <NoShopAccess />;
   const list = products.data?.products ?? [];
   return (
-    <section aria-labelledby="shop-title">
+    <section className="shop-page" aria-labelledby="shop-title">
       <h1 id="shop-title">{t("shop.products.title")}</h1>
       <ShopNav orgId={orgId} />
       {search.deleted !== undefined && (
