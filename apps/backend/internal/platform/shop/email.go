@@ -25,6 +25,11 @@ const (
 	EmailShipped = "shipped"
 )
 
+// DeliveryNone is shop_orders.delivery_kind of a cart with nothing to ship
+// (only digital or service lines): no address, no shipping fee, and no
+// "shipped" letter.
+const DeliveryNone = "none"
+
 // OrderEmailPayload is the payload of JobTypeOrderEmail.
 type OrderEmailPayload struct {
 	OrderID string `json:"order_id"`
@@ -44,6 +49,9 @@ const orderEmailAttempts = 8
 func (s *Service) enqueueOrderEmailTx(ctx context.Context, tx pgx.Tx, kind string, o gen.ShopOrderRow) {
 	if o.BuyerEmail == "" {
 		return // nobody to write to
+	}
+	if kind == EmailShipped && o.DeliveryKind == DeliveryNone {
+		return // nothing ships: a digital or service order has no "shipped" letter
 	}
 	sp, err := tx.Begin(ctx)
 	if err != nil {

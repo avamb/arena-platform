@@ -15,7 +15,7 @@
 //  4. remembers the send in shop_orders.metadata (email_<kind>_sent_at), so a
 //     redelivered job never mails twice.
 //
-// The status link is the storefront's order page: the organization's own
+// The status link is the storefront's result page: the organization's own
 // domain (organizations.shop_domain) when it has one, else the platform shop
 // host (SHOP_PUBLIC_BASE_URL) plus the organization's slug. Digital lines
 // point at that page, where the short-lived download links are issued; a
@@ -34,7 +34,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -149,8 +148,11 @@ func shopEmailSkipReason(o gen.ShopOrderRow, kind string) string {
 		return "no address for the buyer"
 	}
 	switch o.Status {
-	case shop.StatusCancelled, shop.StatusExpired, shop.StatusPendingPayment:
+	case shop.StatusCancelled, shop.StatusExpired, shop.StatusPendingPayment, shop.StatusManualReview:
 		return "the order is " + o.Status
+	}
+	if kind == shop.EmailShipped && o.DeliveryKind == shop.DeliveryNone {
+		return "nothing ships: a digital or service order"
 	}
 	if kind == shop.EmailShipped && o.ShippedAt == nil {
 		return "the order is not shipped"
@@ -201,53 +203,19 @@ func (h *shopEmail) loadOrg(ctx context.Context, orgID uuid.UUID) (shopOrg, erro
 	return g, err
 }
 
-// lineKinds maps an order line's ordinal to its product's kind. A database
-// whose shop_products has no kind column yet (before digital goods landed)
-// answers every line as physical.
-func (h *shopEmail) lineKinds(ctx context.Context, orderID uuid.UUID) (map[int32]string, error) {
-	kinds := map[int32]string{}
-	rows, err := h.opts.DB.Query(ctx, `
-		SELECT oi.ordinal, COALESCE(p.kind, 'physical')
-		  FROM shop_order_items oi
-		  LEFT JOIN shop_variants v ON v.id = oi.variant_id
-		  LEFT JOIN shop_products p ON p.id = v.product_id
-		 WHERE oi.order_id = $1`, orderID)
-	if err != nil {
-		var pg *pgconn.PgError
-		if errors.As(err, &pg) && pg.Code == "42703" { // undefined_column
-			return kinds, nil
-		}
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var ord int32
-		var kind string
-		if err := rows.Scan(&ord, &kind); err != nil {
-			return nil, err
-		}
-		kinds[ord] = kind
-	}
-	if err := rows.Err(); err != nil {
-		var pg *pgconn.PgError
-		if errors.As(err, &pg) && pg.Code == "42703" {
-			return map[int32]string{}, nil
-		}
-		return nil, err
-	}
-	return kinds, nil
-}
-
-// statusURL is the storefront page of the order.
+// statusURL is the storefront's result page of the order, where the status
+// and the download buttons are: the organization's own domain when it has
+// one, else the platform shop host plus the organization's slug.
 func statusURL(g shopOrg, platformBase, token string) string {
+	const path = "/checkout/result?checkout_token="
 	if d := ptrStr(g.ShopDomain); d != "" {
-		return "https://" + d + "/checkout/" + token
+		return "https://" + d + path + token
 	}
 	base := strings.TrimRight(strings.TrimSpace(platformBase), "/")
 	if base == "" || g.Slug == "" {
 		return ""
 	}
-	return base + "/" + g.Slug + "/checkout/" + token
+	return base + "/" + g.Slug + path + token
 }
 
 func ptrStr(s *string) string {
@@ -258,7 +226,7 @@ func ptrStr(s *string) string {
 }
 
 // buildShopOrderData turns the order into what the templates print. Pure.
-func buildShopOrderData(o gen.ShopOrderRow, items []gen.ShopOrderItemRow, kinds map[int32]string, statusLink string) *templates.ShopOrderData {
+func buildShopOrderData(o gen.ShopOrderRow, items []gen.ShopOrderItemRow, statusLink string) *templates.ShopOrderData {
 	d := &templates.ShopOrderData{
 		OrderNumber:  fmt.Sprintf("%d", o.Number),
 		Note:         strings.TrimSpace(o.DeliveryNote),
@@ -268,7 +236,7 @@ func buildShopOrderData(o gen.ShopOrderRow, items []gen.ShopOrderItemRow, kinds 
 	}
 	physical := len(items) == 0 // an order without lines is judged by its delivery kind
 	for _, it := range items {
-		kind := kinds[it.Ordinal]
+		kind := it.ProductKind // empty on a line bought before kinds existed
 		switch kind {
 		case templates.ShopKindDigital, templates.ShopKindService:
 		default:
@@ -295,6 +263,9 @@ func buildShopOrderData(o gen.ShopOrderRow, items []gen.ShopOrderItemRow, kinds 
 	if d.Discount != "" || d.Shipping != "" {
 		d.Subtotal = shop.FormatMinor(o.Subtotal, o.Currency)
 	}
+	if o.DeliveryKind == shop.DeliveryNone {
+		physical = false // a digital-only cart: no address, no shipping fee
+	}
 	if physical {
 		if o.DeliveryKind == "pickup" {
 			d.Pickup = true
@@ -309,10 +280,6 @@ func (h *shopEmail) buildMessage(ctx context.Context, o gen.ShopOrderRow, kind s
 	items, err := h.q.ListShopOrderItems(ctx, []uuid.UUID{o.ID})
 	if err != nil {
 		return email.Message{}, fmt.Errorf("delivery: read shop order lines: %w", err)
-	}
-	kinds, err := h.lineKinds(ctx, o.ID)
-	if err != nil {
-		return email.Message{}, fmt.Errorf("delivery: read shop line kinds: %w", err)
 	}
 	g, err := h.loadOrg(ctx, o.OrgID)
 	if err != nil {
@@ -349,7 +316,7 @@ func (h *shopEmail) buildMessage(ctx context.Context, o gen.ShopOrderRow, kind s
 		RecipientEmail: o.BuyerEmail,
 		HolderName:     strings.TrimSpace(o.BuyerName),
 		Branding:       branding,
-		Shop:           buildShopOrderData(o, items, kinds, statusURL(g, h.opts.ShopBaseURL, o.OrderToken)),
+		Shop:           buildShopOrderData(o, items, statusURL(g, h.opts.ShopBaseURL, o.OrderToken)),
 	}
 	out, err := h.renderer.Render(kind, locale, data)
 	if err != nil {

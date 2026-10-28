@@ -165,3 +165,27 @@ func TestDispatcher_SubscriptionWithoutShopKindGetsNoShopOrders(t *testing.T) {
 		t.Errorf("nothing was routed, so nothing may be claimed: %v", store.claimed)
 	}
 }
+
+func TestDispatcher_ManualReviewReachesShopChatsOnce(t *testing.T) {
+	store := newFakeStore(
+		Subscription{ID: "tickets", OrgID: orgVino, ChatID: "-1", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindTickets}},
+		Subscription{ID: "logistics", OrgID: orgVino, ChatID: "-2", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindShop}},
+	)
+	store.shopOrds["o-1"] = shopSample()
+	snd := &fakeSender{}
+	d := NewDispatcher(store, snd, nil)
+	ctx := context.Background()
+	d.Handle(ctx, shopEvent(EventShopOrderManualReview, "o-1", nil))
+	d.Handle(ctx, shopEvent(EventShopOrderManualReview, "o-1", nil))
+	if len(snd.sent) != 1 || snd.sent[0].chat != "-2" {
+		t.Fatalf("manual review announcements = %+v; want one, to the logistics chat only", snd.sent)
+	}
+	for _, want := range []string{"needs your attention", "Order #1000777", "arrived after the hold ended", "Check the order in the event center", "anna@example.com"} {
+		if !strings.Contains(snd.sent[0].text, want) {
+			t.Errorf("review message lacks %q:\n%s", want, snd.sent[0].text)
+		}
+	}
+	if !store.claimed["shop_review:o-1"] {
+		t.Error("the announcement was not claimed")
+	}
+}

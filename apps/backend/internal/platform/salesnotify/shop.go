@@ -123,6 +123,21 @@ func FormatShopOrderRefund(s ShopOrder, refundedNow int64) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// FormatShopOrderReview renders the notice for a payment that arrived after
+// the order's hold ended and found its goods gone. The money is taken and the
+// order is parked: the organizer decides (ship late, or refund). The operator
+// gets their own ops alert from the watchdog, not this one.
+func FormatShopOrderReview(s ShopOrder) string {
+	o := s.Order
+	var b strings.Builder
+	fmt.Fprintf(&b, "⚠️ <b>Shop order needs your attention</b> — %s\n\n", esc(s.OrgName))
+	writeShopHeader(&b, o)
+	fmt.Fprintf(&b, "💰 Paid: <b>%s</b>\n", shopMoney(o.Total, o.Currency))
+	writeShopBuyer(&b, o)
+	fmt.Fprintf(&b, "\nPayment for order %d arrived after the hold ended, the goods were no longer free. Check the order in the event center.", o.Number)
+	return b.String()
+}
+
 func shopItemName(it gen.ShopOrderItemRow) string { return shop.ItemLabel(it) }
 
 func clip(s string, n int) string {
@@ -139,6 +154,9 @@ func (d *Dispatcher) composeShop(ctx context.Context, ev outbox.Event) (key stri
 	order, err := d.store.ShopOrder(ctx, orgID, id)
 	if err != nil {
 		return "", 0, "", "", err
+	}
+	if ev.EventType == EventShopOrderManualReview {
+		return "shop_review:" + id, TriggerShopOrderReview, d.withFooter(FormatShopOrderReview(order)), orgID, nil
 	}
 	if ev.EventType == EventShopOrderPaid {
 		return "shop_paid:" + id, TriggerShopOrderPaid, d.withFooter(FormatShopOrderPaid(order)), orgID, nil

@@ -53,6 +53,9 @@ const (
 	// subscriptions whose kinds include "shop".
 	EventShopOrderPaid     = "v1.shop.order.paid"
 	EventShopOrderRefunded = "v1.shop.order.refunded"
+	// EventShopOrderManualReview: a payment arrived after the order's hold
+	// ended and the goods were no longer free, so the order was parked.
+	EventShopOrderManualReview = "v1.shop.order.manual_review"
 )
 
 // Subscription kinds (sales_notification_subscriptions.kinds, migration 0173).
@@ -75,6 +78,8 @@ const (
 	// triggers: they reach only subscriptions of kind "shop".
 	TriggerShopOrderPaid
 	TriggerShopOrderRefunded
+	// TriggerShopOrderReview: a shop order parked for the organizer's attention.
+	TriggerShopOrderReview
 )
 
 // Subscription is one allowed row of sales_notification_subscriptions.
@@ -138,7 +143,7 @@ func Route(subs []Subscription, orgID string, trigger Trigger) []Subscription {
 			if s.Hears(KindTickets) && s.OnTicketRefunded {
 				out = append(out, s)
 			}
-		case TriggerShopOrderPaid:
+		case TriggerShopOrderPaid, TriggerShopOrderReview:
 			if s.Hears(KindShop) && s.OnOrderPaid {
 				out = append(out, s)
 			}
@@ -219,7 +224,7 @@ func (d *Dispatcher) Dispatch(_ context.Context, ev outbox.Event) error {
 	}
 	switch ev.EventType {
 	case EventOrderPaid, EventTicketRefunded, EventTicketCancelled, EventRefundBlockedScanned, EventScanExceptionGranted,
-		EventShopOrderPaid, EventShopOrderRefunded:
+		EventShopOrderPaid, EventShopOrderRefunded, EventShopOrderManualReview:
 	default:
 		return nil
 	}
@@ -288,7 +293,7 @@ func (d *Dispatcher) Handle(ctx context.Context, ev outbox.Event) {
 // compose loads what the event is about and renders the message.
 func (d *Dispatcher) compose(ctx context.Context, ev outbox.Event) (key string, trigger Trigger, text, orgID string, err error) {
 	switch ev.EventType {
-	case EventShopOrderPaid, EventShopOrderRefunded:
+	case EventShopOrderPaid, EventShopOrderRefunded, EventShopOrderManualReview:
 		return d.composeShop(ctx, ev)
 	case EventOrderPaid:
 		id := payloadString(ev.Payload, "order_id", ev.AggregateID)

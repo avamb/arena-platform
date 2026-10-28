@@ -143,6 +143,7 @@ func (f *shopFixture) cleanup() {
 		`DELETE FROM sales_notification_subscriptions WHERE org_id = ANY($1)`,
 		`DELETE FROM sales_notification_deliveries WHERE key IN (
 		   SELECT 'shop_paid:' || id::text FROM shop_orders WHERE org_id = ANY($1)
+		   UNION ALL SELECT 'shop_review:' || id::text FROM shop_orders WHERE org_id = ANY($1)
 		   UNION ALL SELECT 'shop_refund:' || id::text || ':' || refunded_minor::text FROM shop_orders WHERE org_id = ANY($1))`,
 		`DELETE FROM outbox_events WHERE aggregate_type = 'shop_order'
 		   AND aggregate_id IN (SELECT id::text FROM shop_orders WHERE org_id = ANY($1))`,

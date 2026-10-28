@@ -24,7 +24,7 @@ func shopOrderFixture() (gen.ShopOrderRow, []gen.ShopOrderItemRow) {
 
 func TestBuildShopOrderData_PhysicalOrder(t *testing.T) {
 	o, items := shopOrderFixture()
-	d := buildShopOrderData(o, items, map[int32]string{}, "https://shop.example/checkout/t")
+	d := buildShopOrderData(o, items, "https://shop.example/checkout/t")
 	if d.OrderNumber != "1000777" || d.Total != "220.00 ILS" || d.Subtotal != "180.00 ILS" ||
 		d.Discount != "10.00 ILS" || d.Shipping != "50.00 ILS" {
 		t.Errorf("amounts wrong: %+v", d)
@@ -43,8 +43,9 @@ func TestBuildShopOrderData_PhysicalOrder(t *testing.T) {
 
 func TestBuildShopOrderData_DigitalLinesAndNothingToShip(t *testing.T) {
 	o, items := shopOrderFixture()
-	kinds := map[int32]string{1: "digital", 2: "service"}
-	d := buildShopOrderData(o, items, kinds, "https://shop.example/checkout/t")
+	items[0].ProductKind, items[1].ProductKind = "digital", "service"
+	o.DeliveryKind = "none"
+	d := buildShopOrderData(o, items, "https://shop.example/checkout/t")
 	if len(d.Digital) != 1 || d.Digital[0].Title != "Rosé" {
 		t.Errorf("digital lines = %+v", d.Digital)
 	}
@@ -52,8 +53,9 @@ func TestBuildShopOrderData_DigitalLinesAndNothingToShip(t *testing.T) {
 		t.Errorf("nothing to ship, yet address=%q pickup=%v shipping=%q", d.Address, d.Pickup, d.Shipping)
 	}
 	// A mixed order still ships.
-	kinds = map[int32]string{1: "digital"}
-	d = buildShopOrderData(o, items, kinds, "")
+	items[1].ProductKind = "physical"
+	o.DeliveryKind = "shipping"
+	d = buildShopOrderData(o, items, "")
 	if len(d.Address) == 0 || d.Shipping == "" || len(d.Digital) != 1 {
 		t.Errorf("a mixed order must keep its address and fee: %+v", d)
 	}
@@ -62,7 +64,7 @@ func TestBuildShopOrderData_DigitalLinesAndNothingToShip(t *testing.T) {
 func TestBuildShopOrderData_PickupAndPlainTotal(t *testing.T) {
 	o, items := shopOrderFixture()
 	o.DeliveryKind, o.Discount, o.ShippingFee, o.Total = "pickup", 0, 0, 18000
-	d := buildShopOrderData(o, items, nil, "")
+	d := buildShopOrderData(o, items, "")
 	if !d.Pickup || len(d.Address) != 0 {
 		t.Errorf("pickup = %v address = %q", d.Pickup, d.Address)
 	}
@@ -88,6 +90,7 @@ func TestShopEmailSkipReason(t *testing.T) {
 		{shop.StatusExpired, shop.EmailReceived, nil, "b@example.com", true},
 		{shop.StatusCancelled, shop.EmailReceived, nil, "b@example.com", true},
 		{shop.StatusPaid, shop.EmailReceived, nil, "  ", true},
+		{shop.StatusManualReview, shop.EmailReceived, nil, "b@example.com", true},
 	}
 	for i, c := range cases {
 		o.Status, o.ShippedAt, o.BuyerEmail = c.status, c.shipped, c.email
@@ -97,12 +100,24 @@ func TestShopEmailSkipReason(t *testing.T) {
 	}
 }
 
+func TestShopEmailSkipReason_DigitalOnlyOrderIsNeverShipped(t *testing.T) {
+	o, _ := shopOrderFixture()
+	now := time.Now()
+	o.Status, o.ShippedAt, o.BuyerEmail, o.DeliveryKind = shop.StatusShipped, &now, "b@example.com", shop.DeliveryNone
+	if shopEmailSkipReason(o, shop.EmailShipped) == "" {
+		t.Error("a digital-only order must not get a shipped letter")
+	}
+	if shopEmailSkipReason(o, shop.EmailReceived) != "" {
+		t.Error("but it does get the received letter")
+	}
+}
+
 func TestStatusURL(t *testing.T) {
 	domain := "shop.vino.example"
-	if got := statusURL(shopOrg{Slug: "vino", ShopDomain: &domain}, "https://shop.arena.example", "tok"); got != "https://shop.vino.example/checkout/tok" {
+	if got := statusURL(shopOrg{Slug: "vino", ShopDomain: &domain}, "https://shop.arena.example", "tok"); got != "https://shop.vino.example/checkout/result?checkout_token=tok" {
 		t.Errorf("own domain: %q", got)
 	}
-	if got := statusURL(shopOrg{Slug: "vino"}, "https://shop.arena.example/", "tok"); got != "https://shop.arena.example/vino/checkout/tok" {
+	if got := statusURL(shopOrg{Slug: "vino"}, "https://shop.arena.example/", "tok"); got != "https://shop.arena.example/vino/checkout/result?checkout_token=tok" {
 		t.Errorf("platform host: %q", got)
 	}
 	if got := statusURL(shopOrg{Slug: "vino"}, "", "tok"); got != "" {

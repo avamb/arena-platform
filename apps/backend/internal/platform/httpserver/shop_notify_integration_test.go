@@ -15,6 +15,7 @@ package httpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -153,7 +154,7 @@ func TestShopNotify_PaidOrderQueuesTheEmailAndAnnouncesToShopChatsOnly(t *testin
 		t.Fatalf("a chat without the shop kind got %v", tg.sent[ticketsOnly])
 	}
 	msg := tg.sent[logistics][0]
-	for _, want := range []string{"New shop order", "Order #", "Herzl 1", "Haifa", "3100000", "2 × Rosé", "Shipping: 50.00 ILS", "call before", "+972500000000"} {
+	for _, want := range []string{"New shop order", "Order #", "Herzl 1", "Haifa", "3100000", "2 × Rosé", "Shipping: 50.00 ILS", "call before", o.BuyerPhone} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("announcement lacks %q:\n%s", want, msg)
 		}
@@ -187,7 +188,7 @@ func TestShopNotify_PaidOrderQueuesTheEmailAndAnnouncesToShopChatsOnly(t *testin
 		t.Errorf("to %q reply-to %q", m.To, m.ReplyTo)
 	}
 	if !strings.Contains(m.Subject, "№") || !strings.Contains(m.TextBody, "Herzl 1") ||
-		!strings.Contains(m.TextBody, "https://shop.platform.test/"+f.orgASlug+"/checkout/"+token) {
+		!strings.Contains(m.TextBody, "https://shop.platform.test/"+f.orgASlug+"/checkout/result?checkout_token="+token) {
 		t.Errorf("letter wrong:\nsubject %q\n%s", m.Subject, m.TextBody)
 	}
 
@@ -238,5 +239,91 @@ func TestShopNotify_SubscriptionWithoutShopKindGetsNothing(t *testing.T) {
 		"shop_paid:"+o.ID.String()).Scan(&claims)
 	if claims != 0 {
 		t.Fatalf("nothing was routed, yet the announcement was claimed %d time(s)", claims)
+	}
+}
+
+// A digital-only order: the received letter carries the downloads link and no
+// address or shipping, and shipping it queues no letter.
+func TestShopNotify_DigitalOnlyOrderLetter(t *testing.T) {
+	f := newShopFixture(t)
+	f.openShop(4500, 3)
+	file := f.shopMedia(shop.DigitalOwnerType)
+	code, body, _ := f.do(http.MethodPost, f.orgPath(f.orgA, "/products"), f.ownerA, fmt.Sprintf(
+		"{\"title\":\"Tasting notes %s\",\"status\":\"active\",\"kind\":\"digital\",\"digital_media_id\":%q,\"variants\":[{\"price_minor\":1500}]}",
+		uuid.NewString()[:6], file))
+	if code != http.StatusCreated {
+		t.Fatalf("POST digital product = %d %v", code, body)
+	}
+	variantID := body["variants"].([]any)[0].(map[string]any)["id"].(string)
+	code, body, _ = f.do(http.MethodPost, "/v1/public/shop/"+f.orgASlug+"/checkout", "", fmt.Sprintf(
+		"{\"items\":[{\"variant_id\":%q,\"qty\":1}],\"buyer\":{\"name\":\"Anna\",\"email\":\"digital-%s@example.test\"},\"locale\":\"en\",\"return_url\":\"%s/checkout\"}",
+		variantID, uuid.NewString()[:6], shopTestBase))
+	if code != http.StatusCreated {
+		t.Fatalf("digital checkout = %d %v", code, body)
+	}
+	token := body["order_token"].(string)
+	o, _ := f.q.GetShopOrderByToken(context.Background(), token)
+	f.pay(token)
+
+	jobs := f.emailJobs(o.ID)
+	if len(jobs) != 1 || jobs[0].Kind != shop.EmailReceived {
+		t.Fatalf("e-mail jobs = %+v; want one received", jobs)
+	}
+	mailer := &recordingMailer{}
+	handler := delivery.NewShopEmailHandler(delivery.ShopEmailOptions{
+		HandlerOptions: delivery.HandlerOptions{Sender: mailer}, DB: f.pool, ShopBaseURL: "https://shop.platform.test",
+	})
+	raw, _ := json.Marshal(jobs[0])
+	if err := handler(context.Background(), raw); err != nil || len(mailer.msgs) != 1 {
+		t.Fatalf("handler err %v, mails %d", err, len(mailer.msgs))
+	}
+	text := mailer.msgs[0].TextBody
+	link := "https://shop.platform.test/" + f.orgASlug + "/checkout/result?checkout_token=" + token
+	if !strings.Contains(text, link) || !strings.Contains(text, "Your files") {
+		t.Errorf("the letter lacks the downloads link or block:\n%s", text)
+	}
+	for _, gone := range []string{"Delivery address", "Shipping:", "Pickup"} {
+		if strings.Contains(text, gone) {
+			t.Errorf("a digital-only letter must not mention %q:\n%s", gone, text)
+		}
+	}
+	// Nothing ships: no second letter even if the organizer marks it shipped.
+	f.do(http.MethodPost, f.orgPath(f.orgA, "/orders/"+o.ID.String()+"/ship"), f.ownerA, "{\"tracking_note\":\"x\"}")
+	if jobs := f.emailJobs(o.ID); len(jobs) != 1 {
+		t.Errorf("e-mail jobs after shipping a digital order = %+v; want still one", jobs)
+	}
+}
+
+// A payment that arrives after the hold ended, for goods that are gone, sends
+// the buyer no letter and tells the shop chats once.
+func TestShopNotify_ManualReviewTellsTheOrganizerNotTheBuyer(t *testing.T) {
+	f := newShopFixture(t)
+	chat := "shopnotify-" + uuid.NewString()[:8] + "-L"
+	f.subscribe(chat, "{shop}")
+	_, variant := f.openShop(4500, 1)
+	late := f.placed(variant, 1)
+	f.expireOrder(late.ID)
+	other := f.placed(variant, 1)
+	f.pay(other.OrderToken)
+	f.pay(late.OrderToken)
+
+	if jobs := f.emailJobs(late.ID); len(jobs) != 0 {
+		t.Fatalf("a parked order got e-mail jobs %+v", jobs)
+	}
+	var payload []byte
+	if err := f.pool.QueryRow(context.Background(), "SELECT payload FROM outbox_events WHERE event_type = $1 AND aggregate_id = $2::text",
+		shop.EventOrderManualReview, late.ID).Scan(&payload); err != nil {
+		t.Fatalf("manual_review event: %v", err)
+	}
+	var p map[string]any
+	_ = json.Unmarshal(payload, &p)
+	ev := outbox.Event{ID: "it-review-" + late.ID.String(), AggregateType: shop.AggregateType, AggregateID: late.ID.String(),
+		EventType: shop.EventOrderManualReview, Payload: p}
+	tg := &recordingTelegram{}
+	d := salesnotify.NewDispatcher(salesnotify.NewPGStore(f.pool), tg, nil)
+	d.Handle(context.Background(), ev)
+	d.Handle(context.Background(), ev)
+	if len(tg.sent[chat]) != 1 || !strings.Contains(tg.sent[chat][0], "arrived after the hold ended") {
+		t.Fatalf("shop chat got %v; want one review notice", tg.sent[chat])
 	}
 }
