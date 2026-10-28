@@ -274,7 +274,7 @@ func toOrderJSON(v shop.OrderView) orderJSON {
 	out := orderJSON{
 		ID: o.ID.String(), OrgID: o.OrgID.String(), Number: o.Number, Status: o.Status, Source: o.Source,
 		ExternalRef: o.ExternalRef, CustomerID: uuidPtrStr(o.CustomerID),
-		Buyer:       buyerJSON{Name: o.BuyerName, Email: o.BuyerEmail, Phone: o.BuyerPhone},
+		Buyer: buyerJSON{Name: o.BuyerName, Email: o.BuyerEmail, Phone: o.BuyerPhone},
 		Ship: addressJSON{Name: o.ShipName, Address1: o.ShipAddress1, Address2: o.ShipAddress2, City: o.ShipCity,
 			Postal: o.ShipPostal, Country: o.ShipCountry},
 		DeliveryKind: o.DeliveryKind, DeliveryNote: o.DeliveryNote, Currency: o.Currency,

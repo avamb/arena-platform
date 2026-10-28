@@ -464,15 +464,14 @@ func (q *Queries) ExpireShopOrders(ctx context.Context, limit int32) ([][2]uuid.
 }
 
 const sumShopPaymentRefunds = `-- name: SumShopPaymentRefunds :one
-SELECT COALESCE(sum(amount) FILTER (WHERE state = 'succeeded'
-                OR (state = 'provider_pending' AND provider_refund_id IS NOT NULL)), 0)::bigint,
+SELECT COALESCE(sum(amount) FILTER (WHERE state = 'succeeded'), 0)::bigint,
        COALESCE(sum(amount) FILTER (WHERE state NOT IN ('failed', 'rejected')), 0)::bigint
 FROM   refunds
 WHERE  payment_intent_id = $1`
 
-// SumShopPaymentRefunds sums a payment's refunds: accepted is what the
-// provider took back (succeeded, or pending with a provider refund id), live
-// every refund that may still return money (not failed or rejected).
+// SumShopPaymentRefunds sums a payment's refunds: accepted is what went back
+// (succeeded refunds only: a pending one may still fail), live every refund
+// that may still return money (not failed or rejected).
 func (q *Queries) SumShopPaymentRefunds(ctx context.Context, paymentIntentID uuid.UUID) (accepted, live int64, err error) {
 	err = q.db.QueryRow(ctx, sumShopPaymentRefunds, paymentIntentID).Scan(&accepted, &live)
 	return accepted, live, err

@@ -28,6 +28,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/opsalert"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -62,6 +63,7 @@ func buildRefundEngine(pool *pgxpool.Pool, cfg *config.Config, metrics *observab
 		}),
 		CancelTicket:    tickets.RefundCanceller(),
 		PublishRefunded: scanner.PublishTicketRefundedV1Events,
+		ProjectPayment:  shop.New(pool, logger).ProjectPaymentTx,
 		Audit:           auditWriter,
 		Metrics:         metrics,
 		Logger:          logger,
