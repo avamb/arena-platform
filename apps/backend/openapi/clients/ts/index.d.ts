@@ -10460,7 +10460,7 @@ export interface paths {
          *     the provider confirms it. Stock is not put back. From the web event center the request needs
          *     a fresh password confirmation (`X-Step-Up-Token`).
          *
-         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         *     Requires JWT or API key + the `shop.manage`, `refund.create` and `refund.approve` permissions and membership of the organization.
          */
         post: operations["refundShopOrder"];
         delete?: never;
@@ -66363,7 +66363,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks `shop.manage` or is not a member (`permissions.denied`), or the web did not confirm the password (`auth.step_up_required`). */
+            /** @description Caller lacks `shop.manage`, `refund.create` or `refund.approve`, or is not a member (`permissions.denied`), or the web did not confirm the password (`auth.step_up_required`). */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -18,6 +18,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hshop"
@@ -144,6 +145,16 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 		// Money: the web asks for the password again (spec 37 section 4.5).
 		pr.Use(s.requireWebStepUp)
 		pr.Post(base+"/orders/{order_id}/cancel", s.orgGated(h.HandleCancelOrder))
+	})
+	r.Group(func(pr chi.Router) {
+		// A refund writes and approves a refunds row in one step, so it
+		// needs the refund permissions a ticket refund needs as well.
+		s.applyAuth(pr, "shop.manage", "shop")
+		pr.Use(s.orgScoped("refund.create"))
+		pr.Use(permissions.RequirePermission(s.perms, "refund.create", "refunds"))
+		pr.Use(s.orgScoped("refund.approve"))
+		pr.Use(permissions.RequirePermission(s.perms, "refund.approve", "refunds"))
+		pr.Use(s.requireWebStepUp)
 		pr.Post(base+"/orders/{order_id}/refund", s.orgGated(h.HandleRefundOrder))
 	})
 }

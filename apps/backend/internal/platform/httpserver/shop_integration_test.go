@@ -107,7 +107,7 @@ func newShopFixture(t *testing.T) *shopFixture {
 	}
 	f.users = append(f.users, keyOwner.ID)
 	_, f.keyB, err = apikeys.Issue(ctx, apikeys.NewStoreFromQueries(f.q), apikeys.IssueInput{
-		OrgID: f.orgB, Name: "shop-" + suffix, Scopes: []string{"shop.read", "shop.manage"}, CreatedBy: keyOwner.ID,
+		OrgID: f.orgB, Name: "shop-" + suffix, Scopes: []string{"shop.read", "shop.manage", "refund.create", "refund.approve"}, CreatedBy: keyOwner.ID,
 	})
 	if err != nil {
 		t.Fatalf("apikeys.Issue: %v", err)

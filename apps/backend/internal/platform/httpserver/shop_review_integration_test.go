@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/apikeys"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hshop"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
@@ -460,5 +461,30 @@ func TestShop_ReversedRefundReturnsTheOrder(t *testing.T) {
 	got, _ := f.q.GetShopOrder(ctx, o.ID, f.orgA)
 	if got.Status != shop.StatusPaid || got.RefundedMinor != 0 {
 		t.Fatalf("order after the reversal: status %s refunded %d; want paid and 0", got.Status, got.RefundedMinor)
+	}
+}
+
+// TestShop_RefundNeedsTheRefundPermissions: shop.manage alone does not
+// refund; the refund permissions a ticket refund needs are required too.
+func TestShop_RefundNeedsTheRefundPermissions(t *testing.T) {
+	f := newShopFixture(t)
+	ctx := context.Background()
+	owner, err := f.q.InsertUser(ctx, "shop-keyowner-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatalf("InsertUser: %v", err)
+	}
+	f.users = append(f.users, owner.ID)
+	_, key, err := apikeys.Issue(ctx, apikeys.NewStoreFromQueries(f.q), apikeys.IssueInput{
+		OrgID: f.orgA, Name: "shop-only-" + uuid.NewString()[:6], Scopes: []string{"shop.read", "shop.manage"}, CreatedBy: owner.ID,
+	})
+	if err != nil {
+		t.Fatalf("apikeys.Issue: %v", err)
+	}
+	code, body, _ := f.do(http.MethodPost, f.orgPath(f.orgA, "/orders/"+uuid.NewString()+"/refund"), key, `{}`)
+	if code != http.StatusForbidden {
+		t.Fatalf("refund with shop.manage only = %d %v; want 403", code, body)
+	}
+	if code, body, _ := f.do(http.MethodPost, f.orgPath(f.orgA, "/orders/"+uuid.NewString()+"/ship"), key, `{}`); code != http.StatusNotFound {
+		t.Fatalf("ship with shop.manage = %d %v; want the route's own 404", code, body)
 	}
 }
