@@ -113,7 +113,13 @@ Pictures need the media store of the target environment: `MEDIA_BACKEND` and
 its settings (`MEDIA_LOCAL_ROOT`, or the `MEDIA_S3_*` set) plus
 `MEDIA_SIGNING_SECRET`, exactly as arena-api has them, and `JWT_SIGNING_SECRET`
 (config loading demands it). The pictures must land in the storage the stand's
-API reads, so for the stand that means its S3/R2 settings.
+API reads. The staging and production stands keep media with
+`MEDIA_BACKEND=local` in a docker volume of the api/worker containers, so
+there the tool runs from the api image itself (next section).
+
+The importer is built into the arena image (`/app/arena-shop-import`, next to
+arena-api, arena-worker, arena-migrate, arena-healthcheck and arena-bot), but
+the image has no shell: it is started with `--entrypoint`.
 
 ## Command lines
 
@@ -131,9 +137,84 @@ DATABASE_URL=<scratch dsn> go run ./apps/backend/cmd/arena-shop-import \
   --pages-map  docs/ops/shop_import_pages.einatwinery.json
 ```
 
-The stand: same command without `--dry-run`, with `DATABASE_URL` of the stand
-database (through an SSH tunnel or from a host on its network) and the stand's
-media settings in the environment. Do it in this order and read each report
+## Running it on a stand (staging or production)
+
+The api image has no shell and the media volume is only reachable from inside
+the stand, so the importer runs as a one-off container of the api image on the
+stand's host, joined to the stand's compose network and mounting the stand's
+media volume. Nothing is installed on the server and nothing needs the web.
+
+1. **Image.** The image must contain `/app/arena-shop-import`, i.e. be built
+   from a commit that has this tool in the `Dockerfile` (check:
+   `docker run --rm --entrypoint /app/arena-shop-import <image> --help`).
+   Take the tag the stand runs now:
+   `docker inspect <api container> --format '{{.Config.Image}}'`.
+   If the stand still runs an older tag, deploy a newer one first.
+2. **Export.** Copy the export folder to the server, outside any web root and
+   outside the app's directories, read it back only through the container:
+   `scp -r einatwinery_export/admin root@<server>:/root/einat_export` and the
+   theme pages next to it (`.../theme_live/pages` to
+   `/root/einat_export/pages`; the mapping file is in the repo,
+   `docs/ops/shop_import_pages.einatwinery.json`, copy it to
+   `/root/einat_export/pages_map.json`). It contains customers' personal data:
+   `chmod -R go-rwx /root/einat_export`, and delete it when the import is done
+   (`rm -rf /root/einat_export /root/api.env`).
+3. **Environment.** Do not retype settings, take the api container's own
+   (it passes the same configuration validation the importer runs):
+   `docker inspect <api container> --format '{{range .Config.Env}}{{println .}}{{end}}' > /root/api.env; chmod 600 /root/api.env`.
+   Never print this file. What the importer reads from it:
+
+   | Variable | Value | Why |
+   |---|---|---|
+   | `DATABASE_URL` | the api's, which already names the stand's postgres by its compose hostname (`postgres`) and carries the `sslmode` the stand's `APP_ENV` accepts | where the shop lives. A host name that only resolves on the compose network is why the container joins it |
+   | `JWT_SIGNING_SECRET` | the api's | config loading demands it, even though the tool signs no token |
+   | `APP_ENV` | the api's | production refuses a plain `sslmode` unless `ALLOW_PRIVATE_DB_PLAINTEXT=true`, which the api env then already carries |
+   | `MEDIA_BACKEND` | `local` | the stand's backend |
+   | `MEDIA_LOCAL_ROOT` | EQUAL to the api's (for example `/data/media`) | the directory inside the container where the volume is mounted; the stored `media_objects.storage_key` is relative to it |
+   | `MEDIA_SIGNING_SECRET` | EQUAL to the api's | the api verifies the signed picture URLs with it; another value and every picture answers 403 |
+
+   Variables the importer does not use are harmless. A configuration error
+   names the offending variable (`load config: invalid configuration: ...`).
+4. **Network and volume.** Find them on the running api container, do not
+   guess names:
+   `docker inspect <api container> --format '{{json .NetworkSettings.Networks}}'`
+   (the compose network, typically `<project>_default`) and
+   `docker inspect <api container> --format '{{json .Mounts}}'` (the entry
+   whose `Destination` equals `MEDIA_LOCAL_ROOT`; its `Name` is the volume).
+   The load-test stand's convention is volume `arena-lt-media` at
+   `/data/media`. The container runs as the image's `nonroot` user (uid 65532)
+   like the api: if the first picture fails with `mkdir ... permission
+   denied`, the volume belongs to another user, and the api could not write it
+   either. Fix the ownership (or pass `--user` equal to the api's
+   `docker inspect <api> --format '{{.Config.User}}'`), do not run the tool as
+   root over an api-owned volume.
+5. **Command.** Dry run first, the same command with `--dry-run` appended is
+   enough for the first look (a dry run reads the database, writes nothing,
+   downloads nothing). Then the same without it:
+
+   ```
+   docker run --rm --entrypoint /app/arena-shop-import \
+     --network <compose network> \
+     --env-file /root/api.env \
+     -v <media volume>:<MEDIA_LOCAL_ROOT> \
+     -v /root/einat_export:/import:ro \
+     ghcr.io/avamb/arena-api:<tag> \
+     --org <organization uuid> --dry-run \
+     --products /import/products_export_1.csv \
+     --customers /import/customers_export.csv \
+     --orders "/import/orders_export_1 (2).csv" \
+     --pages /import/pages --pages-map /import/pages_map.json
+   ```
+
+   Product pictures are downloaded from the Shopify CDN by the container, so
+   the compose network needs outbound internet (a normal compose network
+   has it). A real run needs no `--images-dir`. `--include-drafts` brings the
+   non-active products as drafts.
+6. **Afterwards**: `rm -rf /root/einat_export /root/api.env`, and the shop
+   stays closed (`shop_settings.enabled=false`) until a platform superadmin
+   opens it.
+
+Order of work (on the stand as on a scratch database), reading each report
 before the next step:
 
 1. the command above with `--dry-run`;
@@ -185,7 +266,12 @@ all 39 products `physical`, option names set on the 9 that have real options
 * Pictures and tables inside descriptions and pages are removed by the shop's
   sanitizer (3 pictures on `events`, 1 on `partners`, one table on
   `privacy-policy` for Einat Winery). Product pictures are the gallery and are
-  unaffected.
+  unaffected. When the core lets page images through again, every `<img>`
+  that is still on Shopify (`cdn.shopify.com`, any `*.shopify.com` or
+  `shopifycdn.net` host, or the old domain's `/cdn/` path) is reported as
+  "page picture still points at the Shopify CDN" (descriptions: "description
+  picture ..."). Those pictures stop working when the Shopify store is closed:
+  re-host them before the domain switch.
 * Links inside pages and descriptions that point to the old store
   (`/pages/contact`, `/products/...`) are kept as they are.
 * A product keeps its Shopify handle as slug, so a re-run after the organizer

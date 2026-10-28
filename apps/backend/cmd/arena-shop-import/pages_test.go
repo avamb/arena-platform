@@ -177,3 +177,18 @@ func TestLoadPageMapping_Validation(t *testing.T) {
 		}
 	}
 }
+
+func TestShopifyHostedImages(t *testing.T) {
+	body := `<p>x</p><img src="https://cdn.shopify.com/s/files/1/a.jpg" alt="a">` +
+		`<img alt="b" src="https://www.einatwinery.com/cdn/shop/files/b.jpg?v=1">` +
+		`<img src="//cdn.shopify.com/c.png">` +
+		`<img src="https://media.example.com/ok.jpg">` +
+		`<img src="/files/own.jpg">`
+	got := shopifyHostedImages(body)
+	if len(got) != 3 {
+		t.Fatalf("want 3 Shopify-hosted pictures, got %v", got)
+	}
+	if len(shopifyHostedImages(`<p>no pictures</p>`)) != 0 {
+		t.Error("no pictures, no warning")
+	}
+}

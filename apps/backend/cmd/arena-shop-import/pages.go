@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -205,6 +206,36 @@ func ExtractPage(doc string, baseURL string) (ImportPage, error) {
 	p.BodyHTML = dropLeadingTitle(p.BodyHTML, p.Title)
 	p.RemoteImages = strings.Count(p.BodyHTML, "<img src=")
 	return p, nil
+}
+
+var imgSrcPattern = regexp.MustCompile(`(?i)<img[^>]*?\ssrc\s*=\s*"([^"]*)"`)
+
+// shopifyHostedImages returns the sources of the <img> elements of a stored
+// text that are still hosted by Shopify: cdn.shopify.com (or another
+// *.shopify.com / *.shopifycdn.net host), or the store's own domain under
+// /cdn/ (www.einatwinery.com/cdn/shop/files/...). Those stop working when the
+// Shopify store is closed, so the pictures have to be re-hosted before the
+// domain switch.
+func shopifyHostedImages(body string) []string {
+	var out []string
+	for _, m := range imgSrcPattern.FindAllStringSubmatch(body, -1) {
+		raw := html.UnescapeString(m[1])
+		if strings.HasPrefix(raw, "//") {
+			raw = "https:" + raw
+		}
+		u, err := url.Parse(raw)
+		if err != nil {
+			continue
+		}
+		host := strings.ToLower(u.Hostname())
+		switch {
+		case host == "cdn.shopify.com", strings.HasSuffix(host, ".shopify.com"), strings.HasSuffix(host, ".shopifycdn.net"), host == "shopifycdn.net":
+			out = append(out, raw)
+		case strings.HasPrefix(u.Path, "/cdn/"):
+			out = append(out, raw)
+		}
+	}
+	return out
 }
 
 // dropLeadingTitle removes a first heading that repeats the page title.

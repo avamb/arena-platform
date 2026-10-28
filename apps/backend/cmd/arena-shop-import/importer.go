@@ -178,6 +178,9 @@ func (im *Importer) ImportPages(ctx context.Context, pages []ImportPage) error {
 			continue
 		}
 		p.BodyHTML = body
+		if n := len(shopifyHostedImages(body)); n > 0 {
+			im.rep.Pages.add("", fmt.Sprintf("page picture still points at the Shopify CDN (%s, %d): re-host it before the domain switch", p.Slug, n))
+		}
 		cur, ok := existing[p.Slug]
 		outcome := outCreated
 		switch {
@@ -419,6 +422,9 @@ func (im *Importer) importProduct(ctx context.Context, p ImportProduct) error {
 		im.rep.Products.add(outFailed, "description refused by the shop's sanitizer")
 		im.rep.problem("product %q: %v", p.Handle, err)
 		return nil
+	}
+	if n := len(shopifyHostedImages(body)); n > 0 {
+		im.rep.Products.add("", fmt.Sprintf("description picture still points at the Shopify CDN (%s, %d): re-host it before the domain switch", p.Handle, n))
 	}
 
 	var cur *gen.ShopProductRow
