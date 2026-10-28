@@ -97,7 +97,7 @@ func (h *Handler) CreateMedia(w http.ResponseWriter, r *http.Request) {
 	if _, ok := mediastore.AllowedOwnerTypes[ownerType]; !ok {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"media.invalid_owner_type",
-			fmt.Sprintf("owner_type must be one of org_logo, event_poster, artist_photo, seating_plan_svg, session_poster, event_gallery, event_report; got %q", ownerType),
+			fmt.Sprintf("owner_type must be one of org_logo, event_poster, artist_photo, seating_plan_svg, session_poster, event_gallery, event_report, shop_product; got %q", ownerType),
 			r,
 		))
 		return
