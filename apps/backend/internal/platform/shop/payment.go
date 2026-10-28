@@ -73,6 +73,7 @@ func (s *Service) markPaidTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, o g
 	}); err != nil {
 		return gen.ShopOrderRow{}, err
 	}
+	s.enqueueOrderEmailTx(ctx, tx, EmailReceived, paid)
 	return paid, nil
 }
 

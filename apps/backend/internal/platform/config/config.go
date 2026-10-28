@@ -211,6 +211,13 @@ type Config struct {
 	// carry a valid return_url is refused with checkout.invalid_return_url.
 	PublicTicketsBaseURL string `env:"PUBLIC_TICKETS_BASE_URL" required:"false" default:""`
 
+	// ShopPublicBaseURL is the platform's storefront origin for the
+	// merchandise shop (e.g. https://shop.arenasoldout.com). A shop order's
+	// e-mail links its status page as <this>/<organization slug>/checkout/<token>
+	// when the organization has no shop_domain of its own. Empty: such an
+	// order's e-mail carries no status link.
+	ShopPublicBaseURL string `env:"SHOP_PUBLIC_BASE_URL" required:"false" default:""`
+
 	// ShortLinkBaseURL is the host printed under a QR code of a sales link and
 	// encoded in it (spec 43). The redirect itself is host-independent: any host
 	// that reaches arena-api resolves a code.
@@ -1002,6 +1009,7 @@ func LoadFor(role Role) (*Config, error) {
 	// PUBLIC_TICKETS_BASE_URL / WIDGET_PAYMENT_WINDOW_SECONDS /
 	// WIDGET_PAYMENT_GRACE_SECONDS — widget hosted-payment redirect flow.
 	cfg.PublicTicketsBaseURL = strings.TrimRight(strings.TrimSpace(getenv("PUBLIC_TICKETS_BASE_URL", "")), "/")
+	cfg.ShopPublicBaseURL = strings.TrimRight(strings.TrimSpace(getenv("SHOP_PUBLIC_BASE_URL", "")), "/")
 	cfg.ShortLinkBaseURL = strings.TrimRight(strings.TrimSpace(getenv("SHORT_LINK_BASE_URL", "https://go.arenasoldout.com")), "/")
 	cfg.ShortLinkFallbackURL = strings.TrimRight(strings.TrimSpace(getenv("SHORT_LINK_FALLBACK_URL", "")), "/")
 

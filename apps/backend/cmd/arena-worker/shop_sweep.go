@@ -1,7 +1,7 @@
 // shop_sweep.go — shop.order.expire_sweep (internal/platform/shop, spec
 // 08_architecture/47 section 2): the self-scheduling job that expires unpaid
 // shop orders whose hold passed and puts their goods back on sale, every 30
-// seconds like reservation.expire_sweep.
+// seconds like reservation.expire_sweep. It also registers shop.order_email.
 package main
 
 import (
@@ -10,6 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
@@ -29,4 +31,15 @@ func scheduleShopSweep(ctx context.Context, pool *pgxpool.Pool, logger *slog.Log
 	if err := shop.ScheduleInitialJob(ctx, pool); err != nil {
 		logger.Warn("could not schedule initial shop order expire sweep job", "error", err.Error())
 	}
+}
+
+// registerShopEmailHandler registers shop.order_email, the buyer's letter of a
+// merchandise shop order. It shares the sender, media store and templates of
+// ticket.deliver (deliveryOpts), so it is built from the same options.
+func registerShopEmailHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, deliveryOpts delivery.HandlerOptions) {
+	reg.Register(shop.JobTypeOrderEmail, delivery.NewShopEmailHandler(delivery.ShopEmailOptions{
+		HandlerOptions: deliveryOpts,
+		DB:             pool,
+		ShopBaseURL:    cfg.ShopPublicBaseURL,
+	}))
 }
