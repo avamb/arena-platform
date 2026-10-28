@@ -92,6 +92,7 @@ export type PaymentProvider =
   | "stripe"
   | "allpay"
   | "flitt"
+  | "payplus"
   | "cloudpayments"
   | "yookassa"
   | "manual";
@@ -104,6 +105,7 @@ export const PAYMENT_PROVIDERS: readonly PaymentProvider[] = [
   "stripe",
   "allpay",
   "flitt",
+  "payplus",
   "cloudpayments",
   "yookassa",
   "manual",
@@ -291,6 +293,11 @@ export const PROVIDER_REQUIRED_SECRETS: Readonly<
   // Flitt: the payment key signs requests AND verifies callbacks, so there is
   // no separate webhook secret (the portal's "credit key" is for payouts).
   flitt: ["merchant_id", "payment_key"],
+  // PayPlus (Israel): the dashboard's api-key / secret-key pair (the secret
+  // key also signs callbacks) and the uid of the payment page links are
+  // generated from. A test config talks to restapidev.payplus.co.il with
+  // test keys, a live one to restapi.payplus.co.il.
+  payplus: ["api_key", "secret_key", "payment_page_uid"],
   cloudpayments: ["public_id", "api_secret"],
   yookassa: ["shop_id", "secret_key"],
   manual: [],
@@ -860,6 +867,33 @@ export function StripeApiKeyPermissionsView() {
         <code style={monoStyle}>rk_test_</code>), a live config a live one.
         The form refuses the other mode rather than storing a key that would
         quietly take no money — or real money.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Where the three PayPlus values come from, and which host the chosen mode
+ * talks to. Presentational and query-free (renderToStaticMarkup in tests).
+ */
+export function PayPlusHelpView({ mode }: { mode: string }) {
+  const live = mode === "live";
+  return (
+    <div style={setupPanelWrapStyle} data-testid="payplus-help">
+      <p style={setupPanelTextStyle}>
+        In the PayPlus dashboard: <code style={monoStyle}>api_key</code> and{" "}
+        <code style={monoStyle}>secret_key</code> are the API key pair
+        (Settings → API keys); <code style={monoStyle}>payment_page_uid</code>{" "}
+        is the UID of the payment page buyers pay on (Payment pages). The
+        secret key also signs every callback; arena sends its own callback
+        URL with each payment link, so nothing is configured in PayPlus for
+        it.
+      </p>
+      <p style={{ ...setupPanelTextStyle, color: "#854d0e" }}>
+        <strong>The mode picks the PayPlus host.</strong>{" "}
+        {live
+          ? "A live config talks to restapi.payplus.co.il and charges real cards: paste the production keys."
+          : "A test config talks to restapidev.payplus.co.il: paste the test keys PayPlus issued for the staging environment (production keys are refused there)."}
       </p>
     </div>
   );
@@ -1854,6 +1888,7 @@ export function PaymentConfigFormDialog({
               </span>
             </legend>
             {provider === "stripe" ? <StripeApiKeyHelpPanel /> : null}
+            {provider === "payplus" ? <PayPlusHelpView mode={paymentMode} /> : null}
             {allKnownKeys.length === 0 ? (
               <p style={fieldHintStyle}>
                 The {provider} provider has no required secret fields.
