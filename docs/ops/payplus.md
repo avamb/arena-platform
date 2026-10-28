@@ -58,6 +58,12 @@ PAYPLUS_API_BASE_URL=http://localhost:12114/api/v1.0
   наш вебхук.
 - В контейнере: `HOST=0.0.0.0`, `PUBLIC_URL=http://<имя, видимое браузеру>:12114`.
   Callback-адрес должен быть доступен из контейнера заглушки.
+- Куда заглушка шлёт колбэки: только на origin из постоянного списка —
+  `http://localhost`, `http://127.0.0.1`, `http://host.docker.internal` на
+  портах 8080 и `PORT`, плюс `PAYPLUS_STUB_CALLBACK_ORIGINS` (через запятую,
+  например `http://arena-api:8080,https://api-staging.arenasoldout.com`) и
+  старый `PAYPLUS_STUB_CALLBACK_HOSTS`. Колбэк на другой origin пропускается,
+  `callback_status` = 0.
 
 ## 4. Тесты
 

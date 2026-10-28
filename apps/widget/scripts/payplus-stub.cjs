@@ -33,6 +33,8 @@
  *   HOST        listen address (default 127.0.0.1; 0.0.0.0 in a container)
  *   PUBLIC_URL  origin of the hosted-page links (default http://localhost:<PORT>)
  *   PAYPLUS_STUB_API_KEY, PAYPLUS_STUB_SECRET_KEY  optional fixed key pair
+ *   PAYPLUS_STUB_CALLBACK_ORIGINS  extra origins callbacks may go to (default:
+ *               localhost, 127.0.0.1, host.docker.internal on ports 8080 and PORT)
  *
  * Run: node apps/widget/scripts/payplus-stub.cjs
  * Dependency-free on purpose, like stripe-stub.cjs.
@@ -121,47 +123,78 @@ function txView(t) {
 }
 
 /**
+ * Origins the stub may post callbacks to: a CONSTANT list built once at
+ * start-up. A stub must never become an open relay — the organizer's
+ * refURL_callback is caller data — so a callback goes out only when its origin
+ * is exactly one of these, and the request target is rebuilt from the listed
+ * origin, never from the caller's URL.
+ *
+ * Defaults: http on localhost, 127.0.0.1 and host.docker.internal at the
+ * dev-compose API port 8080 and at this stub's own port. More origins:
+ * PAYPLUS_STUB_CALLBACK_ORIGINS (comma separated, e.g.
+ * "http://localhost:18080,https://api-staging.example.test"), or the older
+ * PAYPLUS_STUB_CALLBACK_HOSTS ("host" or "host:port", allowed over http and
+ * https).
+ * @type {readonly string[]}
+ */
+const CALLBACK_ORIGINS = Object.freeze(
+  (() => {
+    /** @type {string[]} */
+    const out = [];
+    for (const host of ['localhost', '127.0.0.1', 'host.docker.internal']) {
+      for (const port of ['8080', String(PORT)]) out.push(`http://${host}:${port}`);
+    }
+    for (const raw of (process.env['PAYPLUS_STUB_CALLBACK_ORIGINS'] ?? '').split(',')) {
+      try {
+        const o = new URL(raw.trim()).origin;
+        if (o.startsWith('http://') || o.startsWith('https://')) out.push(o);
+      } catch {
+        /* not an origin: ignored */
+      }
+    }
+    for (const raw of (process.env['PAYPLUS_STUB_CALLBACK_HOSTS'] ?? '').split(',')) {
+      const host = raw.trim().toLowerCase();
+      if (!host) continue;
+      for (const scheme of ['http', 'https']) {
+        try {
+          out.push(new URL(`${scheme}://${host}`).origin);
+        } catch {
+          /* not a host: ignored */
+        }
+      }
+    }
+    return [...new Set(out)];
+  })(),
+);
+
+/**
  * POST the signed callback to the link's refURL_callback.
  * @param {string} target @param {string} secret @param {unknown} payload
- * @returns {Promise<number>} the receiver's HTTP status (0 when unreachable)
+ * @returns {Promise<number>} the receiver's HTTP status (0 when unreachable or not allowed)
  */
-/**
- * Hosts the stub may post callbacks to. A stub must never become an open
- * relay: the organizer's refURL_callback is caller data, so only loopback
- * hosts, Docker's host alias and hosts listed in PAYPLUS_STUB_CALLBACK_HOSTS
- * (comma separated) are accepted.
- * @param {URL} url
- */
-function callbackHostAllowed(url) {
-  const host = url.hostname.toLowerCase();
-  if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') return true;
-  if (host === 'host.docker.internal' || host.endsWith('.localhost')) return true;
-  const extra = (process.env.PAYPLUS_STUB_CALLBACK_HOSTS || '')
-    .split(',')
-    .map((h) => h.trim().toLowerCase())
-    .filter(Boolean);
-  return extra.includes(host);
-}
-
 function postCallback(target, secret, payload) {
   const body = JSON.stringify(payload);
   const hash = crypto.createHmac('sha256', secret).update(body).digest('base64');
   return new Promise((resolve) => {
-    let url;
+    let parsed;
     try {
-      url = new URL(target);
+      parsed = new URL(target);
     } catch {
       resolve(0);
       return;
     }
-    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !callbackHostAllowed(url)) {
-      console.warn(`payplus-stub: callback host not allowed, skipped: ${url.hostname}`);
+    const chosenOrigin = CALLBACK_ORIGINS.find((o) => o === parsed.origin);
+    if (chosenOrigin === undefined) {
+      console.warn('payplus-stub: callback origin not allowed, skipped (set PAYPLUS_STUB_CALLBACK_ORIGINS)');
       resolve(0);
       return;
     }
-    const lib = url.protocol === 'https:' ? https : http;
+    // The target is the listed origin plus the path: nothing of the caller's
+    // URL decides where the request goes.
+    const requestTarget = chosenOrigin + parsed.pathname + parsed.search;
+    const lib = chosenOrigin.startsWith('https:') ? https : http;
     const req = lib.request(
-      url,
+      requestTarget,
       {
         method: 'POST',
         headers: {
