@@ -207,6 +207,9 @@ func (s *Service) Cancel(ctx context.Context, orgID, id uuid.UUID) (OrderView, e
 		if err != nil {
 			return err
 		}
+		if err := q.LockShopOrderVariants(ctx, o.ID); err != nil {
+			return err
+		}
 		return q.JournalShopOrderHold(ctx, o.ID, o.OrgID, MoveRelease)
 	})
 	if err != nil {

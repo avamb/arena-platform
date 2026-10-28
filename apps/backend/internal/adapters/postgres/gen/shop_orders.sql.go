@@ -379,14 +379,24 @@ func (q *Queries) SetShopOrderRefunded(ctx context.Context, id uuid.UUID, status
 
 const lockShopOrderVariants = `-- name: LockShopOrderVariants :exec
 SELECT v.id FROM shop_variants v
-WHERE  v.id IN (SELECT oi.variant_id FROM shop_order_items oi WHERE oi.order_id = $1 AND oi.variant_id IS NOT NULL)
+WHERE  v.id IN (SELECT oi.variant_id FROM shop_order_items oi
+                WHERE oi.order_id = ANY($1::uuid[]) AND oi.variant_id IS NOT NULL)
 ORDER  BY v.id
 FOR UPDATE OF v`
 
 // LockShopOrderVariants locks the variant rows of an order's lines, in id
-// order like the checkout, before anything reads or changes their stock.
+// order like the checkout, before anything reads or changes their stock or
+// journals a move on them (the journal's foreign key takes a KEY SHARE lock
+// on the variant; taken in hash order without this first it deadlocks a
+// checkout of two variants).
 func (q *Queries) LockShopOrderVariants(ctx context.Context, orderID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, lockShopOrderVariants, orderID)
+	return q.LockShopOrdersVariants(ctx, []uuid.UUID{orderID})
+}
+
+// LockShopOrdersVariants is LockShopOrderVariants for several orders at once:
+// the union of their variants, in one id order (the expiry sweep).
+func (q *Queries) LockShopOrdersVariants(ctx context.Context, orderIDs []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockShopOrderVariants, orderIDs)
 	return err
 }
 

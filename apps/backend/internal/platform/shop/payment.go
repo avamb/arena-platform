@@ -171,6 +171,9 @@ func (s *Service) MarkPaymentFailedTx(ctx context.Context, tx pgx.Tx, paymentInt
 	if _, err := q.SetShopOrderStatus(ctx, o.ID, StatusExpired, nil, []byte(`{"expired_by":"payment_failed"}`)); err != nil {
 		return true, fmt.Errorf("shop: expire order: %w", err)
 	}
+	if err := q.LockShopOrderVariants(ctx, o.ID); err != nil {
+		return true, fmt.Errorf("shop: lock the expired order's goods: %w", err)
+	}
 	if err := q.JournalShopOrderHold(ctx, o.ID, o.OrgID, MoveRelease); err != nil {
 		return true, fmt.Errorf("shop: journal release: %w", err)
 	}

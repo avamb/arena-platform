@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -34,6 +35,15 @@ func (s *Service) ExpireDue(ctx context.Context) (int, error) {
 		due, err := q.ExpireShopOrders(ctx, sweepBatch)
 		if err != nil {
 			return err
+		}
+		if len(due) > 0 {
+			ids := make([]uuid.UUID, len(due))
+			for i, d := range due {
+				ids[i] = d[0]
+			}
+			if err := q.LockShopOrdersVariants(ctx, ids); err != nil {
+				return err
+			}
 		}
 		for _, d := range due {
 			if err := q.JournalShopOrderHold(ctx, d[0], d[1], MoveRelease); err != nil {

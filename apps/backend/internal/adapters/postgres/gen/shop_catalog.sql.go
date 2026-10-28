@@ -424,10 +424,12 @@ func (q *Queries) ShopDigitalMediaUsable(ctx context.Context, mediaID, orgID uui
 
 const untrackShopProductVariants = `-- name: UntrackShopProductVariants :exec
 UPDATE shop_variants SET track_stock = false, updated_at = now()
-WHERE  product_id = $1 AND deleted_at IS NULL AND track_stock`
+WHERE  id IN (SELECT id FROM shop_variants
+              WHERE product_id = $1 AND deleted_at IS NULL AND track_stock
+              ORDER BY id FOR UPDATE)`
 
 // UntrackShopProductVariants stops every live variant of a product from
-// tracking stock (a product that became digital).
+// tracking stock (a product that became digital), locking them in id order.
 func (q *Queries) UntrackShopProductVariants(ctx context.Context, productID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, untrackShopProductVariants, productID)
 	return err

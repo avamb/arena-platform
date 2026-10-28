@@ -14,6 +14,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/txretry"
 )
 
 // CheckoutItem is one line of the buyer's cart.
@@ -191,8 +192,24 @@ func (s *Service) PlaceOrder(ctx context.Context, in CheckoutInput) (PlacedOrder
 		return PlacedOrder{}, err
 	}
 
+	// A deadlock or serialization failure that survives the id-ordered
+	// locks restarts the whole transaction (txretry), never a 500.
 	var placed PlacedOrder
-	err = s.inTx(ctx, func(tx pgx.Tx, q *gen.Queries) error {
+	err = txretry.Do(ctx, txretry.DefaultAttempts, func() error {
+		return s.inTx(ctx, func(tx pgx.Tx, q *gen.Queries) error {
+			return s.placeOrderTx(ctx, tx, q, in, token, now, &placed)
+		})
+	})
+	if err != nil {
+		return PlacedOrder{}, err
+	}
+	return placed, nil
+}
+
+// placeOrderTx is one attempt of PlaceOrder on tx.
+func (s *Service) placeOrderTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, in CheckoutInput, token string, now time.Time, out *PlacedOrder) error {
+	var placed PlacedOrder
+	err := func() error {
 		settings, err := q.GetShopSettings(ctx, in.OrgID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrShopNotFound
@@ -331,11 +348,12 @@ func (s *Service) PlaceOrder(ctx context.Context, in CheckoutInput) (PlacedOrder
 			placed.Order, placed.Paid = paid, true
 		}
 		return nil
-	})
+	}()
 	if err != nil {
-		return PlacedOrder{}, err
+		return err
 	}
-	return placed, nil
+	*out = placed
+	return nil
 }
 
 // resolveCustomerTx finds or creates the buyer's customer (e-mail and phone
@@ -409,6 +427,9 @@ func (s *Service) AbandonOrder(ctx context.Context, orderID, orgID uuid.UUID) er
 			return nil
 		}
 		if _, err := q.SetShopOrderStatus(ctx, o.ID, StatusExpired, nil, []byte(`{"abandoned":"payment_start_failed"}`)); err != nil {
+			return err
+		}
+		if err := q.LockShopOrderVariants(ctx, o.ID); err != nil {
 			return err
 		}
 		return q.JournalShopOrderHold(ctx, o.ID, o.OrgID, MoveRelease)
