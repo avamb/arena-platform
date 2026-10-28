@@ -48,8 +48,9 @@ Rules that matter:
   becomes `https://cdn...`; empty paragraphs and theme sections that only held
   a dropped product grid disappear) and then passed through
   `shop.SanitizeBody` with the shop's product/page profile, the same function
-  the API uses (`richtext.Sanitize`). That profile has no pictures and no
-  tables, so those are removed and counted per page / product in the report. A
+  the API uses. A page keeps pictures and tables (the page sanitizer), a
+  product description does not: whatever the profile removes is counted per
+  page / product in the report. A
   text the sanitizer refuses (too long, for instance) fails that product or
   page and is listed under problems, never cut silently. Relative links are
   left relative unless `--site-url` is given.
@@ -235,7 +236,7 @@ settings:  1 would be created
 products:  7 would be created, 32 skipped (archived 3, draft 28, unlisted 1)
 variants:  8 would be created
 images:    22 would be created
-pages:     9 would be created (3 pictures on events, 1 on partners and 1 table on privacy-policy removed by the sanitizer)
+pages:     9 would be created (2 pages carry a picture that still points at the Shopify CDN)
 customers: 932 would be created
 consents:  290 would be created (642 customers say no: nothing recorded)
 money (ILS): prices 200.00 - 550.00, stock value 102630.00
@@ -263,11 +264,9 @@ all 39 products `physical`, option names set on the 9 that have real options
 * Orders are not imported yet (`shop_orders` with source `shopify`). The orders
   file is parsed and its totals are printed so they can be compared with
   Shopify's own report.
-* Pictures and tables inside descriptions and pages are removed by the shop's
-  sanitizer (3 pictures on `events`, 1 on `partners`, one table on
-  `privacy-policy` for Einat Winery). Product pictures are the gallery and are
-  unaffected. When the core lets page images through again, every `<img>`
-  that is still on Shopify (`cdn.shopify.com`, any `*.shopify.com` or
+* Pictures inside pages (3 on `events`, 1 on `partners` for Einat Winery) are
+  kept by the page sanitizer, but they still load from Shopify. Every `<img>`
+  of a stored page or description that is still on Shopify (`cdn.shopify.com`, any `*.shopify.com` or
   `shopifycdn.net` host, or the old domain's `/cdn/` path) is reported as
   "page picture still points at the Shopify CDN" (descriptions: "description
   picture ..."). Those pictures stop working when the Shopify store is closed:
