@@ -125,6 +125,24 @@ function txView(t) {
  * @param {string} target @param {string} secret @param {unknown} payload
  * @returns {Promise<number>} the receiver's HTTP status (0 when unreachable)
  */
+/**
+ * Hosts the stub may post callbacks to. A stub must never become an open
+ * relay: the organizer's refURL_callback is caller data, so only loopback
+ * hosts, Docker's host alias and hosts listed in PAYPLUS_STUB_CALLBACK_HOSTS
+ * (comma separated) are accepted.
+ * @param {URL} url
+ */
+function callbackHostAllowed(url) {
+  const host = url.hostname.toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') return true;
+  if (host === 'host.docker.internal' || host.endsWith('.localhost')) return true;
+  const extra = (process.env.PAYPLUS_STUB_CALLBACK_HOSTS || '')
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+  return extra.includes(host);
+}
+
 function postCallback(target, secret, payload) {
   const body = JSON.stringify(payload);
   const hash = crypto.createHmac('sha256', secret).update(body).digest('base64');
@@ -133,6 +151,11 @@ function postCallback(target, secret, payload) {
     try {
       url = new URL(target);
     } catch {
+      resolve(0);
+      return;
+    }
+    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !callbackHostAllowed(url)) {
+      console.warn(`payplus-stub: callback host not allowed, skipped: ${url.hostname}`);
       resolve(0);
       return;
     }
@@ -357,7 +380,8 @@ const server = http.createServer(async (req, res) => {
         return sendJSON(res, 404, { message: `stub does not implement ${endpoint}` });
     }
   } catch (err) {
-    sendJSON(res, 500, { message: String(err) });
+    console.error('payplus-stub: request failed', err);
+    sendJSON(res, 500, { message: 'internal stub error' });
   }
 });
 
