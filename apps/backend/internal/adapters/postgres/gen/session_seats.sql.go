@@ -6,6 +6,8 @@ package gen
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -949,9 +951,36 @@ func (q *Queries) DeleteSeatRowsBySession(ctx context.Context, sessionID uuid.UU
 // AB-49: post-issuance seat release (ticket cancellation)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const releaseSoldSessionSeat = `-- name: ReleaseSoldSessionSeat :one
+// Seat release targets accepted by the *To release queries (INV-01, spec
+// 46 §3.2). A cancelled ticket's place returns to where it was taken
+// from: a purchase or an invitation from free stock goes back on sale,
+// an invitation drawn from the organizer's blocked places goes back to
+// 'unavailable'. Nothing else is a legal end state for a sold place.
+const (
+	SeatReleaseAvailable   = "available"
+	SeatReleaseUnavailable = "unavailable"
+)
+
+// ErrInvalidSeatReleaseTarget is returned by the *To release queries for
+// a target other than SeatReleaseAvailable / SeatReleaseUnavailable. The
+// check runs in Go before any statement, so a bad value never reaches
+// the database and never aborts the caller's transaction.
+var ErrInvalidSeatReleaseTarget = errors.New("gen: invalid seat release target")
+
+// ValidateSeatReleaseTarget reports whether target is a legal end state
+// for a released sold place.
+func ValidateSeatReleaseTarget(target string) error {
+	switch target {
+	case SeatReleaseAvailable, SeatReleaseUnavailable:
+		return nil
+	default:
+		return fmt.Errorf("%w: %q", ErrInvalidSeatReleaseTarget, target)
+	}
+}
+
+const releaseSoldSessionSeat = `-- name: ReleaseSoldSessionSeatTo :one
 UPDATE session_seats ss
-SET    status         = 'available',
+SET    status         = $4::text,
        reservation_id = NULL,
        status_version = $3,
        updated_at     = now()
@@ -969,15 +998,29 @@ RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
           ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind`
 
-// ReleaseSoldSessionSeat performs the conditional 'sold' -> 'available'
-// transition — the ONLY legal way a sold seat returns to sale (AB-49;
-// sold -> unavailable stays forbidden). Guarded so it cannot fire while
-// any ACTIVE ticket still references the seat. Returns pgx.ErrNoRows
-// when the seat is not sold or an active ticket still points at it —
-// the caller MUST abort the cancellation transaction on that.
-func (q *Queries) ReleaseSoldSessionSeat(ctx context.Context, sessionID uuid.UUID, seatKey string, statusVersion int64) (SessionSeatRow, error) {
-	row := q.db.QueryRow(ctx, releaseSoldSessionSeat, sessionID, seatKey, statusVersion)
+// ReleaseSoldSessionSeatTo performs the conditional 'sold' -> target
+// transition (AB-49, widened by INV-01): target is 'available' for a
+// place that came from free stock and 'unavailable' for one an
+// invitation took from the organizer's blocked places
+// (order_items.seat_origin). Guarded so it cannot fire while any ACTIVE
+// ticket still references the seat. Returns pgx.ErrNoRows when the seat
+// is not sold or an active ticket still points at it — the caller MUST
+// abort the cancellation transaction on that — and
+// ErrInvalidSeatReleaseTarget, without touching the database, for any
+// other target.
+func (q *Queries) ReleaseSoldSessionSeatTo(ctx context.Context, sessionID uuid.UUID, seatKey string, statusVersion int64, target string) (SessionSeatRow, error) {
+	if err := ValidateSeatReleaseTarget(target); err != nil {
+		return SessionSeatRow{}, err
+	}
+	row := q.db.QueryRow(ctx, releaseSoldSessionSeat, sessionID, seatKey, statusVersion, target)
 	return scanSessionSeatRow(row)
+}
+
+// ReleaseSoldSessionSeat is ReleaseSoldSessionSeatTo with target
+// 'available' — the pre-INV-01 behaviour every non-invitation caller
+// relies on (complimentary revoke, refunds).
+func (q *Queries) ReleaseSoldSessionSeat(ctx context.Context, sessionID uuid.UUID, seatKey string, statusVersion int64) (SessionSeatRow, error) {
+	return q.ReleaseSoldSessionSeatTo(ctx, sessionID, seatKey, statusVersion, SeatReleaseAvailable)
 }
 
 const releaseSoldGAUnitForReservation = `-- name: ReleaseSoldGAUnitForReservation :one
@@ -1013,9 +1056,9 @@ func (q *Queries) ReleaseSoldGAUnitForReservation(ctx context.Context, sessionID
 	return scanSessionSeatRow(row)
 }
 
-const releaseSoldGAUnitBySeatKey = `-- name: ReleaseSoldGAUnitBySeatKey :one
+const releaseSoldGAUnitBySeatKey = `-- name: ReleaseSoldGAUnitBySeatKeyTo :one
 UPDATE session_seats ss
-SET    status         = 'available',
+SET    status         = $4::text,
        reservation_id = NULL,
        status_version = $3,
        updated_at     = now()
@@ -1037,10 +1080,48 @@ RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
 // Since AB-51 issuance stamps the concrete unit's seat_key on the GA
 // ticket, so a cancellation releases exactly THAT unit, guarded the same
 // way (sold, and no other ACTIVE ticket still references it). Returns
-// pgx.ErrNoRows when the unit is not sold or still referenced.
-func (q *Queries) ReleaseSoldGAUnitBySeatKey(ctx context.Context, sessionID uuid.UUID, seatKey string, statusVersion int64) (SessionSeatRow, error) {
-	row := q.db.QueryRow(ctx, releaseSoldGAUnitBySeatKey, sessionID, seatKey, statusVersion)
+// pgx.ErrNoRows when the unit is not sold or still referenced, and
+// ErrInvalidSeatReleaseTarget for a target other than 'available' /
+// 'unavailable'.
+func (q *Queries) ReleaseSoldGAUnitBySeatKeyTo(ctx context.Context, sessionID uuid.UUID, seatKey string, statusVersion int64, target string) (SessionSeatRow, error) {
+	if err := ValidateSeatReleaseTarget(target); err != nil {
+		return SessionSeatRow{}, err
+	}
+	row := q.db.QueryRow(ctx, releaseSoldGAUnitBySeatKey, sessionID, seatKey, statusVersion, target)
 	return scanSessionSeatRow(row)
+}
+
+// ReleaseSoldGAUnitBySeatKey is ReleaseSoldGAUnitBySeatKeyTo with target
+// 'available' (pre-INV-01 behaviour).
+func (q *Queries) ReleaseSoldGAUnitBySeatKey(ctx context.Context, sessionID uuid.UUID, seatKey string, statusVersion int64) (SessionSeatRow, error) {
+	return q.ReleaseSoldGAUnitBySeatKeyTo(ctx, sessionID, seatKey, statusVersion, SeatReleaseAvailable)
+}
+
+const getTicketSeatOrigin = `-- name: GetTicketSeatOrigin :one
+SELECT oi.seat_origin
+FROM   tickets t
+JOIN   order_items oi ON oi.order_id = t.order_id
+WHERE  t.id = $1
+  AND  (oi.ticket_id = t.id
+        OR (oi.ticket_id IS NULL AND oi.session_seat_id IS NOT NULL
+            AND oi.session_seat_id = (SELECT ss.id FROM session_seats ss
+                                      WHERE ss.session_id = t.session_id
+                                        AND ss.seat_key = t.seat_key)))
+ORDER  BY (oi.ticket_id = t.id) DESC NULLS LAST
+LIMIT  1`
+
+// GetTicketSeatOrigin answers order_items.seat_origin of the order line
+// behind a ticket (INV-01): 'unavailable' when an invitation took the
+// place from the organizer's blocked places, 'available' when it came
+// from free stock, nil for a purchase (the column is NULL there).
+// pgx.ErrNoRows when the ticket has no order line (legacy rows) —
+// callers treat both nil and ErrNoRows as 'available'.
+func (q *Queries) GetTicketSeatOrigin(ctx context.Context, ticketID uuid.UUID) (*string, error) {
+	var origin *string
+	if err := q.db.QueryRow(ctx, getTicketSeatOrigin, ticketID).Scan(&origin); err != nil {
+		return nil, err
+	}
+	return origin, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
