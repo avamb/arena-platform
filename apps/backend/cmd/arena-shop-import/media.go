@@ -82,8 +82,17 @@ func (s *imageSource) localPath(src string) (string, bool) {
 	if name == "" || strings.ContainsAny(name, `/\`) {
 		return "", false
 	}
+	// filepath.Base strips any directory part; the rel check below keeps a
+	// name such as ".." from escaping the images directory.
+	name = filepath.Base(name)
+	if name == "." || name == ".." {
+		return "", false
+	}
 	p := filepath.Join(s.dir, name)
-	if st, err := os.Stat(p); err == nil && !st.IsDir() {
+	if rel, err := filepath.Rel(s.dir, p); err != nil || rel != name {
+		return "", false
+	}
+	if st, err := os.Stat(p); err == nil && !st.IsDir() { //nolint:gosec // name is a bare file name confined to s.dir by the Rel check above
 		return p, true
 	}
 	return "", false

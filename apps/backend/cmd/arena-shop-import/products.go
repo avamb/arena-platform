@@ -241,13 +241,13 @@ func parseVariant(h csvHeader, rec []string, currency string, line int, position
 	case errors.Is(err, errEmptyMoney):
 		price = 0 // a variant row with no price: free until the organizer sets one
 	case err != nil:
-		return v, fmt.Errorf("Variant Price: %w", err)
+		return v, fmt.Errorf("variant price: %w", err)
 	}
 	v.PriceMinor = price
 	if raw := h.get(rec, "Variant Compare At Price"); raw != "" {
 		c, err := ParseMinor(raw, currency)
 		if err != nil {
-			return v, fmt.Errorf("Variant Compare At Price: %w", err)
+			return v, fmt.Errorf("variant compare at price: %w", err)
 		}
 		// A compare-at price that is not above the price is not a discount.
 		if c > price {
@@ -282,7 +282,7 @@ func parseVariant(h csvHeader, rec []string, currency string, line int, position
 	if q := h.get(rec, "Variant Inventory Qty"); q != "" {
 		n, err := strconv.ParseInt(q, 10, 32)
 		if err != nil {
-			return v, fmt.Errorf("Variant Inventory Qty %q is not a whole number", q)
+			return v, fmt.Errorf("variant inventory qty %q is not a whole number", q)
 		}
 		if n < 0 {
 			n = 0
