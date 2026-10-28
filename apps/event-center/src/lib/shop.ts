@@ -216,7 +216,12 @@ export interface VariantsCheck {
 }
 
 /** Checks the whole list. A simple product (one row, no options) may leave the title empty. */
-export function checkVariants(rows: readonly VariantRow[], currency: string, optionCount: number): VariantsCheck {
+/** A digital product never tracks stock: its rows have no stock to check or send. */
+export interface VariantsMode {
+  digital?: boolean;
+}
+
+export function checkVariants(rows: readonly VariantRow[], currency: string, optionCount: number, mode: VariantsMode = {}): VariantsCheck {
   const out: Record<string, RowErrors> = {};
   let ok = true;
   const mark = (key: string, p: VariantProblem) => {
@@ -232,7 +237,7 @@ export function checkVariants(rows: readonly VariantRow[], currency: string, opt
       if (cmp === null) mark(r.key, "compareAt");
       else if (price !== null && cmp <= price) mark(r.key, "compareBelowPrice");
     }
-    if (r.trackStock && !/^\d+$/.test(r.stock.trim())) mark(r.key, "stock");
+    if (mode.digital !== true && r.trackStock && !/^\d+$/.test(r.stock.trim())) mark(r.key, "stock");
     if ([...r.sku.trim()].length > SHOP_LIMITS.sku) mark(r.key, "sku");
     if (r.options.some((o) => [...o.trim()].length > SHOP_LIMITS.option)) mark(r.key, "optionTooLong");
     const title = rowTitle(r, optionCount);
@@ -250,15 +255,16 @@ export function checkVariants(rows: readonly VariantRow[], currency: string, opt
 }
 
 /** The body of PUT .../variants for rows that passed `checkVariants`. */
-export function variantsRequest(rows: readonly VariantRow[], currency: string, optionCount: number): ShopVariantSend[] {
+export function variantsRequest(rows: readonly VariantRow[], currency: string, optionCount: number, mode: VariantsMode = {}): ShopVariantSend[] {
+  const digital = mode.digital === true;
   return rows.map((r, i) => {
     const out: ShopVariantSend = {
       title: rowTitle(r, optionCount),
       sku: r.sku.trim() === "" ? null : r.sku.trim(),
       price_minor: parseMoney(r.price, currency) ?? 0,
       compare_at_minor: r.compareAt.trim() === "" ? null : parseMoney(r.compareAt, currency),
-      stock: r.trackStock ? Number(r.stock.trim()) : (r.loadedStock ?? 0),
-      track_stock: r.trackStock,
+      stock: digital ? 0 : r.trackStock ? Number(r.stock.trim()) : (r.loadedStock ?? 0),
+      track_stock: digital ? false : r.trackStock,
       position: i,
       option1: optionCount >= 1 && r.options[0].trim() !== "" ? r.options[0].trim() : null,
       option2: optionCount >= 2 && r.options[1].trim() !== "" ? r.options[1].trim() : null,
@@ -267,7 +273,7 @@ export function variantsRequest(rows: readonly VariantRow[], currency: string, o
     if (r.id !== undefined) {
       out.id = r.id;
       // The stock the person saw: the server refuses the save when the shelf moved meanwhile.
-      if (r.loadedStock !== undefined) out.expected_stock = r.loadedStock;
+      if (!digital && r.loadedStock !== undefined) out.expected_stock = r.loadedStock;
     }
     return out;
   });
@@ -278,14 +284,28 @@ export function isStockChanged(err: unknown): boolean {
   return err instanceof ApiError && err.code === "shop.stock_changed";
 }
 
-function variantsSignature(rows: readonly VariantRow[], currency: string, optionCount: number): string {
-  return JSON.stringify(variantsRequest(rows, currency, optionCount).map((v) => ({ ...v, position: undefined, expected_stock: undefined })));
+/** What the API said about a refused stock write: each variant's stock now, by variant id. */
+export function stockChangedDetails(err: unknown): { id: string; expected: number | null; stock: number }[] {
+  if (!isStockChanged(err)) return [];
+  const list = (err as ApiError).details?.variants;
+  if (!Array.isArray(list)) return [];
+  const out: { id: string; expected: number | null; stock: number }[] = [];
+  for (const v of list) {
+    if (v === null || typeof v !== "object") continue;
+    const o = v as { id?: unknown; expected_stock?: unknown; stock?: unknown };
+    if (typeof o.id === "string" && typeof o.stock === "number") out.push({ id: o.id, expected: typeof o.expected_stock === "number" ? o.expected_stock : null, stock: o.stock });
+  }
+  return out;
+}
+
+function variantsSignature(rows: readonly VariantRow[], currency: string, optionCount: number, mode: VariantsMode): string {
+  return JSON.stringify(variantsRequest(rows, currency, optionCount, mode).map((v) => ({ ...v, position: undefined, expected_stock: undefined })));
 }
 
 /** True when the rows differ from the saved variants (so «Save» is worth pressing). */
-export function variantsChanged(rows: readonly VariantRow[], saved: readonly ShopVariant[], currency: string, optionCount: number): boolean {
+export function variantsChanged(rows: readonly VariantRow[], saved: readonly ShopVariant[], currency: string, optionCount: number, mode: VariantsMode = {}): boolean {
   const was = saved.map((v) => rowFromVariant(v, currency));
-  return variantsSignature(rows, currency, optionCount) !== variantsSignature(was, currency, optionCount);
+  return variantsSignature(rows, currency, optionCount, mode) !== variantsSignature(was, currency, optionCount, mode);
 }
 
 // ─── Pictures ────────────────────────────────────────────────────────────────
@@ -369,6 +389,7 @@ export function refundable(order: Pick<ShopOrder, "total" | "refunded_minor">): 
 }
 
 /** Refund exists when money was taken through arena and some of it is left. */
+/** Refunding needs shop.manage AND the refund rights of the money engine (refund.create and refund.approve). */
 export function canRefundShopOrder(order: Pick<ShopOrder, "status" | "total" | "refunded_minor" | "payment">, canManage: boolean): boolean {
   if (!canManage || order.payment === null || order.payment === undefined) return false;
   if (!["paid", "shipped", "partially_refunded", "manual_review"].includes(order.status)) return false;

@@ -2321,7 +2321,7 @@ export const es: Record<MessageKey, string> = {
   "shop.order.source.web": "tienda",
   "shop.order.source.shopify": "importado de Shopify",
   "shop.order.review.title": "Este pedido requiere revisión.",
-  "shop.order.review.text": "El pago llegó cuando la reserva ya había terminado y no quedaba el producto. El dinero está registrado y nada salió del almacén. Envía el pedido si tienes el producto, o reembolsa el dinero.",
+  "shop.order.review.text": "El pago llegó cuando la reserva ya había terminado y el producto ya no estaba libre. El dinero está registrado y nada salió del almacén. Al marcar el pedido como enviado, el producto sale del almacén en ese momento. Un reembolso completo cierra el pedido.",
   "shop.timeline.title": "Historial",
   "shop.timeline.created": "Pedido creado",
   "shop.timeline.paid": "Pagado",
@@ -2420,4 +2420,9 @@ export const es: Record<MessageKey, string> = {
   "shop.settings.f.maxLineQty": "Máximo de unidades de un producto por pedido",
   "shop.settings.f.maxLineQtyHint": "Un número del 1 al 99. El selector de cantidad de la tienda se detiene ahí.",
   "shop.settings.err.maxLineQty": "Escribe un número del 1 al 99 o déjalo vacío.",
+  "shop.delivery.none": "Sin entrega",
+  "shop.variants.digitalNote": "Un producto digital no tiene existencias. Los compradores reciben el archivo tras pagar.",
+  "shop.variants.stockMoved": "{title}: viste {was}, ahora hay {now}.",
+  "apiError.shopOperatorOnly.title": "Solo el operador de la plataforma puede cambiar esto.",
+  "apiError.shopOperatorOnly.next": "El dominio y la apertura o cierre de la tienda los define el operador. No se cambió nada. Escribe a soporte.",
 };

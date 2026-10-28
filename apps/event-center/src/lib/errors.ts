@@ -165,7 +165,8 @@ export type ApiErrorStem =
   | "shopNotCancellable"
   | "shopNotRefundable"
   | "shopRefundAmount"
-  | "shopCurrency";
+  | "shopCurrency"
+  | "shopOperatorOnly";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -198,7 +199,7 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   // S2b/S2c
   "seatNothingToRevert", "seatTooMany", "seatTierGone", "seatStageNeeded", "seatNoPlan",
   // The shop (spec 47)
-  "shopStockChanged", "shopDuplicateSlug", "shopVariantsInvalid", "shopMediaInvalid", "shopNotShippable", "shopNotCancellable", "shopNotRefundable", "shopRefundAmount", "shopCurrency",
+  "shopStockChanged", "shopDuplicateSlug", "shopVariantsInvalid", "shopMediaInvalid", "shopNotShippable", "shopNotCancellable", "shopNotRefundable", "shopRefundAmount", "shopCurrency", "shopOperatorOnly",
 ];
 
 /**
@@ -344,6 +345,9 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "shop.nothing_to_refund": "refundNothing",
   "shop.invalid_refund_amount": "shopRefundAmount",
   "shop.invalid_currency": "shopCurrency",
+  "shop.enabled_superadmin_only": "shopOperatorOnly",
+  "shop.domain_superadmin_only": "shopOperatorOnly",
+  "shop.invalid_digital_media": "shopMediaInvalid",
   "shop.invalid_body_html": "textRefused",
   "shop.text_too_long": "textRefused",
   "auth.step_up_required": "stepUpRequired",

@@ -2321,7 +2321,7 @@ export const ru: Record<MessageKey, string> = {
   "shop.order.source.web": "витрина",
   "shop.order.source.shopify": "импорт из Shopify",
   "shop.order.review.title": "Этот заказ нужно проверить.",
-  "shop.order.review.text": "Оплата пришла после того, как бронь закончилась, а товара уже не было. Деньги записаны, со склада ничего не списано. Отправьте заказ, если товар есть, или верните деньги.",
+  "shop.order.review.text": "Оплата пришла после того, как бронь закончилась, а товар уже был не свободен. Деньги записаны, со склада ничего не списано. Когда вы отметите заказ отправленным, товар спишется со склада в этот момент. Полный возврат закроет заказ.",
   "shop.timeline.title": "История",
   "shop.timeline.created": "Заказ создан",
   "shop.timeline.paid": "Оплачен",
@@ -2420,4 +2420,9 @@ export const ru: Record<MessageKey, string> = {
   "shop.settings.f.maxLineQty": "Больше всего единиц одного товара в заказе",
   "shop.settings.f.maxLineQtyHint": "Число от 1 до 99. Выбор количества на витрине останавливается на нём.",
   "shop.settings.err.maxLineQty": "Напишите число от 1 до 99 или оставьте поле пустым.",
+  "shop.delivery.none": "Без доставки",
+  "shop.variants.digitalNote": "У цифрового товара нет остатка. Покупатель получает файл после оплаты.",
+  "shop.variants.stockMoved": "{title}: вы видели {was}, сейчас {now}.",
+  "apiError.shopOperatorOnly.title": "Это может изменить только оператор платформы.",
+  "apiError.shopOperatorOnly.next": "Домен и открытие или закрытие витрины задаёт оператор. Ничего не изменено. Напишите в поддержку.",
 };

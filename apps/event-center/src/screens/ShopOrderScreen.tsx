@@ -29,7 +29,9 @@ export function ShopOrderCard({ order, orgId, actions }: { order: ShopOrder; org
   const zone = browserZone();
   const money = (v: number) => formatMoney(v, order.currency, locale);
   const a = order.ship;
-  const hasAddress = order.delivery_kind !== "pickup" && (a.address1 !== "" || a.city !== "");
+  // An order of digital products and services only has no address block at all.
+  const noDelivery = order.delivery_kind === "none";
+  const hasAddress = order.delivery_kind !== "pickup" && !noDelivery && (a.address1 !== "" || a.city !== "");
   const src = sourceKey(order.source);
   const payState = order.payment !== null && order.payment !== undefined ? order.payment.state : null;
 
@@ -75,6 +77,7 @@ export function ShopOrderCard({ order, orgId, actions }: { order: ShopOrder; org
         </ul>
       </section>
 
+      {!noDelivery && (
       <section aria-labelledby="shop-order-address">
         <h2 id="shop-order-address">{t("shop.order.address")}</h2>
         {hasAddress ? (
@@ -99,6 +102,12 @@ export function ShopOrderCard({ order, orgId, actions }: { order: ShopOrder; org
           </p>
         )}
       </section>
+      )}
+      {noDelivery && order.delivery_note !== "" && (
+        <p data-testid="shop-order-comment">
+          <strong>{t("shop.order.comment")}:</strong> {order.delivery_note}
+        </p>
+      )}
 
       <section aria-labelledby="shop-order-lines">
         <h2 id="shop-order-lines">{t("shop.order.lines")}</h2>
@@ -119,6 +128,9 @@ export function ShopOrderCard({ order, orgId, actions }: { order: ShopOrder; org
                     {it.product_title}
                     {it.variant_title !== "" && it.variant_title !== "Default Title" && <span className="muted"> · {it.variant_title}</span>}
                     {it.sku !== null && it.sku !== undefined && it.sku !== "" && <span className="muted"> · {it.sku}</span>}
+                    {it.product_kind !== undefined && it.product_kind !== "physical" && (
+                      <span className="muted" data-testid="shop-order-line-kind"> · {t(`shop.kind.${it.product_kind}` as MessageKey)}</span>
+                    )}
                   </td>
                   <td data-label={t("shop.order.col.qty")}>{it.qty}</td>
                   <td data-label={t("shop.order.col.unit")}>{money(it.unit_price_minor)}</td>
@@ -201,7 +213,7 @@ export function ShopOrderScreen() {
       <ShopOrderCard
         order={order.data}
         orgId={orgId}
-        actions={<ShopOrderActions key={`${orgId}:${order.data.id}`} orgId={orgId} order={order.data} canManage={access.can("shop.manage")} />}
+        actions={<ShopOrderActions key={`${orgId}:${order.data.id}`} orgId={orgId} order={order.data} canManage={access.can("shop.manage")} canRefund={access.can("refund.create") && access.can("refund.approve")} />}
       />
     </>
   );

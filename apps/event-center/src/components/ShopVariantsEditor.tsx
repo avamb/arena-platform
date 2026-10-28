@@ -36,6 +36,8 @@ export interface ShopVariantsEditorProps {
   /** The result of `checkVariants` once the person tried to save, else null. */
   check: VariantsCheck | null;
   disabled?: boolean;
+  /** A digital product: no stock controls, the file is not counted. */
+  digital?: boolean;
   /** Held and available units of the saved variants, by id. */
   stats?: Readonly<Record<string, VariantStat>>;
 }
@@ -51,7 +53,7 @@ const PROBLEM_KEY: Record<VariantProblem, MessageKey> = {
   duplicate: "shop.variants.err.duplicate",
 };
 
-export function ShopVariantsEditor({ rows, onChange, currency, optionNames, optionCount, check, disabled = false, stats }: ShopVariantsEditorProps) {
+export function ShopVariantsEditor({ rows, onChange, currency, optionNames, optionCount, check, disabled = false, digital = false, stats }: ShopVariantsEditorProps) {
   const { t } = useI18n();
 
   const patch = (key: string, change: Partial<VariantRow>) => onChange(rows.map((r) => (r.key === key ? { ...r, ...change } : r)));
@@ -142,6 +144,7 @@ export function ShopVariantsEditor({ rows, onChange, currency, optionNames, opti
                   onChange={(v) => patch(r.key, { compareAt: v })}
                   testId={`shop-variant-compare-${index}`}
                 />
+                {!digital && (
                 <p>
                   <label>
                     <input
@@ -153,8 +156,10 @@ export function ShopVariantsEditor({ rows, onChange, currency, optionNames, opti
                     {t("shop.variants.f.track")}
                   </label>
                 </p>
-                {!r.trackStock && <p className="field-hint">{t("shop.variants.f.trackHint")}</p>}
-                {r.trackStock && (
+                )}
+                {digital && <p className="field-hint" data-testid="shop-variants-digital-note">{t("shop.variants.digitalNote")}</p>}
+                {!digital && !r.trackStock && <p className="field-hint">{t("shop.variants.f.trackHint")}</p>}
+                {!digital && r.trackStock && (
                   <TextField
                     label={t("shop.variants.f.stock")}
                     error={errorOf(r.key, "stock")}
@@ -163,7 +168,7 @@ export function ShopVariantsEditor({ rows, onChange, currency, optionNames, opti
                     testId={`shop-variant-stock-${index}`}
                   />
                 )}
-                {stat !== undefined && (
+                {!digital && stat !== undefined && (
                   <p className="muted" data-testid={`shop-variant-stat-${index}`}>
                     {t("shop.variants.held", { count: stat.held })}
                     {stat.available !== null && <> · {t("shop.variants.available", { count: stat.available })}</>}

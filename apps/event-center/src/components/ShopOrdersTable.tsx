@@ -16,6 +16,7 @@ export function ShopOrderStatusBadge({ status }: { status: string }) {
 }
 
 export function deliveryLabel(kind: string): MessageKey {
+  if (kind === "none") return "shop.delivery.none";
   return kind === "pickup" ? "shop.delivery.pickup" : "shop.delivery.shipping";
 }
 

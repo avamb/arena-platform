@@ -44,6 +44,7 @@ import {
   checkVariants,
   emptyRow,
   isStockChanged,
+  stockChangedDetails,
   optionCountOf,
   optionNamesOf,
   productKind,
@@ -93,7 +94,9 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
   const [notice, setNotice] = useState<MessageKey | null>(null);
   const [fileProblem, setFileProblem] = useState<MessageKey | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [stockMoved, setStockMoved] = useState<{ title: string; expected: number | null; stock: number }[]>([]);
 
+  const digital = kind === "digital";
   const used = leadingNames(names);
   const optionCount = optionCountOf(used, rows);
   const disabled = !canManage || busy !== null;
@@ -111,8 +114,10 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
       status,
       kind,
       option_names: used,
-      digital_media_id: kind === "digital" ? digitalId : null,
     };
+    // Absent keeps the file, null removes it. Only a digital product has one.
+    if (kind === "digital") f.digital_media_id = digitalId;
+    else if (product?.digital_media_id) f.digital_media_id = null;
     if (bodyTouched.current) f.body_html = body;
     return f;
   };
@@ -124,6 +129,7 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
 
   const run = async (scope: "details" | "variants" | "create" | "file", fn: () => Promise<void>) => {
     setBusy(scope);
+    setStockMoved([]);
     setFailure(null);
     setNotice(null);
     try {
@@ -147,12 +153,12 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
 
   const saveVariants = () => {
     if (product === undefined) return;
-    const c = checkVariants(rows, currency, optionCount);
+    const c = checkVariants(rows, currency, optionCount, { digital });
     setCheck(c);
     if (!c.ok) return;
     void run("variants", async () => {
       try {
-        const saved = await replaceShopVariants(orgId, product.id, variantsRequest(rows, currency, optionCount));
+        const saved = await replaceShopVariants(orgId, product.id, variantsRequest(rows, currency, optionCount, { digital }));
         setProduct(saved);
         setRows(rowsFromProduct(saved, currency));
         setCheck(null);
@@ -160,6 +166,7 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
       } catch (error) {
         if (!isStockChanged(error)) throw error;
         // The shelf moved while the screen was open: show the server's numbers, say so, change nothing else.
+        setStockMoved(stockChangedDetails(error).map((d) => ({ title: rows.find((r) => r.id === d.id)?.title || rows.find((r) => r.id === d.id)?.options.filter((o) => o !== "").join(" / ") || "", expected: d.expected, stock: d.stock })));
         const fresh = await fetchShopProduct(orgId, product.id);
         setProduct(fresh);
         setRows(rowsFromProduct(fresh, currency));
@@ -171,11 +178,11 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
 
   const create = () => {
     setDetailsTried(true);
-    const c = checkVariants(rows, currency, optionCount);
+    const c = checkVariants(rows, currency, optionCount, { digital });
     setCheck(c);
     if (!detailsOk || !c.ok) return;
     void run("create", async () => {
-      const made = await createShopProduct(orgId, { ...fields(), variants: variantsRequest(rows, currency, optionCount) });
+      const made = await createShopProduct(orgId, { ...fields(), variants: variantsRequest(rows, currency, optionCount, { digital }) });
       void queryClient.invalidateQueries({ queryKey: ["shopProducts", orgId] });
       queryClient.setQueryData(["shopProduct", orgId, made.id], made);
       await navigate({ to: "/o/$orgId/shop/products/$productId", params: { orgId, productId: made.id }, search: { created: true } });
@@ -313,9 +320,16 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
       <section aria-labelledby="shop-variants-title">
         <h2 id="shop-variants-title">{t("shop.variants.title")}</h2>
         <p className="field-hint">{t("shop.variants.hint")}</p>
-        <ShopVariantsEditor rows={rows} onChange={setRows} currency={currency} optionNames={used} optionCount={optionCount} check={check} disabled={disabled} stats={stats} />
+        <ShopVariantsEditor rows={rows} onChange={setRows} currency={currency} optionNames={used} optionCount={optionCount} check={check} disabled={disabled} digital={digital} stats={stats} />
         {variantsError !== null && (
           <ErrorNotice error={variantsError} testId={isStockChanged(variantsError) ? "shop-stock-changed" : "shop-variants-error"} />
+        )}
+        {variantsError !== null && isStockChanged(variantsError) && stockMoved.length > 0 && (
+          <ul className="facts" data-testid="shop-stock-moved">
+            {stockMoved.map((m, i) => (
+              <li key={i}>{t("shop.variants.stockMoved", { title: m.title === "" ? `#${i + 1}` : m.title, was: m.expected ?? "", now: m.stock })}</li>
+            ))}
+          </ul>
         )}
         {notice === "shop.variants.saved" && (
           <p className="notice notice-ok" role="status" data-testid="shop-variants-notice">
@@ -327,7 +341,7 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
             <button
               type="button"
               className="btn btn-primary"
-              disabled={busy !== null || !variantsChanged(rows, product.variants, currency, optionCount)}
+              disabled={busy !== null || !variantsChanged(rows, product.variants, currency, optionCount, { digital })}
               onClick={saveVariants}
               data-testid="shop-variants-save"
             >

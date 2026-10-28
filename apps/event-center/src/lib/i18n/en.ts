@@ -2321,7 +2321,7 @@ export const en = {
   "shop.order.source.web": "storefront",
   "shop.order.source.shopify": "imported from Shopify",
   "shop.order.review.title": "This order needs a check.",
-  "shop.order.review.text": "The payment came after the hold ended, and the goods were gone. The money is recorded and nothing left the shelf. Ship the order if you have the goods, or refund it.",
+  "shop.order.review.text": "The payment came after the hold ended, and the goods were no longer free. The money is recorded and nothing left the shelf. Marking the order shipped takes the goods off the shelf at that moment. A full refund closes the order.",
   "shop.timeline.title": "History",
   "shop.timeline.created": "Order placed",
   "shop.timeline.paid": "Paid",
@@ -2420,6 +2420,11 @@ export const en = {
   "shop.settings.f.maxLineQty": "Most units of one product per order",
   "shop.settings.f.maxLineQtyHint": "A number from 1 to 99. The quantity picker on the storefront stops there.",
   "shop.settings.err.maxLineQty": "Type a number from 1 to 99, or leave it empty.",
+  "shop.delivery.none": "No delivery",
+  "shop.variants.digitalNote": "A digital product has no stock. Buyers get the file after paying.",
+  "shop.variants.stockMoved": "{title}: you saw {was}, now {now}.",
+  "apiError.shopOperatorOnly.title": "Only the platform operator can change this.",
+  "apiError.shopOperatorOnly.next": "The domain and the open or closed storefront are set by the operator. Nothing was changed. Write to support.",
 } as const;
 
 export type MessageKey = keyof typeof en;

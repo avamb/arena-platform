@@ -44,11 +44,13 @@ export interface ShopOrderActionsProps {
   orgId: string;
   order: ShopOrder;
   canManage: boolean;
+  /** refund.create and refund.approve: the refund engine needs both next to shop.manage. */
+  canRefund: boolean;
 }
 
 type Panel = "ship" | "refund" | null;
 
-export function ShopOrderActions({ orgId, order, canManage }: ShopOrderActionsProps) {
+export function ShopOrderActions({ orgId, order, canManage, canRefund }: ShopOrderActionsProps) {
   const { t, locale } = useI18n();
   const stepUp = useStepUp();
   const queryClient = useQueryClient();
@@ -177,7 +179,7 @@ export function ShopOrderActions({ orgId, order, canManage }: ShopOrderActionsPr
             {t(shipLabel)}
           </button>
         )}
-        {canRefundShopOrder(order, canManage) && (
+        {canRefundShopOrder(order, canManage && canRefund) && (
           <button type="button" className="btn" onClick={() => setPanel(panel === "refund" ? null : "refund")} data-testid="shop-order-refund">
             {t("shop.act.refund")}
           </button>
