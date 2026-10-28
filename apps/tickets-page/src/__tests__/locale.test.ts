@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isRtlLocale, resolveLocale, toWidgetLocale } from '../lib/locale.ts';
+import { hasExplicitLocale, isRtlLocale, resolveLocale, toWidgetLocale, withOrgDefault } from '../lib/locale.ts';
 
 describe('resolveLocale', () => {
   it('prefers ?lang= over navigator languages', () => {
@@ -80,5 +80,46 @@ describe('resolveLocale — remembered explicit choice', () => {
   });
   it('ignores an unsupported remembered value', () => {
     expect(resolveLocale('', ['ru-RU'], 'xx')).toBe('ru');
+  });
+});
+
+describe('hasExplicitLocale', () => {
+  it('is true for a supported ?lang= and for a remembered choice', () => {
+    expect(hasExplicitLocale('?lang=ru')).toBe(true);
+    expect(hasExplicitLocale('', 'cs-CZ')).toBe(true);
+  });
+
+  it('is false for nothing, an unsupported ?lang= or an unsupported remembered value', () => {
+    expect(hasExplicitLocale('')).toBe(false);
+    expect(hasExplicitLocale('?lang=fr', 'de')).toBe(false);
+  });
+});
+
+describe('withOrgDefault', () => {
+  it("serves the organizer's language when the buyer chose nothing and the browser is English", () => {
+    expect(withOrgDefault('en', false, 'ru')).toBe('ru');
+  });
+
+  it('beats a non-English browser language too (a Russian audience on a Spanish browser)', () => {
+    expect(withOrgDefault('es', false, 'ru')).toBe('ru');
+  });
+
+  it('never overrides an explicit choice of the buyer', () => {
+    expect(withOrgDefault('es', true, 'ru')).toBe('es');
+  });
+
+  it('en is what every organization starts with, so it says nothing: the browser decides', () => {
+    expect(withOrgDefault('ru', false, 'en')).toBe('ru');
+    expect(withOrgDefault('es', false, 'en')).toBe('es');
+  });
+
+  it('ignores an unsupported or missing organizer language', () => {
+    expect(withOrgDefault('cs', false, 'fr')).toBe('cs');
+    expect(withOrgDefault('cs', false, null)).toBe('cs');
+    expect(withOrgDefault('cs', false, undefined)).toBe('cs');
+  });
+
+  it('accepts a regional tag', () => {
+    expect(withOrgDefault('en', false, 'ru-RU')).toBe('ru');
   });
 });

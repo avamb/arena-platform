@@ -1,5 +1,5 @@
 import { parsePath } from './lib/route.ts';
-import { resolveLocale } from './lib/locale.ts';
+import { hasExplicitLocale, resolveLocale, withOrgDefault } from './lib/locale.ts';
 import { descriptionPlain } from './lib/richtext.ts';
 import { applyDocumentChrome, consumeCheckoutTokenFromURL, eventIDWithOpenCheckout, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from './lib/render.ts';
 import { ApiError, fetchHostedPage, fetchPromoterPage } from './lib/api.ts';
@@ -38,6 +38,7 @@ async function main(): Promise<void> {
     navigator.languages ?? [navigator.language],
     readRememberedLang(),
   );
+  const explicitLocale = hasExplicitLocale(window.location.search, readRememberedLang());
   rememberExplicitLang(window.location.search);
   applyDocumentChrome(locale, null);
 
@@ -60,17 +61,18 @@ async function main(): Promise<void> {
       renderLoading(mainEl, locale);
       try {
         const data = await fetchPromoterPage(API_BASE, route.orgSlug);
-        applyDocumentChrome(locale, { title: data.org.name });
-        renderSellerFooter(data.seller, locale);
+        const pageLocale = withOrgDefault(locale, explicitLocale, data.default_locale);
+        applyDocumentChrome(pageLocale, { title: data.org.name });
+        renderSellerFooter(data.seller, pageLocale);
         const contactCtx = {
           apiBase: API_BASE,
           slug: route.orgSlug,
-          locale,
+          locale: pageLocale,
           form: data.contact_form,
           phone: data.seller?.public_contact?.phone ?? undefined,
         };
         renderContactFooter(contactCtx);
-        renderPromoterPage(mainEl, data, locale, {
+        renderPromoterPage(mainEl, data, pageLocale, {
           apiBase: API_BASE,
           // Stripe returns the buyer to this list, not to the card they
           // bought from, and the return URL carries no event id — so the
@@ -100,10 +102,11 @@ async function main(): Promise<void> {
     renderLoading(mainEl, locale);
     try {
       const data = await fetchHostedPage(API_BASE, route.orgSlug, route.eventSlug);
+      const pageLocale = withOrgDefault(locale, explicitLocale, data.default_locale);
       // The teaser leads; else the plain text of the description (the server's
       // description_text, or the old plainText of the raw one on an older backend).
       applyDocumentChrome(
-        locale,
+        pageLocale,
         data.event.short_description
           ? { title: data.event.title, description: data.event.short_description }
           : { title: data.event.title, descriptionPlain: descriptionPlain(data.event) },
@@ -111,19 +114,19 @@ async function main(): Promise<void> {
       // Page statistics (HP-2a): the video and partner-link hooks of the
       // materials block count anonymous hits for this event.
       const trackCtx = { apiBase: API_BASE, slug: route.orgSlug, eventSlug: route.eventSlug, search: window.location.search };
-      renderEvent(mainEl, data, locale, {
+      renderEvent(mainEl, data, pageLocale, {
         apiBase: API_BASE,
         resumingCheckout,
         onVideoPlay: () => trackVideoPlay(trackCtx),
         onPartnerClick: () => trackPartnerClick(trackCtx),
       });
-      renderSellerFooter(data.seller, locale);
+      renderSellerFooter(data.seller, pageLocale);
       const contactCtx = {
         apiBase: API_BASE,
         slug: route.orgSlug,
         feedToken: data.feed_token,
         eventSlug: route.eventSlug,
-        locale,
+        locale: pageLocale,
         form: data.contact_form,
         phone: data.seller?.public_contact?.phone ?? undefined,
       };
