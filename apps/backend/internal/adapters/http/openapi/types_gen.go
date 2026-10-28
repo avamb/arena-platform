@@ -16693,7 +16693,7 @@ type ShopOrder struct {
 	// Source `web` (the storefront) or `shopify` (imported).
 	Source string `json:"source"`
 
-	// Status `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded` or `partially_refunded`.
+	// Status `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review` (a payment that arrived after the hold ended while the goods were gone: the money is recorded, nothing left the shelf, the operator ships or refunds it).
 	Status string `json:"status"`
 
 	// Subtotal Sum of the lines, minor units.
@@ -20342,7 +20342,7 @@ type GetV1OrganizationsOrgIdSessionsSessionIdTicketsParams struct {
 
 // ListShopOrdersParams defines parameters for ListShopOrders.
 type ListShopOrdersParams struct {
-	// Status Only orders of this status: `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded` or `partially_refunded`.
+	// Status Only orders of this status: `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review`.
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
 
 	// Q Order number, or part of the buyer's e-mail or name.

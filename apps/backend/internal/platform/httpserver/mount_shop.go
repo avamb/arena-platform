@@ -11,7 +11,13 @@ package httpserver
 // intent without a checkout session to the shop on the webhook transaction.
 
 import (
+	"context"
+
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hshop"
@@ -30,7 +36,36 @@ func (s *Server) shopService() *shop.Service {
 	if eng := s.refundEngine(); eng != nil {
 		svc = svc.WithRefunds(eng)
 	}
+	if s.pgxPool != nil {
+		svc = svc.WithPageExpirer(shopPageExpirer{modules: hcheckout.NewRefundModuleSource(gen.New(s.pgxPool), s.paymentModuleOptions())})
+	}
 	return svc
+}
+
+// shopPageExpirer closes a cancelled shop order's hosted payment page through
+// the organization's own payment module, when the provider can do it
+// (payments.HostedCheckoutExpirer: Stripe). Other providers are left to let
+// their page expire on its own.
+type shopPageExpirer struct {
+	modules *hcheckout.RefundModuleSource
+}
+
+func (e shopPageExpirer) ExpireHostedPage(ctx context.Context, orgID uuid.UUID, provider, providerPaymentID string) error {
+	if e.modules == nil {
+		return nil
+	}
+	if d, ok := e.modules.Descriptor(provider); !ok || !d.Capabilities.HostedCheckout {
+		return nil
+	}
+	mod, err := e.modules.Build(ctx, orgID, provider)
+	if err != nil {
+		return err
+	}
+	expirer, ok := mod.(payments.HostedCheckoutExpirer)
+	if !ok {
+		return nil
+	}
+	return expirer.ExpireCheckoutSession(ctx, providerPaymentID)
 }
 
 // shopPayments is the webhook's hand-off to the shop, nil without a raw pool

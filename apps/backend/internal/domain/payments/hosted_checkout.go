@@ -99,3 +99,15 @@ type HostedCheckoutProvider interface {
 	// callers must not hand out a redirect URL.
 	CreateCheckoutSession(ctx context.Context, req CreateHostedCheckoutRequest) (*CreateHostedCheckoutResponse, error)
 }
+
+// HostedCheckoutExpirer is implemented by providers that can close a hosted
+// page before its own expiry, so a buyer who still has it open can no longer
+// pay (Stripe: POST /v1/checkout/sessions/{id}/expire). Callers type-assert
+// it like HostedCheckoutProvider; a provider without it is left to expire on
+// its own, and a payment that still arrives is handled as a late payment.
+type HostedCheckoutExpirer interface {
+	// ExpireCheckoutSession closes the hosted session sessionID. An error
+	// means the provider did not confirm it (the session may already be
+	// paid, expired, or the call failed); callers treat it as best effort.
+	ExpireCheckoutSession(ctx context.Context, sessionID string) error
+}

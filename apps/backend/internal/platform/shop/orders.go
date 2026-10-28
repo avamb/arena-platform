@@ -76,7 +76,7 @@ type OrderFilter struct {
 
 var orderStatuses = map[string]bool{
 	StatusPendingPayment: true, StatusPaid: true, StatusShipped: true, StatusCancelled: true,
-	StatusExpired: true, StatusRefunded: true, StatusPartiallyRefunded: true,
+	StatusExpired: true, StatusRefunded: true, StatusPartiallyRefunded: true, StatusManualReview: true,
 }
 
 // ListOrders lists one page of orders, newest first, with their lines.
@@ -123,7 +123,9 @@ func (s *Service) ListOrders(ctx context.Context, orgID uuid.UUID, f OrderFilter
 }
 
 // Ship marks a paid order shipped and writes v1.shop.order.shipped. Shipping
-// an order that is shipped already only updates its tracking note.
+// an order that is shipped already only updates its tracking note. Shipping
+// an order parked in manual_review means the operator found the goods: they
+// are taken off the shelf now.
 func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote string) (OrderView, error) {
 	trackingNote = strings.TrimSpace(trackingNote)
 	if !textOK(trackingNote, MaxNoteLen) {
@@ -143,6 +145,10 @@ func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote st
 			out, err = q.SetShopOrderStatus(ctx, o.ID, StatusShipped, &trackingNote, nil)
 			return err
 		case StatusPaid, StatusPartiallyRefunded:
+		case StatusManualReview:
+			if err := s.applySaleTx(ctx, q, o); err != nil {
+				return err
+			}
 		default:
 			return newErr(http.StatusConflict, "shop.order_not_shippable", "only a paid order can be shipped; this one is "+o.Status)
 		}
@@ -159,9 +165,16 @@ func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote st
 }
 
 // Cancel cancels an order that is still waiting for its payment; its goods go
-// back on sale. A paid order is not cancelled: it is refunded.
+// back on sale. A paid order is not cancelled: it is refunded. After the
+// commit the provider's hosted page is closed where the provider can do it,
+// so a buyer who still has it open cannot pay for goods that went back on
+// sale; a payment that slips through anyway is a late payment
+// (FulfillPaidOrderTx).
 func (s *Service) Cancel(ctx context.Context, orgID, id uuid.UUID) (OrderView, error) {
-	var out gen.ShopOrderRow
+	var (
+		out  gen.ShopOrderRow
+		page *gen.PaymentIntentRow
+	)
 	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
 		o, err := q.GetShopOrderForUpdate(ctx, id, orgID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -182,6 +195,7 @@ func (s *Service) Cancel(ctx context.Context, orgID, id uuid.UUID) (OrderView, e
 			if pi.State == "succeeded" || pi.State == "manual_review" {
 				return newErr(http.StatusConflict, "shop.order_not_cancellable", "the buyer has already paid this order; refund it instead")
 			}
+			page = &pi
 		}
 		out, err = q.SetShopOrderStatus(ctx, o.ID, StatusCancelled, nil, nil)
 		if err != nil {
@@ -192,7 +206,19 @@ func (s *Service) Cancel(ctx context.Context, orgID, id uuid.UUID) (OrderView, e
 	if err != nil {
 		return OrderView{}, err
 	}
+	s.expirePage(ctx, orgID, out.ID, page)
 	return s.view(ctx, s.q, out)
+}
+
+// expirePage closes the hosted page of a cancelled order, best effort.
+func (s *Service) expirePage(ctx context.Context, orgID, orderID uuid.UUID, pi *gen.PaymentIntentRow) {
+	if s.pages == nil || pi == nil || pi.ProviderPaymentID == nil || *pi.ProviderPaymentID == "" {
+		return
+	}
+	if err := s.pages.ExpireHostedPage(ctx, orgID, pi.Provider, *pi.ProviderPaymentID); err != nil {
+		s.logger.Warn("shop: could not close the cancelled order's payment page; a late payment is parked or paid by the webhook",
+			"order_id", orderID.String(), "provider", pi.Provider, "error", err.Error())
+	}
 }
 
 // RefundInput is one refund of a shop order. Amount nil refunds what is left.
@@ -237,7 +263,7 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, err
 			return err
 		}
 		switch o.Status {
-		case StatusPaid, StatusShipped, StatusPartiallyRefunded:
+		case StatusPaid, StatusShipped, StatusPartiallyRefunded, StatusManualReview:
 		default:
 			return newErr(http.StatusConflict, "shop.order_not_refundable", "only a paid order can be refunded; this one is "+o.Status)
 		}
@@ -346,6 +372,11 @@ func (s *Service) SyncRefunds(ctx context.Context, orgID, id uuid.UUID) (gen.Sho
 		switch o.Status {
 		case StatusPaid, StatusShipped, StatusPartiallyRefunded, StatusRefunded:
 			status = RefundedStatus(o.Status, o.Total, accepted)
+		case StatusManualReview:
+			// A parked order stays parked until all of it went back.
+			if accepted >= o.Total {
+				status = StatusRefunded
+			}
 		}
 		out, err = q.SetShopOrderRefunded(ctx, o.ID, status, accepted)
 		if err != nil {

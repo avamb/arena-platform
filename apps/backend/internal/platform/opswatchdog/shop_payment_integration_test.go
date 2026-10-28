@@ -63,3 +63,35 @@ func TestPaymentNotCompleted_LiveDB_ShopPaymentJudgedByItsOrder(t *testing.T) {
 		t.Fatalf("a succeeded payment behind an expired shop order raised nothing: %+v (%v)", row, err)
 	}
 }
+
+// TestManualReview_LiveDB_ShopOrderParkedForReview: a late shop payment whose
+// goods were gone parks the order in manual_review, and the watchdog alerts
+// on it like on a parked ticket order.
+func TestManualReview_LiveDB_ShopOrderParkedForReview(t *testing.T) {
+	pool := connectWatchdogTestDB(t)
+	ctx := context.Background()
+	f := newWDFixture(t, ctx, pool)
+	defer f.cleanup()
+
+	orderID := uuid.New()
+	token := hex.EncodeToString(append(orderID[:], orderID[:]...))
+	fingerprint := "manual_review:shop_order:" + orderID.String()
+	defer cleanupOpsAlerts(t, ctx, pool, fingerprint)
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM shop_orders WHERE id = $1`, orderID)
+	}()
+	if _, err := pool.Exec(ctx, `INSERT INTO shop_orders (id, org_id, order_token, status, currency, subtotal, shipping_fee, total, paid_at)
+		VALUES ($1, $2, $3, 'manual_review', 'ILS', 9000, 5000, 14000, now())`,
+		orderID, f.orgID, token); err != nil {
+		t.Fatalf("insert shop order: %v", err)
+	}
+
+	handler := opswatchdog.NewHandler(opswatchdog.Options{Pool: pool, Notifier: &recordingNotifier{}, Logger: quietTestLogger()})
+	if err := handler(ctx, nil); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	row, err := opswatchdog.NewPGAlertStore(pool).Get(ctx, fingerprint)
+	if err != nil || row == nil || row.ResolvedAt != nil {
+		t.Fatalf("a shop order in manual_review raised no alert: %+v (%v)", row, err)
+	}
+}
