@@ -60,6 +60,15 @@ func (q *Queries) GetShopSettings(ctx context.Context, orgID uuid.UUID) (ShopSet
 	return scanShopSettingsRow(q.db.QueryRow(ctx, getShopSettings, orgID))
 }
 
+const getShopSettingsForUpdate = getShopSettings + `
+FOR UPDATE OF s`
+
+// GetShopSettingsForUpdate is GetShopSettings with the settings row locked,
+// so a save cannot write a stale value back over a concurrent change.
+func (q *Queries) GetShopSettingsForUpdate(ctx context.Context, orgID uuid.UUID) (ShopSettingsRow, error) {
+	return scanShopSettingsRow(q.db.QueryRow(ctx, getShopSettingsForUpdate, orgID))
+}
+
 const ensureShopSettings = `-- name: EnsureShopSettings :exec
 INSERT INTO shop_settings (org_id) VALUES ($1)
 ON CONFLICT (org_id) DO NOTHING`
@@ -285,6 +294,16 @@ WHERE  id = $1 AND org_id = $2 AND deleted_at IS NULL`
 // GetShopProduct reads a live product of the organization.
 func (q *Queries) GetShopProduct(ctx context.Context, id, orgID uuid.UUID) (ShopProductRow, error) {
 	return scanShopProductRow(q.db.QueryRow(ctx, getShopProduct, id, orgID))
+}
+
+const getShopProductForUpdate = getShopProduct + `
+FOR UPDATE`
+
+// GetShopProductForUpdate is GetShopProduct with the product row locked, so
+// a kind change and a variant replace of one product run one after the
+// other.
+func (q *Queries) GetShopProductForUpdate(ctx context.Context, id, orgID uuid.UUID) (ShopProductRow, error) {
+	return scanShopProductRow(q.db.QueryRow(ctx, getShopProductForUpdate, id, orgID))
 }
 
 const getShopProductBySlug = `-- name: GetShopProductBySlug :one

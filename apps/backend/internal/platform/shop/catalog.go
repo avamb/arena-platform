@@ -128,7 +128,9 @@ func (s *Service) PutSettings(ctx context.Context, orgID uuid.UUID, in SettingsI
 		return SettingsView{}, err
 	}
 	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
-		cur, err := q.GetShopSettings(ctx, orgID)
+		// Locked: an owner's save must not write a stale enabled (or
+		// max_line_qty) back over the operator's change made meanwhile.
+		cur, err := q.GetShopSettingsForUpdate(ctx, orgID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			cur = gen.ShopSettingsRow{MaxLineQty: DefaultMaxLineQty}
 		} else if err != nil {
@@ -478,10 +480,12 @@ func (s *Service) CreateProduct(ctx context.Context, orgID uuid.UUID, in Product
 	return s.GetProduct(ctx, orgID, id)
 }
 
-// UpdateProduct merges in over the stored product.
+// UpdateProduct merges in over the stored product, under the product's row
+// lock (ReplaceVariants takes the same lock, so a kind change cannot leave
+// tracked variants on a digital product).
 func (s *Service) UpdateProduct(ctx context.Context, orgID, id uuid.UUID, in ProductInput) (ProductView, error) {
 	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
-		cur, err := q.GetShopProduct(ctx, id, orgID)
+		cur, err := q.GetShopProductForUpdate(ctx, id, orgID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrProductNotFound
 		}
@@ -768,7 +772,7 @@ func (s *Service) ReplaceVariants(ctx context.Context, orgID, productID uuid.UUI
 		return ProductView{}, err
 	}
 	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
-		cur, err := q.GetShopProduct(ctx, productID, orgID)
+		cur, err := q.GetShopProductForUpdate(ctx, productID, orgID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrProductNotFound
