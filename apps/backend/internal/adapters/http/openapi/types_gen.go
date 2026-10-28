@@ -16462,6 +16462,207 @@ type SetEventPromoterRequest struct {
 	PromoterId *openapi_types.UUID `json:"promoter_id"`
 }
 
+// StaffInvitationCancelRequest Which tickets to cancel; an empty body cancels them all.
+type StaffInvitationCancelRequest struct {
+	// NotifyGuest Send the guest the cancellation letter when the invitation has the guest's e-mail (default true).
+	NotifyGuest *bool `json:"notify_guest,omitempty"`
+
+	// TicketIds Tickets of this invitation to cancel; absent or empty means all.
+	TicketIds *[]openapi_types.UUID `json:"ticket_ids,omitempty"`
+}
+
+// StaffInvitationCancelResponse What the cancellation did.
+type StaffInvitationCancelResponse struct {
+	// CancelledTicketIds Tickets cancelled by this request.
+	CancelledTicketIds []openapi_types.UUID `json:"cancelled_ticket_ids"`
+
+	// NotifyGuest Whether the guest is to be told.
+	NotifyGuest bool `json:"notify_guest"`
+
+	// OrderId Order id of the invitation.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// OrderStatus Order status after the cancellation.
+	OrderStatus string `json:"order_status"`
+
+	// SkippedTicketIds Named tickets that were already not active.
+	SkippedTicketIds []openapi_types.UUID `json:"skipped_ticket_ids"`
+}
+
+// StaffInvitationGALine Places of one General Admission category.
+type StaffInvitationGALine struct {
+	// Qty Number of places.
+	Qty int `json:"qty"`
+
+	// TierId Category of the session.
+	TierId openapi_types.UUID `json:"tier_id"`
+}
+
+// StaffInvitationGuest The guest; the name is printed on the ticket.
+type StaffInvitationGuest struct {
+	// Email Guest e-mail; required only for delivery guest_email.
+	Email *string `json:"email"`
+
+	// Locale Language of the guest's letter (cs, de, en, es, fr, he, ru); anything else falls back to the default.
+	Locale *string `json:"locale"`
+
+	// Name Guest name, 1 to 200 characters.
+	Name string `json:"name"`
+
+	// Phone Guest phone, optional.
+	Phone *string `json:"phone"`
+}
+
+// StaffInvitationIssueRequest A staff invitation on chosen seats and GA places (spec 46, section 3.1). One to 50 places in total.
+type StaffInvitationIssueRequest struct {
+	// Delivery How the tickets travel - guest_email (a letter to guest.email, required then), my_email (a letter to the issuing user, for forwarding) or pdf_only (no letter, download the PDF).
+	Delivery string `json:"delivery"`
+
+	// Ga General Admission places by category; free places are taken first, then the reserve.
+	Ga *[]StaffInvitationGALine `json:"ga,omitempty"`
+
+	// Guest The guest the invitation is for.
+	Guest StaffInvitationGuest `json:"guest"`
+
+	// Note Internal note, at most 1000 characters, never shown to the guest.
+	Note *string `json:"note"`
+
+	// RequestId Client-chosen id; a repeat with the same id answers the first invitation (200, replayed true).
+	RequestId openapi_types.UUID `json:"request_id"`
+
+	// Seats Seats by key, free or held back by the organizer.
+	Seats *[]StaffInvitationSeatRef `json:"seats,omitempty"`
+}
+
+// StaffInvitationIssueResponse The invitation as written.
+type StaffInvitationIssueResponse struct {
+	// Charge Billing preview of the invitation (spec 46, section 3.6); null until billing of invitations lands.
+	Charge *map[string]interface{} `json:"charge"`
+
+	// Delivery Delivery mode - guest_email, my_email or pdf_only.
+	Delivery string `json:"delivery"`
+
+	// FromReserve How many places came from the organizer's reserve.
+	FromReserve int `json:"from_reserve"`
+
+	// GuestName Guest name.
+	GuestName *string `json:"guest_name"`
+
+	// OrderId Order id of the invitation.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// Places The places of the invitation.
+	Places []StaffInvitationPlace `json:"places"`
+
+	// Replayed True when the request_id was already used and this is the first invitation.
+	Replayed bool `json:"replayed"`
+
+	// Status Order status - paid for an issued invitation, cancelled once every ticket is cancelled.
+	Status string `json:"status"`
+
+	// SystemId Order number shown to people.
+	SystemId int64 `json:"system_id"`
+
+	// TicketsStatus issuing right after the issue (tickets are minted asynchronously), issued once every place has its ticket.
+	TicketsStatus string `json:"tickets_status"`
+}
+
+// StaffInvitationIssuer Who issued the invitation; all null for an organization API key.
+type StaffInvitationIssuer struct {
+	// Email Issuer e-mail.
+	Email *string `json:"email"`
+
+	// FirstName Issuer first name.
+	FirstName *string `json:"first_name"`
+
+	// LastName Issuer last name.
+	LastName *string `json:"last_name"`
+
+	// UserId User id of the issuer.
+	UserId *string `json:"user_id"`
+}
+
+// StaffInvitationListItem One staff invitation of the session.
+type StaffInvitationListItem struct {
+	// CreatedAt When it was issued.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Delivery Delivery mode - guest_email, my_email or pdf_only.
+	Delivery string `json:"delivery"`
+
+	// GuestName Guest name.
+	GuestName *string `json:"guest_name"`
+
+	// IssuedBy Who issued it.
+	IssuedBy StaffInvitationIssuer `json:"issued_by"`
+
+	// IssuedVia staff (one by one) or staff_bulk (a CSV file).
+	IssuedVia string `json:"issued_via"`
+
+	// OrderId Order id of the invitation.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// Places The places of the invitation.
+	Places []StaffInvitationPlace `json:"places"`
+
+	// Status Order status - paid or cancelled.
+	Status string `json:"status"`
+
+	// SystemId Order number shown to people.
+	SystemId int64 `json:"system_id"`
+
+	// TicketsActive Tickets still active.
+	TicketsActive int64 `json:"tickets_active"`
+
+	// TicketsTotal Tickets issued so far.
+	TicketsTotal int64 `json:"tickets_total"`
+}
+
+// StaffInvitationListResponse The staff invitations of a session.
+type StaffInvitationListResponse struct {
+	// Items Newest first, at most 500.
+	Items []StaffInvitationListItem `json:"items"`
+}
+
+// StaffInvitationPlace One place of a staff invitation.
+type StaffInvitationPlace struct {
+	// FaceValue Face value of the place in minor units; the invitation itself costs 0.
+	FaceValue int64 `json:"face_value"`
+
+	// Kind seat or ga_unit.
+	Kind *string `json:"kind"`
+
+	// Origin Where the place came from - available (from sale) or unavailable (from the organizer's reserve). A cancelled ticket returns its place there.
+	Origin *string `json:"origin"`
+
+	// Row Row of the seat.
+	Row *string `json:"row"`
+
+	// Seat Seat number.
+	Seat *string `json:"seat"`
+
+	// SeatKey Key of the seat or GA place.
+	SeatKey *string `json:"seat_key"`
+
+	// Sector Sector name of the seat.
+	Sector *string `json:"sector"`
+
+	// TicketId The ticket of this place once issued.
+	TicketId *string `json:"ticket_id"`
+
+	// TierId Category of the place.
+	TierId openapi_types.UUID `json:"tier_id"`
+
+	// TierName Category name.
+	TierName string `json:"tier_name"`
+}
+
+// StaffInvitationSeatRef One seat of the session by key.
+type StaffInvitationSeatRef struct {
+	// SeatKey session_seats.seat_key of the seat.
+	SeatKey string `json:"seat_key"`
+}
+
 // StartCheckoutRequest Request body for `POST /v1/checkout/start`. Creates a new checkout
 // session in state `created` linked to an existing reservation. The
 // optional `user_id` attaches the session to an authenticated buyer;
@@ -20186,6 +20387,9 @@ type ImportBil24SessionJSONRequestBody = ImportBil24SessionRequest
 // ImportEventBundleJSONRequestBody defines body for ImportEventBundle for application/json ContentType.
 type ImportEventBundleJSONRequestBody = ImportEventBundleRequest
 
+// CancelStaffInvitationJSONRequestBody defines body for CancelStaffInvitation for application/json ContentType.
+type CancelStaffInvitationJSONRequestBody = StaffInvitationCancelRequest
+
 // UpsertMACSWebhookJSONRequestBody defines body for UpsertMACSWebhook for application/json ContentType.
 type UpsertMACSWebhookJSONRequestBody = UpsertMACSWebhookRequest
 
@@ -20245,6 +20449,9 @@ type PatchV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutIdJSONRequestBody =
 
 // UpdateSellerProfileJSONRequestBody defines body for UpdateSellerProfile for application/json ContentType.
 type UpdateSellerProfileJSONRequestBody = UpdateSellerProfileRequest
+
+// IssueStaffInvitationJSONRequestBody defines body for IssueStaffInvitation for application/json ContentType.
+type IssueStaffInvitationJSONRequestBody = StaffInvitationIssueRequest
 
 // PostV1OrganizationsOrgIdSessionsSessionIdLayoutsApplyJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdLayoutsApply for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdLayoutsApplyJSONRequestBody = SeatLayoutApplyRequest

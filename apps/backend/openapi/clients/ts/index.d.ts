@@ -7448,6 +7448,66 @@ export interface paths {
         patch: operations["updateExternalAllocation"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/sessions/{session_id}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the staff invitations of a session
+         * @description Every staff invitation of the session, whoever issued it, newest
+         *     first (at most 500): guest, places with their origin, delivery mode,
+         *     who issued it, when, status and ticket counts.
+         */
+        get: operations["listStaffInvitations"];
+        put?: never;
+        /**
+         * Issue a staff invitation on chosen seats
+         * @description Issues free tickets (an order for 0 with source `complimentary`) on
+         *     chosen seats and General Admission places of the session, in one
+         *     transaction (spec 46, section 3.2). The seats may be free
+         *     (`available`) or held back by the organizer (`unavailable`); each
+         *     place remembers where it came from (`origin`) and goes back there
+         *     when the invitation is cancelled. Sales end, closed categories, sale
+         *     windows and the start time do not apply; only a cancelled or
+         *     deleted session refuses. Tickets are issued right after the commit
+         *     (`tickets_status` `issuing`). A repeat with the same `request_id`
+         *     answers 200 with the first order and `replayed` true.
+         */
+        post: operations["issueStaffInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/invitations/{order_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a staff invitation
+         * @description Cancels the named tickets of a staff invitation, or all of them,
+         *     with no money involved. Each seat goes back where it came from: a
+         *     seat taken from the reserve becomes `unavailable` again, a seat
+         *     taken from sale becomes `available`. The order becomes `cancelled`
+         *     once none of its tickets is active. A manager may cancel an
+         *     invitation issued by the owner.
+         */
+        post: operations["cancelStaffInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/complimentary": {
         parameters: {
             query?: never;
@@ -24807,6 +24867,187 @@ export interface components {
              * @description ISO-8601 timestamp of the last quantity update, if any.
              */
             updated_at?: string;
+        };
+        /** @description A staff invitation on chosen seats and GA places (spec 46, section 3.1). One to 50 places in total. */
+        StaffInvitationIssueRequest: {
+            /**
+             * Format: uuid
+             * @description Client-chosen id; a repeat with the same id answers the first invitation (200, replayed true).
+             */
+            request_id: string;
+            /** @description Seats by key, free or held back by the organizer. */
+            seats?: components["schemas"]["StaffInvitationSeatRef"][];
+            /** @description General Admission places by category; free places are taken first, then the reserve. */
+            ga?: components["schemas"]["StaffInvitationGALine"][];
+            /** @description The guest the invitation is for. */
+            guest: components["schemas"]["StaffInvitationGuest"];
+            /** @description How the tickets travel - guest_email (a letter to guest.email, required then), my_email (a letter to the issuing user, for forwarding) or pdf_only (no letter, download the PDF). */
+            delivery: string;
+            /** @description Internal note, at most 1000 characters, never shown to the guest. */
+            note?: string | null;
+        };
+        /** @description One seat of the session by key. */
+        StaffInvitationSeatRef: {
+            /** @description session_seats.seat_key of the seat. */
+            seat_key: string;
+        };
+        /** @description Places of one General Admission category. */
+        StaffInvitationGALine: {
+            /**
+             * Format: uuid
+             * @description Category of the session.
+             */
+            tier_id: string;
+            /** @description Number of places. */
+            qty: number;
+        };
+        /** @description The guest; the name is printed on the ticket. */
+        StaffInvitationGuest: {
+            /** @description Guest name, 1 to 200 characters. */
+            name: string;
+            /** @description Guest e-mail; required only for delivery guest_email. */
+            email?: string | null;
+            /** @description Guest phone, optional. */
+            phone?: string | null;
+            /** @description Language of the guest's letter (cs, de, en, es, fr, he, ru); anything else falls back to the default. */
+            locale?: string | null;
+        };
+        /** @description One place of a staff invitation. */
+        StaffInvitationPlace: {
+            /** @description Key of the seat or GA place. */
+            seat_key?: string | null;
+            /** @description Sector name of the seat. */
+            sector?: string | null;
+            /** @description Row of the seat. */
+            row?: string | null;
+            /** @description Seat number. */
+            seat?: string | null;
+            /** @description seat or ga_unit. */
+            kind?: string | null;
+            /**
+             * Format: uuid
+             * @description Category of the place.
+             */
+            tier_id: string;
+            /** @description Category name. */
+            tier_name: string;
+            /**
+             * Format: int64
+             * @description Face value of the place in minor units; the invitation itself costs 0.
+             */
+            face_value: number;
+            /** @description Where the place came from - available (from sale) or unavailable (from the organizer's reserve). A cancelled ticket returns its place there. */
+            origin?: string | null;
+            /** @description The ticket of this place once issued. */
+            ticket_id?: string | null;
+        };
+        /** @description The invitation as written. */
+        StaffInvitationIssueResponse: {
+            /**
+             * Format: uuid
+             * @description Order id of the invitation.
+             */
+            order_id: string;
+            /**
+             * Format: int64
+             * @description Order number shown to people.
+             */
+            system_id: number;
+            /** @description Order status - paid for an issued invitation, cancelled once every ticket is cancelled. */
+            status: string;
+            /** @description Guest name. */
+            guest_name?: string | null;
+            /** @description Delivery mode - guest_email, my_email or pdf_only. */
+            delivery: string;
+            /** @description The places of the invitation. */
+            places: components["schemas"]["StaffInvitationPlace"][];
+            /** @description How many places came from the organizer's reserve. */
+            from_reserve: number;
+            /** @description issuing right after the issue (tickets are minted asynchronously), issued once every place has its ticket. */
+            tickets_status: string;
+            /** @description Billing preview of the invitation (spec 46, section 3.6); null until billing of invitations lands. */
+            charge?: Record<string, never> | null;
+            /** @description True when the request_id was already used and this is the first invitation. */
+            replayed: boolean;
+        };
+        /** @description Who issued the invitation; all null for an organization API key. */
+        StaffInvitationIssuer: {
+            /** @description User id of the issuer. */
+            user_id?: string | null;
+            /** @description Issuer e-mail. */
+            email?: string | null;
+            /** @description Issuer first name. */
+            first_name?: string | null;
+            /** @description Issuer last name. */
+            last_name?: string | null;
+        };
+        /** @description One staff invitation of the session. */
+        StaffInvitationListItem: {
+            /**
+             * Format: uuid
+             * @description Order id of the invitation.
+             */
+            order_id: string;
+            /**
+             * Format: int64
+             * @description Order number shown to people.
+             */
+            system_id: number;
+            /** @description Order status - paid or cancelled. */
+            status: string;
+            /** @description Guest name. */
+            guest_name?: string | null;
+            /** @description Delivery mode - guest_email, my_email or pdf_only. */
+            delivery: string;
+            /** @description staff (one by one) or staff_bulk (a CSV file). */
+            issued_via: string;
+            /** @description Who issued it. */
+            issued_by: components["schemas"]["StaffInvitationIssuer"];
+            /**
+             * Format: date-time
+             * @description When it was issued.
+             */
+            created_at: string;
+            /**
+             * Format: int64
+             * @description Tickets issued so far.
+             */
+            tickets_total: number;
+            /**
+             * Format: int64
+             * @description Tickets still active.
+             */
+            tickets_active: number;
+            /** @description The places of the invitation. */
+            places: components["schemas"]["StaffInvitationPlace"][];
+        };
+        /** @description The staff invitations of a session. */
+        StaffInvitationListResponse: {
+            /** @description Newest first, at most 500. */
+            items: components["schemas"]["StaffInvitationListItem"][];
+        };
+        /** @description Which tickets to cancel; an empty body cancels them all. */
+        StaffInvitationCancelRequest: {
+            /** @description Tickets of this invitation to cancel; absent or empty means all. */
+            ticket_ids?: string[];
+            /** @description Send the guest the cancellation letter when the invitation has the guest's e-mail (default true). */
+            notify_guest?: boolean;
+        };
+        /** @description What the cancellation did. */
+        StaffInvitationCancelResponse: {
+            /**
+             * Format: uuid
+             * @description Order id of the invitation.
+             */
+            order_id: string;
+            /** @description Order status after the cancellation. */
+            order_status: string;
+            /** @description Tickets cancelled by this request. */
+            cancelled_ticket_ids: string[];
+            /** @description Named tickets that were already not active. */
+            skipped_ticket_ids: string[];
+            /** @description Whether the guest is to be told. */
+            notify_guest: boolean;
         };
         /**
          * @description A complimentary (free / comp) ticket issuance granted to a named
@@ -54972,6 +55213,287 @@ export interface operations {
                 };
             };
             /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listStaffInvitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Session (date) of the organization the invitations are for. A session of another organization answers 404. */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invitations of the session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffInvitationListResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.read in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found in this organization (session.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    issueStaffInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Session (date) of the organization the invitations are for. A session of another organization answers 404. */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffInvitationIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description The request_id was already used for this session - the first invitation, nothing new written. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffInvitationIssueResponse"];
+                };
+            };
+            /** @description Invitation issued, tickets are being issued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffInvitationIssueResponse"];
+                };
+            };
+            /** @description Invalid request - invitation.empty, invitation.too_many (over 50 places), invitation.unknown_seat (details.seat_keys), invitation.unknown_category, invitation.invalid_request_id, invitation.invalid_seats, invitation.invalid_ga, invitation.invalid_guest_name, invitation.invalid_guest_email, invitation.invalid_delivery, invitation.note_too_long, invitation.invalid_body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.issue in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found in this organization (session.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description invitation.seats_taken (details.seat_keys - held or sold seats, including seats sold in an earlier system), invitation.not_enough_places (a GA category has fewer free or reserved places), invitation.capacity_exceeded, invitation.request_id_reused (the request_id was used for another session). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description invitation.session_cancelled, invitation.guest_email_required (delivery guest_email without guest.email), invitation.my_email_requires_user (an API key has no e-mail), invitation.seat_without_category. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancelStaffInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Order id of the staff invitation. Any other order, or another organization's, answers 404 invitation.not_found. */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StaffInvitationCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description The tickets were cancelled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffInvitationCancelResponse"];
+                };
+            };
+            /** @description invitation.unknown_ticket (a ticket_id is not a ticket of this invitation) or invitation.invalid_body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.revoke in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation not found in this organization (invitation.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description invitation.tickets_not_issued - the tickets are still being issued, try again in a moment. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or the ticket service unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

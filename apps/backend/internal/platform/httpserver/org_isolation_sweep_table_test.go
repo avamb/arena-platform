@@ -234,6 +234,14 @@ func sweepRouteSet() map[string]bool {
 // handler really loads the child and compares its organization to {org_id}; if
 // in doubt add a sweepRows entry instead — a failing row is cheaper than a leak.
 var orgIsolationAuditedSafe = map[string]string{
+	// Staff invitations (spec 46, INV-02, hinvitations): issue and list load the
+	// session with GetInvitationSessionTarget and compare its organization;
+	// cancel loads the order with GetInvitationOrder(order_id, org_id).
+	// staff_invitations_inv02_integration_test.go drives a foreign org and expects 404.
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/invitations":  "invitations",
+	"POST /v1/organizations/{org_id}/sessions/{session_id}/invitations": "invitations",
+	"POST /v1/organizations/{org_id}/invitations/{order_id}/cancel":     "invitations",
+
 	// hcatalog tiers, price schedules, bulk pricing: requireSessionInOrg
 	// (hcatalog/tier_org.go, EC-15) and requireEventInOrg; tier_org_isolation_integration_test.go.
 	"DELETE /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}":             "tiers",
