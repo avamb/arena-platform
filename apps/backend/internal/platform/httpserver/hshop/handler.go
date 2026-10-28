@@ -80,16 +80,16 @@ type Options struct {
 	IPLimit        func(ip string) (bool, int)
 	TokenLimit     func(token string) (bool, int)
 	TrustedProxies int
-	// CheckoutIPLimit is the checkout's own per-address budget, counted
-	// before the shared bucket: placing an order holds stock, so it is far
-	// tighter than reading the catalog. 0 means DefaultCheckoutIPLimit, a
-	// negative value switches it off.
+	// CheckoutIPLimit is the checkout's own budget per shop and client
+	// address, counted once the body is valid JSON: placing an order holds
+	// stock, so it is far tighter than reading the catalog. 0 means
+	// DefaultCheckoutIPLimit, a negative value switches it off.
 	CheckoutIPLimit int
 }
 
 // DefaultCheckoutIPLimit is how many checkouts one client address may start
-// per minute.
-const DefaultCheckoutIPLimit = 10
+// per minute in one shop.
+const DefaultCheckoutIPLimit = 30
 
 // Handler serves the shop routes. It is built once per server: the checkout
 // limiter lives on it.
@@ -253,13 +253,13 @@ func (h *Handler) limited(w http.ResponseWriter, r *http.Request, token string) 
 	return true
 }
 
-// checkoutLimited applies the checkout's own per-address budget. It answers
-// 429 itself.
-func (h *Handler) checkoutLimited(w http.ResponseWriter, r *http.Request) bool {
+// checkoutLimited applies the checkout's own budget of one shop and client
+// address. It answers 429 itself.
+func (h *Handler) checkoutLimited(w http.ResponseWriter, r *http.Request, shopKey string) bool {
 	if h.checkout == nil {
 		return false
 	}
-	ok, retry := h.checkout.allow(h.clientIP(r), time.Now())
+	ok, retry := h.checkout.allow(shopKey+"|"+h.clientIP(r), time.Now())
 	if ok {
 		return false
 	}

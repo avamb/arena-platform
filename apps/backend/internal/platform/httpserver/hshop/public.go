@@ -181,12 +181,16 @@ type checkoutBody struct {
 // commit, never inside it. A page that cannot be created expires the order at
 // once, so its goods go straight back on sale.
 func (h *Handler) HandlePublicCheckout(w http.ResponseWriter, r *http.Request) {
-	if h.checkoutLimited(w, r) || h.limited(w, r, "") {
+	if h.limited(w, r, "") {
 		return
 	}
 	ctx := r.Context()
 	var b checkoutBody
 	if !readBody(w, r, &b, false) {
+		return
+	}
+	// Counted only once the body is a valid request, per shop and address.
+	if h.checkoutLimited(w, r, strings.ToLower(strings.TrimSpace(chi.URLParam(r, "org_slug")))) {
 		return
 	}
 	sf, err := h.o.Service.StorefrontBySlug(ctx, chi.URLParam(r, "org_slug"))

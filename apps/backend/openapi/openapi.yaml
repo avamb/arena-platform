@@ -58466,8 +58466,8 @@ paths:
         at most the shop's `max_line_qty` units (422 `shop.invalid_items` with
         `details.max_line_qty`), and one buyer e-mail may have at most 3 orders
         waiting for payment in the shop (409 `shop.too_many_pending`). No login;
-        rate-limited per client address: 10 checkouts a minute, on top of the
-        public routes' shared budget.
+        rate-limited per client address: 30 valid checkout requests a minute per
+        shop, on top of the public routes' shared budget.
       tags: [v1]
       security: []
       parameters:

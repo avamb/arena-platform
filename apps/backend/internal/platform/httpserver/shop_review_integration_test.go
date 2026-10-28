@@ -306,11 +306,17 @@ func TestShop_CheckoutLimits(t *testing.T) {
 	}
 }
 
-// TestShop_CheckoutHasItsOwnAddressBudget: an address may start
-// DefaultCheckoutIPLimit checkouts a minute, valid or not.
+// TestShop_CheckoutHasItsOwnAddressBudget: an address may send
+// DefaultCheckoutIPLimit well-formed checkouts a minute to one shop; a body
+// that is not JSON is not counted, and another shop has its own budget.
 func TestShop_CheckoutHasItsOwnAddressBudget(t *testing.T) {
 	f := newShopFixture(t)
 	path := "/v1/public/shop/" + f.orgASlug + "/checkout"
+	for i := 0; i < 5; i++ {
+		if code, _, _ := f.do(http.MethodPost, path, "", `not json`); code != http.StatusBadRequest {
+			t.Fatalf("broken body = %d; want 400", code)
+		}
+	}
 	for i := 0; i < hshop.DefaultCheckoutIPLimit; i++ {
 		if code, body, _ := f.do(http.MethodPost, path, "", `{}`); code == http.StatusTooManyRequests {
 			t.Fatalf("checkout %d refused inside the budget: %v", i+1, body)
@@ -319,6 +325,9 @@ func TestShop_CheckoutHasItsOwnAddressBudget(t *testing.T) {
 	code, body, hdr := f.do(http.MethodPost, path, "", `{}`)
 	if code != http.StatusTooManyRequests || shopErrCode(body) != "shop.rate_limited" || hdr.Get("Retry-After") == "" {
 		t.Fatalf("checkout over the budget = %d %v; want 429 shop.rate_limited with Retry-After", code, body)
+	}
+	if code, _, _ := f.do(http.MethodPost, "/v1/public/shop/another-"+f.orgASlug+"/checkout", "", `{}`); code == http.StatusTooManyRequests {
+		t.Fatal("another shop shares the budget")
 	}
 	// The catalog is not on the checkout's budget.
 	if code, _, _ := f.do(http.MethodGet, "/v1/public/shop/"+f.orgASlug, "", ""); code == http.StatusTooManyRequests {
