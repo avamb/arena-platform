@@ -112,3 +112,13 @@ the catalog and asks the buyer to check the cart.
   allows `https:` images.
 - The age-gate texts and contact e-mail are static / from settings.
 - Old URL shapes and their fate: `docs/redirects_301.md`.
+
+## Visual check against the live shop
+
+`PLAYWRIGHT_CORE=<path to playwright-core> node scripts/compare-live.mjs [page ...]` (set `VP=mobile` or
+`VP=desktop` for one viewport) shoots www.einatwinery.com and this app (mock API on 8787, vite on 5180) and
+writes `docs/screenshots/<page>-<viewport>-side.png` with the share of differing pixels. Result on
+2026-10-28: nearly every page is 0.0 to 0.4 percent (desktop and 390 px phone). Known remaining
+differences: the empty cart omits the live "log in" prompt (no customer accounts), related-product images
+load lazily so the live shot shows blanks, the live cart notification page keeps a different scroll offset,
+and the footer reads "На платформе Arena Sold Out". The 301 table is in `docs/redirects_301.md`.

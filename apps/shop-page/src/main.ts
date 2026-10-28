@@ -323,6 +323,8 @@ function openNotification(variantId: string): void {
   const box = document.getElementById('cart-notification');
   if (!line || !host || !box) return;
   host.innerHTML = notificationProduct(line);
+  const viewCart = document.getElementById('cart-notification-button');
+  if (viewCart) viewCart.textContent = `${T.viewCart} (${itemCount(s.cart)})`;
   box.classList.add('animate', 'active');
   const btn = box.querySelector<HTMLElement>('.cart-notification__close');
   btn?.focus();
@@ -337,7 +339,20 @@ function addToCart(variantId: string, qty: number): void {
   const hit = resolveLines([{ variant_id: variantId, qty: 1 }], s.shop.products)[0];
   if (!hit || !hit.variant.available) return;
   commitCart(addItem(s.cart, variantId, qty));
+  syncInCart(variantId);
   openNotification(variantId);
+}
+
+/** "(В корзине: N)" next to the quantity label of the product page. */
+function syncInCart(variantId: string): void {
+  const s = state as State;
+  const wrap = document.querySelector<HTMLElement>('.quantity__rules-cart');
+  if (!wrap) return;
+  const n = s.cart.find((i) => i.variant_id === variantId)?.qty ?? 0;
+  const out = wrap.querySelector('.quantity-cart');
+  if (out) out.textContent = String(n);
+  wrap.classList.toggle('hidden', n === 0);
+  document.getElementById('Quantity-product__main')?.setAttribute('data-cart-quantity', String(n));
 }
 
 // ---- events ---------------------------------------------------------------------
@@ -502,6 +517,7 @@ function onChange(e: Event): void {
       btn.disabled = !variant.available;
       btn.innerHTML = buyButtonHtml(variant);
     }
+    syncInCart(variant.id);
     const buyNow = document.querySelector<HTMLElement>('.shopify-payment-button');
     if (buyNow) buyNow.hidden = !variant.available;
     return;

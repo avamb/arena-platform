@@ -52,6 +52,8 @@ export interface ShopProduct {
   vendor?: string;
   /** Optional: name of the variant option ("Выбор вина для набора"), for the picker's legend. */
   option_name?: string | null;
+  /** Optional: slugs shown under "You may also like", in order. Absent = the next products of the catalog. */
+  related_slugs?: string[];
 }
 
 export interface MenuItem {

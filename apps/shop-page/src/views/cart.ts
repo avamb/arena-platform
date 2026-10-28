@@ -241,11 +241,10 @@ export function notificationProduct(line: CartLine): string {
                 <dd>${esc(line.variant.title)}</dd>
               </div>`
       : '';
-  return `<div id="cart-notification-product-${esc(line.variant.id)}" class="cart-item">
-      ${image}
+  // Dawn puts the INNER html of #cart-notification-product-{key} into the flex row, so no wrapper here.
+  return `${image}
       <div>
         <h3 class="cart-notification-product__name h4">${esc(line.product.title)}</h3>
         <dl>${option}</dl>
-      </div>
-    </div>`;
+      </div>`;
 }

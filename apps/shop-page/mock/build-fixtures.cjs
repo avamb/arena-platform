@@ -33,6 +33,18 @@ const ORDER = [
   'lonely-cat-cabfr',
 ];
 
+// What the live shop's "You may also like" showed for each product on 2026-10-28
+// (Shopify's own recommendation engine; observed, not derivable from the export).
+const RELATED = {
+  wineandglassesset: ['two-cats', 'красное-сухое-4-кота', 'набор-красных-вин-собери-кота', '3cats-2018'],
+  lonelycat: ['красное-сухое-4-кота', 'two-cats', 'набор-красных-вин-собери-кота', 'lonely-cat-cabfr'],
+  'красное-сухое-4-кота': ['two-cats', 'lonelycat', 'набор-красных-вин-собери-кота', '3cats-2018'],
+  'набор-красных-вин-собери-кота': ['two-cats', '3cats-2018', 'красное-сухое-4-кота', 'lonelycat'],
+  '3cats-2018': ['набор-красных-вин-собери-кота', 'красное-сухое-4-кота', 'two-cats', 'lonely-cat-cabfr'],
+  'two-cats': ['красное-сухое-4-кота', 'lonely-cat-cabfr', 'набор-красных-вин-собери-кота', 'lonelycat'],
+  'lonely-cat-cabfr': ['two-cats', 'lonelycat', 'набор-красных-вин-собери-кота', 'красное-сухое-4-кота'],
+};
+
 const src = JSON.parse(fs.readFileSync(path.join(exportDir, 'public', 'products.json'), 'utf8')).products;
 const byHandle = new Map(src.map((p) => [p.handle, p]));
 
@@ -49,6 +61,7 @@ const products = ORDER.map((handle) => {
     vendor: p.vendor || 'Einat Winery',
     body_html: p.body_html || '',
     option_name: multi ? p.options[0].name : null,
+    related_slugs: RELATED[handle] || [],
     images: p.images.map((i) => ({
       url: i.src,
       alt: i.alt || '',

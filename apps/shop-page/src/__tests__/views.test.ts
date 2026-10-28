@@ -72,6 +72,15 @@ describe('product', () => {
     expect(btn.textContent).toContain('Продано');
     expect(doc.querySelector('.price--sold-out')).not.toBeNull();
   });
+  it('shows the named related products in order, else the following ones', () => {
+    const p = shop.products[6];
+    const titles = (html: string): string[] =>
+      Array.from(dom(html).querySelectorAll('.related-products .card__heading.h5 a')).map((a) => a.getAttribute('href') as string);
+    expect(titles(productView(ctx(), p))).toEqual((p.related_slugs ?? []).map((s) => '/einatwinery/products/' + encodeURIComponent(s)));
+    const plain = titles(productView(ctx(), { ...p, related_slugs: [] }));
+    expect(plain.length).toBe(4);
+    expect(plain).not.toContain('/einatwinery/products/' + p.slug);
+  });
   it('strips scripts out of the description', () => {
     const p = { ...shop.products[1], body_html: '<p>ok</p><script>alert(1)</script>' };
     expect(productView(ctx(), p)).not.toContain('alert(1)');

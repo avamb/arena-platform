@@ -3,6 +3,7 @@
  * Visual comparison of the storefront against the live Shopify site.
  *
  *   LOCAL=http://localhost:5180/einatwinery node scripts/compare-live.mjs [name ...]
+ *   VP=mobile node scripts/compare-live.mjs        (one viewport only: desktop or mobile)
  *
  * For every page and viewport it saves, under docs/screenshots/:
  *   <name>-<viewport>-live.png    the live site
@@ -61,7 +62,7 @@ const orderStatus = (action) => async (page, base) => {
     });
     return (await r.json()).order_token;
   }, [MOCK_API]);
-  if (action) await page.evaluate(async ([api, t, a]) => { await fetch(api + '/mock-pay/' + t + '/' + a, { redirect: 'manual' }); }, [MOCK_API, token, action]);
+  if (action) await fetch(MOCK_API + '/mock-pay/' + token + '/' + action, { redirect: 'manual' });
   await page.goto(base + '/checkout/' + token, { waitUntil: 'networkidle' }).catch(() => {});
 };
 
@@ -160,6 +161,7 @@ const newContext = (vp) =>
 const diffPage = readFileSync(join(here, 'diff.html'), 'utf8');
 
 for (const [vpName, vp] of Object.entries(VIEWPORTS)) {
+  if (process.env.VP && process.env.VP !== vpName) continue;
   for (const p of PAGES) {
     if (only.length && !only.includes(p.name)) continue;
     if (p.mobileOnly && vpName !== 'mobile') continue;

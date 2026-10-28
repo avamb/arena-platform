@@ -199,10 +199,12 @@ export function buyNowButton(v: ShopVariant): string {
 }
 
 function related(ctx: Ctx, p: ShopProduct): string {
-  // Shopify picks "similar" products; here: the four that follow this one in the catalog, wrapping around.
+  // The API may name the related products; otherwise the four that follow this one in the catalog, wrapping around.
   const all = ctx.shop.products;
+  const named = (p.related_slugs ?? []).map((slug) => all.find((x) => x.slug === slug)).filter((x): x is ShopProduct => !!x && x.id !== p.id);
   const at = all.findIndex((x) => x.id === p.id);
-  const others = [...all.slice(at + 1), ...all.slice(0, Math.max(at, 0))].filter((x) => x.id !== p.id).slice(0, 4);
+  const cyclic = [...all.slice(at + 1), ...all.slice(0, Math.max(at, 0))].filter((x) => x.id !== p.id);
+  const others = (named.length > 0 ? named : cyclic).slice(0, 4);
   if (others.length === 0) return '';
   const sid = 'product__related';
   const items = others
@@ -233,6 +235,7 @@ export function productView(ctx: Ctx, p: ShopProduct, selectedId?: string): stri
   const title = esc(p.title);
   const shareUrl = typeof location !== 'undefined' ? location.origin + url(ctx, '/products/' + p.slug) : '';
   const description = sanitizeHtml(p.body_html);
+  const inCart = ctx.cart.find((i) => i.variant_id === selected.id)?.qty ?? 0;
   return `<section id="shopify-section-${SID}" class="shopify-section section"><section
   id="MainProduct-${SID}"
   class="page-width section-${SID}-padding"
@@ -268,13 +271,13 @@ ${priceBlock(ctx, p, { variant: selected, showBadges: true, large: true })}</div
               >
                 <label class="quantity__label form__label" for="Quantity-${SID}">
                   ${T.quantity}
-                  <span class="quantity__rules-cart no-js-hidden hidden">
+                  <span class="quantity__rules-cart no-js-hidden${inCart > 0 ? '' : ' hidden'}">
                     <span class="loading-overlay hidden">
                       <span class="loading-overlay__spinner">
                         ${spinner()}
                       </span>
                     </span>
-                    <span>(В корзине: <span class="quantity-cart">0</span>)</span>
+                    <span>(В корзине: <span class="quantity-cart">${inCart}</span>)</span>
                   </span>
                 </label>
                 <div class="price-per-item__container">
@@ -288,7 +291,7 @@ ${priceBlock(ctx, p, { variant: selected, showBadges: true, large: true })}</div
                       type="number"
                       name="quantity"
                       id="Quantity-${SID}"
-                      data-cart-quantity="0"
+                      data-cart-quantity="${inCart}"
                       data-min="1"
                       min="1"
                       step="1"
