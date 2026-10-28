@@ -632,12 +632,15 @@
      known), so a wide hall is a wide box and a tall one a tall box, on a
      phone as on a desktop. The floor keeps a very wide plan usable, the
      ceiling keeps a tall one from pushing the cart off the screen; the
-     fit transform scales the plan inside whatever box results. */
+     fit transform scales the plan inside whatever box results.
+     flex-shrink matters: an embed with a fixed height (the frame clips
+     what does not fit) must be able to squeeze the map, otherwise the
+     category cards and the cart bar below it are pushed out of reach. */
   .seat-map-container {
-    flex: none;
+    flex: 1 1 auto;
     width: 100%;
     box-sizing: border-box;
-    min-height: 280px;
+    min-height: 200px;
     max-height: min(85vh, 900px);
     overflow: hidden;
     position: relative;

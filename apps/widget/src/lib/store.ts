@@ -164,6 +164,22 @@ export function identifyGaTiers(sessionTiers: Tier[], categoryPrices: CategoryPr
 }
 
 /**
+ * Seated categories of a session with a seat map: the session tiers that
+ * category_prices refer to. They have no quantity card (a seat is taken by
+ * choosing it on the plan), so without a card of their own a free seated
+ * category is invisible next to the paid cards.
+ */
+export function seatedTiersOf(sessionTiers: Tier[], categoryPrices: CategoryPrice[]): Tier[] {
+  const seatedIds = new Set(categoryPrices.map((cp) => cp.tier_id).filter(Boolean));
+  return sessionTiers.filter((t) => seatedIds.has(t.id));
+}
+
+/** True when every one of the tiers is free at the moment (effective price 0). */
+export function tiersAreFree(tiers: Tier[]): boolean {
+  return tiers.length > 0 && tiers.every((t) => (t.current_price ?? t.price_amount) === 0);
+}
+
+/**
  * GA tiers of a PLAN-LESS session, or null when the session has a schema.
  *
  * A session without `schema_url` never mounts the seat map, so the
