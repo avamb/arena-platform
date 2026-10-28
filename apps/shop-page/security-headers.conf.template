@@ -1,0 +1,16 @@
+# Shared security headers, `include`d into every location block in
+# nginx.conf.template that defines its own add_header (nginx only inherits
+# add_header from an outer context when the location defines none of its own;
+# same arrangement as apps/tickets-page).
+#
+# __API_ORIGIN__ is replaced at image build time - see Dockerfile.
+#
+# img-src allows https: because product pictures and the theme artwork still
+# come from the old shop's CDN until they are re-uploaded as arena media
+# (README "Before the domain moves"). form-action allows https: only for
+# completeness: the shop never posts a form, it redirects to the provider's
+# hosted payment page with a plain navigation.
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "DENY" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' __API_ORIGIN__ https: data:; font-src 'self' data:; connect-src 'self' __API_ORIGIN__; frame-src 'none'; object-src 'none'; form-action 'self' https:; frame-ancestors 'none'; base-uri 'self'" always;

@@ -18,9 +18,10 @@ import (
 // payment module the server builds is given.
 func (s *Server) paymentModuleOptions() payments.Options {
 	return payments.Options{
-		StripeAPIBaseURL: s.stripeBaseURL(),
-		FlittAPIBaseURL:  s.flittBaseURL(),
-		AllPayAPIBaseURL: s.allpayBaseURL(),
+		StripeAPIBaseURL:  s.stripeBaseURL(),
+		FlittAPIBaseURL:   s.flittBaseURL(),
+		AllPayAPIBaseURL:  s.allpayBaseURL(),
+		PayPlusAPIBaseURL: s.payplusBaseURL(),
 	}
 }
 

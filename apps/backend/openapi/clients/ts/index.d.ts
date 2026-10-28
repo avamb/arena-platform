@@ -5358,6 +5358,15 @@ export interface paths {
          *     whose amount or currency differs from the payment parks the
          *     payment in `manual_review` (failure code `paid_amount_mismatch`)
          *     and issues no tickets.
+         *
+         *     **PayPlus** signs its callback in the `hash` header,
+         *     base64(HMAC-SHA256(secret_key, body)), and is likewise accepted on
+         *     this route only (`400 webhook.payplus_requires_config_route` on the
+         *     un-suffixed one). A Charge with `status_code` `000` pays the order;
+         *     any other status code is one failed attempt on a link that stays
+         *     open and moves nothing; a Refund callback is acknowledged without a
+         *     transition. Amounts arrive in major units and are compared with the
+         *     payment like Flitt's and AllPay's.
          */
         post: operations["paymentIntentWebhookForConfig"];
         delete?: never;
@@ -16539,7 +16548,7 @@ export interface components {
              */
             org_id: string;
             /**
-             * @description Provider slug. Must be one of: stripe, allpay, flitt,
+             * @description Provider slug. Must be one of: stripe, allpay, flitt, payplus,
              *     cloudpayments, yookassa, manual. `flitt` needs the secrets
              *     `merchant_id` and `payment_key` (the portal's payment key signs
              *     requests and callbacks; there is no separate webhook secret).
@@ -16547,7 +16556,11 @@ export interface components {
              *     `secret_key` (its API key, which also signs webhooks); `vat`
              *     (0, 1 or 3), `max_installments` (2 to 12) and
              *     `installments_min_amount` (the smallest order total in shekels
-             *     that offers installments) are optional.
+             *     that offers installments) are optional. `payplus` needs
+             *     `api_key` and `secret_key` (the dashboard's key pair; the secret
+             *     key also signs callbacks) and `payment_page_uid` (the payment page
+             *     links are generated from); a `test` config talks to
+             *     restapidev.payplus.co.il, a `live` one to restapi.payplus.co.il.
              * @example stripe
              */
             provider: string;
@@ -16654,7 +16667,7 @@ export interface components {
          */
         CreatePaymentProviderConfigRequest: {
             /**
-             * @description Provider slug (one of stripe, allpay, flitt, cloudpayments, yookassa, manual).
+             * @description Provider slug (one of stripe, allpay, flitt, payplus, cloudpayments, yookassa, manual).
              * @example stripe
              */
             provider: string;
@@ -16683,7 +16696,8 @@ export interface components {
              * @description Map of secret credential fields to values. Stripe expects
              *     api_key + webhook_secret; AllPay expects merchant_id (the API
              *     login) + secret_key (the API key), optionally vat,
-             *     max_installments and installments_min_amount; etc. Values are
+             *     max_installments and installments_min_amount; PayPlus expects
+             *     api_key + secret_key + payment_page_uid; etc. Values are
              *     never returned.
              * @example {
              *       "api_key": "sk_live_xxx",
@@ -25027,7 +25041,7 @@ export interface components {
              *     needs no database migration.
              * @enum {string}
              */
-            provider?: "stripe" | "allpay" | "flitt";
+            provider?: "stripe" | "allpay" | "flitt" | "payplus";
             /**
              * @description Merchant account identifier at the provider. Required
              *     (non-empty after trim) when `payment_mode` is
@@ -25089,7 +25103,7 @@ export interface components {
              *     `channel.invalid_config`.
              * @enum {string}
              */
-            provider?: "stripe" | "allpay" | "flitt";
+            provider?: "stripe" | "allpay" | "flitt" | "payplus";
             /**
              * @description New merchant account identifier. Omitting the key OR sending
              *     JSON `null` both leave the stored value unchanged (the
