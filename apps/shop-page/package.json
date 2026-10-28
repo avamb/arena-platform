@@ -1,0 +1,25 @@
+{
+  "name": "@arena/shop-page",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Arena Sold Out organizer storefront (merch shop). A one-to-one port of the Shopify Dawn storefront, rendered from the public shop API.",
+  "scripts": {
+    "dev": "vite",
+    "dev:mock": "node mock/mock-api.cjs",
+    "dev:mock:live": "node mock/mock-api.cjs --live",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit --pretty",
+    "fixtures": "node mock/build-fixtures.cjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.8.3",
+    "vite": "^5.4.8",
+    "vitest": "^2.1.2"
+  }
+}

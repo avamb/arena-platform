@@ -97,11 +97,19 @@ func TestManagerPermissions0129_OrganizerPassesEveryEventCenterGate(t *testing.T
 		{"session.seats.manage", http.MethodPost, orgPath + "/sessions/" + random + "/seat-batches", `{}`},
 		{"session.seats.manage", http.MethodGet, orgPath + "/sessions/" + random + "/seat-layout/algorithms", ""},
 		{"session.seats.manage", http.MethodPost, orgPath + "/sessions/" + random + "/seat-layout/suggest", `{}`},
-		// Spec 46 (INV-02, migration 0172): the manager issues, lists and
+		// Spec 46 (INV-02, migration 0174): the manager issues, lists and
 		// cancels staff invitations, the owner's included (decision R-5).
 		{"complimentary.issue", http.MethodPost, orgPath + "/sessions/" + random + "/invitations", `{}`},
 		{"complimentary.read", http.MethodGet, orgPath + "/sessions/" + random + "/invitations", ""},
 		{"complimentary.revoke", http.MethodPost, orgPath + "/invitations/" + random + "/cancel", `{}`},
+		// Spec 47: the merchandise shop (migration 0172 grants shop.read and
+		// shop.manage to the manager); a refund also needs refund.create and
+		// refund.approve.
+		{"shop.read", http.MethodGet, orgPath + "/shop/settings", ""},
+		{"shop.read", http.MethodGet, orgPath + "/shop/orders/" + random, ""},
+		{"shop.manage", http.MethodPost, orgPath + "/shop/orders/" + random + "/ship", `{}`},
+		{"shop.manage", http.MethodPost, orgPath + "/shop/orders/" + random + "/cancel", ""},
+		{"shop.manage", http.MethodPost, orgPath + "/shop/orders/" + random + "/refund", `{}`},
 	}
 
 	for _, g := range gates {

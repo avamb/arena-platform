@@ -73,6 +73,10 @@ func TestPGStore_SubscriptionsQueriesAndBookkeeping_LiveDB(t *testing.T) {
 	if len(mine) != 1 || mine[0].OrgID != orgID || !mine[0].OnOrderPaid || mine[0].OnTicketRefunded {
 		t.Fatalf("allowed subscriptions = %+v", mine)
 	}
+	// A row created before kinds existed (no kinds in the INSERT) hears tickets.
+	if len(mine[0].Kinds) != 1 || mine[0].Kinds[0] != KindTickets || !mine[0].Hears(KindTickets) || mine[0].Hears(KindShop) {
+		t.Fatalf("default kinds = %v; want {tickets}", mine[0].Kinds)
+	}
 
 	// The lookups run against whatever the database holds; a fresh one has
 	// no orders, which only skips the shape checks. Other packages' tests

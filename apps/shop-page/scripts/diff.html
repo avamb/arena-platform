@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; background: #888; font: 14px sans-serif; }
+  #out { display: inline-flex; gap: 8px; align-items: flex-start; background: #888; padding: 8px; }
+  figure { margin: 0; background: #fff; }
+  figcaption { background: #222; color: #fff; padding: 4px 8px; }
+  img, canvas { display: block; }
+</style>
+<div id="out"></div>
+<script>
+  function load(src) {
+    return new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = src;
+    });
+  }
+  // Left: live, middle: this app, right: where the two differ (red). Compared on the
+  // top-left overlap; the height difference is reported separately.
+  window.renderDiff = async (a, b) => {
+    const [l, r] = await Promise.all([load(a), load(b)]);
+    const lw = l.naturalWidth, lh = l.naturalHeight, rw = r.naturalWidth, rh = r.naturalHeight;
+    const w = Math.min(lw, rw), h = Math.min(lh, rh);
+    const cv = (img) => {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const x = c.getContext('2d', { willReadFrequently: true });
+      x.drawImage(img, 0, 0);
+      return { c, x };
+    };
+    const A = cv(l), B = cv(r);
+    const da = A.x.getImageData(0, 0, w, h), db = B.x.getImageData(0, 0, w, h);
+    const D = document.createElement('canvas');
+    D.width = w; D.height = h;
+    const dx = D.getContext('2d');
+    const dd = dx.createImageData(w, h);
+    let diff = 0;
+    for (let i = 0; i < da.data.length; i += 4) {
+      const d = Math.abs(da.data[i] - db.data[i]) + Math.abs(da.data[i + 1] - db.data[i + 1]) + Math.abs(da.data[i + 2] - db.data[i + 2]);
+      if (d > 96) {
+        diff++;
+        dd.data[i] = 255; dd.data[i + 1] = 0; dd.data[i + 2] = 0; dd.data[i + 3] = 255;
+      } else {
+        const g = 255 - Math.round((da.data[i] + da.data[i + 1] + da.data[i + 2]) / 3 * 0.25);
+        dd.data[i] = dd.data[i + 1] = dd.data[i + 2] = g; dd.data[i + 3] = 255;
+      }
+    }
+    dx.putImageData(dd, 0, 0);
+    const out = document.getElementById('out');
+    out.innerHTML = '';
+    const add = (el, cap) => {
+      const f = document.createElement('figure');
+      const c = document.createElement('figcaption');
+      c.textContent = cap;
+      f.append(c, el);
+      out.append(f);
+    };
+    // Scale everything to a common display width so wide pages stay readable.
+    const scale = Math.min(1, 1100 / (w * 3));
+    for (const [el, cap] of [[l, 'live ' + lw + 'x' + lh], [r, 'arena ' + rw + 'x' + rh], [D, 'difference']]) {
+      el.style.width = Math.round((el === l ? lw : el === r ? rw : w) * scale) + 'px';
+      add(el, cap);
+    }
+    return { lw, lh, rw, rh, pct: (diff / (w * h)) * 100 };
+  };
+</script>

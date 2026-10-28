@@ -339,6 +339,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `EVENT_CENTER_PUBLIC_URL` (`https://` when set) | ● | ● | ● | — |
 | `BOT_SCHEME_BUTTON` (`off` default, `url` or `web_app`: the «Схема» button on the card of a seated date; needs `EVENT_CENTER_PUBLIC_URL` on the bot; turn it on only after the `/tg` screen of the event center is live; `web_app` opens `<EVENT_CENTER_PUBLIC_URL>/tg?next=<seats path>` and also needs `POST /v1/auth/telegram-miniapp` with `TELEGRAM_MINIAPP_SECRET_KEY` on the API) | — | — | ● | — |
 | `PUBLIC_TICKETS_BASE_URL` | ● | ● | ● | — |
+| `SHOP_PUBLIC_BASE_URL` (`https://` when set, the platform storefront origin; the shop order e-mail links `<this>/<org slug>/checkout/<token>` for an organization without its own `shop_domain`; empty = no status link) | — | ● | — | — |
 | `SHORT_LINK_BASE_URL` (`https://`, host only, default `https://go.arenasoldout.com`, the host printed under a QR code; setup: `docs/ops/sales_links_ru.md`) | ● | — | — | — |
 | `SHORT_LINK_FALLBACK_URL` (`https://` when set; where `GET /go/{code}` sends an unknown code; empty = `PUBLIC_TICKETS_BASE_URL`, else `APP_PUBLIC_URL`) | ● | — | — | — |
 | `ONBOARDING_ENABLED`, `ONBOARDING_TERMS_URL`, `ONBOARDING_PRIVACY_URL` | ● | — | — | — |
@@ -374,13 +375,13 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `TEXT_FORMAT_LLM_MODEL` (default `claude-haiku-5-5`; the key and the base URL are the poster ones: `POSTER_LLM_API_KEY`, `POSTER_LLM_BASE_URL`) | ● | — | — | — |
 | `TEXT_FORMATS_PER_USER_PER_DAY` (default 100, `0` = no cap), `TEXT_FORMATS_PER_ORG_PER_DAY` (default 500, `0` = no cap) | ● | — | — | — |
 | `ENABLE_DEV_AUTH`, `DB_LOG_QUERIES`, `DEBUG_ROUTES_ENABLED`, `FAULT_INJECT_OUTBOX_AFTER_AUDIT` (leave unset; `true` is refused in production) | — | — | — | — |
-| `STRIPE_API_BASE_URL`, `FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL` (test seams; refused in production) | — | — | — | — |
+| `STRIPE_API_BASE_URL`, `FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, `PAYPLUS_API_BASE_URL` (test seams; refused in production) | — | — | — | — |
 | `REDIS_URL`, `IDEMPOTENCY_TTL`, `IDEMPOTENCY_KEY_MAX_LENGTH`, `WORKER_CONCURRENCY`, `WORKER_JOB_TIMEOUT`, `WORKER_RETRY_BACKOFF_BASE`, `WORKER_RETRY_BACKOFF_MAX`, `OUTBOX_BATCH_SIZE` (parsed, but no binary uses them today) | — | — | — | — |
 
 Never set in production, on any service: `ENABLE_DEV_AUTH=true`,
 `DB_LOG_QUERIES=true`, `DEBUG_ROUTES_ENABLED=true`,
 `FAULT_INJECT_OUTBOX_AFTER_AUDIT=true`, `STRIPE_API_BASE_URL`,
-`FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, and `BREVO_API_BASE_URL` /
+`FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, `PAYPLUS_API_BASE_URL`, and `BREVO_API_BASE_URL` /
 `POSTER_LLM_BASE_URL` / `POSTER_GEMINI_BASE_URL` with anything but their default (every role refuses
 to start: a changed host would receive the API key).
 

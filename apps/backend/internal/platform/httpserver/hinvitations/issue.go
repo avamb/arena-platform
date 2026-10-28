@@ -54,7 +54,7 @@ const IssuedViaStaff = "staff"
 // upload (INV-06).
 const MaxPlaces = 50
 
-// seatOrigin values of order_items.seat_origin (migration 0172).
+// seatOrigin values of order_items.seat_origin (migration 0174).
 const (
 	originAvailable   = "available"
 	originUnavailable = "unavailable"

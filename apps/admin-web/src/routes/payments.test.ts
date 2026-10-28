@@ -30,6 +30,7 @@ import {
   webhookWarningText,
   STRIPE_CHECKOUT_SESSION_EVENTS,
   StripeWebhookConfigUrlsView,
+  PayPlusHelpView,
   STRIPE_API_KEY_PERMISSIONS,
   StripeApiKeyPermissionsView,
   normalizeVerificationStatus,
@@ -76,6 +77,7 @@ describe("PAYMENT_PROVIDERS", () => {
     expect(PAYMENT_PROVIDERS).toContain("stripe");
     expect(PAYMENT_PROVIDERS).toContain("allpay");
     expect(PAYMENT_PROVIDERS).toContain("flitt");
+    expect(PAYMENT_PROVIDERS).toContain("payplus");
     expect(PAYMENT_PROVIDERS).toContain("cloudpayments");
     expect(PAYMENT_PROVIDERS).toContain("yookassa");
     expect(PAYMENT_PROVIDERS).toContain("manual");
@@ -83,7 +85,7 @@ describe("PAYMENT_PROVIDERS", () => {
 });
 
 describe("validateProvider", () => {
-  it.each(["stripe", "allpay", "flitt", "cloudpayments", "yookassa", "manual"])(
+  it.each(["stripe", "allpay", "flitt", "payplus", "cloudpayments", "yookassa", "manual"])(
     "accepts %s",
     (p) => {
       expect(validateProvider(p)).toBeNull();
@@ -128,6 +130,9 @@ describe("PROVIDER_REQUIRED_SECRETS", () => {
   it("allpay requires merchant_id and secret_key", () => {
     expect(PROVIDER_REQUIRED_SECRETS.allpay).toContain("merchant_id");
     expect(PROVIDER_REQUIRED_SECRETS.allpay).toContain("secret_key");
+  });
+  it("payplus requires api_key, secret_key and payment_page_uid", () => {
+    expect(PROVIDER_REQUIRED_SECRETS.payplus).toEqual(["api_key", "secret_key", "payment_page_uid"]);
   });
   it("cloudpayments requires public_id and api_secret", () => {
     expect(PROVIDER_REQUIRED_SECRETS.cloudpayments).toContain("public_id");
@@ -632,5 +637,21 @@ describe("webhookWarningText", () => {
     expect(webhookWarningText("refund_events_not_subscribed")).toMatch(/refund\.updated/);
     expect(webhookWarningText("webhook_endpoint_not_found")).toMatch(/Webhooks/);
     expect(webhookWarningText("something_new")).toBe("something_new");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PayPlusHelpView — the mode decides which PayPlus host the keys belong to.
+// ---------------------------------------------------------------------------
+describe("PayPlusHelpView", () => {
+  it("names the staging host for a test config", () => {
+    const html = renderToStaticMarkup(createElement(PayPlusHelpView, { mode: "test" }));
+    expect(html).toContain("restapidev.payplus.co.il");
+    expect(html).toContain("payment_page_uid");
+  });
+  it("names the production host for a live config", () => {
+    const html = renderToStaticMarkup(createElement(PayPlusHelpView, { mode: "live" }));
+    expect(html).toContain("restapi.payplus.co.il");
+    expect(html).not.toContain("restapidev");
   });
 });

@@ -81,6 +81,62 @@ const TemplateKindScanException = "refund_scan_exception"
 // promises nothing beyond that.
 const TemplateKindRefund = "refund"
 
+// TemplateKindShopOrderReceived is sent to the buyer of a merchandise shop
+// order once it is paid (spec 47 section 7): the goods, the totals, where it
+// goes, the digital files' pointer and the link to the order status page.
+const TemplateKindShopOrderReceived = "shop_order_received"
+
+// TemplateKindShopOrderShipped is sent when the organizer marks a shop order
+// shipped (or ready, for a pickup order), with the tracking note.
+const TemplateKindShopOrderShipped = "shop_order_shipped"
+
+// Shop line kinds (shop_products.kind): ShopLine.Kind carries one of them.
+const (
+	ShopKindPhysical = "physical"
+	ShopKindDigital  = "digital"
+	ShopKindService  = "service"
+)
+
+// ShopLine is one line of a shop order e-mail, every amount pre-formatted
+// ("25.00 ILS").
+type ShopLine struct {
+	Title     string
+	Qty       int
+	UnitPrice string
+	LineTotal string
+	// Kind is ShopKindPhysical, ShopKindDigital or ShopKindService.
+	Kind string
+}
+
+// ShopOrderData is what the shop order e-mails say; nil for every other kind.
+type ShopOrderData struct {
+	// OrderNumber is the buyer-facing number (shop_orders.number).
+	OrderNumber string
+	Items       []ShopLine
+	// Digital are the digital lines of Items, printed as the "files" block:
+	// each title links to StatusURL, where the download buttons are (the
+	// signed links themselves expire, so they never go into a letter).
+	Digital []ShopLine
+	// Subtotal, Discount, Shipping and Total are what the buyer paid for; an
+	// empty one is not printed. Shipping stays empty for an order that needs
+	// no shipping (only digital or service lines).
+	Subtotal string
+	Discount string
+	Shipping string
+	Total    string
+	// Pickup says the buyer collects the order. Address is the delivery
+	// address, one line each in the courier form's order; empty for a pickup
+	// or an order with nothing to ship.
+	Pickup  bool
+	Address []string
+	// Note is the buyer's own note; TrackingNote the organizer's shipping
+	// details (shipped letter only).
+	Note         string
+	TrackingNote string
+	// StatusURL is the storefront's order status page.
+	StatusURL string
+}
+
 // Data is the value passed to every template. Fields are intentionally
 // strings (not domain structs) so the template author can ignore nil checks
 // and {{with}} blocks handle the "empty means omit" presentation rule.
@@ -169,6 +225,10 @@ type Data struct {
 	// e-mail only). The delivery worker sets it from the seller's country;
 	// it stays false for invitations and for any other seller.
 	WithdrawalNotice bool
+
+	// Shop is the order the shop e-mails describe (kinds shop_order_received
+	// and shop_order_shipped); Render fills an empty one when it is nil.
+	Shop *ShopOrderData
 }
 
 // ScanAlertData is the content of a refund-blocked notice.
@@ -492,6 +552,9 @@ func (r *Renderer) Render(kind, locale string, data Data) (Rendered, error) {
 	}
 	if data.Change.MessageHTML == "" && data.Change.Message != "" {
 		data.Change.MessageHTML = htmltemplate.HTML(`<p style="margin:0;white-space:pre-line">` + htmltemplate.HTMLEscapeString(data.Change.Message) + `</p>`) //nolint:gosec // escaped
+	}
+	if data.Shop == nil {
+		data.Shop = &ShopOrderData{}
 	}
 	resolved := r.ResolveLocale(kind, locale)
 	key := kind + "." + resolved

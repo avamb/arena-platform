@@ -99,7 +99,7 @@ SET    issued_via = $2,
 WHERE  id = $1`
 
 // SetOrderStaffIssuance stamps how and by whom a staff invitation order was
-// issued (migration 0172). issuedBy is nil for an organization API key.
+// issued (migration 0174). issuedBy is nil for an organization API key.
 func (q *Queries) SetOrderStaffIssuance(ctx context.Context, orderID uuid.UUID, issuedVia string, issuedBy *uuid.UUID) error {
 	_, err := q.db.Exec(ctx, setOrderStaffIssuance, orderID, issuedVia, issuedBy)
 	return err

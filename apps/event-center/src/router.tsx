@@ -43,6 +43,12 @@ import { LinksScreen } from "@/screens/LinksScreen";
 import { LinkCreateScreen } from "@/screens/LinkCreateScreen";
 import { LinkScreen } from "@/screens/LinkScreen";
 import { parseLinkCardSearch, parseLinkNewSearch, parseLinksSearch } from "@/lib/salesLinks";
+import { ShopProductsScreen } from "@/screens/ShopProductsScreen";
+import { ShopProductEditScreen, ShopProductNewScreen } from "@/screens/ShopProductScreen";
+import { ShopOrdersScreen } from "@/screens/ShopOrdersScreen";
+import { ShopOrderScreen } from "@/screens/ShopOrderScreen";
+import { ShopSettingsScreen } from "@/screens/ShopSettingsScreen";
+import { parseProductCardSearch, parseProductsSearch, parseShopOrdersSearch } from "@/lib/shop";
 
 const rootRoute = createRootRoute({ component: RootLayout, notFoundComponent: NotFoundScreen });
 
@@ -277,6 +283,55 @@ const linkRoute = createRoute({
   component: LinkScreen,
 });
 
+// The shop (spec 47). Every screen explains itself to a person without shop.read. "new" is listed before
+// "$productId" so it is never read as an id.
+const shopRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/shop",
+  beforeLoad: ({ params }) => {
+    throw redirect({ to: "/o/$orgId/shop/products", params: { orgId: params.orgId }, search: {} });
+  },
+});
+
+const shopProductsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/shop/products",
+  validateSearch: parseProductsSearch,
+  component: ShopProductsScreen,
+});
+
+const shopProductNewRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/shop/products/new",
+  component: ShopProductNewScreen,
+});
+
+const shopProductRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/shop/products/$productId",
+  validateSearch: parseProductCardSearch,
+  component: ShopProductEditScreen,
+});
+
+const shopOrdersRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/shop/orders",
+  validateSearch: parseShopOrdersSearch,
+  component: ShopOrdersScreen,
+});
+
+const shopOrderRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/shop/orders/$orderId",
+  component: ShopOrderScreen,
+});
+
+const shopSettingsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/shop/settings",
+  component: ShopSettingsScreen,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -311,6 +366,13 @@ export const routeTree = rootRoute.addChildren([
     linksRoute,
     linkNewRoute,
     linkRoute,
+    shopRoute,
+    shopProductsRoute,
+    shopProductNewRoute,
+    shopProductRoute,
+    shopOrdersRoute,
+    shopOrderRoute,
+    shopSettingsRoute,
   ]),
 ]);
 

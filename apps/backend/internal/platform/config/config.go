@@ -211,6 +211,13 @@ type Config struct {
 	// carry a valid return_url is refused with checkout.invalid_return_url.
 	PublicTicketsBaseURL string `env:"PUBLIC_TICKETS_BASE_URL" required:"false" default:""`
 
+	// ShopPublicBaseURL is the platform's storefront origin for the
+	// merchandise shop (e.g. https://shop.arenasoldout.com). A shop order's
+	// e-mail links its status page as <this>/<organization slug>/checkout/<token>
+	// when the organization has no shop_domain of its own. Empty: such an
+	// order's e-mail carries no status link.
+	ShopPublicBaseURL string `env:"SHOP_PUBLIC_BASE_URL" required:"false" default:""`
+
 	// ShortLinkBaseURL is the host printed under a QR code of a sales link and
 	// encoded in it (spec 43). The redirect itself is host-independent: any host
 	// that reaches arena-api resolves a code.
@@ -258,6 +265,15 @@ type Config struct {
 	// refused — the organizer's API key signs every request, and a
 	// redirected endpoint could replay a signed order.
 	AllPayAPIBaseURL string `env:"ALLPAY_API_BASE_URL" required:"false" default:""`
+
+	// PayPlusAPIBaseURL is the same seam for PayPlus. It replaces BOTH real
+	// hosts (restapi.payplus.co.il for a live configuration,
+	// restapidev.payplus.co.il for a test one) and must carry the /api/v1.0
+	// root, e.g. http://localhost:12114/api/v1.0. TEST AND DEVELOPMENT ONLY:
+	// Validate() refuses a non-empty value under APP_ENV=production — every
+	// request carries the organizer's api-key and secret-key headers, and the
+	// secret key also signs the callbacks arena trusts.
+	PayPlusAPIBaseURL string `env:"PAYPLUS_API_BASE_URL" required:"false" default:""`
 
 	// -------------------------------------------------------------------------
 	// Database (PostgreSQL 17)
@@ -1002,6 +1018,7 @@ func LoadFor(role Role) (*Config, error) {
 	// PUBLIC_TICKETS_BASE_URL / WIDGET_PAYMENT_WINDOW_SECONDS /
 	// WIDGET_PAYMENT_GRACE_SECONDS — widget hosted-payment redirect flow.
 	cfg.PublicTicketsBaseURL = strings.TrimRight(strings.TrimSpace(getenv("PUBLIC_TICKETS_BASE_URL", "")), "/")
+	cfg.ShopPublicBaseURL = strings.TrimRight(strings.TrimSpace(getenv("SHOP_PUBLIC_BASE_URL", "")), "/")
 	cfg.ShortLinkBaseURL = strings.TrimRight(strings.TrimSpace(getenv("SHORT_LINK_BASE_URL", "https://go.arenasoldout.com")), "/")
 	cfg.ShortLinkFallbackURL = strings.TrimRight(strings.TrimSpace(getenv("SHORT_LINK_FALLBACK_URL", "")), "/")
 
@@ -1023,6 +1040,8 @@ func LoadFor(role Role) (*Config, error) {
 	cfg.FlittAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("FLITT_API_BASE_URL", "")), "/")
 	// ALLPAY_API_BASE_URL — test/dev only, rejected in production by Validate.
 	cfg.AllPayAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("ALLPAY_API_BASE_URL", "")), "/")
+	// PAYPLUS_API_BASE_URL — test/dev only, rejected in production by Validate.
+	cfg.PayPlusAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("PAYPLUS_API_BASE_URL", "")), "/")
 
 	d, err := getenvDuration("REQUEST_TIMEOUT_SECONDS", 30*time.Second, true)
 	if err != nil {
@@ -1829,6 +1848,16 @@ func (c *Config) validateProduction() []error {
 		errs = append(errs, errors.New(
 			"ALLPAY_API_BASE_URL must not be set in production;"+
 				" it redirects hosted checkout calls away from allpay.to"+
+				" and is for tests and local development only",
+		))
+	}
+
+	// 17a. PAYPLUS_API_BASE_URL: same reasoning — it would receive the
+	// organizer's api-key and secret-key with every request.
+	if strings.TrimSpace(c.PayPlusAPIBaseURL) != "" {
+		errs = append(errs, errors.New(
+			"PAYPLUS_API_BASE_URL must not be set in production;"+
+				" it redirects hosted checkout calls away from restapi.payplus.co.il"+
 				" and is for tests and local development only",
 		))
 	}

@@ -131,6 +131,13 @@ func (e *Engine) reverseTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, res pay
 	if err != nil {
 		return Refund{}, err
 	}
+	// The money did not go back after all: what the payment paid for (a
+	// shop order) counts it out again, in this same transaction.
+	if e.projectPayment != nil && updated.PaymentIntentID != uuid.Nil {
+		if err := e.projectPayment(ctx, tx, updated.PaymentIntentID); err != nil {
+			return Refund{}, err
+		}
+	}
 	return updated, e.writeAudit(ctx, tx, audit.Event{ActorType: "system", Action: "v1.refund.provider_reversed",
 		ResourceType: "refund", ResourceID: id.String(),
 		Metadata: map[string]any{"state": updated.State, "provider_status": string(res.Status),
