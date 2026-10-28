@@ -33,6 +33,7 @@ import {
   rowsFromProduct,
   settingsDraft,
   settingsRequest,
+  stockChangedDetails,
   stockSum,
   variantsChanged,
   variantsRequest,
@@ -132,6 +133,23 @@ describe("the variants editor", () => {
     expect(variantsChanged([{ ...rows[0], price: "13.00" }, rows[1]], product.variants, "EUR", 2)).toBe(true);
     expect(variantsChanged([rows[1], rows[0]], product.variants, "EUR", 2)).toBe(true);
     expect(variantsChanged([rows[0]], product.variants, "EUR", 2)).toBe(true);
+  });
+
+  it("sends a digital product's variant with no stock and no expected_stock", () => {
+    const rows = rowsFromProduct(product, "EUR");
+    const body = variantsRequest(rows, "EUR", 2, { digital: true });
+    expect(body[0]).toMatchObject({ id: "v1", stock: 0, track_stock: false });
+    expect(body[0].expected_stock).toBeUndefined();
+    const bad = { ...rows[0], stock: "x" };
+    expect(checkVariants([bad], "EUR", 2, { digital: true }).ok).toBe(true);
+    expect(checkVariants([bad], "EUR", 2).ok).toBe(false);
+  });
+
+  it("reads the current stock out of the details of a refused write", () => {
+    const err = new ApiError(409, "shop.stock_changed", "moved", undefined, { variants: [{ id: "v1", expected_stock: 7, stock: 4 }, { bad: true }] });
+    expect(stockChangedDetails(err)).toEqual([{ id: "v1", expected: 7, stock: 4 }]);
+    expect(stockChangedDetails(new ApiError(409, "other", "x"))).toEqual([]);
+    expect(stockChangedDetails(new ApiError(409, "shop.stock_changed", "x"))).toEqual([]);
   });
 
   it("recognizes the stock conflict of the API", () => {

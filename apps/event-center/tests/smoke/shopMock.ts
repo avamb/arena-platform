@@ -14,6 +14,8 @@ export const PRODUCT_BAG = "0193f01a-0000-7000-8000-0000000000b2";
 export const ORDER_PAID = "0193f01a-0000-7000-8000-0000000000c1";
 export const ORDER_REVIEW = "0193f01a-0000-7000-8000-0000000000c2";
 export const ORDER_UNPAID = "0193f01a-0000-7000-8000-0000000000c3";
+export const ORDER_DIGITAL = "0193f01a-0000-7000-8000-0000000000c4";
+export const PRODUCT_GUIDE = "0193f01a-0000-7000-8000-0000000000b3";
 
 interface Variant {
   id: string;
@@ -42,6 +44,8 @@ interface Product {
   vendor: string;
   sort_order: number;
   kind: string;
+  digital_media_id: string | null;
+  option_names: string[];
   images: unknown[];
   variants: Variant[];
   created_at: string;
@@ -76,6 +80,8 @@ const product = (id: string, title: string, variants: Variant[], extra: Partial<
   vendor: "",
   sort_order: 0,
   kind: "physical",
+  digital_media_id: null,
+  option_names: [],
   images: [],
   variants,
   created_at: "2026-10-01T10:00:00Z",
@@ -101,7 +107,7 @@ function order(id: string, number: number, status: string, extra: Record<string,
     total: 4490,
     refunded_minor: 0,
     tracking_note: "",
-    items: [{ variant_id: "v1", product_title: "Riesling", variant_title: "2021 / 0.75 l", sku: "RIE-21", qty: 2, unit_price_minor: 2000, total_minor: 4000 }],
+    items: [{ variant_id: "v1", product_kind: "physical", product_title: "Riesling", variant_title: "2021 / 0.75 l", sku: "RIE-21", qty: 2, unit_price_minor: 2000, total_minor: 4000 }],
     payment: { id: "pay1", provider: "stripe", state: "succeeded", amount: 4490, currency: "EUR" },
     expires_at: null,
     paid_at: "2026-10-05T10:05:00Z",
@@ -131,7 +137,7 @@ function json(route: Route, status: number, body: unknown) {
   return route.fulfill({ status, contentType: "application/json", headers: CORS, body: JSON.stringify(body) });
 }
 
-const MANAGER = ["event.read", "order.read", "shop.read", "shop.manage", "channel.read"];
+const MANAGER = ["event.read", "order.read", "shop.read", "shop.manage", "channel.read", "refund.create", "refund.approve"];
 
 export async function mockShop(page: Page, permissions: string[] = MANAGER): Promise<ShopMockState> {
   const state: ShopMockState = {
@@ -147,13 +153,27 @@ export async function mockShop(page: Page, permissions: string[] = MANAGER): Pro
           variant("v1", "2021 / 0.75 l", 2000, 12, { option1: "2021", option2: "0.75 l", held: 2, available: 10, sku: "RIE-21" }),
           variant("v2", "2022 / 0.75 l", 2200, 0, { option1: "2022", option2: "0.75 l", position: 1 }),
         ],
-        {},
+        { option_names: ["Vintage", "Size"] },
       ),
+      product(PRODUCT_GUIDE, "Wine guide", [variant("v4", "Default Title", 1500, 0, { track_stock: false, available: null })], {
+        kind: "digital",
+        digital_media_id: "0193f01a-0000-7000-8000-0000000000d9",
+      }),
       product(PRODUCT_BAG, "Tote bag", [variant("v3", "Default Title", 900, 5)], { status: "draft" }),
     ],
     orders: [
       order(ORDER_PAID, 1042, "paid"),
       order(ORDER_REVIEW, 1043, "manual_review", { buyer: { name: "Boris Mock", email: "boris@example.test" } }),
+      order(ORDER_DIGITAL, 1045, "paid", {
+        buyer: { name: "Dora Digital", email: "dora@example.test" },
+        ship: { address1: "", city: "", country: "" },
+        delivery_kind: "none",
+        delivery_note: "",
+        shipping_fee: 0,
+        subtotal: 1500,
+        total: 1500,
+        items: [{ variant_id: "v4", product_kind: "digital", product_title: "Wine guide", variant_title: "Default Title", sku: null, qty: 1, unit_price_minor: 1500, total_minor: 1500 }],
+      }),
       order(ORDER_UNPAID, 1044, "pending_payment", { payment: null, paid_at: null, expires_at: "2026-10-05T10:33:00Z", delivery_kind: "pickup" }),
     ],
     settings: {
@@ -259,7 +279,7 @@ export async function mockShop(page: Page, permissions: string[] = MANAGER): Pro
         state.stockConflict = false;
         // Somebody sold two bottles meanwhile.
         p.variants[0] = { ...p.variants[0], stock: 9, available: 7 };
-        return json(route, 409, { error: { code: "shop.stock_changed", message: "moved" } });
+        return json(route, 409, { error: { code: "shop.stock_changed", message: "moved", details: { variants: [{ id: "v1", expected_stock: 12, stock: 9 }] } } });
       }
       p.variants = body.variants.map((v, i) => variant(v.id ?? `nv${i}`, v.title || "Default Title", v.price_minor, v.stock, { position: i, option1: v.option1, option2: v.option2, option3: v.option3, track_stock: v.track_stock }));
       return json(route, 200, p);

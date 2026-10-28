@@ -8,7 +8,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { ORG_A, mockApi } from "./mockApi";
-import { ORDER_PAID, ORDER_REVIEW, ORDER_UNPAID, PRODUCT_WINE, mockShop } from "./shopMock";
+import { ORDER_DIGITAL, ORDER_PAID, ORDER_REVIEW, ORDER_UNPAID, PRODUCT_GUIDE, PRODUCT_WINE, mockShop } from "./shopMock";
 
 async function signIn(page: Page) {
   await page.goto("/login");
@@ -51,13 +51,14 @@ test.describe("shop (mock)", () => {
     await page.getByTestId("nav-shop").click();
     await expect(page).toHaveURL(new RegExp(`/o/${ORG_A}/shop/products`));
     const rows = page.getByTestId("shop-product-row");
-    await expect(rows).toHaveCount(2);
+    await expect(rows).toHaveCount(3);
     await expect(rows.first()).toContainText("Riesling");
     await expect(rows.first()).toContainText("Physical goods");
     await expect(rows.first()).toContainText("On sale");
     await expect(rows.first()).toContainText("to");
     await expect(rows.first()).toContainText("12");
-    await expect(rows.nth(1)).toContainText("Draft");
+    await expect(rows.filter({ hasText: "Tote bag" })).toContainText("Draft");
+    await expect(rows.filter({ hasText: "Wine guide" })).toContainText("Digital file");
     await noHorizontalScroll(page);
     await noA11yViolations(page);
 
@@ -110,6 +111,7 @@ test.describe("shop (mock)", () => {
     await expect(page.getByTestId("shop-stock-changed")).toContainText("The stock changed while you were editing");
     // The rows now show the server's number, and nothing was written over it.
     await expect(page.getByTestId("shop-variant-stock-0")).toHaveValue("9");
+    await expect(page.getByTestId("shop-stock-moved")).toContainText("you saw 12, now 9");
     expect(state.writes[0]).toContain('"expected_stock":12');
 
     await page.getByTestId("shop-variant-stock-0").fill("5");
@@ -160,7 +162,7 @@ test.describe("shop (mock)", () => {
     await signIn(page);
     await page.goto(`/o/${ORG_A}/shop/orders`);
     const rows = page.getByTestId("shop-order-row");
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(4);
     await expect(rows.first()).toContainText("№1042");
     await noHorizontalScroll(page);
     await noA11yViolations(page);
@@ -169,7 +171,7 @@ test.describe("shop (mock)", () => {
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText("Needs a manual check");
     await page.getByTestId("shop-orders-reset").click();
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(4);
 
     await page.getByTestId("shop-orders-q").fill("boris");
     await page.getByTestId("shop-orders-from").fill("2026-10-01");
@@ -258,6 +260,58 @@ test.describe("shop (mock)", () => {
     expect(state.writes[0]).toContain("su-token");
   });
 
+  test("a digital product has a file and no stock controls, and saves its variant without stock", async ({ page }) => {
+    await mockApi(page);
+    const state = await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/products/${PRODUCT_GUIDE}`);
+    await expect(page.getByTestId("shop-product-kind")).toHaveValue("digital");
+    await expect(page.getByTestId("shop-product-digital-state")).toContainText("A file is attached.");
+    await expect(page.getByTestId("shop-variants-digital-note")).toBeVisible();
+    await expect(page.getByTestId("shop-variant-track-0")).toHaveCount(0);
+    await expect(page.getByTestId("shop-variant-stock-0")).toHaveCount(0);
+    await noA11yViolations(page);
+    await page.getByTestId("shop-variant-price-0").fill("17");
+    await page.getByTestId("shop-variants-save").click();
+    await expect(page.getByTestId("shop-variants-notice")).toBeVisible();
+    expect(state.writes[0]).toContain('"price_minor":1700');
+    expect(state.writes[0]).toContain('"track_stock":false');
+    expect(state.writes[0]).not.toContain("expected_stock");
+  });
+
+  test("the option names label the variant columns", async ({ page }) => {
+    await mockApi(page);
+    await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/products/${PRODUCT_WINE}`);
+    await expect(page.getByTestId("shop-option-name-1")).toHaveValue("Vintage");
+    await expect(page.getByTestId("shop-variants").getByLabel("Vintage").first()).toHaveValue("2021");
+    await expect(page.getByTestId("shop-variants").getByLabel("Size").first()).toHaveValue("0.75 l");
+  });
+
+  test("an order of digital goods has no address block and a line that says its kind", async ({ page }) => {
+    await mockApi(page);
+    await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/orders`);
+    await expect(page.getByTestId("shop-order-row").filter({ hasText: "№1045" })).toContainText("No delivery");
+    await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_DIGITAL}`);
+    await expect(page.getByTestId("shop-order-card")).toBeVisible();
+    await expect(page.getByTestId("shop-order-address")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Delivery address" })).toHaveCount(0);
+    await expect(page.getByTestId("shop-order-line-kind")).toContainText("Digital file");
+    await noA11yViolations(page);
+  });
+
+  test("refund needs the refund rights too: a manager without them sees no Refund button", async ({ page }) => {
+    await mockApi(page);
+    await mockShop(page, ["event.read", "shop.read", "shop.manage"]);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_PAID}`);
+    await expect(page.getByTestId("shop-order-ship")).toBeVisible();
+    await expect(page.getByTestId("shop-order-refund")).toHaveCount(0);
+  });
+
   test("settings: values are shown, the domain is read only, a change is saved as a whole row", async ({ page }) => {
     await mockApi(page);
     const state = await mockShop(page);
@@ -287,5 +341,31 @@ test.describe("shop (mock)", () => {
     expect(state.writes[0]).toContain('"max_line_qty":10');
     expect(state.writes[0]).toContain('"sales_channel_id":"ch1"');
     expect(state.writes[0]).not.toContain("shop_domain");
+  });
+});
+
+test.describe("shop (mock, desktop)", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, isMobile: false, hasTouch: false, deviceScaleFactor: 1 });
+
+  test("every shop screen has no axe violations and no sideways scroll", async ({ page }) => {
+    await mockApi(page);
+    await mockShop(page);
+    await signIn(page);
+    for (const path of ["shop/products", `shop/products/${PRODUCT_WINE}`, "shop/orders", `shop/orders/${ORDER_REVIEW}`, `shop/orders/${ORDER_DIGITAL}`, "shop/settings"]) {
+      await page.goto(`/o/${ORG_A}/${path}`);
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      await expect(page.getByTestId("loading")).toHaveCount(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth), path).toBeLessThanOrEqual(1280);
+      await noA11yViolations(page);
+    }
+  });
+
+  test("the orders table is a table with six columns on a wide screen", async ({ page }) => {
+    await mockApi(page);
+    await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/orders`);
+    await expect(page.getByTestId("shop-orders-table").getByRole("columnheader")).toHaveCount(6);
+    await expect(page.getByTestId("shop-order-row")).toHaveCount(4);
   });
 });
