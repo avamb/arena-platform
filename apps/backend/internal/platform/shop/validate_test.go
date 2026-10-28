@@ -258,3 +258,31 @@ func TestSanitizeBody_RefusesWhatTheSanitizerRefuses(t *testing.T) {
 		t.Fatalf("over-long body = %v; want 422 shop.invalid_body_html", err)
 	}
 }
+
+func TestRefundStatus(t *testing.T) {
+	shipped := time.Now()
+	paid := gen.ShopOrderRow{Status: StatusPaid, Total: 1000}
+	cases := []struct {
+		name     string
+		o        gen.ShopOrderRow
+		accepted int64
+		want     string
+	}{
+		{"paid, nothing back", paid, 0, StatusPaid},
+		{"paid, part back", paid, 400, StatusPartiallyRefunded},
+		{"paid, all back", paid, 1000, StatusRefunded},
+		{"refunded, reversed", gen.ShopOrderRow{Status: StatusRefunded, Total: 1000, RefundedMinor: 1000}, 0, StatusPaid},
+		{"refunded shipped, reversed to part", gen.ShopOrderRow{Status: StatusRefunded, Total: 1000, ShippedAt: &shipped}, 300, StatusPartiallyRefunded},
+		{"partially refunded shipped, reversed", gen.ShopOrderRow{Status: StatusPartiallyRefunded, Total: 1000, ShippedAt: &shipped}, 0, StatusShipped},
+		{"manual review, part back", gen.ShopOrderRow{Status: StatusManualReview, Total: 1000}, 300, StatusManualReview},
+		{"manual review, all back", gen.ShopOrderRow{Status: StatusManualReview, Total: 1000}, 1000, StatusRefunded},
+		{"refunded parked order, reversed", gen.ShopOrderRow{Status: StatusRefunded, Total: 1000,
+			Metadata: []byte(`{"review_reason": "stock_short"}`)}, 0, StatusManualReview},
+		{"expired keeps its status", gen.ShopOrderRow{Status: StatusExpired, Total: 1000}, 1000, StatusExpired},
+	}
+	for _, c := range cases {
+		if got := refundStatus(c.o, c.accepted); got != c.want {
+			t.Errorf("%s: refundStatus = %s; want %s", c.name, got, c.want)
+		}
+	}
+}

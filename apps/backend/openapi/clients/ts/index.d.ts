@@ -10369,9 +10369,10 @@ export interface paths {
         };
         /**
          * Read a shop order
-         * @description One order with its lines and payment. Refunds the provider settled
-         *     since the last look (a pending refund that completed, one made in the
-         *     provider's dashboard) are folded into `refunded_minor` and the status first.
+         * @description One order with its lines and payment. Reading never changes the order:
+         *     refunds reach `refunded_minor` and the status when they succeed, through the
+         *     refund engine (a pending refund counts once the provider confirms it, a
+         *     reversed one stops counting).
          *
          *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
          */
@@ -10452,10 +10453,11 @@ export interface paths {
          *     to the provider (the same refund engine as tickets). `amount_minor` left out
          *     refunds what is left. The answer carries the order and the refund's state:
          *     `succeeded`, `provider_pending` (no answer yet; refund.sweep follows it up),
-         *     `failed` or `manual_review`. The order becomes `refunded` when all of it went
-         *     back and `partially_refunded` when some did (an order in `manual_review` stays
-         *     there until all of it went back), and `v1.shop.order.refunded` is
-         *     written. Stock is not put back. From the web event center the request needs
+         *     `failed` or `manual_review`. Only succeeded refunds count: the order becomes
+         *     `refunded` when all of it went back and `partially_refunded` when some did (an
+         *     order in `manual_review` stays there until all of it went back), and
+         *     `v1.shop.order.refunded` is written; a pending refund changes the order when
+         *     the provider confirms it. Stock is not put back. From the web event center the request needs
          *     a fresh password confirmation (`X-Step-Up-Token`).
          *
          *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
@@ -30345,7 +30347,7 @@ export interface components {
             total: number;
             /**
              * Format: int64
-             * @description What the provider has returned so far, minor units.
+             * @description What succeeded refunds have returned so far, minor units.
              */
             refunded_minor: number;
             /** @description Language the buyer shopped in. */

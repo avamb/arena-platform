@@ -19,6 +19,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hshop"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
 
@@ -378,5 +379,86 @@ func TestShop_PaymentFallsBackToAChannelThatCanTakeIt(t *testing.T) {
 	code, body := f.checkout(variant, 1)
 	if code != http.StatusCreated || body["payment_url"] == "" {
 		t.Fatalf("checkout with an unconfigured oldest channel = %d %v; want 201 with a payment page", code, body)
+	}
+}
+
+// TestShop_PendingRefundCountsOnlyOnceItSucceeds: a refund the provider
+// accepted as pending changes nothing on the order; when it later succeeds
+// (here through the operator's resolution, which settles it like the sweep
+// does) the refund engine projects it onto the order.
+func TestShop_PendingRefundCountsOnlyOnceItSucceeds(t *testing.T) {
+	f := newShopFixture(t)
+	f.stripe.refundHandler = func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"id":"re_pending_%s","status":"pending"}`, uuid.NewString()[:8])
+	}
+	_, variant := f.openShop(4500, 3)
+	o := f.placed(variant, 2)
+	f.pay(o.OrderToken)
+
+	code, body, _ := f.do(http.MethodPost, f.orgPath(f.orgA, "/orders/"+o.ID.String()+"/refund"), f.ownerA, `{"amount_minor":5000}`)
+	if code != http.StatusOK {
+		t.Fatalf("refund = %d %v", code, body)
+	}
+	order := body["order"].(map[string]any)
+	if order["status"] != shop.StatusPaid || order["refunded_minor"].(float64) != 0 {
+		t.Fatalf("order with a pending refund: status %v refunded %v; want paid and 0", order["status"], order["refunded_minor"])
+	}
+	refundID := uuid.MustParse(body["refund"].(map[string]any)["id"].(string))
+
+	// The provider never confirmed it; the operator checked the dashboard.
+	f.exec(`UPDATE refunds SET state = 'manual_review' WHERE id = $1`, refundID)
+	if _, err := f.srv.refundEngine().Resolve(context.Background(), refunds.ResolveInput{
+		OrgID: f.orgA, RefundID: refundID, Outcome: refunds.ResolveRefunded,
+		Actor: refunds.Actor{Type: "user", ID: uuid.NewString()}, Via: "test", Note: "Stripe dashboard shows the refund succeeded",
+	}); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	got, _ := f.q.GetShopOrder(context.Background(), o.ID, f.orgA)
+	if got.Status != shop.StatusPartiallyRefunded || got.RefundedMinor != 5000 {
+		t.Fatalf("order after the refund succeeded: status %s refunded %d; want partially_refunded and 5000", got.Status, got.RefundedMinor)
+	}
+	if n := f.outboxCount(shop.EventOrderRefunded, o.ID); n != 1 {
+		t.Fatalf("refunded events = %d; want 1", n)
+	}
+	// Reading the order writes nothing.
+	f.exec(`UPDATE shop_orders SET updated_at = '2020-01-01' WHERE id = $1`, o.ID)
+	if code, _, _ := f.do(http.MethodGet, f.orgPath(f.orgA, "/orders/"+o.ID.String()), f.ownerA, ""); code != http.StatusOK {
+		t.Fatalf("GET order = %d", code)
+	}
+	again, _ := f.q.GetShopOrder(context.Background(), o.ID, f.orgA)
+	if again.UpdatedAt.Year() != 2020 {
+		t.Fatalf("GET order wrote the order (updated_at %v)", again.UpdatedAt)
+	}
+}
+
+// TestShop_ReversedRefundReturnsTheOrder: a succeeded refund the provider
+// later reverses no longer counts; the projection brings the order back.
+func TestShop_ReversedRefundReturnsTheOrder(t *testing.T) {
+	f := newShopFixture(t)
+	_, variant := f.openShop(4500, 3)
+	o := f.placed(variant, 1)
+	f.pay(o.OrderToken)
+	code, body, _ := f.do(http.MethodPost, f.orgPath(f.orgA, "/orders/"+o.ID.String()+"/refund"), f.ownerA, ``)
+	if code != http.StatusOK || body["order"].(map[string]any)["status"] != shop.StatusRefunded {
+		t.Fatalf("full refund = %d %v", code, body)
+	}
+	f.exec(`UPDATE refunds SET state = 'manual_review' WHERE payment_intent_id = $1`, *o.PaymentIntentID)
+
+	ctx := context.Background()
+	tx, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	if err := shop.New(f.pool, nil).ProjectPaymentTx(ctx, tx, *o.PaymentIntentID); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatalf("project: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	got, _ := f.q.GetShopOrder(ctx, o.ID, f.orgA)
+	if got.Status != shop.StatusPaid || got.RefundedMinor != 0 {
+		t.Fatalf("order after the reversal: status %s refunded %d; want paid and 0", got.Status, got.RefundedMinor)
 	}
 }

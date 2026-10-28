@@ -169,6 +169,38 @@ func RefundedStatus(current string, total, refunded int64) string {
 	}
 }
 
+// refundStatus is the status an order takes when accepted (succeeded) of
+// its total went back: refunded when all of it did; partially_refunded when
+// some did (an order parked in manual_review stays there until all of it
+// went back); and the status it had before any refund when nothing did (a
+// refund that was reversed). An order that was never paid keeps its status.
+func refundStatus(o gen.ShopOrderRow, accepted int64) string {
+	base := o.Status
+	switch o.Status {
+	case StatusPaid, StatusShipped, StatusManualReview:
+	case StatusRefunded, StatusPartiallyRefunded:
+		base = StatusPaid
+		switch {
+		case o.ShippedAt != nil:
+			base = StatusShipped
+		case strings.Contains(string(o.Metadata), `"review_reason"`):
+			base = StatusManualReview
+		}
+	default:
+		return o.Status
+	}
+	switch {
+	case accepted >= o.Total && accepted > 0:
+		return StatusRefunded
+	case accepted > 0 && base == StatusManualReview:
+		return StatusManualReview
+	case accepted > 0:
+		return StatusPartiallyRefunded
+	default:
+		return base
+	}
+}
+
 // PublicStatus maps an order status to the buyer-facing checkout status:
 // pending, paid, expired or cancelled. A pending order whose hold has passed
 // already reads as expired, before the sweep flips it.

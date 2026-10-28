@@ -16681,7 +16681,7 @@ type ShopOrder struct {
 	// Payment The payment, or null when the order has none.
 	Payment *ShopOrderPayment `json:"payment"`
 
-	// RefundedMinor What the provider has returned so far, minor units.
+	// RefundedMinor What succeeded refunds have returned so far, minor units.
 	RefundedMinor int64 `json:"refunded_minor"`
 
 	// Ship Where the goods go.
