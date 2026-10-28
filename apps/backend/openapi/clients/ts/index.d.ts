@@ -30256,7 +30256,7 @@ export interface components {
             slug: string;
             /** @description Page title. */
             title: string;
-            /** @description Page text, sanitized rich-text HTML. */
+            /** @description Page text, sanitized HTML (the rich-text tags plus pictures and tables). */
             body_html: string;
             /**
              * Format: int32
@@ -30278,7 +30278,7 @@ export interface components {
         ShopPagePutRequest: {
             /** @description Page title, up to 300 characters. */
             title: string;
-            /** @description Page text, HTML, up to 200000 characters. Sanitized on write like a product description; a text the sanitizer refuses answers 422 `shop.invalid_body_html`. */
+            /** @description Page text, HTML, up to 200000 characters. Sanitized on write to the product description's tags plus pictures (img with an https src, alt, width, height, loading) and tables (table, thead, tbody, tfoot, tr, th, td with colspan and rowspan); every other tag, attribute and URL scheme is dropped. A text the sanitizer refuses answers 422 `shop.invalid_body_html`. */
             body_html?: string;
             /**
              * Format: int32

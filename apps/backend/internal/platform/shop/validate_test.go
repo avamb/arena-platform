@@ -329,3 +329,52 @@ func TestProductInput_KindsAndOptionNames(t *testing.T) {
 		}
 	}
 }
+
+func TestSanitizeBody_PageKeepsPicturesAndTables(t *testing.T) {
+	in := `<section class="x"><h3>Partners</h3>` +
+		`<img src="https://cdn.example/a.png" alt="Winery" width="300" height="200" loading="lazy" class="c" onerror="steal()" style="x">` +
+		`<img src="data:image/png;base64,AAAA" alt="inline"><img src="http://cdn.example/b.png"><img src="javascript:alert(1)">` +
+		`<table class="t"><thead><tr><th colspan="2" style="x">Data</th></tr></thead>` +
+		`<tbody><tr><td rowspan="3" onclick="x()">Name</td><td colspan="abc">Why</td></tr></tbody></table>` +
+		`<p>Read <a href="https://vino.example/p" target="_blank">this</a> <a href="javascript:x()">bad</a></p>` +
+		`<script>alert(1)</script><style>p{}</style></section>`
+	out, err := SanitizeBody(in, PageBodyProfile)
+	if err != nil {
+		t.Fatalf("SanitizeBody page: %v", err)
+	}
+	for _, want := range []string{
+		`<img src="https://cdn.example/a.png" alt="Winery" width="300" height="200" loading="lazy">`,
+		`<table><thead><tr><th colspan="2">Data</th></tr></thead>`,
+		`<td rowspan="3">Name</td><td>Why</td>`,
+		`<a href="https://vino.example/p" rel="noopener noreferrer">this</a>`,
+		`<h3>Partners</h3>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("page lost %q:\n%s", want, out)
+		}
+	}
+	for _, gone := range []string{"data:", "http://", "javascript", "onerror", "onclick", "style", "class", "<script", "alert", "<section", "target"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("page still holds %q:\n%s", gone, out)
+		}
+	}
+	if again, _ := SanitizeBody(out, PageBodyProfile); again != out {
+		t.Errorf("sanitizing a page twice changed it:\n%s\n%s", out, again)
+	}
+	if _, err := SanitizeBody(strings.Repeat("a", 4*MaxPageBodyLen+1), PageBodyProfile); err == nil {
+		t.Error("an oversized page was accepted")
+	}
+}
+
+func TestSanitizeBody_ProductStillDropsPicturesAndTables(t *testing.T) {
+	out, err := SanitizeBody(`<p>Dry</p><img src="https://cdn.example/a.png" alt="x"><table><tr><td>cell</td></tr></table>`, ProductBodyProfile)
+	if err != nil {
+		t.Fatalf("SanitizeBody product: %v", err)
+	}
+	if strings.Contains(out, "<img") || strings.Contains(out, "<table") || strings.Contains(out, "<td") {
+		t.Fatalf("product body kept a picture or a table: %s", out)
+	}
+	if !strings.Contains(out, "cell") {
+		t.Fatalf("product body lost the table's text: %s", out)
+	}
+}
