@@ -342,7 +342,15 @@ const server = http.createServer(async (req, res) => {
           ? transactions.get(String(body.transaction_uid))
           : page && page.transactions.map((u) => transactions.get(u)).find((x) => x?.statusCode === '000');
         if (!t) return sendJSON(res, 200, fail('payment request not found'));
-        return sendJSON(res, 200, ok({ transaction: txView(t) }));
+        if (body.related_transaction === true) {
+          // The charge with every refund booked on it: what a repeated
+          // refund call reads before it may send again.
+          const related = [...transactions.values()]
+            .filter((r) => r.chargeUID === t.uid)
+            .map((r) => ({ transaction_type: r.type, transaction: txView(r) }));
+          return sendJSON(res, 200, ok({ transaction_type: t.type, transaction: txView(t), related_transactions: related }));
+        }
+        return sendJSON(res, 200, ok({ transaction_type: t.type, transaction: txView(t) }));
       }
       case 'Transactions/View': {
         const found = [...transactions.values()].filter((t) =>

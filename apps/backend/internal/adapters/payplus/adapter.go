@@ -467,6 +467,16 @@ func transactionsFromData(raw json.RawMessage) []Transaction {
 		return nil
 	}
 	var out []Transaction
+	seen := map[string]bool{}
+	add := func(t Transaction) {
+		if t.UID != "" {
+			if seen[t.UID] {
+				return
+			}
+			seen[t.UID] = true
+		}
+		out = append(out, t)
+	}
 	var visit func(any)
 	visit = func(x any) {
 		switch t := x.(type) {
@@ -476,16 +486,39 @@ func transactionsFromData(raw json.RawMessage) []Transaction {
 			}
 		case map[string]any:
 			if inner, ok := t["transaction"].(map[string]any); ok {
-				out = append(out, transactionFromMap(inner, scalar(t["transaction_type"])))
-				return
+				add(transactionFromMap(inner, scalar(t["transaction_type"])))
+				for _, child := range inner {
+					visit(child)
+				}
+			} else if _, ok := t["status_code"]; ok {
+				add(transactionFromMap(t, ""))
 			}
-			if _, ok := t["status_code"]; ok {
-				out = append(out, transactionFromMap(t, ""))
+			// Related transactions (ipn with related_transaction=true) may
+			// sit next to or inside the main one; their exact place is not
+			// documented, so every nested object is looked at.
+			for k, child := range t {
+				if k != "transaction" {
+					visit(child)
+				}
 			}
 		}
 	}
 	visit(v)
 	return out
+}
+
+// RelatedTransactions reads a charge together with every transaction related
+// to it — its refunds among them (PaymentPages/ipn with transaction_uid and
+// related_transaction=true).
+func (a *Adapter) RelatedTransactions(ctx context.Context, chargeUID string) ([]Transaction, error) {
+	env, err := a.call(ctx, http.MethodPost, "PaymentPages/ipn", map[string]any{
+		"transaction_uid":     chargeUID,
+		"related_transaction": true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return transactionsFromData(env.Data), nil
 }
 
 // ViewByMoreInfo lists the transactions PayPlus holds under a more_info

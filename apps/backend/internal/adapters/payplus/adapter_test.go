@@ -392,6 +392,97 @@ func TestRefund_RepeatWithNothingFoundWaitsThenSends(t *testing.T) {
 	}
 }
 
+// The lost-answer path when PayPlus does NOT find the refund by more_info:
+// the charge's refunded total decides, so a partial refund is never paid
+// twice, whatever the time since the first call.
+func TestRefund_LostPartialAnswerIsAccountedForByTheChargeTotal(t *testing.T) {
+	base := payments.RefundRequest{ProviderChargeRef: "charge-1", AmountMinor: 3_000, PaymentAmountMinor: 10_000,
+		Currency: "ILS", IdempotencyKey: "r-partial", Attempt: 1}
+	lose := func(t *testing.T) (*Adapter, *stubPayPlus) {
+		t.Helper()
+		a, stub := refundAdapter(t)
+		stub.viewBlind = true
+		stub.loseNextRefund = true
+		if _, err := a.Refund(t.Context(), base); err == nil {
+			t.Fatal("a lost answer reported success")
+		}
+		return a, stub
+	}
+	retry := base
+	retry.Attempt = 2
+	retry.FirstAttemptAt = time.Now().Add(-SettleWait - time.Hour)
+
+	t.Run("found under the marker among the related refunds", func(t *testing.T) {
+		a, stub := lose(t)
+		res, err := a.Refund(t.Context(), retry)
+		if err != nil || res.Status != payments.RefundSucceeded || res.ProviderRefundID == "" {
+			t.Fatalf("retry = %+v, %v; want the landed refund", res, err)
+		}
+		if stub.refundCount() != 1 {
+			t.Fatalf("PayPlus booked %d refunds; want 1", stub.refundCount())
+		}
+	})
+	t.Run("landed without the marker", func(t *testing.T) {
+		a, stub := lose(t)
+		stub.relatedUnmarked = true
+		_, err := a.Refund(t.Context(), retry)
+		if code, _, declined := payments.RefundDeclined(err); !declined || code != RefundCodeLandedUnmarked || !payments.RefundDeclineNeedsReview(err) {
+			t.Fatalf("retry = %v; want manual review %s", err, RefundCodeLandedUnmarked)
+		}
+		if stub.refundCount() != 1 {
+			t.Fatalf("PayPlus booked %d refunds; want 1", stub.refundCount())
+		}
+	})
+	t.Run("total cannot be read", func(t *testing.T) {
+		a, stub := lose(t)
+		stub.relatedFails = true
+		_, err := a.Refund(t.Context(), retry)
+		if code, _, declined := payments.RefundDeclined(err); !declined || code != RefundCodeTotalUnknown || !payments.RefundDeclineNeedsReview(err) {
+			t.Fatalf("retry = %v; want manual review %s", err, RefundCodeTotalUnknown)
+		}
+		if stub.refundCount() != 1 {
+			t.Fatalf("PayPlus booked %d refunds; want 1", stub.refundCount())
+		}
+	})
+	t.Run("another call without an answer is pending", func(t *testing.T) {
+		a, stub := lose(t)
+		r := retry
+		r.OtherUncertainMinor = 2_000
+		if _, err := a.Refund(t.Context(), r); !payments.RefundDeclineNeedsReview(err) {
+			t.Fatalf("retry = %v; want manual review", err)
+		}
+		if stub.refundCount() != 1 {
+			t.Fatalf("PayPlus booked %d refunds; want 1", stub.refundCount())
+		}
+	})
+}
+
+func TestRefund_PayPlusShowsLessThanArenaKnows(t *testing.T) {
+	a, stub := refundAdapter(t)
+	_, err := a.Refund(t.Context(), payments.RefundRequest{ProviderChargeRef: "charge-1", AmountMinor: 1_000,
+		PaymentAmountMinor: 10_000, IdempotencyKey: "r-less", Attempt: 2, OtherRefundedMinor: 2_000})
+	if code, _, declined := payments.RefundDeclined(err); !declined || code != RefundCodeKnowsLess {
+		t.Fatalf("Refund = %v; want %s", err, RefundCodeKnowsLess)
+	}
+	if stub.refundCount() != 0 {
+		t.Fatal("a refund was sent")
+	}
+}
+
+func TestFindRefund_RequiresTheExactMarker(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, okEnv([]any{
+			map[string]any{"transaction": map[string]any{"transaction_uid": "foreign", "status_code": "000", "amount": 30}},
+			map[string]any{"transaction": map[string]any{"transaction_uid": "other", "status_code": "000", "more_info": "arena-refund:x", "amount": 30}},
+		}))
+	}))
+	defer srv.Close()
+	a := New(Config{APIKey: "a", SecretKey: "b", BaseURL: srv.URL})
+	if _, found, err := a.findRefund(t.Context(), RefundMarker("mine")); err != nil || found {
+		t.Fatalf("findRefund = %v, %v; a transaction without our exact marker is not ours", found, err)
+	}
+}
+
 func TestRefund_RefusalIsDeclinedForReview(t *testing.T) {
 	a, stub := refundAdapter(t)
 	stub.refuseRefund = "transaction already refunded"

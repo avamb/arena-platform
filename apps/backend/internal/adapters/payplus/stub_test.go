@@ -29,7 +29,13 @@ type stubPayPlus struct {
 	loseNextRefund bool
 	// refuseRefund makes refunds answer a results.status=error refusal.
 	refuseRefund string
-	seq          int
+	// viewBlind makes Transactions/View find nothing (PayPlus not indexing
+	// refunds by more_info); relatedUnmarked drops more_info from related
+	// refunds; relatedFails makes the related-transactions read fail.
+	viewBlind       bool
+	relatedUnmarked bool
+	relatedFails    bool
+	seq             int
 }
 
 type stubRequest struct {
@@ -148,6 +154,10 @@ func (s *stubPayPlus) handle(w http.ResponseWriter, r *http.Request) {
 			"payment_page_link": "https://paymentsdev.payplus.test/" + page,
 		}))
 	case "PaymentPages/ipn":
+		if txUID, _ := body["transaction_uid"].(string); txUID != "" {
+			s.related(w, txUID)
+			return
+		}
 		page, _ := body["payment_request_uid"].(string)
 		s.mu.Lock()
 		uid, found := s.byPage[page]
@@ -166,7 +176,7 @@ func (s *stubPayPlus) handle(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		var out []any
 		for _, rf := range s.refunds {
-			if mi != "" && rf.MoreInfo == mi {
+			if mi != "" && rf.MoreInfo == mi && !s.viewBlind {
 				out = append(out, map[string]any{"transaction": map[string]any{
 					"transaction_uid": rf.UID, "transaction_type": "Refund", "status_code": "000",
 					"amount": json.Number(MinorToMajor(rf.Amount)), "currency": "ILS", "more_info": rf.MoreInfo,
@@ -217,4 +227,41 @@ func (s *stubPayPlus) handle(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// related answers ipn by transaction_uid with related_transaction=true: the
+// charge plus every refund booked on it.
+func (s *stubPayPlus) related(w http.ResponseWriter, chargeUID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.relatedFails {
+		writeJSON(w, http.StatusOK, map[string]any{"results": map[string]any{"status": "error", "code": 9, "description": "temporary failure"}})
+		return
+	}
+	c, ok := s.charges[chargeUID]
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"results": map[string]any{"status": "error", "code": 1, "description": "transaction not found"}})
+		return
+	}
+	var rel []any
+	for _, rf := range s.refunds {
+		if rf.ChargeUID != chargeUID {
+			continue
+		}
+		mi := rf.MoreInfo
+		if s.relatedUnmarked {
+			mi = ""
+		}
+		rel = append(rel, map[string]any{"transaction_type": "Refund", "transaction": map[string]any{
+			"uid": rf.UID, "status_code": "000", "amount": json.Number(MinorToMajor(rf.Amount)), "currency": c.Currency, "more_info": mi,
+		}})
+	}
+	writeJSON(w, http.StatusOK, okEnv(map[string]any{
+		"transaction_type": "Charge",
+		"transaction": map[string]any{
+			"uid": c.UID, "payment_request_uid": c.PageRequestUID, "status_code": "000",
+			"amount": json.Number(MinorToMajor(c.Amount)), "currency": c.Currency,
+		},
+		"related_transactions": rel,
+	}))
 }

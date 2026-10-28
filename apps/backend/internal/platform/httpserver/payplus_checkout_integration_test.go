@@ -144,6 +144,30 @@ func (s *stubPayPlusServer) handle(w http.ResponseWriter, r *http.Request) {
 			"page_request_uid": page, "payment_page_link": "https://paymentsdev.payplus.test/" + page,
 		}))
 	case "PaymentPages/ipn":
+		if txUID, _ := body["transaction_uid"].(string); txUID != "" {
+			// The charge with its related refunds: what a repeated refund
+			// call reads before it may send again.
+			s.mu.Lock()
+			c, ok := s.charges[txUID]
+			rel := []any{}
+			for _, rf := range s.refunds {
+				if rf.charge == txUID {
+					rel = append(rel, map[string]any{"transaction_type": "Refund", "transaction": map[string]any{
+						"uid": rf.uid, "status_code": "000", "amount": json.Number(payplus.MinorToMajor(rf.amount)), "more_info": rf.moreInfo,
+					}})
+				}
+			}
+			s.mu.Unlock()
+			if !ok {
+				stubPPJSON(w, http.StatusOK, stubPPFail("transaction not found"))
+				return
+			}
+			stubPPJSON(w, http.StatusOK, stubPPOK(map[string]any{"transaction_type": "Charge", "transaction": map[string]any{
+				"uid": c.uid, "payment_request_uid": c.page, "status_code": "000",
+				"amount": json.Number(payplus.MinorToMajor(c.amount)), "currency": c.currency,
+			}, "related_transactions": rel}))
+			return
+		}
 		page := fmt.Sprint(body["payment_request_uid"])
 		s.mu.Lock()
 		uid, ok := s.byPage[page]
