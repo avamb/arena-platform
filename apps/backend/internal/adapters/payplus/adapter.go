@@ -397,8 +397,11 @@ func (t Transaction) Approved() bool { return t.StatusCode == StatusCodeApproved
 // IsRefund reports whether the transaction returns money.
 func (t Transaction) IsRefund() bool { return strings.Contains(strings.ToLower(t.Type), "refund") }
 
-// transactionFromMap reads a transaction object, tolerating the two spellings
-// PayPlus uses (uid / transaction_uid, payment_request_uid / page_request_uid).
+// transactionFromMap reads a transaction object, tolerating every spelling of
+// the ids PayPlus uses: uid / transaction_uid, and for the payment link
+// payment_request_uid (callback doc), page_request_uid (generateLink answer,
+// redirects) and payment_page_request_uid (reported in real callbacks; the
+// exact name is on the restapidev checklist, docs/ops/payplus.md §5).
 func transactionFromMap(m map[string]any, outerType string) Transaction {
 	str := func(keys ...string) string {
 		for _, k := range keys {
@@ -410,7 +413,7 @@ func transactionFromMap(m map[string]any, outerType string) Transaction {
 	}
 	t := Transaction{
 		UID:               str("uid", "transaction_uid"),
-		PaymentRequestUID: str("payment_request_uid", "page_request_uid"),
+		PaymentRequestUID: str("payment_request_uid", "payment_page_request_uid", "page_request_uid"),
 		// The callback carries the kind ("Charge", "Refund") at the TOP level
 		// (transaction_type); View carries it inside. transaction.type is the
 		// channel ("internal_page"), never the kind.

@@ -102,6 +102,10 @@ PAYPLUS_TEST_API_KEY=... PAYPLUS_TEST_SECRET_KEY=... PAYPLUS_TEST_PAGE_UID=...  
    при верных ключах и при верном `api_key` с неверным `secret_key`.
 6. **`PaymentPages/ipn` по `payment_request_uid`** — форма ответа (в доке `{}`),
    где лежит `transaction.uid`.
+6а. **Имя поля ссылки в колбэке.** В доке `transaction.payment_request_uid`,
+   в ответе generateLink `page_request_uid`, в реальных колбэках встречается
+   `transaction.payment_page_request_uid`. Адаптер принимает все три; записать,
+   какое приходит на самом деле.
 7. **Языки и валюты.** Какие `language_code` принимает страница (he, en, ru,
    ar?) и не ломает ли неизвестный; ILS обязательно, USD/EUR при необходимости.
 8. **`items`.** Создаёт ли PayPlus продукт в каталоге мерчанта на каждое новое

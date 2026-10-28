@@ -180,6 +180,22 @@ func TestNormalizeCallback_ApprovedCharge(t *testing.T) {
 	}
 }
 
+// A callback naming the link under payment_page_request_uid still finds it.
+func TestNormalizeCallback_PaymentPageRequestUIDAlias(t *testing.T) {
+	body := strings.Replace(callbackBody, `"payment_request_uid":`, `"payment_page_request_uid":`, 1)
+	if !strings.Contains(body, `"payment_page_request_uid":"ef76432c`) {
+		t.Fatal("fixture did not take the alias")
+	}
+	cb, err := ParseCallback([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := NormalizeCallback(cb, []byte(body))
+	if ev.Kind != payments.EventPaymentSucceeded || ev.ProviderPaymentID != "ef76432c-769a-43a6-ba7a-6f70272539d8" {
+		t.Fatalf("alias callback = %s %q; want succeeded for the link", ev.Kind, ev.ProviderPaymentID)
+	}
+}
+
 func TestNormalizeCallback_DeclinedAttemptIsNotAFailure(t *testing.T) {
 	body := strings.Replace(callbackBody, `"status_code":"000"`, `"status_code":"003","status_description":"call the issuer"`, 1)
 	cb, _ := ParseCallback([]byte(body))
