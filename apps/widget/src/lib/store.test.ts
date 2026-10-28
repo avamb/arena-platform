@@ -18,6 +18,8 @@ import {
   buildCategoryByIndex,
   buildTierById,
   identifyGaTiers,
+  seatedTiersOf,
+  tiersAreFree,
   planlessGaTiers,
   identifyGaAreas,
   pickInitialSession,
@@ -603,5 +605,35 @@ describe('isSessionCancelled / allSessionsCancelled', () => {
     expect(allSessionsCancelled(ev([sess('a', 'cancelled'), sess('b', 'scheduled')]))).toBe(false);
     expect(allSessionsCancelled(ev([]))).toBe(false);
     expect(allSessionsCancelled(null)).toBe(false);
+  });
+});
+
+describe('seatedTiersOf / tiersAreFree', () => {
+  const tier = (id: string, price: number, current?: number): Tier =>
+    ({ id, name: id, pricing_mode: price === 0 ? 'free' : 'fixed', price_amount: price, current_price: current, currency: 'EUR' }) as unknown as Tier;
+  const cat = (index: number, tierId: string | null): CategoryPrice =>
+    ({ index, name: `c${index}`, color: '#fff', tier_id: tierId }) as unknown as CategoryPrice;
+
+  it('returns only the tiers the plan categories point at', () => {
+    const tiers = [tier('seated', 0), tier('donation', 500)];
+    expect(seatedTiersOf(tiers, [cat(1, 'seated'), cat(2, null)]).map((t) => t.id)).toEqual(['seated']);
+  });
+
+  it('returns nothing for a plan whose categories have no tier', () => {
+    expect(seatedTiersOf([tier('a', 100)], [cat(1, null)])).toEqual([]);
+  });
+
+  it('a free seated category is free; a paid one is not', () => {
+    expect(tiersAreFree([tier('a', 0)])).toBe(true);
+    expect(tiersAreFree([tier('a', 0), tier('b', 2000)])).toBe(false);
+  });
+
+  it('uses the effective (scheduled) price, not the base one', () => {
+    expect(tiersAreFree([tier('a', 1000, 0)])).toBe(true);
+    expect(tiersAreFree([tier('a', 0, 500)])).toBe(false);
+  });
+
+  it('no tiers is not free (no card, no free wording)', () => {
+    expect(tiersAreFree([])).toBe(false);
   });
 });
