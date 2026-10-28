@@ -1,0 +1,98 @@
+{{define "subject"}}הזמנה מס׳ {{.Shop.OrderNumber}} אושרה — {{.Branding.OrgName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>תודה על ההזמנה</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" dir="rtl" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;text-align:right;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">תודה על ההזמנה</h1>
+  <p style="margin:0 0 12px 0;">שלום{{with .HolderName}} {{.}}{{end}},</p>
+  <p style="margin:0 0 12px 0;">קיבלנו את התשלום עבור הזמנה <strong>מס׳ {{.Shop.OrderNumber}}</strong>.</p>
+  <p style="margin:0 0 6px 0;font-weight:bold;color:#22333D;">ההזמנה שלך</p>
+  <table width="100%" cellpadding="4" style="border-collapse:collapse;font-size:14px;direction:rtl;">
+    {{range .Shop.Items}}<tr><td>{{.Qty}} × {{.Title}}</td><td style="text-align:left;white-space:nowrap;" dir="ltr">{{.LineTotal}}</td></tr>{{end}}
+    {{with .Shop.Subtotal}}<tr><td style="border-top:1px solid #eceff1;color:#46555f;">מוצרים</td><td style="border-top:1px solid #eceff1;text-align:left;white-space:nowrap;" dir="ltr">{{.}}</td></tr>{{end}}
+    {{with .Shop.Discount}}<tr><td style="border-top:1px solid #eceff1;color:#46555f;">הנחה</td><td style="border-top:1px solid #eceff1;text-align:left;white-space:nowrap;" dir="ltr">−{{.}}</td></tr>{{end}}
+    {{with .Shop.Shipping}}<tr><td style="border-top:1px solid #eceff1;color:#46555f;">משלוח</td><td style="border-top:1px solid #eceff1;text-align:left;white-space:nowrap;" dir="ltr">{{.}}</td></tr>{{end}}
+    <tr><td style="border-top:1px solid #eceff1;"><strong>סה״כ שולם</strong></td><td style="border-top:1px solid #eceff1;text-align:left;white-space:nowrap;" dir="ltr"><strong>{{.Shop.Total}}</strong></td></tr>
+  </table>
+  {{if .Shop.Pickup}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">איסוף עצמי</p><p style="margin:0 0 12px 0;">בחרת באיסוף עצמי.</p>{{else if .Shop.Address}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">כתובת למשלוח</p><p style="margin:0 0 12px 0;">{{range $i, $l := .Shop.Address}}{{if $i}}<br>{{end}}{{$l}}{{end}}</p>{{end}}
+  {{if .Shop.Digital}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">הקבצים שלך</p><p style="margin:0 0 4px 0;">{{range .Shop.Digital}}{{if $.Shop.StatusURL}}<a href="{{$.Shop.StatusURL}}" style="color:{{$.Accent}};">{{.Title}}</a>{{else}}{{.Title}}{{end}}<br>{{end}}</p><p style="margin:0 0 12px 0;color:#93a0a8;font-size:12px;">ניתן להוריד אותם מעמוד ההזמנה.</p>{{end}}
+  {{with .Shop.Note}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">ההערה שלך</p><p style="margin:0 0 12px 0;white-space:pre-line;">{{.}}</p>{{end}}
+  {{with .Shop.StatusURL}}<p style="margin:16px 0 12px 0;"><a href="{{.}}" style="color:{{$.Accent}};font-weight:bold;">סטטוס ההזמנה</a></p>{{end}}
+  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">שאלות? השב להודעה זו.</p>{{end}}
+  <p style="font-size:12px;color:#666">נשלח אל: {{.RecipientEmail}}</p>
+  </td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;text-align:right;">
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>יצירת קשר: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>יצירת קשר: <a href="{{.}}" style="color:#666">כתיבה למארגן</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">Arena Platform — הודעה אוטומטית</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">אם תלחצו על ״ביטול הרשמה״, לא תקבלו יותר את המיילים עם הכרטיסים שלכם ואת המיילים החשובים על ההזמנה שלכם. אנחנו לא שולחים דיוורים שיווקיים ללא הסכמתכם.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+תודה על ההזמנה
+
+שלום{{with .HolderName}} {{.}}{{end}},
+
+קיבלנו את התשלום עבור הזמנה מס׳ {{.Shop.OrderNumber}}.
+
+ההזמנה שלך:
+{{range .Shop.Items}}- {{.Qty}} × {{.Title}}: {{.LineTotal}}
+{{end}}{{with .Shop.Subtotal}}מוצרים: {{.}}
+{{end}}{{with .Shop.Discount}}הנחה: −{{.}}
+{{end}}{{with .Shop.Shipping}}משלוח: {{.}}
+{{end}}סה״כ שולם: {{.Shop.Total}}
+
+{{if .Shop.Pickup}}איסוף עצמי: בחרת באיסוף עצמי.
+
+{{else if .Shop.Address}}כתובת למשלוח:
+{{range .Shop.Address}}{{.}}
+{{end}}
+{{end}}{{if .Shop.Digital}}הקבצים שלך:
+{{range .Shop.Digital}}- {{.Title}}
+{{end}}{{with .Shop.StatusURL}}{{.}}
+{{end}}ניתן להוריד אותם מעמוד ההזמנה.
+
+{{end}}{{with .Shop.Note}}ההערה שלך:
+{{.}}
+
+{{end}}{{with .Shop.StatusURL}}סטטוס ההזמנה: {{.}}
+
+{{end}}{{if .Branding.ContactEmail}}שאלות? השב להודעה זו.
+{{end}}
+
+נשלח אל: {{.RecipientEmail}}
+
+--
+{{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}יצירת קשר: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}יצירת קשר: {{.}}
+{{end}}{{end}}
+Arena Platform — הודעה אוטומטית
+
+אם תלחצו על ״ביטול הרשמה״, לא תקבלו יותר את המיילים עם הכרטיסים שלכם ואת המיילים החשובים על ההזמנה שלכם. אנחנו לא שולחים דיוורים שיווקיים ללא הסכמתכם.
+{{end}}

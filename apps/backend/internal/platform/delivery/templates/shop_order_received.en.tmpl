@@ -1,0 +1,98 @@
+{{define "subject"}}Order No. {{.Shop.OrderNumber}} confirmed — {{.Branding.OrgName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Thank you for your order</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Thank you for your order</h1>
+  <p style="margin:0 0 12px 0;">Hello{{with .HolderName}} {{.}}{{end}},</p>
+  <p style="margin:0 0 12px 0;">We have received your payment for order <strong>No. {{.Shop.OrderNumber}}</strong>.</p>
+  <p style="margin:0 0 6px 0;font-weight:bold;color:#22333D;">Your order</p>
+  <table width="100%" cellpadding="4" style="border-collapse:collapse;font-size:14px;">
+    {{range .Shop.Items}}<tr><td>{{.Qty}} × {{.Title}}</td><td style="text-align:right;white-space:nowrap;">{{.LineTotal}}</td></tr>{{end}}
+    {{with .Shop.Subtotal}}<tr><td style="border-top:1px solid #eceff1;color:#46555f;">Goods</td><td style="border-top:1px solid #eceff1;text-align:right;white-space:nowrap;">{{.}}</td></tr>{{end}}
+    {{with .Shop.Discount}}<tr><td style="border-top:1px solid #eceff1;color:#46555f;">Discount</td><td style="border-top:1px solid #eceff1;text-align:right;white-space:nowrap;">−{{.}}</td></tr>{{end}}
+    {{with .Shop.Shipping}}<tr><td style="border-top:1px solid #eceff1;color:#46555f;">Shipping</td><td style="border-top:1px solid #eceff1;text-align:right;white-space:nowrap;">{{.}}</td></tr>{{end}}
+    <tr><td style="border-top:1px solid #eceff1;"><strong>Total paid</strong></td><td style="border-top:1px solid #eceff1;text-align:right;white-space:nowrap;"><strong>{{.Shop.Total}}</strong></td></tr>
+  </table>
+  {{if .Shop.Pickup}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">Pickup</p><p style="margin:0 0 12px 0;">You chose to pick up your order.</p>{{else if .Shop.Address}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">Delivery address</p><p style="margin:0 0 12px 0;">{{range $i, $l := .Shop.Address}}{{if $i}}<br>{{end}}{{$l}}{{end}}</p>{{end}}
+  {{if .Shop.Digital}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">Your files</p><p style="margin:0 0 4px 0;">{{range .Shop.Digital}}{{if $.Shop.StatusURL}}<a href="{{$.Shop.StatusURL}}" style="color:{{$.Accent}};">{{.Title}}</a>{{else}}{{.Title}}{{end}}<br>{{end}}</p><p style="margin:0 0 12px 0;color:#93a0a8;font-size:12px;">Download them from your order page.</p>{{end}}
+  {{with .Shop.Note}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">Your note</p><p style="margin:0 0 12px 0;white-space:pre-line;">{{.}}</p>{{end}}
+  {{with .Shop.StatusURL}}<p style="margin:16px 0 12px 0;"><a href="{{.}}" style="color:{{$.Accent}};font-weight:bold;">Check the status of your order</a></p>{{end}}
+  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">Questions? Reply to this e-mail.</p>{{end}}
+  <p style="font-size:12px;color:#666">Delivered to: {{.RecipientEmail}}</p>
+  </td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Contact: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contact: <a href="{{.}}" style="color:#666">Write to the organizer</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">Arena Platform — automated message</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+Thank you for your order
+
+Hello{{with .HolderName}} {{.}}{{end}},
+
+We have received your payment for order No. {{.Shop.OrderNumber}}.
+
+Your order:
+{{range .Shop.Items}}- {{.Qty}} × {{.Title}}: {{.LineTotal}}
+{{end}}{{with .Shop.Subtotal}}Goods: {{.}}
+{{end}}{{with .Shop.Discount}}Discount: −{{.}}
+{{end}}{{with .Shop.Shipping}}Shipping: {{.}}
+{{end}}Total paid: {{.Shop.Total}}
+
+{{if .Shop.Pickup}}Pickup: You chose to pick up your order.
+
+{{else if .Shop.Address}}Delivery address:
+{{range .Shop.Address}}{{.}}
+{{end}}
+{{end}}{{if .Shop.Digital}}Your files:
+{{range .Shop.Digital}}- {{.Title}}
+{{end}}{{with .Shop.StatusURL}}{{.}}
+{{end}}Download them from your order page.
+
+{{end}}{{with .Shop.Note}}Your note:
+{{.}}
+
+{{end}}{{with .Shop.StatusURL}}Check the status of your order: {{.}}
+
+{{end}}{{if .Branding.ContactEmail}}Questions? Reply to this e-mail.
+{{end}}
+
+Delivered to: {{.RecipientEmail}}
+
+--
+{{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Contact: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contact: {{.}}
+{{end}}{{end}}
+Arena Platform — automated message
+
+If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.
+{{end}}
