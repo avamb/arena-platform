@@ -120,8 +120,23 @@ the model the views use. Read it with `apps/backend/internal/platform/httpserver
   in localStorage). The origin must be on the backend's return-URL allow-list.
 - `409 shop.out_of_stock` carries `error.details.items[{variant_id, requested, available}]`;
   the page refreshes the catalog and asks the buyer to check the cart.
-- Optional extensions used when present: `products[].option_name`, `related_slugs`,
-  `images[].width/height`, `settings.shop_name` (else `org.name`).
+- Product kinds (PR #275 final contract): `kind` is physical, digital or service and
+  `option_names` lists up to three option names in the order of the variants'
+  `option1..option3`. One option keeps Dawn's single group of pills, several get one
+  group per option (an unsold combination falls back to the nearest variant).
+- `settings.max_line_qty` caps the quantity inputs, the add-to-cart and the stored basket.
+- A cart with no physical line takes no address and pays no shipping: the checkout page
+  hides the address block and the request has no `ship`. One physical line brings both back.
+- A paid order with digital lines calls `GET /v1/public/shop/checkout/{token}/downloads`
+  and lists `downloads[]` as links. The URLs are signed for 15 minutes and never stored,
+  "Обновить ссылки" asks again, a 404 means not paid yet and the status poll continues.
+- `body_html` of products and pages is sanitized by the backend (no images, tables, inline
+  styles or classes) and is rendered as received.
+- Optional extensions used when present: `related_slugs`, `images[].width/height`,
+  `settings.shop_name` (else `org.name`).
+- The mock serves three extra products (digital, service, two options) from
+  `mock/fixtures/extras.json`. Start it with `npm run dev:mock:live` (no extras) before
+  `scripts/compare-live.mjs`, which compares against the live shop's seven products.
 
 ## Before the domain moves
 

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { ShopProduct } from '../lib/api';
 import {
   addItem,
+  capCart,
+  needsShipping,
   allAvailable,
   buildCheckoutRequest,
   itemCount,
@@ -23,6 +25,8 @@ const products: ShopProduct[] = [
     slug: 'a',
     title: 'A',
     body_html: '',
+    kind: 'physical',
+    option_names: [],
     images: [],
     variants: [{ id: 'v1', title: 'Default Title', price_minor: 25000, available: true }],
   },
@@ -31,6 +35,8 @@ const products: ShopProduct[] = [
     slug: 'b',
     title: 'B',
     body_html: '',
+    kind: 'physical',
+    option_names: ['Вино'],
     images: [],
     variants: [
       { id: 'v2', title: 'X', price_minor: 29000, available: true },
@@ -127,5 +133,44 @@ describe('checkout form', () => {
       return_url: 'https://x.test/e/checkout/result',
       age_confirmed: good.consent18,
     });
+  });
+});
+
+describe('quantity cap (max_line_qty)', () => {
+  it('stops a line at the shop cap', () => {
+    let items = addItem([], 'v1', 8, 10);
+    expect(items[0].qty).toBe(8);
+    items = addItem(items, 'v1', 5, 10);
+    expect(items[0].qty).toBe(10);
+    expect(setQty(items, 'v1', 40, 10)[0].qty).toBe(10);
+  });
+
+  it('brings a stored basket under a lowered cap', () => {
+    expect(capCart([{ variant_id: 'v1', qty: 30 }, { variant_id: 'v2', qty: 2 }], 10)).toEqual([
+      { variant_id: 'v1', qty: 10 },
+      { variant_id: 'v2', qty: 2 },
+    ]);
+  });
+});
+
+describe('carts by product kind', () => {
+  const digital: ShopProduct = { ...products[0], id: 'd', slug: 'd', kind: 'digital', variants: [{ id: 'vd', title: 'Default Title', price_minor: 3000, available: true }] };
+  const catalog = [...products, digital];
+
+  it('a cart with no physical line takes no shipping and no address', () => {
+    const lines = resolveLines([{ variant_id: 'vd', qty: 1 }], catalog);
+    expect(needsShipping(lines)).toBe(false);
+    expect(shippingMinor({ shipping_fee_minor: 5000 }, lines)).toBe(0);
+    expect(totalMinor({ shipping_fee_minor: 5000 }, lines)).toBe(3000);
+    const form = { name: 'Ирина Левина', email: 'irina@example.com', phone: '+972501234567', address1: '', address2: '', city: '', postal: '', consent18: true };
+    expect(validateCheckoutForm(form, 18, false)).toEqual({});
+    expect(buildCheckoutRequest([{ variant_id: 'vd', qty: 1 }], form, 'https://x.test/c', 'ru', 'IL', false).ship).toBeUndefined();
+  });
+
+  it('one physical line brings the address and the fee back', () => {
+    const lines = resolveLines([{ variant_id: 'vd', qty: 1 }, { variant_id: 'v1', qty: 1 }], catalog);
+    expect(needsShipping(lines)).toBe(true);
+    expect(shippingMinor({ shipping_fee_minor: 5000 }, lines)).toBe(5000);
+    expect(Object.keys(validateCheckoutForm({ name: 'Ирина', email: 'i@e.co', phone: '+972501234567', address1: '', address2: '', city: '', postal: '', consent18: true }, 18, true))).toEqual(['address1', 'city']);
   });
 });

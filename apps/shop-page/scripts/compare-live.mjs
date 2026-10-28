@@ -16,7 +16,7 @@
  * Needs playwright-core (not a dependency of this app: point PLAYWRIGHT_CORE at
  * an installation, for example apps/widget/node_modules/playwright-core) and a
  * Chrome (CHROME_PATH, else the playwright "chrome" channel). The mock API
- * (npm run dev:mock) must be running for the local flows.
+ * (npm run dev:mock:live, the live catalog without the extra product kinds) must be running.
  */
 import { createRequire } from 'node:module';
 import { mkdirSync, readFileSync } from 'node:fs';

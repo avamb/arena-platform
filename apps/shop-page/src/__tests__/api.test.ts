@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, buildMenus, createCheckout, getOrderStatus, getPage, getProduct, getShop, normalizeCatalog } from '../lib/api';
+import { ApiError, buildMenus, createCheckout, getDownloads, getOrderStatus, getPage, getProduct, getShop, normalizeCatalog } from '../lib/api';
 
 /** The wire shapes below are copied from hshop/views.go and hshop/public.go. */
 const wireProduct = {
@@ -8,6 +8,8 @@ const wireProduct = {
   body_html: '<p>x</p>',
   product_type: '',
   vendor: 'Einat Winery',
+  kind: 'physical',
+  option_names: ['Вино'],
   price_min_minor: 20000,
   images: [
     { media_id: 'm2', url: 'https://api.test/b.jpg?sig=2', position: 1, alt: 'b' },
@@ -21,7 +23,7 @@ const wireProduct = {
 
 const wireCatalog = {
   org: { slug: 'einatwinery', name: 'Einat Winery', shop_domain: null },
-  settings: { currency: 'ILS', shipping_fee_minor: 5000, shipping_label: 'x', country_iso2: 'IL', age_gate_min_age: 18, announcement_text: 'hi', contact_email: 'a@b.c' },
+  settings: { currency: 'ILS', shipping_fee_minor: 5000, shipping_label: 'x', country_iso2: 'IL', age_gate_min_age: 18, announcement_text: 'hi', contact_email: 'a@b.c', max_line_qty: 12 },
   products: [wireProduct],
   pages: [
     { slug: 'о-нас', title: 'О нас' },
@@ -49,6 +51,23 @@ describe('catalog normalisation', () => {
     expect(p.images.map((i) => i.alt)).toEqual(['a', 'b']);
     expect(p.variants[0]).toMatchObject({ available: true, max: null });
     expect(p.variants[1]).toMatchObject({ available: false, max: 0, compare_at_minor: 30000 });
+  });
+
+  it('carries the product kind, the option names and the shop line cap', () => {
+    const shop = normalizeCatalog({
+      ...wireCatalog,
+      products: [wireProduct, { ...wireProduct, slug: 'guide', kind: 'digital', option_names: ['Размер', 'Цвет'] }, { ...wireProduct, slug: 'old', kind: undefined, option_names: undefined }],
+    });
+    expect(shop.settings.max_line_qty).toBe(12);
+    expect(shop.products[0]).toMatchObject({ kind: 'physical', option_names: ['Вино'], option_name: 'Вино' });
+    expect(shop.products[1]).toMatchObject({ kind: 'digital', option_names: ['Размер', 'Цвет'] });
+    expect(shop.products[2]).toMatchObject({ kind: 'physical', option_names: [] });
+    expect(shop.products[0].variants[1]).toMatchObject({ option1: 'Other', option2: null });
+  });
+
+  it('falls back to 99 when the settings carry no cap', () => {
+    const { max_line_qty: _drop, ...rest } = wireCatalog.settings;
+    expect(normalizeCatalog({ ...wireCatalog, settings: rest }).settings.max_line_qty).toBe(99);
   });
 
   it('keeps no age gate when the shop has none', () => {
@@ -107,5 +126,19 @@ describe('calls', () => {
     const st = await getOrderStatus('t');
     expect(st.payment_url).toBe('https://pay.test/x');
     expect(st.total_minor).toBe(3);
+  });
+
+  it('lists the downloads of a paid order and treats 404 as not paid yet', async () => {
+    const f = mockFetch(200, { downloads: [{ product_title: 'Guide', variant_title: 'PDF', url: 'https://files.test/g?sig=1', expires_at: '2026-10-28T12:00:00Z' }] });
+    const list = await getDownloads('tok');
+    expect(list).toHaveLength(1);
+    expect(String(f.mock.calls[0][0])).toContain('/v1/public/shop/checkout/tok/downloads');
+    mockFetch(404, { error: { code: 'shop.order_not_found', message: 'order not found' } });
+    await expect(getDownloads('tok')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('keeps product_kind on the status lines', async () => {
+    mockFetch(200, { status: 'paid', number: 1, currency: 'ILS', total: 3000, items: [{ product_kind: 'digital', product_title: 'G', variant_title: '', qty: 1, unit_price_minor: 3000, total_minor: 3000 }], payment_url: '' });
+    expect((await getOrderStatus('t')).items?.[0].product_kind).toBe('digital');
   });
 });

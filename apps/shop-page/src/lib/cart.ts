@@ -11,6 +11,7 @@
  */
 import type { CheckoutRequest, ShopProduct, ShopSettings, ShopVariant } from './api';
 
+/** The cap when the shop settings do not name one (the API's own default). */
 export const MAX_QTY = 99;
 
 export interface CartItem {
@@ -27,24 +28,30 @@ export interface CartLine {
   lineMinor: number;
 }
 
-const clamp = (qty: number): number => {
+const clamp = (qty: number, max = MAX_QTY): number => {
   const n = Math.floor(Number(qty));
   if (!Number.isFinite(n)) return 1;
-  return Math.max(1, Math.min(MAX_QTY, n));
+  return Math.max(1, Math.min(Math.max(1, max), n));
 };
 
-export function addItem(items: CartItem[], variantId: string, qty = 1): CartItem[] {
+/** `max` is the shop's max_line_qty: one line never holds more. */
+export function addItem(items: CartItem[], variantId: string, qty = 1, max = MAX_QTY): CartItem[] {
   const existing = items.find((i) => i.variant_id === variantId);
   if (existing) {
-    return items.map((i) => (i.variant_id === variantId ? { ...i, qty: clamp(i.qty + qty) } : i));
+    return items.map((i) => (i.variant_id === variantId ? { ...i, qty: clamp(i.qty + qty, max) } : i));
   }
-  return [...items, { variant_id: variantId, qty: clamp(qty) }];
+  return [...items, { variant_id: variantId, qty: clamp(qty, max) }];
 }
 
 /** qty <= 0 removes the line. */
-export function setQty(items: CartItem[], variantId: string, qty: number): CartItem[] {
+export function setQty(items: CartItem[], variantId: string, qty: number, max = MAX_QTY): CartItem[] {
   if (!(qty > 0)) return removeItem(items, variantId);
-  return items.map((i) => (i.variant_id === variantId ? { ...i, qty: clamp(qty) } : i));
+  return items.map((i) => (i.variant_id === variantId ? { ...i, qty: clamp(qty, max) } : i));
+}
+
+/** Brings a stored basket under the shop's current cap (the cap may have been lowered since). */
+export function capCart(items: CartItem[], max: number): CartItem[] {
+  return items.map((i) => (i.qty > max ? { ...i, qty: clamp(i.qty, max) } : i));
 }
 
 export function removeItem(items: CartItem[], variantId: string): CartItem[] {
@@ -85,8 +92,13 @@ export function allAvailable(lines: CartLine[]): boolean {
   return lines.every((l) => l.variant.available);
 }
 
+/** Only a physical product ships: a cart of digital products and services takes no address and no delivery fee. */
+export function needsShipping(lines: CartLine[]): boolean {
+  return lines.some((l) => l.product.kind === 'physical');
+}
+
 export function shippingMinor(settings: Pick<ShopSettings, 'shipping_fee_minor'>, lines: CartLine[]): number {
-  return lines.length === 0 ? 0 : Math.max(0, settings.shipping_fee_minor || 0);
+  return needsShipping(lines) ? Math.max(0, settings.shipping_fee_minor || 0) : 0;
 }
 
 export function totalMinor(settings: Pick<ShopSettings, 'shipping_fee_minor'>, lines: CartLine[]): number {
@@ -147,13 +159,14 @@ export type FormErrors = Partial<Record<keyof CheckoutForm, string>>;
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-export function validateCheckoutForm(f: CheckoutForm, minAge: number | null | undefined): FormErrors {
+/** `shipping` false: a cart without a physical product takes no address. */
+export function validateCheckoutForm(f: CheckoutForm, minAge: number | null | undefined, shipping = true): FormErrors {
   const e: FormErrors = {};
   if (f.name.trim().length < 2) e.name = 'Укажите имя и фамилию';
   if (!EMAIL.test(f.email.trim())) e.email = 'Укажите адрес электронной почты';
   if (f.phone.replace(/\D/g, '').length < 7) e.phone = 'Укажите номер телефона';
-  if (f.address1.trim().length < 3) e.address1 = 'Укажите адрес доставки';
-  if (f.city.trim().length < 2) e.city = 'Укажите город';
+  if (shipping && f.address1.trim().length < 3) e.address1 = 'Укажите адрес доставки';
+  if (shipping && f.city.trim().length < 2) e.city = 'Укажите город';
   if ((minAge ?? 0) > 0 && !f.consent18) e.consent18 = 'Необходимо подтвердить возраст';
   return e;
 }
@@ -164,16 +177,20 @@ export function buildCheckoutRequest(
   returnUrl: string,
   locale = 'ru',
   country = 'IL',
+  shipping = true,
 ): CheckoutRequest {
-  const ship: CheckoutRequest['ship'] = { address1: f.address1.trim(), city: f.city.trim(), country };
-  if (f.address2.trim()) ship.address2 = f.address2.trim();
-  if (f.postal.trim()) ship.postal = f.postal.trim();
-  return {
+  const req: CheckoutRequest = {
     items: items.map((i) => ({ variant_id: i.variant_id, qty: i.qty })),
     buyer: { name: f.name.trim(), email: f.email.trim(), phone: f.phone.trim() },
-    ship,
     locale,
     return_url: returnUrl,
     age_confirmed: f.consent18,
   };
+  if (shipping) {
+    const ship: NonNullable<CheckoutRequest['ship']> = { address1: f.address1.trim(), city: f.city.trim(), country };
+    if (f.address2.trim()) ship.address2 = f.address2.trim();
+    if (f.postal.trim()) ship.postal = f.postal.trim();
+    req.ship = ship;
+  }
+  return req;
 }

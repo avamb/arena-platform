@@ -155,9 +155,49 @@ function modal(p: ShopProduct): string {
 </product-modal>`;
 }
 
+/** Several options (up to three): one group of pills per option, labelled with the option's name. */
+function multiOptionPicker(p: ShopProduct, selected: ShopVariant): string {
+  const chosen = [selected.option1, selected.option2, selected.option3];
+  const groups = p.option_names.map((name, k) => {
+    const values: string[] = [];
+    for (const v of p.variants) {
+      const val = [v.option1, v.option2, v.option3][k];
+      if (val && !values.includes(val)) values.push(val);
+    }
+    const radios = values
+      .map((val, i) => {
+        // sold out when no variant with this value can be bought
+        const sold = !p.variants.some((v) => [v.option1, v.option2, v.option3][k] === val && v.available);
+        return `<input
+      type="radio"
+      id="${SID}-${k + 1}-${i}"
+      name="${esc(name)}"
+      value="${esc(val)}"
+      form="product-form-${SID}"
+      data-option-index="${k}"${chosen[k] === val ? `
+        checked` : ''}${sold ? `
+        class="disabled"` : ''}
+    >
+    <label for="${SID}-${k + 1}-${i}">
+      ${esc(val)}<span class="visually-hidden">${T.variantSoldOut}</span>
+    </label>`;
+      })
+      .join('');
+    return `<fieldset class="js product-form__input">
+          <legend class="form__label">${esc(name)}</legend>${radios}
+        </fieldset>`;
+  });
+  return `<div
+      id="variant-radios-${SID}"
+      class="variant-radios no-js-hidden"
+      data-section="${SID}"
+    >${groups.join('')}</div>`;
+}
+
 function variantPicker(p: ShopProduct, selected: ShopVariant): string {
   if (p.variants.length < 2) return '';
-  const name = p.option_name || '';
+  if (p.option_names.length > 1) return multiOptionPicker(p, selected);
+  const name = p.option_names[0] || p.option_name || '';
   const radios = p.variants
     .map(
       (v, i) => `<input
@@ -294,6 +334,7 @@ ${priceBlock(ctx, p, { variant: selected, showBadges: true, large: true })}</div
                       data-cart-quantity="${inCart}"
                       data-min="1"
                       min="1"
+                      max="${ctx.shop.settings.max_line_qty}"
                       step="1"
                       value="1"
                       form="product-form-${SID}"

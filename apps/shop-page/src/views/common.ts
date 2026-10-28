@@ -36,6 +36,20 @@ export function spinner(): string {
   return `<svg aria-hidden="true" focusable="false" class="spinner" viewBox="0 0 66 66" xmlns="http://www.w3.org/2000/svg"><circle class="path" fill="none" stroke-width="6" cx="33" cy="33" r="30"></circle></svg>`;
 }
 
+/**
+ * The (option name, value) pairs of a variant for the cart and checkout lines:
+ * one pair per option of a multi-option product, the single option's name with the
+ * variant title otherwise. A product with one variant has none.
+ */
+export function optionPairs(p: ShopProduct, v: ShopVariant): [string, string][] {
+  if (p.variants.length < 2) return [];
+  if (p.option_names.length > 1) {
+    const values = [v.option1, v.option2, v.option3];
+    return p.option_names.map((name, i): [string, string] => [name, values[i] ?? '']).filter(([, val]) => val !== '');
+  }
+  return [[p.option_names[0] || p.option_name || '', v.title]];
+}
+
 // ---- derived product facts (Liquid: product.price, product.available, ...) -----
 
 export function priceMin(p: ShopProduct): number {
