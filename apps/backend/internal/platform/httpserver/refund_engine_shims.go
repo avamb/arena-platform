@@ -23,9 +23,10 @@ func (s *Server) refundEngine() *refunds.Engine {
 	return refunds.New(refunds.Options{
 		DB: s.pgxPool,
 		Modules: hcheckout.NewRefundModuleSource(gen.New(s.pgxPool), payments.Options{
-			StripeAPIBaseURL: s.stripeBaseURL(),
-			FlittAPIBaseURL:  s.flittBaseURL(),
-			AllPayAPIBaseURL: s.allpayBaseURL(),
+			StripeAPIBaseURL:  s.stripeBaseURL(),
+			FlittAPIBaseURL:   s.flittBaseURL(),
+			AllPayAPIBaseURL:  s.allpayBaseURL(),
+			PayPlusAPIBaseURL: s.payplusBaseURL(),
 		}),
 		CancelTicket:    s.ticketsHandler().RefundCanceller(),
 		PublishRefunded: s.publishTicketRefundedV1Events,

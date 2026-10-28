@@ -12,13 +12,13 @@ import (
 func TestChannelProviders_AreTheModulesWithCode(t *testing.T) {
 	// Exactly what sales_channels_provider_check allowed before 0132, in
 	// registration order.
-	if got, want := ChannelProviders(), []string{"stripe", "flitt", "allpay"}; !reflect.DeepEqual(got, want) {
+	if got, want := ChannelProviders(), []string{"stripe", "flitt", "allpay", "payplus"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("ChannelProviders = %v; want %v", got, want)
 	}
 	if DefaultChannelProvider() != "stripe" {
 		t.Errorf("DefaultChannelProvider = %q; want stripe", DefaultChannelProvider())
 	}
-	for _, p := range []string{"stripe", "flitt", "allpay"} {
+	for _, p := range []string{"stripe", "flitt", "allpay", "payplus"} {
 		if !IsChannelProvider(p) {
 			t.Errorf("IsChannelProvider(%q) = false", p)
 		}

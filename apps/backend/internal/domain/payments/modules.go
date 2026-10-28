@@ -32,6 +32,10 @@ type Options struct {
 	// "/?show=<method>&mode=<version>"). ALLPAY_API_BASE_URL in a deployed
 	// process; tests set it directly.
 	AllPayAPIBaseURL string
+	// PayPlusAPIBaseURL overrides BOTH PayPlus hosts (restapi for a live
+	// configuration, restapidev for a test one; the root carries /api/v1.0).
+	// PAYPLUS_API_BASE_URL in a deployed process; tests set it directly.
+	PayPlusAPIBaseURL string
 	// Mode is the mode of the configuration the module is built from
 	// ("test" or "live"), for a provider that takes it per request. Unlike
 	// the fields above it is not a deployment seam: a caller that knows which

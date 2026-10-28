@@ -140,6 +140,7 @@ func TestLoadFor_SharedProductionRulesApplyToEveryRole(t *testing.T) {
 		{"stripe seam", "STRIPE_API_BASE_URL", "http://stub:12111/v1"},
 		{"flitt seam", "FLITT_API_BASE_URL", "http://stub:12112"},
 		{"allpay seam", "ALLPAY_API_BASE_URL", "http://stub:12113"},
+		{"payplus seam", "PAYPLUS_API_BASE_URL", "http://stub:12114/api/v1.0"},
 		{"brevo host", "BREVO_API_BASE_URL", "https://brevo.attacker.example"},
 		{"llm host", "POSTER_LLM_BASE_URL", "https://llm.attacker.example"},
 		{"gemini host", "POSTER_GEMINI_BASE_URL", "https://gemini.attacker.example"},

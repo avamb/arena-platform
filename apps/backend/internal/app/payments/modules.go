@@ -23,6 +23,7 @@ package payments
 import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/allpay"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/flitt"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/payplus"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/stripe"
 	domain "github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 )
@@ -35,6 +36,7 @@ func Modules() []domain.Entry {
 		stripe.Entry(),
 		flitt.Entry(),
 		allpay.Entry(),
+		payplus.Entry(),
 		// Declared only: an organization may store a configuration for
 		// these (payment_provider_configs accepted them before PAY-01), but
 		// arena has no module behind them, so nothing can be done with it.

@@ -374,13 +374,13 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `TEXT_FORMAT_LLM_MODEL` (default `claude-haiku-5-5`; the key and the base URL are the poster ones: `POSTER_LLM_API_KEY`, `POSTER_LLM_BASE_URL`) | ● | — | — | — |
 | `TEXT_FORMATS_PER_USER_PER_DAY` (default 100, `0` = no cap), `TEXT_FORMATS_PER_ORG_PER_DAY` (default 500, `0` = no cap) | ● | — | — | — |
 | `ENABLE_DEV_AUTH`, `DB_LOG_QUERIES`, `DEBUG_ROUTES_ENABLED`, `FAULT_INJECT_OUTBOX_AFTER_AUDIT` (leave unset; `true` is refused in production) | — | — | — | — |
-| `STRIPE_API_BASE_URL`, `FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL` (test seams; refused in production) | — | — | — | — |
+| `STRIPE_API_BASE_URL`, `FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, `PAYPLUS_API_BASE_URL` (test seams; refused in production) | — | — | — | — |
 | `REDIS_URL`, `IDEMPOTENCY_TTL`, `IDEMPOTENCY_KEY_MAX_LENGTH`, `WORKER_CONCURRENCY`, `WORKER_JOB_TIMEOUT`, `WORKER_RETRY_BACKOFF_BASE`, `WORKER_RETRY_BACKOFF_MAX`, `OUTBOX_BATCH_SIZE` (parsed, but no binary uses them today) | — | — | — | — |
 
 Never set in production, on any service: `ENABLE_DEV_AUTH=true`,
 `DB_LOG_QUERIES=true`, `DEBUG_ROUTES_ENABLED=true`,
 `FAULT_INJECT_OUTBOX_AFTER_AUDIT=true`, `STRIPE_API_BASE_URL`,
-`FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, and `BREVO_API_BASE_URL` /
+`FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, `PAYPLUS_API_BASE_URL`, and `BREVO_API_BASE_URL` /
 `POSTER_LLM_BASE_URL` / `POSTER_GEMINI_BASE_URL` with anything but their default (every role refuses
 to start: a changed host would receive the API key).
 
