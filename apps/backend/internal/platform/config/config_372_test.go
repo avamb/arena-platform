@@ -488,6 +488,21 @@ func TestAllPayAPIBaseURLRefusedInProduction(t *testing.T) {
 	}
 }
 
+// TestPayPlusAPIBaseURLRefusedInProduction: the PayPlus test seam would
+// receive the organizer's api-key and secret-key with every request.
+func TestPayPlusAPIBaseURLRefusedInProduction(t *testing.T) {
+	cfg := validProductionBase()
+	cfg.PayPlusAPIBaseURL = "http://127.0.0.1:9/api/v1.0"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "PAYPLUS_API_BASE_URL") {
+		t.Errorf("PAYPLUS_API_BASE_URL must be refused in production; got: %v", err)
+	}
+	dev := validBase()
+	dev.PayPlusAPIBaseURL = "http://127.0.0.1:9/api/v1.0"
+	if err := dev.Validate(); err != nil {
+		t.Errorf("PAYPLUS_API_BASE_URL must be allowed outside production; got: %v", err)
+	}
+}
+
 // TestPR206_WebhookSecretsNotRequiredInDevelopment verifies that development
 // configs without webhook secrets are accepted (dev/mock mode).
 func TestPR206_WebhookSecretsNotRequiredInDevelopment(t *testing.T) {

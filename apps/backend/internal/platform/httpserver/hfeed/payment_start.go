@@ -286,6 +286,13 @@ func (s *StripePaymentStarter) WithAllPay(baseURL string) *StripePaymentStarter 
 	return s
 }
 
+// WithPayPlus sets the PayPlus test seam (the callback base is the one
+// WithFlitt set). Empty keeps the real hosts, chosen by the config's mode.
+func (s *StripePaymentStarter) WithPayPlus(baseURL string) *StripePaymentStarter {
+	s.opts.PayPlusAPIBaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	return s
+}
+
 // hostedEntry returns the registry entry of a provider that can host a
 // checkout page: registered, with a module behind it, and declaring
 // Capabilities.HostedCheckout. A channel's provider must be one of these for
