@@ -298,6 +298,12 @@ func TestShop_CheckoutLimits(t *testing.T) {
 	if code, body := f.checkoutAs(variant, 1, email); code != http.StatusConflict || shopErrCode(body) != "shop.too_many_pending" {
 		t.Fatalf("one pending order too many = %d %v; want 409 shop.too_many_pending", code, body)
 	}
+	// An abandoned page stops counting as soon as its hold ends.
+	f.exec(`UPDATE shop_orders SET expires_at = now() - interval '1 second'
+	        WHERE id = (SELECT id FROM shop_orders WHERE org_id = $1 AND lower(buyer_email) = lower($2) LIMIT 1)`, f.orgA, email)
+	if code, body := f.checkoutAs(variant, 1, email); code != http.StatusCreated {
+		t.Fatalf("checkout after one hold ended = %d %v; want 201", code, body)
+	}
 }
 
 // TestShop_CheckoutHasItsOwnAddressBudget: an address may start

@@ -66,8 +66,10 @@ type CheckoutInput struct {
 }
 
 // MaxPendingPerBuyer is how many orders one buyer e-mail may have waiting
-// for payment in one shop at a time; the next checkout answers 409
-// shop.too_many_pending until one is paid or expires.
+// for payment in one shop at a time; only orders whose hold is still live
+// count, so an abandoned page stops counting when its hold ends. The next
+// checkout answers 409 shop.too_many_pending (a generic message that does
+// not say how many orders that e-mail has) until one is paid or expires.
 const MaxPendingPerBuyer = 3
 
 // PlacedOrder is the committed order with its lines. Paid is true when the
@@ -242,7 +244,7 @@ func (s *Service) placeOrderTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, i
 		}
 		if pending >= MaxPendingPerBuyer {
 			return newErr(http.StatusConflict, "shop.too_many_pending",
-				fmt.Sprintf("you already have %d orders waiting for payment here; pay or wait for one of them to expire", pending))
+				"too many orders for this e-mail are waiting for payment here; finish one or try again in half an hour")
 		}
 
 		ids := make([]uuid.UUID, len(in.Items))
