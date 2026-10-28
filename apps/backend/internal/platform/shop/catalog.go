@@ -666,3 +666,84 @@ func (s *Service) DeletePage(ctx context.Context, orgID uuid.UUID, slug string) 
 	}
 	return nil
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Storefront resolution
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Storefront is an organization that has a shop, as the public routes see it.
+type Storefront struct {
+	Org      gen.OrganizationRow
+	Settings SettingsView
+}
+
+// StorefrontBySlug resolves the public shop of an organization slug. An
+// organization without saved shop settings has no storefront (404
+// shop.not_found), whatever products it may have drafted.
+func (s *Service) StorefrontBySlug(ctx context.Context, orgSlug string) (Storefront, error) {
+	if err := s.ready(); err != nil {
+		return Storefront{}, err
+	}
+	slug := strings.ToLower(strings.TrimSpace(orgSlug))
+	if slug == "" {
+		return Storefront{}, ErrShopNotFound
+	}
+	org, err := s.q.GetOrganizationBySlug(ctx, slug)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Storefront{}, ErrShopNotFound
+	}
+	if err != nil {
+		return Storefront{}, err
+	}
+	st, err := s.GetSettings(ctx, org.ID)
+	if err != nil {
+		return Storefront{}, err
+	}
+	if !st.Configured {
+		return Storefront{}, ErrShopNotFound
+	}
+	return Storefront{Org: org, Settings: st}, nil
+}
+
+// SlugForHost resolves a storefront host (organizations.shop_domain) to the
+// organization slug. A "www." prefix is tried without it too.
+func (s *Service) SlugForHost(ctx context.Context, host string) (string, error) {
+	if err := s.ready(); err != nil {
+		return "", err
+	}
+	h := strings.ToLower(strings.TrimSpace(host))
+	if i := strings.LastIndex(h, ":"); i > 0 && !strings.Contains(h[i:], "]") {
+		h = h[:i]
+	}
+	d, ok := NormalizeDomain(h)
+	if !ok || d == "" {
+		return "", ErrShopNotFound
+	}
+	for _, candidate := range []string{d, strings.TrimPrefix(d, "www.")} {
+		_, slug, err := s.q.GetOrganizationByShopDomain(ctx, candidate)
+		if err == nil {
+			return slug, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return "", err
+		}
+	}
+	return "", ErrShopNotFound
+}
+
+// PaymentChannel is the sales channel whose payment provider takes the shop's
+// money: the one the settings name, else the organization's oldest channel.
+func (s *Service) PaymentChannel(ctx context.Context, st SettingsView) (uuid.UUID, error) {
+	if err := s.ready(); err != nil {
+		return uuid.Nil, err
+	}
+	if st.SalesChannelID != nil {
+		return *st.SalesChannelID, nil
+	}
+	id, err := s.q.GetFirstSalesChannelID(ctx, st.OrgID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, newErr(http.StatusUnprocessableEntity, "checkout.payment_not_configured",
+			"online payment for this shop is not set up yet, contact the shop")
+	}
+	return id, err
+}

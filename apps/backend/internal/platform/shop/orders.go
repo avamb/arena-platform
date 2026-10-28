@@ -223,7 +223,11 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, err
 	if !textOK(reason, MaxNoteLen) {
 		return RefundResult{}, invalid("shop.text_too_long", "reason is limited to 2000 characters")
 	}
-	var refundID uuid.UUID
+	var (
+		refundID uuid.UUID
+		amount   int64
+		currency string
+	)
 	err := s.inTx(ctx, func(tx pgx.Tx, q *gen.Queries) error {
 		o, err := q.GetShopOrderForUpdate(ctx, in.OrderID, in.OrgID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -255,7 +259,7 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, err
 			return err
 		}
 		remaining := min(o.Total, pi.Amount) - live
-		amount := remaining
+		amount, currency = remaining, o.Currency
 		if in.Amount != nil {
 			amount = *in.Amount
 		}
@@ -300,7 +304,7 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, err
 		}
 	}
 	if r.ID == uuid.Nil {
-		r = refunds.Refund{ID: refundID, State: refunds.StateProviderPending}
+		r = refunds.Refund{ID: refundID, State: refunds.StateProviderPending, Amount: amount, Currency: currency}
 	}
 	if _, err := s.SyncRefunds(ctx, in.OrgID, in.OrderID); err != nil {
 		return RefundResult{}, err
