@@ -1,0 +1,668 @@
+package shop
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strings"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+)
+
+// DefaultCurrency is the currency of a shop whose settings were never saved.
+const DefaultCurrency = "EUR"
+
+// DefaultVariantTitle is the title of the one variant a simple product has
+// (the Shopify and Dawn convention).
+const DefaultVariantTitle = "Default Title"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Settings
+// ─────────────────────────────────────────────────────────────────────────────
+
+// SettingsView is the shop settings of an organization. Configured is false
+// when the row does not exist yet (the defaults are shown).
+type SettingsView struct {
+	gen.ShopSettingsRow
+	Configured bool
+}
+
+// GetSettings reads the settings, or the defaults when there are none yet.
+func (s *Service) GetSettings(ctx context.Context, orgID uuid.UUID) (SettingsView, error) {
+	if err := s.ready(); err != nil {
+		return SettingsView{}, err
+	}
+	row, err := s.q.GetShopSettings(ctx, orgID)
+	if err == nil {
+		return SettingsView{ShopSettingsRow: row, Configured: true}, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return SettingsView{}, err
+	}
+	domain, derr := s.q.GetOrganizationShopDomain(ctx, orgID)
+	if derr != nil && !errors.Is(derr, pgx.ErrNoRows) {
+		return SettingsView{}, derr
+	}
+	return SettingsView{ShopSettingsRow: gen.ShopSettingsRow{
+		OrgID: orgID, Currency: DefaultCurrency, ShopDomain: domain,
+	}}, nil
+}
+
+// SettingsInput is the whole settings row (PUT replaces it). ShopDomain nil
+// keeps the storefront host, "" clears it; only a caller with
+// MayChangeDomain (a platform superadmin) may change it.
+type SettingsInput struct {
+	Currency         string
+	ShippingFeeMinor int64
+	ShippingLabel    string
+	CountryISO2      *string
+	AgeGateMinAge    *int32
+	AnnouncementText string
+	ContactEmail     *string
+	LogisticsNote    string
+	SalesChannelID   *uuid.UUID
+	ShopDomain       *string
+	MayChangeDomain  bool
+}
+
+func invalid(code, msg string) *Error { return newErr(http.StatusUnprocessableEntity, code, msg) }
+
+// validateSettings checks and normalizes the input in place.
+func validateSettings(in *SettingsInput) error {
+	in.Currency = strings.ToUpper(strings.TrimSpace(in.Currency))
+	if !ValidCurrency(in.Currency) {
+		return invalid("shop.invalid_currency", "currency must be a three-letter ISO code such as EUR or ILS")
+	}
+	if in.ShippingFeeMinor < 0 {
+		return invalid("shop.invalid_shipping_fee", "shipping_fee_minor must be zero or more")
+	}
+	if in.CountryISO2 != nil {
+		c := strings.ToUpper(strings.TrimSpace(*in.CountryISO2))
+		if c == "" {
+			in.CountryISO2 = nil
+		} else if !ValidCountry(c) {
+			return invalid("shop.invalid_country", "country_iso2 must be a two-letter ISO country code")
+		} else {
+			in.CountryISO2 = &c
+		}
+	}
+	if in.AgeGateMinAge != nil && (*in.AgeGateMinAge < 1 || *in.AgeGateMinAge > 99) {
+		return invalid("shop.invalid_age_gate", "age_gate_min_age must be between 1 and 99, or null for no age gate")
+	}
+	if in.ContactEmail != nil {
+		e := strings.TrimSpace(*in.ContactEmail)
+		if e == "" {
+			in.ContactEmail = nil
+		} else if !ValidEmail(e) {
+			return invalid("shop.invalid_contact_email", "contact_email is not a valid e-mail address")
+		} else {
+			in.ContactEmail = &e
+		}
+	}
+	if !textOK(in.ShippingLabel, MaxShortTextLen) || !textOK(in.AnnouncementText, MaxAnnouncement) || !textOK(in.LogisticsNote, MaxNoteLen) {
+		return invalid("shop.text_too_long", "shipping_label is limited to 200 characters, announcement_text to 500, logistics_note to 2000")
+	}
+	return nil
+}
+
+// PutSettings validates and writes the settings and returns them.
+func (s *Service) PutSettings(ctx context.Context, orgID uuid.UUID, in SettingsInput) (SettingsView, error) {
+	if err := validateSettings(&in); err != nil {
+		return SettingsView{}, err
+	}
+	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
+		if in.SalesChannelID != nil {
+			if _, err := q.GetSalesChannelByID(ctx, *in.SalesChannelID, orgID); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return invalid("shop.invalid_channel", "sales_channel_id is not a sales channel of this organization")
+				}
+				return err
+			}
+		}
+		if in.ShopDomain != nil {
+			domain, ok := NormalizeDomain(*in.ShopDomain)
+			if !ok {
+				return invalid("shop.invalid_domain", "shop_domain must be a bare host name such as shop.example.com")
+			}
+			current, err := q.GetOrganizationShopDomain(ctx, orgID)
+			if err != nil {
+				return err
+			}
+			cur := ""
+			if current != nil {
+				cur = *current
+			}
+			if domain != cur {
+				if !in.MayChangeDomain {
+					return newErr(http.StatusForbidden, "shop.domain_superadmin_only", "only the platform operator can change the shop domain")
+				}
+				var d *string
+				if domain != "" {
+					d = &domain
+				}
+				if err := q.SetOrganizationShopDomain(ctx, orgID, d); err != nil {
+					if isUniqueViolation(err, "organizations_shop_domain_uq") {
+						return newErr(http.StatusConflict, "shop.duplicate_domain", "another organization already uses this shop domain")
+					}
+					return err
+				}
+			}
+		}
+		return q.UpsertShopSettings(ctx, gen.UpsertShopSettingsParams{
+			OrgID: orgID, Currency: in.Currency, ShippingFeeMinor: in.ShippingFeeMinor,
+			ShippingLabel: in.ShippingLabel, CountryISO2: in.CountryISO2, AgeGateMinAge: in.AgeGateMinAge,
+			AnnouncementText: in.AnnouncementText, ContactEmail: in.ContactEmail,
+			LogisticsNote: in.LogisticsNote, SalesChannelID: in.SalesChannelID,
+		})
+	})
+	if err != nil {
+		return SettingsView{}, err
+	}
+	return s.GetSettings(ctx, orgID)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Products
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ProductView is a product with its pictures and live variants.
+type ProductView struct {
+	gen.ShopProductRow
+	Images   []gen.ShopProductImageRow
+	Variants []gen.ShopVariantRow
+}
+
+// views attaches pictures and variants to products, keeping their order.
+func views(ctx context.Context, q *gen.Queries, products []gen.ShopProductRow) ([]ProductView, error) {
+	out := make([]ProductView, 0, len(products))
+	if len(products) == 0 {
+		return out, nil
+	}
+	ids := make([]uuid.UUID, len(products))
+	for i, p := range products {
+		ids[i] = p.ID
+	}
+	imgs, err := q.ListShopProductImages(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	vars, err := q.ListShopVariants(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	byImg := map[uuid.UUID][]gen.ShopProductImageRow{}
+	for _, i := range imgs {
+		byImg[i.ProductID] = append(byImg[i.ProductID], i)
+	}
+	byVar := map[uuid.UUID][]gen.ShopVariantRow{}
+	for _, v := range vars {
+		byVar[v.ProductID] = append(byVar[v.ProductID], v)
+	}
+	for _, p := range products {
+		out = append(out, ProductView{ShopProductRow: p, Images: byImg[p.ID], Variants: byVar[p.ID]})
+	}
+	return out, nil
+}
+
+// ListProducts lists the organization's products; status "" lists all.
+func (s *Service) ListProducts(ctx context.Context, orgID uuid.UUID, status string) ([]ProductView, error) {
+	if err := s.ready(); err != nil {
+		return nil, err
+	}
+	if status != "" && status != ProductDraft && status != ProductActive && status != ProductArchived {
+		return nil, newErr(http.StatusBadRequest, "shop.invalid_status", "status must be draft, active or archived")
+	}
+	ps, err := s.q.ListShopProducts(ctx, orgID, status)
+	if err != nil {
+		return nil, err
+	}
+	return views(ctx, s.q, ps)
+}
+
+// GetProduct reads one product of the organization.
+func (s *Service) GetProduct(ctx context.Context, orgID, id uuid.UUID) (ProductView, error) {
+	if err := s.ready(); err != nil {
+		return ProductView{}, err
+	}
+	return getProductView(ctx, s.q, orgID, id)
+}
+
+func getProductView(ctx context.Context, q *gen.Queries, orgID, id uuid.UUID) (ProductView, error) {
+	p, err := q.GetShopProduct(ctx, id, orgID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ProductView{}, ErrProductNotFound
+	}
+	if err != nil {
+		return ProductView{}, err
+	}
+	vs, err := views(ctx, q, []gen.ShopProductRow{p})
+	if err != nil {
+		return ProductView{}, err
+	}
+	return vs[0], nil
+}
+
+// GetActiveProductBySlug reads a product the storefront may show.
+func (s *Service) GetActiveProductBySlug(ctx context.Context, orgID uuid.UUID, slug string) (ProductView, error) {
+	if err := s.ready(); err != nil {
+		return ProductView{}, err
+	}
+	norm, ok := NormalizeSlug(slug)
+	if !ok {
+		return ProductView{}, ErrProductNotFound
+	}
+	p, err := s.q.GetShopProductBySlug(ctx, orgID, norm)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && p.Status != ProductActive) {
+		return ProductView{}, ErrProductNotFound
+	}
+	if err != nil {
+		return ProductView{}, err
+	}
+	vs, err := views(ctx, s.q, []gen.ShopProductRow{p})
+	if err != nil {
+		return ProductView{}, err
+	}
+	return vs[0], nil
+}
+
+// ProductInput carries the editable fields of a product. On create a nil
+// field takes its default (slug from the title, status draft); on update a nil
+// field keeps the stored value.
+type ProductInput struct {
+	Slug        *string
+	Title       *string
+	BodyHTML    *string
+	Status      *string
+	ProductType *string
+	Vendor      *string
+	SortOrder   *int32
+}
+
+// apply merges the input over p and validates the result.
+func (in ProductInput) apply(p *gen.ShopProductParams) error {
+	if in.Title != nil {
+		p.Title = strings.TrimSpace(*in.Title)
+	}
+	if p.Title == "" || !textOK(p.Title, MaxTitleLen) {
+		return invalid("shop.invalid_title", "title is required and limited to 300 characters")
+	}
+	if in.Slug != nil {
+		slug, ok := NormalizeSlug(*in.Slug)
+		if !ok {
+			return invalid("shop.invalid_slug", "slug must be 1-200 characters without spaces, '/', '?' or '#'")
+		}
+		p.Slug = slug
+	}
+	if p.Slug == "" {
+		p.Slug = SlugFromTitle(p.Title)
+	}
+	if in.BodyHTML != nil {
+		p.BodyHTML = *in.BodyHTML
+	}
+	if len(p.BodyHTML) > MaxBodyHTMLLen {
+		return invalid("shop.text_too_long", "body_html is limited to 100000 characters")
+	}
+	if in.Status != nil {
+		p.Status = strings.TrimSpace(*in.Status)
+	}
+	if p.Status == "" {
+		p.Status = ProductDraft
+	}
+	if p.Status != ProductDraft && p.Status != ProductActive && p.Status != ProductArchived {
+		return invalid("shop.invalid_status", "status must be draft, active or archived")
+	}
+	if in.ProductType != nil {
+		p.ProductType = strings.TrimSpace(*in.ProductType)
+	}
+	if in.Vendor != nil {
+		p.Vendor = strings.TrimSpace(*in.Vendor)
+	}
+	if !textOK(p.ProductType, MaxShortTextLen) || !textOK(p.Vendor, MaxShortTextLen) {
+		return invalid("shop.text_too_long", "product_type and vendor are limited to 200 characters")
+	}
+	if in.SortOrder != nil {
+		p.SortOrder = *in.SortOrder
+	}
+	return nil
+}
+
+var errDuplicateSlug = newErr(http.StatusConflict, "shop.duplicate_slug", "another product of this shop already uses this slug")
+
+// CreateProduct creates a product with its variants (one default variant
+// when none is given) and the shop settings row when it is the first product.
+func (s *Service) CreateProduct(ctx context.Context, orgID uuid.UUID, in ProductInput, variants []VariantInput) (ProductView, error) {
+	p := gen.ShopProductParams{OrgID: orgID}
+	if err := in.apply(&p); err != nil {
+		return ProductView{}, err
+	}
+	if len(variants) == 0 {
+		variants = []VariantInput{{Title: DefaultVariantTitle}}
+	}
+	if err := validateVariants(variants); err != nil {
+		return ProductView{}, err
+	}
+	var id uuid.UUID
+	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
+		if err := q.EnsureShopSettings(ctx, orgID); err != nil {
+			return err
+		}
+		row, err := q.InsertShopProduct(ctx, p)
+		if err != nil {
+			if isUniqueViolation(err, "shop_products_org_slug_uq") {
+				return errDuplicateSlug
+			}
+			return err
+		}
+		id = row.ID
+		return writeVariants(ctx, q, orgID, row.ID, variants)
+	})
+	if err != nil {
+		return ProductView{}, err
+	}
+	return s.GetProduct(ctx, orgID, id)
+}
+
+// UpdateProduct merges in over the stored product.
+func (s *Service) UpdateProduct(ctx context.Context, orgID, id uuid.UUID, in ProductInput) (ProductView, error) {
+	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
+		cur, err := q.GetShopProduct(ctx, id, orgID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrProductNotFound
+		}
+		if err != nil {
+			return err
+		}
+		p := gen.ShopProductParams{
+			ID: id, OrgID: orgID, Slug: cur.Slug, Title: cur.Title, BodyHTML: cur.BodyHTML,
+			Status: cur.Status, ProductType: cur.ProductType, Vendor: cur.Vendor, SortOrder: cur.SortOrder,
+		}
+		if err := in.apply(&p); err != nil {
+			return err
+		}
+		if _, err := q.UpdateShopProduct(ctx, p); err != nil {
+			if isUniqueViolation(err, "shop_products_org_slug_uq") {
+				return errDuplicateSlug
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return ProductView{}, err
+	}
+	return s.GetProduct(ctx, orgID, id)
+}
+
+// DeleteProduct soft-deletes a product. Orders keep their snapshot.
+func (s *Service) DeleteProduct(ctx context.Context, orgID, id uuid.UUID) error {
+	if err := s.ready(); err != nil {
+		return err
+	}
+	ok, err := s.q.SoftDeleteShopProduct(ctx, id, orgID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrProductNotFound
+	}
+	return nil
+}
+
+// AddImage attaches one of the organization's media objects to a product;
+// position nil appends it after the last picture. Adding an attached picture
+// again moves and relabels it.
+func (s *Service) AddImage(ctx context.Context, orgID, productID, mediaID uuid.UUID, position *int32, alt string) (ProductView, error) {
+	alt = strings.TrimSpace(alt)
+	if !textOK(alt, MaxImageAltLen) {
+		return ProductView{}, invalid("shop.text_too_long", "alt is limited to 500 characters")
+	}
+	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
+		if _, err := q.GetShopProduct(ctx, productID, orgID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrProductNotFound
+			}
+			return err
+		}
+		ok, err := q.ShopMediaUsable(ctx, mediaID, orgID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return invalid("shop.invalid_media", "media_id is not a file uploaded by this organization")
+		}
+		pos := int32(0)
+		if position != nil {
+			pos = *position
+		} else {
+			imgs, err := q.ListShopProductImages(ctx, []uuid.UUID{productID})
+			if err != nil {
+				return err
+			}
+			for _, i := range imgs {
+				if i.Position >= pos {
+					pos = i.Position + 1
+				}
+			}
+		}
+		_, err = q.UpsertShopProductImage(ctx, productID, mediaID, pos, alt)
+		return err
+	})
+	if err != nil {
+		return ProductView{}, err
+	}
+	return s.GetProduct(ctx, orgID, productID)
+}
+
+// RemoveImage detaches a picture from a product.
+func (s *Service) RemoveImage(ctx context.Context, orgID, productID, mediaID uuid.UUID) (ProductView, error) {
+	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
+		if _, err := q.GetShopProduct(ctx, productID, orgID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrProductNotFound
+			}
+			return err
+		}
+		ok, err := q.DeleteShopProductImage(ctx, productID, mediaID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return newErr(http.StatusNotFound, "shop.image_not_found", "this picture is not attached to the product")
+		}
+		return nil
+	})
+	if err != nil {
+		return ProductView{}, err
+	}
+	return s.GetProduct(ctx, orgID, productID)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Variants
+// ─────────────────────────────────────────────────────────────────────────────
+
+// VariantInput is one variant of a PUT .../variants list. ID nil creates a
+// variant; an ID must name a live variant of the product. TrackStock nil
+// means true, Position nil means the index in the list.
+type VariantInput struct {
+	ID             *uuid.UUID
+	Title          string
+	SKU            *string
+	PriceMinor     int64
+	CompareAtMinor *int64
+	Stock          int32
+	TrackStock     *bool
+	Position       *int32
+	Option1        *string
+	Option2        *string
+	Option3        *string
+}
+
+func validateVariants(vs []VariantInput) error {
+	if len(vs) == 0 || len(vs) > MaxVariants {
+		return invalid("shop.invalid_variants", "a product has between 1 and 100 variants")
+	}
+	seen := map[uuid.UUID]bool{}
+	for i := range vs {
+		v := &vs[i]
+		v.Title = strings.TrimSpace(v.Title)
+		if v.Title == "" {
+			v.Title = DefaultVariantTitle
+		}
+		if !textOK(v.Title, MaxTitleLen) {
+			return invalid("shop.invalid_variants", "a variant title is limited to 300 characters")
+		}
+		if v.ID != nil {
+			if seen[*v.ID] {
+				return invalid("shop.invalid_variants", "the same variant id appears twice")
+			}
+			seen[*v.ID] = true
+		}
+		if v.SKU != nil {
+			sku := strings.TrimSpace(*v.SKU)
+			if sku == "" {
+				v.SKU = nil
+			} else if !textOK(sku, MaxSKULen) {
+				return invalid("shop.invalid_variants", "sku is limited to 100 characters")
+			} else {
+				v.SKU = &sku
+			}
+		}
+		if v.PriceMinor < 0 || (v.CompareAtMinor != nil && *v.CompareAtMinor < 0) {
+			return invalid("shop.invalid_variants", "price_minor and compare_at_minor must be zero or more")
+		}
+		if v.Stock < 0 {
+			return invalid("shop.invalid_variants", "stock must be zero or more")
+		}
+		for _, o := range []*string{v.Option1, v.Option2, v.Option3} {
+			if o != nil && !textOK(*o, MaxShortTextLen) {
+				return invalid("shop.invalid_variants", "an option value is limited to 200 characters")
+			}
+		}
+	}
+	return nil
+}
+
+// writeVariants makes the product's live variants exactly vs: named ones are
+// updated, new ones inserted, the rest soft-deleted. A stock change is
+// journaled as a manual move.
+func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UUID, vs []VariantInput) error {
+	keep := make([]uuid.UUID, 0, len(vs))
+	for i, v := range vs {
+		pos := int32(i) //nolint:gosec // bounded by MaxVariants
+		if v.Position != nil {
+			pos = *v.Position
+		}
+		track := true
+		if v.TrackStock != nil {
+			track = *v.TrackStock
+		}
+		p := gen.ShopVariantParams{
+			ProductID: productID, Title: v.Title, SKU: v.SKU, PriceMinor: v.PriceMinor,
+			CompareAtMinor: v.CompareAtMinor, Stock: v.Stock, TrackStock: track, Position: pos,
+			Option1: v.Option1, Option2: v.Option2, Option3: v.Option3,
+		}
+		if v.ID != nil {
+			p.ID = *v.ID
+			prev, err := q.UpdateShopVariant(ctx, p)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return invalid("shop.invalid_variant", "variant "+v.ID.String()+" is not a variant of this product")
+			}
+			if err != nil {
+				return err
+			}
+			if d := v.Stock - prev; d != 0 {
+				if err := q.InsertShopStockMove(ctx, orgID, p.ID, nil, d, MoveManual); err != nil {
+					return err
+				}
+			}
+			keep = append(keep, p.ID)
+			continue
+		}
+		id, err := q.InsertShopVariant(ctx, p)
+		if err != nil {
+			return err
+		}
+		if v.Stock != 0 {
+			if err := q.InsertShopStockMove(ctx, orgID, id, nil, v.Stock, MoveManual); err != nil {
+				return err
+			}
+		}
+		keep = append(keep, id)
+	}
+	_, err := q.SoftDeleteShopVariantsExcept(ctx, productID, keep)
+	return err
+}
+
+// ReplaceVariants replaces the product's variant list.
+func (s *Service) ReplaceVariants(ctx context.Context, orgID, productID uuid.UUID, vs []VariantInput) (ProductView, error) {
+	if err := validateVariants(vs); err != nil {
+		return ProductView{}, err
+	}
+	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
+		if _, err := q.GetShopProduct(ctx, productID, orgID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrProductNotFound
+			}
+			return err
+		}
+		return writeVariants(ctx, q, orgID, productID, vs)
+	})
+	if err != nil {
+		return ProductView{}, err
+	}
+	return s.GetProduct(ctx, orgID, productID)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pages
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ListPages lists the static pages of the storefront.
+func (s *Service) ListPages(ctx context.Context, orgID uuid.UUID) ([]gen.ShopPageRow, error) {
+	if err := s.ready(); err != nil {
+		return nil, err
+	}
+	return s.q.ListShopPages(ctx, orgID)
+}
+
+// PutPage creates or replaces a static page.
+func (s *Service) PutPage(ctx context.Context, orgID uuid.UUID, slug, title, body string, position int32) (gen.ShopPageRow, error) {
+	if err := s.ready(); err != nil {
+		return gen.ShopPageRow{}, err
+	}
+	norm, ok := NormalizeSlug(slug)
+	if !ok {
+		return gen.ShopPageRow{}, invalid("shop.invalid_slug", "slug must be 1-200 characters without spaces, '/', '?' or '#'")
+	}
+	title = strings.TrimSpace(title)
+	if title == "" || !textOK(title, MaxTitleLen) {
+		return gen.ShopPageRow{}, invalid("shop.invalid_title", "title is required and limited to 300 characters")
+	}
+	if len(body) > MaxPageBodyLen {
+		return gen.ShopPageRow{}, invalid("shop.text_too_long", "body_html is limited to 200000 characters")
+	}
+	return s.q.UpsertShopPage(ctx, orgID, norm, title, body, position)
+}
+
+// DeletePage removes a static page.
+func (s *Service) DeletePage(ctx context.Context, orgID uuid.UUID, slug string) error {
+	if err := s.ready(); err != nil {
+		return err
+	}
+	norm, ok := NormalizeSlug(slug)
+	if !ok {
+		return ErrPageNotFound
+	}
+	deleted, err := s.q.DeleteShopPage(ctx, orgID, norm)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ErrPageNotFound
+	}
+	return nil
+}

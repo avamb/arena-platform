@@ -113,6 +113,17 @@ func (q *Queries) SetOrganizationShopDomain(ctx context.Context, orgID uuid.UUID
 	return err
 }
 
+const getOrganizationShopDomain = `-- name: GetOrganizationShopDomain :one
+SELECT shop_domain FROM organizations WHERE id = $1 AND deleted_at IS NULL`
+
+// GetOrganizationShopDomain reads the storefront host of an organization
+// (nil when it has none). pgx.ErrNoRows when the organization does not exist.
+func (q *Queries) GetOrganizationShopDomain(ctx context.Context, orgID uuid.UUID) (*string, error) {
+	var d *string
+	err := q.db.QueryRow(ctx, getOrganizationShopDomain, orgID).Scan(&d)
+	return d, err
+}
+
 const getOrganizationByShopDomain = `-- name: GetOrganizationByShopDomain :one
 SELECT o.id, o.slug
 FROM   organizations o

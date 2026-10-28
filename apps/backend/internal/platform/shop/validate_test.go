@@ -1,0 +1,228 @@
+package shop
+
+import (
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+)
+
+func TestNormalizeSlug(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want string
+		ok   bool
+	}{
+		{"  Rosé-2023 ", "rosé-2023", true},
+		{"кагор", "кагор", true},
+		{"", "", false},
+		{"a/b", "", false},
+		{"a b", "", false},
+		{"a?b", "", false},
+		{"a#b", "", false},
+		{strings.Repeat("x", 201), "", false},
+	} {
+		got, ok := NormalizeSlug(tc.in)
+		if got != tc.want || ok != tc.ok {
+			t.Errorf("NormalizeSlug(%q) = %q, %v; want %q, %v", tc.in, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+func TestSlugFromTitle(t *testing.T) {
+	if got := SlugFromTitle("Cabernet Sauvignon 2021"); got != "cabernet-sauvignon-2021" {
+		t.Errorf("SlugFromTitle = %q", got)
+	}
+	if got := SlugFromTitle("!!!"); got != "product" {
+		t.Errorf("SlugFromTitle of nothing = %q, want product", got)
+	}
+}
+
+func TestNormalizeDomain(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want string
+		ok   bool
+	}{
+		{"EinatWinery.com", "einatwinery.com", true},
+		{"shop.example.com.", "shop.example.com", true},
+		{"", "", true},
+		{"https://example.com", "", false},
+		{"example", "", false},
+		{"example.com:8080", "", false},
+		{"ex ample.com", "", false},
+	} {
+		got, ok := NormalizeDomain(tc.in)
+		if got != tc.want || ok != tc.ok {
+			t.Errorf("NormalizeDomain(%q) = %q, %v; want %q, %v", tc.in, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+func TestRefundedStatus(t *testing.T) {
+	if s := RefundedStatus(StatusPaid, 1000, 0); s != StatusPaid {
+		t.Errorf("nothing refunded: %s", s)
+	}
+	if s := RefundedStatus(StatusShipped, 1000, 500); s != StatusPartiallyRefunded {
+		t.Errorf("half refunded: %s", s)
+	}
+	if s := RefundedStatus(StatusPartiallyRefunded, 1000, 1000); s != StatusRefunded {
+		t.Errorf("all refunded: %s", s)
+	}
+}
+
+func TestPublicStatus(t *testing.T) {
+	for status, want := range map[string]string{
+		StatusPendingPayment: "pending", StatusPaid: "paid", StatusShipped: "paid",
+		StatusRefunded: "paid", StatusPartiallyRefunded: "paid", StatusExpired: "expired", StatusCancelled: "cancelled",
+	} {
+		if got := PublicStatus(gen.ShopOrderRow{Status: status}, false); got != want {
+			t.Errorf("PublicStatus(%s) = %s, want %s", status, got, want)
+		}
+	}
+	if got := PublicStatus(gen.ShopOrderRow{Status: StatusPendingPayment}, true); got != "expired" {
+		t.Errorf("a pending order past its hold reads %s, want expired", got)
+	}
+}
+
+func TestCourierText(t *testing.T) {
+	o := gen.ShopOrderRow{
+		BuyerName: "Anna K", BuyerPhone: "+972500000000", ShipCity: "Haifa",
+		ShipAddress1: "Herzl 1", ShipAddress2: "apt 4", ShipPostal: "3100000",
+		Total: 23000, Currency: "ILS", DeliveryNote: "call before",
+	}
+	items := []gen.ShopOrderItemRow{
+		{ProductTitle: "Rosé", VariantTitle: "Default Title", Qty: 2},
+		{ProductTitle: "Merlot", VariantTitle: "Magnum", Qty: 1},
+	}
+	want := "Anna K\n+972500000000\nHaifa\nHerzl 1, apt 4\n3100000\nRosé x 2\nMerlot (Magnum) x 1\n230.00 ILS\ncall before"
+	if got := CourierText(o, items); got != want {
+		t.Errorf("CourierText =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestFormatMinor(t *testing.T) {
+	if got := FormatMinor(5005, "EUR"); got != "50.05 EUR" {
+		t.Errorf("FormatMinor = %q", got)
+	}
+	if got := FormatMinor(-150, "ILS"); got != "-1.50 ILS" {
+		t.Errorf("FormatMinor negative = %q", got)
+	}
+}
+
+func TestAvailable(t *testing.T) {
+	if a := Available(gen.ShopVariantRow{TrackStock: true, Stock: 5, Held: 2}); a != 3 {
+		t.Errorf("Available = %d, want 3", a)
+	}
+	if a := Available(gen.ShopVariantRow{TrackStock: true, Stock: 1, Held: 4}); a != 0 {
+		t.Errorf("an oversold variant has %d available, want 0", a)
+	}
+	if a := Available(gen.ShopVariantRow{TrackStock: false}); a != -1 {
+		t.Errorf("an untracked variant reads %d, want -1 (unlimited)", a)
+	}
+}
+
+func validCheckout() CheckoutInput {
+	v := uuid.New()
+	return CheckoutInput{
+		Items:   []CheckoutItem{{VariantID: v, Qty: 1}, {VariantID: v, Qty: 2}},
+		Buyer:   Buyer{Name: " Anna ", Email: "anna@example.test"},
+		Ship:    Address{Address1: "Herzl 1", City: "Haifa", Country: "il"},
+		Locale:  "RU-ru",
+		HoldFor: time.Minute,
+	}
+}
+
+func TestNormalizeCheckout_MergesLinesAndFillsDefaults(t *testing.T) {
+	in := validCheckout()
+	if err := normalizeCheckout(&in); err != nil {
+		t.Fatalf("normalizeCheckout: %v", err)
+	}
+	if len(in.Items) != 1 || in.Items[0].Qty != 3 {
+		t.Errorf("items = %+v, want one merged line of 3", in.Items)
+	}
+	if in.Ship.Name != "Anna" || in.Ship.Country != "IL" || in.Locale != "ru" {
+		t.Errorf("defaults not applied: ship %+v locale %q", in.Ship, in.Locale)
+	}
+}
+
+func TestNormalizeCheckout_Refusals(t *testing.T) {
+	for name, mutate := range map[string]func(*CheckoutInput){
+		"no items": func(in *CheckoutInput) { in.Items = nil },
+		"zero qty": func(in *CheckoutInput) { in.Items = []CheckoutItem{{VariantID: uuid.New(), Qty: 0}} },
+		"too many lines": func(in *CheckoutInput) {
+			in.Items = nil
+			for i := 0; i < 51; i++ {
+				in.Items = append(in.Items, CheckoutItem{VariantID: uuid.New(), Qty: 1})
+			}
+		},
+		"merged > 99":   func(in *CheckoutInput) { in.Items[0].Qty, in.Items[1].Qty = 50, 50 },
+		"bad email":     func(in *CheckoutInput) { in.Buyer.Email = "nope" },
+		"no name":       func(in *CheckoutInput) { in.Buyer.Name = " " },
+		"no address":    func(in *CheckoutInput) { in.Ship.Address1 = "" },
+		"bad country":   func(in *CheckoutInput) { in.Ship.Country = "Israel" },
+		"note too long": func(in *CheckoutInput) { in.DeliveryNote = strings.Repeat("x", 2001) },
+	} {
+		in := validCheckout()
+		mutate(&in)
+		err := normalizeCheckout(&in)
+		var se *Error
+		if !errors.As(err, &se) || se.Status != 422 {
+			t.Errorf("%s: err = %v, want a 422 refusal", name, err)
+		}
+	}
+}
+
+func TestValidateVariants(t *testing.T) {
+	id := uuid.New()
+	ok := []VariantInput{{Title: "", PriceMinor: 100, Stock: 3}}
+	if err := validateVariants(ok); err != nil || ok[0].Title != DefaultVariantTitle {
+		t.Fatalf("validateVariants(default) = %v, title %q", err, ok[0].Title)
+	}
+	for name, vs := range map[string][]VariantInput{
+		"empty":          {},
+		"negative price": {{PriceMinor: -1}},
+		"negative stock": {{Stock: -1}},
+		"duplicate id":   {{ID: &id}, {ID: &id}},
+	} {
+		if err := validateVariants(vs); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestValidateSettings(t *testing.T) {
+	c, age := " il ", int32(18)
+	in := SettingsInput{Currency: "ils", CountryISO2: &c, AgeGateMinAge: &age}
+	if err := validateSettings(&in); err != nil {
+		t.Fatalf("validateSettings: %v", err)
+	}
+	if in.Currency != "ILS" || *in.CountryISO2 != "IL" {
+		t.Errorf("not normalized: %+v", in)
+	}
+	bad := int32(120)
+	for name, in := range map[string]SettingsInput{
+		"currency": {Currency: "EURO"},
+		"fee":      {Currency: "EUR", ShippingFeeMinor: -1},
+		"age":      {Currency: "EUR", AgeGateMinAge: &bad},
+	} {
+		if err := validateSettings(&in); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestNewOrderToken(t *testing.T) {
+	a, err := NewOrderToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := NewOrderToken()
+	if len(a) != 64 || a == b {
+		t.Errorf("tokens %q %q: want 64 hex characters, distinct", a, b)
+	}
+}
