@@ -311,6 +311,19 @@ type ProductInput struct {
 	ProductType *string
 	Vendor      *string
 	SortOrder   *int32
+	// Kind is physical, digital or service; nil keeps it (physical on
+	// create). Turning a product digital stops its variants tracking stock;
+	// turning it away from digital drops its file.
+	Kind *string
+	// DigitalMediaID names the file a digital product sells (a media object
+	// of the organization with owner_type shop_digital); nil keeps it,
+	// ClearDigitalMedia removes it.
+	DigitalMediaID    *uuid.UUID
+	ClearDigitalMedia bool
+	// OptionNames names the product's options (up to 3, e.g. Size, Colour),
+	// matched by position with the variants' option1..option3 values; nil
+	// keeps them, an empty list removes them.
+	OptionNames *[]string
 }
 
 // apply merges the input over p and validates the result.
@@ -359,7 +372,71 @@ func (in ProductInput) apply(p *gen.ShopProductParams) error {
 	if in.SortOrder != nil {
 		p.SortOrder = *in.SortOrder
 	}
+	if in.Kind != nil {
+		p.Kind = strings.TrimSpace(*in.Kind)
+	}
+	if p.Kind == "" {
+		p.Kind = KindPhysical
+	}
+	if p.Kind != KindPhysical && p.Kind != KindDigital && p.Kind != KindService {
+		return invalid("shop.invalid_kind", "kind must be physical, digital or service")
+	}
+	if in.ClearDigitalMedia {
+		p.DigitalMediaID = nil
+	}
+	if in.DigitalMediaID != nil {
+		if p.Kind != KindDigital {
+			return invalid("shop.invalid_digital_media", "only a digital product sells a file (digital_media_id needs kind digital)")
+		}
+		id := *in.DigitalMediaID
+		p.DigitalMediaID = &id
+	}
+	if p.Kind != KindDigital {
+		p.DigitalMediaID = nil
+	}
+	if in.OptionNames != nil {
+		names := *in.OptionNames
+		if len(names) > MaxOptionNames {
+			return invalid("shop.invalid_option_names", "a product has at most 3 option names")
+		}
+		slots := [MaxOptionNames]*string{}
+		for i, n := range names {
+			n = strings.TrimSpace(n)
+			if n == "" || !textOK(n, 100) {
+				return invalid("shop.invalid_option_names", "an option name is 1-100 characters")
+			}
+			slots[i] = &n
+		}
+		p.Option1Name, p.Option2Name, p.Option3Name = slots[0], slots[1], slots[2]
+	}
 	return nil
+}
+
+// checkDigitalMedia refuses a file that is not the organization's own
+// shop_digital upload, when the product names one it did not name before.
+func checkDigitalMedia(ctx context.Context, q *gen.Queries, orgID uuid.UUID, p gen.ShopProductParams, before *uuid.UUID) error {
+	if p.DigitalMediaID == nil || (before != nil && *before == *p.DigitalMediaID) {
+		return nil
+	}
+	ok, err := q.ShopDigitalMediaUsable(ctx, *p.DigitalMediaID, orgID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return invalid("shop.invalid_digital_media", "digital_media_id is not a file this organization uploaded with owner_type shop_digital")
+	}
+	return nil
+}
+
+// OptionNames lists a product's option names in order.
+func OptionNames(p gen.ShopProductRow) []string {
+	out := make([]string, 0, MaxOptionNames)
+	for _, n := range []*string{p.Option1Name, p.Option2Name, p.Option3Name} {
+		if n != nil {
+			out = append(out, *n)
+		}
+	}
+	return out
 }
 
 var errDuplicateSlug = newErr(http.StatusConflict, "shop.duplicate_slug", "another product of this shop already uses this slug")
@@ -382,6 +459,9 @@ func (s *Service) CreateProduct(ctx context.Context, orgID uuid.UUID, in Product
 		if err := q.EnsureShopSettings(ctx, orgID); err != nil {
 			return err
 		}
+		if err := checkDigitalMedia(ctx, q, orgID, p, nil); err != nil {
+			return err
+		}
 		row, err := q.InsertShopProduct(ctx, p)
 		if err != nil {
 			if isUniqueViolation(err, "shop_products_org_slug_uq") {
@@ -390,7 +470,7 @@ func (s *Service) CreateProduct(ctx context.Context, orgID uuid.UUID, in Product
 			return err
 		}
 		id = row.ID
-		return writeVariants(ctx, q, orgID, row.ID, variants)
+		return writeVariants(ctx, q, orgID, row.ID, row.Kind, variants)
 	})
 	if err != nil {
 		return ProductView{}, err
@@ -411,8 +491,13 @@ func (s *Service) UpdateProduct(ctx context.Context, orgID, id uuid.UUID, in Pro
 		p := gen.ShopProductParams{
 			ID: id, OrgID: orgID, Slug: cur.Slug, Title: cur.Title, BodyHTML: cur.BodyHTML,
 			Status: cur.Status, ProductType: cur.ProductType, Vendor: cur.Vendor, SortOrder: cur.SortOrder,
+			Kind: cur.Kind, DigitalMediaID: cur.DigitalMediaID,
+			Option1Name: cur.Option1Name, Option2Name: cur.Option2Name, Option3Name: cur.Option3Name,
 		}
 		if err := in.apply(&p); err != nil {
+			return err
+		}
+		if err := checkDigitalMedia(ctx, q, orgID, p, cur.DigitalMediaID); err != nil {
 			return err
 		}
 		if _, err := q.UpdateShopProduct(ctx, p); err != nil {
@@ -420,6 +505,9 @@ func (s *Service) UpdateProduct(ctx context.Context, orgID, id uuid.UUID, in Pro
 				return errDuplicateSlug
 			}
 			return err
+		}
+		if p.Kind == KindDigital && cur.Kind != KindDigital {
+			return q.UntrackShopProductVariants(ctx, id)
 		}
 		return nil
 	})
@@ -591,8 +679,17 @@ func validateVariants(vs []VariantInput) error {
 // updated, new ones inserted, the rest soft-deleted. A stock change is
 // journaled as a manual move. The live variants are locked in id order first
 // and every expected_stock is checked against the locked stock before
-// anything is written.
-func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UUID, vs []VariantInput) error {
+// anything is written. A digital product's variants never track stock: they
+// are written untracked with stock 0 and journal nothing.
+func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UUID, kind string, vs []VariantInput) error {
+	if kind == KindDigital {
+		untracked := false
+		for i := range vs {
+			vs[i].TrackStock = &untracked
+			vs[i].Stock = 0
+			vs[i].ExpectedStock = nil
+		}
+	}
 	current, err := q.LockShopProductVariants(ctx, productID)
 	if err != nil {
 		return err
@@ -642,7 +739,7 @@ func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UU
 			if err != nil {
 				return err
 			}
-			if d := v.Stock - prev; d != 0 {
+			if d := v.Stock - prev; d != 0 && kind != KindDigital {
 				if err := q.InsertShopStockMove(ctx, orgID, p.ID, nil, d, MoveManual); err != nil {
 					return err
 				}
@@ -671,13 +768,14 @@ func (s *Service) ReplaceVariants(ctx context.Context, orgID, productID uuid.UUI
 		return ProductView{}, err
 	}
 	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
-		if _, err := q.GetShopProduct(ctx, productID, orgID); err != nil {
+		cur, err := q.GetShopProduct(ctx, productID, orgID)
+		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrProductNotFound
 			}
 			return err
 		}
-		return writeVariants(ctx, q, orgID, productID, vs)
+		return writeVariants(ctx, q, orgID, productID, cur.Kind, vs)
 	})
 	if err != nil {
 		return ProductView{}, err

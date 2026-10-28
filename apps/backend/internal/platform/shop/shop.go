@@ -54,6 +54,26 @@ const (
 	StatusManualReview = "manual_review"
 )
 
+// Product kinds (shop_products_kind_check, spec 47 section 1b). A physical
+// product tracks stock and needs a shipping address; a digital one sells a
+// file (owner_type shop_digital) and never tracks stock; a service needs no
+// address and may track stock or not.
+const (
+	KindPhysical = "physical"
+	KindDigital  = "digital"
+	KindService  = "service"
+)
+
+// MaxOptionNames is how many option names (size, colour, ...) a product has.
+const MaxOptionNames = 3
+
+// DigitalOwnerType is the media owner_type of a digital product's file;
+// PictureOwnerType that of a product picture. They never mix.
+const (
+	DigitalOwnerType = "shop_digital"
+	PictureOwnerType = "shop_product"
+)
+
 // Product statuses (shop_products_status_check).
 const (
 	ProductDraft    = "draft"

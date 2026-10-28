@@ -10539,6 +10539,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/shop/checkout/{order_token}/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Files of a paid storefront order
+         * @description The files the buyer bought: one short-lived signed URL per digital line
+         *     of the order (spec 47 section 1b). Only while the order's payment stands
+         *     (`paid`, `shipped` or `partially_refunded`); an order that is pending,
+         *     expired, cancelled, refunded or parked for review answers 404 like a
+         *     token that names nothing. The token in the path is the credential. No
+         *     login; rate-limited per address and per token; never cached.
+         */
+        get: operations["listPublicShopCheckoutDownloads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/shop/pages/{org_slug}": {
         parameters: {
             query?: never;
@@ -10623,7 +10648,10 @@ export interface paths {
          *     `shop.out_of_stock` with `details.items` = [{variant_id, requested,
          *     available}] and holds nothing. A cart that costs nothing is completed at
          *     once (`status` paid, empty `payment_url`). The provider sends the buyer back
-         *     to `return_url` with `checkout_token` = the order token. A line may hold
+         *     to `return_url` with `checkout_token` = the order token. `ship` is required
+         *     only when the cart holds a physical product; a cart of digital products and
+         *     services takes no address, pays no shipping and gets delivery_kind `none`.
+         *     A line may hold
          *     at most the shop's `max_line_qty` units (422 `shop.invalid_items` with
          *     `details.max_line_qty`), and one buyer e-mail may have at most 3 orders
          *     waiting for payment in the shop (409 `shop.too_many_pending`). No login;
@@ -10803,10 +10831,11 @@ export interface components {
              *     is a session-level poster. `event_gallery` and `event_report`
              *     (migration 0153) are photos of an event page gallery and of its
              *     photo report. `shop_product` (migration 0172) is a picture of a
-             *     merchandise shop product.
+             *     merchandise shop product; `shop_digital` is the file a digital
+             *     shop product sells (offered to the buyer only after payment).
              * @enum {string}
              */
-            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product";
+            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product" | "shop_digital";
             /**
              * Format: uuid
              * @description UUID of the owning row in the table implied by
@@ -30021,6 +30050,15 @@ export interface components {
         };
         /** @description A shop product with its pictures and variants. */
         ShopProduct: {
+            /** @description `physical`, `digital` or `service` (spec 47 section 1b). */
+            kind: string;
+            /**
+             * Format: uuid
+             * @description The file a digital product sells (owner_type `shop_digital`); null for other kinds or when none is attached. Never shown on the storefront.
+             */
+            digital_media_id?: string | null;
+            /** @description Names of the product's options, in the order of the variants' option1..option3. */
+            option_names: string[];
             /**
              * Format: uuid
              * @description The product.
@@ -30119,6 +30157,15 @@ export interface components {
         };
         /** @description A new product. */
         ShopProductCreateRequest: {
+            /** @description `physical` (tracks stock, ships to an address), `digital` (sells the file `digital_media_id`, never tracks stock, needs no address or shipping) or `service` (needs no address or shipping; its variants may track stock or not). Absent keeps it; a new product is physical. */
+            kind?: string;
+            /**
+             * Format: uuid
+             * @description The file a digital product sells, a media object of the organization uploaded with owner_type `shop_digital` (a `shop_product` picture is refused, 422 `shop.invalid_digital_media`). Only for kind digital; absent keeps it, null removes it. Turning the product away from digital removes it.
+             */
+            digital_media_id?: string | null;
+            /** @description Names of the product's options (up to 3, e.g. Size, Colour), matched by position with the variants' option1..option3 values. Absent keeps them; an empty list removes them. */
+            option_names?: string[];
             /** @description Storefront address; absent derives it from the title. */
             slug?: string;
             /** @description Product title, up to 300 characters. */
@@ -30141,6 +30188,15 @@ export interface components {
         };
         /** @description The product fields to change; absent fields keep their value. */
         ShopProductPatchRequest: {
+            /** @description `physical` (tracks stock, ships to an address), `digital` (sells the file `digital_media_id`, never tracks stock, needs no address or shipping) or `service` (needs no address or shipping; its variants may track stock or not). Absent keeps it; a new product is physical. */
+            kind?: string;
+            /**
+             * Format: uuid
+             * @description The file a digital product sells, a media object of the organization uploaded with owner_type `shop_digital` (a `shop_product` picture is refused, 422 `shop.invalid_digital_media`). Only for kind digital; absent keeps it, null removes it. Turning the product away from digital removes it.
+             */
+            digital_media_id?: string | null;
+            /** @description Names of the product's options (up to 3, e.g. Size, Colour), matched by position with the variants' option1..option3 values. Absent keeps them; an empty list removes them. */
+            option_names?: string[];
             /** @description Storefront address. */
             slug?: string;
             /** @description Product title. */
@@ -30217,6 +30273,8 @@ export interface components {
         };
         /** @description One line of an order, as sold. */
         ShopOrderItem: {
+            /** @description The product's kind when the line was bought: `physical`, `digital` or `service`. */
+            product_kind?: string;
             /**
              * Format: uuid
              * @description The variant sold, or null for an imported line.
@@ -30319,7 +30377,7 @@ export interface components {
             buyer: components["schemas"]["ShopBuyer"];
             /** @description Where the goods go. */
             ship: components["schemas"]["ShopAddress"];
-            /** @description `shipping` (the only kind in this version) or `pickup`. */
+            /** @description `shipping`, `pickup`, or `none` for an order of digital products and services only (no address, no shipping fee). */
             delivery_kind: string;
             /** @description The buyer's comment. */
             delivery_note: string;
@@ -30512,6 +30570,10 @@ export interface components {
         };
         /** @description A product on the storefront. */
         ShopPublicProduct: {
+            /** @description `physical` (ships, the checkout asks for an address), `digital` (a file offered after payment) or `service`. */
+            kind: string;
+            /** @description Names of the product's options, in the order of the variants' option1..option3. */
+            option_names: string[];
             /** @description Product address. */
             slug: string;
             /** @description Product title. */
@@ -30624,6 +30686,25 @@ export interface components {
              * @description Until when the order holds its goods.
              */
             expires_at?: string | null;
+        };
+        /** @description One file a buyer bought. */
+        ShopDownload: {
+            /** @description The product, as sold. */
+            product_title: string;
+            /** @description The variant, as sold. */
+            variant_title: string;
+            /** @description Absolute signed download URL of the file; it works for 15 minutes. */
+            url: string;
+            /**
+             * Format: date-time
+             * @description When `url` stops working; read the list again for a fresh one.
+             */
+            expires_at: string;
+        };
+        /** @description The files of a paid order's digital lines. */
+        ShopDownloadList: {
+            /** @description One entry per digital line whose product has a file, in the order's line order. */
+            downloads: components["schemas"]["ShopDownload"][];
         };
         /** @description Where a storefront order stands. */
         ShopCheckoutStatus: {
@@ -52338,7 +52419,7 @@ export interface operations {
                     /** Format: binary */
                     file: string;
                     /** @enum {string} */
-                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product";
+                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product" | "shop_digital";
                     /** Format: uuid */
                     owner_id?: string;
                     /** Format: uuid */
@@ -66601,6 +66682,65 @@ export interface operations {
                 };
             };
             /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listPublicShopCheckoutDownloads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The order token checkout answered (64 hex characters). */
+                order_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The files. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopDownloadList"];
+                };
+            };
+            /** @description No paid order with this token (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`), or a file cannot be signed right now (`shop.download_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;

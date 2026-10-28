@@ -63,6 +63,10 @@ type Options struct {
 	// MediaURL turns a media id into an absolute signed URL ("" when it
 	// cannot); nil leaves picture URLs empty.
 	MediaURL func(ctx context.Context, id uuid.UUID) string
+	// DownloadURL signs a short-lived absolute URL of a digital product's
+	// file and says until when it works ("" when it cannot); nil answers
+	// the downloads route 503.
+	DownloadURL func(ctx context.Context, id uuid.UUID) (string, time.Time)
 	// Payments creates the provider-hosted page; nil refuses paid carts.
 	Payments hfeed.PaymentStarter
 	// ReturnPolicy decides where the buyer may be sent back to.

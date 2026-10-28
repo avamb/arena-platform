@@ -59,6 +59,7 @@ var AllowedOwnerTypes = map[string]struct{}{
 	"event_gallery":    {}, // HP-1 (0153): a photo of an event page gallery, up to 6 per event
 	"event_report":     {}, // HP-1 (0153): a photo of an event photo report
 	"shop_product":     {}, // shop (0172): a photo of a shop product
+	"shop_digital":     {}, // shop (0172): the file a digital product sells, never a picture
 }
 
 // Repo is the persistence + storage facade used by HTTP handlers and the

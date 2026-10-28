@@ -79,19 +79,24 @@ type variantJSON struct {
 
 // productJSON is a product as the organization routes answer it.
 type productJSON struct {
-	ID          string        `json:"id"`
-	OrgID       string        `json:"org_id"`
-	Slug        string        `json:"slug"`
-	Title       string        `json:"title"`
-	BodyHTML    string        `json:"body_html"`
-	Status      string        `json:"status"`
-	ProductType string        `json:"product_type"`
-	Vendor      string        `json:"vendor"`
-	SortOrder   int32         `json:"sort_order"`
-	Images      []imageJSON   `json:"images"`
-	Variants    []variantJSON `json:"variants"`
-	CreatedAt   time.Time     `json:"created_at"`
-	UpdatedAt   time.Time     `json:"updated_at"`
+	ID          string `json:"id"`
+	OrgID       string `json:"org_id"`
+	Slug        string `json:"slug"`
+	Title       string `json:"title"`
+	BodyHTML    string `json:"body_html"`
+	Status      string `json:"status"`
+	ProductType string `json:"product_type"`
+	Vendor      string `json:"vendor"`
+	SortOrder   int32  `json:"sort_order"`
+	Kind        string `json:"kind"`
+	// DigitalMediaID is the file a digital product sells; never on the
+	// storefront.
+	DigitalMediaID *string       `json:"digital_media_id"`
+	OptionNames    []string      `json:"option_names"`
+	Images         []imageJSON   `json:"images"`
+	Variants       []variantJSON `json:"variants"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
 }
 
 // available is nil for a variant that does not track stock (unlimited).
@@ -119,6 +124,7 @@ func (h *Handler) toProductJSON(ctx context.Context, p shop.ProductView) product
 	out := productJSON{
 		ID: p.ID.String(), OrgID: p.OrgID.String(), Slug: p.Slug, Title: p.Title, BodyHTML: p.BodyHTML,
 		Status: p.Status, ProductType: p.ProductType, Vendor: p.Vendor, SortOrder: p.SortOrder,
+		Kind: p.Kind, DigitalMediaID: uuidPtrStr(p.DigitalMediaID), OptionNames: shop.OptionNames(p.ShopProductRow),
 		Images: h.images(ctx, p.Images), Variants: make([]variantJSON, 0, len(p.Variants)),
 		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
@@ -154,6 +160,8 @@ type publicProductJSON struct {
 	BodyHTML      string              `json:"body_html"`
 	ProductType   string              `json:"product_type"`
 	Vendor        string              `json:"vendor"`
+	Kind          string              `json:"kind"`
+	OptionNames   []string            `json:"option_names"`
 	PriceMinMinor int64               `json:"price_min_minor"`
 	Images        []imageJSON         `json:"images"`
 	Variants      []publicVariantJSON `json:"variants"`
@@ -162,6 +170,7 @@ type publicProductJSON struct {
 func (h *Handler) toPublicProduct(ctx context.Context, p shop.ProductView) publicProductJSON {
 	out := publicProductJSON{
 		Slug: p.Slug, Title: p.Title, BodyHTML: p.BodyHTML, ProductType: p.ProductType, Vendor: p.Vendor,
+		Kind: p.Kind, OptionNames: shop.OptionNames(p.ShopProductRow),
 		Images: h.images(ctx, p.Images), Variants: make([]publicVariantJSON, 0, len(p.Variants)),
 	}
 	for i, v := range p.Variants {
@@ -199,6 +208,7 @@ type orderItemJSON struct {
 	Qty            int32   `json:"qty"`
 	UnitPriceMinor int64   `json:"unit_price_minor"`
 	TotalMinor     int64   `json:"total_minor"`
+	ProductKind    string  `json:"product_kind"`
 }
 
 func toItemsJSON(items []gen.ShopOrderItemRow) []orderItemJSON {
@@ -207,6 +217,7 @@ func toItemsJSON(items []gen.ShopOrderItemRow) []orderItemJSON {
 		out = append(out, orderItemJSON{
 			VariantID: uuidPtrStr(it.VariantID), ProductTitle: it.ProductTitle, VariantTitle: it.VariantTitle,
 			SKU: it.SKU, Qty: it.Qty, UnitPriceMinor: it.UnitPriceMinor, TotalMinor: it.TotalMinor,
+			ProductKind: it.ProductKind,
 		})
 	}
 	return out

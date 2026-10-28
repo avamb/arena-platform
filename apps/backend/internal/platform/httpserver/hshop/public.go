@@ -297,6 +297,48 @@ func (h *Handler) paymentChannel(ctx context.Context, sf shop.Storefront) (uuid.
 	return candidates[0], first
 }
 
+// HandlePublicCheckoutDownloads serves GET
+// /v1/public/shop/checkout/{order_token}/downloads: the files of the digital
+// lines of a paid order, each behind a short-lived signed URL. An order that
+// is not paid (pending, expired, cancelled, refunded) is the route's 404,
+// like a token that names nothing.
+func (h *Handler) HandlePublicCheckoutDownloads(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimSpace(chi.URLParam(r, "order_token"))
+	if h.limited(w, r, token) {
+		return
+	}
+	downloads, err := h.o.Service.Downloads(r.Context(), token)
+	if err != nil {
+		if errors.Is(err, shop.ErrOrderNotFound) {
+			writeErr(w, r, http.StatusNotFound, "shop.order_not_found", "order not found")
+			return
+		}
+		h.fail(w, r, "downloads", err)
+		return
+	}
+	type downloadJSON struct {
+		ProductTitle string    `json:"product_title"`
+		VariantTitle string    `json:"variant_title"`
+		URL          string    `json:"url"`
+		ExpiresAt    time.Time `json:"expires_at"`
+	}
+	out := make([]downloadJSON, 0, len(downloads))
+	for _, d := range downloads {
+		if h.o.DownloadURL == nil {
+			writeErr(w, r, http.StatusServiceUnavailable, "shop.download_unavailable", "The files cannot be served right now. Try again in a minute.")
+			return
+		}
+		url, until := h.o.DownloadURL(r.Context(), d.MediaID)
+		if url == "" {
+			writeErr(w, r, http.StatusServiceUnavailable, "shop.download_unavailable", "The files cannot be served right now. Try again in a minute.")
+			return
+		}
+		out = append(out, downloadJSON{ProductTitle: d.ProductTitle, VariantTitle: d.VariantTitle, URL: url, ExpiresAt: until})
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"downloads": out})
+}
+
 // abandon expires an order whose payment could not be started. Best effort:
 // the expiry sweep catches anything it misses.
 func (h *Handler) abandon(r *http.Request, orderID, orgID uuid.UUID, cause error) {

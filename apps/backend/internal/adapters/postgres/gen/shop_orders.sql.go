@@ -138,6 +138,41 @@ func (q *Queries) CountLivePendingShopOrders(ctx context.Context, orgID uuid.UUI
 	return n, err
 }
 
+const listShopOrderDownloads = `-- name: ListShopOrderDownloads :many
+SELECT oi.product_title, oi.variant_title, p.digital_media_id
+FROM   shop_order_items oi
+JOIN   shop_variants v ON v.id = oi.variant_id
+JOIN   shop_products p ON p.id = v.product_id
+WHERE  oi.order_id = $1 AND oi.product_kind = 'digital'
+ORDER  BY oi.ordinal`
+
+// ShopOrderDownload is one digital line of an order and the file its product
+// sells now (nil when the product has no file).
+type ShopOrderDownload struct {
+	ProductTitle string
+	VariantTitle string
+	MediaID      *uuid.UUID
+}
+
+// ListShopOrderDownloads lists the digital lines of an order with their
+// product's file.
+func (q *Queries) ListShopOrderDownloads(ctx context.Context, orderID uuid.UUID) ([]ShopOrderDownload, error) {
+	rows, err := q.db.Query(ctx, listShopOrderDownloads, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ShopOrderDownload
+	for rows.Next() {
+		var d ShopOrderDownload
+		if err := rows.Scan(&d.ProductTitle, &d.VariantTitle, &d.MediaID); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 const insertShopOrder = `-- name: InsertShopOrder :one
 INSERT INTO shop_orders (org_id, order_token, status, buyer_name, buyer_email, buyer_phone, ship_name,
                          ship_address1, ship_address2, ship_city, ship_postal, ship_country,
@@ -176,22 +211,30 @@ type ShopOrderItemRow struct {
 	UnitPriceMinor int64      `json:"unit_price_minor"`
 	TotalMinor     int64      `json:"total_minor"`
 	Ordinal        int32      `json:"ordinal"`
+	// ProductKind is the product's kind when the line was bought; "" on
+	// insert means physical.
+	ProductKind string `json:"product_kind"`
 }
 
 const insertShopOrderItem = `-- name: InsertShopOrderItem :exec
 INSERT INTO shop_order_items (order_id, variant_id, product_title, variant_title, sku, qty,
-                              unit_price_minor, total_minor, ordinal)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+                              unit_price_minor, total_minor, ordinal, product_kind)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 
 // InsertShopOrderItem adds a line to an order (ID is ignored).
 func (q *Queries) InsertShopOrderItem(ctx context.Context, it ShopOrderItemRow) error {
+	kind := it.ProductKind
+	if kind == "" {
+		kind = "physical"
+	}
 	_, err := q.db.Exec(ctx, insertShopOrderItem, it.OrderID, it.VariantID, it.ProductTitle, it.VariantTitle,
-		it.SKU, it.Qty, it.UnitPriceMinor, it.TotalMinor, it.Ordinal)
+		it.SKU, it.Qty, it.UnitPriceMinor, it.TotalMinor, it.Ordinal, kind)
 	return err
 }
 
 const listShopOrderItems = `-- name: ListShopOrderItems :many
-SELECT id, order_id, variant_id, product_title, variant_title, sku, qty, unit_price_minor, total_minor, ordinal
+SELECT id, order_id, variant_id, product_title, variant_title, sku, qty, unit_price_minor, total_minor, ordinal,
+       product_kind
 FROM   shop_order_items
 WHERE  order_id = ANY($1::uuid[])
 ORDER  BY order_id, ordinal`
@@ -207,7 +250,7 @@ func (q *Queries) ListShopOrderItems(ctx context.Context, orderIDs []uuid.UUID) 
 	for rows.Next() {
 		var it ShopOrderItemRow
 		if err := rows.Scan(&it.ID, &it.OrderID, &it.VariantID, &it.ProductTitle, &it.VariantTitle, &it.SKU,
-			&it.Qty, &it.UnitPriceMinor, &it.TotalMinor, &it.Ordinal); err != nil {
+			&it.Qty, &it.UnitPriceMinor, &it.TotalMinor, &it.Ordinal, &it.ProductKind); err != nil {
 			return nil, err
 		}
 		out = append(out, it)
@@ -416,11 +459,13 @@ const journalShopOrderHold = `-- name: JournalShopOrderHold :exec
 INSERT INTO shop_stock_moves (org_id, variant_id, order_id, delta, reason)
 SELECT $2, oi.variant_id, $1, CASE WHEN $3 = 'reserve' THEN -sum(oi.qty) ELSE sum(oi.qty) END, $3
 FROM   shop_order_items oi
-WHERE  oi.order_id = $1 AND oi.variant_id IS NOT NULL
+JOIN   shop_variants v ON v.id = oi.variant_id
+WHERE  oi.order_id = $1 AND v.track_stock
 GROUP  BY oi.variant_id`
 
 // JournalShopOrderHold journals the start (reason "reserve") or the end
-// ("release") of an order's hold, one row per variant.
+// ("release") of an order's hold, one row per variant that tracks stock (a
+// digital product never moves stock).
 func (q *Queries) JournalShopOrderHold(ctx context.Context, orderID, orgID uuid.UUID, reason string) error {
 	_, err := q.db.Exec(ctx, journalShopOrderHold, orderID, orgID, reason)
 	return err

@@ -1,6 +1,7 @@
 package hshop
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -118,19 +119,44 @@ func toVariantInputs(bs []variantBody) []shop.VariantInput {
 }
 
 type productBody struct {
-	Slug        *string       `json:"slug"`
-	Title       *string       `json:"title"`
-	BodyHTML    *string       `json:"body_html"`
-	Status      *string       `json:"status"`
-	ProductType *string       `json:"product_type"`
-	Vendor      *string       `json:"vendor"`
-	SortOrder   *int32        `json:"sort_order"`
-	Variants    []variantBody `json:"variants"`
+	Slug           *string       `json:"slug"`
+	Title          *string       `json:"title"`
+	BodyHTML       *string       `json:"body_html"`
+	Status         *string       `json:"status"`
+	ProductType    *string       `json:"product_type"`
+	Vendor         *string       `json:"vendor"`
+	SortOrder      *int32        `json:"sort_order"`
+	Kind           *string       `json:"kind"`
+	DigitalMediaID optionalUUID  `json:"digital_media_id"`
+	OptionNames    *[]string     `json:"option_names"`
+	Variants       []variantBody `json:"variants"`
+}
+
+// optionalUUID tells an absent key (keep) from null (clear) and a value.
+type optionalUUID struct {
+	Set   bool
+	Value *uuid.UUID
+}
+
+func (o *optionalUUID) UnmarshalJSON(b []byte) error {
+	o.Set = true
+	if string(b) == "null" {
+		o.Value = nil
+		return nil
+	}
+	var id uuid.UUID
+	if err := json.Unmarshal(b, &id); err != nil {
+		return err
+	}
+	o.Value = &id
+	return nil
 }
 
 func (b productBody) input() shop.ProductInput {
 	return shop.ProductInput{Slug: b.Slug, Title: b.Title, BodyHTML: b.BodyHTML, Status: b.Status,
-		ProductType: b.ProductType, Vendor: b.Vendor, SortOrder: b.SortOrder}
+		ProductType: b.ProductType, Vendor: b.Vendor, SortOrder: b.SortOrder, Kind: b.Kind,
+		DigitalMediaID: b.DigitalMediaID.Value, ClearDigitalMedia: b.DigitalMediaID.Set && b.DigitalMediaID.Value == nil,
+		OptionNames: b.OptionNames}
 }
 
 // HandleCreateProduct serves POST .../shop/products.
