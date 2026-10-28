@@ -16545,14 +16545,17 @@ type ShopCheckoutRequest struct {
 	// ReturnUrl Storefront page the provider sends the buyer back to (an allowed origin), with `checkout_token`.
 	ReturnUrl *string `json:"return_url,omitempty"`
 
-	// Ship Where the goods go.
-	Ship ShopAddress `json:"ship"`
+	// Ship Where the goods go. Required when the cart holds a physical product (422 `shop.invalid_address` without it); left out for a cart of digital products and services only.
+	Ship *ShopAddress `json:"ship,omitempty"`
 }
 
 // ShopCheckoutResponse A placed order and where to pay it.
 type ShopCheckoutResponse struct {
 	// Currency ISO 4217 code.
 	Currency string `json:"currency"`
+
+	// DeliveryKind `shipping` when the order holds a physical product, `none` for digital products and services only.
+	DeliveryKind string `json:"delivery_kind"`
 
 	// ExpiresAt Until when the order holds its goods.
 	ExpiresAt *time.Time `json:"expires_at"`
@@ -16583,6 +16586,9 @@ type ShopCheckoutResponse struct {
 type ShopCheckoutStatus struct {
 	// Currency ISO 4217 code.
 	Currency string `json:"currency"`
+
+	// DeliveryKind `shipping` when the order holds a physical product, `none` for digital products and services only.
+	DeliveryKind string `json:"delivery_kind"`
 
 	// ExpiresAt Until when the order holds its goods.
 	ExpiresAt *time.Time `json:"expires_at"`
@@ -16747,7 +16753,7 @@ type ShopOrder struct {
 // ShopOrderItem One line of an order, as sold.
 type ShopOrderItem struct {
 	// ProductKind The product's kind when the line was bought: `physical`, `digital` or `service`.
-	ProductKind *string `json:"product_kind,omitempty"`
+	ProductKind string `json:"product_kind"`
 
 	// ProductTitle Product title at the time of sale.
 	ProductTitle string `json:"product_title"`

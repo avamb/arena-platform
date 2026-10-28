@@ -356,15 +356,16 @@ func (h *Handler) abandon(r *http.Request, orderID, orgID uuid.UUID, cause error
 
 func checkoutAnswer(o gen.ShopOrderRow, paymentURL string) map[string]any {
 	return map[string]any{
-		"order_token":  o.OrderToken,
-		"number":       o.Number,
-		"status":       shop.PublicStatus(o, false),
-		"payment_url":  paymentURL,
-		"currency":     o.Currency,
-		"subtotal":     o.Subtotal,
-		"shipping_fee": o.ShippingFee,
-		"total":        o.Total,
-		"expires_at":   o.ExpiresAt,
+		"order_token":   o.OrderToken,
+		"number":        o.Number,
+		"status":        shop.PublicStatus(o, false),
+		"payment_url":   paymentURL,
+		"currency":      o.Currency,
+		"subtotal":      o.Subtotal,
+		"shipping_fee":  o.ShippingFee,
+		"total":         o.Total,
+		"expires_at":    o.ExpiresAt,
+		"delivery_kind": o.DeliveryKind,
 	}
 }
 
@@ -393,15 +394,16 @@ func (h *Handler) HandlePublicCheckoutStatus(w http.ResponseWriter, r *http.Requ
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"status":       status,
-		"number":       v.Number,
-		"currency":     v.Currency,
-		"subtotal":     v.Subtotal,
-		"shipping_fee": v.ShippingFee,
-		"total":        v.Total,
-		"items":        toItemsJSON(v.Items),
-		"payment_url":  paymentURL,
-		"expires_at":   v.ExpiresAt,
-		"paid_at":      v.PaidAt,
+		"status":        status,
+		"number":        v.Number,
+		"currency":      v.Currency,
+		"subtotal":      v.Subtotal,
+		"shipping_fee":  v.ShippingFee,
+		"total":         v.Total,
+		"items":         toItemsJSON(v.Items),
+		"payment_url":   paymentURL,
+		"expires_at":    v.ExpiresAt,
+		"paid_at":       v.PaidAt,
+		"delivery_kind": v.DeliveryKind,
 	})
 }

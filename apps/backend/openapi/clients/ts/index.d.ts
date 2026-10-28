@@ -30289,7 +30289,7 @@ export interface components {
         /** @description One line of an order, as sold. */
         ShopOrderItem: {
             /** @description The product's kind when the line was bought: `physical`, `digital` or `service`. */
-            product_kind?: string;
+            product_kind: string;
             /**
              * Format: uuid
              * @description The variant sold, or null for an imported line.
@@ -30655,8 +30655,8 @@ export interface components {
             items: components["schemas"]["ShopCheckoutLine"][];
             /** @description Who pays. */
             buyer: components["schemas"]["ShopBuyer"];
-            /** @description Where the goods go. */
-            ship: components["schemas"]["ShopAddress"];
+            /** @description Where the goods go. Required when the cart holds a physical product (422 `shop.invalid_address` without it); left out for a cart of digital products and services only. */
+            ship?: components["schemas"]["ShopAddress"];
             /** @description Comment for the delivery, up to 2000 characters. */
             delivery_note?: string;
             /** @description Language of the storefront (two letters); the payment page uses it. */
@@ -30668,6 +30668,8 @@ export interface components {
         };
         /** @description A placed order and where to pay it. */
         ShopCheckoutResponse: {
+            /** @description `shipping` when the order holds a physical product, `none` for digital products and services only. */
+            delivery_kind: string;
             /** @description The buyer's handle on the order (for GET /v1/public/shop/checkout/{order_token}). */
             order_token: string;
             /**
@@ -30723,6 +30725,8 @@ export interface components {
         };
         /** @description Where a storefront order stands. */
         ShopCheckoutStatus: {
+            /** @description `shipping` when the order holds a physical product, `none` for digital products and services only. */
+            delivery_kind: string;
             /** @description `pending`, `paid`, `expired` or `cancelled`. */
             status: string;
             /**

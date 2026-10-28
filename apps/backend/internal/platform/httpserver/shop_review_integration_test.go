@@ -568,8 +568,8 @@ func TestShop_DigitalProductCheckoutAndDownloads(t *testing.T) {
 		"items":[{"variant_id":%q,"qty":2}],
 		"buyer":{"name":"Anna","email":"digital-%s@example.test"},
 		"return_url":"%s/checkout"}`, variantID, uuid.NewString()[:6], shopTestBase))
-	if code != http.StatusCreated || body["shipping_fee"].(float64) != 0 || body["total"].(float64) != 3000 {
-		t.Fatalf("digital checkout = %d %v; want 201 with no shipping and total 3000", code, body)
+	if code != http.StatusCreated || body["shipping_fee"].(float64) != 0 || body["total"].(float64) != 3000 || body["delivery_kind"] != "none" {
+		t.Fatalf("digital checkout = %d %v; want 201 with no shipping, total 3000, delivery_kind none", code, body)
 	}
 	token := body["order_token"].(string)
 	o, _ := f.q.GetShopOrderByToken(context.Background(), token)
