@@ -4,7 +4,7 @@
  * openapi.yaml.
  */
 import { ApiError, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
-import { API } from "@/lib/api/routes";
+import { API, INV03_ROUTES } from "@/lib/api/routes";
 import type { PageStatsResponse } from "@/lib/api/types";
 import type {
   BillingAccountInvoice,
@@ -82,6 +82,13 @@ import type {
   SeatLayoutAlgorithmsResponse,
   SeatLayoutSuggestRequest,
   SeatLayoutSuggestResponse,
+} from "@/lib/api/types";
+import type {
+  StaffInvitationCancelRequest,
+  StaffInvitationCancelResponse,
+  StaffInvitationIssueRequest,
+  StaffInvitationIssueResponse,
+  StaffInvitationListResponse,
 } from "@/lib/api/types";
 import type { SchemaResponse } from "@seatmap/types";
 import type { SessionPatchBody } from "@/lib/sessionChange";
@@ -492,6 +499,61 @@ export function annulInvitation(issuanceId: string): Promise<void> {
     params: { id: issuanceId },
     body: { reason: "revoked from the web event center" },
   });
+}
+
+// ─── Spec 46: staff invitations on chosen seats ──────────────────────────────
+
+/** Every staff invitation of the session, whoever issued it (needs `complimentary.read`). */
+export function listStaffInvitations(orgId: string, sessionId: string): Promise<StaffInvitationListResponse> {
+  return call<StaffInvitationListResponse>({
+    route: API.staffInvitationsList,
+    params: { org_id: orgId, session_id: sessionId },
+  });
+}
+
+/**
+ * Issues an invitation on chosen seats. 201 for a new one, 200 with `replayed`
+ * for a repeat of the same `request_id`. 409 `invitation.seats_taken` carries
+ * `details.seat_keys`.
+ */
+export function issueStaffInvitation(
+  orgId: string,
+  sessionId: string,
+  body: StaffInvitationIssueRequest,
+): Promise<StaffInvitationIssueResponse> {
+  return call<StaffInvitationIssueResponse>({
+    route: API.staffInvitationIssue,
+    params: { org_id: orgId, session_id: sessionId },
+    body,
+  });
+}
+
+/** Cancels the whole invitation (no `ticket_ids`). 409 `invitation.tickets_not_issued` while the tickets are minted. */
+export function cancelStaffInvitation(
+  orgId: string,
+  orderId: string,
+  body: StaffInvitationCancelRequest,
+): Promise<StaffInvitationCancelResponse> {
+  return call<StaffInvitationCancelResponse>({
+    route: API.staffInvitationCancel,
+    params: { org_id: orgId, order_id: orderId },
+    body,
+  });
+}
+
+/** One PDF with every ticket of the invitation (INV-03). */
+export function downloadStaffInvitationPdf(orgId: string, orderId: string, systemId: number): Promise<DownloadedFile> {
+  return download({
+    route: INV03_ROUTES.staffInvitationPdf,
+    params: { org_id: orgId, order_id: orderId },
+    accept: "application/pdf",
+    fallbackName: `invitation-${systemId}.pdf`,
+  });
+}
+
+/** Sends the letter of the invitation again (INV-03). */
+export function resendStaffInvitation(orgId: string, orderId: string): Promise<void> {
+  return call<void>({ route: INV03_ROUTES.staffInvitationResend, params: { org_id: orgId, order_id: orderId }, body: {} });
 }
 
 // ─── 4-5: the team ───────────────────────────────────────────────────────────

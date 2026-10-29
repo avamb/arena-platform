@@ -17823,6 +17823,9 @@ type StaffInvitationPlace struct {
 	// TicketId The ticket of this place once issued.
 	TicketId *string `json:"ticket_id"`
 
+	// TicketStatus Status of the place's ticket - active while it can be used, cancelled after a cancellation, null until the ticket is issued. A client offers a per-ticket cancel only for active.
+	TicketStatus *string `json:"ticket_status"`
+
 	// TierId Category of the place.
 	TierId openapi_types.UUID `json:"tier_id"`
 

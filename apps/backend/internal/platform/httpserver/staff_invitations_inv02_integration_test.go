@@ -388,7 +388,56 @@ func TestINV02_IssueFromReserveAndSale_CancelReturnsEachSeatToItsOrigin(t *testi
 		t.Fatalf("list item: %s", list["_raw"])
 	}
 
-	// An agent may not cancel; the manager cancels the owner's invitation.
+	// Every place of the list carries the status of its ticket.
+	statuses := func(list map[string]any) (map[string]string, int) {
+		out := map[string]string{}
+		active := 0
+		for _, pl := range list["items"].([]any)[0].(map[string]any)["places"].([]any) {
+			m := pl.(map[string]any)
+			s, _ := m["ticket_status"].(string)
+			key, _ := m["seat_key"].(string)
+			out[key] = s
+			if s == "active" {
+				active++
+			}
+		}
+		return out, active
+	}
+	if st, active := statuses(list); active != 5 || len(st) != 5 {
+		t.Fatalf("ticket_status before any cancel: %v (active %d), want five active: %s", st, active, list["_raw"])
+	}
+
+	// A single ticket can be cancelled on its own: its seat goes back to where it came from,
+	// and the list marks exactly that place as cancelled.
+	var partialTicket string
+	for _, pl := range item["places"].([]any) {
+		if m := pl.(map[string]any); m["seat_key"] == "A|1|5" {
+			partialTicket, _ = m["ticket_id"].(string)
+		}
+	}
+	if partialTicket == "" {
+		t.Fatalf("no ticket on place A|1|5: %s", list["_raw"])
+	}
+	code, body = f.do(f.manager, http.MethodPost, cancelPath, `{"notify_guest": false, "ticket_ids": ["`+partialTicket+`"]}`)
+	if code != http.StatusOK || len(body["cancelled_ticket_ids"].([]any)) != 1 {
+		t.Fatalf("partial cancel: %d %s", code, body["_raw"])
+	}
+	if s := f.seat("A|1|5"); s.Status != "available" {
+		t.Fatalf("A|1|5 is %s after its ticket was cancelled, want available", s.Status)
+	}
+	code, list = f.do(f.manager, http.MethodGet, f.issuePath(), "")
+	if code != http.StatusOK {
+		t.Fatalf("list after the partial cancel: %d %s", code, list["_raw"])
+	}
+	st, active := statuses(list)
+	if st["A|1|5"] != "cancelled" || active != 4 {
+		t.Fatalf("ticket_status after the partial cancel: %v (active %d), want A|1|5 cancelled and 4 active", st, active)
+	}
+	if it := list["items"].([]any)[0].(map[string]any); it["tickets_active"].(float64) != 4 || it["tickets_total"].(float64) != 5 {
+		t.Fatalf("ticket counts after the partial cancel: %s", list["_raw"])
+	}
+
+	// An agent may not cancel; the manager cancels the rest of the owner's invitation.
 	if code, body := f.do(f.agent, http.MethodPost, cancelPath, `{}`); code != http.StatusForbidden {
 		t.Fatalf("agent cancel: %d %s", code, body["_raw"])
 	}
@@ -398,7 +447,7 @@ func TestINV02_IssueFromReserveAndSale_CancelReturnsEachSeatToItsOrigin(t *testi
 	}
 	// A cancellation moves no money: the order stays paid, so the
 	// invitation is still billed (owner rule: the charge stays).
-	if body["order_status"] != "paid" || len(body["cancelled_ticket_ids"].([]any)) != 5 || body["notify_guest"] != false {
+	if body["order_status"] != "paid" || len(body["cancelled_ticket_ids"].([]any)) != 4 || body["notify_guest"] != false {
 		t.Fatalf("cancel answer: %s", body["_raw"])
 	}
 	inv02AssertBilled(t, f, orderID, 5)

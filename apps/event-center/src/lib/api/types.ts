@@ -186,3 +186,16 @@ export type ShopResendEmailResponse = S["ShopResendEmailResponse"];
 export type ShopRefund = S["ShopRefund"];
 export type ShopRefundResponse = S["ShopRefundResponse"];
 export type SalesChannelItem = S["Channel"];
+
+// ─── Staff invitations on chosen seats (spec 46) ─────────────────────────────
+export type StaffInvitationIssueRequest = S["StaffInvitationIssueRequest"];
+export type StaffInvitationSeatRef = S["StaffInvitationSeatRef"];
+export type StaffInvitationGALine = S["StaffInvitationGALine"];
+export type StaffInvitationGuest = S["StaffInvitationGuest"];
+export type StaffInvitationPlace = S["StaffInvitationPlace"];
+export type StaffInvitationIssueResponse = S["StaffInvitationIssueResponse"];
+export type StaffInvitationIssuer = S["StaffInvitationIssuer"];
+export type StaffInvitationListItem = S["StaffInvitationListItem"];
+export type StaffInvitationListResponse = S["StaffInvitationListResponse"];
+export type StaffInvitationCancelRequest = S["StaffInvitationCancelRequest"];
+export type StaffInvitationCancelResponse = S["StaffInvitationCancelResponse"];
