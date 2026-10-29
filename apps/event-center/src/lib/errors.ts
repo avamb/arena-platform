@@ -112,6 +112,15 @@ export type ApiErrorStem =
   | "invitationRecipient"
   | "invitationAlreadyRevoked"
   | "invitationScanned"
+  | "invitationSeatsTaken"
+  | "invitationNotEnough"
+  | "invitationRequestReused"
+  | "invitationSessionCancelled"
+  | "invitationNotIssued"
+  | "invitationTicketScanned"
+  | "invitationEmailNeeded"
+  | "invitationMyEmail"
+  | "invitationEmpty"
   // 4-5
   | "resendTooSoon"
   | "invitationChannel"
@@ -198,6 +207,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "emailNoteEmpty", "emailNoteRateLimited", "textRefused",
   // S2b/S2c
   "seatNothingToRevert", "seatTooMany", "seatTierGone", "seatStageNeeded", "seatNoPlan",
+  // Spec 46: invitations on chosen seats
+  "invitationSeatsTaken", "invitationNotEnough", "invitationRequestReused", "invitationSessionCancelled", "invitationNotIssued", "invitationTicketScanned", "invitationEmailNeeded", "invitationMyEmail", "invitationEmpty",
   // The shop (spec 47)
   "shopStockChanged", "shopDuplicateSlug", "shopVariantsInvalid", "shopMediaInvalid", "shopNotShippable", "shopNotCancellable", "shopNotRefundable", "shopRefundAmount", "shopCurrency", "shopOperatorOnly",
 ];
@@ -264,6 +275,17 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "complimentary.already_revoked": "invitationAlreadyRevoked",
   "complimentary.scanned_ticket_requires_manual_review": "invitationScanned",
   "complimentary.capacity_overflow": "tierSoldOut",
+  // Spec 46: invitations on chosen seats
+  "invitation.seats_taken": "invitationSeatsTaken",
+  "invitation.not_enough_places": "invitationNotEnough",
+  "invitation.capacity_exceeded": "invitationNotEnough",
+  "invitation.request_id_reused": "invitationRequestReused",
+  "invitation.session_cancelled": "invitationSessionCancelled",
+  "invitation.tickets_not_issued": "invitationNotIssued",
+  "invitation.ticket_scanned": "invitationTicketScanned",
+  "invitation.guest_email_required": "invitationEmailNeeded",
+  "invitation.my_email_requires_user": "invitationMyEmail",
+  "invitation.empty": "invitationEmpty",
   "membership.last_owner": "lastOwner",
   // 4-5: the team and its invitations (bot.* routes, DELETE members)
   "bot.invitation_resend_too_soon": "resendTooSoon",

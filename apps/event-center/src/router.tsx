@@ -17,6 +17,7 @@ import { OrgLayout } from "@/screens/OrgLayout";
 import { EventsScreen } from "@/screens/EventsScreen";
 import { EventScreen } from "@/screens/EventScreen";
 import { SessionScreen } from "@/screens/SessionScreen";
+import { SessionInvitationsScreen } from "@/screens/SessionInvitationsScreen";
 import { SessionSeatsScreen } from "@/screens/SessionSeatsScreen";
 import { parseSeatsSearch } from "@/lib/seatManager/embed";
 import { OrdersScreen } from "@/screens/OrdersScreen";
@@ -151,6 +152,13 @@ const sessionSeatsRoute = createRoute({
   path: "/events/$eventId/sessions/$sessionId/seats",
   validateSearch: parseSeatsSearch,
   component: SessionSeatsScreen,
+});
+
+// Spec 46: invitations of a session on its seat map. Reached from the date's page, not from the menu.
+const sessionInvitationsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/events/$eventId/sessions/$sessionId/invitations",
+  component: SessionInvitationsScreen,
 });
 
 const ordersRoute = createRoute({
@@ -348,6 +356,7 @@ export const routeTree = rootRoute.addChildren([
     eventRoute,
     sessionRoute,
     sessionSeatsRoute,
+    sessionInvitationsRoute,
     ordersRoute,
     orderRoute,
     notificationsRoute,

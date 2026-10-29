@@ -197,6 +197,17 @@ export function SessionScreen() {
             {t("seats.open")}
           </Link>
         )}
+        {/* Spec 46: invitations on chosen seats (and general admission places) of this date. */}
+        {access.can("complimentary.read") && (
+          <Link
+            to="/o/$orgId/events/$eventId/sessions/$sessionId/invitations"
+            params={{ orgId, eventId, sessionId }}
+            className="btn"
+            data-testid="session-invitations-link"
+          >
+            {t("seatInv.open")}
+          </Link>
+        )}
         {/* QL-12: a short link and QR code that lead to this date. */}
         {access.can("sales_link.manage") && (
           <Link to="/o/$orgId/links/new" params={{ orgId }} search={{ event: eventId, session: sessionId }} className="btn" data-testid="session-qr-link">

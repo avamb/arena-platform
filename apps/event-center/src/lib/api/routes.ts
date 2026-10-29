@@ -103,6 +103,10 @@ export const API = {
   complimentaryIssue: { method: "POST", path: "/v1/organizations/{org_id}/complimentary" },
   // A flat route: the row's own organization is checked on the server.
   complimentaryRevoke: { method: "POST", path: "/v1/complimentary/{id}/revoke" },
+  // Spec 46: staff invitations on chosen seats (the seat map in invite mode).
+  staffInvitationsList: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/invitations" },
+  staffInvitationIssue: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/invitations" },
+  staffInvitationCancel: { method: "POST", path: "/v1/organizations/{org_id}/invitations/{order_id}/cancel" },
   // 4-5: the team. The invitation has two channels (web, telegram); removing a
   // member names the ONE role to revoke in the body (AGENTS.md).
   botTeam: { method: "GET", path: "/v1/organizations/{org_id}/bot-team" },
@@ -235,6 +239,18 @@ export const API = {
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;
+
+/**
+ * Routes of INV-03 (spec 46, 3.1) that this branch calls before openapi.yaml
+ * documents them: the parity test reads only `API`, so these two are kept
+ * apart. When INV-03 is merged, move both lines into `API` (the parity test
+ * then checks them against openapi.yaml) and delete this constant. Until then
+ * the screen treats a 404/405 answer of either as "not in this version".
+ */
+export const INV03_ROUTES = {
+  staffInvitationPdf: { method: "GET", path: "/v1/organizations/{org_id}/invitations/{order_id}/tickets.pdf" },
+  staffInvitationResend: { method: "POST", path: "/v1/organizations/{org_id}/invitations/{order_id}/resend" },
+} as const satisfies Record<string, ApiRoute>;
 
 /**
  * Fills a path template. Every `{name}` must have a value, and every value
