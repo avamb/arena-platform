@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -130,6 +131,32 @@ func (h *Handler) HandlePublicPages(w http.ResponseWriter, r *http.Request) {
 	}
 	cacheable(w)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"pages": out})
+}
+
+// HandlePublicPage serves GET /v1/public/shop/{org_slug}/pages/{slug}: one
+// static page, found by its slug or by the handle it had on the shop it was
+// imported from (legacy_slug). The body always names the canonical slug, so a
+// client that arrived on the old address can show the new one.
+func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
+	if h.limited(w, r, "") {
+		return
+	}
+	sf, err := h.o.Service.StorefrontBySlug(r.Context(), chi.URLParam(r, "org_slug"))
+	if err != nil {
+		h.fail(w, r, "public page", err)
+		return
+	}
+	slug := chi.URLParam(r, "slug")
+	if dec, derr := url.PathUnescape(slug); derr == nil {
+		slug = dec
+	}
+	p, err := h.o.Service.GetPage(r.Context(), sf.Org.ID, slug)
+	if err != nil {
+		h.fail(w, r, "public page", err)
+		return
+	}
+	cacheable(w)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"page": toPageJSON(p)})
 }
 
 // HandleByHost serves GET /v1/public/shop/by-host?host=: the organization slug

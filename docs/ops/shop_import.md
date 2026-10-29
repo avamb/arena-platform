@@ -232,6 +232,16 @@ before the next step:
    their consents). `--skip-customers` holds them back for a separate step;
 5. run step 2 once more: every line must read "unchanged".
 
+Old page addresses (migration 0174). A page file named `pages__<handle>.html`
+gives the page its old Shopify address: when the handle differs from the new
+slug (`pages__наши-мероприятия.html` -> slug `events`) it is stored as
+`shop_pages.legacy_slug`, and `GET /v1/public/shop/{org_slug}/pages/{slug}`
+answers either address with the canonical slug. A page imported before that
+gets its old address from a plain re-run of the same command (the report says
+"updated" once, then "unchanged"). A mapping entry may also carry an explicit
+`"legacy_slug"`. A single-variant product loses the `Default Title` option
+value on the same re-run.
+
 ### Filling in the size of pictures imported earlier
 
 Pictures imported before the importer recorded sizes (the 68 pictures of

@@ -183,11 +183,12 @@ func (im *Importer) ImportPages(ctx context.Context, pages []ImportPage) error {
 		}
 		cur, ok := existing[p.Slug]
 		outcome := outCreated
+		sameAlias := ok && legacyOf(cur) == p.LegacySlug
 		switch {
 		case ok && im.opt.OnlyNew:
 			im.rep.Pages.add(outSkipped, "page exists and --only-new is set")
 			continue
-		case ok && cur.Title == p.Title && cur.BodyHTML == p.BodyHTML && cur.Position == p.Position:
+		case ok && cur.Title == p.Title && cur.BodyHTML == p.BodyHTML && cur.Position == p.Position && sameAlias:
 			im.rep.Pages.add(outUnchanged, "")
 			continue
 		case ok:
@@ -202,9 +203,30 @@ func (im *Importer) ImportPages(ctx context.Context, pages []ImportPage) error {
 			im.rep.problem("page %q: %v", p.Slug, err)
 			continue
 		}
+		// The old address is written after the page exists, and a re-run
+		// fills it for a page imported before the alias existed.
+		if !sameAlias {
+			var legacy *string
+			if p.LegacySlug != "" {
+				legacy = &p.LegacySlug
+			}
+			if err := im.svc.SetPageLegacySlug(ctx, im.opt.OrgID, p.Slug, legacy); err != nil {
+				im.rep.Pages.add(outFailed, "old address: "+err.Error())
+				im.rep.problem("page %q: old address %q: %v", p.Slug, p.LegacySlug, err)
+				continue
+			}
+		}
 		im.rep.Pages.add(outcome, "")
 	}
 	return nil
+}
+
+// legacyOf is the stored old address of a page, "" when there is none.
+func legacyOf(r gen.ShopPageRow) string {
+	if r.LegacySlug == nil {
+		return ""
+	}
+	return *r.LegacySlug
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

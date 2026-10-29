@@ -369,6 +369,27 @@ func TestShop_ProductCRUD(t *testing.T) {
 		t.Fatalf("public pages = %d %v %v", code, body, hdr)
 	}
 
+	// A page answers its old address too, and always names the canonical slug.
+	f.exec(`UPDATE shop_pages SET legacy_slug = 'о-нас' WHERE org_id = $1 AND slug = 'about'`, f.orgA)
+	for _, key := range []string{"about", "%D0%BE-%D0%BD%D0%B0%D1%81", "%D0%9E-%D0%9D%D0%90%D0%A1"} {
+		code, body, hdr = f.do(http.MethodGet, "/v1/public/shop/"+f.orgASlug+"/pages/"+key, "", "")
+		page, _ := body["page"].(map[string]any)
+		if code != http.StatusOK || page["slug"] != "about" || page["legacy_slug"] != "о-нас" || page["title"] != "About us" || hdr.Get("Cache-Control") != "public, max-age=30" {
+			t.Fatalf("public page %q = %d %v %v", key, code, body, hdr)
+		}
+	}
+	if code, body, _ := f.do(http.MethodGet, "/v1/public/shop/"+f.orgASlug+"/pages/nope", "", ""); code != http.StatusNotFound || shopErrCode(body) != "shop.page_not_found" {
+		t.Fatalf("unknown public page = %d %v", code, body)
+	}
+	// The slug wins when another page uses the same word as an old address.
+	if code, body, _ := f.do(http.MethodPut, f.orgPath(f.orgA, "/pages/%D0%BE-%D0%BD%D0%B0%D1%81"), f.ownerA, `{"title":"Real slug","body_html":"<p>x</p>"}`); code != http.StatusOK {
+		t.Fatalf("PUT page = %d %v", code, body)
+	}
+	code, body, _ = f.do(http.MethodGet, "/v1/public/shop/"+f.orgASlug+"/pages/%D0%BE-%D0%BD%D0%B0%D1%81", "", "")
+	if page, _ := body["page"].(map[string]any); code != http.StatusOK || page["title"] != "Real slug" {
+		t.Fatalf("slug must win over an alias = %d %v", code, body)
+	}
+
 	code, body, hdr = f.do(http.MethodGet, "/v1/public/shop/"+f.orgASlug+"/products/cabernet-sauvignon-2021", "", "")
 	if code != http.StatusOK || !strings.Contains(strings.Join(hdr.Values("Vary"), ","), "Origin") {
 		t.Fatalf("public product = %d %v %v", code, body, hdr)
