@@ -107,11 +107,12 @@ function order(id: string, number: number, status: string, extra: Record<string,
     total: 4490,
     refunded_minor: 0,
     tracking_note: "",
+    staff_note: { text: "", by: "", at: null as string | null },
     items: [{ variant_id: "v1", product_kind: "physical", product_title: "Riesling", variant_title: "2021 / 0.75 l", sku: "RIE-21", qty: 2, unit_price_minor: 2000, total_minor: 4000 }],
     payment: { id: "pay1", provider: "stripe", state: "succeeded", amount: 4490, currency: "EUR" },
     expires_at: null,
     paid_at: "2026-10-05T10:05:00Z",
-    shipped_at: null,
+    shipped_at: null as string | null,
     cancelled_at: null,
     created_at: "2026-10-05T10:00:00Z",
     updated_at: "2026-10-05T10:05:00Z",
@@ -128,9 +129,27 @@ export interface ShopMockState {
   orderQueries: string[];
   /** The next PUT .../variants answers 409 shop.stock_changed once. */
   stockConflict: boolean;
+  /** The kinds of every POST .../resend-email that was accepted. */
+  resent: string[];
   /** The permissions the mocked person holds in ORG_A. */
   permissions: string[];
   settings: Record<string, unknown>;
+}
+
+/** The quick lists of the order list, as the API defines them. */
+function inView(o: ReturnType<typeof order>, view: string): boolean {
+  switch (view) {
+    case "to_ship":
+      return (o.status === "paid" || o.status === "partially_refunded") && o.delivery_kind !== "none" && o.shipped_at === null;
+    case "unpaid":
+      return o.status === "pending_payment";
+    case "shipped":
+      return o.status === "shipped";
+    case "refunds":
+      return o.status === "refunded" || o.status === "partially_refunded";
+    default:
+      return false;
+  }
 }
 
 function json(route: Route, status: number, body: unknown) {
@@ -145,6 +164,7 @@ export async function mockShop(page: Page, permissions: string[] = MANAGER): Pro
     writes: [],
     orderQueries: [],
     stockConflict: false,
+    resent: [],
     products: [
       product(
         PRODUCT_WINE,
@@ -285,11 +305,23 @@ export async function mockShop(page: Page, permissions: string[] = MANAGER): Pro
       return json(route, 200, p);
     }
 
+    if (path === "/shop/orders/counts" && m === "GET") {
+      return json(route, 200, {
+        all: state.orders.length,
+        to_ship: state.orders.filter((o) => inView(o, "to_ship")).length,
+        unpaid: state.orders.filter((o) => inView(o, "unpaid")).length,
+        shipped: state.orders.filter((o) => inView(o, "shipped")).length,
+        refunds: state.orders.filter((o) => inView(o, "refunds")).length,
+      });
+    }
     if (path === "/shop/orders" && m === "GET") {
       state.orderQueries.push(url.search);
       const status = url.searchParams.get("status");
+      const view = url.searchParams.get("view");
       const q = (url.searchParams.get("q") ?? "").toLowerCase();
-      const rows = state.orders.filter((o) => (status === null || o.status === status) && (q === "" || o.buyer.name.toLowerCase().includes(q) || o.buyer.email.includes(q) || String(o.number) === q));
+      const rows = state.orders.filter(
+        (o) => (status === null || o.status === status) && (view === null || inView(o, view)) && (q === "" || o.buyer.name.toLowerCase().includes(q) || o.buyer.email.includes(q) || String(o.number) === q),
+      );
       return json(route, 200, { orders: rows, next_offset: null });
     }
     const ord = /^\/shop\/orders\/([^/]+)(\/[a-z-]+)?$/.exec(path);
@@ -297,9 +329,22 @@ export async function mockShop(page: Page, permissions: string[] = MANAGER): Pro
       const o = state.orders.find((x) => x.id === ord[1]);
       if (o === undefined) return json(route, 404, { error: { code: "shop.order_not_found", message: "no" } });
       const action = ord[2];
+      if (action === undefined && m === "PATCH") {
+        const body = req.postDataJSON() as { staff_note: string };
+        write(JSON.stringify(body));
+        o.staff_note = body.staff_note === "" ? { text: "", by: "", at: null } : { text: body.staff_note, by: "Dana Levi", at: "2026-10-29T15:30:00Z" };
+        return json(route, 200, o);
+      }
       if (action === undefined) return json(route, 200, o);
       if (action === "/courier-text") return route.fulfill({ status: 200, contentType: "text/plain", headers: CORS, body: "Anna Smith\n+34 600 111 222\nMadrid\nCalle Mayor 1, 2B" });
       const body = (req.postDataJSON() ?? {}) as Record<string, unknown>;
+      if (action === "/resend-email") {
+        // One request per order per minute: the second one is refused.
+        if (state.resent.length > 0) return route.fulfill({ status: 429, contentType: "application/json", headers: { ...CORS, "Retry-After": "58" }, body: JSON.stringify({ error: { code: "shop.rate_limited", message: "wait" } }) });
+        state.resent.push(String(body.kind));
+        write(JSON.stringify(body));
+        return json(route, 202, { queued: true, kind: body.kind });
+      }
       if (action === "/ship") {
         write(JSON.stringify(body));
         Object.assign(o, { status: "shipped", shipped_at: "2026-10-06T09:00:00Z", tracking_note: String(body.tracking_note ?? "") });

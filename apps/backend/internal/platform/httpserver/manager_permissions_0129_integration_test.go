@@ -97,7 +97,7 @@ func TestManagerPermissions0129_OrganizerPassesEveryEventCenterGate(t *testing.T
 		{"session.seats.manage", http.MethodPost, orgPath + "/sessions/" + random + "/seat-batches", `{}`},
 		{"session.seats.manage", http.MethodGet, orgPath + "/sessions/" + random + "/seat-layout/algorithms", ""},
 		{"session.seats.manage", http.MethodPost, orgPath + "/sessions/" + random + "/seat-layout/suggest", `{}`},
-		// Spec 46 (INV-02, migration 0175): the manager issues, lists and
+		// Spec 46 (INV-02, migration 0176): the manager issues, lists and
 		// cancels staff invitations, the owner's included (decision R-5).
 		{"complimentary.issue", http.MethodPost, orgPath + "/sessions/" + random + "/invitations", `{}`},
 		{"complimentary.read", http.MethodGet, orgPath + "/sessions/" + random + "/invitations", ""},

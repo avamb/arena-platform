@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { NoShopAccess, ShopNav } from "@/components/ShopNav";
+import { ShopStockCell } from "@/components/ShopStockCell";
 import { ShopProductThumb } from "@/components/ShopProductThumb";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
 import { fetchShopSettings, listShopProducts } from "@/lib/api/shopApi";
@@ -22,6 +23,7 @@ import {
   priceRange,
   productKind,
   productTone,
+  stockEditMode,
   stockSum,
   type ProductSort,
   type ShopProductView,
@@ -34,10 +36,12 @@ export interface ShopProductsTableProps {
   currency: string;
   /** `media.read`: the first picture can be drawn. */
   canViewMedia?: boolean;
+  /** `shop.manage`: the stock can be edited in the row. Without it the stock is only shown. */
+  canManage?: boolean;
 }
 
 /** The table of products. Pure: it shows what it is given. */
-export function ShopProductsTable({ orgId, products, currency, canViewMedia = false }: ShopProductsTableProps) {
+export function ShopProductsTable({ orgId, products, currency, canViewMedia = false, canManage = false }: ShopProductsTableProps) {
   const { t, locale } = useI18n();
   return (
     <div className="table-wrap">
@@ -74,8 +78,12 @@ export function ShopProductsTable({ orgId, products, currency, canViewMedia = fa
                       ? formatMoney(range.min, currency, locale)
                       : t("shop.products.priceRange", { min: formatMoney(range.min, currency, locale), max: formatMoney(range.max, currency, locale) })}
                 </td>
-                <td data-label={t("shop.products.col.stock")}>
-                  {stock === null ? t("shop.products.stockNone") : formatNumber(stock, locale)}
+                <td data-label={t("shop.products.col.stock")} className="shop-stock-cell">
+                  {canManage && stockEditMode(p) !== "none" ? (
+                    <ShopStockCell orgId={orgId} product={p} currency={currency} />
+                  ) : (
+                    <>{stock === null ? t("shop.products.stockNone") : formatNumber(stock, locale)}</>
+                  )}
                   {oversold(p) && <> ({t("shop.products.oversold")})</>}
                 </td>
                 <td data-label={t("shop.products.col.pictures")}>
@@ -170,7 +178,7 @@ export function ShopProductsScreen() {
           <p className="muted" role="status" data-testid="shop-products-count">
             {t("shop.products.count", { count: list.length })}
           </p>
-          <ShopProductsTable orgId={orgId} products={list} currency={settings.data.currency} canViewMedia={access.can("media.read")} />
+          <ShopProductsTable orgId={orgId} products={list} currency={settings.data.currency} canViewMedia={access.can("media.read")} canManage={access.can("shop.manage")} />
         </>
       )}
     </section>

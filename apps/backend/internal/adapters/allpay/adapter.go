@@ -334,7 +334,15 @@ func (a *Adapter) CreateCheckoutSession(ctx context.Context, req payments.Create
 			"price": json.Number(MinorToMajor(req.Amount)),
 			"vat":   json.Number(vat),
 		}},
-		"currency": currency,
+		// mode=api15 (AllPay API reference, getpayment): `currency_display` is
+		// REQUIRED and is "the currency of all amounts in the request"; the
+		// optional `currency_payment` is "the currency the card is charged in
+		// and your account is settled in" (ILS/USD/EUR, default ILS). A
+		// non-empty `currency` is a v14 parameter and answers error 2, so it
+		// is never sent. Arena wants no conversion: both are the order's
+		// currency.
+		"currency_display": currency,
+		"currency_payment": currency,
 	}
 	if req.CallbackURL != "" {
 		params["webhook_url"] = req.CallbackURL
@@ -445,7 +453,19 @@ type PaymentStatus struct {
 	AmountMinor   int64
 	DiscountMinor int64
 	RefundedMinor int64
-	Currency      string
+	// Currency is the currency of AmountMinor, DiscountMinor and RefundedMinor:
+	// `currency_display` (API reference, paymentstatus: "amount: payment
+	// amount in the display currency (currency_display), before discounts";
+	// discount is in the same currency). A v14 answer carried a plain
+	// `currency`, read as the fallback.
+	Currency string
+	// ChargeCurrency is `currency_payment`, the currency the card was really
+	// charged in ("the charged amount is (amount - discount) x
+	// currency_course"). Empty when the answer names none. Arena asks for
+	// the same currency as display, so a different value means AllPay fell
+	// back (the docs: a currency that is not enabled is charged in ILS with
+	// no error) and the money cannot be compared with the intent.
+	ChargeCurrency string
 	// Preauth is set only for a J5 pre-authorization ("authorized" means
 	// reserved, not charged). Arena's pages never ask for one.
 	Preauth string
@@ -481,15 +501,43 @@ func (a *Adapter) PaymentStatus(ctx context.Context, orderID string) (*PaymentSt
 	st := &PaymentStatus{
 		OrderID:     str("order_id"),
 		Status:      status,
-		Currency:    strings.ToUpper(str("currency")),
 		DeclineCode: str("decline_code"),
 		Error:       str("error"),
 	}
+	st.Currency, st.ChargeCurrency = displayAndChargeCurrency(str)
 	st.AmountMinor, _ = MajorToMinor(str("amount"))
 	st.RefundedMinor, _ = MajorToMinor(str("refunded"))
 	st.DiscountMinor, _ = MajorToMinor(str("discount"))
 	st.Preauth = str("preauth")
 	return st, nil
+}
+
+// displayAndChargeCurrency reads the two currencies of a paymentstatus answer
+// or a webhook body. The amount fields (`amount`, `discount`, `refunded`) are
+// in `currency_display` (API reference, paymentstatus and webhook: "amount
+// ... in the display currency"), so that is the currency arena compares with
+// its payment intent. Fallback order for the display currency: currency_display,
+// then the v14 name `currency`, then currency_payment (only when the answer
+// names nothing else, and then the amount is read as charged in it). The
+// second result is `currency_payment`, the charge currency.
+func displayAndChargeCurrency(str func(string) string) (display, charge string) {
+	charge = strings.ToUpper(str("currency_payment"))
+	display = strings.ToUpper(str("currency_display"))
+	if display == "" {
+		display = strings.ToUpper(str("currency"))
+	}
+	if display == "" {
+		display = charge
+	}
+	return display, charge
+}
+
+// chargeCurrencyDiffers reports a charge currency that is not the display
+// currency: arena never asks for a conversion, so it only appears when AllPay
+// fell back to ILS or the account was changed. The paid amount is then not
+// comparable with arena's intent.
+func chargeCurrencyDiffers(display, charge string) bool {
+	return charge != "" && display != "" && !strings.EqualFold(display, charge)
 }
 
 // ChargedMinor is what the buyer was charged: the amount minus the discount.

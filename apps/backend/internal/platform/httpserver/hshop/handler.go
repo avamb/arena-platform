@@ -15,7 +15,9 @@
 //	GET       /v1/organizations/{org_id}/shop/pages
 //	PUT|DELETE /v1/organizations/{org_id}/shop/pages/{slug}
 //	GET       /v1/organizations/{org_id}/shop/orders
-//	GET       /v1/organizations/{org_id}/shop/orders/{order_id}
+//	GET       /v1/organizations/{org_id}/shop/orders/counts
+//	GET|PATCH /v1/organizations/{org_id}/shop/orders/{order_id}
+//	POST      /v1/organizations/{org_id}/shop/orders/{order_id}/resend-email
 //	POST      /v1/organizations/{org_id}/shop/orders/{order_id}/ship
 //	POST      /v1/organizations/{org_id}/shop/orders/{order_id}/cancel
 //	POST      /v1/organizations/{org_id}/shop/orders/{order_id}/refund
@@ -97,6 +99,8 @@ const DefaultCheckoutIPLimit = 30
 type Handler struct {
 	o        Options
 	checkout *minuteLimiter
+	// resend allows one "send the buyer's letter again" per order per minute.
+	resend *minuteLimiter
 }
 
 // New builds the handler.
@@ -110,7 +114,7 @@ func New(o Options) *Handler {
 	if o.Grace < 0 {
 		o.Grace = 0
 	}
-	h := &Handler{o: o}
+	h := &Handler{o: o, resend: newMinuteLimiter(1)}
 	switch {
 	case o.CheckoutIPLimit == 0:
 		h.checkout = newMinuteLimiter(DefaultCheckoutIPLimit)

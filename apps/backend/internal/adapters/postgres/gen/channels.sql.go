@@ -86,7 +86,7 @@ func (q *Queries) InsertSalesChannel(ctx context.Context, orgID uuid.UUID, name,
 // ─────────────────────────────────────────────────────────────────────────────
 
 // channelIsSales is the one predicate that keeps the hidden "Invitations"
-// channel (sales_channels.kind = 'internal', migration 0175, spec 46 section
+// channel (sales_channels.kind = 'internal', migration 0176, spec 46 section
 // 3.3) out of every channel read an organizer, a site, an API key or a buyer
 // can reach. Order processing that resolves the channel of an EXISTING order
 // uses GetSalesChannelByIDAnyKind instead.
