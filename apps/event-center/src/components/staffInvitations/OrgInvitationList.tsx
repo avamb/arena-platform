@@ -17,6 +17,7 @@ import { Link } from "@tanstack/react-router";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmPressDialog } from "@/components/ConfirmPressDialog";
 import { InvitationActions } from "@/components/staffInvitations/InvitationActions";
+import { InvitationLetter } from "@/components/staffInvitations/InvitationLetter";
 import { useEventSessions } from "@/components/staffInvitations/useEventSessions";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
 import { cancelStaffInvitation, listOrgStaffInvitations } from "@/lib/api/endpoints";
@@ -287,6 +288,7 @@ export function OrgInvitationList({ orgId, canIssue, canRevoke, canFilter }: Pro
                 <span className="card-meta" data-testid="org-inv-state">
                   <Badge tone={TONE[state]}>{t(`seatInv.state.${state}` as MessageKey)}</Badge>
                 </span>
+                <InvitationLetter item={item} testId="org-inv-letter" />
                 {canAct(item) && (
                   <p className="inv-row-actions">
                     <InvitationActions orgId={orgId} orderId={item.order_id} systemId={item.system_id} canResend={canIssue && item.delivery !== "pdf_only"} />

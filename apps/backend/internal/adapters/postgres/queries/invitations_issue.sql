@@ -163,3 +163,28 @@ WHERE  o.org_id = $1
   AND  ($5::timestamptz IS NULL OR (o.created_at, o.id) < ($5, $6::uuid))
 ORDER  BY o.created_at DESC, o.id DESC
 LIMIT  $7;
+
+-- name: ListInvitationLetters :many
+-- The ticket-letter state of the given invitation orders, one row per order
+-- that has at least one delivery job (spec 46 section 3.4): the jobs of the
+-- order's active tickets counted by status (every ticket's jobs when none is
+-- active any more), the latest sent_at and the latest error text of a job
+-- that did not go out. One statement for a whole page of the list.
+SELECT o.id,
+       count(dj.id),
+       count(*) FILTER (WHERE dj.status = 'failed'),
+       count(*) FILTER (WHERE dj.status IN ('pending', 'processing')),
+       count(*) FILTER (WHERE dj.status = 'sent'),
+       count(*) FILTER (WHERE dj.status = 'skipped'),
+       count(*) FILTER (WHERE dj.status = 'disabled'),
+       max(dj.sent_at) FILTER (WHERE dj.status = 'sent'),
+       (array_agg(dj.last_error ORDER BY dj.updated_at DESC)
+            FILTER (WHERE dj.status IN ('failed', 'skipped', 'disabled') AND dj.last_error IS NOT NULL))[1]
+FROM   orders o
+JOIN   tickets t ON t.checkout_session_id = o.checkout_session_id
+JOIN   delivery_jobs dj ON dj.ticket_id = t.id
+WHERE  o.id = ANY($1::uuid[])
+  AND  (t.status = 'active'
+        OR NOT EXISTS (SELECT 1 FROM tickets a
+                       WHERE a.checkout_session_id = o.checkout_session_id AND a.status = 'active'))
+GROUP  BY o.id;

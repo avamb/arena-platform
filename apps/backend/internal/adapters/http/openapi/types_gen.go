@@ -17758,6 +17758,18 @@ type StaffInvitationIssuer struct {
 	UserId *string `json:"user_id"`
 }
 
+// StaffInvitationLetter The state of the letter that carries the tickets of a staff invitation to the guest.
+type StaffInvitationLetter struct {
+	// LastErrorCode Why the letter did not go out, a short category and never the raw error text: address_rejected, address_expired, no_recipient, sender_disabled or send_failed. Null when there is nothing to report.
+	LastErrorCode *string `json:"last_error_code"`
+
+	// SentAt When the latest letter went out; set when status is sent.
+	SentAt *time.Time `json:"sent_at"`
+
+	// Status failed (a delivery job failed), pending (queued or being sent), sent (every letter went out), skipped (no letter was sent: no address or the one-time address expired) or disabled (the platform sends no e-mail).
+	Status string `json:"status"`
+}
+
 // StaffInvitationListItem One staff invitation of the session.
 type StaffInvitationListItem struct {
 	// CreatedAt When it was issued.
@@ -17777,6 +17789,9 @@ type StaffInvitationListItem struct {
 
 	// IssuedVia staff (one by one) or staff_bulk (a CSV file).
 	IssuedVia string `json:"issued_via"`
+
+	// Letter The guest's letter folded over the delivery jobs of the order's tickets; null when no letter was queued (pdf_only, or the tickets are not issued yet).
+	Letter *StaffInvitationLetter `json:"letter"`
 
 	// OrderId Order id of the invitation.
 	OrderId openapi_types.UUID `json:"order_id"`
@@ -17822,6 +17837,9 @@ type StaffInvitationOrgListItem struct {
 
 	// IssuedVia staff (one by one) or staff_bulk (a CSV file).
 	IssuedVia string `json:"issued_via"`
+
+	// Letter The guest's letter folded over the delivery jobs of the order's tickets; null when no letter was queued (pdf_only, or the tickets are not issued yet).
+	Letter *StaffInvitationLetter `json:"letter"`
 
 	// OrderId Order id of the invitation.
 	OrderId openapi_types.UUID `json:"order_id"`

@@ -25929,6 +25929,20 @@ export interface components {
             tickets_active: number;
             /** @description The places of the invitation. */
             places: components["schemas"]["StaffInvitationPlace"][];
+            /** @description The guest's letter folded over the delivery jobs of the order's tickets; null when no letter was queued (pdf_only, or the tickets are not issued yet). */
+            letter?: components["schemas"]["StaffInvitationLetter"] | null;
+        };
+        /** @description The state of the letter that carries the tickets of a staff invitation to the guest. */
+        StaffInvitationLetter: {
+            /** @description failed (a delivery job failed), pending (queued or being sent), sent (every letter went out), skipped (no letter was sent: no address or the one-time address expired) or disabled (the platform sends no e-mail). */
+            status: string;
+            /**
+             * Format: date-time
+             * @description When the latest letter went out; set when status is sent.
+             */
+            sent_at: string | null;
+            /** @description Why the letter did not go out, a short category and never the raw error text: address_rejected, address_expired, no_recipient, sender_disabled or send_failed. Null when there is nothing to report. */
+            last_error_code: string | null;
         };
         /** @description The staff invitations of a session. */
         StaffInvitationListResponse: {

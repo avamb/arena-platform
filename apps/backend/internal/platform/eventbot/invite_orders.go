@@ -118,7 +118,46 @@ func staffInvChip(it openapi.StaffInvitationOrgListItem) string {
 	if it.TicketsTotal > 0 && it.TicketsActive == 0 {
 		return "✕"
 	}
+	if staffInvLetterFailed(it) {
+		return "⚠"
+	}
 	return "✔"
+}
+
+// staffInvLetterFailed reports a live invitation whose letter did not go out:
+// the row is marked so the organizer sees it without opening the card.
+func staffInvLetterFailed(it openapi.StaffInvitationOrgListItem) bool {
+	return it.Letter != nil && it.Letter.Status == "failed" && it.TicketsActive > 0
+}
+
+// staffInvLetterLine is the card line about the guest's letter, with its
+// leading newline, or "" when there is nothing to say: no letter was queued
+// (a PDF-only invitation, tickets not issued yet) or every ticket is annulled.
+func (b *Bot) staffInvLetterLine(loc string, it openapi.StaffInvitationOrgListItem) string {
+	if it.Letter == nil || (it.TicketsTotal > 0 && it.TicketsActive == 0) {
+		return ""
+	}
+	var key string
+	vars := map[string]any{}
+	switch it.Letter.Status {
+	case "pending":
+		key = "bot.inv.letter_pending"
+	case "sent":
+		key = "bot.inv.letter_sent"
+		vars["When"] = ""
+		if it.Letter.SentAt != nil {
+			vars["When"] = Esc(FormatWhen(*it.Letter.SentAt, it.Session.Timezone))
+		}
+	case "failed":
+		key = "bot.inv.letter_failed"
+	case "skipped":
+		key = "bot.inv.letter_skipped"
+	case "disabled":
+		key = "bot.inv.letter_disabled"
+	default:
+		return ""
+	}
+	return "\n" + b.texts.T(loc, key, vars)
 }
 
 // staffInvGuest is who an invitation is for, "×N" appended for several places.
@@ -353,6 +392,7 @@ func (b *Bot) showStaffInvCard(ctx context.Context, chatID int64, editMsgID *int
 		"Places": staffPlaceLines(it.Places), "By": Esc(staffInvIssuer(it)),
 		"State":  staffInvChip(it) + " " + b.texts.T(loc, "bot.inv.state_"+state, nil),
 		"Issued": Esc(FormatWhen(it.CreatedAt, it.Session.Timezone)),
+		"Letter": b.staffInvLetterLine(loc, it),
 	})
 	var kb [][]models.InlineKeyboardButton
 	if it.TicketsActive > 0 {

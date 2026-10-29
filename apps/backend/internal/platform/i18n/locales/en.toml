@@ -2380,10 +2380,10 @@ other = "🗂 <b>Earlier invitations</b>: issued before the new invitations. You
 other = "🎟 <b>Invitations</b> · {{.Org}}\nAll dates, newest first · page {{.Page}}\n{{.Legend}}"
 
 ["bot.inv.nlegend"]
-other = "✔ valid  ✕ annulled"
+other = "✔ valid  ✕ annulled  ⚠ letter failed"
 
 ["bot.inv.ncard"]
-other = "🎟 <b>{{.Event}}</b>\n{{.When}}\n\nGuest: {{.Guest}}\nPlaces:\n{{.Places}}\n\nStatus: {{.State}}\nIssued: {{.Issued}}\nIssued by: {{.By}}"
+other = "🎟 <b>{{.Event}}</b>\n{{.When}}\n\nGuest: {{.Guest}}\nPlaces:\n{{.Places}}\n\nStatus: {{.State}}\nIssued: {{.Issued}}\nIssued by: {{.By}}{{.Letter}}"
 
 ["bot.inv.state_issuing"]
 other = "the tickets are being issued"
@@ -2408,6 +2408,21 @@ other = "The invitation for {{.Guest}} is already used: the scanner at the door 
 
 ["bot.inv.nrevoke_notyet"]
 other = "The tickets of this invitation are still being issued. Try again in a minute."
+
+["bot.inv.letter_pending"]
+other = "✉ Sending the letter…"
+
+["bot.inv.letter_sent"]
+other = "✉ Letter sent {{.When}}"
+
+["bot.inv.letter_failed"]
+other = "⚠ Letter failed. The guest most likely has not received it. Check the e-mail address and send it again in the event center."
+
+["bot.inv.letter_skipped"]
+other = "✉ Letter not sent"
+
+["bot.inv.letter_disabled"]
+other = "✉ Letter not sent, e-mail sending is off"
 
 ["bot.promo.btn"]
 other = "🏷 Promo codes"

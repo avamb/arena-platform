@@ -196,6 +196,7 @@ export type StaffInvitationGuest = S["StaffInvitationGuest"];
 export type StaffInvitationPlace = S["StaffInvitationPlace"];
 export type StaffInvitationIssueResponse = S["StaffInvitationIssueResponse"];
 export type StaffInvitationIssuer = S["StaffInvitationIssuer"];
+export type StaffInvitationLetter = S["StaffInvitationLetter"];
 export type StaffInvitationListItem = S["StaffInvitationListItem"];
 export type StaffInvitationListResponse = S["StaffInvitationListResponse"];
 export type StaffInvitationSession = S["StaffInvitationSession"];

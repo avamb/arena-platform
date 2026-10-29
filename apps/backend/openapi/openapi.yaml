@@ -17477,6 +17477,26 @@ components:
           description: The places of the invitation.
           items:
             $ref: "#/components/schemas/StaffInvitationPlace"
+        letter:
+          description: The guest's letter folded over the delivery jobs of the order's tickets; null when no letter was queued (pdf_only, or the tickets are not issued yet).
+          oneOf:
+            - $ref: "#/components/schemas/StaffInvitationLetter"
+            - type: "null"
+    StaffInvitationLetter:
+      type: object
+      required: [status, sent_at, last_error_code]
+      description: The state of the letter that carries the tickets of a staff invitation to the guest.
+      properties:
+        status:
+          type: string
+          description: "failed (a delivery job failed), pending (queued or being sent), sent (every letter went out), skipped (no letter was sent: no address or the one-time address expired) or disabled (the platform sends no e-mail)."
+        sent_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the latest letter went out; set when status is sent.
+        last_error_code:
+          type: [string, "null"]
+          description: "Why the letter did not go out, a short category and never the raw error text: address_rejected, address_expired, no_recipient, sender_disabled or send_failed. Null when there is nothing to report."
     StaffInvitationListResponse:
       type: object
       required: [items]

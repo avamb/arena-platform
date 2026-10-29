@@ -2232,10 +2232,10 @@ other = "🗂 <b>Invitaciones anteriores</b>: emitidas antes del nuevo sistema. 
 other = "🎟 <b>Invitaciones</b> · {{.Org}}\nTodas las fechas, las nuevas primero · página {{.Page}}\n{{.Legend}}"
 
 ["bot.inv.nlegend"]
-other = "✔ válida  ✕ anulada"
+other = "✔ válida  ✕ anulada  ⚠ e-mail no enviado"
 
 ["bot.inv.ncard"]
-other = "🎟 <b>{{.Event}}</b>\n{{.When}}\n\nInvitado: {{.Guest}}\nPlazas:\n{{.Places}}\n\nEstado: {{.State}}\nEmitida: {{.Issued}}\nEmitida por: {{.By}}"
+other = "🎟 <b>{{.Event}}</b>\n{{.When}}\n\nInvitado: {{.Guest}}\nPlazas:\n{{.Places}}\n\nEstado: {{.State}}\nEmitida: {{.Issued}}\nEmitida por: {{.By}}{{.Letter}}"
 
 ["bot.inv.state_issuing"]
 other = "se están emitiendo las entradas"
@@ -2260,6 +2260,21 @@ other = "La invitación de {{.Guest}} ya está usada: el escáner de la puerta a
 
 ["bot.inv.nrevoke_notyet"]
 other = "Las entradas de esta invitación aún se están emitiendo. Inténtalo de nuevo en un minuto."
+
+["bot.inv.letter_pending"]
+other = "✉ Enviando el e-mail…"
+
+["bot.inv.letter_sent"]
+other = "✉ E-mail enviado {{.When}}"
+
+["bot.inv.letter_failed"]
+other = "⚠ E-mail no enviado. Lo más probable es que el invitado no lo haya recibido. Revisa la dirección y envíalo otra vez en el centro de eventos."
+
+["bot.inv.letter_skipped"]
+other = "✉ E-mail no enviado"
+
+["bot.inv.letter_disabled"]
+other = "✉ E-mail no enviado, el envío de e-mails está desactivado"
 
 ["bot.promo.btn"]
 other = "🏷 Códigos promocionales"

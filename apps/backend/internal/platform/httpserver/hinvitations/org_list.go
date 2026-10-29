@@ -115,21 +115,15 @@ func (h *Handler) HandleOrgList(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		ids = append(ids, row.ID)
 	}
-	byOrder := map[uuid.UUID][]lineResponse{}
-	if len(ids) > 0 {
-		lines, err := h.queries.ListInvitationOrderLines(ctx, ids)
-		if err != nil {
-			h.internal(w, r, "org list: lines", err)
-			return
-		}
-		for _, l := range lines {
-			byOrder[l.OrderID] = append(byOrder[l.OrderID], toLine(l))
-		}
+	ex, err := h.loadPageExtras(ctx, ids)
+	if err != nil {
+		h.internal(w, r, "org list: places and letters", err)
+		return
 	}
 	items := make([]orgListItem, 0, len(rows))
 	for _, row := range rows {
 		items = append(items, orgListItem{
-			listItem: newListItem(row.SessionInvitationRow, byOrder[row.ID]),
+			listItem: newListItem(row.SessionInvitationRow, ex.places[row.ID], ex.letters[row.ID]),
 			Session: sessionBrief{
 				ID: row.SessionID.String(), StartAt: row.SessionStartAt, EventID: row.EventID.String(),
 				EventName: row.EventName, VenueName: row.VenueName, Timezone: row.SessionTimezone,
