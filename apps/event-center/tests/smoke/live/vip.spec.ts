@@ -72,10 +72,13 @@ function seedBinary(): string {
   return built;
 }
 
-function resetInvitations() {
-  const r = spawnSync(seedBinary(), ["--invitations-op", "reset"], { cwd: repoRoot, env: process.env, encoding: "utf8" });
-  if (r.status !== 0) throw new Error(`arena-e2e-seed --invitations-op reset failed: ${r.stderr}`);
+function invitationsOp(op: "reset" | "issue") {
+  const r = spawnSync(seedBinary(), ["--invitations-op", op], { cwd: repoRoot, env: process.env, encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`arena-e2e-seed --invitations-op ${op} failed: ${r.stderr}`);
 }
+const resetInvitations = () => invitationsOp("reset");
+/** Mints the tickets of the staff invitations, as arena-worker's checkout.issue_tickets job would (the harness runs arena-api only). */
+const issueTickets = () => invitationsOp("issue");
 
 test.describe("VIP mark of a ticket on the three roles (live)", () => {
   for (const { role, label, may } of ROLES) {
@@ -128,26 +131,33 @@ test.describe("VIP mark of a ticket on the three roles (live)", () => {
 
   test("owner issues an invitation as VIP and the list marks it", async ({ page, request }) => {
     resetInvitations();
-    const guest = `vip-guest-${Date.now()}@example.test`;
+    const stamp = Date.now();
+    const guest = `vip-guest-${stamp}@example.test`;
+    const name = `VIP Guest ${stamp}`;
     await signInAs(page, person(env, "org_admin"));
     await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
     await page.goto(`/o/${env.org_id}/invitations`);
     await page.getByTestId("invite-event").selectOption({ label: EVENT_NAME });
     await page.getByTestId("invite-session").selectOption({ index: 1 });
     await page.getByTestId("invite-tier").selectOption({ index: 1 });
-    await page.getByTestId("invite-guests").fill(`VIP Guest, ${guest}`);
+    await page.getByTestId("invite-guests").fill(`${name}, ${guest}`);
     await page.getByTestId("invite-review").click();
     await page.getByTestId("invite-vip").check();
     await page.getByTestId("invite-send").click();
     await expect(page.getByTestId("invite-done")).toBeVisible();
 
-    const res = await request.get(orgUrl("/complimentary?limit=20"), { headers: auth("org_admin") });
-    const body = (await res.json()) as { issuances: { tickets: { holder_email: string | null; vip: boolean }[] }[] };
-    const mine = body.issuances.flatMap((i) => i.tickets).find((t) => t.holder_email === guest);
-    expect(mine?.vip, "the invitation carries the mark").toBe(true);
+    // The staff-invitation route (spec 46) stores the mark on the order and puts it on every ticket when they are minted.
+    issueTickets();
+    const res = await request.get(orgUrl("/invitations?state=all&limit=50"), { headers: auth("org_admin") });
+    expect(res.status()).toBe(200);
+    const body = (await res.json()) as { items: { guest_name: string | null; places: { vip: boolean; ticket_status: string | null }[] }[] };
+    const mine = body.items.find((i) => i.guest_name === name);
+    expect(mine, "the invitation is listed").toBeDefined();
+    expect(mine?.places.length ?? 0).toBeGreaterThan(0);
+    expect(mine?.places.every((p) => p.vip && p.ticket_status === "active"), "every ticket of the invitation carries the mark").toBe(true);
 
     await page.reload();
-    const row = page.getByTestId("invitation-row").filter({ hasText: guest });
-    await expect(row.getByTestId("invitation-vip")).toBeVisible();
+    const row = page.getByTestId("org-inv-row").filter({ hasText: name });
+    await expect(row.getByTestId("org-inv-vip").first()).toBeVisible();
   });
 });
