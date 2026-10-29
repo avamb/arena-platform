@@ -4,6 +4,10 @@
  * person saw goes back as expected_stock, a 409 reloads the rows), the orders list
  * and its filters, the order card with ship, cancel, refund and the courier text, and
  * the settings. Every screen is checked for axe violations and for a sideways scroll.
+ *
+ * Shopify parity (A-02, A-07, A-08, A-10, A-11): ONE Save on the product card with the
+ * unsaved-changes question, the stock edited in the products list from a phone, the quick
+ * tabs over the orders with their counts, the internal note of an order and the repeat e-mail.
  */
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
@@ -103,11 +107,11 @@ test.describe("shop (mock)", () => {
     await noHorizontalScroll(page);
     await noA11yViolations(page);
 
-    await expect(page.getByTestId("shop-variants-save")).toBeDisabled();
+    await expect(page.getByTestId("shop-product-save")).toBeDisabled();
     await page.getByTestId("shop-variant-stock-0").fill("8");
-    await expect(page.getByTestId("shop-variants-save")).toBeEnabled();
+    await expect(page.getByTestId("shop-product-save")).toBeEnabled();
     state.stockConflict = true;
-    await page.getByTestId("shop-variants-save").click();
+    await page.getByTestId("shop-product-save").click();
     await expect(page.getByTestId("shop-stock-changed")).toContainText("The stock changed while you were editing");
     // The rows now show the server's number, and nothing was written over it.
     await expect(page.getByTestId("shop-variant-stock-0")).toHaveValue("9");
@@ -115,8 +119,8 @@ test.describe("shop (mock)", () => {
     expect(state.writes[0]).toContain('"expected_stock":12');
 
     await page.getByTestId("shop-variant-stock-0").fill("5");
-    await page.getByTestId("shop-variants-save").click();
-    await expect(page.getByTestId("shop-variants-notice")).toContainText("The variants are saved.");
+    await page.getByTestId("shop-product-save").click();
+    await expect(page.getByTestId("shop-savebar-status")).toContainText("Everything is saved.");
     expect(state.writes[1]).toContain('"expected_stock":9');
     expect(state.writes[1]).toContain('"stock":5');
   });
@@ -127,7 +131,7 @@ test.describe("shop (mock)", () => {
     await signIn(page);
     await page.goto(`/o/${ORG_A}/shop/products/${PRODUCT_WINE}`);
     await page.getByTestId("shop-variant-price-1").fill("lots");
-    await page.getByTestId("shop-variants-save").click();
+    await page.getByTestId("shop-product-save").click();
     await expect(page.getByTestId("shop-variant-price-1-error")).toContainText("Type a price, for example 12.50.");
     expect(state.writes).toEqual([]);
   });
@@ -272,11 +276,245 @@ test.describe("shop (mock)", () => {
     await expect(page.getByTestId("shop-variant-stock-0")).toHaveCount(0);
     await noA11yViolations(page);
     await page.getByTestId("shop-variant-price-0").fill("17");
-    await page.getByTestId("shop-variants-save").click();
-    await expect(page.getByTestId("shop-variants-notice")).toBeVisible();
+    await page.getByTestId("shop-product-save").click();
+    await expect(page.getByTestId("shop-savebar-status")).toContainText("Everything is saved.");
     expect(state.writes[0]).toContain('"price_minor":1700');
     expect(state.writes[0]).toContain('"track_stock":false');
     expect(state.writes[0]).not.toContain("expected_stock");
+  });
+
+  test("the product card has ONE Save: it sends the details, then the variants, and says one thing", async ({ page }) => {
+    await mockApi(page);
+    const state = await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/products/${PRODUCT_WINE}`);
+    await expect(page.getByTestId("shop-product-save")).toHaveCount(1);
+    await expect(page.getByTestId("shop-variants-save")).toHaveCount(0);
+    await expect(page.getByTestId("shop-product-save")).toBeDisabled();
+    await page.getByTestId("shop-product-title").fill("Riesling Reserve");
+    await page.getByTestId("shop-variant-stock-1").fill("6");
+    await expect(page.getByTestId("shop-savebar-status")).toContainText("There are unsaved changes.");
+    await page.getByTestId("shop-product-save").click();
+    await expect(page.getByTestId("shop-savebar-status")).toContainText("Everything is saved.");
+    expect(state.writes).toHaveLength(2);
+    expect(state.writes[0]).toContain("PATCH");
+    expect(state.writes[0]).toContain('"title":"Riesling Reserve"');
+    expect(state.writes[1]).toContain("PUT");
+    expect(state.writes[1]).toContain('"stock":6');
+    await expect(page.getByTestId("shop-product-save")).toBeDisabled();
+  });
+
+  test("the Save bar sits at the bottom of a phone, where the thumb reaches it", async ({ page }) => {
+    await mockApi(page);
+    await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/products/${PRODUCT_WINE}`);
+    await page.getByTestId("shop-product-title").fill("Riesling Reserve");
+    const bar = await page.getByTestId("shop-savebar").boundingBox();
+    const height = page.viewportSize()?.height ?? 812;
+    expect(bar).not.toBeNull();
+    expect((bar?.y ?? 0) + (bar?.height ?? 0)).toBeGreaterThanOrEqual(height - 1);
+    const button = await page.getByTestId("shop-product-save").boundingBox();
+    expect(button?.height ?? 0).toBeGreaterThanOrEqual(44);
+    // It stays there while the page scrolls.
+    await page.evaluate(() => window.scrollTo(0, 800));
+    const after = await page.getByTestId("shop-savebar").boundingBox();
+    expect((after?.y ?? 0) + (after?.height ?? 0)).toBeGreaterThanOrEqual(height - 1);
+    await noHorizontalScroll(page);
+    await noA11yViolations(page);
+  });
+
+  test("leaving the card with unsaved changes asks first, and a clean card is left at once", async ({ page }) => {
+    await mockApi(page);
+    await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/products/${PRODUCT_WINE}`);
+    // Clean: the menu works without a question.
+    await page.getByTestId("shop-nav-orders").click();
+    await expect(page).toHaveURL(new RegExp("/shop/orders"));
+
+    await page.goto(`/o/${ORG_A}/shop/products/${PRODUCT_WINE}`);
+    await page.getByTestId("shop-product-title").fill("Riesling Reserve");
+    await page.getByTestId("shop-nav-orders").click();
+    await expect(page.getByTestId("unsaved-dialog")).toContainText("There are unsaved changes. Leave?");
+    await noA11yViolations(page);
+    await page.getByTestId("unsaved-stay").click();
+    await expect(page).toHaveURL(new RegExp("/shop/products/"));
+    await expect(page.getByTestId("shop-product-title")).toHaveValue("Riesling Reserve");
+    // Closing the tab asks the browser to confirm.
+    const prevented = await page.evaluate(() => {
+      const e = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(e);
+      return e.defaultPrevented;
+    });
+    expect(prevented).toBe(true);
+    await page.getByTestId("shop-nav-orders").click();
+    await page.getByTestId("unsaved-leave").click();
+    await expect(page).toHaveURL(new RegExp("/shop/orders"));
+  });
+
+  test("the products list edits the stock of a single-variant product in the row, with a big field", async ({ page }) => {
+    await mockApi(page);
+    const state = await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/products`);
+    const row = page.getByTestId("shop-product-row").filter({ hasText: "Tote bag" });
+    const field = row.getByTestId("shop-stock-input");
+    await expect(field).toHaveValue("5");
+    const box = await field.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await noHorizontalScroll(page);
+    await noA11yViolations(page);
+
+    await field.fill("11");
+    await field.press("Enter");
+    await expect(row.getByTestId("shop-stock-status")).toContainText("Saved");
+    expect(state.writes).toHaveLength(1);
+    expect(state.writes[0]).toContain("PUT");
+    expect(state.writes[0]).toContain('"stock":11');
+    expect(state.writes[0]).toContain('"expected_stock":5');
+    await expect(field).toHaveValue("11");
+
+    // A value that is not a number is named and nothing is sent.
+    await field.fill("lots");
+    await field.blur();
+    await expect(row.getByTestId("shop-stock-status")).toContainText("Type a whole number");
+    expect(state.writes).toHaveLength(1);
+  });
+
+  test("a product with several variants shows the total and the stock of each under a disclosure, and a 409 shows the new number", async ({ page }) => {
+    await mockApi(page);
+    const state = await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/products`);
+    const row = page.getByTestId("shop-product-row").filter({ hasText: "Riesling" });
+    await expect(row.getByTestId("shop-stock-total")).toContainText("Total: 12");
+    await expect(row.getByTestId("shop-stock-input").first()).toBeHidden();
+    await row.getByText("Stock", { exact: true }).click();
+    await expect(row.getByTestId("shop-stock-input")).toHaveCount(2);
+    await noA11yViolations(page);
+
+    state.stockConflict = true;
+    await row.getByTestId("shop-stock-input").first().fill("8");
+    await row.getByTestId("shop-stock-input").first().blur();
+    const line = row.getByTestId("shop-stock-moved-line");
+    await expect(line).toContainText("Someone changed the stock first.");
+    await expect(line).toContainText("you saw 12, now 9");
+    await expect(line).toContainText("You typed 8");
+    await expect(row.getByTestId("shop-stock-input").first()).toHaveValue("9");
+    expect(state.writes[0]).toContain('"expected_stock":12');
+  });
+
+  test("orders: the To ship tab counts paid orders with something to hand over and lists only them", async ({ page }) => {
+    await mockApi(page);
+    const state = await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/orders`);
+    await expect(page.getByTestId("shop-orders-tab-to_ship")).toContainText("To ship (1)");
+    await expect(page.getByTestId("shop-orders-tab-unpaid")).toContainText("Unpaid (1)");
+    await expect(page.getByTestId("shop-orders-tab-all")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("shop-order-row")).toHaveCount(4);
+    const tab = await page.getByTestId("shop-orders-tab-to_ship").boundingBox();
+    expect(tab?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+    await page.getByTestId("shop-orders-tab-to_ship").click();
+    await expect(page.getByTestId("shop-orders-tab-to_ship")).toHaveAttribute("aria-pressed", "true");
+    const rows = page.getByTestId("shop-order-row");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("№1042");
+    expect(page.url()).toContain("view=to_ship");
+    expect(state.orderQueries[state.orderQueries.length - 1]).toContain("view=to_ship");
+    await noA11yViolations(page);
+
+    // The status filter still works: picking a status leaves the tab.
+    await page.getByTestId("shop-orders-status").selectOption("manual_review");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("№1043");
+    await expect(page.getByTestId("shop-orders-tab-all")).toHaveAttribute("aria-pressed", "true");
+
+    // A shipped order leaves the list and the number follows.
+    await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_PAID}`);
+    await page.getByTestId("shop-order-ship").click();
+    await page.getByTestId("shop-ship-submit").click();
+    await expect(page.getByTestId("shop-order-note")).toContainText("marked as shipped");
+    await page.getByTestId("shop-nav-orders").click();
+    await expect(page.getByTestId("shop-orders-tab-to_ship")).toContainText("To ship (0)");
+    await page.getByTestId("shop-orders-tab-to_ship").click();
+    await expect(page.getByText("Nothing to ship. Every paid order has gone out.")).toBeVisible();
+  });
+
+  test("order card: the internal note saves when the person leaves the field and names its author", async ({ page }) => {
+    await mockApi(page);
+    const state = await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_PAID}`);
+    const note = page.getByTestId("shop-order-note-input");
+    await expect(note).toHaveValue("");
+    await noHorizontalScroll(page);
+    await noA11yViolations(page);
+    await note.fill("Called, deliver after 18:00");
+    await note.blur();
+    await expect(page.getByTestId("shop-order-note-state")).toContainText("Note saved.");
+    await expect(page.getByTestId("shop-order-note-by")).toContainText("Dana Levi");
+    expect(state.writes).toHaveLength(1);
+    expect(state.writes[0]).toContain("PATCH");
+    expect(state.writes[0]).toContain("Called, deliver after 18:00");
+    // It is still there after a reload.
+    await page.reload();
+    await expect(page.getByTestId("shop-order-note-input")).toHaveValue("Called, deliver after 18:00");
+    await expect(page.getByTestId("shop-order-note-by")).toContainText("Dana Levi");
+  });
+
+  test("a reader sees the note as text and has no repeat e-mail button", async ({ page }) => {
+    await mockApi(page);
+    const state = await mockShop(page, ["event.read", "shop.read"]);
+    state.orders[0].staff_note = { text: "Ring twice", by: "Dana Levi", at: "2026-10-29T15:30:00Z" };
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_PAID}`);
+    await expect(page.getByTestId("shop-order-note-text")).toHaveText("Ring twice");
+    await expect(page.getByTestId("shop-order-note-input")).toHaveCount(0);
+    await expect(page.getByTestId("shop-order-resend")).toHaveCount(0);
+  });
+
+  test("order card: the e-mail is sent again, and a second try inside the minute is explained", async ({ page }) => {
+    await mockApi(page);
+    const state = await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_PAID}`);
+    await noA11yViolations(page);
+    await page.getByTestId("shop-order-resend").click();
+    await expect(page.getByTestId("shop-order-note")).toHaveText("The e-mail is queued.");
+    expect(state.resent).toEqual(["received"]);
+    await page.getByTestId("shop-order-resend").click();
+    await expect(page.getByTestId("shop-order-note")).toContainText("less than a minute ago");
+    expect(state.resent).toEqual(["received"]);
+  });
+
+  test("order card: a shipped order asks which e-mail to send again", async ({ page }) => {
+    await mockApi(page);
+    const state = await mockShop(page);
+    state.orders[0].status = "shipped";
+    state.orders[0].shipped_at = "2026-10-06T09:00:00Z";
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_PAID}`);
+    await page.getByTestId("shop-order-resend").click();
+    await expect(page.getByTestId("shop-resend-panel")).toContainText("anna@example.test");
+    await noA11yViolations(page);
+    await page.getByTestId("shop-resend-shipped").click();
+    await expect(page.getByTestId("shop-order-note")).toHaveText("The e-mail is queued.");
+    expect(state.resent).toEqual(["shipped"]);
+  });
+
+  test("an order nobody paid, or of digital goods, has no shipping letter to send again", async ({ page }) => {
+    await mockApi(page);
+    await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_UNPAID}`);
+    await expect(page.getByTestId("shop-order-resend")).toHaveCount(0);
+    await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_DIGITAL}`);
+    await page.getByTestId("shop-order-resend").click();
+    await expect(page.getByTestId("shop-resend-panel")).toHaveCount(0);
+    await expect(page.getByTestId("shop-order-note")).toHaveText("The e-mail is queued.");
   });
 
   test("the option names label the variant columns", async ({ page }) => {

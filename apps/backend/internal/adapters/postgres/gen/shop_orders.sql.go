@@ -50,13 +50,17 @@ type ShopOrderRow struct {
 	Metadata        json.RawMessage `json:"metadata"`
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
+	StaffNote       string          `json:"staff_note"`
+	StaffNoteBy     string          `json:"staff_note_by"`
+	StaffNoteAt     *time.Time      `json:"staff_note_at"`
 }
 
 const shopOrderColumns = `id, org_id, number, order_token, customer_id, status, buyer_name, buyer_email, buyer_phone,
        ship_name, ship_address1, ship_address2, ship_city, ship_postal, ship_country, delivery_kind,
        delivery_note, currency, subtotal, discount, shipping_fee, total, refunded_minor,
        payment_intent_id, provider, buyer_locale, source, external_ref, paid_at, shipped_at,
-       cancelled_at, tracking_note, expires_at, metadata, created_at, updated_at`
+       cancelled_at, tracking_note, expires_at, metadata, created_at, updated_at,
+       staff_note, staff_note_by, staff_note_at`
 
 func scanShopOrderRow(row interface{ Scan(dest ...any) error }) (ShopOrderRow, error) {
 	var o ShopOrderRow
@@ -65,7 +69,8 @@ func scanShopOrderRow(row interface{ Scan(dest ...any) error }) (ShopOrderRow, e
 		&o.ShipPostal, &o.ShipCountry, &o.DeliveryKind, &o.DeliveryNote, &o.Currency, &o.Subtotal,
 		&o.Discount, &o.ShippingFee, &o.Total, &o.RefundedMinor, &o.PaymentIntentID, &o.Provider,
 		&o.BuyerLocale, &o.Source, &o.ExternalRef, &o.PaidAt, &o.ShippedAt, &o.CancelledAt,
-		&o.TrackingNote, &o.ExpiresAt, &o.Metadata, &o.CreatedAt, &o.UpdatedAt)
+		&o.TrackingNote, &o.ExpiresAt, &o.Metadata, &o.CreatedAt, &o.UpdatedAt,
+		&o.StaffNote, &o.StaffNoteBy, &o.StaffNoteAt)
 	return o, err
 }
 
@@ -308,12 +313,26 @@ func (q *Queries) GetShopOrderByPaymentIntentForUpdate(ctx context.Context, paym
 type ListShopOrdersParams struct {
 	OrgID  uuid.UUID
 	Status string
+	// View is a ready-made tab of the order list ("" = none): to_ship (paid
+	// or partly refunded, something to hand over, not shipped yet), unpaid,
+	// shipped or refunds. It narrows the list together with Status.
+	View   string
 	Query  string
 	From   *time.Time
 	To     *time.Time
 	Limit  int32
 	Offset int32
 }
+
+// The order list's tabs as SQL, over shop_orders columns; $8 is the view name.
+// to_ship: a paid (or partly refunded) order with something to hand over that
+// has not been shipped yet. A digital or service order (delivery_kind none)
+// has nothing to ship.
+const shopOrderViewCondition = `$8::text = ''
+        OR ($8 = 'to_ship' AND status IN ('paid', 'partially_refunded') AND delivery_kind <> 'none' AND shipped_at IS NULL)
+        OR ($8 = 'unpaid' AND status = 'pending_payment')
+        OR ($8 = 'shipped' AND status = 'shipped')
+        OR ($8 = 'refunds' AND status IN ('refunded', 'partially_refunded'))`
 
 const listShopOrders = `-- name: ListShopOrders :many
 SELECT ` + shopOrderColumns + `
@@ -324,12 +343,13 @@ WHERE  org_id = $1
         OR buyer_email ILIKE '%' || $3 || '%' OR buyer_name ILIKE '%' || $3 || '%')
   AND  ($4::timestamptz IS NULL OR created_at >= $4)
   AND  ($5::timestamptz IS NULL OR created_at < $5)
+  AND  (` + shopOrderViewCondition + `)
 ORDER  BY created_at DESC, id DESC
 LIMIT  $6 OFFSET $7`
 
 // ListShopOrders lists one page of an organization's orders, newest first.
 func (q *Queries) ListShopOrders(ctx context.Context, p ListShopOrdersParams) ([]ShopOrderRow, error) {
-	rows, err := q.db.Query(ctx, listShopOrders, p.OrgID, p.Status, p.Query, p.From, p.To, p.Limit, p.Offset)
+	rows, err := q.db.Query(ctx, listShopOrders, p.OrgID, p.Status, p.Query, p.From, p.To, p.Limit, p.Offset, p.View)
 	if err != nil {
 		return nil, err
 	}
@@ -548,4 +568,48 @@ WHERE  payment_intent_id = $1`
 func (q *Queries) SumShopPaymentRefunds(ctx context.Context, paymentIntentID uuid.UUID) (accepted, live int64, err error) {
 	err = q.db.QueryRow(ctx, sumShopPaymentRefunds, paymentIntentID).Scan(&accepted, &live)
 	return accepted, live, err
+}
+
+// ShopOrderCounts is how many orders each tab of the order list holds.
+type ShopOrderCounts struct {
+	All     int64 `json:"all"`
+	ToShip  int64 `json:"to_ship"`
+	Unpaid  int64 `json:"unpaid"`
+	Shipped int64 `json:"shipped"`
+	Refunds int64 `json:"refunds"`
+}
+
+const countShopOrders = `-- name: CountShopOrders :one
+SELECT count(*),
+       count(*) FILTER (WHERE status IN ('paid', 'partially_refunded') AND delivery_kind <> 'none' AND shipped_at IS NULL),
+       count(*) FILTER (WHERE status = 'pending_payment'),
+       count(*) FILTER (WHERE status = 'shipped'),
+       count(*) FILTER (WHERE status IN ('refunded', 'partially_refunded'))
+FROM   shop_orders
+WHERE  org_id = $1`
+
+// CountShopOrders counts an organization's orders for the tabs of the list,
+// in one pass. The conditions are the ones of shopOrderViewCondition.
+func (q *Queries) CountShopOrders(ctx context.Context, orgID uuid.UUID) (ShopOrderCounts, error) {
+	var c ShopOrderCounts
+	err := q.db.QueryRow(ctx, countShopOrders, orgID).Scan(&c.All, &c.ToShip, &c.Unpaid, &c.Shipped, &c.Refunds)
+	return c, err
+}
+
+const setShopOrderStaffNote = `-- name: SetShopOrderStaffNote :one
+UPDATE shop_orders
+SET    staff_note = $2,
+       staff_note_by = $3,
+       staff_note_at = CASE WHEN $2::text = '' THEN NULL ELSE now() END,
+       updated_at = now()
+WHERE  id = $1
+RETURNING ` + shopOrderColumns
+
+// SetShopOrderStaffNote replaces the internal note of an order. An empty note
+// clears the author and the time too.
+func (q *Queries) SetShopOrderStaffNote(ctx context.Context, id uuid.UUID, note, by string) (ShopOrderRow, error) {
+	if note == "" {
+		by = ""
+	}
+	return scanShopOrderRow(q.db.QueryRow(ctx, setShopOrderStaffNote, id, note, by))
 }

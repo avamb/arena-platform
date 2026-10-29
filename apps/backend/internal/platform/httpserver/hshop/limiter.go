@@ -24,6 +24,16 @@ func newMinuteLimiter(limit int) *minuteLimiter {
 	return &minuteLimiter{limit: limit, windows: map[string]*minuteWindow{}}
 }
 
+// release gives back the budget of one request that was counted by allow but
+// did nothing (a refused request must not cost the caller a minute).
+func (l *minuteLimiter) release(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if w := l.windows[key]; w != nil && w.n > 0 {
+		w.n--
+	}
+}
+
 // allow counts one request for key and says whether it fits the budget; when
 // it does not, retry is the whole seconds until the window ends (at least 1).
 func (l *minuteLimiter) allow(key string, now time.Time) (ok bool, retry int) {

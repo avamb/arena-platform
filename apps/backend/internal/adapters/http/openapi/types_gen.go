@@ -16740,6 +16740,9 @@ type ShopOrder struct {
 	// Source `web` (the storefront) or `shopify` (imported).
 	Source string `json:"source"`
 
+	// StaffNote The internal note of the shop staff. Never shown to the buyer or on the storefront.
+	StaffNote ShopStaffNote `json:"staff_note"`
+
 	// Status `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review` (a payment that arrived after the hold ended while the goods were gone: the money is recorded, nothing left the shelf, the operator ships or refunds it).
 	Status string `json:"status"`
 
@@ -16754,6 +16757,24 @@ type ShopOrder struct {
 
 	// UpdatedAt Last change.
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ShopOrderCounts How many orders each tab of the order list holds.
+type ShopOrderCounts struct {
+	// All Every order of the shop.
+	All int64 `json:"all"`
+
+	// Refunds Refunded and partly refunded orders.
+	Refunds int64 `json:"refunds"`
+
+	// Shipped Shipped orders.
+	Shipped int64 `json:"shipped"`
+
+	// ToShip Paid or partly refunded orders with something to hand over (shipping or pickup) that are not shipped yet. An order of digital products or services only is never counted.
+	ToShip int64 `json:"to_ship"`
+
+	// Unpaid Orders still waiting for their payment (`pending_payment`).
+	Unpaid int64 `json:"unpaid"`
 }
 
 // ShopOrderItem One line of an order, as sold.
@@ -16790,6 +16811,12 @@ type ShopOrderList struct {
 
 	// Orders Orders, newest first.
 	Orders []ShopOrder `json:"orders"`
+}
+
+// ShopOrderNoteRequest The internal note of an order.
+type ShopOrderNoteRequest struct {
+	// StaffNote The whole note, up to 2000 characters. An empty text erases it.
+	StaffNote string `json:"staff_note"`
 }
 
 // ShopOrderPayment The payment of an order.
@@ -17161,6 +17188,21 @@ type ShopRefundResponse struct {
 	Refund ShopRefund `json:"refund"`
 }
 
+// ShopResendEmailRequest Which buyer letter to send once more.
+type ShopResendEmailRequest struct {
+	// Kind `received` (the order is confirmed) or `shipped` (the order is on its way).
+	Kind string `json:"kind"`
+}
+
+// ShopResendEmailResponse The letter was queued for the worker.
+type ShopResendEmailResponse struct {
+	// Kind The letter that was queued, `received` or `shipped`.
+	Kind string `json:"kind"`
+
+	// Queued Always true; the worker sends the letter within moments.
+	Queued bool `json:"queued"`
+}
+
 // ShopSettings The shop settings of an organization (migration 0172). Money in minor units of `currency`.
 type ShopSettings struct {
 	// AgeGateMinAge Minimum buyer age the storefront asks to confirm, or null for no age gate.
@@ -17252,6 +17294,18 @@ type ShopSettingsUpdateRequest struct {
 type ShopShipRequest struct {
 	// TrackingNote Tracking number or note, up to 2000 characters.
 	TrackingNote *string `json:"tracking_note,omitempty"`
+}
+
+// ShopStaffNote The internal note of a shop order. An order without a note has an empty text, an empty author and a null time.
+type ShopStaffNote struct {
+	// At When the note was saved; null when there is no note.
+	At *time.Time `json:"at"`
+
+	// By Who wrote it, by name (the e-mail when the account has no name), as it was when the note was saved.
+	By string `json:"by"`
+
+	// Text The note, up to 2000 characters; empty when there is none.
+	Text string `json:"text"`
 }
 
 // ShopVariant A variant as the organization sees it.
@@ -20472,6 +20526,9 @@ type ListShopOrdersParams struct {
 	// Status Only orders of this status: `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review`.
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
 
+	// View A tab of the order list, combined with `status` when both are given: `to_ship` (paid or partly refunded, something to hand over, not shipped yet), `unpaid`, `shipped` or `refunds`. `GET .../shop/orders/counts` gives the size of each.
+	View *string `form:"view,omitempty" json:"view,omitempty"`
+
 	// Q Order number, or part of the buyer's e-mail or name.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
@@ -21184,8 +21241,14 @@ type PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody = SeatB
 // PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody = SeatLayoutSuggestRequest
 
+// UpdateShopOrderNoteJSONRequestBody defines body for UpdateShopOrderNote for application/json ContentType.
+type UpdateShopOrderNoteJSONRequestBody = ShopOrderNoteRequest
+
 // RefundShopOrderJSONRequestBody defines body for RefundShopOrder for application/json ContentType.
 type RefundShopOrderJSONRequestBody = ShopRefundRequest
+
+// ResendShopOrderEmailJSONRequestBody defines body for ResendShopOrderEmail for application/json ContentType.
+type ResendShopOrderEmailJSONRequestBody = ShopResendEmailRequest
 
 // ShipShopOrderJSONRequestBody defines body for ShipShopOrder for application/json ContentType.
 type ShipShopOrderJSONRequestBody = ShopShipRequest
