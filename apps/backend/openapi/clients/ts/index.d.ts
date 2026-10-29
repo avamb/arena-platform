@@ -25725,6 +25725,11 @@ export interface components {
             delivery: string;
             /** @description Internal note, at most 1000 characters, never shown to the guest. */
             note?: string | null;
+            /**
+             * @description Mark every ticket of the invitation with the organizer's private VIP flag (it never reaches the guest). Stored on the order and applied when the tickets are minted. Part of the request fingerprint: a repeat of the same request_id with a different vip answers 409 invitation.request_id_reused.
+             * @default false
+             */
+            vip: boolean;
         };
         /** @description One seat of the session by key. */
         StaffInvitationSeatRef: {

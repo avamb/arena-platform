@@ -8,6 +8,7 @@ package httpserver
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -145,5 +146,58 @@ func TestINV05_OrgInvitationList_FiltersPagesAndIsolation(t *testing.T) {
 	code, leak := f.do(other.owner, http.MethodGet, "/v1/organizations/"+other.org.String()+"/invitations?state=all&session_id="+f.session.String(), "")
 	if code != http.StatusOK || strings.Contains(leak["_raw"].(string), orderIDs[0]) || len(leak["items"].([]any)) != 0 {
 		t.Fatalf("foreign org filtered by this org's session: %d %s", code, leak["_raw"])
+	}
+}
+
+// inv05WithVIP is an issue body with the optional vip flag set.
+func inv05WithVIP(body string, vip bool) string {
+	m := map[string]any{}
+	_ = json.Unmarshal([]byte(body), &m)
+	m["vip"] = vip
+	raw, _ := json.Marshal(m)
+	return string(raw)
+}
+
+// An invitation asked for as VIP (spec 46 section 4): the order remembers it,
+// every ticket minted for it carries the mark attributed to the issuer, a
+// plain invitation does not, and the flag is part of the request fingerprint.
+func TestINV05_VIPInvitation_TicketsMarkedAndFingerprint(t *testing.T) {
+	f := newINV02Fx(t, 30*24*time.Hour)
+	ctx := context.Background()
+
+	rid := uuid.New()
+	vipBody := inv05WithVIP(inv02Body(rid, []string{"A|1|4", "A|1|5"}, nil, 0, "pdf_only", ""), true)
+	orderID, tickets := f.issueAndMint(t, vipBody)
+	if len(tickets) != 2 {
+		t.Fatalf("tickets = %d, want 2", len(tickets))
+	}
+	var marked int
+	var setBy *uuid.UUID
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE vip), max(vip_set_by::text)::uuid FROM tickets WHERE order_id = $1`, orderID).Scan(&marked, &setBy); err != nil {
+		t.Fatalf("read vip: %v", err)
+	}
+	if marked != 2 || setBy == nil || *setBy != f.ownerID {
+		t.Fatalf("vip tickets = %d set by %v, want both marked by the owner %s", marked, setBy, f.ownerID)
+	}
+	var meta string
+	if err := f.pool.QueryRow(ctx, `SELECT metadata->'invitation'->>'vip' FROM orders WHERE id = $1`, orderID).Scan(&meta); err != nil || meta != "true" {
+		t.Fatalf("order metadata vip = %q (%v)", meta, err)
+	}
+
+	// The same request_id and body replays; with a different vip it is refused.
+	if code, body := f.issue(f.o.owner, vipBody); code != http.StatusOK || body["replayed"] != true {
+		t.Fatalf("replay: %d %s", code, body["_raw"])
+	}
+	if code, body := f.issue(f.o.owner, inv05WithVIP(vipBody, false)); code != http.StatusConflict || !strings.Contains(body["_raw"].(string), "invitation.request_id_reused") {
+		t.Fatalf("replay with another vip: %d %s, want 409 invitation.request_id_reused", code, body["_raw"])
+	}
+
+	// A plain invitation (no flag at all) is not marked, and keeps working as before.
+	plainID, plain := f.issueAndMint(t, inv02Body(uuid.New(), []string{"A|1|6"}, nil, 0, "pdf_only", ""))
+	if len(plain) != 1 {
+		t.Fatalf("plain tickets = %d", len(plain))
+	}
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE vip) FROM tickets WHERE order_id = $1`, plainID).Scan(&marked); err != nil || marked != 0 {
+		t.Fatalf("a plain invitation has %d VIP tickets (%v)", marked, err)
 	}
 }

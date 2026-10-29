@@ -52,6 +52,8 @@ type StaffInvitationInput struct {
 	Name string
 	// Email is the guest's address; empty sends the PDF to nobody (pdf_only).
 	Email string
+	// VIP marks every ticket of the order with the organizer's private VIP flag.
+	VIP bool
 }
 
 // StaffInvitationIssued is the part of the issue answer the bot uses.
@@ -77,6 +79,9 @@ func (c *ArenaClient) IssueStaffInvitation(ctx context.Context, jwt string, orgI
 		"guest":      guest,
 		"delivery":   delivery,
 		"note":       "issued from the Telegram bot",
+	}
+	if in.VIP {
+		body["vip"] = true
 	}
 	var out StaffInvitationIssued
 	err := c.do(ctx, http.MethodPost, "/v1/organizations/"+orgID.String()+"/sessions/"+in.SessionID.String()+"/invitations", jwt, body, &out)

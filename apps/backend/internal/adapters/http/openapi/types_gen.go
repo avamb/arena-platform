@@ -17705,6 +17705,9 @@ type StaffInvitationIssueRequest struct {
 
 	// Seats Seats by key, free or held back by the organizer.
 	Seats *[]StaffInvitationSeatRef `json:"seats,omitempty"`
+
+	// Vip Mark every ticket of the invitation with the organizer's private VIP flag (it never reaches the guest). Stored on the order and applied when the tickets are minted. Part of the request fingerprint: a repeat of the same request_id with a different vip answers 409 invitation.request_id_reused.
+	Vip *bool `json:"vip,omitempty"`
 }
 
 // StaffInvitationIssueResponse The invitation as written.

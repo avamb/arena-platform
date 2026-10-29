@@ -86,6 +86,7 @@ type issueBody struct {
 	Guest     guestBody `json:"guest"`
 	Delivery  string    `json:"delivery"`
 	Note      *string   `json:"note"`
+	VIP       bool      `json:"vip"`
 }
 
 // lineResponse is one place of an invitation.
@@ -276,6 +277,7 @@ func validateIssue(b issueBody) (IssueInput, *IssueError) {
 	}
 	in.Delivery = b.Delivery
 	in.Note = trimPtr(b.Note)
+	in.VIP = b.VIP
 	if utf8.RuneCountInString(in.Note) > maxNoteRunes {
 		return in, refuse(http.StatusBadRequest, "invitation.note_too_long", "note is at most 1000 characters", nil)
 	}

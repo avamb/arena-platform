@@ -105,6 +105,10 @@ type inviteDialog struct {
 	Rcpt  []InviteRecipient `json:"rcpt,omitempty"`
 	Batch string            `json:"batch,omitempty"`
 	Done  []int64           `json:"done,omitempty"` // ticket number per guest, 0 = not issued yet
+	// VIP marks every ticket of the operation with the organizer's private
+	// VIP flag (task V1). Changed on the confirmation screen only, and only
+	// while no guest has been issued yet.
+	VIP bool `json:"vip,omitempty"`
 
 	// the staff invitations list (new orders): NCursors[i] is the cursor that
 	// fetches page i+1 ("" for the first), NOrderIDs the rows of the shown page
@@ -276,6 +280,18 @@ func (b *Bot) inviteCallback(ctx context.Context, chatID int64, msgID int, from 
 			return
 		}
 		b.sendInvitations(ctx, chatID, &msgID, from.ID, id, jwt, st)
+	case "vip":
+		// The VIP tick of the confirmation screen. A different request is a
+		// different operation, so it gets a new batch id; once a guest has
+		// been issued the operation is fixed and the press only redraws.
+		if step != invStepConfirm {
+			return
+		}
+		if issued, _ := inviteOutcome(st); len(issued) == 0 {
+			st.VIP = arg == "1"
+			st.Batch = strings.ReplaceAll(uuid.NewString(), "-", "")
+		}
+		b.showInviteConfirm(ctx, chatID, &msgID, from.ID, loc, st, "")
 	case "ma":
 		// The seated date's button: draw a code, make it a web_app button.
 		if step != invStepTiers {
@@ -658,7 +674,18 @@ func (b *Bot) showInviteConfirm(ctx context.Context, chatID int64, editMsgID *in
 	text := note + b.texts.T(loc, "bot.inv.confirm", map[string]any{
 		"Name": Esc(st.EventName), "When": Esc(st.When), "Tier": Esc(st.TierName), "N": len(st.Rcpt), "List": guestLines(st.Rcpt),
 	})
+	if st.VIP {
+		text += "\n\n" + b.texts.T(loc, "bot.inv.vip_line", nil)
+	}
 	rows := [][]models.InlineKeyboardButton{{b.invButton(loc, "bot.inv.send_btn", "iv:go")}}
+	if issued, _ := inviteOutcome(st); len(issued) == 0 {
+		// The button says what pressing it WILL do, not the current state only.
+		if st.VIP {
+			rows = append(rows, []models.InlineKeyboardButton{b.invButton(loc, "bot.inv.vip_off_btn", "iv:vip:0")})
+		} else {
+			rows = append(rows, []models.InlineKeyboardButton{b.invButton(loc, "bot.inv.vip_on_btn", "iv:vip:1")})
+		}
+	}
 	rows = append(rows, b.invNav(loc, "iv:bk"))
 	b.reply(ctx, chatID, editMsgID, clipMessage(text, maxMessageRunes), b.invMarkup(rows...))
 }
@@ -684,7 +711,7 @@ func (b *Bot) sendInvitations(ctx context.Context, chatID int64, editMsgID *int,
 		// or a bot restart replays the order already issued.
 		res, err := b.arena.IssueStaffInvitation(ctx, jwt, st.OrgID, StaffInvitationInput{
 			SessionID: st.SessionID, TierID: st.TierID, Qty: 1, Email: r.Email,
-			Name:      staffGuestName(r),
+			Name:      staffGuestName(r), VIP: st.VIP,
 			RequestID: uuid.NewSHA1(uuid.NameSpaceOID, []byte("tg-"+st.Batch+"-"+invNum(int64(i)))),
 		})
 		if err != nil {
