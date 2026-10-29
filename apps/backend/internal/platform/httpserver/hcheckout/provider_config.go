@@ -214,7 +214,7 @@ func (h *Handler) channelProviderForCheckout(ctx context.Context, cs gen.Checkou
 	if h.channelQueries == nil {
 		return "", errors.New("channel queries unavailable")
 	}
-	ch, err := h.channelQueries.GetSalesChannelByID(ctx, cs.ChannelID, cs.OrgID)
+	ch, err := h.channelQueries.GetSalesChannelByIDAnyKind(ctx, cs.ChannelID, cs.OrgID)
 	if err != nil {
 		return "", err
 	}

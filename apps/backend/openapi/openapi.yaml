@@ -17185,6 +17185,261 @@ components:
 
     # ── Complimentary issuance schemas (features #148, #150) ─────────────────
 
+    StaffInvitationIssueRequest:
+      type: object
+      required: [request_id, guest, delivery]
+      description: A staff invitation on chosen seats and GA places (spec 46, section 3.1). One to 50 places in total.
+      properties:
+        request_id:
+          type: string
+          format: uuid
+          description: Client-chosen id; a repeat with the same id answers the first invitation (200, replayed true).
+        seats:
+          type: array
+          description: Seats by key, free or held back by the organizer.
+          items:
+            $ref: "#/components/schemas/StaffInvitationSeatRef"
+        ga:
+          type: array
+          description: General Admission places by category; free places are taken first, then the reserve.
+          items:
+            $ref: "#/components/schemas/StaffInvitationGALine"
+        guest:
+          allOf:
+            - $ref: "#/components/schemas/StaffInvitationGuest"
+          description: The guest the invitation is for.
+        delivery:
+          type: string
+          description: "How the tickets travel - guest_email (a letter to guest.email, required then), my_email (a letter to the issuing user, for forwarding) or pdf_only (no letter, download the PDF)."
+        note:
+          type: [string, "null"]
+          description: Internal note, at most 1000 characters, never shown to the guest.
+    StaffInvitationSeatRef:
+      type: object
+      required: [seat_key]
+      description: One seat of the session by key.
+      properties:
+        seat_key:
+          type: string
+          description: session_seats.seat_key of the seat.
+    StaffInvitationGALine:
+      type: object
+      required: [tier_id, qty]
+      description: Places of one General Admission category.
+      properties:
+        tier_id:
+          type: string
+          format: uuid
+          description: Category of the session.
+        qty:
+          type: integer
+          minimum: 1
+          description: Number of places.
+    StaffInvitationGuest:
+      type: object
+      required: [name]
+      description: The guest; the name is printed on the ticket.
+      properties:
+        name:
+          type: string
+          description: Guest name, 1 to 200 characters.
+        email:
+          type: [string, "null"]
+          description: Guest e-mail; required only for delivery guest_email.
+        phone:
+          type: [string, "null"]
+          description: Guest phone, optional.
+        locale:
+          type: [string, "null"]
+          description: Language of the guest's letter (cs, de, en, es, fr, he, ru); anything else falls back to the default.
+    StaffInvitationPlace:
+      type: object
+      required: [tier_id, tier_name, face_value]
+      description: One place of a staff invitation.
+      properties:
+        seat_key:
+          type: [string, "null"]
+          description: Key of the seat or GA place.
+        sector:
+          type: [string, "null"]
+          description: Sector name of the seat.
+        row:
+          type: [string, "null"]
+          description: Row of the seat.
+        seat:
+          type: [string, "null"]
+          description: Seat number.
+        kind:
+          type: [string, "null"]
+          description: seat or ga_unit.
+        tier_id:
+          type: string
+          format: uuid
+          description: Category of the place.
+        tier_name:
+          type: string
+          description: Category name.
+        face_value:
+          type: integer
+          format: int64
+          description: Face value of the place in minor units; the invitation itself costs 0.
+        origin:
+          type: [string, "null"]
+          description: Where the place came from - available (from sale) or unavailable (from the organizer's reserve). A cancelled ticket returns its place there.
+        ticket_id:
+          type: [string, "null"]
+          description: The ticket of this place once issued.
+    StaffInvitationIssueResponse:
+      type: object
+      required: [order_id, system_id, status, delivery, places, from_reserve, tickets_status, replayed]
+      description: The invitation as written.
+      properties:
+        order_id:
+          type: string
+          format: uuid
+          description: Order id of the invitation.
+        system_id:
+          type: integer
+          format: int64
+          description: Order number shown to people.
+        status:
+          type: string
+          description: Order status - paid for an issued invitation; it stays paid after a cancellation (tickets_status and the ticket counts tell a cancelled invitation).
+        guest_name:
+          type: [string, "null"]
+          description: Guest name.
+        delivery:
+          type: string
+          description: Delivery mode - guest_email, my_email or pdf_only.
+        places:
+          type: array
+          description: The places of the invitation.
+          items:
+            $ref: "#/components/schemas/StaffInvitationPlace"
+        from_reserve:
+          type: integer
+          description: How many places came from the organizer's reserve.
+        tickets_status:
+          type: string
+          description: issuing right after the issue (tickets are minted asynchronously), issued once every place has its ticket.
+        charge:
+          type: [object, "null"]
+          description: Billing preview of the invitation (spec 46, section 3.6); null until billing of invitations lands.
+        replayed:
+          type: boolean
+          description: True when the request_id was already used and this is the first invitation.
+    StaffInvitationIssuer:
+      type: object
+      description: Who issued the invitation; all null for an organization API key.
+      properties:
+        user_id:
+          type: [string, "null"]
+          description: User id of the issuer.
+        email:
+          type: [string, "null"]
+          description: Issuer e-mail.
+        first_name:
+          type: [string, "null"]
+          description: Issuer first name.
+        last_name:
+          type: [string, "null"]
+          description: Issuer last name.
+    StaffInvitationListItem:
+      type: object
+      required: [order_id, system_id, status, delivery, issued_via, issued_by, created_at, tickets_total, tickets_active, places]
+      description: One staff invitation of the session.
+      properties:
+        order_id:
+          type: string
+          format: uuid
+          description: Order id of the invitation.
+        system_id:
+          type: integer
+          format: int64
+          description: Order number shown to people.
+        status:
+          type: string
+          description: Order status - paid, also after every ticket is cancelled (an invitation stays billed); tickets_active = 0 marks a fully cancelled invitation.
+        guest_name:
+          type: [string, "null"]
+          description: Guest name.
+        delivery:
+          type: string
+          description: Delivery mode - guest_email, my_email or pdf_only.
+        issued_via:
+          type: string
+          description: staff (one by one) or staff_bulk (a CSV file).
+        issued_by:
+          allOf:
+            - $ref: "#/components/schemas/StaffInvitationIssuer"
+          description: Who issued it.
+        created_at:
+          type: string
+          format: date-time
+          description: When it was issued.
+        tickets_total:
+          type: integer
+          format: int64
+          description: Tickets issued so far.
+        tickets_active:
+          type: integer
+          format: int64
+          description: Tickets still active.
+        places:
+          type: array
+          description: The places of the invitation.
+          items:
+            $ref: "#/components/schemas/StaffInvitationPlace"
+    StaffInvitationListResponse:
+      type: object
+      required: [items]
+      description: The staff invitations of a session.
+      properties:
+        items:
+          type: array
+          description: Newest first, at most 500.
+          items:
+            $ref: "#/components/schemas/StaffInvitationListItem"
+    StaffInvitationCancelRequest:
+      type: object
+      description: Which tickets to cancel; an empty body cancels them all.
+      properties:
+        ticket_ids:
+          type: array
+          description: Tickets of this invitation to cancel; absent or empty means all.
+          items:
+            type: string
+            format: uuid
+        notify_guest:
+          type: boolean
+          description: Send the guest the cancellation letter when the invitation has the guest's e-mail (default true).
+    StaffInvitationCancelResponse:
+      type: object
+      required: [order_id, order_status, cancelled_ticket_ids, skipped_ticket_ids, notify_guest]
+      description: What the cancellation did.
+      properties:
+        order_id:
+          type: string
+          format: uuid
+          description: Order id of the invitation.
+        order_status:
+          type: string
+          description: Order status after the cancellation. A cancellation moves no money, so it stays `paid` even when every ticket is cancelled (the invitation is still billed); a client labels a fully cancelled invitation by its active ticket count.
+        cancelled_ticket_ids:
+          type: array
+          description: Tickets cancelled by this request.
+          items:
+            type: string
+            format: uuid
+        skipped_ticket_ids:
+          type: array
+          description: Named tickets that were already not active.
+          items:
+            type: string
+            format: uuid
+        notify_guest:
+          type: boolean
+          description: Whether the guest is to be told.
     ComplimentaryIssuance:
       type: object
       required: [id, org_id, session_id, tier_id, recipient_email, status, created_at]
@@ -48994,6 +49249,247 @@ paths:
 
   # ── Complimentary tickets (features #148, #150) ───────────────────────────
 
+  /v1/organizations/{org_id}/sessions/{session_id}/invitations:
+    post:
+      operationId: issueStaffInvitation
+      summary: Issue a staff invitation on chosen seats
+      description: |
+        Issues free tickets (an order for 0 with source `complimentary`) on
+        chosen seats and General Admission places of the session, in one
+        transaction (spec 46, section 3.2). The seats may be free
+        (`available`) or held back by the organizer (`unavailable`); each
+        place remembers where it came from (`origin`) and goes back there
+        when the invitation is cancelled. Sales end, closed categories, sale
+        windows and the start time do not apply; only a cancelled or
+        deleted session refuses. Tickets are issued right after the commit
+        (`tickets_status` `issuing`). A repeat with the same `request_id`
+        answers 200 with the first order and `replayed` true.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: session_id
+          description: Session (date) of the organization the invitations are for. A session of another organization answers 404.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffInvitationIssueRequest"
+      responses:
+        "200":
+          description: The request_id was already used for this session - the first invitation, nothing new written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffInvitationIssueResponse"
+        "201":
+          description: Invitation issued, tickets are being issued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffInvitationIssueResponse"
+        "400":
+          description: Invalid request - invitation.empty, invitation.too_many (over 50 places), invitation.unknown_seat (details.seat_keys), invitation.unknown_category, invitation.invalid_request_id, invitation.invalid_seats, invitation.invalid_ga, invitation.invalid_guest_name, invitation.invalid_guest_email, invitation.invalid_delivery, invitation.note_too_long, invitation.invalid_body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks complimentary.issue in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found in this organization (session.not_found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: invitation.seats_taken (details.seat_keys - held or sold seats, including seats sold in an earlier system), invitation.not_enough_places (a GA category has fewer free or reserved places), invitation.capacity_exceeded, invitation.request_id_reused (the request_id was used for another session or with a different request body).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: invitation.session_cancelled, invitation.guest_email_required (delivery guest_email without guest.email), invitation.my_email_requires_user (an API key has no e-mail), invitation.seat_without_category.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    get:
+      operationId: listStaffInvitations
+      summary: List the staff invitations of a session
+      description: |
+        Every staff invitation of the session, whoever issued it, newest
+        first (at most 500): guest, places with their origin, delivery mode,
+        who issued it, when, status and ticket counts.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: session_id
+          description: Session (date) of the organization the invitations are for. A session of another organization answers 404.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The invitations of the session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffInvitationListResponse"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks complimentary.read in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found in this organization (session.not_found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/invitations/{order_id}/cancel:
+    post:
+      operationId: cancelStaffInvitation
+      summary: Cancel a staff invitation
+      description: |
+        Cancels the named tickets of a staff invitation, or all of them,
+        with no money involved. Each seat goes back where it came from: a
+        seat taken from the reserve becomes `unavailable` again, a seat
+        taken from sale becomes `available`. Every named ticket is
+        cancelled in one transaction, or none is. The order keeps its
+        status (`paid`): an invitation stays billed after it is cancelled.
+        A manager may cancel an invitation issued by the owner.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: order_id
+          description: Order id of the staff invitation. Any other order, or another organization's, answers 404 invitation.not_found.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffInvitationCancelRequest"
+      responses:
+        "200":
+          description: The tickets were cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffInvitationCancelResponse"
+        "400":
+          description: invitation.unknown_ticket (a ticket_id is not a ticket of this invitation) or invitation.invalid_body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks complimentary.revoke in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invitation not found in this organization (invitation.not_found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: invitation.tickets_not_issued - the tickets are still being issued, try again in a moment. invitation.ticket_scanned (details.ticket_id) - a ticket was already used at the door; nothing was cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database or the ticket service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/complimentary:
     get:
       operationId: listComplimentaryIssuances

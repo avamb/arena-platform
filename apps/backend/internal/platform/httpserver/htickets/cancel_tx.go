@@ -152,6 +152,49 @@ func (h *Handler) CancelTicketTx(ctx context.Context, p CancelTicketParams) (Can
 		}
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+
+	out, cerr := h.CancelTicketInTx(ctx, tx, p)
+	if cerr != nil {
+		return CancelTicketOutcome{}, cerr
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return CancelTicketOutcome{}, &CancelTicketError{
+			Status:  http.StatusInternalServerError,
+			Code:    "ticket.commit_failed",
+			Message: "failed to commit cancellation",
+			Err:     err,
+		}
+	}
+
+	h.PublishTicketCancelled(ctx, out, p)
+	return out, nil
+}
+
+// PublishTicketCancelled fires the v1.ticket.cancelled outbox event of a
+// COMMITTED cancellation: the ticket no longer admits, and the scanner
+// pipeline (AB-50 feeds MACS from these events) must hear it. A caller of
+// CancelTicketInTx calls it once per outcome, after its own commit.
+func (h *Handler) PublishTicketCancelled(ctx context.Context, out CancelTicketOutcome, p CancelTicketParams) {
+	if h.publishTicketCancelledEvent != nil {
+		h.publishTicketCancelledEvent(ctx, out.Ticket, p.Reason, p.RefundMode)
+	}
+}
+
+// CancelTicketInTx is the body of CancelTicketTx on the CALLER's
+// transaction, so several tickets (a staff invitation, spec 46) are
+// cancelled together or not at all. It neither commits nor fires the
+// outbox event: the caller commits and then calls PublishTicketCancelled
+// for every outcome. Any error leaves the transaction to be rolled back.
+func (h *Handler) CancelTicketInTx(ctx context.Context, tx pgx.Tx, p CancelTicketParams) (CancelTicketOutcome, *CancelTicketError) {
+	var out CancelTicketOutcome
+	if h.ticketQueries == nil {
+		return out, &CancelTicketError{
+			Status:  http.StatusServiceUnavailable,
+			Code:    "dependency.database_unavailable",
+			Message: "database is not available",
+		}
+	}
 	txq := h.ticketQueries.WithTx(tx)
 
 	if p.ScanGuard && (p.RefundMode == "manual" || p.RefundMode == "automatic") {
@@ -307,21 +350,6 @@ func (h *Handler) CancelTicketTx(ctx context.Context, p CancelTicketParams) (Can
 				Err:     auditErr,
 			}
 		}
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return out, &CancelTicketError{
-			Status:  http.StatusInternalServerError,
-			Code:    "ticket.commit_failed",
-			Message: "failed to commit cancellation",
-			Err:     err,
-		}
-	}
-
-	// The ticket no longer admits — notify the scanner pipeline (AB-50
-	// consumes these outbox events to feed MACS).
-	if h.publishTicketCancelledEvent != nil {
-		h.publishTicketCancelledEvent(ctx, cancelled, p.Reason, p.RefundMode)
 	}
 
 	out.Ticket = cancelled

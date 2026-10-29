@@ -234,6 +234,13 @@ func sweepRouteSet() map[string]bool {
 // handler really loads the child and compares its organization to {org_id}; if
 // in doubt add a sweepRows entry instead — a failing row is cheaper than a leak.
 var orgIsolationAuditedSafe = map[string]string{
+	// Staff invitations (spec 46, INV-02, hinvitations): issue and list load the
+	// session with GetInvitationSessionTarget and compare its organization;
+	// cancel loads the order with GetInvitationOrder(order_id, org_id).
+	// staff_invitations_inv02_integration_test.go drives a foreign org and expects 404.
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/invitations":  "invitations",
+	"POST /v1/organizations/{org_id}/sessions/{session_id}/invitations": "invitations",
+	"POST /v1/organizations/{org_id}/invitations/{order_id}/cancel":     "invitations",
 	// Merchandise shop (spec 47, migration 0172): internal/platform/shop loads
 	// every product and order by (id, org_id) and answers the route's own 404;
 	// a page is keyed by (org_id, slug), a picture's media must be the

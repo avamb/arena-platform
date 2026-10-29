@@ -12,7 +12,8 @@ SELECT id, display_number, org_id, name, payment_mode, provider, provider_accoun
 FROM   sales_channels
 WHERE  id = $1
   AND  org_id = $2
-  AND  deleted_at IS NULL;
+  AND  deleted_at IS NULL
+  AND  kind = 'sales';
 
 -- name: GetSalesChannelByDisplayNumber :one
 -- Bil24 gateway (feature #471, W1-A1b): resolve the WordPress-side `fid`
@@ -22,13 +23,15 @@ WHERE  id = $1
 SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
 FROM   sales_channels
 WHERE  display_number = $1
-  AND  deleted_at IS NULL;
+  AND  deleted_at IS NULL
+  AND  kind = 'sales';
 
 -- name: ListSalesChannelsByOrg :many
 SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
 FROM   sales_channels
 WHERE  org_id = $1
   AND  deleted_at IS NULL
+  AND  kind = 'sales'
 ORDER  BY created_at ASC, id ASC;
 
 -- name: UpdateSalesChannel :one
@@ -52,6 +55,7 @@ SET    name                     = COALESCE(NULLIF($3, ''), name),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
+  AND  kind = 'sales'
 RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at;
 
 -- name: SoftDeleteSalesChannel :one
@@ -61,6 +65,7 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
+  AND  kind = 'sales'
 RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at;
 
 -- name: EnableChannelHostedPage :execrows
@@ -78,6 +83,7 @@ SET    settings   = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hosted_page}',
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
+  AND  kind = 'sales'
   AND  COALESCE(settings #>> '{hosted_page,enabled}', '') <> 'true'
   AND  settings #>> '{gateway,token_hash}' IS NULL
   AND  settings ->> 'gateway_token_hash' IS NULL;
@@ -91,6 +97,16 @@ SELECT id, COALESCE(settings #>> '{hosted_page,enabled}', '') = 'true' AS hosted
 FROM   sales_channels
 WHERE  org_id = $1
   AND  deleted_at IS NULL
+  AND  kind = 'sales'
   AND  settings #>> '{gateway,token_hash}' IS NULL
   AND  settings ->> 'gateway_token_hash' IS NULL
 ORDER  BY created_at ASC, id ASC;
+
+-- name: GetSalesChannelByIDAnyKind :one
+-- GetSalesChannelByID without the internal-channel filter (spec 46): only
+-- order processing that resolves the channel of an EXISTING order calls it.
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+FROM   sales_channels
+WHERE  id = $1
+  AND  org_id = $2
+  AND  deleted_at IS NULL;
