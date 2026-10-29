@@ -1,7 +1,9 @@
 package eventbot
 
 // arena_client_invite.go — the calls behind "Invitations" (EC-12): issue free
-// tickets, page through the issued ones, annul one. A request carries guests'
+// tickets, page through the issued ones, annul one. Issuing and the list go
+// through the staff-invitation routes of spec 46 (INV-05); the old
+// complimentary_issuances list and revoke stay for what was issued before. A request carries guests'
 // e-mails and names: nothing here logs them, and an error keeps the route
 // only (routeOf), never the body.
 
@@ -15,60 +17,6 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
 )
-
-// InvitationInput is one operation's request: the tickets of ONE guest (the
-// bot issues one issuance per guest, so each can be annulled on its own).
-type InvitationInput struct {
-	SessionID uuid.UUID
-	TierID    uuid.UUID
-	Email     string
-	Name      string
-	// BatchID makes a retry safe: the API answers a repeated (organization,
-	// batch) with the first result and sends no second letter.
-	BatchID string
-	// VIP marks the tickets with the organizer's private VIP flag (task V1).
-	VIP bool
-}
-
-// InvitationTicket is a ticket the API issued.
-type InvitationTicket struct {
-	ID             uuid.UUID `json:"id"`
-	SystemTicketID int64     `json:"system_ticket_id"`
-	HolderEmail    *string   `json:"holder_email"`
-	HolderName     *string   `json:"holder_name"`
-}
-
-// InvitationIssued is the answer to an issue call.
-type InvitationIssued struct {
-	Issuance struct {
-		ID uuid.UUID `json:"id"`
-	} `json:"issuance"`
-	Tickets          []InvitationTicket `json:"tickets"`
-	IdempotentReplay bool               `json:"idempotent_replay"`
-}
-
-// IssueInvitation issues one free ticket to one guest
-// (POST .../complimentary). A 409 is one of tier.sold_out or
-// complimentary.capacity_overflow (no free place), a 400 names the field.
-func (c *ArenaClient) IssueInvitation(ctx context.Context, jwt string, orgID uuid.UUID, in InvitationInput) (InvitationIssued, error) {
-	body := map[string]any{
-		"session_id": in.SessionID.String(),
-		"tier_id":    in.TierID.String(),
-		"qty":        1,
-		"recipients": []string{in.Email},
-		"batch_id":   in.BatchID,
-		"issued_by":  "telegram_bot",
-	}
-	if in.Name != "" {
-		body["recipient_names"] = []string{in.Name}
-	}
-	if in.VIP {
-		body["vip"] = true
-	}
-	var out InvitationIssued
-	err := c.do(ctx, http.MethodPost, "/v1/organizations/"+orgID.String()+"/complimentary", jwt, body, &out)
-	return out, err
-}
 
 // ListInvitations returns one page of the issued invitations, newest first.
 func (c *ArenaClient) ListInvitations(ctx context.Context, jwt string, orgID uuid.UUID, limit, offset int) (openapi.ComplimentaryListResponse, error) {
@@ -87,4 +35,93 @@ func (c *ArenaClient) ListInvitations(ctx context.Context, jwt string, orgID uui
 // another organization.
 func (c *ArenaClient) RevokeInvitation(ctx context.Context, jwt string, issuanceID uuid.UUID) error {
 	return c.do(ctx, http.MethodPost, "/v1/complimentary/"+issuanceID.String()+"/revoke", jwt, map[string]string{"reason": "revoked from the Telegram bot"}, nil)
+}
+
+// ─── staff invitations (spec 46, INV-05) ─────────────────────────────────────
+
+// StaffInvitationInput is one guest's invitation on general-admission places
+// of a date (POST .../sessions/{id}/invitations with "ga"). RequestID makes a
+// retry safe: the API answers a repeated one with the first order (200,
+// replayed) and sends no second letter.
+type StaffInvitationInput struct {
+	SessionID uuid.UUID
+	TierID    uuid.UUID
+	Qty       int
+	RequestID uuid.UUID
+	// Name is printed on the ticket; the API requires it.
+	Name string
+	// Email is the guest's address; empty sends the PDF to nobody (pdf_only).
+	Email string
+}
+
+// StaffInvitationIssued is the part of the issue answer the bot uses.
+type StaffInvitationIssued struct {
+	OrderID  uuid.UUID `json:"order_id"`
+	SystemID int64     `json:"system_id"`
+	Replayed bool      `json:"replayed"`
+}
+
+// IssueStaffInvitation issues the invitation (one order) of one guest.
+// 409 invitation.not_enough_places / invitation.capacity_exceeded: no free
+// place; 422 invitation.session_cancelled; 400 names the field.
+func (c *ArenaClient) IssueStaffInvitation(ctx context.Context, jwt string, orgID uuid.UUID, in StaffInvitationInput) (StaffInvitationIssued, error) {
+	guest := map[string]any{"name": in.Name}
+	delivery := "pdf_only"
+	if in.Email != "" {
+		guest["email"] = in.Email
+		delivery = "guest_email"
+	}
+	body := map[string]any{
+		"request_id": in.RequestID.String(),
+		"ga":         []map[string]any{{"tier_id": in.TierID.String(), "qty": in.Qty}},
+		"guest":      guest,
+		"delivery":   delivery,
+		"note":       "issued from the Telegram bot",
+	}
+	var out StaffInvitationIssued
+	err := c.do(ctx, http.MethodPost, "/v1/organizations/"+orgID.String()+"/sessions/"+in.SessionID.String()+"/invitations", jwt, body, &out)
+	return out, err
+}
+
+// ListOrgInvitations returns one page of the organization's staff invitations
+// of every date, newest first, annulled ones included (state=all). cursor is
+// the previous page's next_cursor, empty for the first page.
+func (c *ArenaClient) ListOrgInvitations(ctx context.Context, jwt string, orgID uuid.UUID, cursor string, limit int) (openapi.StaffInvitationOrgListResponse, error) {
+	q := url.Values{}
+	q.Set("state", "all")
+	q.Set("limit", strconv.Itoa(limit))
+	if cursor != "" {
+		q.Set("cursor", cursor)
+	}
+	var out openapi.StaffInvitationOrgListResponse
+	err := c.do(ctx, http.MethodGet, "/v1/organizations/"+orgID.String()+"/invitations?"+q.Encode(), jwt, nil, &out)
+	return out, err
+}
+
+// StaffInvitationCancelled is the answer to a cancellation.
+type StaffInvitationCancelled struct {
+	CancelledTicketIDs []string `json:"cancelled_ticket_ids"`
+	SkippedTicketIDs   []string `json:"skipped_ticket_ids"`
+}
+
+// CancelStaffInvitation cancels every active ticket of the order
+// (POST .../invitations/{order_id}/cancel). The guest is told by e-mail when
+// there is an address. A ticket already scanned at the door is skipped.
+func (c *ArenaClient) CancelStaffInvitation(ctx context.Context, jwt string, orgID, orderID uuid.UUID) (StaffInvitationCancelled, error) {
+	var out StaffInvitationCancelled
+	err := c.do(ctx, http.MethodPost, "/v1/organizations/"+orgID.String()+"/invitations/"+orderID.String()+"/cancel", jwt, map[string]any{"notify_guest": true}, &out)
+	return out, err
+}
+
+// MiniappInvitationsLink draws a one-time code for the staff invitations
+// Mini App page of one date: <EVENT_CENTER_PUBLIC_URL>/tg/invitations
+// ?session=<id>&event=<id>#code=<code> (the code is after "#").
+func (c *ArenaClient) MiniappInvitationsLink(ctx context.Context, telegramUserID int64, eventID, sessionID uuid.UUID) (WebLoginLink, error) {
+	var out WebLoginLink
+	body := map[string]any{
+		"telegram_user_id": telegramUserID, "purpose": "miniapp", "kind": "invitations",
+		"event_id": eventID.String(), "session_id": sessionID.String(),
+	}
+	err := c.do(ctx, http.MethodPost, "/v1/bot/web-login-codes", c.serviceToken, body, &out)
+	return out, err
 }

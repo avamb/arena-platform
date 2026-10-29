@@ -189,6 +189,7 @@ func TestInviteTexts_RenderInEveryLanguage(t *testing.T) {
 		"Org": "Org", "Max": 50, "Page": 1, "Pages": 2, "Name": "Swan Lake", "When": "15.10.2026 20:00", "Tier": "VIP", "N": 4,
 		"Left": 2, "Got": 2, "Sent": 3, "List": "1. Anna", "Line": 3, "Text": "x", "Reason": "r", "Done": 1, "Why": "w",
 		"Total": 7, "Legend": "l", "Event": "e", "Guests": "g", "Guest": "Anna", "State": "s", "Issued": "d", "Word": "ANNUL",
+		"Link": "https://x.test/o", "Places": "p", "By": "b", "Mail": "ml",
 	}
 	for _, loc := range SupportedLocales {
 		for _, key := range inviteKeys {

@@ -542,6 +542,13 @@ type Config struct {
 	// is live: today /tg/edit is a placeholder. It needs EVENT_CENTER_PUBLIC_URL
 	// (https) on arena-api and the /tg/ nginx location of apps/event-center.
 	BotMiniappEditorEnabled bool `env:"BOT_MINIAPP_EDITOR_ENABLED" required:"false" default:"false"`
+	// BotMiniappInvitesEnabled (read by arena-bot) makes the "Invitations"
+	// entry of a SEATED date a Telegram web_app button that opens the Mini App
+	// page /tg/invitations (spec 46, INV-05), with the same sign-in code as the
+	// editor. Off (default): the entry is a short text with a link to the same
+	// screen of the web event center. Needs EVENT_CENTER_PUBLIC_URL (https) on
+	// arena-api and on the bot, and the /tg/invitations page of apps/event-center.
+	BotMiniappInvitesEnabled bool `env:"BOT_MINIAPP_INVITES_ENABLED" required:"false" default:"false"`
 	// BotSchemeButton (read by arena-bot) is the "Seat map" button on the card of
 	// a seated date: "off" (default) shows none, "url" an ordinary link button,
 	// "web_app" the Telegram Mini App button. It needs EVENT_CENTER_PUBLIC_URL on
@@ -1138,6 +1145,12 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.BotMiniappEditorEnabled = b
+
+	b, err = getenvBool("BOT_MINIAPP_INVITES_ENABLED", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.BotMiniappInvitesEnabled = b
 
 	cfg.BotSchemeButton = strings.ToLower(strings.TrimSpace(getenv("BOT_SCHEME_BUTTON", "off")))
 	switch cfg.BotSchemeButton {

@@ -6,12 +6,12 @@ package eventbot
 //
 //	ev       the event (events that still have a date to come)
 //	se       the date
-//	ti       the category (general-admission ones; a seated hall is refused)
+//	ti       the category (general-admission ones; a seated date shows the Mini App / web link, invite_orders.go)
 //	qty      how many tickets - at most 50 in one operation, more in several
 //	rcpt     the guests, one per line "Name, e-mail" or just the e-mail
 //	confirm  the counts and the guests, then ONE press that issues
 //
-// then one POST .../complimentary PER GUEST (qty 1 each): every guest gets an
+// then one POST .../sessions/{id}/invitations PER GUEST (qty 1 each, spec 46 INV-05): every guest gets an
 // invitation of their own that can be annulled on its own, and a failure half
 // way leaves the guests before it issued and says which were not. The batch id
 // of each call is "<operation>-<index>", so a retry after a timeout, a double
@@ -63,12 +63,16 @@ const (
 	// maxInviteTierRows bounds the category buttons of one date.
 	maxInviteTierRows = 8
 
-	// API error codes with their own words.
-	invCodeSoldOut  = "tier.sold_out"
-	invCodeCapacity = "complimentary.capacity_overflow"
-	invCodeTooMany  = "complimentary.qty_too_large"
-	invCodeRecipOne = "complimentary.invalid_recipient"
-	invCodeTierReq  = "tier.required"
+	// the organization-wide list of staff invitations (spec 46, INV-05)
+	invStepNList   = "nlist"
+	invStepNCard   = "ncard"
+	invStepNRevoke = "nrevoke"
+
+	// API error codes of POST .../invitations with their own words.
+	invCodeNotEnough        = "invitation.not_enough_places"
+	invCodeCapacityExceeded = "invitation.capacity_exceeded"
+	invCodeSessionCancelled = "invitation.session_cancelled"
+	invCodeRequestReused    = "invitation.request_id_reused"
 )
 
 // inviteDialog is the state between two messages.
@@ -101,12 +105,16 @@ type inviteDialog struct {
 	Rcpt  []InviteRecipient `json:"rcpt,omitempty"`
 	Batch string            `json:"batch,omitempty"`
 	Done  []int64           `json:"done,omitempty"` // ticket number per guest, 0 = not issued yet
-	// VIP marks every ticket of the operation with the organizer's private
-	// VIP flag (task V1). Changed on the confirmation screen only, and only
-	// while no guest has been issued yet.
-	VIP bool `json:"vip,omitempty"`
 
-	// the issued list
+	// the staff invitations list (new orders): NCursors[i] is the cursor that
+	// fetches page i+1 ("" for the first), NOrderIDs the rows of the shown page
+	NPage      int         `json:"n_page,omitempty"`
+	NCursors   []string    `json:"n_cursors,omitempty"`
+	NOrderIDs  []uuid.UUID `json:"n_order_ids,omitempty"`
+	NOpen      uuid.UUID   `json:"n_open"`
+	NOpenGuest string      `json:"n_open_guest,omitempty"`
+
+	// the legacy issued list (complimentary_issuances: read-only, annul stays)
 	ListPage int         `json:"list_page,omitempty"`
 	ListIDs  []uuid.UUID `json:"list_ids,omitempty"`
 	Open     uuid.UUID   `json:"open"`
@@ -217,7 +225,10 @@ func (b *Bot) inviteCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.showInviteDates(ctx, chatID, &msgID, id, jwt, inviteDialog{OrgID: orgID, EventID: eventID, Fixed: true}, 1)
 		return
 	case "l":
-		b.showInviteList(ctx, chatID, &msgID, id, jwt, inviteDialog{OrgID: orgID}, 1, "")
+		b.showStaffInvList(ctx, chatID, &msgID, id, jwt, inviteDialog{OrgID: orgID}, 1)
+		return
+	case "lg":
+		b.showLegacyInviteList(ctx, chatID, &msgID, id, jwt, inviteDialog{OrgID: orgID}, 1)
 		return
 	}
 
@@ -265,18 +276,12 @@ func (b *Bot) inviteCallback(ctx context.Context, chatID int64, msgID int, from 
 			return
 		}
 		b.sendInvitations(ctx, chatID, &msgID, from.ID, id, jwt, st)
-	case "vip":
-		// The VIP tick of the confirmation screen. A different request is a
-		// different operation, so it gets a new batch id; once a guest has
-		// been issued the operation is fixed and the press only redraws.
-		if step != invStepConfirm {
+	case "ma":
+		// The seated date's button: draw a code, make it a web_app button.
+		if step != invStepTiers {
 			return
 		}
-		if issued, _ := inviteOutcome(st); len(issued) == 0 {
-			st.VIP = arg == "1"
-			st.Batch = strings.ReplaceAll(uuid.NewString(), "-", "")
-		}
-		b.showInviteConfirm(ctx, chatID, &msgID, from.ID, loc, st, "")
+		b.openInvitationsMiniapp(ctx, chatID, msgID, from, id, st)
 	case "bk":
 		b.inviteBack(ctx, chatID, &msgID, from, id, jwt, st, step)
 	default:
@@ -305,11 +310,13 @@ func (b *Bot) inviteBack(ctx context.Context, chatID int64, editMsgID *int, from
 	case invStepConfirm:
 		st.Rcpt, st.Done, st.Batch = nil, nil, ""
 		b.showInviteRecipients(ctx, chatID, editMsgID, id.Link.TelegramUserID, loc, st, "")
-	case invStepList:
+	case invStepList, invStepNList:
 		b.leaveInvite(ctx, id.Link.TelegramUserID)
 		b.showInviteHub(ctx, chatID, editMsgID, id)
 	case invStepCard, invStepRevoke:
-		b.showInviteList(ctx, chatID, editMsgID, id, jwt, st, st.ListPage, "")
+		b.showLegacyInviteList(ctx, chatID, editMsgID, id, jwt, st, st.ListPage)
+	case invStepNCard, invStepNRevoke:
+		b.showStaffInvList(ctx, chatID, editMsgID, id, jwt, st, st.NPage)
 	default:
 		b.leaveInvite(ctx, id.Link.TelegramUserID)
 		b.showInviteHub(ctx, chatID, editMsgID, id)
@@ -454,9 +461,8 @@ func (b *Bot) showInviteDates(ctx context.Context, chatID int64, editMsgID *int,
 // ─── categories ───────────────────────────────────────────────────────────────
 
 // showInviteTiers lists the general-admission categories of the chosen date
-// with their free places. A date with a seating plan is refused: a free
-// ticket there would take a place from the ledger but no seat, and the seat
-// would stay on sale.
+// with their free places. A date with a seating plan is not handled here: the seats are
+// picked on the map (showInviteSeated).
 func (b *Bot) showInviteTiers(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, st inviteDialog) {
 	loc := id.Locale()
 	back := "iv:bk"
@@ -474,8 +480,9 @@ func (b *Bot) showInviteTiers(ctx context.Context, chatID int64, editMsgID *int,
 	st.TierIDs = st.TierIDs[:0]
 	vars := map[string]any{"Name": Esc(st.EventName), "When": Esc(st.When)}
 	if sum.Session.HasSeatingPlan {
+		// Seats are picked on the map: a Mini App (flag on) or the web screen.
 		b.saveInvite(ctx, id.Link.TelegramUserID, st, invStepTiers)
-		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.inv.ti_seated", vars), b.invMarkup(b.invNav(loc, back)))
+		b.showInviteSeated(ctx, chatID, editMsgID, id, st, back)
 		return
 	}
 	var kb [][]models.InlineKeyboardButton
@@ -651,18 +658,7 @@ func (b *Bot) showInviteConfirm(ctx context.Context, chatID int64, editMsgID *in
 	text := note + b.texts.T(loc, "bot.inv.confirm", map[string]any{
 		"Name": Esc(st.EventName), "When": Esc(st.When), "Tier": Esc(st.TierName), "N": len(st.Rcpt), "List": guestLines(st.Rcpt),
 	})
-	if st.VIP {
-		text += "\n\n" + b.texts.T(loc, "bot.inv.vip_line", nil)
-	}
 	rows := [][]models.InlineKeyboardButton{{b.invButton(loc, "bot.inv.send_btn", "iv:go")}}
-	if issued, _ := inviteOutcome(st); len(issued) == 0 {
-		// The button says what pressing it WILL do, not the current state only.
-		if st.VIP {
-			rows = append(rows, []models.InlineKeyboardButton{b.invButton(loc, "bot.inv.vip_off_btn", "iv:vip:0")})
-		} else {
-			rows = append(rows, []models.InlineKeyboardButton{b.invButton(loc, "bot.inv.vip_on_btn", "iv:vip:1")})
-		}
-	}
 	rows = append(rows, b.invNav(loc, "iv:bk"))
 	b.reply(ctx, chatID, editMsgID, clipMessage(text, maxMessageRunes), b.invMarkup(rows...))
 }
@@ -683,17 +679,21 @@ func (b *Bot) sendInvitations(ctx context.Context, chatID int64, editMsgID *int,
 		if st.Done[i] != 0 {
 			continue
 		}
-		res, err := b.arena.IssueInvitation(ctx, jwt, st.OrgID, InvitationInput{
-			SessionID: st.SessionID, TierID: st.TierID, Email: r.Email, Name: r.Name,
-			BatchID: "tg-" + st.Batch + "-" + invNum(int64(i)), VIP: st.VIP,
+		// One order per guest. The request id is derived from the operation
+		// and the guest's index, so a retry after a timeout, a double press
+		// or a bot restart replays the order already issued.
+		res, err := b.arena.IssueStaffInvitation(ctx, jwt, st.OrgID, StaffInvitationInput{
+			SessionID: st.SessionID, TierID: st.TierID, Qty: 1, Email: r.Email,
+			Name:      staffGuestName(r),
+			RequestID: uuid.NewSHA1(uuid.NameSpaceOID, []byte("tg-"+st.Batch+"-"+invNum(int64(i)))),
 		})
 		if err != nil {
 			failure = err
 			break
 		}
 		num := int64(-1) // issued, number not reported
-		if len(res.Tickets) > 0 && res.Tickets[0].SystemTicketID > 0 {
-			num = res.Tickets[0].SystemTicketID
+		if res.SystemID > 0 {
+			num = res.SystemID
 		}
 		st.Done[i] = num
 	}
@@ -774,10 +774,13 @@ func (b *Bot) issuedLines(rs []issuedGuest) string {
 // inviteFailureWhy words an API refusal. final is true when repeating the
 // press cannot help (no places, bad input), false for a transient failure.
 func (b *Bot) inviteFailureWhy(loc string, err error, id *Identity) (why string, final bool) {
+	code := APIErrorCode(err)
 	switch {
-	case APIErrorCode(err) == invCodeSoldOut || APIErrorCode(err) == invCodeCapacity:
+	case code == invCodeNotEnough || code == invCodeCapacityExceeded:
 		return b.texts.T(loc, "bot.inv.why_full", nil), true
-	case APIErrorCode(err) == invCodeTooMany, APIErrorCode(err) == invCodeRecipOne, APIErrorCode(err) == invCodeTierReq:
+	case code == invCodeSessionCancelled:
+		return b.texts.T(loc, "bot.inv.why_cancelled", nil), true
+	case strings.HasPrefix(code, "invitation.") && code != invCodeRequestReused:
 		return b.texts.T(loc, "bot.inv.why_rejected", nil), true
 	case IsAPIError(err, http.StatusForbidden):
 		return b.texts.T(loc, "bot.ec.no_rights", nil), true
@@ -808,7 +811,7 @@ func (b *Bot) inviteText(ctx context.Context, chatID int64, from *models.User, t
 		b.inviteGone(ctx, chatID, nil, loc, true)
 		return true
 	}
-	if !found || (step != invStepQty && step != invStepRcpt && step != invStepRevoke) {
+	if !found || (step != invStepQty && step != invStepRcpt && step != invStepRevoke && step != invStepNRevoke) {
 		return false
 	}
 	id, jwt, err := b.resolveIdentity(ctx, from.ID)
@@ -837,6 +840,8 @@ func (b *Bot) inviteText(ctx context.Context, chatID int64, from *models.User, t
 		b.takeInviteRecipients(ctx, chatID, edit, from.ID, loc, probe, text)
 	case invStepRevoke:
 		b.inviteRevokeWord(ctx, chatID, edit, from.ID, id, jwt, probe, text)
+	case invStepNRevoke:
+		b.inviteOrderRevokeWord(ctx, chatID, edit, from.ID, id, jwt, probe, text)
 	}
 	return true
 }
