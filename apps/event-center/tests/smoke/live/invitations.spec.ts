@@ -16,7 +16,8 @@
  * to six free places before every test.
  *
  * NOT covered here: a real letter. The harness runs arena-api only, no
- * arena-worker, so no invitation is mailed by itself.
+ * arena-worker, so no invitation is mailed by itself and its tickets are minted
+ * by the seed op `--invitations-op issue` (the same function the worker job calls).
  */
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { spawnSync } from "node:child_process";
@@ -44,7 +45,7 @@ function seedBinary(): string {
   return built;
 }
 
-function seed(op: "reset" | "inspect", email?: string): Record<string, number | string> {
+function seed(op: "reset" | "inspect" | "issue", email?: string): Record<string, number | string> {
   const args = ["--invitations-op", op];
   if (email !== undefined) args.push("--invitation-email", email);
   const r = spawnSync(seedBinary(), args, { cwd: repoRoot, env: process.env, encoding: "utf8" });
@@ -59,6 +60,12 @@ interface Rows {
   free_places: number;
 }
 const rows = () => seed("inspect") as unknown as Rows;
+
+/**
+ * Mints the tickets of the staff invitations, as arena-worker's checkout.issue_tickets job would. The harness runs
+ * arena-api only, so without this every invitation stays "issuing" and can be neither canceled nor resent.
+ */
+const issueTickets = () => seed("issue");
 
 async function orgMe(request: APIRequestContext, role: Role) {
   const res = await request.get(`${env.api_base_url}/v1/organizations/${env.org_id}/me`, {
@@ -207,6 +214,9 @@ test.describe("invitations (live)", () => {
     await expect(anna).toContainText(EVENT_NAME);
     await noA11yViolations(page);
 
+    // The harness has no worker: mint the tickets the way the job would, the list asks again by itself.
+    issueTickets();
+
     // The state tabs: nothing is canceled yet.
     await page.getByTestId("org-inv-tab-cancelled").click();
     await expect(page.getByTestId("org-inv-row")).toHaveCount(0);
@@ -273,6 +283,7 @@ test.describe("invitations (live)", () => {
     await page.getByTestId("invite-send").click();
     await expect(page.getByTestId("invite-done")).toBeVisible();
     expect(rows().free_places).toBe(PLACES - 1);
+    issueTickets();
     // A guest typed as an e-mail only is listed under the address.
     const r = row(page, "inv-manager@example.test");
     await expect(r).toHaveCount(1);
