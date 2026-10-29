@@ -38,6 +38,15 @@ describe("loadPosterBlob", () => {
     expect(d.fetchBytes).toHaveBeenCalledWith(signed, undefined);
   });
 
+  it("asks the media service for a resized picture with the parameter w", async () => {
+    const d = deps(png());
+    expect((await loadPosterBlob(d, ID, undefined, 240)).kind).toBe("ok");
+    expect(d.fetchBytes).toHaveBeenCalledWith(`${signed}&w=240`, undefined);
+    const d2 = deps(png());
+    await loadPosterBlob(d2, ID, undefined, 0);
+    expect(d2.fetchBytes).toHaveBeenCalledWith(signed, undefined);
+  });
+
   it("never fetches an address on another origin (no wildcard, no made-up host)", async () => {
     const d = deps(png({ signed_url: "https://bucket.s3.example/x?sig=1" }));
     expect(await loadPosterBlob(d, ID)).toEqual({ kind: "failed", why: "address" });

@@ -19,7 +19,7 @@ import { ConfirmWordDialog } from "@/components/ConfirmWordDialog";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { TextAreaField, TextField } from "@/components/FormField";
 import { useStepUp } from "@/components/StepUpDialog";
-import { cancelShopOrder, fetchCourierText, fetchShopOrder, refundShopOrder, shipShopOrder } from "@/lib/api/shopApi";
+import { cancelShopOrder, fetchShopOrder, refundShopOrder, shipShopOrder } from "@/lib/api/shopApi";
 import { ApiError } from "@/lib/api/http";
 import type { ShopOrder, ShopRefund } from "@/lib/api/types";
 import { formatMoney } from "@/lib/format";
@@ -33,6 +33,7 @@ import {
   canShip,
   checkRefund,
   copyText,
+  courierText,
   isShopOrderStatus,
   refundBody,
   refundOutcome,
@@ -46,11 +47,13 @@ export interface ShopOrderActionsProps {
   canManage: boolean;
   /** refund.create and refund.approve: the refund engine needs both next to shop.manage. */
   canRefund: boolean;
+  /** The shop's country: an address in it needs no country line in the courier text. */
+  country?: string | null;
 }
 
 type Panel = "ship" | "refund" | null;
 
-export function ShopOrderActions({ orgId, order, canManage, canRefund }: ShopOrderActionsProps) {
+export function ShopOrderActions({ orgId, order, canManage, canRefund, country }: ShopOrderActionsProps) {
   const { t, locale } = useI18n();
   const stepUp = useStepUp();
   const queryClient = useQueryClient();
@@ -156,7 +159,12 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund }: ShopOrd
     setFailure(null);
     setNote(null);
     try {
-      const text = await fetchCourierText(orgId, order.id);
+      // Built here from the order on the screen: it starts with the order number and ends with the buyer's comment.
+      const text = courierText(order, {
+        locale,
+        shopCountry: country,
+        labels: { order: t("shop.courier.order", { number: shopOrderNumber(order.number) }), comment: (note) => t("shop.courier.comment", { note }) },
+      });
       const copied = await copyText(text);
       setCourier({ copied, text });
       setNote(copied ? { key: "shop.act.courier.done" } : { key: "shop.act.courier.manual", bad: true });

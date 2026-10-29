@@ -57,7 +57,53 @@ function safeZone(tz: string | null | undefined): string | undefined {
   }
 }
 
-export function formatDateTime(iso: string | null | undefined, tz: string | null | undefined, locale: string): string {
+/**
+ * The name of a country in the language of the screen ("IL" is "Израиль" in Russian),
+ * or the code itself when the browser does not know it.
+ */
+export function regionName(iso2: string | null | undefined, locale: string): string {
+  if (iso2 === null || iso2 === undefined || iso2.trim() === "") return "";
+  const code = iso2.trim().toUpperCase();
+  try {
+    return new Intl.DisplayNames([intlLocale(locale)], { type: "region" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/** "₪ (новый израильский шекель)": the symbol and the name of a currency instead of the bare code. */
+export function currencyLabel(currency: string, locale: string): string {
+  const code = currency.trim().toUpperCase();
+  let symbol = code;
+  let name = "";
+  try {
+    const parts = new Intl.NumberFormat(intlLocale(locale), { style: "currency", currency: code, currencyDisplay: "narrowSymbol" }).formatToParts(0);
+    symbol = parts.find((p) => p.type === "currency")?.value ?? code;
+  } catch {
+    return code;
+  }
+  try {
+    name = new Intl.DisplayNames([intlLocale(locale)], { type: "currency" }).of(code) ?? "";
+  } catch {
+    name = "";
+  }
+  if (name === "" || name === code) return symbol;
+  return `${symbol} (${name})`;
+}
+
+/** Money with the short symbol of the currency ("740,00 ₪"), for text a person pastes elsewhere. */
+export function formatMoneySymbol(minor: number, currency: string, locale: string): string {
+  const digits = fractionDigits(currency);
+  const major = minor / 10 ** digits;
+  try {
+    return new Intl.NumberFormat(intlLocale(locale), { style: "currency", currency, currencyDisplay: "narrowSymbol" }).format(major);
+  } catch {
+    return `${major.toFixed(digits)} ${currency}`;
+  }
+}
+
+/** `label` replaces the city in brackets (a shop names the country of its time, not a city). */
+export function formatDateTime(iso: string | null | undefined, tz: string | null | undefined, locale: string, label?: string): string {
   if (iso === null || iso === undefined) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -72,8 +118,8 @@ export function formatDateTime(iso: string | null | undefined, tz: string | null
     hourCycle: "h23",
     timeZone: zone ?? "UTC",
   }).format(d);
-  const label = zone !== undefined ? zoneLabel(zone) : "UTC";
-  return `${text} (${label})`;
+  const where = label !== undefined && label !== "" ? label : zone !== undefined ? zoneLabel(zone) : "UTC";
+  return `${text} (${where})`;
 }
 
 export function formatDate(iso: string | null | undefined, tz: string | null | undefined, locale: string): string {

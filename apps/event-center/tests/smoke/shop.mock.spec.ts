@@ -317,7 +317,10 @@ test.describe("shop (mock)", () => {
     const state = await mockShop(page);
     await signIn(page);
     await page.goto(`/o/${ORG_A}/shop/settings`);
-    await expect(page.getByTestId("shop-settings-currency")).toHaveValue("EUR");
+    // The shop has products: the currency is shown, not typed, and the note says who changes it.
+    await expect(page.getByTestId("shop-settings-currency")).toHaveCount(0);
+    await expect(page.getByTestId("shop-settings-currency-value")).toContainText("EUR");
+    await expect(page.getByTestId("shop-settings-currency-locked")).toContainText("through support");
     await expect(page.getByTestId("shop-settings-fee")).toHaveValue("4.90");
     await expect(page.getByTestId("shop-settings-channel")).toHaveValue("ch1");
     await expect(page.getByTestId("shop-settings-domain-value")).toContainText("shop.example.test");
