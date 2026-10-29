@@ -178,17 +178,20 @@ type BillingAccountTermsRow struct {
 	// FeeMode is organizer_pays (the price-list rate) or buyer_pays (the
 	// buyer's service charge is the platform's commission), migration 0160.
 	FeeMode string `json:"fee_mode"`
+	// ComplimentaryBilling is free (invitations are free up to the yearly
+	// free limit) or standard (the fixed per-ticket rate), migration 0174.
+	ComplimentaryBilling string `json:"complimentary_billing"`
 }
 
 const billingAccountTermsColumns = `id, account_id, effective_from, price_list_code, plan_kind, billing_cycle,
        shortfall_policy, issuer_id, invoice_delay_days, due_days, locked,
-       created_by, reason, created_at, fee_mode`
+       created_by, reason, created_at, fee_mode, complimentary_billing`
 
 func scanBillingAccountTermsRow(row interface{ Scan(dest ...any) error }) (BillingAccountTermsRow, error) {
 	var r BillingAccountTermsRow
 	err := row.Scan(&r.ID, &r.AccountID, &r.EffectiveFrom, &r.PriceListCode, &r.PlanKind,
 		&r.BillingCycle, &r.ShortfallPolicy, &r.IssuerID, &r.InvoiceDelayDays, &r.DueDays,
-		&r.Locked, &r.CreatedBy, &r.Reason, &r.CreatedAt, &r.FeeMode)
+		&r.Locked, &r.CreatedBy, &r.Reason, &r.CreatedAt, &r.FeeMode, &r.ComplimentaryBilling)
 	return r, err
 }
 
@@ -409,14 +412,17 @@ type InsertBillingAccountTermsParams struct {
 	Reason           *string
 	// FeeMode is organizer_pays or buyer_pays; empty means organizer_pays.
 	FeeMode string
+	// ComplimentaryBilling is free or standard; empty means free.
+	ComplimentaryBilling string
 }
 
 const insertBillingAccountTerms = `-- name: InsertBillingAccountTerms :one
 INSERT INTO billing_account_terms (
     account_id, effective_from, price_list_code, plan_kind, billing_cycle,
     shortfall_policy, issuer_id, invoice_delay_days, due_days, locked,
-    created_by, reason, fee_mode)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE(NULLIF($13, ''), 'organizer_pays'))
+    created_by, reason, fee_mode, complimentary_billing)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE(NULLIF($13, ''), 'organizer_pays'),
+        COALESCE(NULLIF($14, ''), 'free'))
 RETURNING ` + billingAccountTermsColumns
 
 // InsertBillingAccountTerms writes a new dated terms row. A second row with
@@ -425,7 +431,7 @@ func (q *Queries) InsertBillingAccountTerms(ctx context.Context, p InsertBilling
 	return scanBillingAccountTermsRow(q.db.QueryRow(ctx, insertBillingAccountTerms,
 		p.AccountID, p.EffectiveFrom, p.PriceListCode, p.PlanKind, p.BillingCycle,
 		p.ShortfallPolicy, p.IssuerID, p.InvoiceDelayDays, p.DueDays, p.Locked,
-		p.CreatedBy, p.Reason, p.FeeMode))
+		p.CreatedBy, p.Reason, p.FeeMode, p.ComplimentaryBilling))
 }
 
 const insertBillingAccountTermsIfNone = `-- name: InsertBillingAccountTermsIfNone :exec

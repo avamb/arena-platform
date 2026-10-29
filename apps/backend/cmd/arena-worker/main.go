@@ -614,6 +614,12 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		HandlerOptions: deliveryOpts,
 		DB:             pool,
 	}))
+	// invitation.cancel_email tells a guest their staff invitation was
+	// withdrawn (spec 46, section 3.4); the cancel route queues it.
+	reg.Register(delivery.JobTypeInvitationCancelEmail, delivery.NewInvitationCancelEmailHandler(delivery.InvitationCancelEmailOptions{
+		HandlerOptions: deliveryOpts,
+		DB:             pool,
+	}))
 	// refund.buyer_email is the letter about money that went back (PAY-07);
 	// the refund engine queues it once a refund of an operation settles.
 	reg.Register(refunds.JobTypeBuyerEmail, delivery.NewRefundEmailHandler(delivery.RefundEmailOptions{

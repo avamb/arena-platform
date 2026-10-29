@@ -51,6 +51,12 @@ func inv02AssertBilled(t *testing.T, f *inv02Fx, orderID uuid.UUID, lines int) {
 				if it.Kind != "ticket_complimentary" {
 					t.Fatalf("collected kind %s, want ticket_complimentary", it.Kind)
 				}
+				// The rate job tells a CSV file from a one-by-one issue
+				// by this attribute (INV-07).
+				var attrs map[string]any
+				if err := json.Unmarshal(it.Attributes, &attrs); err != nil || attrs["issued_via"] != "staff" {
+					t.Fatalf("collected attributes %s, want issued_via staff", it.Attributes)
+				}
 				got++
 			}
 		}

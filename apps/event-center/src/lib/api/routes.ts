@@ -103,6 +103,12 @@ export const API = {
   complimentaryIssue: { method: "POST", path: "/v1/organizations/{org_id}/complimentary" },
   // A flat route: the row's own organization is checked on the server.
   complimentaryRevoke: { method: "POST", path: "/v1/complimentary/{id}/revoke" },
+  // Spec 46: staff invitations on chosen seats (the seat map in invite mode).
+  staffInvitationsList: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/invitations" },
+  staffInvitationIssue: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/invitations" },
+  staffInvitationCancel: { method: "POST", path: "/v1/organizations/{org_id}/invitations/{order_id}/cancel" },
+  staffInvitationPdf: { method: "GET", path: "/v1/organizations/{org_id}/invitations/{order_id}/tickets.pdf" },
+  staffInvitationResend: { method: "POST", path: "/v1/organizations/{org_id}/invitations/{order_id}/resend" },
   // 4-5: the team. The invitation has two channels (web, telegram); removing a
   // member names the ONE role to revoke in the body (AGENTS.md).
   botTeam: { method: "GET", path: "/v1/organizations/{org_id}/bot-team" },

@@ -51,6 +51,19 @@ SET    issued_via = $2,
        updated_at = now()
 WHERE  id = $1;
 
+-- name: SetInvitationCancelledBy :exec
+-- Records who cancelled a staff invitation in orders.metadata.invitation
+-- (spec 46 section 3.7). $2 is {"user_id": ...} or {"api_key": name}; the
+-- sales bot reads it. The last cancellation wins.
+UPDATE orders
+SET    metadata   = COALESCE(metadata, '{}'::jsonb)
+                    || jsonb_build_object('invitation',
+                         COALESCE(metadata->'invitation', '{}'::jsonb)
+                         || jsonb_build_object('cancelled_by', $2::jsonb)),
+       updated_at = now()
+WHERE  id = $1
+  AND  issued_via IS NOT NULL;
+
 -- name: SetInvitationOrderCustomer :exec
 -- The guest's customer row, linked only once the order is paid: a pending
 -- link would collide with orders_one_pending_per_customer_session_uq when
@@ -95,7 +108,7 @@ WHERE  o.id = $1
 -- Every staff invitation of the session, whoever issued it (spec 46 R-5),
 -- newest first, with the issuer's e-mail and name and the ticket counts.
 SELECT o.id, o.system_id, o.status, o.buyer_name, o.metadata, o.issued_via,
-       o.issued_by, u.email, u.first_name, u.last_name, o.created_at,
+       o.issued_by, u.email, u.first_name, u.last_name, o.created_at, o.invitation_batch_id,
        (SELECT count(*) FROM tickets t WHERE t.checkout_session_id = o.checkout_session_id) AS tickets_total,
        (SELECT count(*) FROM tickets t WHERE t.checkout_session_id = o.checkout_session_id AND t.status = 'active') AS tickets_active
 FROM   orders o
@@ -111,9 +124,10 @@ LIMIT  $3;
 -- The places of the given invitation orders, in line order.
 SELECT oi.order_id, oi.ordinal, oi.ticket_id, oi.unit_price, oi.seat_origin,
        ss.seat_key, ss.sector_name, ss.row_name, ss.seat_number, ss.kind,
-       tt.id AS tier_id, tt.name AS tier_name
+       tt.id AS tier_id, tt.name AS tier_name, t.status AS ticket_status
 FROM   order_items oi
 JOIN   ticket_tiers tt ON tt.id = oi.tier_id
 LEFT JOIN session_seats ss ON ss.id = oi.session_seat_id
+LEFT JOIN tickets t ON t.id = oi.ticket_id
 WHERE  oi.order_id = ANY($1::uuid[])
 ORDER  BY oi.order_id, oi.ordinal;

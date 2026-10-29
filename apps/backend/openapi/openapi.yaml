@@ -10200,7 +10200,7 @@ components:
 
     SessionChangeImpact:
       type: object
-      required: [session_id, kinds, orders, tickets, arena_orders, site_orders, no_address, blocked, contact, default_message, current, proposed]
+      required: [session_id, kinds, orders, tickets, arena_orders, site_orders, no_address, invitations_to_issuer, blocked, contact, default_message, current, proposed]
       description: |
         Dry run of a session move or cancellation: what saving it would do,
         computed from the same rules the save applies. Nothing is written.
@@ -10231,7 +10231,10 @@ components:
           description: Orders sold through a website; such a change cannot be saved yet (`blocked`).
         no_address:
           type: integer
-          description: Arena-route orders with no buyer e-mail address; their buyers cannot be written to.
+          description: Arena-route orders with no buyer e-mail address (and no issuer to fall back to); their buyers cannot be written to.
+        invitations_to_issuer:
+          type: integer
+          description: Staff invitations among the Arena-route orders that have no guest e-mail. Their letter goes to the staff member who issued them, so the organizer is told "N invitations without a guest e-mail - the letter goes to the issuer".
         blocked:
           type: string
           description: |
@@ -17289,6 +17292,9 @@ components:
         ticket_id:
           type: [string, "null"]
           description: The ticket of this place once issued.
+        ticket_status:
+          type: [string, "null"]
+          description: Status of the place's ticket - active while it can be used, cancelled after a cancellation, null until the ticket is issued. A client offers a per-ticket cancel only for active.
     StaffInvitationIssueResponse:
       type: object
       required: [order_id, system_id, status, delivery, places, from_reserve, tickets_status, replayed]
@@ -17323,11 +17329,77 @@ components:
           type: string
           description: issuing right after the issue (tickets are minted asynchronously), issued once every place has its ticket.
         charge:
-          type: [object, "null"]
-          description: Billing preview of the invitation (spec 46, section 3.6); null until billing of invitations lands.
+          description: Billing preview of the invitation (spec 46, section 3.6) - what the platform will charge the organization for these tickets, computed by the same rule as the billing rate job. Null when it cannot be computed (the organization has no usable billing terms); the invitation is issued either way.
+          oneOf:
+            - $ref: "#/components/schemas/InvitationChargePreview"
+            - type: "null"
         replayed:
           type: boolean
           description: True when the request_id was already used and this is the first invitation.
+    InvitationChargePreview:
+      type: object
+      required: [mode, currency, tickets, free_tickets, charged_tickets, amount_minor, lines, free_limit, free_left, text]
+      description: |
+        What invitations cost the organization (spec 46, section 3.6). A CSV file is always charged the
+        standard rate; otherwise an account whose terms say complimentary_billing standard pays the standard
+        rate, and every other invitation is free up to the yearly free limit of the price list, then charged
+        as a general-admission ticket. The standard rate is the organization's individual rate, else the
+        fixed per-ticket rate of the price list, seated or not. A cancelled invitation keeps its charge.
+      properties:
+        mode:
+          type: string
+          description: Why the tickets cost what they cost - free (free up to the yearly limit), standard (the account's terms) or bulk (a CSV file).
+        currency:
+          type: string
+          description: Currency of the organization's billing account; every amount is in it.
+        tickets:
+          type: integer
+          description: Tickets quoted.
+        free_tickets:
+          type: integer
+          description: Tickets that cost nothing.
+        charged_tickets:
+          type: integer
+          description: Tickets that are charged.
+        amount_minor:
+          type: integer
+          format: int64
+          description: Total charge in minor units of currency.
+        lines:
+          type: array
+          description: The charged tickets grouped by unit rate; empty when every ticket is free.
+          items:
+            $ref: "#/components/schemas/InvitationChargeLine"
+        free_limit:
+          type: [integer, "null"]
+          format: int64
+          description: The yearly free limit, or null when there is none or the tickets are not billed free.
+        free_left:
+          type: [integer, "null"]
+          format: int64
+          description: What is left of the yearly free limit after these tickets, or null with free_limit.
+        text:
+          type: string
+          description: A short English summary such as "12 × 0.50 EUR = 6.00 EUR" or "free, 488 of the yearly limit left". Clients in another language build their own from the numbers.
+    InvitationChargeLine:
+      type: object
+      required: [tickets, unit_minor, amount_minor, currency]
+      description: One group of charged invitation tickets with the same unit rate.
+      properties:
+        tickets:
+          type: integer
+          description: Tickets in the group.
+        unit_minor:
+          type: integer
+          format: int64
+          description: Charge per ticket in minor units.
+        amount_minor:
+          type: integer
+          format: int64
+          description: tickets times unit_minor.
+        currency:
+          type: string
+          description: Currency of the amounts, the billing account's.
     StaffInvitationIssuer:
       type: object
       description: Who issued the invitation; all null for an organization API key.
@@ -17377,6 +17449,10 @@ components:
           type: string
           format: date-time
           description: When it was issued.
+        invitation_batch_id:
+          type: [string, "null"]
+          format: uuid
+          description: The CSV batch (invitation_batches.id) a bulk invitation came from; null for a one-by-one invitation.
         tickets_total:
           type: integer
           format: int64
@@ -17440,6 +17516,241 @@ components:
         notify_guest:
           type: boolean
           description: Whether the guest is to be told.
+    StaffInvitationResendRequest:
+      type: object
+      description: Optional one-time address for the resend.
+      properties:
+        email:
+          type: string
+          description: Send to this address instead (valid for 24 hours; it never becomes the order's address). Absent or empty means the guest, else the caller, else the issuer.
+    StaffInvitationResendResponse:
+      type: object
+      required: [order_id, queued_tickets, different_address, recipient_masked, expires_at]
+      description: What the resend queued.
+      properties:
+        order_id:
+          type: string
+          format: uuid
+          description: Order id of the invitation.
+        queued_tickets:
+          type: integer
+          description: Active tickets queued; they travel in one e-mail.
+        different_address:
+          type: boolean
+          description: True when the letter goes to a one-time address, not the guest's own.
+        recipient_masked:
+          type: string
+          description: The address the letter goes to, with all but the first characters hidden.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: When a one-time address stops being valid; null for the guest's own address.
+    InvitationBatchUploadRequest:
+      type: object
+      required: [file]
+      description: |
+        A CSV upload of staff invitations (spec 46, section 3.5), sent as a
+        multipart form.
+      properties:
+        file:
+          type: string
+          format: binary
+          description: |
+            The CSV file, UTF-8 with or without a BOM, at most 512 KB, 100
+            guests and 250 places (split a longer list into several files; a
+            body over the router's 1 MiB limit answers http.payload_too_large).
+            Excel's `sep=;` first line is accepted. Quotes are strict: an
+            unclosed quote is invitation_batch.invalid_csv with the line. The
+            separator is `,` or `;` (detected from the header), the
+            header row is mandatory and the columns may come in any order:
+            `guest` (a guest number - rows with the same number are ONE order
+            and ONE letter; the name, e-mail, phone and language come from the
+            guest's first row), `name` (required), `email`, `phone`, `locale`,
+            `note`, and for the place either `seat_key`, or `sector`, `row`,
+            `seat` (the sector may be left out when the row and seat are
+            unique), or `category` (a name or an id) with `qty` for General
+            Admission places.
+        request_id:
+          type: string
+          format: uuid
+          description: Client-chosen id of the upload; required unless dry_run is true. A repeat with the same id and the same file answers the first batch (200, replayed true).
+        delivery:
+          type: string
+          description: "Delivery of a guest WITHOUT an e-mail in the file - pdf_only (default, no letter) or my_email (a letter to the uploading user). A guest with an e-mail always gets the letter. guest_email makes a missing e-mail a row error."
+    InvitationBatchRowIssue:
+      type: object
+      required: [row, field, code, message]
+      description: One problem of one row of an upload.
+      properties:
+        row:
+          type: integer
+          description: Line of the file (the header is line 1); 0 for a problem of the file as a whole.
+        field:
+          type: string
+          description: The column the problem is about; empty when it is about the row or the file.
+        code:
+          type: string
+          description: Machine-readable code - name_required, invalid_email, email_required, place_missing, place_ambiguous, unknown_seat, ambiguous_seat, seat_taken, duplicate_seat, unknown_category, ambiguous_category, category_not_ga, invalid_qty, not_enough_places, too_many_places, too_many_guests, seat_without_category, capacity_exceeded, or the code of a refusal of the transaction (for example invitation.seats_taken).
+        message:
+          type: string
+          description: Human-readable explanation in English.
+    InvitationBatchPreviewGuest:
+      type: object
+      required: [guest, name, email, delivery, places]
+      description: One guest of an upload as the validation sees it.
+      properties:
+        guest:
+          type: integer
+          description: Position of the guest in the file, from 1.
+        name:
+          type: string
+          description: Guest name from the guest's first row.
+        email:
+          type: string
+          description: Guest e-mail, empty when the file has none.
+        delivery:
+          type: string
+          description: guest_email, my_email or pdf_only.
+        places:
+          type: integer
+          description: Tickets this guest gets.
+    InvitationBatchReport:
+      type: object
+      required: [dry_run, valid, delivery, rows, guests, places, seats, ga_places, from_reserve, errors, preview]
+      description: |
+        The validation report of an upload: the answer of a dry run, and the
+        `details.report` of a refused real upload (422 invitation_batch.invalid
+        or the refusal of the transaction). Nothing was written either way.
+      properties:
+        dry_run:
+          type: boolean
+          description: True for a dry run.
+        valid:
+          type: boolean
+          description: True when the file can be issued as it is.
+        delivery:
+          type: string
+          description: The batch-wide delivery used for guests without an e-mail.
+        rows:
+          type: integer
+          description: Data rows of the file.
+        guests:
+          type: integer
+          description: Guests, that is orders and letters, the file makes.
+        places:
+          type: integer
+          description: Tickets the file hands out.
+        seats:
+          type: integer
+          description: Of them, seats on the plan.
+        ga_places:
+          type: integer
+          description: Of them, General Admission places.
+        from_reserve:
+          type: integer
+          description: Places taken from the organizer's reserve (closed seats, reserve GA places).
+        errors:
+          type: array
+          description: The problems found, by row. Empty when valid.
+          items:
+            $ref: "#/components/schemas/InvitationBatchRowIssue"
+        preview:
+          type: array
+          description: The guests of the file in order, for the check table.
+          items:
+            $ref: "#/components/schemas/InvitationBatchPreviewGuest"
+        charge:
+          description: Billing preview (spec 46, section 3.6) - a CSV file is always charged at the standard rate, computed by the same rule as the billing rate job. Null when it cannot be computed or the file hands out no places; the file is issued either way.
+          oneOf:
+            - $ref: "#/components/schemas/InvitationChargePreview"
+            - type: "null"
+    InvitationBatchOrder:
+      type: object
+      required: [guest, order_id, system_id, status, delivery, places, from_reserve, seat_keys]
+      description: The order one guest of a batch got.
+      properties:
+        guest:
+          type: integer
+          description: Position of the guest in the file, from 1.
+        order_id:
+          type: string
+          format: uuid
+          description: Order id.
+        system_id:
+          type: integer
+          format: int64
+          description: Order number shown to people.
+        status:
+          type: string
+          description: Order status - paid.
+        guest_name:
+          type: [string, "null"]
+          description: Guest name.
+        guest_email:
+          type: [string, "null"]
+          description: Guest e-mail; only set when the letter goes to the guest.
+        delivery:
+          type: string
+          description: guest_email, my_email or pdf_only.
+        places:
+          type: integer
+          description: Tickets of the order.
+        from_reserve:
+          type: integer
+          description: Of them, taken from the organizer's reserve.
+        seat_keys:
+          type: array
+          description: Keys of the places of the order.
+          items:
+            type: string
+    InvitationBatch:
+      type: object
+      required: [id, session_id, status, created_at, rows, guests, places, from_reserve, orders, replayed]
+      description: An issued CSV batch of staff invitations with the order of each guest.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Batch id.
+        session_id:
+          type: string
+          format: uuid
+          description: Session the batch was issued for.
+        status:
+          type: string
+          description: issued.
+        created_by:
+          type: [string, "null"]
+          description: User who uploaded the file; null for an organization API key.
+        created_at:
+          type: string
+          format: date-time
+          description: When the batch was issued.
+        rows:
+          type: integer
+          description: Data rows of the file.
+        guests:
+          type: integer
+          description: Orders the batch made.
+        places:
+          type: integer
+          description: Tickets the batch handed out.
+        from_reserve:
+          type: integer
+          description: Places taken from the organizer's reserve.
+        orders:
+          type: array
+          description: One order per guest, in file order.
+          items:
+            $ref: "#/components/schemas/InvitationBatchOrder"
+        charge:
+          description: Billing of the batch (spec 46, section 3.6) - the standard rate for every place of the file, priced at the time of the upload. Null when it cannot be computed.
+          oneOf:
+            - $ref: "#/components/schemas/InvitationChargePreview"
+            - type: "null"
+        replayed:
+          type: boolean
+          description: True when the request_id was already used and this is the first batch.
     ComplimentaryIssuance:
       type: object
       required: [id, org_id, session_id, tier_id, recipient_email, status, created_at]
@@ -21921,7 +22232,7 @@ components:
 
     BillingAccountTerms:
       type: object
-      required: [id, effective_from, price_list_code, plan_kind, billing_cycle, shortfall_policy, issuer_id, invoice_delay_days, due_days, fee_mode, locked, created_by, reason, created_at]
+      required: [id, effective_from, price_list_code, plan_kind, billing_cycle, shortfall_policy, issuer_id, invoice_delay_days, due_days, fee_mode, complimentary_billing, locked, created_by, reason, created_at]
       description: One dated row of the conditions of a billing account. The terms of an event are the last row that started before the event.
       properties:
         id:
@@ -21962,6 +22273,9 @@ components:
         fee_mode:
           type: string
           description: Who pays the platform commission on a sold ticket, organizer_pays (the organizer is billed) or buyer_pays (the buyer pays it as the service charge).
+        complimentary_billing:
+          type: string
+          description: How staff invitations of the account are billed, free (free up to the yearly free limit of the price list) or standard (the fixed per-ticket rate, or the organization's individual rate). An invitation issued from a CSV file always pays the standard rate.
         locked:
           type: boolean
           description: Whether only a superadmin may change the row.
@@ -22080,6 +22394,9 @@ components:
         fee_mode:
           type: string
           description: Who pays the platform commission on a sold ticket, organizer_pays (default) or buyer_pays. Any other value is 422 billing.invalid_terms.
+        complimentary_billing:
+          type: string
+          description: How staff invitations are billed from effective_from on, free (free up to the yearly free limit) or standard (the fixed per-ticket rate or the organization's individual rate). Absent keeps the value of the terms in force at effective_from. Like every terms row it starts in the future, so invitations already issued keep the charge of their own date. Any other value is 422 billing.invalid_terms.
 
     BillingCurrentRate:
       type: object
@@ -49490,6 +49807,425 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/invitations/{order_id}/tickets.pdf:
+    get:
+      operationId: downloadStaffInvitationTicketsPdf
+      summary: Download the tickets of a staff invitation as one PDF
+      description: |
+        One PDF with a page per active ticket of the invitation, in the same
+        layout the guest receives (invitation wording, no price), served as an
+        attachment named `invitation-<order number>.pdf` and never cached.
+        Available whatever the delivery mode: the organizer can always take the
+        file and forward it.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: order_id
+          description: Order id of the staff invitation. Any other order, or another organization's, answers 404 invitation.not_found.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The PDF (Content-Disposition attachment).
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: org_id or order_id is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks complimentary.read in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invitation not found in this organization (invitation.not_found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: invitation.tickets_not_issued - the tickets are still being issued, try again in a moment. invitation.no_active_tickets - every ticket was cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error, or the PDF could not be rendered (invitation.pdf_failed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database or the PDF service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/invitations/{order_id}/resend:
+    post:
+      operationId: resendStaffInvitation
+      summary: Send the tickets of a staff invitation again
+      description: |
+        Queues the active tickets of the invitation for delivery again, as one
+        e-mail in the invitation template with every ticket attached. Without
+        a body the letter goes to the guest's e-mail; when the invitation has
+        none it goes to the caller's own address, else to the staff member who
+        issued it. A given `email` is a one-time address, valid for 24 hours,
+        and never replaces the guest's address on the order. The letter is
+        sent asynchronously, so the answer is 202.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: order_id
+          description: Order id of the staff invitation. Any other order, or another organization's, answers 404 invitation.not_found.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffInvitationResendRequest"
+      responses:
+        "202":
+          description: The tickets were queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffInvitationResendResponse"
+        "400":
+          description: invitation.invalid_body or invitation.invalid_email.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks complimentary.issue in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invitation not found in this organization (invitation.not_found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: invitation.tickets_not_issued or invitation.no_active_tickets (every ticket was cancelled).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: invitation.no_recipient - no address could be found, pass `email`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database or the delivery service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/sessions/{session_id}/invitation-batches:
+    post:
+      operationId: createInvitationBatch
+      summary: Issue staff invitations from a CSV file
+      description: |
+        Bulk staff invitations (spec 46, section 3.5). Each guest of the file
+        gets ONE order, written exactly like a one-by-one invitation, and
+        ONE letter; the whole file is issued in one transaction, so a bad
+        row, a seat sold in the meantime or a category with too few places
+        writes nothing. A CSV file is always charged at the standard rate.
+
+        With `dry_run=true` nothing is written (no `request_id` needed): the
+        answer is the validation report - per-row errors, the number of
+        guests, places and places from the reserve - for the check table.
+        Without it the same validation runs first and a file with errors is
+        refused with 422 `invitation_batch.invalid` and the report in
+        `details.report`. The check covers the plan, the seats' status and
+        categories and the session's capacity; a file is at most 100 guests
+        and 250 places because it is one transaction.
+
+        Send a multipart form (`file`, `request_id`, `delivery`). The
+        `request_id` identifies the file AND its `delivery`: the same id with
+        another file or another delivery is 409. The batch and its orders are
+        read back with the batch routes. The work has a 60 second budget
+        independent of the router's request timeout: if the connection
+        drops or answers invitation_batch.timeout, repeat the same
+        `request_id` - it answers the batch (200, replayed true) if it
+        committed and issues it if it did not.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: session_id
+          description: Session (date) of the organization the invitations are for. A session of another organization answers 404.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: dry_run
+          description: true validates the file and writes nothing (answers the report, 200). Default false.
+          in: query
+          required: false
+          schema: { type: boolean }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/InvitationBatchUploadRequest"
+      responses:
+        "200":
+          description: A dry run - the validation report; or a repeat of an upload already issued (same request_id and file) - the first batch, nothing new written.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/InvitationBatchReport"
+                  - $ref: "#/components/schemas/InvitationBatch"
+        "201":
+          description: The file was issued, tickets are being issued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationBatch"
+        "400":
+          description: Invalid request - invitation_batch.invalid_request_id, invitation_batch.invalid_delivery, invitation_batch.invalid_dry_run, invitation_batch.invalid_body, invitation_batch.file_required, invitation_batch.invalid_encoding (not UTF-8), invitation_batch.invalid_csv (details.line), invitation_batch.empty_file.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks complimentary.issue in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found in this organization (session.not_found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The transaction refused the file and wrote nothing - invitation.seats_taken (a seat was held or sold since the check), invitation.not_enough_places, invitation.capacity_exceeded, each with details.report pointing at the rows; invitation_batch.request_id_reused (the request_id belongs to another session, another file or another delivery).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: The file is larger than 512 KB (invitation_batch.file_too_large); a body over 1 MiB answers http.payload_too_large.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: invitation_batch.invalid (details.report lists the row errors), invitation_batch.invalid_header (details.missing), invitation_batch.too_many_rows, invitation_batch.too_many_places (over 250), invitation.session_cancelled, invitation.my_email_requires_user (an API key has no e-mail).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable, or invitation_batch.timeout - the 60 second budget ran out and the result is unknown (the deadline may have struck during the commit). Repeat the request with the same request_id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/invitation-batches/{id}:
+    get:
+      operationId: getInvitationBatch
+      summary: Read an issued invitation batch
+      description: |
+        A batch issued from a CSV file with one order per guest (order id,
+        order number, delivery, places and their keys). Another
+        organization's batch answers 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: id
+          description: Batch id (invitation_batches.id) from the upload answer.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The batch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationBatch"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks complimentary.read in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Batch not found in this organization (invitation_batch.not_found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/invitation-batches/{id}/result.csv:
+    get:
+      operationId: getInvitationBatchResult
+      summary: The result file of an invitation batch
+      description: |
+        A `text/csv` attachment with one line per guest and the order number
+        the guest's tickets belong to. Written like every spreadsheet the
+        platform hands out: UTF-8 with a BOM, `;` as the separator, quoted
+        text, CRLF line ends.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: id
+          description: Batch id (invitation_batches.id) from the upload answer.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: |
+            The CSV attachment, `Content-Disposition: attachment;
+            filename="invitation-batch-<first 8 characters of the id>.csv"`.
+          content:
+            text/csv:
+              schema:
+                type: string
+                description: |
+                  Header row `guest;name;email;delivery;order_number;order_id;
+                  places;from_reserve;seat_keys`, one line per guest.
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks complimentary.read in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Batch not found in this organization (invitation_batch.not_found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/complimentary:
     get:
       operationId: listComplimentaryIssuances
@@ -49562,6 +50298,10 @@ paths:
         recipients: real tickets with barcodes that take places from the
         category, and an invitation e-mail to each recipient with an
         address. Revocation annuls the tickets and returns the places.
+        This route cannot name a seat: on a strictly seated session it answers
+        422 `complimentary.use_invitations_route`, and invitations go through
+        `POST /v1/organizations/{org_id}/sessions/{session_id}/invitations`.
+        General-admission and hybrid sessions are served here as before.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -49609,7 +50349,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "422":
-          description: No available inventory.
+          description: The session is strictly seated (`complimentary.use_invitations_route`) - invitations with a chosen seat go through the staff invitations route of the session - or no inventory is available.
           content:
             application/json:
               schema:

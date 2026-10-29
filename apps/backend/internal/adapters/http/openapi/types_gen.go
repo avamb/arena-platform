@@ -3374,6 +3374,9 @@ type BillingAccountTerms struct {
 	// BillingCycle prepaid, per_event or monthly.
 	BillingCycle string `json:"billing_cycle"`
 
+	// ComplimentaryBilling How staff invitations of the account are billed, free (free up to the yearly free limit of the price list) or standard (the fixed per-ticket rate, or the organization's individual rate). An invitation issued from a CSV file always pays the standard rate.
+	ComplimentaryBilling string `json:"complimentary_billing"`
+
 	// CreatedAt When the row was created.
 	CreatedAt time.Time `json:"created_at"`
 
@@ -3745,6 +3748,9 @@ type BillingCloseRateOverrideRequest struct {
 type BillingCreateAccountTermsRequest struct {
 	// BillingCycle prepaid, per_event or monthly. A tools account is prepaid only.
 	BillingCycle string `json:"billing_cycle"`
+
+	// ComplimentaryBilling How staff invitations are billed from effective_from on, free (free up to the yearly free limit) or standard (the fixed per-ticket rate or the organization's individual rate). Absent keeps the value of the terms in force at effective_from. Like every terms row it starts in the future, so invitations already issued keep the charge of their own date. Any other value is 422 billing.invalid_terms.
+	ComplimentaryBilling *string `json:"complimentary_billing,omitempty"`
 
 	// DueDays Days to pay an invoice.
 	DueDays *int32 `json:"due_days"`
@@ -9445,6 +9451,230 @@ type InventoryRowItem struct {
 
 	// UpdatedAt RFC 3339 timestamp of the last ledger mutation.
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// InvitationBatch An issued CSV batch of staff invitations with the order of each guest.
+type InvitationBatch struct {
+	// Charge Billing of the batch (spec 46, section 3.6) - the standard rate for every place of the file, priced at the time of the upload. Null when it cannot be computed.
+	Charge *InvitationChargePreview `json:"charge"`
+
+	// CreatedAt When the batch was issued.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy User who uploaded the file; null for an organization API key.
+	CreatedBy *string `json:"created_by"`
+
+	// FromReserve Places taken from the organizer's reserve.
+	FromReserve int `json:"from_reserve"`
+
+	// Guests Orders the batch made.
+	Guests int `json:"guests"`
+
+	// Id Batch id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Orders One order per guest, in file order.
+	Orders []InvitationBatchOrder `json:"orders"`
+
+	// Places Tickets the batch handed out.
+	Places int `json:"places"`
+
+	// Replayed True when the request_id was already used and this is the first batch.
+	Replayed bool `json:"replayed"`
+
+	// Rows Data rows of the file.
+	Rows int `json:"rows"`
+
+	// SessionId Session the batch was issued for.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Status issued.
+	Status string `json:"status"`
+}
+
+// InvitationBatchOrder The order one guest of a batch got.
+type InvitationBatchOrder struct {
+	// Delivery guest_email, my_email or pdf_only.
+	Delivery string `json:"delivery"`
+
+	// FromReserve Of them, taken from the organizer's reserve.
+	FromReserve int `json:"from_reserve"`
+
+	// Guest Position of the guest in the file, from 1.
+	Guest int `json:"guest"`
+
+	// GuestEmail Guest e-mail; only set when the letter goes to the guest.
+	GuestEmail *string `json:"guest_email"`
+
+	// GuestName Guest name.
+	GuestName *string `json:"guest_name"`
+
+	// OrderId Order id.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// Places Tickets of the order.
+	Places int `json:"places"`
+
+	// SeatKeys Keys of the places of the order.
+	SeatKeys []string `json:"seat_keys"`
+
+	// Status Order status - paid.
+	Status string `json:"status"`
+
+	// SystemId Order number shown to people.
+	SystemId int64 `json:"system_id"`
+}
+
+// InvitationBatchPreviewGuest One guest of an upload as the validation sees it.
+type InvitationBatchPreviewGuest struct {
+	// Delivery guest_email, my_email or pdf_only.
+	Delivery string `json:"delivery"`
+
+	// Email Guest e-mail, empty when the file has none.
+	Email string `json:"email"`
+
+	// Guest Position of the guest in the file, from 1.
+	Guest int `json:"guest"`
+
+	// Name Guest name from the guest's first row.
+	Name string `json:"name"`
+
+	// Places Tickets this guest gets.
+	Places int `json:"places"`
+}
+
+// InvitationBatchReport The validation report of an upload: the answer of a dry run, and the
+// `details.report` of a refused real upload (422 invitation_batch.invalid
+// or the refusal of the transaction). Nothing was written either way.
+type InvitationBatchReport struct {
+	// Charge Billing preview (spec 46, section 3.6) - a CSV file is always charged at the standard rate, computed by the same rule as the billing rate job. Null when it cannot be computed or the file hands out no places; the file is issued either way.
+	Charge *InvitationChargePreview `json:"charge"`
+
+	// Delivery The batch-wide delivery used for guests without an e-mail.
+	Delivery string `json:"delivery"`
+
+	// DryRun True for a dry run.
+	DryRun bool `json:"dry_run"`
+
+	// Errors The problems found, by row. Empty when valid.
+	Errors []InvitationBatchRowIssue `json:"errors"`
+
+	// FromReserve Places taken from the organizer's reserve (closed seats, reserve GA places).
+	FromReserve int `json:"from_reserve"`
+
+	// GaPlaces Of them, General Admission places.
+	GaPlaces int `json:"ga_places"`
+
+	// Guests Guests, that is orders and letters, the file makes.
+	Guests int `json:"guests"`
+
+	// Places Tickets the file hands out.
+	Places int `json:"places"`
+
+	// Preview The guests of the file in order, for the check table.
+	Preview []InvitationBatchPreviewGuest `json:"preview"`
+
+	// Rows Data rows of the file.
+	Rows int `json:"rows"`
+
+	// Seats Of them, seats on the plan.
+	Seats int `json:"seats"`
+
+	// Valid True when the file can be issued as it is.
+	Valid bool `json:"valid"`
+}
+
+// InvitationBatchRowIssue One problem of one row of an upload.
+type InvitationBatchRowIssue struct {
+	// Code Machine-readable code - name_required, invalid_email, email_required, place_missing, place_ambiguous, unknown_seat, ambiguous_seat, seat_taken, duplicate_seat, unknown_category, ambiguous_category, category_not_ga, invalid_qty, not_enough_places, too_many_places, too_many_guests, seat_without_category, capacity_exceeded, or the code of a refusal of the transaction (for example invitation.seats_taken).
+	Code string `json:"code"`
+
+	// Field The column the problem is about; empty when it is about the row or the file.
+	Field string `json:"field"`
+
+	// Message Human-readable explanation in English.
+	Message string `json:"message"`
+
+	// Row Line of the file (the header is line 1); 0 for a problem of the file as a whole.
+	Row int `json:"row"`
+}
+
+// InvitationBatchUploadRequest A CSV upload of staff invitations (spec 46, section 3.5), sent as a
+// multipart form.
+type InvitationBatchUploadRequest struct {
+	// Delivery Delivery of a guest WITHOUT an e-mail in the file - pdf_only (default, no letter) or my_email (a letter to the uploading user). A guest with an e-mail always gets the letter. guest_email makes a missing e-mail a row error.
+	Delivery *string `json:"delivery,omitempty"`
+
+	// File The CSV file, UTF-8 with or without a BOM, at most 512 KB, 100
+	// guests and 250 places (split a longer list into several files; a
+	// body over the router's 1 MiB limit answers http.payload_too_large).
+	// Excel's `sep=;` first line is accepted. Quotes are strict: an
+	// unclosed quote is invitation_batch.invalid_csv with the line. The
+	// separator is `,` or `;` (detected from the header), the
+	// header row is mandatory and the columns may come in any order:
+	// `guest` (a guest number - rows with the same number are ONE order
+	// and ONE letter; the name, e-mail, phone and language come from the
+	// guest's first row), `name` (required), `email`, `phone`, `locale`,
+	// `note`, and for the place either `seat_key`, or `sector`, `row`,
+	// `seat` (the sector may be left out when the row and seat are
+	// unique), or `category` (a name or an id) with `qty` for General
+	// Admission places.
+	File openapi_types.File `json:"file"`
+
+	// RequestId Client-chosen id of the upload; required unless dry_run is true. A repeat with the same id and the same file answers the first batch (200, replayed true).
+	RequestId *openapi_types.UUID `json:"request_id,omitempty"`
+}
+
+// InvitationChargeLine One group of charged invitation tickets with the same unit rate.
+type InvitationChargeLine struct {
+	// AmountMinor tickets times unit_minor.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// Currency Currency of the amounts, the billing account's.
+	Currency string `json:"currency"`
+
+	// Tickets Tickets in the group.
+	Tickets int `json:"tickets"`
+
+	// UnitMinor Charge per ticket in minor units.
+	UnitMinor int64 `json:"unit_minor"`
+}
+
+// InvitationChargePreview What invitations cost the organization (spec 46, section 3.6). A CSV file is always charged the
+// standard rate; otherwise an account whose terms say complimentary_billing standard pays the standard
+// rate, and every other invitation is free up to the yearly free limit of the price list, then charged
+// as a general-admission ticket. The standard rate is the organization's individual rate, else the
+// fixed per-ticket rate of the price list, seated or not. A cancelled invitation keeps its charge.
+type InvitationChargePreview struct {
+	// AmountMinor Total charge in minor units of currency.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// ChargedTickets Tickets that are charged.
+	ChargedTickets int `json:"charged_tickets"`
+
+	// Currency Currency of the organization's billing account; every amount is in it.
+	Currency string `json:"currency"`
+
+	// FreeLeft What is left of the yearly free limit after these tickets, or null with free_limit.
+	FreeLeft *int64 `json:"free_left"`
+
+	// FreeLimit The yearly free limit, or null when there is none or the tickets are not billed free.
+	FreeLimit *int64 `json:"free_limit"`
+
+	// FreeTickets Tickets that cost nothing.
+	FreeTickets int `json:"free_tickets"`
+
+	// Lines The charged tickets grouped by unit rate; empty when every ticket is free.
+	Lines []InvitationChargeLine `json:"lines"`
+
+	// Mode Why the tickets cost what they cost - free (free up to the yearly limit), standard (the account's terms) or bulk (a CSV file).
+	Mode string `json:"mode"`
+
+	// Text A short English summary such as "12 × 0.50 EUR = 6.00 EUR" or "free, 488 of the yearly limit left". Clients in another language build their own from the numbers.
+	Text string `json:"text"`
+
+	// Tickets Tickets quoted.
+	Tickets int `json:"tickets"`
 }
 
 // LegalDocument One version of a terms template (P3a). Immutable once published.
@@ -15782,11 +16012,14 @@ type SessionChangeImpact struct {
 	// unknown). A suggestion only; the organizer may edit or clear it.
 	DefaultMessage string `json:"default_message"`
 
+	// InvitationsToIssuer Staff invitations among the Arena-route orders that have no guest e-mail. Their letter goes to the staff member who issued them, so the organizer is told "N invitations without a guest e-mail - the letter goes to the issuer".
+	InvitationsToIssuer int `json:"invitations_to_issuer"`
+
 	// Kinds What buyers would see change: `date`, `time`, `venue`, or just
 	// `cancelled`. Empty means no buyer-visible change (nobody is told).
 	Kinds []string `json:"kinds"`
 
-	// NoAddress Arena-route orders with no buyer e-mail address; their buyers cannot be written to.
+	// NoAddress Arena-route orders with no buyer e-mail address (and no issuer to fall back to); their buyers cannot be written to.
 	NoAddress int `json:"no_address"`
 
 	// Orders Paid orders with a live ticket whose buyers would be told.
@@ -17473,8 +17706,8 @@ type StaffInvitationIssueRequest struct {
 
 // StaffInvitationIssueResponse The invitation as written.
 type StaffInvitationIssueResponse struct {
-	// Charge Billing preview of the invitation (spec 46, section 3.6); null until billing of invitations lands.
-	Charge *map[string]interface{} `json:"charge"`
+	// Charge Billing preview of the invitation (spec 46, section 3.6) - what the platform will charge the organization for these tickets, computed by the same rule as the billing rate job. Null when it cannot be computed (the organization has no usable billing terms); the invitation is issued either way.
+	Charge *InvitationChargePreview `json:"charge"`
 
 	// Delivery Delivery mode - guest_email, my_email or pdf_only.
 	Delivery string `json:"delivery"`
@@ -17529,6 +17762,9 @@ type StaffInvitationListItem struct {
 
 	// GuestName Guest name.
 	GuestName *string `json:"guest_name"`
+
+	// InvitationBatchId The CSV batch (invitation_batches.id) a bulk invitation came from; null for a one-by-one invitation.
+	InvitationBatchId *openapi_types.UUID `json:"invitation_batch_id"`
 
 	// IssuedBy Who issued it.
 	IssuedBy StaffInvitationIssuer `json:"issued_by"`
@@ -17587,11 +17823,38 @@ type StaffInvitationPlace struct {
 	// TicketId The ticket of this place once issued.
 	TicketId *string `json:"ticket_id"`
 
+	// TicketStatus Status of the place's ticket - active while it can be used, cancelled after a cancellation, null until the ticket is issued. A client offers a per-ticket cancel only for active.
+	TicketStatus *string `json:"ticket_status"`
+
 	// TierId Category of the place.
 	TierId openapi_types.UUID `json:"tier_id"`
 
 	// TierName Category name.
 	TierName string `json:"tier_name"`
+}
+
+// StaffInvitationResendRequest Optional one-time address for the resend.
+type StaffInvitationResendRequest struct {
+	// Email Send to this address instead (valid for 24 hours; it never becomes the order's address). Absent or empty means the guest, else the caller, else the issuer.
+	Email *string `json:"email,omitempty"`
+}
+
+// StaffInvitationResendResponse What the resend queued.
+type StaffInvitationResendResponse struct {
+	// DifferentAddress True when the letter goes to a one-time address, not the guest's own.
+	DifferentAddress bool `json:"different_address"`
+
+	// ExpiresAt When a one-time address stops being valid; null for the guest's own address.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// OrderId Order id of the invitation.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// QueuedTickets Active tickets queued; they travel in one e-mail.
+	QueuedTickets int `json:"queued_tickets"`
+
+	// RecipientMasked The address the letter goes to, with all but the first characters hidden.
+	RecipientMasked string `json:"recipient_masked"`
 }
 
 // StaffInvitationSeatRef One seat of the session by key.
@@ -20674,6 +20937,12 @@ type GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// CreateInvitationBatchParams defines parameters for CreateInvitationBatch.
+type CreateInvitationBatchParams struct {
+	// DryRun true validates the file and writes nothing (answers the report, 200). Default false.
+	DryRun *bool `form:"dry_run,omitempty" json:"dry_run,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdSessionsSessionIdSalesCsvParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSalesCsv.
 type GetV1OrganizationsOrgIdSessionsSessionIdSalesCsvParams struct {
 	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
@@ -21376,6 +21645,9 @@ type ImportEventBundleJSONRequestBody = ImportEventBundleRequest
 // CancelStaffInvitationJSONRequestBody defines body for CancelStaffInvitation for application/json ContentType.
 type CancelStaffInvitationJSONRequestBody = StaffInvitationCancelRequest
 
+// ResendStaffInvitationJSONRequestBody defines body for ResendStaffInvitation for application/json ContentType.
+type ResendStaffInvitationJSONRequestBody = StaffInvitationResendRequest
+
 // UpsertMACSWebhookJSONRequestBody defines body for UpsertMACSWebhook for application/json ContentType.
 type UpsertMACSWebhookJSONRequestBody = UpsertMACSWebhookRequest
 
@@ -21435,6 +21707,9 @@ type PatchV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutIdJSONRequestBody =
 
 // UpdateSellerProfileJSONRequestBody defines body for UpdateSellerProfile for application/json ContentType.
 type UpdateSellerProfileJSONRequestBody = UpdateSellerProfileRequest
+
+// CreateInvitationBatchMultipartRequestBody defines body for CreateInvitationBatch for multipart/form-data ContentType.
+type CreateInvitationBatchMultipartRequestBody = InvitationBatchUploadRequest
 
 // IssueStaffInvitationJSONRequestBody defines body for IssueStaffInvitation for application/json ContentType.
 type IssueStaffInvitationJSONRequestBody = StaffInvitationIssueRequest

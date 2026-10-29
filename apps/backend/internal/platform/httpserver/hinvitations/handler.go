@@ -17,6 +17,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/billing"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
@@ -40,6 +41,7 @@ type Handler struct {
 	audit     audit.Writer
 	logger    *slog.Logger
 	canceller TicketCanceller
+	delivery  deliveryDeps
 }
 
 // New builds the handler. audit may be nil (no audit rows); canceller nil
@@ -98,6 +100,8 @@ type lineResponse struct {
 	FaceValue int64   `json:"face_value"`
 	Origin    *string `json:"origin"`
 	TicketID  *string `json:"ticket_id"`
+	// TicketStatus is tickets.status of the place's ticket (active, cancelled, ...), null until it is issued.
+	TicketStatus *string `json:"ticket_status"`
 }
 
 type issueResponse struct {
@@ -109,9 +113,12 @@ type issueResponse struct {
 	Places        []lineResponse `json:"places"`
 	FromReserve   int            `json:"from_reserve"`
 	TicketsStatus string         `json:"tickets_status"`
-	// Charge is the billing preview (spec 46, section 3.6) — INV-07.
-	Charge   any  `json:"charge"`
-	Replayed bool `json:"replayed"`
+	// Charge is the billing preview (spec 46, section 3.6): what the
+	// platform will charge the organization for these tickets, computed by
+	// billing.Rate. Null when it cannot be computed (no usable billing
+	// terms); the invitation itself is never refused for that.
+	Charge   *billing.ComplimentaryQuote `json:"charge"`
+	Replayed bool                        `json:"replayed"`
 }
 
 // HandleIssue serves POST /v1/organizations/{org_id}/sessions/{session_id}/invitations.
@@ -149,6 +156,9 @@ func (h *Handler) HandleIssue(w http.ResponseWriter, r *http.Request) {
 			in.Actor = "user:" + uid.String()
 			auditType = "user"
 		}
+	}
+	if actor.Type == auth.ActorTypeService {
+		in.IssuedByAPIKey = h.apiKeyName(ctx, actor, orgID)
 	}
 	if in.Delivery == DeliveryMyEmail && in.IssuedBy == nil {
 		writeErr(w, r, http.StatusUnprocessableEntity, "invitation.my_email_requires_user",
@@ -291,10 +301,13 @@ func (h *Handler) loadIssued(ctx context.Context, orderID, orgID uuid.UUID) (iss
 		Delivery:      deliveryOf(o.Metadata),
 		Places:        make([]lineResponse, 0, len(lines)),
 		TicketsStatus: ticketsIssue,
-		Charge:        nil,
 	}
 	issued := len(lines) > 0
+	seated := 0
 	for _, l := range lines {
+		if l.Kind != nil && *l.Kind == seatKindSeat {
+			seated++
+		}
 		resp.Places = append(resp.Places, toLine(l))
 		if l.SeatOrigin != nil && *l.SeatOrigin == originUnavailable {
 			resp.FromReserve++
@@ -306,13 +319,36 @@ func (h *Handler) loadIssued(ctx context.Context, orderID, orgID uuid.UUID) (iss
 	if issued {
 		resp.TicketsStatus = ticketsIssued
 	}
+	resp.Charge = h.chargePreview(ctx, o, orgID, seated, len(lines)-seated)
 	return resp, nil
+}
+
+// seatKindSeat is session_seats.kind of a place on the plan; the collector
+// bills such a ticket as seated, every other place as general admission.
+const seatKindSeat = "seat"
+
+// chargePreview quotes the invitation at the moment it was issued, through
+// the same rule the billing rate job applies. A failure is logged and
+// answered as null: billing never blocks an invitation.
+func (h *Handler) chargePreview(ctx context.Context, o gen.InvitationOrderRow, orgID uuid.UUID, seated, unseated int) *billing.ComplimentaryQuote {
+	if seated+unseated == 0 {
+		return nil
+	}
+	q, err := billing.QuoteComplimentaryForSession(ctx, h.queries, orgID, o.SessionID, o.CreatedAt,
+		seated, unseated, o.IssuedVia == billing.IssuedViaStaffBulk)
+	if err != nil {
+		h.logger.WarnContext(ctx, "invitation charge preview unavailable",
+			"order_id", o.ID.String(), "org_id", orgID.String(), "error", err)
+		return nil
+	}
+	return &q
 }
 
 func toLine(l gen.InvitationOrderLineRow) lineResponse {
 	out := lineResponse{
 		SeatKey: l.SeatKey, Sector: l.SectorName, Row: l.RowName, Seat: l.SeatNumber, Kind: l.Kind,
 		TierID: l.TierID.String(), TierName: l.TierName, FaceValue: l.UnitPrice, Origin: l.SeatOrigin,
+		TicketStatus: l.TicketStatus,
 	}
 	if l.TicketID != nil {
 		s := l.TicketID.String()
@@ -340,17 +376,19 @@ type issuerResponse struct {
 }
 
 type listItem struct {
-	OrderID       string         `json:"order_id"`
-	SystemID      int64          `json:"system_id"`
-	Status        string         `json:"status"`
-	GuestName     *string        `json:"guest_name"`
-	Delivery      string         `json:"delivery"`
-	IssuedVia     string         `json:"issued_via"`
-	IssuedBy      issuerResponse `json:"issued_by"`
-	CreatedAt     time.Time      `json:"created_at"`
-	TicketsTotal  int64          `json:"tickets_total"`
-	TicketsActive int64          `json:"tickets_active"`
-	Places        []lineResponse `json:"places"`
+	OrderID   string         `json:"order_id"`
+	SystemID  int64          `json:"system_id"`
+	Status    string         `json:"status"`
+	GuestName *string        `json:"guest_name"`
+	Delivery  string         `json:"delivery"`
+	IssuedVia string         `json:"issued_via"`
+	IssuedBy  issuerResponse `json:"issued_by"`
+	CreatedAt time.Time      `json:"created_at"`
+	// InvitationBatchID is the CSV batch of a bulk invitation; null otherwise.
+	InvitationBatchID *string        `json:"invitation_batch_id"`
+	TicketsTotal      int64          `json:"tickets_total"`
+	TicketsActive     int64          `json:"tickets_active"`
+	Places            []lineResponse `json:"places"`
 }
 
 // HandleList serves GET /v1/organizations/{org_id}/sessions/{session_id}/invitations:
@@ -413,6 +451,10 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 		if row.IssuedBy != nil {
 			s := row.IssuedBy.String()
 			it.IssuedBy.UserID = &s
+		}
+		if row.BatchID != nil {
+			s := row.BatchID.String()
+			it.InvitationBatchID = &s
 		}
 		items = append(items, it)
 	}
@@ -573,6 +615,12 @@ func (h *Handler) HandleCancel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if notify {
+		if err := h.notifyGuestCancelled(ctx, tx, o, resp.CancelledTicketIDs); err != nil {
+			h.internal(w, r, "cancel: guest letter", err)
+			return
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		h.internal(w, r, "cancel: commit", err)
 		return
@@ -580,10 +628,6 @@ func (h *Handler) HandleCancel(w http.ResponseWriter, r *http.Request) {
 	for _, c := range cancelled {
 		h.canceller.PublishTicketCancelled(ctx, c.out, c.p)
 	}
-	// TODO(INV-03): send the guest the `cancel` letter when notify_guest is
-	// true and the order carries the guest's e-mail (spec 46, section 3.4,
-	// decision R-9). The choice is recorded on order_events above so the
-	// letter job can read it.
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
@@ -607,6 +651,9 @@ func (h *Handler) recordCancel(ctx context.Context, tx pgx.Tx, o gen.InvitationO
 		actor = "user:" + actorID
 	}
 	if _, err := h.queries.WithTx(tx).InsertOrderEvent(ctx, o.ID, "invitation_cancelled", actor, payload); err != nil {
+		return err
+	}
+	if err := h.recordCancelledBy(ctx, tx, o.ID); err != nil {
 		return err
 	}
 	if h.audit == nil {

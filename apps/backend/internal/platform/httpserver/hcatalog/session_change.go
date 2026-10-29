@@ -88,6 +88,9 @@ type sessionChangeImpactResponse struct {
 	ArenaOrders int      `json:"arena_orders"`
 	SiteOrders  int      `json:"site_orders"`
 	NoAddress   int      `json:"no_address"`
+	// InvitationsToIssuer counts the staff invitations without a guest
+	// e-mail: their letter goes to the staff member who issued them.
+	InvitationsToIssuer int `json:"invitations_to_issuer"`
 	// Blocked is empty when the change may be saved, else
 	// "contact_missing" or "site_route_unsupported".
 	Blocked string          `json:"blocked"`
@@ -150,18 +153,19 @@ func (h *Handler) HandleSessionChangeImpact(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, sessionChangeImpactResponse{
-		SessionID:      sessionID.String(),
-		Kinds:          impact.Kinds,
-		Orders:         impact.Orders,
-		Tickets:        impact.Tickets,
-		ArenaOrders:    impact.ArenaOrders,
-		SiteOrders:     impact.SiteOrders,
-		NoAddress:      impact.NoAddress,
-		Blocked:        impact.Blocked,
-		Contact:        contactOut(impact.Contact),
-		DefaultMessage: sessionchange.DefaultMessage(sessionchange.KindForDefault(impact.Kinds), r.URL.Query().Get("locale")),
-		Current:        sessionStateOut(sess.State),
-		Proposed:       sessionStateOut(proposed),
+		SessionID:           sessionID.String(),
+		Kinds:               impact.Kinds,
+		Orders:              impact.Orders,
+		Tickets:             impact.Tickets,
+		ArenaOrders:         impact.ArenaOrders,
+		SiteOrders:          impact.SiteOrders,
+		NoAddress:           impact.NoAddress,
+		InvitationsToIssuer: impact.InvitationsToIssuer,
+		Blocked:             impact.Blocked,
+		Contact:             contactOut(impact.Contact),
+		DefaultMessage:      sessionchange.DefaultMessage(sessionchange.KindForDefault(impact.Kinds), r.URL.Query().Get("locale")),
+		Current:             sessionStateOut(sess.State),
+		Proposed:            sessionStateOut(proposed),
 	})
 }
 

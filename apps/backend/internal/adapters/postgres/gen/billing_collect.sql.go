@@ -73,7 +73,7 @@ SELECT CASE WHEN o.source = 'complimentary' THEN 'ticket_complimentary' ELSE 'ti
        COALESCE(ss.kind = 'seat', false) AS seated,
        o.currency::text AS currency, oi.unit_price, oi.discount, oi.charge,
        v.country::text AS venue_country,
-       jsonb_build_object('order_source', o.source) AS attributes
+       jsonb_strip_nulls(jsonb_build_object('order_source', o.source, 'issued_via', o.issued_via)) AS attributes
 FROM   orders o
 JOIN   order_items oi ON oi.order_id = o.id AND oi.kind = 'ticket'
 LEFT   JOIN session_seats ss ON ss.id = oi.session_seat_id
@@ -90,7 +90,10 @@ LIMIT  $3`
 // ListCollectOrderItems returns the ticket lines of paid orders, a page after
 // (afterAt, afterID): ticket_sold lines, or - with complimentary - the
 // ticket_complimentary lines of orders whose source is complimentary.
-// occurred_at is orders.paid_at.
+// occurred_at is orders.paid_at. attributes carries order_source and, for a
+// staff invitation, issued_via (staff or staff_bulk, migration 0174): the
+// rate job reads a staff_bulk invitation as Bulk (spec 46, section 3.6). A
+// purchase has no issued_via key at all.
 func (q *Queries) ListCollectOrderItems(ctx context.Context, afterAt time.Time, afterID uuid.UUID, limit int32, complimentary bool) ([]CollectCandidate, error) {
 	return q.collectPage(ctx, listCollectOrderItems, afterAt, afterID, limit, complimentary)
 }

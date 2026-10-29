@@ -552,6 +552,21 @@ export const PARITY: readonly ParityRow[] = [
     routes: [`GET ${O}/complimentary`, "POST /v1/complimentary/{id}/revoke"],
     note: "Статус письма гостя (`letters[]`) идёт через билет пригласительного, у пригласительного нет заказа.",
   },
+  {
+    area: "Пригласительные",
+    fn: "Пригласительные на места схемы (закрытые места тоже)",
+    bot: "— (Mini App, INV-05)",
+    web: "R3",
+    ready: { twin: "live/invitations-seats.spec.ts" },
+    routes: [
+      `POST ${O}/sessions/{session_id}/invitations`,
+      `GET ${O}/sessions/{session_id}/invitations`,
+      `POST ${O}/invitations/{order_id}/cancel`,
+      `GET ${O}/invitations/{order_id}/tickets.pdf`,
+      `POST ${O}/invitations/{order_id}/resend`,
+    ],
+    note: "Спека 46. Отмена «возвращает место» туда, откуда оно взято; «Скачать PDF» — один файл на все места заказа, «Отправить ещё раз» — гостю или на разовый адрес.",
+  },
   // ── Команда ─────────────────────────────────────────────────────────
   {
     area: "Команда",

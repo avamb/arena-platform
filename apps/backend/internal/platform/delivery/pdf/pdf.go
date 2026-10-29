@@ -322,6 +322,30 @@ func RenderFormat(ctx context.Context, ticket Ticket, format Format) ([]byte, er
 	return renderWithSpec(ticket, spec)
 }
 
+// RenderMany renders every ticket as its own page of ONE PDF, in the order
+// given (the order-wide document the layout is anchored for). A single ticket
+// renders to the same bytes as Render. Any ticket failing validation fails the
+// whole call, so a caller never hands out a document that silently lacks a
+// seat.
+func RenderMany(ctx context.Context, tickets []Ticket) ([]byte, error) {
+	if len(tickets) == 0 {
+		return nil, fmt.Errorf("%w: no tickets", ErrInvalidTicket)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	for _, t := range tickets {
+		if err := validate(t); err != nil {
+			return nil, err
+		}
+	}
+	spec, err := specFor(FormatMobile)
+	if err != nil {
+		return nil, err
+	}
+	return renderPagesWithSpec(tickets, spec)
+}
+
 // pinnedTimestamp is the fixed sentinel stamped into every render as the PDF
 // creation/modification date. gofpdf substitutes time.Now() for a zero time,
 // which would break the byte-determinism contract.

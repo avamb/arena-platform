@@ -47,8 +47,12 @@ const (
 	DeliveryPDFOnly    = "pdf_only"
 )
 
-// IssuedViaStaff is orders.issued_via of a one-by-one staff invitation.
-const IssuedViaStaff = "staff"
+// IssuedViaStaff is orders.issued_via of a one-by-one staff invitation and
+// IssuedViaStaffBulk the one of an invitation written by a CSV batch.
+const (
+	IssuedViaStaff     = "staff"
+	IssuedViaStaffBulk = "staff_bulk"
+)
 
 // MaxPlaces caps one issue request; a bigger list goes through the CSV
 // upload (INV-06).
@@ -106,6 +110,10 @@ type IssueInput struct {
 	Note      string
 	// IssuedBy is the user who issues; nil for an organization API key.
 	IssuedBy *uuid.UUID
+	// IssuedByAPIKey is the name of the organization API key that issues
+	// (IssuedBy is nil then). It is stored in orders.metadata.invitation so
+	// the sales bot can name the key (spec 46, decision R-11).
+	IssuedByAPIKey string
 	// Actor is the order_events actor ('user:<uuid>' or 'system').
 	Actor string
 	// Audit writes the v1.invitation.issue row on the issuing transaction.
@@ -113,6 +121,39 @@ type IssueInput struct {
 	Audit func(ctx context.Context, tx pgx.Tx, order gen.OrderRow, meta map[string]any) error
 	// Now is the clock; zero means time.Now().
 	Now time.Time
+	// BatchID is the invitation_batches row a bulk order belongs to (the CSV
+	// batch, INV-06); nil for a one-by-one invitation. A bulk order is
+	// stamped issued_via 'staff_bulk'.
+	BatchID *uuid.UUID
+	// BatchSeq is the guest's 1-based position in the batch (kept in
+	// orders.metadata.invitation.batch_seq for the result file).
+	BatchSeq int
+
+	// cache holds what a batch resolves once for all its guests (the
+	// internal channel, the price of each category); nil for a single
+	// invitation, which resolves everything itself.
+	cache *issueCache
+}
+
+// issueCache saves the statements a batch would repeat per guest. Every
+// round trip counts: a 1 000-place file is a few thousand statements.
+type issueCache struct {
+	channelID uuid.UUID
+	amounts   map[uuid.UUID]int64
+}
+
+func (c *issueCache) amount(tier uuid.UUID) (int64, bool) {
+	if c == nil {
+		return 0, false
+	}
+	a, ok := c.amounts[tier]
+	return a, ok
+}
+
+func (c *issueCache) put(tier uuid.UUID, amount int64) {
+	if c != nil {
+		c.amounts[tier] = amount
+	}
 }
 
 // IssueResult is the committed invitation.
@@ -279,17 +320,45 @@ type takenPlace struct {
 	origin string
 }
 
-// issueTx is the transaction body. Lock order (AGENTS.md, every hold
-// mutation): sessions row (seat_status_version bump) FIRST, then the
-// session_seats rows, then inventory_ledger.
-func issueTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in IssueInput, ref string) (uuid.UUID, error) {
-	// 1. The sessions row lock, before any read the transaction decides from.
-	version, err := txq.IncrementSessionSeatStatusVersion(ctx, in.SessionID)
+// bumpSessionVersion takes the sessions row lock (the seat_status_version
+// bump) as the transaction's first statement. Lock order (AGENTS.md, every
+// hold mutation): sessions row FIRST, then the session_seats rows, then
+// inventory_ledger.
+func bumpSessionVersion(ctx context.Context, txq *gen.Queries, sessionID uuid.UUID) (int64, error) {
+	version, err := txq.IncrementSessionSeatStatusVersion(ctx, sessionID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, refuse(http.StatusNotFound, "session.not_found", "session not found", nil)
+		return 0, refuse(http.StatusNotFound, "session.not_found", "session not found", nil)
 	}
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("hinvitations: bump seat_status_version: %w", err)
+		return 0, fmt.Errorf("hinvitations: bump seat_status_version: %w", err)
+	}
+	return version, nil
+}
+
+// issueTarget loads the session and refuses a cancelled or deleted one. No
+// sales window, no is_open, no sales end, no start time (spec 46, decision
+// R-3).
+func issueTarget(ctx context.Context, txq *gen.Queries, orgID, sessionID uuid.UUID) (gen.InvitationSessionTarget, error) {
+	target, err := txq.GetInvitationSessionTarget(ctx, sessionID)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (target.Deleted || target.OrgID != orgID)) {
+		return target, refuse(http.StatusNotFound, "session.not_found", "session not found", nil)
+	}
+	if err != nil {
+		return target, fmt.Errorf("hinvitations: session lookup: %w", err)
+	}
+	if target.Status == "cancelled" {
+		return target, refuse(http.StatusUnprocessableEntity, "invitation.session_cancelled",
+			"the session is cancelled, no invitation can be issued for it", nil)
+	}
+	return target, nil
+}
+
+// issueTx is the transaction body of ONE invitation.
+func issueTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in IssueInput, ref string) (uuid.UUID, error) {
+	// 1. The sessions row lock, before any read the transaction decides from.
+	version, err := bumpSessionVersion(ctx, txq, in.SessionID)
+	if err != nil {
+		return uuid.Nil, err
 	}
 	// 1b. The same request_id again, now under the sessions row lock: a
 	// concurrent twin that held the lock first has committed by now, so its
@@ -301,18 +370,10 @@ func issueTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in IssueInput, re
 		return uuid.Nil, &replayHit{res: res}
 	}
 
-	// 2. Only a cancelled or deleted session refuses. No sales window, no
-	// is_open, no sales end, no start time (spec 46, decision R-3).
-	target, err := txq.GetInvitationSessionTarget(ctx, in.SessionID)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (target.Deleted || target.OrgID != in.OrgID)) {
-		return uuid.Nil, refuse(http.StatusNotFound, "session.not_found", "session not found", nil)
-	}
+	// 2. Only a cancelled or deleted session refuses.
+	target, err := issueTarget(ctx, txq, in.OrgID, in.SessionID)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("hinvitations: session lookup: %w", err)
-	}
-	if target.Status == "cancelled" {
-		return uuid.Nil, refuse(http.StatusUnprocessableEntity, "invitation.session_cancelled",
-			"the session is cancelled, no invitation can be issued for it", nil)
+		return uuid.Nil, err
 	}
 
 	// 3a. Seats by key, FOR UPDATE in seat_key order.
@@ -322,21 +383,50 @@ func issueTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in IssueInput, re
 	}
 	// 3b. General Admission places of each category: free first, then reserve.
 	tiers := map[uuid.UUID]gen.TicketTierRow{}
+	places, err = allocateGA(ctx, txq, in, places, tiers, nil)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	w, err := writeInvitation(ctx, tx, txq, in, ref, version, target.EventID, places, tiers)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return w.OrderID, nil
+}
+
+// allocateGA locks the General Admission places of every line of the
+// invitation, free places first and then the organizer's reserve, and
+// appends them to places. exclude holds places this transaction has already
+// locked for other invitations of a batch: SKIP LOCKED does not skip rows
+// the SAME transaction locked, so they are asked for and dropped.
+func allocateGA(
+	ctx context.Context,
+	txq *gen.Queries,
+	in IssueInput,
+	places []takenPlace,
+	tiers map[uuid.UUID]gen.TicketTierRow,
+	exclude map[uuid.UUID]bool,
+) ([]takenPlace, error) {
 	for _, line := range in.GA {
 		tier, err := sessionTier(ctx, txq, in.SessionID, line.TierID)
 		if err != nil {
-			return uuid.Nil, err
+			return nil, err
 		}
 		tiers[tier.ID] = tier
-		// The places this transaction already took are locked by it, so SKIP
-		// LOCKED does not skip them: ask for that many more and drop them.
-		chosen := make(map[uuid.UUID]bool, len(places))
-		for _, p := range places {
-			chosen[p.seat.ID] = true
+		// Only General Admission places can come back from the lock below,
+		// so only those are worth asking extra for and dropping.
+		chosen := make(map[uuid.UUID]bool, len(places)+len(exclude))
+		for id := range exclude {
+			chosen[id] = true
 		}
-		units, err := txq.LockInvitationGAUnits(ctx, in.SessionID, line.TierID, line.Quantity+int32(len(chosen))) //nolint:gosec // capped at MaxPlaces
+		for _, p := range places {
+			if p.seat.Kind == "ga_unit" {
+				chosen[p.seat.ID] = true
+			}
+		}
+		units, err := txq.LockInvitationGAUnits(ctx, in.SessionID, line.TierID, line.Quantity+int32(len(chosen))) //nolint:gosec // capped by MaxPlaces / MaxBatchPlaces
 		if err != nil {
-			return uuid.Nil, fmt.Errorf("hinvitations: lock GA places: %w", err)
+			return nil, fmt.Errorf("hinvitations: lock GA places: %w", err)
 		}
 		got := int32(0)
 		for _, u := range units {
@@ -350,63 +440,111 @@ func issueTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in IssueInput, re
 			got++
 		}
 		if got < line.Quantity {
-			return uuid.Nil, refuse(http.StatusConflict, "invitation.not_enough_places",
+			return nil, refuse(http.StatusConflict, "invitation.not_enough_places",
 				"the category has fewer free or reserved places than requested",
 				map[string]any{"tier_id": line.TierID.String(), "requested": line.Quantity, "available": got})
 		}
 	}
-	quantity := int32(len(places)) //nolint:gosec // capped at MaxPlaces by the HTTP layer
+	return places, nil
+}
+
+// written is an invitation order the transaction wrote.
+type written struct {
+	OrderID     uuid.UUID
+	SystemID    int64
+	Places      int
+	FromReserve int
+}
+
+// writeInvitation is steps 4 to 11 of the issue transaction for one guest
+// whose places are already locked: capacity, reservation, prices, order,
+// sale of the places, free completion, audit. A batch calls it once per
+// guest on the batch's one transaction.
+func writeInvitation(
+	ctx context.Context,
+	tx pgx.Tx,
+	txq *gen.Queries,
+	in IssueInput,
+	ref string,
+	version int64,
+	eventID uuid.UUID,
+	places []takenPlace,
+	tiers map[uuid.UUID]gen.TicketTierRow,
+) (written, error) {
+	quantity := int32(len(places)) //nolint:gosec // capped at MaxPlaces / MaxBatchPlaces
 
 	// 4. Session-level capacity, as every seat/GA-unit hold reserves it.
 	if _, err := txq.ReserveCapacity(ctx, in.SessionID, nil, quantity); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return uuid.Nil, refuse(http.StatusConflict, "invitation.capacity_exceeded",
+			return written{}, refuse(http.StatusConflict, "invitation.capacity_exceeded",
 				"the session has no capacity left for these places", map[string]any{"requested": quantity})
 		}
-		return uuid.Nil, fmt.Errorf("hinvitations: reserve capacity: %w", err)
+		return written{}, fmt.Errorf("hinvitations: reserve capacity: %w", err)
 	}
 
 	// 5. The hidden internal channel, the reservation, the held places.
-	channelID, err := invitations.EnsureInternalChannel(ctx, txq, in.OrgID)
-	if err != nil {
-		return uuid.Nil, err
+	channelID := uuid.Nil
+	if in.cache != nil {
+		channelID = in.cache.channelID
+	}
+	if channelID == uuid.Nil {
+		var err error
+		if channelID, err = invitations.EnsureInternalChannel(ctx, txq, in.OrgID); err != nil {
+			return written{}, err
+		}
 	}
 	res, err := txq.InsertReservation(ctx, in.OrgID, channelID, in.SessionID, nil, in.IssuedBy, quantity, in.Now.Add(holdLifetime))
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("hinvitations: insert reservation: %w", err)
+		return written{}, fmt.Errorf("hinvitations: insert reservation: %w", err)
 	}
+	// One statement holds every place and one links them: a bulk file is
+	// thousands of round trips otherwise.
+	ids := make([]uuid.UUID, 0, len(places))
+	for _, p := range places {
+		ids = append(ids, p.seat.ID)
+	}
+	heldRows, err := txq.HoldSessionSeatsForInvitation(ctx, ids, res.ID, version)
+	if err != nil {
+		return written{}, fmt.Errorf("hinvitations: hold places: %w", err)
+	}
+	held := make(map[uuid.UUID]gen.SessionSeatRow, len(heldRows))
+	for _, h := range heldRows {
+		held[h.ID] = h
+	}
+	var lost []string
 	for i, p := range places {
-		held, err := txq.HoldSessionSeatForInvitation(ctx, p.seat.ID, res.ID, version)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return uuid.Nil, seatsTaken([]string{p.seat.SeatKey})
-			}
-			return uuid.Nil, fmt.Errorf("hinvitations: hold place %s: %w", p.seat.SeatKey, err)
+		h, ok := held[p.seat.ID]
+		if !ok {
+			lost = append(lost, p.seat.SeatKey)
+			continue
 		}
-		if err := txq.InsertReservationSeat(ctx, res.ID, held.ID); err != nil {
-			return uuid.Nil, fmt.Errorf("hinvitations: link place %s: %w", p.seat.SeatKey, err)
-		}
-		places[i].seat = held
+		places[i].seat = h
+	}
+	if len(lost) > 0 {
+		return written{}, seatsTaken(lost)
+	}
+	if err := txq.InsertReservationSeats(ctx, res.ID, ids); err != nil {
+		return written{}, fmt.Errorf("hinvitations: link places: %w", err)
 	}
 
 	// 6. Prices: the face value of each category, then the whole subtotal
 	// discounted (hcheckout.ComplimentaryBreakdown, the gateway's own rule).
 	bd, tierPrices, err := price(ctx, txq, in, places, tiers)
 	if err != nil {
-		return uuid.Nil, err
+		return written{}, err
 	}
 	token, err := checkoutToken()
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("hinvitations: checkout token: %w", err)
+		return written{}, fmt.Errorf("hinvitations: checkout token: %w", err)
 	}
 	cs, err := txq.InsertCheckoutSessionWithToken(ctx, in.OrgID, channelID, res.ID, in.IssuedBy, token, localePtr(in.Guest.Locale), nil)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("hinvitations: insert checkout session: %w", err)
+		return written{}, fmt.Errorf("hinvitations: insert checkout session: %w", err)
 	}
 	if _, err := txq.ConfirmCheckoutSession(ctx, cs.ID,
 		bd.Subtotal, bd.Discount, bd.PlatformFee, bd.ProviderFee, bd.Tax, bd.Total, bd.Currency, nil,
 	); err != nil {
-		return uuid.Nil, fmt.Errorf("hinvitations: confirm checkout session: %w", err)
+		return written{}, fmt.Errorf("hinvitations: confirm checkout session: %w", err)
 	}
 
 	// 7. The guest as a customer of the organization, best effort.
@@ -416,9 +554,9 @@ func issueTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in IssueInput, re
 	// guest with an open purchase of their own on this session would trip
 	// orders_one_pending_per_customer_session_uq. Step 10b links it once
 	// the order is paid, in this same transaction.
-	order, err := writeOrder(ctx, txq, in, ref, cs.ID, target.EventID, tierPrices)
+	order, err := writeOrder(ctx, txq, in, ref, cs.ID, eventID, tierPrices)
 	if err != nil {
-		return uuid.Nil, err
+		return written{}, err
 	}
 	seatIDs := make([]uuid.UUID, 0, len(places))
 	origins := make([]string, 0, len(places))
@@ -431,23 +569,23 @@ func issueTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in IssueInput, re
 		}
 	}
 	if err := txq.SetOrderItemsSeatOrigin(ctx, order.ID, seatIDs, origins); err != nil {
-		return uuid.Nil, fmt.Errorf("hinvitations: seat origin: %w", err)
+		return written{}, fmt.Errorf("hinvitations: seat origin: %w", err)
 	}
 
 	// 9. Sold in THIS transaction: places held -> sold, capacity held ->
 	// sold, reservation converted. The checkout.convert_reservation job the
 	// fulfilment tail enqueues then finds a converted reservation (no-op).
 	if err := hcheckout.ConvertReservationInTx(ctx, txq, res.ID); err != nil {
-		return uuid.Nil, fmt.Errorf("hinvitations: sell places: %w", err)
+		return written{}, fmt.Errorf("hinvitations: sell places: %w", err)
 	}
 	// 10. Completed for 0: ticket issuance job, order paid.
 	if _, err := hcheckout.CompleteFreeCheckoutTx(ctx, tx, txq, cs.ID); err != nil {
-		return uuid.Nil, fmt.Errorf("hinvitations: complete free checkout: %w", err)
+		return written{}, fmt.Errorf("hinvitations: complete free checkout: %w", err)
 	}
 	// 10b. The guest's customer row, now that the order is paid.
 	if customerID != nil {
 		if err := txq.SetInvitationOrderCustomer(ctx, order.ID, *customerID); err != nil {
-			return uuid.Nil, fmt.Errorf("hinvitations: link guest: %w", err)
+			return written{}, fmt.Errorf("hinvitations: link guest: %w", err)
 		}
 	}
 
@@ -463,11 +601,15 @@ func issueTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in IssueInput, re
 			"delivery":     in.Delivery,
 			"system_id":    order.SystemID,
 		}
+		if in.BatchID != nil {
+			meta["batch_id"] = in.BatchID.String()
+			meta["batch_seq"] = in.BatchSeq
+		}
 		if err := in.Audit(ctx, tx, order, meta); err != nil {
-			return uuid.Nil, fmt.Errorf("hinvitations: audit: %w", err)
+			return written{}, fmt.Errorf("hinvitations: audit: %w", err)
 		}
 	}
-	return order.ID, nil
+	return written{OrderID: order.ID, SystemID: order.SystemID, Places: len(places), FromReserve: fromReserve}, nil
 }
 
 // lockSeats locks the named seats and accepts only available and
@@ -565,16 +707,31 @@ func price(
 	for _, tid := range order {
 		rows = append(rows, tiers[tid])
 	}
-	eff, err := priceresolve.ForTiers(ctx, txq, rows, in.Now)
-	if err != nil {
-		return hcheckout.PricingBreakdown{}, nil, fmt.Errorf("hinvitations: resolve prices: %w", err)
+	amounts := make(map[uuid.UUID]int64, len(rows))
+	var missing []gen.TicketTierRow
+	for _, r := range rows {
+		if a, ok := in.cache.amount(r.ID); ok {
+			amounts[r.ID] = a
+		} else {
+			missing = append(missing, r)
+		}
+	}
+	if len(missing) > 0 {
+		eff, err := priceresolve.ForTiers(ctx, txq, missing, in.Now)
+		if err != nil {
+			return hcheckout.PricingBreakdown{}, nil, fmt.Errorf("hinvitations: resolve prices: %w", err)
+		}
+		for _, r := range missing {
+			amounts[r.ID] = eff[r.ID].Amount
+			in.cache.put(r.ID, eff[r.ID].Amount)
+		}
 	}
 	unit := make(map[uuid.UUID]int64, len(order))
 	lines := make([]hcheckout.PricingLineInput, 0, len(order))
 	currency := ""
 	for _, tid := range order {
 		t := tiers[tid]
-		p := eff[tid].Amount
+		p := amounts[tid]
 		if t.PricingMode == "free" || t.PricingMode == "pwyw" {
 			p = 0
 		}
@@ -649,8 +806,15 @@ func writeOrder(
 	if n := strings.TrimSpace(in.Note); n != "" {
 		meta["note"] = n
 	}
+	if k := strings.TrimSpace(in.IssuedByAPIKey); k != "" && in.IssuedBy == nil {
+		meta["issued_by_api_key"] = k
+	}
 	if l := normalizeLocale(in.Guest.Locale); l != "" {
 		meta["locale"] = l
+	}
+	if in.BatchID != nil {
+		meta["batch_id"] = in.BatchID.String()
+		meta["batch_seq"] = in.BatchSeq
 	}
 	raw, err := json.Marshal(map[string]any{"invitation": meta})
 	if err != nil {
@@ -684,7 +848,11 @@ func writeOrder(
 		}
 		return gen.OrderRow{}, fmt.Errorf("hinvitations: create order: %w", err)
 	}
-	if err := txq.SetOrderStaffIssuance(ctx, out.Order.ID, IssuedViaStaff, in.IssuedBy); err != nil {
+	if in.BatchID != nil {
+		if err := txq.SetOrderInvitationBatch(ctx, out.Order.ID, IssuedViaStaffBulk, in.IssuedBy, *in.BatchID); err != nil {
+			return gen.OrderRow{}, fmt.Errorf("hinvitations: stamp batch issuance: %w", err)
+		}
+	} else if err := txq.SetOrderStaffIssuance(ctx, out.Order.ID, IssuedViaStaff, in.IssuedBy); err != nil {
 		return gen.OrderRow{}, fmt.Errorf("hinvitations: stamp issuance: %w", err)
 	}
 	return out.Order, nil

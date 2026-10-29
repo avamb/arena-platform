@@ -131,6 +131,36 @@ func (f *inv02Fx) member(role string) string {
 	return tok
 }
 
+// inv02SessionCleanupSQL removes everything the invitations of one session
+// wrote (worker_jobs first: they are keyed by JSON payload, no FK).
+var inv02SessionCleanupSQL = []string{
+	`DELETE FROM outbox_events WHERE aggregate_id IN (
+	   SELECT id::text FROM orders WHERE session_id = $1
+	   UNION ALL SELECT id::text FROM tickets WHERE session_id = $1
+	   UNION ALL SELECT checkout_session_id::text FROM orders WHERE session_id = $1)`,
+	`DELETE FROM outbox WHERE aggregate_id IN (
+	   SELECT id FROM orders WHERE session_id = $1
+	   UNION ALL SELECT id FROM tickets WHERE session_id = $1)`,
+	`DELETE FROM order_events WHERE order_id IN (SELECT id FROM orders WHERE session_id = $1)`,
+	`DELETE FROM worker_jobs WHERE payload->>'checkout_session_id' IN (
+	   SELECT cs.id::text FROM checkout_sessions cs JOIN reservations r ON r.id = cs.reservation_id WHERE r.session_id = $1)
+	   OR payload->>'reservation_id' IN (SELECT id::text FROM reservations WHERE session_id = $1)
+	   OR payload->>'ticket_id' IN (SELECT id::text FROM tickets WHERE session_id = $1)`,
+	`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE session_id = $1)`,
+	`DELETE FROM barcodes WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`,
+	`DELETE FROM tickets WHERE session_id = $1`,
+	`DELETE FROM orders WHERE session_id = $1`,
+	`DELETE FROM invitation_batches WHERE session_id = $1`,
+	`DELETE FROM checkout_sessions WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,
+	`DELETE FROM reservation_seats WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,
+	`DELETE FROM reservation_ga_items WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,
+	`DELETE FROM session_seats WHERE session_id = $1`,
+	`DELETE FROM reservations WHERE session_id = $1`,
+	`DELETE FROM inventory_ledger WHERE session_id = $1`,
+	`DELETE FROM ticket_tiers WHERE session_id = $1`,
+	`DELETE FROM sessions WHERE id = $1`,
+}
+
 // cleanup removes everything the session's invitations wrote, worker_jobs
 // first (AGENTS.md: keyed by JSON payload, no FK to clean them up).
 func (f *inv02Fx) cleanup() {
@@ -147,32 +177,7 @@ func (f *inv02Fx) cleanup() {
 		}
 		rows.Close()
 	}
-	for _, sql := range []string{
-		`DELETE FROM outbox_events WHERE aggregate_id IN (
-		   SELECT id::text FROM orders WHERE session_id = $1
-		   UNION ALL SELECT id::text FROM tickets WHERE session_id = $1
-		   UNION ALL SELECT checkout_session_id::text FROM orders WHERE session_id = $1)`,
-		`DELETE FROM outbox WHERE aggregate_id IN (
-		   SELECT id FROM orders WHERE session_id = $1
-		   UNION ALL SELECT id FROM tickets WHERE session_id = $1)`,
-		`DELETE FROM order_events WHERE order_id IN (SELECT id FROM orders WHERE session_id = $1)`,
-		`DELETE FROM worker_jobs WHERE payload->>'checkout_session_id' IN (
-		   SELECT cs.id::text FROM checkout_sessions cs JOIN reservations r ON r.id = cs.reservation_id WHERE r.session_id = $1)
-		   OR payload->>'reservation_id' IN (SELECT id::text FROM reservations WHERE session_id = $1)
-		   OR payload->>'ticket_id' IN (SELECT id::text FROM tickets WHERE session_id = $1)`,
-		`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE session_id = $1)`,
-		`DELETE FROM barcodes WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`,
-		`DELETE FROM tickets WHERE session_id = $1`,
-		`DELETE FROM orders WHERE session_id = $1`,
-		`DELETE FROM checkout_sessions WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,
-		`DELETE FROM reservation_seats WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,
-		`DELETE FROM reservation_ga_items WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,
-		`DELETE FROM session_seats WHERE session_id = $1`,
-		`DELETE FROM reservations WHERE session_id = $1`,
-		`DELETE FROM inventory_ledger WHERE session_id = $1`,
-		`DELETE FROM ticket_tiers WHERE session_id = $1`,
-		`DELETE FROM sessions WHERE id = $1`,
-	} {
+	for _, sql := range inv02SessionCleanupSQL {
 		if _, err := f.pool.Exec(ctx, sql, f.session); err != nil {
 			f.t.Logf("INV02 cleanup: %v", err)
 		}
@@ -277,8 +282,15 @@ func TestINV02_IssueFromReserveAndSale_CancelReturnsEachSeatToItsOrigin(t *testi
 	if code != http.StatusCreated {
 		t.Fatalf("issue: %d %s", code, body["_raw"])
 	}
-	if body["tickets_status"] != "issuing" || body["replayed"] != false || body["charge"] != nil {
+	if body["tickets_status"] != "issuing" || body["replayed"] != false {
 		t.Fatalf("issue answer: %s", body["_raw"])
+	}
+	// The billing preview (INV-07): a staff invitation on a fresh account
+	// whose terms bill invitations free costs nothing.
+	charge, _ := body["charge"].(map[string]any)
+	if charge == nil || charge["mode"] != "free" || charge["tickets"] != float64(5) ||
+		charge["amount_minor"] != float64(0) || charge["free_tickets"] != float64(5) {
+		t.Fatalf("issue charge preview: %s", body["_raw"])
 	}
 	if fr, _ := body["from_reserve"].(float64); fr != 2 {
 		t.Fatalf("from_reserve = %v, want 2 (A|1|1 and the third GA place): %s", body["from_reserve"], body["_raw"])
@@ -376,7 +388,56 @@ func TestINV02_IssueFromReserveAndSale_CancelReturnsEachSeatToItsOrigin(t *testi
 		t.Fatalf("list item: %s", list["_raw"])
 	}
 
-	// An agent may not cancel; the manager cancels the owner's invitation.
+	// Every place of the list carries the status of its ticket.
+	statuses := func(list map[string]any) (map[string]string, int) {
+		out := map[string]string{}
+		active := 0
+		for _, pl := range list["items"].([]any)[0].(map[string]any)["places"].([]any) {
+			m := pl.(map[string]any)
+			s, _ := m["ticket_status"].(string)
+			key, _ := m["seat_key"].(string)
+			out[key] = s
+			if s == "active" {
+				active++
+			}
+		}
+		return out, active
+	}
+	if st, active := statuses(list); active != 5 || len(st) != 5 {
+		t.Fatalf("ticket_status before any cancel: %v (active %d), want five active: %s", st, active, list["_raw"])
+	}
+
+	// A single ticket can be cancelled on its own: its seat goes back to where it came from,
+	// and the list marks exactly that place as cancelled.
+	var partialTicket string
+	for _, pl := range item["places"].([]any) {
+		if m := pl.(map[string]any); m["seat_key"] == "A|1|5" {
+			partialTicket, _ = m["ticket_id"].(string)
+		}
+	}
+	if partialTicket == "" {
+		t.Fatalf("no ticket on place A|1|5: %s", list["_raw"])
+	}
+	code, body = f.do(f.manager, http.MethodPost, cancelPath, `{"notify_guest": false, "ticket_ids": ["`+partialTicket+`"]}`)
+	if code != http.StatusOK || len(body["cancelled_ticket_ids"].([]any)) != 1 {
+		t.Fatalf("partial cancel: %d %s", code, body["_raw"])
+	}
+	if s := f.seat("A|1|5"); s.Status != "available" {
+		t.Fatalf("A|1|5 is %s after its ticket was cancelled, want available", s.Status)
+	}
+	code, list = f.do(f.manager, http.MethodGet, f.issuePath(), "")
+	if code != http.StatusOK {
+		t.Fatalf("list after the partial cancel: %d %s", code, list["_raw"])
+	}
+	st, active := statuses(list)
+	if st["A|1|5"] != "cancelled" || active != 4 {
+		t.Fatalf("ticket_status after the partial cancel: %v (active %d), want A|1|5 cancelled and 4 active", st, active)
+	}
+	if it := list["items"].([]any)[0].(map[string]any); it["tickets_active"].(float64) != 4 || it["tickets_total"].(float64) != 5 {
+		t.Fatalf("ticket counts after the partial cancel: %s", list["_raw"])
+	}
+
+	// An agent may not cancel; the manager cancels the rest of the owner's invitation.
 	if code, body := f.do(f.agent, http.MethodPost, cancelPath, `{}`); code != http.StatusForbidden {
 		t.Fatalf("agent cancel: %d %s", code, body["_raw"])
 	}
@@ -386,7 +447,7 @@ func TestINV02_IssueFromReserveAndSale_CancelReturnsEachSeatToItsOrigin(t *testi
 	}
 	// A cancellation moves no money: the order stays paid, so the
 	// invitation is still billed (owner rule: the charge stays).
-	if body["order_status"] != "paid" || len(body["cancelled_ticket_ids"].([]any)) != 5 || body["notify_guest"] != false {
+	if body["order_status"] != "paid" || len(body["cancelled_ticket_ids"].([]any)) != 4 || body["notify_guest"] != false {
 		t.Fatalf("cancel answer: %s", body["_raw"])
 	}
 	inv02AssertBilled(t, f, orderID, 5)

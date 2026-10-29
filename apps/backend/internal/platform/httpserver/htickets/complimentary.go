@@ -49,9 +49,10 @@ import (
 )
 
 // admissionAssignedSeats is the sessions.admission_mode value for a
-// strictly seated session — the one shape whose complimentary tickets take
-// no General Admission place. The other two ("general_admission",
-// "hybrid") both sell GA places.
+// strictly seated session — the one shape this route refuses (422
+// complimentary.use_invitations_route, INV-08): its invitations name a seat
+// and go through POST .../sessions/{session_id}/invitations. The other two
+// ("general_admission", "hybrid") both sell GA places and stay here.
 const admissionAssignedSeats = "assigned_seats"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,7 +229,24 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 	// "available" (plan 08_architecture/23, decision 6).
 	gaSession := false
 	if mode, mErr := complQ.GetSessionAdmissionModeByID(ctx, sessionID); mErr == nil {
-		gaSession = mode.AdmissionMode != admissionAssignedSeats
+		// INV-08 (spec 46): this route cannot name a seat, so on a strictly
+		// seated session it would issue a ticket with no place while the
+		// ledger drains. The staff invitations route picks the seat (and a
+		// reserved one) and replaces this route there. Nothing was written
+		// yet, and a replay of an earlier batch already answered above.
+		if mode.AdmissionMode == admissionAssignedSeats {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+				"complimentary.use_invitations_route",
+				"a seated session takes invitations with a chosen seat: use POST /v1/organizations/{org_id}/sessions/{session_id}/invitations",
+				r,
+				map[string]any{
+					"session_id": sessionID.String(),
+					"route":      "/v1/organizations/" + orgID.String() + "/sessions/" + sessionID.String() + "/invitations",
+				},
+			))
+			return
+		}
+		gaSession = true // general_admission and hybrid both sell GA places
 	} else if !errors.Is(mErr, pgx.ErrNoRows) {
 		h.logger.Error("complimentary: admission lookup failed", slog.String("error", mErr.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(

@@ -105,6 +105,24 @@ func (q *Queries) SetOrderStaffIssuance(ctx context.Context, orderID uuid.UUID, 
 	return err
 }
 
+const setInvitationCancelledBy = `-- name: SetInvitationCancelledBy :exec
+UPDATE orders
+SET    metadata   = COALESCE(metadata, '{}'::jsonb)
+                    || jsonb_build_object('invitation',
+                         COALESCE(metadata->'invitation', '{}'::jsonb)
+                         || jsonb_build_object('cancelled_by', $2::jsonb)),
+       updated_at = now()
+WHERE  id = $1
+  AND  issued_via IS NOT NULL`
+
+// SetInvitationCancelledBy records who cancelled a staff invitation in
+// orders.metadata.invitation.cancelled_by (spec 46 section 3.7). cancelledBy
+// is {"user_id": ...} or {"api_key": name}; the last cancellation wins.
+func (q *Queries) SetInvitationCancelledBy(ctx context.Context, orderID uuid.UUID, cancelledBy []byte) error {
+	_, err := q.db.Exec(ctx, setInvitationCancelledBy, orderID, string(cancelledBy))
+	return err
+}
+
 const setInvitationOrderCustomer = `-- name: SetInvitationOrderCustomer :exec
 UPDATE orders
 SET    customer_id = $2,
@@ -205,24 +223,26 @@ func (q *Queries) GetInvitationOrder(ctx context.Context, orderID, orgID uuid.UU
 
 // SessionInvitationRow is one row of the per-session invitation list.
 type SessionInvitationRow struct {
-	ID            uuid.UUID
-	SystemID      int64
-	Status        string
-	BuyerName     *string
-	Metadata      json.RawMessage
-	IssuedVia     string
-	IssuedBy      *uuid.UUID
-	IssuerEmail   *string
-	IssuerFirst   *string
-	IssuerLast    *string
-	CreatedAt     time.Time
+	ID          uuid.UUID
+	SystemID    int64
+	Status      string
+	BuyerName   *string
+	Metadata    json.RawMessage
+	IssuedVia   string
+	IssuedBy    *uuid.UUID
+	IssuerEmail *string
+	IssuerFirst *string
+	IssuerLast  *string
+	CreatedAt   time.Time
+	// BatchID is the CSV batch the invitation came from (migration 0175).
+	BatchID       *uuid.UUID
 	TicketsTotal  int64
 	TicketsActive int64
 }
 
 const listSessionInvitations = `-- name: ListSessionInvitations :many
 SELECT o.id, o.system_id, o.status, o.buyer_name, o.metadata, o.issued_via,
-       o.issued_by, u.email, u.first_name, u.last_name, o.created_at,
+       o.issued_by, u.email, u.first_name, u.last_name, o.created_at, o.invitation_batch_id,
        (SELECT count(*) FROM tickets t WHERE t.checkout_session_id = o.checkout_session_id) AS tickets_total,
        (SELECT count(*) FROM tickets t WHERE t.checkout_session_id = o.checkout_session_id AND t.status = 'active') AS tickets_active
 FROM   orders o
@@ -247,7 +267,7 @@ func (q *Queries) ListSessionInvitations(ctx context.Context, orgID, sessionID u
 		var r SessionInvitationRow
 		if err := rows.Scan(
 			&r.ID, &r.SystemID, &r.Status, &r.BuyerName, &r.Metadata, &r.IssuedVia,
-			&r.IssuedBy, &r.IssuerEmail, &r.IssuerFirst, &r.IssuerLast, &r.CreatedAt,
+			&r.IssuedBy, &r.IssuerEmail, &r.IssuerFirst, &r.IssuerLast, &r.CreatedAt, &r.BatchID,
 			&r.TicketsTotal, &r.TicketsActive,
 		); err != nil {
 			return nil, err
@@ -272,15 +292,18 @@ type InvitationOrderLineRow struct {
 	Kind       *string
 	TierID     uuid.UUID
 	TierName   string
+	// TicketStatus is tickets.status of the place's ticket, nil until it is issued.
+	TicketStatus *string
 }
 
 const listInvitationOrderLines = `-- name: ListInvitationOrderLines :many
 SELECT oi.order_id, oi.ordinal, oi.ticket_id, oi.unit_price, oi.seat_origin,
        ss.seat_key, ss.sector_name, ss.row_name, ss.seat_number, ss.kind,
-       tt.id AS tier_id, tt.name AS tier_name
+       tt.id AS tier_id, tt.name AS tier_name, t.status AS ticket_status
 FROM   order_items oi
 JOIN   ticket_tiers tt ON tt.id = oi.tier_id
 LEFT JOIN session_seats ss ON ss.id = oi.session_seat_id
+LEFT JOIN tickets t ON t.id = oi.ticket_id
 WHERE  oi.order_id = ANY($1::uuid[])
 ORDER  BY oi.order_id, oi.ordinal`
 
@@ -297,7 +320,7 @@ func (q *Queries) ListInvitationOrderLines(ctx context.Context, orderIDs []uuid.
 		if err := rows.Scan(
 			&r.OrderID, &r.Ordinal, &r.TicketID, &r.UnitPrice, &r.SeatOrigin,
 			&r.SeatKey, &r.SectorName, &r.RowName, &r.SeatNumber, &r.Kind,
-			&r.TierID, &r.TierName,
+			&r.TierID, &r.TierName, &r.TicketStatus,
 		); err != nil {
 			return nil, err
 		}

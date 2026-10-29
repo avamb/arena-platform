@@ -163,10 +163,38 @@ func applySeatsFixture(ctx context.Context, tx pgx.Tx) error {
 		ON CONFLICT (id) DO NOTHING`, seatsSessionID, seatsEventID, venueID, start, seatCount, seatsVersionID); err != nil {
 		return err
 	}
-	// Everything an earlier run changed, children first.
+	// Everything an earlier run changed, children first. A staff invitation issued by the
+	// invitations twin (invitations-seats.spec.ts) leaves a reservation, a checkout session,
+	// an order, its tickets and worker jobs on these places, and two foreign keys point at
+	// session_seats without a cascade (reservation_seats and order_items), so those rows
+	// must go first. Only rows of THIS session are touched.
+	const (
+		sessionReservations = `SELECT id FROM reservations WHERE session_id = $1`
+		sessionCheckouts    = `SELECT id FROM checkout_sessions WHERE reservation_id IN (` + sessionReservations + `)`
+		sessionOrders       = `SELECT id FROM orders WHERE session_id = $1`
+		sessionTickets      = `SELECT id FROM tickets WHERE session_id = $1`
+	)
 	for _, step := range []struct{ what, sql string }{
+		{"jobs of checkouts", `DELETE FROM worker_jobs WHERE payload->>'checkout_session_id' IN (SELECT id::text FROM (` + sessionCheckouts + `) c)`},
+		{"jobs of reservations", `DELETE FROM worker_jobs WHERE payload->>'reservation_id' IN (SELECT id::text FROM (` + sessionReservations + `) r)`},
+		{"jobs of tickets", `DELETE FROM worker_jobs WHERE payload->>'ticket_id' IN (SELECT id::text FROM (` + sessionTickets + `) t)`},
+		// order_items.ticket_id and tickets.order_id point at each other, as do tickets.refund_id and refunds.ticket_id.
+		{"item tickets", `UPDATE order_items SET ticket_id = NULL WHERE order_id IN (` + sessionOrders + `)`},
+		{"ticket refunds", `UPDATE tickets SET refund_id = NULL WHERE session_id = $1`},
+		{"refunds", `DELETE FROM refunds WHERE order_id IN (` + sessionOrders + `)`},
+		{"barcodes", `DELETE FROM barcodes WHERE ticket_id IN (` + sessionTickets + `)`},
+		{"scans", `DELETE FROM scan_events WHERE ticket_id IN (` + sessionTickets + `)`},
+		{"tickets", `DELETE FROM tickets WHERE session_id = $1`},
+		{"payments", `DELETE FROM payment_intents WHERE checkout_session_id IN (` + sessionCheckouts + `)`},
+		{"orders", `DELETE FROM orders WHERE session_id = $1`},
+		// checkout_consents are never deleted (dispute evidence, retention guard in
+		// tests/staticanalysis). Staff invitations write none, and the seats
+		// fixture is never bought through the public checkout.
+		{"checkout sessions", `DELETE FROM checkout_sessions WHERE reservation_id IN (` + sessionReservations + `)`},
+		{"held places", `DELETE FROM reservation_seats WHERE reservation_id IN (` + sessionReservations + `)`},
 		{"batches", `DELETE FROM session_seat_batches WHERE session_id = $1`},
 		{"places", `DELETE FROM session_seats WHERE session_id = $1`},
+		{"reservations", `DELETE FROM reservations WHERE session_id = $1`},
 		{"ledger", `DELETE FROM inventory_ledger WHERE session_id = $1`},
 		{"categories", `DELETE FROM ticket_tiers WHERE session_id = $1`},
 	} {

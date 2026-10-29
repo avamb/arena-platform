@@ -14,12 +14,12 @@
   <p style="margin:0 0 12px 0;">You have been issued a complimentary invitation ticket for
      <strong>{{.EventName}}</strong>. Please find the PDF attached.</p>
   <p style="margin:0 0 12px 0;">This ticket is a complimentary invitation — no payment is required.</p>
-  {{if or .SeatSector .SeatRow .SeatNumber}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+  {{if gt (len .Tickets) 1}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">{{range .Tickets}}<tr><td>No. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td></tr>{{end}}</table>{{else if or .SeatSector .SeatRow .SeatNumber}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">
     {{with .SeatSector}}<tr><td><strong>Sector</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatRow}}<tr><td><strong>Row</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatNumber}}<tr><td><strong>Seat</strong></td><td>{{.}}</td></tr>{{end}}
   </table>{{end}}
-  <p style="font-size:12px;color:#666">Ticket ID: {{.TicketID}}</p>
+  {{if le (len .Tickets) 1}}<p style="font-size:12px;color:#666">Ticket ID: {{.TicketID}}</p>{{end}}
   <p style="font-size:12px;color:#666">Delivered to: {{.RecipientEmail}}</p>
   </td></tr>
   <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
@@ -52,10 +52,11 @@ Please find the PDF attached.
 
 This ticket is a complimentary invitation — no payment is required.
 
-{{with .SeatSector}}Sector: {{.}}
+{{if gt (len .Tickets) 1}}{{range .Tickets}}- No. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
+{{end}}{{else}}{{with .SeatSector}}Sector: {{.}}
 {{end}}{{with .SeatRow}}Row: {{.}}
 {{end}}{{with .SeatNumber}}Seat: {{.}}
-{{end}}Ticket ID: {{.TicketID}}
+{{end}}Ticket ID: {{.TicketID}}{{end}}
 Delivered to: {{.RecipientEmail}}
 
 --

@@ -46,6 +46,7 @@ type invBotSeed struct {
 	orgID                      uuid.UUID
 	event, session             uuid.UUID
 	seatedEvent, seatedSession uuid.UUID
+	seatedTier                 uuid.UUID
 	vip, std                   uuid.UUID // VIP owns 6 places, Standard 3
 	eventName, seatedName      string
 }
@@ -64,6 +65,7 @@ func seedInviteBotOrg(t *testing.T, pool *pgxpool.Pool, orgID uuid.UUID) *invBot
 	s.eventName = "Invite Show " + s.suffix
 	s.seatedName = "Seated Show " + s.suffix
 	plan, version, seatedTier := uuid.New(), uuid.New(), uuid.New()
+	s.seatedTier = seatedTier
 	exec := func(sql string, args ...any) {
 		t.Helper()
 		if _, err := pool.Exec(ctx, sql, args...); err != nil {
@@ -811,5 +813,54 @@ func TestComplimentaryAPI_EC12_ValidationNamesReplayAndList(t *testing.T) {
 	code, body = e.call(ecOwnerTG, http.MethodPost, "/v1/complimentary/"+first[0].String()+"/revoke", map[string]string{})
 	if code != http.StatusConflict || errCode(body) != "complimentary.already_revoked" {
 		t.Errorf("second revoke: %d %s", code, body)
+	}
+}
+
+// INV-08 (spec 46): the old route cannot name a seat, so a strictly seated
+// session answers 422 complimentary.use_invitations_route and writes nothing,
+// while the general-admission date of the same organization is served as ever.
+func TestComplimentaryAPI_INV08_SeatedSessionUsesInvitationsRoute(t *testing.T) {
+	e := newInviteE2E(t)
+	org := e.seed.orgID.String()
+	issue := func(session uuid.UUID, tier any, batch string) (int, []byte) {
+		body := map[string]any{"session_id": session, "qty": 1, "batch_id": batch + e.seed.suffix, "recipients": []string{"inv08@example.test"}}
+		if tier != nil {
+			body["tier_id"] = tier
+		}
+		return e.call(ecOwnerTG, http.MethodPost, "/v1/organizations/"+org+"/complimentary", body)
+	}
+	envelope := func(body []byte) (code string, route string) {
+		var env struct {
+			Error struct {
+				Code    string `json:"code"`
+				Details struct {
+					Route string `json:"route"`
+				} `json:"details"`
+			} `json:"error"`
+		}
+		_ = json.Unmarshal(body, &env)
+		return env.Error.Code, env.Error.Details.Route
+	}
+
+	issuancesBefore := e.issuances()
+	for _, tier := range []any{nil, e.seed.seatedTier} {
+		code, body := issue(e.seed.seatedSession, tier, "inv08s-")
+		wantRoute := "/v1/organizations/" + org + "/sessions/" + e.seed.seatedSession.String() + "/invitations"
+		if gotCode, route := envelope(body); code != http.StatusUnprocessableEntity || gotCode != "complimentary.use_invitations_route" || route != wantRoute {
+			t.Errorf("seated session, tier %v: %d %s, want 422 complimentary.use_invitations_route naming %s", tier, code, body, wantRoute)
+		}
+	}
+	if n := e.issuances(); n != issuancesBefore {
+		t.Errorf("a refused seated issuance wrote %d issuance rows", n-issuancesBefore)
+	}
+	var sold int
+	if err := e.pool.QueryRow(context.Background(),
+		`SELECT capacity_sold FROM inventory_ledger WHERE session_id = $1 AND tier_id IS NULL`, e.seed.seatedSession).Scan(&sold); err != nil || sold != 0 {
+		t.Errorf("seated ledger capacity_sold = %d (%v), want 0", sold, err)
+	}
+
+	// The general-admission date is unchanged.
+	if code, body := issue(e.seed.session, e.seed.vip, "inv08g-"); code != http.StatusCreated {
+		t.Errorf("general-admission date: %d %s, want 201", code, body)
 	}
 }
