@@ -24,7 +24,7 @@ export function SessionInvitationsScreen() {
         </Link>
       </p>
       <h1 id="seat-inv-title">{t("seatInv.title")}</h1>
-      <SessionInvitations orgId={orgId} eventId={eventId} sessionId={sessionId} can={access.can} />
+      <SessionInvitations orgId={orgId} eventId={eventId} sessionId={sessionId} can={access.can} withCsv />
     </article>
   );
 }

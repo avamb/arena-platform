@@ -9,6 +9,7 @@
  * `complimentary.read`, issuing `complimentary.issue`, cancelling
  * `complimentary.revoke`, the hall map `session.seats.manage`.
  */
+import { CsvUpload } from "@/components/staffInvitations/CsvUpload";
 import { SeatInvite } from "@/components/staffInvitations/SeatInvite";
 import { StaffInvitationList } from "@/components/staffInvitations/StaffInvitationList";
 import { useI18n } from "@/lib/i18n";
@@ -18,9 +19,11 @@ interface Props {
   eventId: string;
   sessionId: string;
   can: (permission: string) => boolean;
+  /** The CSV upload (INV-06b): the web screen only, the mini app links to it instead. */
+  withCsv?: boolean;
 }
 
-export function SessionInvitations({ orgId, eventId, sessionId, can }: Props) {
+export function SessionInvitations({ orgId, eventId, sessionId, can, withCsv = false }: Props) {
   const { t } = useI18n();
   const canRead = can("complimentary.read");
   const canIssue = can("complimentary.issue");
@@ -39,6 +42,7 @@ export function SessionInvitations({ orgId, eventId, sessionId, can }: Props) {
       {canIssue && (
         <SeatInvite key={`${orgId}:${sessionId}`} orgId={orgId} eventId={eventId} sessionId={sessionId} canSeeHall={can("session.seats.manage")} canRead={canRead} />
       )}
+      {withCsv && canIssue && <CsvUpload key={`${orgId}:${sessionId}:csv`} orgId={orgId} eventId={eventId} sessionId={sessionId} canRead={canRead} />}
       {canRead && <StaffInvitationList key={`${orgId}:${sessionId}:list`} orgId={orgId} sessionId={sessionId} canIssue={canIssue} canRevoke={canRevoke} />}
     </>
   );

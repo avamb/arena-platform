@@ -85,6 +85,8 @@ import type {
 import type {
   StaffInvitationCancelRequest,
   StaffInvitationCancelResponse,
+  InvitationBatch,
+  InvitationBatchReport,
   StaffInvitationIssueRequest,
   StaffInvitationIssueResponse,
   StaffInvitationListResponse,
@@ -533,6 +535,47 @@ export function downloadStaffInvitationPdf(orgId: string, orderId: string, syste
     params: { org_id: orgId, order_id: orderId },
     accept: "application/pdf",
     fallbackName: `invitation-${systemId}.pdf`,
+  });
+}
+
+/**
+ * Uploads a CSV file of invitations (INV-06b). `dryRun` only checks the file and answers the report
+ * (nothing is written, no request id). The real run needs a `requestId`: a repeat of the SAME id, file
+ * and delivery answers the first batch (200, `replayed`), so a lost answer is retried with it unchanged.
+ */
+export function createInvitationBatch(
+  orgId: string,
+  sessionId: string,
+  input: { file: Blob; fileName: string; delivery: string; dryRun: boolean; requestId?: string },
+  signal?: AbortSignal,
+): Promise<InvitationBatchReport | InvitationBatch> {
+  const form = new FormData();
+  form.append("delivery", input.delivery);
+  if (!input.dryRun && input.requestId !== undefined) form.append("request_id", input.requestId);
+  form.append("file", input.file, input.fileName);
+  return call<InvitationBatchReport | InvitationBatch>({
+    route: API.invitationBatchCreate,
+    params: { org_id: orgId, session_id: sessionId },
+    query: input.dryRun ? { dry_run: "true" } : undefined,
+    form,
+    signal,
+    // The server works up to 60 s on a file: the default 30 s would give up on a request that is still running.
+    timeoutMs: UPLOAD_TIMEOUT_MS,
+  });
+}
+
+/** One issued batch with the order of each guest (`complimentary.read`). */
+export function getInvitationBatch(orgId: string, batchId: string): Promise<InvitationBatch> {
+  return call<InvitationBatch>({ route: API.invitationBatchGet, params: { org_id: orgId, id: batchId } });
+}
+
+/** The result file of a batch: one line per guest with the order number. */
+export function downloadInvitationBatchResult(orgId: string, batchId: string): Promise<DownloadedFile> {
+  return download({
+    route: API.invitationBatchResult,
+    params: { org_id: orgId, id: batchId },
+    accept: "text/csv",
+    fallbackName: `invitation-batch-${batchId.slice(0, 8)}.csv`,
   });
 }
 
