@@ -53,9 +53,25 @@ describe("ShopOrdersTable", () => {
     expect(html).toContain('href="/o/org1/shop/orders/11111111-1111-4111-8111-111111111111"');
   });
 
+  it("reads the date in the zone of the shop and names the country", async () => {
+    const o = order({ created_at: "2026-10-28T19:36:00Z" });
+    const il = await renderInRouter(<ShopOrdersTable orgId="org1" orders={[o]} country="IL" />, "ru");
+    expect(il).toContain("21:36");
+    expect(il).toContain("(Израиль)");
+    const es = await renderInRouter(<ShopOrdersTable orgId="org1" orders={[o]} country="ES" />, "en");
+    expect(es).toContain("20:36");
+    expect(es).toContain("(Spain)");
+  });
+
+  it("explains an order that was not paid in time", async () => {
+    const html = await renderInRouter(<ShopOrdersTable orgId="org1" orders={[order({ status: "expired" })]} />, "ru");
+    expect(html).toContain("Покупатель не оплатил за отведённое время, товар вернулся в продажу.");
+    expect(html).not.toContain("Бронь");
+  });
+
   it("marks the status with a word, never colour only", async () => {
     const html = await renderInRouter(<ShopOrdersTable orgId="org1" orders={[order({ status: "expired" })]} />, "ru");
     expect(html).toContain("badge-bad");
-    expect(html).toContain("Бронь истекла");
+    expect(html).toContain("Не оплачен в срок");
   });
 });

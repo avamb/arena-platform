@@ -85,11 +85,13 @@ func NewGCHandler(opts GCHandlerOptions) func(ctx context.Context, payload []byt
 			switch {
 			case err == nil:
 				reclaimed++
+				opts.Repo.DeleteVariants(ctx, c.ID, c.ContentType)
 			case errors.Is(err, storage.ErrNotFound):
 				// Bytes already gone (manual cleanup, replicated
 				// crash); record the row as missing and reap it so the
 				// table does not accumulate phantom soft-deletes.
 				missing++
+				opts.Repo.DeleteVariants(ctx, c.ID, c.ContentType)
 			default:
 				logger.Warn("media-gc: storage delete failed; keeping row for retry",
 					"media_id", c.ID.String(),

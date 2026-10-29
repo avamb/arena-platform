@@ -209,3 +209,27 @@ func TestParseOptionNames(t *testing.T) {
 		t.Errorf("a real option called Title is kept: %v", got["titled"])
 	}
 }
+
+func TestParseProducts_SingleDefaultTitleVariantCarriesNoOptionValue(t *testing.T) {
+	const csvText = "Handle,Title,Variant Price,Option1 Name,Option1 Value,Option2 Name,Option2 Value,Option3 Name,Option3 Value\n" +
+		"plain,Plain,10.00,Title,Default Title,,,,\n" +
+		"sized,Sized,10.00,Size,0.75,,,,\n" +
+		"sized,,12.00,,1.5,,,,\n"
+	pf, err := ParseProducts(strings.NewReader(csvText), "ILS")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range pf.Products {
+		switch p.Handle {
+		case "plain":
+			v := p.Variants[0]
+			if v.Option1 != nil || v.Title != "Default Title" {
+				t.Errorf("a simple product keeps no option value: %+v", v)
+			}
+		case "sized":
+			if p.Variants[0].Option1 == nil || *p.Variants[0].Option1 != "0.75" {
+				t.Errorf("real options stay: %+v", p.Variants[0])
+			}
+		}
+	}
+}

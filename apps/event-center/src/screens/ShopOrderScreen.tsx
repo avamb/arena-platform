@@ -10,11 +10,11 @@ import { NoShopAccess, ShopNav } from "@/components/ShopNav";
 import { ShopOrderActions } from "@/components/ShopOrderActions";
 import { ShopOrderStatusBadge, deliveryLabel } from "@/components/ShopOrdersTable";
 import { ErrorBox, Loading } from "@/components/ui";
-import { fetchShopOrder } from "@/lib/api/shopApi";
+import { fetchShopOrder, fetchShopSettings } from "@/lib/api/shopApi";
 import type { ShopOrder } from "@/lib/api/types";
-import { formatDateTime, formatMoney } from "@/lib/format";
+import { formatMoney, regionName } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { browserZone, orderTimeline, refundable, shopOrderNumber } from "@/lib/shop";
+import { formatShopTime, orderTimeline, refundable, shopOrderNumber } from "@/lib/shop";
 import { useOrg } from "@/screens/OrgLayout";
 
 const PAY_STATES = ["created", "processing", "succeeded", "failed"] as const;
@@ -24,9 +24,8 @@ function sourceKey(source: string): MessageKey | null {
 }
 
 /** The order as a card. Pure: the screen gives it the order, the actions are a child. */
-export function ShopOrderCard({ order, orgId, actions }: { order: ShopOrder; orgId: string; actions?: ReactNode }) {
+export function ShopOrderCard({ order, orgId, actions, country }: { order: ShopOrder; orgId: string; actions?: ReactNode; country?: string | null }) {
   const { t, locale } = useI18n();
-  const zone = browserZone();
   const money = (v: number) => formatMoney(v, order.currency, locale);
   const a = order.ship;
   // An order of digital products and services only has no address block at all.
@@ -48,6 +47,12 @@ export function ShopOrderCard({ order, orgId, actions }: { order: ShopOrder; org
         <strong>{money(order.total)}</strong>
         <span>{t(deliveryLabel(order.delivery_kind))}</span>
       </p>
+
+      {order.status === "expired" && (
+        <p className="muted" data-testid="shop-order-expired-hint">
+          {t("shop.order.status.expired.hint")}
+        </p>
+      )}
 
       {order.status === "manual_review" && (
         <div className="notice notice-warn" role="status" data-testid="shop-order-review">
@@ -86,7 +91,7 @@ export function ShopOrderCard({ order, orgId, actions }: { order: ShopOrder; org
             {a.address1}
             {a.address2 !== undefined && a.address2 !== "" && <>, {a.address2}</>}
             <br />
-            {[a.postal, a.city, a.country].filter((p): p is string => p !== undefined && p !== "").join(" ")}
+            {[a.postal, a.city, regionName(a.country, locale)].filter((p): p is string => p !== undefined && p !== "").join(" ")}
           </address>
         ) : (
           <p className="muted">{t("shop.order.noAddress")}</p>
@@ -189,7 +194,7 @@ export function ShopOrderCard({ order, orgId, actions }: { order: ShopOrder; org
           {orderTimeline(order).map((e, i) => (
             <li key={`${e.kind}-${i}`}>
               {e.kind === "refunded" ? t("shop.timeline.refunded", { amount: money(order.refunded_minor) }) : t(`shop.timeline.${e.kind}` as MessageKey)}
-              {e.kind !== "refunded" && e.at !== null && <> · {formatDateTime(e.at, zone, locale)}</>}
+              {e.kind !== "refunded" && e.at !== null && <> · {formatShopTime(e.at, country, locale)}</>}
             </li>
           ))}
         </ol>
@@ -203,6 +208,8 @@ export function ShopOrderScreen() {
   const { orderId } = useParams({ from: "/o/$orgId/shop/orders/$orderId" });
   const canRead = access.can("shop.read");
   const order = useQuery({ queryKey: ["shopOrder", orgId, orderId], queryFn: () => fetchShopOrder(orgId, orderId), enabled: canRead });
+  const settings = useQuery({ queryKey: ["shopSettings", orgId], queryFn: () => fetchShopSettings(orgId), enabled: canRead });
+  const country = settings.data?.country_iso2;
 
   if (!canRead) return <NoShopAccess />;
   if (order.isLoading) return <Loading />;
@@ -213,7 +220,8 @@ export function ShopOrderScreen() {
       <ShopOrderCard
         order={order.data}
         orgId={orgId}
-        actions={<ShopOrderActions key={`${orgId}:${order.data.id}`} orgId={orgId} order={order.data} canManage={access.can("shop.manage")} canRefund={access.can("refund.create") && access.can("refund.approve")} />}
+        country={country}
+        actions={<ShopOrderActions key={`${orgId}:${order.data.id}`} orgId={orgId} order={order.data} country={country} canManage={access.can("shop.manage")} canRefund={access.can("refund.create") && access.can("refund.approve")} />}
       />
     </>
   );

@@ -129,6 +129,7 @@ var flatRouteFamilies = []flatFamily{
 	{"GET", "/v1/public/shop/pages/{org_slug}", flatPublic, "public storefront of an organization slug or host, or the order token in the URL; reads only active catalog rows (hshop)"},
 	{"GET", "/v1/public/shop/{org_slug}", flatPublic, "public storefront of an organization slug or host, or the order token in the URL; reads only active catalog rows (hshop)"},
 	{"GET", "/v1/public/shop/{org_slug}/products/{slug}", flatPublic, "public storefront of an organization slug or host, or the order token in the URL; reads only active catalog rows (hshop)"},
+	{"GET", "/v1/public/shop/{org_slug}/pages/{slug}", flatPublic, "public storefront of an organization slug or host, or the order token in the URL; reads only active catalog rows (hshop)"},
 	{"POST", "/v1/public/shop/{org_slug}/checkout", flatPublic, "public storefront of an organization slug or host, or the order token in the URL; reads only active catalog rows (hshop)"},
 	{"POST", "/v1/public/feeds/{feed_token}/events", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/payment-return", flatPublic, "feed token or checkout token in the URL"},

@@ -28,7 +28,8 @@
  *
  * The catalog is the 7 live products plus three products of other kinds (a digital
  * file, a service, a two-option physical product) from fixtures/extras.json; start
- * with --live to serve the live catalog only (the screenshot comparison does).
+ * with --live to serve the live catalog only (the screenshot comparison does), and with
+ * --no-dims to drop the pictures' width and height as the real API does.
  * The data is public; nothing here is secret.
  */
 const http = require('http');
@@ -42,6 +43,13 @@ const dir = path.join(__dirname, 'fixtures');
 const shop = JSON.parse(fs.readFileSync(path.join(dir, 'shop.json'), 'utf8'));
 const LIVE_ONLY = process.argv.includes('--live');
 if (!LIVE_ONLY) shop.products.push(...JSON.parse(fs.readFileSync(path.join(dir, 'extras.json'), 'utf8')).products);
+// --no-dims: pictures without width/height, like the real API (ShopImage has none).
+if (process.argv.includes('--no-dims')) {
+  for (const p of shop.products) for (const i of p.images) {
+    delete i.width;
+    delete i.height;
+  }
+}
 const pagesFile = JSON.parse(fs.readFileSync(path.join(dir, 'pages.json'), 'utf8'));
 
 /** token -> order */

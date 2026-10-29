@@ -139,6 +139,7 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 	r.Get("/public/shop/pages/{org_slug}", h.HandlePublicPages)
 	r.Get("/public/shop/{org_slug}", h.HandlePublicCatalog)
 	r.Get("/public/shop/{org_slug}/products/{slug}", h.HandlePublicProduct)
+	r.Get("/public/shop/{org_slug}/pages/{slug}", h.HandlePublicPage)
 	r.Post("/public/shop/{org_slug}/checkout", h.HandlePublicCheckout)
 
 	if !s.authEnabled() {

@@ -205,6 +205,7 @@ type GCCandidate struct {
 	ID             uuid.UUID
 	StorageBackend string
 	StorageKey     string
+	ContentType    string
 	DeletedAt      time.Time
 }
 
@@ -216,7 +217,7 @@ func (r *Repo) ListGCCandidates(ctx context.Context, before time.Time, limit int
 		limit = 100
 	}
 	const q = `
-		SELECT id, storage_backend, storage_key, deleted_at
+		SELECT id, storage_backend, storage_key, content_type, deleted_at
 		FROM   media_objects
 		WHERE  deleted_at IS NOT NULL
 		  AND  deleted_at < $1
@@ -232,7 +233,7 @@ func (r *Repo) ListGCCandidates(ctx context.Context, before time.Time, limit int
 	for rows.Next() {
 		var c GCCandidate
 		var deletedAt *time.Time
-		if err := rows.Scan(&c.ID, &c.StorageBackend, &c.StorageKey, &deletedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.StorageBackend, &c.StorageKey, &c.ContentType, &deletedAt); err != nil {
 			return nil, fmt.Errorf("mediastore: scan gc candidate: %w", err)
 		}
 		if deletedAt != nil {
