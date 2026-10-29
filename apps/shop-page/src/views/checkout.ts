@@ -4,7 +4,7 @@
  * order). Dawn's form, button and typography classes keep it inside the theme;
  * the page layout itself has no Shopify original (Shopify hosts its checkout).
  */
-import { needsShipping, subtotalMinor, shippingMinor, totalMinor, type CartLine, type CheckoutForm, type FormErrors } from '../lib/cart';
+import { MAX_NOTE_LEN, needsShipping, subtotalMinor, shippingMinor, totalMinor, type CartLine, type CheckoutForm, type FormErrors } from '../lib/cart';
 import type { DownloadLink, OrderStatus } from '../lib/api';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
@@ -19,6 +19,7 @@ export const EMPTY_FORM: CheckoutForm = {
   address2: '',
   city: '',
   postal: '',
+  note: '',
   consent18: false,
 };
 
@@ -57,6 +58,21 @@ function summaryRow(ctx: Ctx, line: CartLine): string {
   return `<li class="shop-checkout__line">${image}<div class="shop-checkout__line-name"><span class="h5">${esc(line.product.title)}</span>${variant}</div><span class="shop-checkout__line-price">${esc(money(ctx, line.lineMinor))}</span></li>`;
 }
 
+/** "Комментарий к заказу": goes to the seller as delivery_note, for any cart (a gift note, "call an hour ahead"). */
+function noteField(values: CheckoutForm): string {
+  return `<div class="field shop-checkout__note">
+          <textarea
+            class="text-area field__input"
+            id="Checkout-note"
+            name="note"
+            rows="3"
+            maxlength="${MAX_NOTE_LEN}"
+            placeholder="Комментарий к заказу"
+          >${esc(values.note)}</textarea>
+          <label class="field__label" for="Checkout-note">Комментарий к заказу</label>
+        </div>`;
+}
+
 export interface CheckoutViewState {
   values: CheckoutForm;
   errors: FormErrors;
@@ -70,7 +86,7 @@ function addressBlock(ctx: Ctx, st: CheckoutViewState, label: string, shipping: 
   const e = st.errors;
   return `<h2 class="shop-checkout__heading h3">Адрес доставки</h2>
       ${field('address1', 'Улица, дом, квартира', st.values, e, { autocomplete: 'address-line1', required: true })}
-      ${field('address2', 'Дополнительно (подъезд, этаж, комментарий курьеру)', st.values, e, { autocomplete: 'address-line2' })}
+      ${field('address2', 'Подъезд, этаж, комментарий', st.values, e, { autocomplete: 'address-line2' })}
       ${field('city', 'Город', st.values, e, { autocomplete: 'address-level2', required: true })}
       ${field('postal', 'Почтовый индекс', st.values, e, { autocomplete: 'postal-code', inputmode: 'numeric' })}
       <h2 class="shop-checkout__heading h3">Доставка</h2>
@@ -117,7 +133,8 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
       ${field('name', 'Имя и фамилия', st.values, e, { autocomplete: 'name', required: true })}
       ${field('email', 'Адрес электронной почты', st.values, e, { type: 'email', autocomplete: 'email', required: true })}
       ${field('phone', 'Номер телефона', st.values, e, { type: 'tel', autocomplete: 'tel', required: true, inputmode: 'tel' })}
-      ${ships ? addressBlock(ctx, st, label, shipping) : ''}${
+      ${ships ? addressBlock(ctx, st, label, shipping) : ''}
+      ${noteField(st.values)}${
         minAge > 0
           ? `
       <div class="shop-checkout__consent">

@@ -53,10 +53,36 @@ describe("ShopVariantsEditor", () => {
     expect(html).toContain("sells without a limit");
   });
 
-  it("shows the name field when there are no options", () => {
-    const html = render({ rows: [{ ...emptyRow(), price: "5" }], optionCount: 0, optionNames: [] });
+  it("shows the name field when there are no options and several variants", () => {
+    const html = render({ rows: [{ ...emptyRow(), price: "5" }, { ...emptyRow(), price: "6" }], optionCount: 0, optionNames: [] });
     expect(html).toContain('data-testid="shop-variant-title-0"');
+    expect(html).toContain('data-testid="shop-variant-title-1"');
     expect(html).not.toContain("shop-variant-option1-0");
+    expect(html).not.toContain("shop-variant-single");
+  });
+
+  it("says the only version instead of an empty name field for a single option-less variant", () => {
+    const html = render({ rows: [{ ...emptyRow(), price: "5" }], optionCount: 0, optionNames: [] });
+    expect(html).toContain('data-testid="shop-variant-single"');
+    expect(html).toContain("The only version");
+    expect(html).not.toContain('data-testid="shop-variant-title-0"');
+    expect(render({ rows: [{ ...emptyRow(), price: "5" }], optionCount: 0, optionNames: [] }, "ru")).toContain("Единственная версия");
+  });
+
+  it("never prints the technical Default Title, even when the product came with that option value", () => {
+    const imported = rowFromVariant(
+      { id: "v9", title: "Default Title", sku: null, price_minor: 20000, compare_at_minor: null, stock: 82, track_stock: true, held: 0, available: 82, position: 0, option1: "Default Title", option2: null, option3: null },
+      "ILS",
+    );
+    const html = render({ rows: [imported], optionCount: 0, optionNames: [], currency: "ILS" });
+    expect(html).not.toContain("Default Title");
+    expect(html).toContain("The only version");
+  });
+
+  it("brings the option field back once the person names an option", () => {
+    const html = render({ rows: [{ ...emptyRow(), price: "5" }], optionCount: 1, optionNames: ["Size"] });
+    expect(html).toContain('data-testid="shop-variant-option1-0"');
+    expect(html).not.toContain("shop-variant-single");
   });
 
   it("says what is wrong, in words, after a failed check", () => {

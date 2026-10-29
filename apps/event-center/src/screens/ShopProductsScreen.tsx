@@ -3,24 +3,41 @@
  * range, stock and the number of pictures. Reads need `shop.read`; the
  * "+ Product" button needs `shop.manage`.
  */
+import { useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { NoShopAccess, ShopNav } from "@/components/ShopNav";
+import { ShopProductThumb } from "@/components/ShopProductThumb";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
 import { fetchShopSettings, listShopProducts } from "@/lib/api/shopApi";
 import { formatMoney, formatNumber } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { PRODUCT_STATUSES, isProductStatus, oversold, priceRange, productKind, productTone, stockSum, type ShopProductView } from "@/lib/shop";
+import {
+  PRODUCT_SORTS,
+  PRODUCT_STATUSES,
+  filterAndSortProducts,
+  isProductSort,
+  isProductStatus,
+  oversold,
+  priceRange,
+  productKind,
+  productTone,
+  stockSum,
+  type ProductSort,
+  type ShopProductView,
+} from "@/lib/shop";
 import { useOrg } from "@/screens/OrgLayout";
 
 export interface ShopProductsTableProps {
   orgId: string;
   products: readonly ShopProductView[];
   currency: string;
+  /** `media.read`: the first picture can be drawn. */
+  canViewMedia?: boolean;
 }
 
 /** The table of products. Pure: it shows what it is given. */
-export function ShopProductsTable({ orgId, products, currency }: ShopProductsTableProps) {
+export function ShopProductsTable({ orgId, products, currency, canViewMedia = false }: ShopProductsTableProps) {
   const { t, locale } = useI18n();
   return (
     <div className="table-wrap">
@@ -61,7 +78,16 @@ export function ShopProductsTable({ orgId, products, currency }: ShopProductsTab
                   {stock === null ? t("shop.products.stockNone") : formatNumber(stock, locale)}
                   {oversold(p) && <> ({t("shop.products.oversold")})</>}
                 </td>
-                <td data-label={t("shop.products.col.pictures")}>{formatNumber(p.images.length, locale)}</td>
+                <td data-label={t("shop.products.col.pictures")}>
+                  <span className="shop-pictures">
+                    {p.images.length > 0 && <ShopProductThumb mediaId={p.images[0].media_id} canView={canViewMedia} alt={p.images[0].alt !== "" ? p.images[0].alt : p.title} />}
+                    {(p.images.length > 1 || p.images.length === 0 || !canViewMedia) && (
+                      <span className="badge badge-neutral" title={t("shop.products.pictureCount", { count: p.images.length })} data-testid="shop-product-picture-count">
+                        {formatNumber(p.images.length, locale)}
+                      </span>
+                    )}
+                  </span>
+                </td>
               </tr>
             );
           })}
@@ -72,7 +98,9 @@ export function ShopProductsTable({ orgId, products, currency }: ShopProductsTab
 }
 
 export function ShopProductsScreen() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<ProductSort>("title");
   const { orgId, access } = useOrg();
   const search = useSearch({ from: "/o/$orgId/shop/products" });
   const navigate = useNavigate({ from: "/o/$orgId/shop/products" });
@@ -82,7 +110,8 @@ export function ShopProductsScreen() {
   const settings = useQuery({ queryKey: ["shopSettings", orgId], queryFn: () => fetchShopSettings(orgId), enabled: canRead });
 
   if (!canRead) return <NoShopAccess />;
-  const list = products.data?.products ?? [];
+  const all = products.data?.products ?? [];
+  const list = filterAndSortProducts(all, query, sort, locale);
   return (
     <section className="shop-page" aria-labelledby="shop-title">
       <h1 id="shop-title">{t("shop.products.title")}</h1>
@@ -112,17 +141,36 @@ export function ShopProductsScreen() {
             </option>
           ))}
         </select>
+        <label htmlFor="shop-products-search">{t("shop.products.search")}</label>
+        <input
+          id="shop-products-search"
+          type="search"
+          value={query}
+          maxLength={200}
+          autoComplete="off"
+          onChange={(e) => setQuery(e.target.value)}
+          data-testid="shop-products-search"
+        />
+        <label htmlFor="shop-products-sort">{t("shop.products.sort")}</label>
+        <select id="shop-products-sort" value={sort} onChange={(e) => setSort(isProductSort(e.target.value) ? e.target.value : "title")} data-testid="shop-products-sort">
+          {PRODUCT_SORTS.map((s) => (
+            <option key={s} value={s}>
+              {t(`shop.products.sort.${s}` as MessageKey)}
+            </option>
+          ))}
+        </select>
       </div>
       {(products.isLoading || settings.isLoading) && <Loading />}
       {products.error !== null && <ErrorBox error={products.error} onRetry={() => void products.refetch()} />}
       {settings.error !== null && <ErrorBox error={settings.error} onRetry={() => void settings.refetch()} />}
-      {products.data !== undefined && list.length === 0 && <Empty>{status === undefined ? t("shop.products.empty") : t("shop.products.emptyFilter")}</Empty>}
+      {products.data !== undefined && all.length === 0 && <Empty>{status === undefined ? t("shop.products.empty") : t("shop.products.emptyFilter")}</Empty>}
+      {all.length > 0 && list.length === 0 && <Empty>{t("shop.products.emptySearch")}</Empty>}
       {list.length > 0 && settings.data !== undefined && (
         <>
           <p className="muted" role="status" data-testid="shop-products-count">
             {t("shop.products.count", { count: list.length })}
           </p>
-          <ShopProductsTable orgId={orgId} products={list} currency={settings.data.currency} />
+          <ShopProductsTable orgId={orgId} products={list} currency={settings.data.currency} canViewMedia={access.can("media.read")} />
         </>
       )}
     </section>

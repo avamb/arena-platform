@@ -14,6 +14,7 @@ import { useI18n, type MessageKey } from "@/lib/i18n";
 import {
   SHOP_LIMITS,
   emptyRow,
+  isSingleVersion,
   type RowErrors,
   type VariantProblem,
   type VariantRow,
@@ -55,6 +56,8 @@ const PROBLEM_KEY: Record<VariantProblem, MessageKey> = {
 
 export function ShopVariantsEditor({ rows, onChange, currency, optionNames, optionCount, check, disabled = false, digital = false, stats }: ShopVariantsEditorProps) {
   const { t } = useI18n();
+  // One version with nothing to tell versions apart: no empty name field, a plain word instead.
+  const single = isSingleVersion(rows, optionNames);
 
   const patch = (key: string, change: Partial<VariantRow>) => onChange(rows.map((r) => (r.key === key ? { ...r, ...change } : r)));
   const setOption = (key: string, i: number, value: string) =>
@@ -98,7 +101,14 @@ export function ShopVariantsEditor({ rows, onChange, currency, optionNames, opti
             <li key={r.key} className="card" data-testid="shop-variant-row">
               <fieldset disabled={disabled}>
                 <legend>{t("shop.variants.row", { n: index + 1 })}</legend>
-                {optionCount === 0 ? (
+                {single ? (
+                  <div data-testid="shop-variant-single">
+                    <p>
+                      <strong>{t("shop.variants.single")}</strong>
+                    </p>
+                    <p className="field-hint">{t("shop.variants.singleHint")}</p>
+                  </div>
+                ) : optionCount === 0 ? (
                   <TextField
                     label={t("shop.variants.f.title")}
                     hint={rows.length === 1 ? t("shop.variants.f.titleHint") : undefined}

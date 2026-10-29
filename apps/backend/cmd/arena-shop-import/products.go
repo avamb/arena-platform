@@ -230,6 +230,7 @@ func ParseProducts(r io.Reader, currency string) (*ProductsFile, error) {
 			continue
 		}
 		p := byHandle[handle]
+		dropDefaultTitleOption(p)
 		p.SortOrder = int32(i) //nolint:gosec // a CSV has far fewer than 2^31 products
 		if len(p.Variants) > shop.MaxVariants {
 			out.Problems = append(out.Problems, fmt.Sprintf("line %d: product %q has %d variants, the shop allows %d", p.Line, handle, len(p.Variants), shop.MaxVariants))
@@ -238,6 +239,24 @@ func ParseProducts(r io.Reader, currency string) (*ProductsFile, error) {
 		out.Products = append(out.Products, *p)
 	}
 	return out, nil
+}
+
+// dropDefaultTitleOption clears the option value of a product whose only
+// variant is Shopify's placeholder: a simple product exports "Option1 Name"
+// = "Title" and "Option1 Value" = "Default Title". parseOptionNames already
+// leaves the name out, and the value must go with it, or the event center
+// shows "Default Title" as a value somebody chose (finding E-07). The variant
+// then carries no options and the shop's own default title; a re-run clears
+// the value an earlier import stored.
+func dropDefaultTitleOption(p *ImportProduct) {
+	if len(p.OptionNames) != 0 || len(p.Variants) != 1 {
+		return
+	}
+	v := &p.Variants[0]
+	if v.Option1 != nil && *v.Option1 == shop.DefaultVariantTitle && v.Option2 == nil && v.Option3 == nil {
+		v.Option1 = nil
+		v.Title = shop.DefaultVariantTitle
+	}
 }
 
 // parseOptionNames reads Option1 Name..Option3 Name of a product's first row.

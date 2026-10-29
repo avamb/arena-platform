@@ -8,11 +8,11 @@
  */
 import { useState, type FormEvent } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { NoShopAccess, ShopNav } from "@/components/ShopNav";
 import { ShopOrdersTable } from "@/components/ShopOrdersTable";
 import { Empty, ErrorBox, Loading } from "@/components/ui";
-import { listShopOrders } from "@/lib/api/shopApi";
+import { fetchShopSettings, listShopOrders } from "@/lib/api/shopApi";
 import { formatNumber } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { EMPTY_FILTERS, SHOP_ORDER_STATUSES, isShopOrderStatus, ordersQuery, type ShopOrdersFilters } from "@/lib/shop";
@@ -37,6 +37,8 @@ export function ShopOrdersScreen() {
     getNextPageParam: (last) => last.next_offset ?? undefined,
     enabled: canRead,
   });
+  // The shop's country sets the zone of every time on the screen.
+  const settings = useQuery({ queryKey: ["shopSettings", orgId], queryFn: () => fetchShopSettings(orgId), enabled: canRead });
 
   if (!canRead) return <NoShopAccess />;
   const rows = orders.data?.pages.flatMap((p) => p.orders) ?? [];
@@ -110,7 +112,7 @@ export function ShopOrdersScreen() {
       {orders.data !== undefined && rows.length === 0 && <Empty>{filtered ? t("shop.orders.emptySearch") : t("shop.orders.empty")}</Empty>}
       {rows.length > 0 && (
         <>
-          <ShopOrdersTable orgId={orgId} orders={rows} />
+          <ShopOrdersTable orgId={orgId} orders={rows} country={settings.data?.country_iso2} />
           <p className="muted" role="status" aria-live="polite" data-testid="shop-orders-count">
             {t("shop.orders.count", { shown: formatNumber(rows.length, locale) })}
           </p>

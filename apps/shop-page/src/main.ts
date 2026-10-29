@@ -14,6 +14,7 @@ import {
   getPage,
   getProduct,
   getShop,
+  isPolicySlug,
   resolveHost,
   type OrderStatus,
   type ShopData,
@@ -29,17 +30,24 @@ import {
   itemCount,
   needsShipping,
   loadCart,
+  overLineLimit,
+  paymentUnavailableMessage,
+  qtyLimitMessage,
+  clampField,
   removeItem,
   resolveLines,
   saveCart,
   setQty,
+  wantedQty,
   validateCheckoutForm,
   type CartItem,
   type CheckoutForm,
 } from './lib/cart';
 import { T } from './lib/i18n';
+import { fitLoadedImages, watchImageRatios } from './lib/ratio';
 import { applyTheme } from './theme';
-import { href as buildHref, locate, type Route } from './lib/route';
+import { esc } from './lib/html';
+import { canonicalPagePath, href as buildHref, isPlatformHost, locate, type Route } from './lib/route';
 import { EINAT_THEME } from './lib/theme';
 import { cartView, notificationProduct } from './views/cart';
 import { collectionView, homeView } from './views/catalog';
@@ -47,7 +55,7 @@ import { checkoutView, EMPTY_FORM, hasDigitalLines, statusView, type CheckoutVie
 import { priceBlock, type Ctx } from './views/common';
 import { cartBubble, layout } from './views/layout';
 import { buyButtonHtml, productView } from './views/product';
-import { notFoundView, pageView, policyView, searchView } from './views/static';
+import { notFoundView, pageView, platformHomeView, policyView, searchView } from './views/static';
 
 interface State {
   org: string;
@@ -62,6 +70,8 @@ let checkoutState: CheckoutViewState = { values: { ...EMPTY_FORM }, errors: {} }
 const pageCache = new Map<string, ShopPage>();
 /** The files of the order the status page shows; the signed links are kept in memory only. */
 let downloads: DownloadsState | undefined;
+/** The cart line whose typed quantity was just cut to the shop's limit: its note is drawn once. */
+let cartLimited: string | null = null;
 let lastStatus: OrderStatus | undefined;
 
 const root = (): HTMLElement => document.getElementById('shop-root') as HTMLElement;
@@ -174,7 +184,8 @@ async function renderRoute(route: Route): Promise<void> {
       break;
     }
     case 'cart':
-      main = cartView(ctx, lines);
+      main = cartView(ctx, lines, cartLimited);
+      cartLimited = null;
       title = `${T.cart} – ${shopName}`;
       break;
     case 'checkout':
@@ -225,6 +236,8 @@ async function renderRoute(route: Route): Promise<void> {
         kind = 'not_found';
         title = `${T.notFoundTitle} – ${shopName}`;
       } else {
+        const canonical = canonicalPagePath(s.base, route.slug, page.slug, isPolicySlug(page.slug ?? ''));
+        if (canonical) history.replaceState({}, '', canonical + location.search + location.hash);
         main = route.kind === 'policy' ? policyView(page) : pageView(ctx, page);
         title = `${page.title} – ${shopName}`;
       }
@@ -248,6 +261,7 @@ function draw(kind: Route['kind'], ctx: Ctx, main: string, title: string, descri
   setMeta(title, description);
   fixContentLinks(ctx.base);
   applyAgeGate();
+  fitLoadedImages();
 }
 
 function currentRoute(): Route {
@@ -342,8 +356,19 @@ function ageAccepted(): boolean {
 }
 
 function applyAgeGate(): void {
-  const popup = document.getElementById('popup');
-  if (popup && !ageAccepted()) popup.style.display = 'block';
+  const popup = document.getElementById('popup') as HTMLDialogElement | null;
+  if (!popup || ageAccepted() || popup.hasAttribute('open')) return;
+  // Escape must not dismiss the gate: only "allow" does.
+  popup.addEventListener('cancel', (ev) => ev.preventDefault());
+  if (typeof popup.showModal === 'function') popup.showModal();
+  else popup.setAttribute('open', '');
+}
+
+function closeAgeGate(): void {
+  const popup = document.getElementById('popup') as HTMLDialogElement | null;
+  if (!popup) return;
+  if (typeof popup.close === 'function') popup.close();
+  popup.removeAttribute('open');
 }
 
 // ---- cart -----------------------------------------------------------------------
@@ -356,13 +381,13 @@ function commitCart(items: CartItem[]): void {
   if (bubble) bubble.innerHTML = cartBubble(itemCount(items));
 }
 
-function openNotification(variantId: string): void {
+function openNotification(variantId: string, limitNote?: string): void {
   const s = state as State;
   const line = resolveLines([{ variant_id: variantId, qty: 1 }], s.shop.products)[0];
   const host = document.getElementById('cart-notification-product');
   const box = document.getElementById('cart-notification');
   if (!line || !host || !box) return;
-  host.innerHTML = notificationProduct(line);
+  host.innerHTML = notificationProduct(line, limitNote);
   const viewCart = document.getElementById('cart-notification-button');
   if (viewCart) viewCart.textContent = `${T.viewCart} (${itemCount(s.cart)})`;
   box.classList.add('animate', 'active');
@@ -374,13 +399,41 @@ function closeNotification(): void {
   document.getElementById('cart-notification')?.classList.remove('active');
 }
 
-function addToCart(variantId: string, qty: number): void {
+/** False when the line is gone or sold out. `limitNote` is shown in the notification when the shop's per-line limit cut the order. */
+function addToCart(variantId: string, qty: number, limitNote?: string): boolean {
   const s = state as State;
   const hit = resolveLines([{ variant_id: variantId, qty: 1 }], s.shop.products)[0];
-  if (!hit || !hit.variant.available) return;
+  if (!hit || !hit.variant.available) return false;
   commitCart(addItem(s.cart, variantId, qty, s.shop.settings.max_line_qty));
   syncInCart(variantId);
-  openNotification(variantId);
+  openNotification(variantId, limitNote);
+  return true;
+}
+
+/**
+ * The line limit (max_line_qty) next to a product page quantity field: the note under the
+ * field while the buyer's number was cut, and a hint on "+" once the field sits at the limit.
+ */
+function showQtyLimit(input: HTMLInputElement, limited: boolean): void {
+  const max = (state as State).shop.settings.max_line_qty;
+  const note = qtyLimitMessage(max);
+  input.dataset.limited = limited ? '1' : '';
+  const rules = input.closest('.product-form__quantity')?.querySelector<HTMLElement>('.quantity__rules');
+  if (rules) {
+    rules.textContent = limited ? note : '';
+    rules.setAttribute('role', 'status');
+  }
+  const plus = input.closest('quantity-input')?.querySelector<HTMLElement>('button[name="plus"]');
+  if (plus) {
+    const atMax = (parseInt(input.value, 10) || 0) >= max;
+    if (atMax) {
+      plus.setAttribute('title', note);
+      plus.setAttribute('aria-disabled', 'true');
+    } else {
+      plus.removeAttribute('title');
+      plus.removeAttribute('aria-disabled');
+    }
+  }
 }
 
 /** "(В корзине: N)" next to the quantity label of the product page. */
@@ -408,8 +461,7 @@ function onClick(e: MouseEvent): void {
     } catch {
       /* remembered for this page only */
     }
-    const popup = document.getElementById('popup');
-    if (popup) popup.style.display = 'none';
+    closeAgeGate();
     return;
   }
   if (target.closest('#denyButton')) {
@@ -504,8 +556,16 @@ function onSubmit(e: Event): void {
   if (form.matches('form[data-type="add-to-cart-form"]')) {
     e.preventDefault();
     const qtyInput = form.elements.namedItem('quantity') as HTMLInputElement | null;
-    const qty = Math.max(1, parseInt(qtyInput?.value ?? '1', 10) || 1);
-    addToCart(form.dataset.variantId as string, qty);
+    const qty = wantedQty(qtyInput?.value);
+    const variantId = form.dataset.variantId as string;
+    const max = s.shop.settings.max_line_qty;
+    const inCart = s.cart.find((i) => i.variant_id === variantId)?.qty ?? 0;
+    // The field may already have been cut to the limit on change: it remembers that.
+    const limited = overLineLimit(inCart, qty, max) || qtyInput?.dataset.limited === '1';
+    if (addToCart(variantId, qty, limited ? qtyLimitMessage(max) : undefined) && qtyInput) {
+      qtyInput.value = String(clampField(qty, max).value);
+      showQtyLimit(qtyInput, limited);
+    }
     return;
   }
   if (form.id === 'cart') {
@@ -594,7 +654,16 @@ function onChange(e: Event): void {
     const id = el.dataset.quantityVariantId as string;
     const qty = parseInt(el.value, 10);
     commitCart(setQty(s.cart, id, Number.isFinite(qty) ? qty : 1, s.shop.settings.max_line_qty));
+    cartLimited = Number.isFinite(qty) && clampField(qty, s.shop.settings.max_line_qty).limited ? id : null;
     void rerender();
+    return;
+  }
+
+  // Product page quantity: a number past the shop's per-line limit is cut to it, with the reason
+  if (el.matches('.product-form__quantity .quantity__input')) {
+    const { value, limited } = clampField(el.value, s.shop.settings.max_line_qty);
+    if (el.value !== '' && limited) el.value = String(value);
+    showQtyLimit(el, limited);
     return;
   }
 
@@ -642,6 +711,7 @@ function readCheckoutForm(form: HTMLFormElement): CheckoutForm {
     address2: v('address2'),
     city: v('city'),
     postal: v('postal'),
+    note: v('note'),
     consent18: (form.elements.namedItem('consent18') as HTMLInputElement | null)?.checked ?? false,
   };
 }
@@ -703,7 +773,7 @@ async function submitCheckout(form: HTMLFormElement): Promise<void> {
       } else if (e.status === 422 || e.status === 400) {
         message = 'Проверьте введённые данные: ' + e.message;
       } else if (e.status === 503) {
-        message = 'Оплата временно недоступна. Попробуйте позже.';
+        message = paymentUnavailableMessage(s.shop.settings.contact_email);
       }
     }
     checkoutState = { values, errors: {}, message };
@@ -726,9 +796,21 @@ function sendContact(form: HTMLFormElement): void {
 
 // ---- boot -----------------------------------------------------------------------
 
-function fatal(message: string): void {
-  root().innerHTML = `<main id="MainContent" class="content-for-layout focus-none" role="main" tabindex="-1"><div class="template-404 page-width page-margin center"><p>404</p><h1 class="title">${message}</h1></div></main>`;
+/** A page with no shop behind it (bare platform address, unknown organization): styled with the theme, no header or footer. */
+function standalone(html: string, title: string): void {
   document.documentElement.className = document.documentElement.className.replace('no-js', 'js');
+  applyTheme('not_found');
+  root().innerHTML = `<main id="MainContent" class="content-for-layout focus-none" role="main" tabindex="-1">${html}</main>`;
+  setMeta(title);
+}
+
+/** The shop could not be shown. */
+function fatal(message: string): void {
+  if (message === T.notFoundTitle) {
+    standalone(notFoundView(null), T.notFoundTitle);
+    return;
+  }
+  standalone(`<div class="template-404 page-width page-margin center"><h1 class="title">${esc(message)}</h1></div>`, message);
 }
 
 async function boot(): Promise<void> {
@@ -739,7 +821,12 @@ async function boot(): Promise<void> {
   try {
     if (org === null) org = await orgForHost(location.hostname);
     if (!org) {
-      fatal(T.notFoundTitle);
+      // The bare platform address on a platform host: nobody's shop.
+      if (isPlatformHost(location.hostname) && location.pathname.replace(/\/+$/, '') === '') {
+        standalone(platformHomeView(), 'Arena Sold Out');
+      } else {
+        fatal(T.notFoundTitle);
+      }
       return;
     }
     const shop = await getShop(org);
@@ -750,6 +837,7 @@ async function boot(): Promise<void> {
     return;
   }
 
+  watchImageRatios();
   document.addEventListener('click', onClick);
   document.addEventListener('submit', onSubmit);
   document.addEventListener('change', onChange);
