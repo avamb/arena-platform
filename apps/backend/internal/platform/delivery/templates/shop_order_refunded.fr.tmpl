@@ -1,0 +1,83 @@
+{{define "subject"}}{{if .Shop.RefundFull}}Commande n° {{.Shop.OrderNumber}} remboursée{{else}}Remboursement de la commande n° {{.Shop.OrderNumber}}{{end}} — {{.Branding.OrgName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{if .Shop.RefundFull}}Votre commande a été remboursée{{else}}Votre remboursement{{end}}</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if .Shop.RefundFull}}Votre commande a été remboursée{{else}}Votre remboursement{{end}}</h1>
+  <p style="margin:0 0 12px 0;">Bonjour{{with .HolderName}} {{.}}{{end}},</p>
+  <p style="margin:0 0 12px 0;">{{if .Shop.RefundFull}}La commande <strong>n° {{.Shop.OrderNumber}}</strong> a été intégralement remboursée.{{else}}Nous avons remboursé <strong>{{.Shop.RefundAmount}}</strong> pour la commande <strong>n° {{.Shop.OrderNumber}}</strong>.{{end}}</p>
+  <p style="margin:0 0 6px 0;font-weight:bold;color:#22333D;">Votre commande</p>
+  <table width="100%" cellpadding="4" style="border-collapse:collapse;font-size:14px;">
+    {{range .Shop.Items}}<tr><td>{{.Qty}} × {{.Title}}</td><td style="text-align:right;white-space:nowrap;">{{.LineTotal}}</td></tr>{{end}}
+    <tr><td style="border-top:1px solid #eceff1;color:#46555f;">Total de la commande</td><td style="border-top:1px solid #eceff1;text-align:right;white-space:nowrap;">{{.Shop.Total}}</td></tr>
+    <tr><td style="border-top:1px solid #eceff1;color:#46555f;">Remboursé maintenant</td><td style="border-top:1px solid #eceff1;text-align:right;white-space:nowrap;"><strong>{{.Shop.RefundAmount}}</strong></td></tr>
+    {{if ne .Shop.RefundedTotal .Shop.RefundAmount}}<tr><td style="border-top:1px solid #eceff1;color:#46555f;">Total remboursé</td><td style="border-top:1px solid #eceff1;text-align:right;white-space:nowrap;">{{.Shop.RefundedTotal}}</td></tr>{{end}}
+  </table>
+  <p style="margin:16px 0 12px 0;">L'argent revient, via le système de paiement, sur la carte ou le moyen de paiement que vous avez utilisé. Le délai dépend de votre banque.</p>
+  {{with .Shop.StatusURL}}<p style="margin:16px 0 12px 0;"><a href="{{.}}" style="color:{{$.Accent}};font-weight:bold;">Suivre l’état de la commande</a></p>{{end}}
+  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">Des questions ? Répondez à cet e-mail.</p>{{end}}
+  <p style="font-size:12px;color:#666">Envoyé à : {{.RecipientEmail}}</p>
+  </td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Contact : <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contact : <a href="{{.}}" style="color:#666">Écrire à l'organisateur</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">Arena Platform — message automatique</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Si vous cliquez sur « Se désabonner », vous ne recevrez plus les e-mails contenant vos billets ni les e-mails importants concernant votre commande. Nous n’envoyons pas de communications commerciales sans votre consentement.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+{{if .Shop.RefundFull}}Votre commande a été remboursée{{else}}Votre remboursement{{end}}
+
+Bonjour{{with .HolderName}} {{.}}{{end}},
+
+{{if .Shop.RefundFull}}La commande n° {{.Shop.OrderNumber}} a été intégralement remboursée.{{else}}Nous avons remboursé {{.Shop.RefundAmount}} pour la commande n° {{.Shop.OrderNumber}}.{{end}}
+
+L'argent revient, via le système de paiement, sur la carte ou le moyen de paiement que vous avez utilisé. Le délai dépend de votre banque.
+
+Votre commande:
+{{range .Shop.Items}}- {{.Qty}} × {{.Title}}: {{.LineTotal}}
+{{end}}Total de la commande: {{.Shop.Total}}
+Remboursé maintenant: {{.Shop.RefundAmount}}
+{{if ne .Shop.RefundedTotal .Shop.RefundAmount}}Total remboursé: {{.Shop.RefundedTotal}}
+{{end}}
+{{with .Shop.StatusURL}}Suivre l’état de la commande: {{.}}
+
+{{end}}{{if .Branding.ContactEmail}}Des questions ? Répondez à cet e-mail.
+{{end}}
+
+Envoyé à : {{.RecipientEmail}}
+
+--
+{{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Contact : {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contact : {{.}}
+{{end}}{{end}}
+Arena Platform — message automatique
+
+Si vous cliquez sur « Se désabonner », vous ne recevrez plus les e-mails contenant vos billets ni les e-mails importants concernant votre commande. Nous n’envoyons pas de communications commerciales sans votre consentement.
+{{end}}

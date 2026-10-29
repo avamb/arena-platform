@@ -96,14 +96,15 @@ func (s *Service) SetStaffNote(ctx context.Context, orgID, id uuid.UUID, note st
 }
 
 // ResendEmail queues the buyer's e-mail of an order once more. kind is
-// EmailReceived or EmailShipped. The letter is the one the worker writes for
+// EmailReceived, EmailShipped or EmailRefunded. The letter is the one the worker writes for
 // the first time (shop.order_email), with Resend set so the "already sent"
 // marker does not swallow it. It refuses what the worker would skip: no
 // address, an order that was never paid or is closed unpaid, a "shipped"
-// letter for an order that did not ship or has nothing to ship.
+// letter for an order that did not ship or has nothing to ship, a "refunded"
+// letter for an order with no succeeded refund.
 func (s *Service) ResendEmail(ctx context.Context, orgID, id uuid.UUID, kind string) error {
-	if kind != EmailReceived && kind != EmailShipped {
-		return newErr(http.StatusBadRequest, "shop.invalid_email_kind", "kind must be received or shipped")
+	if kind != EmailReceived && kind != EmailShipped && kind != EmailRefunded {
+		return newErr(http.StatusBadRequest, "shop.invalid_email_kind", "kind must be received, shipped or refunded")
 	}
 	if err := s.ready(); err != nil {
 		return err
@@ -128,9 +129,22 @@ func (s *Service) ResendEmail(ctx context.Context, orgID, id uuid.UUID, kind str
 		if kind == EmailShipped && (o.DeliveryKind == DeliveryNone || o.ShippedAt == nil) {
 			return newErr(http.StatusConflict, "shop.order_email_unavailable", "the shipping letter exists only for an order that was shipped")
 		}
-		_, err = worker.EnqueueInTx(ctx, tx, JobTypeOrderEmail, OrderEmailPayload{
-			OrderID: o.ID.String(), OrgID: o.OrgID.String(), Kind: kind, Resend: true,
-		}, orderEmailAttempts)
+		payload := OrderEmailPayload{OrderID: o.ID.String(), OrgID: o.OrgID.String(), Kind: kind, Resend: true}
+		if kind == EmailRefunded {
+			// The refund letter is about one refund: the newest one that
+			// succeeded. An order with none has nothing to write about.
+			var refundID uuid.UUID
+			if o.PaymentIntentID != nil {
+				if refundID, err = LatestSucceededRefundID(ctx, tx, *o.PaymentIntentID); err != nil {
+					return err
+				}
+			}
+			if refundID == uuid.Nil {
+				return newErr(http.StatusConflict, "shop.order_email_unavailable", "the refund letter exists only for an order that has a succeeded refund")
+			}
+			payload.RefundID = refundID.String()
+		}
+		_, err = worker.EnqueueInTx(ctx, tx, JobTypeOrderEmail, payload, orderEmailAttempts)
 		return err
 	})
 }

@@ -35,6 +35,7 @@ func buyerLetterKinds() map[string]Data {
 		TemplateKindRefund:            refundData(),
 		TemplateKindShopOrderReceived: shopTestData(),
 		TemplateKindShopOrderShipped:  shopTestData(),
+		TemplateKindShopOrderRefunded: shopRefundTestData(),
 	}
 }
 

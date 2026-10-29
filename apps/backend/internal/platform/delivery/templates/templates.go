@@ -90,6 +90,12 @@ const TemplateKindShopOrderReceived = "shop_order_received"
 // shipped (or ready, for a pickup order), with the tracking note.
 const TemplateKindShopOrderShipped = "shop_order_shipped"
 
+// TemplateKindShopOrderRefunded is sent when money of a paid shop order went
+// back to the buyer (a succeeded refund, partial or full): the amount, how
+// much of the order has been returned so far, the items and the shop's
+// contact. It promises no date: the bank sets the delay.
+const TemplateKindShopOrderRefunded = "shop_order_refunded"
+
 // Shop line kinds (shop_products.kind): ShopLine.Kind carries one of them.
 const (
 	ShopKindPhysical = "physical"
@@ -135,6 +141,12 @@ type ShopOrderData struct {
 	TrackingNote string
 	// StatusURL is the storefront's order status page.
 	StatusURL string
+	// RefundAmount is what THIS refund returned, RefundedTotal what the
+	// order has got back in all (both pre-formatted, refunded letter only).
+	// RefundFull is true when the whole order has been refunded.
+	RefundAmount  string
+	RefundedTotal string
+	RefundFull    bool
 }
 
 // Data is the value passed to every template. Fields are intentionally
@@ -226,8 +238,8 @@ type Data struct {
 	// it stays false for invitations and for any other seller.
 	WithdrawalNotice bool
 
-	// Shop is the order the shop e-mails describe (kinds shop_order_received
-	// and shop_order_shipped); Render fills an empty one when it is nil.
+	// Shop is the order the shop e-mails describe (kinds shop_order_received,
+	// shop_order_shipped and shop_order_refunded); Render fills an empty one when it is nil.
 	Shop *ShopOrderData
 }
 
