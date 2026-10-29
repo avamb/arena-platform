@@ -6,15 +6,13 @@
  * gallery, thumbnails hidden on mobile, no zoom, dynamic checkout off here).
  */
 import type { ShopProduct, ShopVariant } from '../lib/api';
-import { sized } from '../lib/cdn';
+import { GALLERY_WIDTHS, sized, srcset } from '../lib/cdn';
 import { esc } from '../lib/html';
 import { qtyLimitMessage } from '../lib/cart';
 import { sanitizeHtml } from '../lib/sanitize';
 import { T } from '../lib/i18n';
 import { icon, priceBlock, productCard, ratioOf, spinner, url, firstAvailableVariant, type Ctx } from './common';
 
-const MEDIA_WIDTHS = [246, 493, 600, 713, 823, 990, 1100, 1206, 1346, 1426, 1646, 1946];
-const MODAL_WIDTHS = [550, 1100, 1445];
 const SID = 'product__main';
 const MEDIA_SIZES =
   '(min-width: 1600px) 825px, (min-width: 990px) calc(55.0vw - 10rem), (min-width: 750px) calc((100vw - 11.5rem) / 2), calc(100vw / 1 - 4rem)';
@@ -42,8 +40,8 @@ function gallery(p: ShopProduct): string {
       const ratio = ratioOf(img);
       const h = Math.floor(1946 / ratio);
       const mid = mediaId(p, i);
-      const ss = MEDIA_WIDTHS.map((w) => `${sized(img.url, w)} ${w}w`).join(', ');
-      const tag = `<img src="${esc(sized(img.url, 1946))}" alt="${esc(img.alt ?? '')}" srcset="${esc(ss)}" width="1946" height="${h}"${i > 0 ? ' loading="lazy"' : ''} class="image-magnify-none" sizes="${MEDIA_SIZES}">`;
+      const ss = srcset(img.url, img.width, GALLERY_WIDTHS);
+      const tag = `<img src="${esc(sized(img.url, 720))}" alt="${esc(img.alt ?? '')}"${ss ? ` srcset="${esc(ss)}"` : ''} width="1946" height="${h}"${i > 0 ? ' loading="lazy"' : ''} class="image-magnify-none" sizes="${MEDIA_SIZES}">`;
       return `<li
             id="Slide-${SID}-${mid}"
             class="product__media-item grid__item slider__slide${i === 0 ? ' is-active' : ''}"
@@ -116,12 +114,12 @@ function modal(p: ShopProduct): string {
   const imgs = p.images
     .map((img, i) => {
       const ratio = ratioOf(img);
-      const ss = MODAL_WIDTHS.map((w) => `${sized(img.url, w)} ${w}w`).join(', ');
+      const ss = srcset(img.url, img.width, GALLERY_WIDTHS);
       return `<img
     class="global-media-settings global-media-settings--no-shadow"
-    srcset="${esc(ss)}"
+${ss ? `    srcset="${esc(ss)}"
     sizes="(min-width: 750px) calc(100vw - 22rem), 1100px"
-    src="${esc(sized(img.url, 1445))}"
+` : ''}    src="${esc(sized(img.url, 990))}"
     alt="${esc(p.title)}"
     loading="lazy"
     width="1100"

@@ -113,10 +113,15 @@ func (h *shopEmail) handle(ctx context.Context, payload []byte) error {
 		h.logger.Info("delivery: shop e-mail not sent", slog.String("order_id", orderID.String()), slog.String("reason", reason))
 		return nil
 	}
-	if sent, err := h.alreadySent(ctx, orderID, p.Kind); err != nil {
-		return err
-	} else if sent {
-		return nil
+	// A person asked for this letter again: the marker of the first send must
+	// not swallow it. A redelivered job of the same request is a duplicate
+	// letter at worst, which the one-per-minute limit of the route bounds.
+	if !p.Resend {
+		if sent, err := h.alreadySent(ctx, orderID, p.Kind); err != nil {
+			return err
+		} else if sent {
+			return nil
+		}
 	}
 	if h.opts.Sender == nil || email.IsDevOnly(h.opts.Sender) {
 		h.logger.Info("delivery: shop e-mail not sent", slog.String("order_id", orderID.String()),
