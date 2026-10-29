@@ -1,4 +1,5 @@
 import { Link, useParams } from "@tanstack/react-router";
+import { CsvUpload } from "@/components/staffInvitations/CsvUpload";
 import { SeatInvite } from "@/components/staffInvitations/SeatInvite";
 import { StaffInvitationList } from "@/components/staffInvitations/StaffInvitationList";
 import { useI18n } from "@/lib/i18n";
@@ -47,6 +48,7 @@ export function SessionInvitationsScreen() {
               canRead={canRead}
             />
           )}
+          {canIssue && <CsvUpload key={`${orgId}:${sessionId}:csv`} orgId={orgId} eventId={eventId} sessionId={sessionId} canRead={canRead} />}
           {canRead && (
             <StaffInvitationList key={`${orgId}:${sessionId}:list`} orgId={orgId} sessionId={sessionId} canIssue={canIssue} canRevoke={canRevoke} />
           )}
