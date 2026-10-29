@@ -791,7 +791,7 @@ export const ru: Record<MessageKey, string> = {
   "invitations.problem": "Строка {line}: {reason}. «{text}»",
   "invitations.block.none": "Добавьте хотя бы одного гостя.",
   "invitations.block.tooMany": "Гостей больше {max}. Отправьте первых {max} сейчас, а остальных в следующий раз.",
-  "invitations.block.overFree": "Гостей больше, чем свободных мест ({free}). Уберите часть гостей или выберите другую категорию.",
+  "invitations.hint.overFree": "Гостей больше, чем свободных мест ({free}). Места, которые вы закрыли от продажи, тоже используются. Если не хватит и их, выдача остановится с сообщением, а уже обработанные гости сохранят приглашения.",
   "invitations.confirm.title": "Проверьте перед отправкой",
   "invitations.confirm.what": "{event}, {when}, категория {category}.",
   "invitations.confirm.count": "Приглашений к отправке: {count}",

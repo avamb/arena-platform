@@ -791,7 +791,7 @@ export const es: Record<MessageKey, string> = {
   "invitations.problem": "Línea {line}: {reason}. «{text}»",
   "invitations.block.none": "Añade al menos un invitado.",
   "invitations.block.tooMany": "Son más de {max} invitados. Envía los primeros {max} ahora y el resto en otra tanda.",
-  "invitations.block.overFree": "Hay más invitados que plazas libres ({free}). Quita algunos o elige otra categoría.",
+  "invitations.hint.overFree": "Hay más invitados que plazas libres ({free}). También se usan las plazas que cerraste a la venta. Si ni así alcanzan, la emisión se detiene con un aviso y los invitados ya procesados conservan su invitación.",
   "invitations.confirm.title": "Revisa antes de enviar",
   "invitations.confirm.what": "{event}, {when}, categoría {category}.",
   "invitations.confirm.count": "Invitaciones por enviar: {count}",

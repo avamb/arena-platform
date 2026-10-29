@@ -108,14 +108,24 @@ export function parseGuests(text: string): ParsedGuests {
 }
 
 /** Why the operation cannot start yet, or null when it can. */
-export type SendBlock = "none" | "problems" | "tooMany" | "overFree";
+export type SendBlock = "none" | "problems" | "tooMany";
 
-export function sendBlock(parsed: ParsedGuests, free: number | null): SendBlock | null {
+/**
+ * Only what the form can know for certain blocks the button. The count of free places is NOT such a thing:
+ * the server also issues from the places the organizer closed for sale (reserve places, owner decision R-5),
+ * which the category's `available` does not count. Whether the places suffice is the server's answer (409
+ * `invitation.not_enough_places`), shown by the error notice.
+ */
+export function sendBlock(parsed: ParsedGuests): SendBlock | null {
   if (parsed.problems.length > 0) return "problems";
   if (parsed.guests.length === 0) return "none";
   if (parsed.guests.length > MAX_GUESTS) return "tooMany";
-  if (free !== null && parsed.guests.length > free) return "overFree";
   return null;
+}
+
+/** True when there are more guests than free places: a hint, never a ban (see sendBlock). */
+export function overFreePlaces(parsed: ParsedGuests, free: number | null): boolean {
+  return free !== null && parsed.guests.length > 0 && parsed.guests.length > free;
 }
 
 // ─── the letter status of an invitation ─────────────────────────────────────

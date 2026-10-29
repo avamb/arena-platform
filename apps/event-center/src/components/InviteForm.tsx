@@ -35,6 +35,7 @@ import {
   inviteTierOk,
   isSeatedSession,
   parseGuests,
+  overFreePlaces,
   sendBlock,
   type Guest,
   type SendBlock,
@@ -55,7 +56,6 @@ const BLOCK_KEY: Record<SendBlock, MessageKey> = {
   none: "invitations.block.none",
   problems: "invitations.problemsTitle",
   tooMany: "invitations.block.tooMany",
-  overFree: "invitations.block.overFree",
 };
 
 export function InviteForm({ orgId }: { orgId: string }) {
@@ -96,7 +96,8 @@ export function InviteForm({ orgId }: { orgId: string }) {
   const event = eventList.find((e) => e.id === eventId);
   const parsed = useMemo(() => parseGuests(text), [text]);
   const free = tier?.available ?? null;
-  const block = sendBlock(parsed, free);
+  const block = sendBlock(parsed);
+  const overFree = overFreePlaces(parsed, free);
 
   const changed = () => {
     requestIds.current.reset();
@@ -293,6 +294,11 @@ export function InviteForm({ orgId }: { orgId: string }) {
               {block !== null && block !== "problems" && text.trim() !== "" && (
                 <p className="notice" role="status" data-testid="invite-block">
                   {t(BLOCK_KEY[block], { max: MAX_GUESTS, free: free ?? 0 })}
+                </p>
+              )}
+              {block === null && overFree && (
+                <p className="notice" role="status" data-testid="invite-over-free">
+                  {t("invitations.hint.overFree", { free: free ?? 0 })}
                 </p>
               )}
               {phase === "edit" && (
