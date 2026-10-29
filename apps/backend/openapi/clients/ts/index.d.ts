@@ -7541,6 +7541,10 @@ export interface paths {
          *     recipients: real tickets with barcodes that take places from the
          *     category, and an invitation e-mail to each recipient with an
          *     address. Revocation annuls the tickets and returns the places.
+         *     This route cannot name a seat: on a strictly seated session it answers
+         *     422 `complimentary.use_invitations_route`, and invitations go through
+         *     `POST /v1/organizations/{org_id}/sessions/{session_id}/invitations`.
+         *     General-admission and hybrid sessions are served here as before.
          */
         post: operations["createComplimentaryIssuance"];
         delete?: never;
@@ -57061,7 +57065,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description No available inventory. */
+            /** @description The session is strictly seated (`complimentary.use_invitations_route`) - invitations with a chosen seat go through the staff invitations route of the session - or no inventory is available. */
             422: {
                 headers: {
                     [name: string]: unknown;
