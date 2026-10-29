@@ -23,6 +23,7 @@ function order(over: Partial<ShopOrder> = {}): ShopOrder {
     total: 74000,
     refunded_minor: 0,
     tracking_note: "",
+    staff_note: { text: "", by: "", at: null },
     items: [],
     payment: null,
     created_at: "2026-10-28T19:36:00Z",

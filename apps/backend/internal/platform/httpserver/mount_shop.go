@@ -153,6 +153,7 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 		pr.Get(base+"/products/{product_id}", s.orgGated(h.HandleGetProduct))
 		pr.Get(base+"/pages", s.orgGated(h.HandleListPages))
 		pr.Get(base+"/orders", s.orgGated(h.HandleListOrders))
+		pr.Get(base+"/orders/counts", s.orgGated(h.HandleOrderCounts))
 		pr.Get(base+"/orders/{order_id}", s.orgGated(h.HandleGetOrder))
 		pr.Get(base+"/orders/{order_id}/courier-text", s.orgGated(h.HandleCourierText))
 	})
@@ -168,6 +169,8 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 		pr.Put(base+"/pages/{slug}", s.orgGated(h.HandlePutPage))
 		pr.Delete(base+"/pages/{slug}", s.orgGated(h.HandleDeletePage))
 		pr.Post(base+"/orders/{order_id}/ship", s.orgGated(h.HandleShipOrder))
+		pr.Patch(base+"/orders/{order_id}", s.orgGated(h.HandlePatchOrder))
+		pr.Post(base+"/orders/{order_id}/resend-email", s.orgGated(h.HandleResendEmail))
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "shop.manage", "shop")

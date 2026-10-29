@@ -50,6 +50,14 @@ if (process.argv.includes('--no-dims')) {
     delete i.height;
   }
 }
+// --media-urls: product pictures become signed-looking /v1/media-files/{id}?exp=..&sig=.. urls served
+// by this mock (a grey SVG of the requested w=), to check the storefront's w= srcset by hand.
+if (process.argv.includes('--media-urls')) {
+  let n = 0;
+  for (const p of shop.products) for (const i of p.images) {
+    i.url = 'http://localhost:' + PORT + '/v1/media-files/img' + ++n + '?exp=4102444800&sig=mock';
+  }
+}
 const pagesFile = JSON.parse(fs.readFileSync(path.join(dir, 'pages.json'), 'utf8'));
 
 /** token -> order */
@@ -104,6 +112,12 @@ http
     const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
 
     if (req.method === 'OPTIONS') return send(res, 204, '');
+
+    if (parts[0] === 'v1' && parts[1] === 'media-files') {
+      const w = Number(url.searchParams.get('w')) || 1200;
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Access-Control-Allow-Origin': '*' });
+      return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + w + '"><rect width="100%" height="100%" fill="#ccc"/><text x="10" y="30" font-size="24">w=' + w + '</text></svg>');
+    }
 
     // ---- a "signed" file of a digital product (mock) ----
     if (parts[0] === 'mock-files' && parts[1] && parts[2]) {

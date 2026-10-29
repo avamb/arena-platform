@@ -10,10 +10,12 @@ import type {
   MediaObject,
   SalesChannelItem,
   ShopOrder,
+  ShopOrderCounts,
   ShopOrderList,
   ShopProduct,
   ShopProductList,
   ShopRefundResponse,
+  ShopResendEmailResponse,
   ShopSettings,
   ShopSettingsUpdateRequest,
 } from "@/lib/api/types";
@@ -123,6 +125,21 @@ export function detachShopImage(orgId: string, productId: string, mediaId: strin
 
 export function listShopOrders(orgId: string, query: Record<string, string | number | undefined>): Promise<ShopOrderList> {
   return call<ShopOrderList>({ route: API.shopOrders, params: org(orgId), query });
+}
+
+/** How many orders each quick list holds (`to_ship`, `unpaid`, ...), in one request. */
+export function fetchShopOrderCounts(orgId: string): Promise<ShopOrderCounts> {
+  return call<ShopOrderCounts>({ route: API.shopOrderCounts, params: org(orgId) });
+}
+
+/** Writes (or, with an empty text, erases) the internal note of an order. The answer is the order. */
+export function saveShopOrderNote(orgId: string, orderId: string, staffNote: string): Promise<ShopOrder> {
+  return call<ShopOrder>({ route: API.shopOrderNote, params: ord(orgId, orderId), body: { staff_note: staffNote } });
+}
+
+/** Queues the buyer's letter once more. One request per order per minute: a second answers 429. */
+export function resendShopOrderEmail(orgId: string, orderId: string, kind: "received" | "shipped"): Promise<ShopResendEmailResponse> {
+  return call<ShopResendEmailResponse>({ route: API.shopOrderResendEmail, params: ord(orgId, orderId), body: { kind } });
 }
 
 export function fetchShopOrder(orgId: string, orderId: string): Promise<ShopOrder> {

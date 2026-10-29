@@ -1,6 +1,11 @@
 /**
  * A shop product (spec 47, section 6): create and edit in one form.
  *
+ * ONE "Save" for the whole card (A-02): a bar that sticks to the top on a wide screen and sits at the bottom of a
+ * phone. It sends what changed, in this order: the details (PATCH), the variants (PUT) and the descriptions of the
+ * pictures, and says one thing at the end. A refused part stops the rest and is named where it belongs, with what
+ * was already saved. While anything is unsaved, leaving the page asks first (`UnsavedChangesGuard`).
+ *
  * - Details: name, description (the rich-text editor, "description" profile:
  *   the same HTML subset the server's sanitizer keeps), kind, status, the
  *   digital file, the names of up to three options. The address (slug) is
@@ -11,8 +16,7 @@
  * - Pictures: only for a saved product (they attach to its id).
  *
  * Creating sends the details AND the variants in one request. Editing saves
- * the details (PATCH) and the variants (PUT) with their own buttons, because
- * the API has two routes.
+ * them with the API's separate routes, one after another.
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
@@ -24,8 +28,10 @@ import { RichTextField } from "@/components/RichTextField";
 import { ShopImages } from "@/components/ShopImages";
 import { NoShopAccess, ShopNav, ShopReadOnlyNote } from "@/components/ShopNav";
 import { ShopVariantsEditor, type VariantStat } from "@/components/ShopVariantsEditor";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { ErrorBox, Loading } from "@/components/ui";
 import {
+  attachShopImage,
   createShopProduct,
   deleteShopProduct,
   fetchShopProduct,
@@ -61,6 +67,8 @@ import {
 } from "@/lib/shop";
 import { useOrg } from "@/screens/OrgLayout";
 
+type SavedPart = "details" | "variants" | "images";
+
 /** Three names, padded with empty strings. */
 function padNames(names: readonly string[]): [string, string, string] {
   return [names[0] ?? "", names[1] ?? "", names[2] ?? ""];
@@ -76,7 +84,7 @@ function leadingNames(names: readonly string[]): string[] {
   return out;
 }
 
-function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { orgId: string; currency: string; product?: ShopProductView; canManage: boolean; canViewMedia: boolean }) {
+export function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { orgId: string; currency: string; product?: ShopProductView; canManage: boolean; canViewMedia: boolean }) {
   const { t } = useI18n();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -95,8 +103,14 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
   const [rows, setRows] = useState<VariantRow[]>(() => (product !== undefined ? rowsFromProduct(product, currency) : [emptyRow()]));
   const [check, setCheck] = useState<VariantsCheck | null>(null);
   const [detailsTried, setDetailsTried] = useState(false);
-  const [busy, setBusy] = useState<"details" | "variants" | "create" | "file" | null>(null);
-  const [failure, setFailure] = useState<{ scope: "details" | "variants" | "file"; error: unknown } | null>(null);
+  const [busy, setBusy] = useState<"save" | "create" | "file" | null>(null);
+  const [failure, setFailure] = useState<{ scope: "details" | "variants" | "images" | "file"; error: unknown } | null>(null);
+  // The descriptions of the pictures the person typed and has not saved, by picture.
+  const [alts, setAlts] = useState<Record<string, string>>({});
+  // What a failed save had already stored, so the person knows what is left.
+  const [savedParts, setSavedParts] = useState<SavedPart[]>([]);
+  // Set right before the form itself navigates away (after a create or a delete): that move must not ask.
+  const allowLeave = useRef(false);
   const [notice, setNotice] = useState<MessageKey | null>(null);
   const [fileProblem, setFileProblem] = useState<MessageKey | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -106,6 +120,26 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
   const used = leadingNames(names);
   const optionCount = optionCountOf(used, rows);
   const disabled = !canManage || busy !== null;
+
+  // What differs from the saved product (editing) or from an empty form (creating).
+  const detailsDirty =
+    product !== undefined &&
+    (title.trim() !== product.title ||
+      status !== product.status ||
+      kind !== productKind(product) ||
+      JSON.stringify(used) !== JSON.stringify(optionNamesOf(product)) ||
+      (kind === "digital" ? digitalId !== (product.digital_media_id ?? null) : (product.digital_media_id ?? null) !== null) ||
+      (bodyTouched.current && body !== (product.body_html ?? "")));
+  const variantsDirty = product !== undefined && variantsChanged(rows, product.variants, currency, optionCount, { digital });
+  const altsDirty = product !== undefined && product.images.some((im) => alts[im.media_id] !== undefined && alts[im.media_id].trim() !== im.alt);
+  const createDirty =
+    product === undefined &&
+    (title.trim() !== "" ||
+      bodyTouched.current ||
+      digitalId !== null ||
+      names.some((n) => n.trim() !== "") ||
+      rows.some((r) => r.price.trim() !== "" || r.sku.trim() !== "" || r.title.trim() !== "" || r.options.some((o) => o.trim() !== "")));
+  const dirty = editing ? detailsDirty || variantsDirty || altsDirty : createDirty;
 
   const titleBad = title.trim() === "" || [...title.trim()].length > SHOP_LIMITS.title;
   const bodyBad = bodyTouched.current && (overVisibleLimit(body, "description") || overMarkupLimit(body, "description"));
@@ -151,67 +185,99 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
     void queryClient.invalidateQueries({ queryKey: ["shopProducts", orgId] });
   };
 
-  const run = async (scope: "details" | "variants" | "create" | "file", fn: () => Promise<void>) => {
+  const run = async (scope: "create" | "file", fn: () => Promise<void>) => {
     setBusy(scope);
     setStockMoved([]);
     setFailure(null);
     setNotice(null);
+    setSavedParts([]);
     try {
       await fn();
     } catch (error) {
-      if (scope !== "create") setFailure({ scope, error });
-      else setFailure({ scope: "details", error });
+      setFailure({ scope: scope === "create" ? "details" : "file", error });
     } finally {
       setBusy(null);
     }
   };
 
-  const saveDetails = () => {
-    setDetailsTried(true);
-    if (product === undefined) return;
-    if (!detailsOk) {
-      setFocusTick((n) => n + 1);
-      return;
+  /** The variants step of the save. A 409 reloads the rows with the server's numbers, says so and stops the save. */
+  const saveVariantsStep = async (p: ShopProductView) => {
+    try {
+      const saved = await replaceShopVariants(orgId, p.id, variantsRequest(rows, currency, optionCount, { digital }));
+      setProduct(saved);
+      setRows(rowsFromProduct(saved, currency));
+      setCheck(null);
+    } catch (error) {
+      if (!isStockChanged(error)) throw error;
+      // The shelf moved while the screen was open: show the server's numbers, say so, change nothing else.
+      setStockMoved(
+        stockChangedDetails(error).map((d) => {
+          const row = rows.find((r) => r.id === d.id);
+          const name = row === undefined ? "" : row.title || row.options.filter((o) => o !== "").join(" / ");
+          // The number typed is shown beside the fresh one, so nobody has to remember it.
+          return { title: name !== "" ? name : isSingleVersion(rows, used) ? t("shop.variants.single") : "", expected: d.expected, stock: d.stock, typed: row?.stock ?? "" };
+        }),
+      );
+      const fresh = await fetchShopProduct(orgId, p.id);
+      setProduct(fresh);
+      setRows(rowsFromProduct(fresh, currency));
+      setCheck(null);
+      throw error;
     }
-    void run("details", async () => {
-      setProduct(await patchShopProduct(orgId, product.id, fields()));
-      setNotice("shop.product.saved");
-    });
   };
 
-  const saveVariants = () => {
-    if (product === undefined) return;
+  /** ONE save for the card: details, then variants, then the descriptions of the pictures. */
+  const saveAll = async () => {
+    if (product === undefined || busy !== null || !canManage) return;
+    setDetailsTried(true);
     const c = checkVariants(rows, currency, optionCount, { digital });
     setCheck(c);
-    if (!c.ok) {
+    if (!detailsOk || !c.ok) {
       setFocusTick((n) => n + 1);
       return;
     }
-    void run("variants", async () => {
-      try {
-        const saved = await replaceShopVariants(orgId, product.id, variantsRequest(rows, currency, optionCount, { digital }));
-        setProduct(saved);
-        setRows(rowsFromProduct(saved, currency));
-        setCheck(null);
-        setNotice("shop.variants.saved");
-      } catch (error) {
-        if (!isStockChanged(error)) throw error;
-        // The shelf moved while the screen was open: show the server's numbers, say so, change nothing else.
-        setStockMoved(
-          stockChangedDetails(error).map((d) => {
-            const row = rows.find((r) => r.id === d.id);
-            const name = row === undefined ? "" : row.title || row.options.filter((o) => o !== "").join(" / ");
-            // The number typed is shown beside the fresh one, so nobody has to remember it.
-            return { title: name !== "" ? name : isSingleVersion(rows, used) ? t("shop.variants.single") : "", expected: d.expected, stock: d.stock, typed: row?.stock ?? "" };
-          }),
-        );
-        const fresh = await fetchShopProduct(orgId, product.id);
-        setProduct(fresh);
-        setRows(rowsFromProduct(fresh, currency));
-        setCheck(null);
-        throw error;
+    if (!dirty) return;
+    setBusy("save");
+    setStockMoved([]);
+    setFailure(null);
+    setNotice(null);
+    setSavedParts([]);
+    const done: SavedPart[] = [];
+    let step: "details" | "variants" | "images" = "details";
+    try {
+      if (detailsDirty) {
+        step = "details";
+        const patched = await patchShopProduct(orgId, product.id, fields());
+        setProduct(patched);
+        // The text as the server stored it (it may have tidied the markup): the editor shows that, and nothing is "changed" any more.
+        bodyTouched.current = false;
+        setBody(patched.body_html ?? "");
+        done.push("details");
       }
-    });
+      if (variantsDirty) {
+        step = "variants";
+        await saveVariantsStep(product);
+        done.push("variants");
+      }
+      if (altsDirty) {
+        step = "images";
+        let latest: ShopProductView = product;
+        for (const im of product.images) {
+          const typed = alts[im.media_id];
+          if (typed === undefined || typed.trim() === im.alt) continue;
+          latest = await attachShopImage(orgId, product.id, im.media_id, im.position, typed.trim());
+        }
+        setProduct(latest);
+        setAlts({});
+        done.push("images");
+      }
+      setNotice("shop.card.saved");
+    } catch (error) {
+      setFailure({ scope: step, error });
+      setSavedParts(done);
+    } finally {
+      setBusy(null);
+    }
   };
 
   const create = () => {
@@ -226,6 +292,7 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
       const made = await createShopProduct(orgId, { ...fields(), variants: variantsRequest(rows, currency, optionCount, { digital }) });
       void queryClient.invalidateQueries({ queryKey: ["shopProducts", orgId] });
       queryClient.setQueryData(["shopProduct", orgId, made.id], made);
+      allowLeave.current = true;
       await navigate({ to: "/o/$orgId/shop/products/$productId", params: { orgId, productId: made.id }, search: { created: true } });
     });
   };
@@ -244,15 +311,42 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
 
   const detailsError = failure !== null && failure.scope === "details" ? failure.error : null;
   const variantsError = failure !== null && failure.scope === "variants" ? failure.error : null;
+  const imagesError = failure !== null && failure.scope === "images" ? failure.error : null;
   const fileError = failure !== null && failure.scope === "file" ? failure.error : null;
+  const wrong = [...detailsWrong, ...variantsWrong.filter((f) => !detailsWrong.includes(f))];
+  const barText: { key: MessageKey; tone: "ok" | "bad" | "plain" } | null =
+    busy === "save"
+      ? { key: "shop.card.saving", tone: "plain" }
+      : failure !== null && failure.scope !== "file"
+        ? { key: "shop.card.failed", tone: "bad" }
+        : notice !== null
+          ? { key: notice, tone: notice === "shop.card.saved" ? "ok" : "plain" }
+          : dirty
+            ? { key: "shop.card.dirty", tone: "plain" }
+            : null;
 
   return (
-    <div ref={root}>
+    <div ref={root} className="shop-card">
+      <UnsavedChangesGuard dirty={dirty} allowLeave={allowLeave} />
+      {canManage && editing && (
+        <div className="shop-savebar" data-testid="shop-savebar">
+          <button type="button" className="btn btn-primary" disabled={busy !== null || !dirty} onClick={() => void saveAll()} data-testid="shop-product-save">
+            {busy === "save" ? t("shop.card.saving") : t("shop.card.save")}
+          </button>
+          <p className={`shop-savebar-status${barText?.tone === "bad" ? " field-error" : ""}`} role="status" aria-live="polite" data-testid="shop-savebar-status">
+            {barText !== null && t(barText.key)}
+            {failure !== null && failure.scope !== "file" && savedParts.length > 0 && (
+              <> {t("shop.card.partial", { parts: savedParts.map((p) => t(`shop.card.part.${p}` as MessageKey)).join(", ") })}</>
+            )}
+          </p>
+        </div>
+      )}
+      {canManage && editing && wrong.length > 0 && fixLine(wrong)}
       <h2>{t("shop.product.f.title")}</h2>
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (editing) saveDetails();
+          if (editing) void saveAll();
           else create();
         }}
         noValidate
@@ -344,20 +438,7 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
           ))}
         </fieldset>
         {detailsError !== null && <ErrorNotice error={detailsError} testId="shop-product-error" />}
-        {canManage && editing && (
-          <p>
-            <button type="submit" className="btn btn-primary" disabled={busy !== null} data-testid="shop-product-save">
-              {busy === "details" ? t("shop.product.saving") : t("shop.product.save")}
-            </button>
-          </p>
-        )}
-        {canManage && editing && fixLine(detailsWrong)}
       </form>
-      {notice !== null && notice !== "shop.variants.saved" && (
-        <p className="notice notice-ok" role="status" data-testid="shop-product-notice">
-          {t(notice)}
-        </p>
-      )}
 
       <section aria-labelledby="shop-variants-title">
         <h2 id="shop-variants-title">{t("shop.variants.title")}</h2>
@@ -373,25 +454,6 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
             ))}
           </ul>
         )}
-        {notice === "shop.variants.saved" && (
-          <p className="notice notice-ok" role="status" data-testid="shop-variants-notice">
-            {t(notice)}
-          </p>
-        )}
-        {canManage && editing && product !== undefined && (
-          <p>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={busy !== null || !variantsChanged(rows, product.variants, currency, optionCount, { digital })}
-              onClick={saveVariants}
-              data-testid="shop-variants-save"
-            >
-              {busy === "variants" ? t("shop.variants.saving") : t("shop.variants.save")}
-            </button>
-          </p>
-        )}
-        {canManage && editing && fixLine(variantsWrong)}
       </section>
 
       {canManage && !editing && (
@@ -407,7 +469,17 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
       )}
 
       {product !== undefined ? (
-        <ShopImages orgId={orgId} product={product} canManage={canManage} canView={canViewMedia} onProduct={setProduct} />
+        <ShopImages
+          orgId={orgId}
+          product={product}
+          canManage={canManage}
+          canView={canViewMedia}
+          onProduct={setProduct}
+          alts={alts}
+          onAlt={(mediaId, text) => setAlts((prev) => ({ ...prev, [mediaId]: text }))}
+          disabled={busy !== null}
+          error={imagesError}
+        />
       ) : (
         <section aria-labelledby="shop-images-title">
           <h2 id="shop-images-title">{t("shop.images.title")}</h2>
@@ -436,6 +508,7 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
             await deleteShopProduct(orgId, product.id);
             await queryClient.invalidateQueries({ queryKey: ["shopProducts", orgId] });
             queryClient.removeQueries({ queryKey: ["shopProduct", orgId, product.id] });
+            allowLeave.current = true;
             await navigate({ to: "/o/$orgId/shop/products", params: { orgId }, search: { deleted: product.title } });
           }}
         />

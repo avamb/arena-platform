@@ -255,6 +255,13 @@ type buyerJSON struct {
 	Phone string `json:"phone"`
 }
 
+// staffNoteJSON is the internal note of an order; empty text means no note.
+type staffNoteJSON struct {
+	Text string     `json:"text"`
+	By   string     `json:"by"`
+	At   *time.Time `json:"at"`
+}
+
 // orderJSON is an order as the organization routes answer it.
 type orderJSON struct {
 	ID            string          `json:"id"`
@@ -276,6 +283,7 @@ type orderJSON struct {
 	RefundedMinor int64           `json:"refunded_minor"`
 	BuyerLocale   *string         `json:"buyer_locale"`
 	TrackingNote  string          `json:"tracking_note"`
+	StaffNote     staffNoteJSON   `json:"staff_note"`
 	Items         []orderItemJSON `json:"items"`
 	Payment       *paymentJSON    `json:"payment"`
 	ExpiresAt     *time.Time      `json:"expires_at"`
@@ -297,7 +305,8 @@ func toOrderJSON(v shop.OrderView) orderJSON {
 		DeliveryKind: o.DeliveryKind, DeliveryNote: o.DeliveryNote, Currency: o.Currency,
 		Subtotal: o.Subtotal, Discount: o.Discount, ShippingFee: o.ShippingFee, Total: o.Total,
 		RefundedMinor: o.RefundedMinor, BuyerLocale: o.BuyerLocale, TrackingNote: o.TrackingNote,
-		Items: toItemsJSON(v.Items), ExpiresAt: o.ExpiresAt, PaidAt: o.PaidAt, ShippedAt: o.ShippedAt,
+		StaffNote: staffNoteJSON{Text: o.StaffNote, By: o.StaffNoteBy, At: o.StaffNoteAt},
+		Items:     toItemsJSON(v.Items), ExpiresAt: o.ExpiresAt, PaidAt: o.PaidAt, ShippedAt: o.ShippedAt,
 		CancelledAt: o.CancelledAt, CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt,
 	}
 	if v.Payment != nil {
