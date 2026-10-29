@@ -6,7 +6,7 @@ import { resolveLines } from '../lib/cart';
 import { EINAT_THEME } from '../lib/theme';
 import { cartView, notificationProduct } from '../views/cart';
 import { collectionView, homeView } from '../views/catalog';
-import { checkoutView, EMPTY_FORM, statusView } from '../views/checkout';
+import { checkoutView, EMPTY_FORM, lineLabel, refreshFeedback, statusView } from '../views/checkout';
 import type { Ctx } from '../views/common';
 import { layout } from '../views/layout';
 import { productView } from '../views/product';
@@ -332,5 +332,53 @@ describe('responsive media pictures', () => {
     const small: ShopData = { ...mediaShop, products: mediaShop.products.map((p) => ({ ...p, images: p.images.map((i) => ({ ...i, width: 400 })) })) };
     const img = dom(homeView({ ...mctx(), shop: small })).querySelector('.card__media img');
     expect(img?.getAttribute('srcset')).toMatch(/&w=360 360w, [^ ]+&w=533 400w$/);
+  });
+});
+
+describe('order line label (M-02)', () => {
+  it('drops an empty or default variant and keeps a real one', () => {
+    expect(lineLabel('Гид', '')).toBe('Гид');
+    expect(lineLabel('Гид', '  ')).toBe('Гид');
+    expect(lineLabel('Гид', 'Default Title')).toBe('Гид');
+    expect(lineLabel('Гид', 'PDF')).toBe('Гид — PDF');
+  });
+
+  it('prints no variant part for a single-variant product in the files block', () => {
+    const paid = { status: 'paid' as const, number: 7, items: [{ product_kind: 'digital' as const, product_title: 'Гид', variant_title: 'Default Title', qty: 1, unit_price_minor: 3000, total_minor: 3000 }] };
+    const html = statusView(ctx(), paid, { state: 'ready', links: [
+      { product_title: 'Гид', variant_title: 'Default Title', url: 'https://files.test/a', expires_at: '2026-10-28T12:00:00Z' },
+      { product_title: 'Курс', variant_title: 'Видео', url: 'https://files.test/b', expires_at: '2026-10-28T12:00:00Z' },
+    ] });
+    const names = Array.from(dom(html).querySelectorAll('.shop-downloads a')).map((a) => a.textContent);
+    expect(names).toEqual(['Гид', 'Курс — Видео']);
+  });
+});
+
+describe('download refresh feedback (M-08)', () => {
+  const links = [
+    { product_title: 'A', variant_title: '', url: 'https://files.test/a', expires_at: '2026-10-28T12:15:00Z' },
+    { product_title: 'B', variant_title: '', url: 'https://files.test/b', expires_at: '2026-10-28T12:10:00Z' },
+  ];
+  it('names the earliest expiry after a successful refresh', () => {
+    expect(refreshFeedback({ state: 'ready', links, refreshed: true }, 'UTC')).toBe('Ссылки обновлены, действуют до 12:10');
+  });
+  it('says nothing for links that were not just refreshed', () => {
+    expect(refreshFeedback({ state: 'ready', links }, 'UTC')).toBe('');
+    expect(refreshFeedback({ state: 'error' })).toBe('');
+    expect(refreshFeedback(undefined)).toBe('');
+  });
+  it('shows a short error line when the refresh failed', () => {
+    expect(refreshFeedback({ state: 'error', refreshed: true })).toBe('Не удалось обновить ссылки. Попробуйте ещё раз.');
+  });
+  it('falls back to a plain note when no expiry is readable', () => {
+    expect(refreshFeedback({ state: 'ready', links: [{ ...links[0], expires_at: '' }], refreshed: true })).toBe('Ссылки обновлены');
+  });
+  it('renders the note next to the button', () => {
+    const paid = { status: 'paid' as const, number: 7, items: [{ product_kind: 'digital' as const, product_title: 'A', variant_title: '', qty: 1, unit_price_minor: 1, total_minor: 1 }] };
+    const ok = dom(statusView(ctx(), paid, { state: 'ready', links, refreshed: true }));
+    expect(ok.querySelector('[data-downloads-note]')?.textContent).toMatch(/^Ссылки обновлены, действуют до \d\d:\d\d$/);
+    const bad = dom(statusView(ctx(), paid, { state: 'error', refreshed: true }));
+    expect(bad.querySelector('[data-downloads-note]')?.textContent).toBe('Не удалось обновить ссылки. Попробуйте ещё раз.');
+    expect(bad.querySelector('[data-refresh-downloads]')).not.toBeNull();
   });
 });
