@@ -159,3 +159,6 @@ other = "Arena Sold Out שלחה הודעה זו כי טופס יצירת הקש
 # The sales-link PDF insert (spec 43, QL-13): the one line printed under the QR code.
 ["salelinks.insert.scan_and_buy"]
 other = "סרקו וקנו כרטיסים"
+
+["shop.payment.description"]
+other = "{{.Org}}, הזמנה מס׳ {{.Number}}"

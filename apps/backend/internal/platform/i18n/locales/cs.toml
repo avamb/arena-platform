@@ -159,3 +159,6 @@ other = "Arena Sold Out poslala tuto zprávu, protože kontaktní formulář va�
 # The sales-link PDF insert (spec 43, QL-13): the one line printed under the QR code.
 ["salelinks.insert.scan_and_buy"]
 other = "Naskenujte a kupte si vstupenky"
+
+["shop.payment.description"]
+other = "{{.Org}}, objednávka č. {{.Number}}"

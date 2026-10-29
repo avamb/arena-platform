@@ -3,7 +3,6 @@ package hshop
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -265,7 +264,7 @@ func (h *Handler) HandlePublicCheckout(w http.ResponseWriter, r *http.Request) {
 		CheckoutToken: o.OrderToken,
 		Amount:        o.Total,
 		Currency:      o.Currency,
-		ProductName:   fmt.Sprintf("%s order %d", sf.Org.Name, o.Number),
+		ProductName:   paymentDescription(h.o.Bundle, b.Locale, sf.Org.Name, int64(o.Number)),
 		BuyerEmail:    o.BuyerEmail,
 		BuyerName:     o.BuyerName,
 		BuyerPhone:    o.BuyerPhone,

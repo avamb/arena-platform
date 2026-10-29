@@ -51,6 +51,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hfeed"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
@@ -72,6 +73,8 @@ type Options struct {
 	DownloadURL func(ctx context.Context, id uuid.UUID) (string, time.Time)
 	// Payments creates the provider-hosted page; nil refuses paid carts.
 	Payments hfeed.PaymentStarter
+	// Bundle localizes the payment page's purpose line; nil keeps it English.
+	Bundle *i18n.Bundle
 	// ReturnPolicy decides where the buyer may be sent back to.
 	ReturnPolicy hfeed.ReturnURLPolicy
 	// Window is how long the hosted page stays open; Grace is added on top
