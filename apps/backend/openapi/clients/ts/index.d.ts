@@ -25682,10 +25682,65 @@ export interface components {
             from_reserve: number;
             /** @description issuing right after the issue (tickets are minted asynchronously), issued once every place has its ticket. */
             tickets_status: string;
-            /** @description Billing preview of the invitation (spec 46, section 3.6); null until billing of invitations lands. */
-            charge?: Record<string, never> | null;
+            /** @description Billing preview of the invitation (spec 46, section 3.6) - what the platform will charge the organization for these tickets, computed by the same rule as the billing rate job. Null when it cannot be computed (the organization has no usable billing terms); the invitation is issued either way. */
+            charge?: components["schemas"]["InvitationChargePreview"] | null;
             /** @description True when the request_id was already used and this is the first invitation. */
             replayed: boolean;
+        };
+        /**
+         * @description What invitations cost the organization (spec 46, section 3.6). A CSV file is always charged the
+         *     standard rate; otherwise an account whose terms say complimentary_billing standard pays the standard
+         *     rate, and every other invitation is free up to the yearly free limit of the price list, then charged
+         *     as a general-admission ticket. The standard rate is the organization's individual rate, else the
+         *     fixed per-ticket rate of the price list, seated or not. A cancelled invitation keeps its charge.
+         */
+        InvitationChargePreview: {
+            /** @description Why the tickets cost what they cost - free (free up to the yearly limit), standard (the account's terms) or bulk (a CSV file). */
+            mode: string;
+            /** @description Currency of the organization's billing account; every amount is in it. */
+            currency: string;
+            /** @description Tickets quoted. */
+            tickets: number;
+            /** @description Tickets that cost nothing. */
+            free_tickets: number;
+            /** @description Tickets that are charged. */
+            charged_tickets: number;
+            /**
+             * Format: int64
+             * @description Total charge in minor units of currency.
+             */
+            amount_minor: number;
+            /** @description The charged tickets grouped by unit rate; empty when every ticket is free. */
+            lines: components["schemas"]["InvitationChargeLine"][];
+            /**
+             * Format: int64
+             * @description The yearly free limit, or null when there is none or the tickets are not billed free.
+             */
+            free_limit: number | null;
+            /**
+             * Format: int64
+             * @description What is left of the yearly free limit after these tickets, or null with free_limit.
+             */
+            free_left: number | null;
+            /** @description A short English summary such as "12 × 0.50 EUR = 6.00 EUR" or "free, 488 of the yearly limit left". Clients in another language build their own from the numbers. */
+            text: string;
+        };
+        /** @description One group of charged invitation tickets with the same unit rate. */
+        InvitationChargeLine: {
+            /** @description Tickets in the group. */
+            tickets: number;
+            /**
+             * Format: int64
+             * @description Charge per ticket in minor units.
+             */
+            unit_minor: number;
+            /**
+             * Format: int64
+             * @description tickets times unit_minor.
+             */
+            amount_minor: number;
+            /** @description Currency of the amounts, the billing account's. */
+            currency: string;
         };
         /** @description Who issued the invitation; all null for an organization API key. */
         StaffInvitationIssuer: {
@@ -29484,6 +29539,8 @@ export interface components {
             due_days: number | null;
             /** @description Who pays the platform commission on a sold ticket, organizer_pays (the organizer is billed) or buyer_pays (the buyer pays it as the service charge). */
             fee_mode: string;
+            /** @description How staff invitations of the account are billed, free (free up to the yearly free limit of the price list) or standard (the fixed per-ticket rate, or the organization's individual rate). An invitation issued from a CSV file always pays the standard rate. */
+            complimentary_billing: string;
             /** @description Whether only a superadmin may change the row. */
             locked: boolean;
             /** @description Id of the operator who created the row, or migration. */
@@ -29585,6 +29642,8 @@ export interface components {
             due_days?: number | null;
             /** @description Who pays the platform commission on a sold ticket, organizer_pays (default) or buyer_pays. Any other value is 422 billing.invalid_terms. */
             fee_mode?: string;
+            /** @description How staff invitations are billed from effective_from on, free (free up to the yearly free limit) or standard (the fixed per-ticket rate or the organization's individual rate). Absent keeps the value of the terms in force at effective_from. Like every terms row it starts in the future, so invitations already issued keep the charge of their own date. Any other value is 422 billing.invalid_terms. */
+            complimentary_billing?: string;
         };
         /** @description The per-ticket rate of the purchased lot that pays next. */
         BillingCurrentRate: {

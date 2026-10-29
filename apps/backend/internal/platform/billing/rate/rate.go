@@ -216,7 +216,13 @@ func (r *Rater) price(ctx context.Context, q *gen.Queries, ev gen.BillableEventR
 		}
 		return billing.Charge{}, err.Error(), nil
 	}
-	charge, err := billing.Rate(terms, toEngineEvent(ev))
+	engineEv := toEngineEvent(ev)
+	if over, err := overFreeLimit(ctx, q, terms, ev, engineEv); err != nil {
+		return billing.Charge{}, "", err
+	} else if over {
+		engineEv.FreeTicketsOverLimit = true
+	}
+	charge, err := billing.Rate(terms, engineEv)
 	if err != nil {
 		if dataError(err) {
 			return billing.Charge{}, err.Error(), nil
@@ -230,6 +236,35 @@ func (r *Rater) price(ctx context.Context, q *gen.Queries, ev gen.BillableEventR
 		return billing.Charge{}, fmt.Sprintf("the engine computed a negative charge (%d): the rule data is wrong", charge.AmountMinor), nil
 	}
 	return charge, "", nil
+}
+
+// overFreeLimit reports whether a complimentary ticket that would be free
+// is beyond the yearly free limit of its terms (spec 46 section 3.6, rule 3):
+// the account's complimentary tickets rated free earlier in the same
+// calendar year (UTC) have already reached the limit. A Bulk ticket, an
+// account billing invitations at the standard rate, and a price list without
+// a limit never count. The count runs under a per-account lock taken after
+// the session lock, so two passes never both take the last free place. An
+// earlier complimentary ticket rated only later (it waited for its terms)
+// does not move a decision already written: charges are never re-rated.
+func overFreeLimit(ctx context.Context, q *gen.Queries, terms billing.Terms, row gen.BillableEventRow, ev billing.Event) (bool, error) {
+	if ev.Kind != billing.KindTicketComplimentary || ev.Bulk ||
+		terms.ComplimentaryBilling() != billing.ComplimentaryBillingFree {
+		return false, nil
+	}
+	limit := terms.FreeTicketsAnnualLimit()
+	if limit == nil {
+		return false, nil
+	}
+	if err := q.LockComplimentaryFreeLimit(ctx, row.AccountID); err != nil {
+		return false, fmt.Errorf("lock free limit: %w", err)
+	}
+	used, err := q.CountFreeComplimentaryChargesBefore(ctx, row.AccountID,
+		billing.FreeLimitYearStart(row.OccurredAt), row.OccurredAt, row.ID)
+	if err != nil {
+		return false, fmt.Errorf("count free complimentary tickets: %w", err)
+	}
+	return used >= *limit, nil
 }
 
 func journalOnly(kind string) bool {
@@ -434,6 +469,7 @@ func toEngineEvent(ev gen.BillableEventRow) billing.Event {
 	if ev.PricingClass != nil {
 		out.PricingClass = *ev.PricingClass
 	}
+	out.Bulk = billing.BulkFromAttributes(ev.Attributes)
 	return out
 }
 

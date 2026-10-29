@@ -27,24 +27,29 @@ type createTermsBody struct {
 	DueDays          *int32     `json:"due_days"`
 	// FeeMode: organizer_pays (default) or buyer_pays.
 	FeeMode string `json:"fee_mode"`
+	// ComplimentaryBilling: free or standard (spec 46, owner decision R-7).
+	// Absent keeps the value of the terms row in force at effective_from, so
+	// a new row written for another reason never flips it back.
+	ComplimentaryBilling string `json:"complimentary_billing"`
 }
 
 func termsJSON(t gen.BillingAccountTermsRow) map[string]any {
 	return map[string]any{
-		"id":                 t.ID.String(),
-		"effective_from":     t.EffectiveFrom.UTC().Format(time.RFC3339Nano),
-		"price_list_code":    t.PriceListCode,
-		"plan_kind":          t.PlanKind,
-		"billing_cycle":      t.BillingCycle,
-		"shortfall_policy":   t.ShortfallPolicy,
-		"issuer_id":          t.IssuerID.String(),
-		"invoice_delay_days": t.InvoiceDelayDays,
-		"due_days":           t.DueDays,
-		"fee_mode":           t.FeeMode,
-		"locked":             t.Locked,
-		"created_by":         t.CreatedBy,
-		"reason":             t.Reason,
-		"created_at":         t.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"id":                    t.ID.String(),
+		"effective_from":        t.EffectiveFrom.UTC().Format(time.RFC3339Nano),
+		"price_list_code":       t.PriceListCode,
+		"plan_kind":             t.PlanKind,
+		"billing_cycle":         t.BillingCycle,
+		"shortfall_policy":      t.ShortfallPolicy,
+		"issuer_id":             t.IssuerID.String(),
+		"invoice_delay_days":    t.InvoiceDelayDays,
+		"due_days":              t.DueDays,
+		"fee_mode":              t.FeeMode,
+		"complimentary_billing": t.ComplimentaryBilling,
+		"locked":                t.Locked,
+		"created_by":            t.CreatedBy,
+		"reason":                t.Reason,
+		"created_at":            t.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
 }
 
@@ -184,6 +189,10 @@ func (h *AdminHandler) HandleCreateAccountTerms(w http.ResponseWriter, r *http.R
 	case body.FeeMode != "" && body.FeeMode != "organizer_pays" && body.FeeMode != "buyer_pays":
 		unprocessable(w, r, "billing.invalid_terms", "fee_mode must be organizer_pays or buyer_pays")
 		return
+	case body.ComplimentaryBilling != "" && body.ComplimentaryBilling != billing.ComplimentaryBillingFree &&
+		body.ComplimentaryBilling != billing.ComplimentaryBillingStandard:
+		unprocessable(w, r, "billing.invalid_terms", "complimentary_billing must be free or standard")
+		return
 	case !validShortfallPolicy[body.ShortfallPolicy]:
 		unprocessable(w, r, "billing.invalid_terms", "shortfall_policy must be invoice_postpaid or block_publishing")
 		return
@@ -241,6 +250,19 @@ func (h *AdminHandler) HandleCreateAccountTerms(w http.ResponseWriter, r *http.R
 			r, map[string]any{"latest_effective_from": latest.UTC().Format(time.RFC3339Nano)}))
 		return
 	}
+	complimentary := body.ComplimentaryBilling
+	if complimentary == "" {
+		// Keep the invitation billing of the row in force when the new one
+		// starts (the account's latest row, checked above to start earlier).
+		prev, perr := q.GetBillingAccountTermsAt(ctx, acc.ID, from)
+		switch {
+		case perr == nil:
+			complimentary = prev.ComplimentaryBilling
+		case !errors.Is(perr, pgx.ErrNoRows):
+			h.fail(w, r, "terms in force", perr)
+			return
+		}
+	}
 	pl, err := q.GetPriceListVersionAt(ctx, body.PriceListCode, acc.Currency, from)
 	if errors.Is(err, pgx.ErrNoRows) {
 		unprocessable(w, r, "billing.price_list_not_found",
@@ -279,6 +301,7 @@ func (h *AdminHandler) HandleCreateAccountTerms(w http.ResponseWriter, r *http.R
 		BillingCycle: body.BillingCycle, ShortfallPolicy: body.ShortfallPolicy, IssuerID: acc.IssuerID,
 		InvoiceDelayDays: body.InvoiceDelayDays, DueDays: body.DueDays,
 		CreatedBy: ptrString(actorID(r)), Reason: &reason, FeeMode: body.FeeMode,
+		ComplimentaryBilling: complimentary,
 	})
 	if err != nil {
 		h.fail(w, r, "insert terms", err)
@@ -289,7 +312,7 @@ func (h *AdminHandler) HandleCreateAccountTerms(w http.ResponseWriter, r *http.R
 		"effective_from":  created.EffectiveFrom.UTC().Format(time.RFC3339Nano),
 		"price_list_code": created.PriceListCode, "plan_kind": created.PlanKind,
 		"billing_cycle": created.BillingCycle, "shortfall_policy": created.ShortfallPolicy,
-		"fee_mode": created.FeeMode,
+		"fee_mode": created.FeeMode, "complimentary_billing": created.ComplimentaryBilling,
 	}); err != nil {
 		h.fail(w, r, "audit", err)
 		return

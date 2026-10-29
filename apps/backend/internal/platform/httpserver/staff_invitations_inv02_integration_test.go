@@ -277,8 +277,15 @@ func TestINV02_IssueFromReserveAndSale_CancelReturnsEachSeatToItsOrigin(t *testi
 	if code != http.StatusCreated {
 		t.Fatalf("issue: %d %s", code, body["_raw"])
 	}
-	if body["tickets_status"] != "issuing" || body["replayed"] != false || body["charge"] != nil {
+	if body["tickets_status"] != "issuing" || body["replayed"] != false {
 		t.Fatalf("issue answer: %s", body["_raw"])
+	}
+	// The billing preview (INV-07): a staff invitation on a fresh account
+	// whose terms bill invitations free costs nothing.
+	charge, _ := body["charge"].(map[string]any)
+	if charge == nil || charge["mode"] != "free" || charge["tickets"] != float64(5) ||
+		charge["amount_minor"] != float64(0) || charge["free_tickets"] != float64(5) {
+		t.Fatalf("issue charge preview: %s", body["_raw"])
 	}
 	if fr, _ := body["from_reserve"].(float64); fr != 2 {
 		t.Fatalf("from_reserve = %v, want 2 (A|1|1 and the third GA place): %s", body["from_reserve"], body["_raw"])

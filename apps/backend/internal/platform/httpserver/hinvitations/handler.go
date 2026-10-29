@@ -17,6 +17,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/billing"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
@@ -110,9 +111,12 @@ type issueResponse struct {
 	Places        []lineResponse `json:"places"`
 	FromReserve   int            `json:"from_reserve"`
 	TicketsStatus string         `json:"tickets_status"`
-	// Charge is the billing preview (spec 46, section 3.6) — INV-07.
-	Charge   any  `json:"charge"`
-	Replayed bool `json:"replayed"`
+	// Charge is the billing preview (spec 46, section 3.6): what the
+	// platform will charge the organization for these tickets, computed by
+	// billing.Rate. Null when it cannot be computed (no usable billing
+	// terms); the invitation itself is never refused for that.
+	Charge   *billing.ComplimentaryQuote `json:"charge"`
+	Replayed bool                        `json:"replayed"`
 }
 
 // HandleIssue serves POST /v1/organizations/{org_id}/sessions/{session_id}/invitations.
@@ -295,10 +299,13 @@ func (h *Handler) loadIssued(ctx context.Context, orderID, orgID uuid.UUID) (iss
 		Delivery:      deliveryOf(o.Metadata),
 		Places:        make([]lineResponse, 0, len(lines)),
 		TicketsStatus: ticketsIssue,
-		Charge:        nil,
 	}
 	issued := len(lines) > 0
+	seated := 0
 	for _, l := range lines {
+		if l.Kind != nil && *l.Kind == seatKindSeat {
+			seated++
+		}
 		resp.Places = append(resp.Places, toLine(l))
 		if l.SeatOrigin != nil && *l.SeatOrigin == originUnavailable {
 			resp.FromReserve++
@@ -310,7 +317,29 @@ func (h *Handler) loadIssued(ctx context.Context, orderID, orgID uuid.UUID) (iss
 	if issued {
 		resp.TicketsStatus = ticketsIssued
 	}
+	resp.Charge = h.chargePreview(ctx, o, orgID, seated, len(lines)-seated)
 	return resp, nil
+}
+
+// seatKindSeat is session_seats.kind of a place on the plan; the collector
+// bills such a ticket as seated, every other place as general admission.
+const seatKindSeat = "seat"
+
+// chargePreview quotes the invitation at the moment it was issued, through
+// the same rule the billing rate job applies. A failure is logged and
+// answered as null: billing never blocks an invitation.
+func (h *Handler) chargePreview(ctx context.Context, o gen.InvitationOrderRow, orgID uuid.UUID, seated, unseated int) *billing.ComplimentaryQuote {
+	if seated+unseated == 0 {
+		return nil
+	}
+	q, err := billing.QuoteComplimentaryForSession(ctx, h.queries, orgID, o.SessionID, o.CreatedAt,
+		seated, unseated, o.IssuedVia == billing.IssuedViaStaffBulk)
+	if err != nil {
+		h.logger.WarnContext(ctx, "invitation charge preview unavailable",
+			"order_id", o.ID.String(), "org_id", orgID.String(), "error", err)
+		return nil
+	}
+	return &q
 }
 
 func toLine(l gen.InvitationOrderLineRow) lineResponse {

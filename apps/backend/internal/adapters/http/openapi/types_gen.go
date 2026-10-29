@@ -3374,6 +3374,9 @@ type BillingAccountTerms struct {
 	// BillingCycle prepaid, per_event or monthly.
 	BillingCycle string `json:"billing_cycle"`
 
+	// ComplimentaryBilling How staff invitations of the account are billed, free (free up to the yearly free limit of the price list) or standard (the fixed per-ticket rate, or the organization's individual rate). An invitation issued from a CSV file always pays the standard rate.
+	ComplimentaryBilling string `json:"complimentary_billing"`
+
 	// CreatedAt When the row was created.
 	CreatedAt time.Time `json:"created_at"`
 
@@ -3745,6 +3748,9 @@ type BillingCloseRateOverrideRequest struct {
 type BillingCreateAccountTermsRequest struct {
 	// BillingCycle prepaid, per_event or monthly. A tools account is prepaid only.
 	BillingCycle string `json:"billing_cycle"`
+
+	// ComplimentaryBilling How staff invitations are billed from effective_from on, free (free up to the yearly free limit) or standard (the fixed per-ticket rate or the organization's individual rate). Absent keeps the value of the terms in force at effective_from. Like every terms row it starts in the future, so invitations already issued keep the charge of their own date. Any other value is 422 billing.invalid_terms.
+	ComplimentaryBilling *string `json:"complimentary_billing,omitempty"`
 
 	// DueDays Days to pay an invoice.
 	DueDays *int32 `json:"due_days"`
@@ -9445,6 +9451,58 @@ type InventoryRowItem struct {
 
 	// UpdatedAt RFC 3339 timestamp of the last ledger mutation.
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// InvitationChargeLine One group of charged invitation tickets with the same unit rate.
+type InvitationChargeLine struct {
+	// AmountMinor tickets times unit_minor.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// Currency Currency of the amounts, the billing account's.
+	Currency string `json:"currency"`
+
+	// Tickets Tickets in the group.
+	Tickets int `json:"tickets"`
+
+	// UnitMinor Charge per ticket in minor units.
+	UnitMinor int64 `json:"unit_minor"`
+}
+
+// InvitationChargePreview What invitations cost the organization (spec 46, section 3.6). A CSV file is always charged the
+// standard rate; otherwise an account whose terms say complimentary_billing standard pays the standard
+// rate, and every other invitation is free up to the yearly free limit of the price list, then charged
+// as a general-admission ticket. The standard rate is the organization's individual rate, else the
+// fixed per-ticket rate of the price list, seated or not. A cancelled invitation keeps its charge.
+type InvitationChargePreview struct {
+	// AmountMinor Total charge in minor units of currency.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// ChargedTickets Tickets that are charged.
+	ChargedTickets int `json:"charged_tickets"`
+
+	// Currency Currency of the organization's billing account; every amount is in it.
+	Currency string `json:"currency"`
+
+	// FreeLeft What is left of the yearly free limit after these tickets, or null with free_limit.
+	FreeLeft *int64 `json:"free_left"`
+
+	// FreeLimit The yearly free limit, or null when there is none or the tickets are not billed free.
+	FreeLimit *int64 `json:"free_limit"`
+
+	// FreeTickets Tickets that cost nothing.
+	FreeTickets int `json:"free_tickets"`
+
+	// Lines The charged tickets grouped by unit rate; empty when every ticket is free.
+	Lines []InvitationChargeLine `json:"lines"`
+
+	// Mode Why the tickets cost what they cost - free (free up to the yearly limit), standard (the account's terms) or bulk (a CSV file).
+	Mode string `json:"mode"`
+
+	// Text A short English summary such as "12 × 0.50 EUR = 6.00 EUR" or "free, 488 of the yearly limit left". Clients in another language build their own from the numbers.
+	Text string `json:"text"`
+
+	// Tickets Tickets quoted.
+	Tickets int `json:"tickets"`
 }
 
 // LegalDocument One version of a terms template (P3a). Immutable once published.
@@ -17476,8 +17534,8 @@ type StaffInvitationIssueRequest struct {
 
 // StaffInvitationIssueResponse The invitation as written.
 type StaffInvitationIssueResponse struct {
-	// Charge Billing preview of the invitation (spec 46, section 3.6); null until billing of invitations lands.
-	Charge *map[string]interface{} `json:"charge"`
+	// Charge Billing preview of the invitation (spec 46, section 3.6) - what the platform will charge the organization for these tickets, computed by the same rule as the billing rate job. Null when it cannot be computed (the organization has no usable billing terms); the invitation is issued either way.
+	Charge *InvitationChargePreview `json:"charge"`
 
 	// Delivery Delivery mode - guest_email, my_email or pdf_only.
 	Delivery string `json:"delivery"`
