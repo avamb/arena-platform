@@ -103,6 +103,19 @@ describe('calls', () => {
     await expect(getPage('orgp', 'nope')).rejects.toMatchObject({ status: 404 });
   });
 
+  it('opens a page by its old address and answers the canonical slug', async () => {
+    mockFetch(200, {
+      pages: [
+        { slug: 'events', legacy_slug: 'наши-мероприятия', title: 'События', body_html: '<p>a</p>', position: 0, updated_at: 'x' },
+        { slug: 'about', legacy_slug: null, title: 'О нас', body_html: '<p>b</p>', position: 1, updated_at: 'x' },
+      ],
+    });
+    const viaOld = await getPage('orgq', 'Наши-Мероприятия');
+    expect(viaOld.slug).toBe('events');
+    expect((await getPage('orgq', 'events')).slug).toBe('events');
+    await expect(getPage('orgq', 'nope')).rejects.toMatchObject({ status: 404 });
+  });
+
   it('reads the checkout answer (total, empty payment_url for a free order)', async () => {
     mockFetch(201, { order_token: 't', number: 7, status: 'paid', payment_url: '', currency: 'ILS', subtotal: 0, shipping_fee: 0, total: 0, expires_at: null });
     const c = await createCheckout('einatwinery', {

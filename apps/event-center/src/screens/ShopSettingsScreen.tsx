@@ -18,15 +18,17 @@ import { ErrorNotice } from "@/components/ErrorNotice";
 import { SelectField, TextAreaField, TextField } from "@/components/FormField";
 import { NoShopAccess, ShopNav, ShopReadOnlyNote } from "@/components/ShopNav";
 import { ErrorBox, Loading } from "@/components/ui";
-import { fetchShopSettings, listSalesChannels, saveShopSettings } from "@/lib/api/shopApi";
+import { fetchShopSettings, listSalesChannels, listShopProducts, saveShopSettings } from "@/lib/api/shopApi";
 import { listCountries } from "@/lib/api/endpoints";
 import type { ShopSettingsUpdateRequest } from "@/lib/api/types";
+import { currencyLabel, regionName } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { SHOP_LIMITS, checkSettings, settingsDraft, settingsRequest, type SettingsDraft, type SettingsProblem, type ShopSettingsView } from "@/lib/shop";
+import { SHOP_LIMITS, checkSettings, currencyState, settingsDraft, settingsRequest, type SettingsDraft, type SettingsProblem, type ShopSettingsView } from "@/lib/shop";
 import { useOrg } from "@/screens/OrgLayout";
 
 const PROBLEM_KEY: Record<SettingsProblem, MessageKey> = {
   currency: "shop.settings.err.currency",
+  currencyUnknown: "shop.settings.err.currencyUnknown",
   shippingFee: "shop.settings.err.shippingFee",
   shippingLabel: "shop.settings.err.shippingLabel",
   country: "shop.settings.err.country",
@@ -52,6 +54,11 @@ export interface ShopSettingsFormProps {
   onOperatorDomain: (v: string) => void;
   operatorEnabled: boolean;
   onOperatorEnabled: (v: boolean) => void;
+  /**
+   * How many products the shop has: with at least one the currency is shown, not typed (every price
+   * is stored in it). null while it is not known; undefined means none.
+   */
+  productCount?: number | null;
   /** `shop.manage`: without it the form is read only. */
   canManage: boolean;
   busy: boolean;
@@ -60,7 +67,7 @@ export interface ShopSettingsFormProps {
 
 /** The form of the settings. Pure: it shows the draft it is given. */
 export function ShopSettingsForm(p: ShopSettingsFormProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { draft, problems, settings } = p;
   const set = (change: Partial<SettingsDraft>) => p.onDraft({ ...draft, ...change });
   const err = (k: SettingsProblem): string | undefined =>
@@ -68,6 +75,11 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
       ? t(PROBLEM_KEY[k], { max: k === "shippingLabel" ? SHOP_LIMITS.shippingLabel : k === "announcement" ? SHOP_LIMITS.announcement : SHOP_LIMITS.logisticsNote })
       : undefined;
   const currency = draft.currency.trim().toUpperCase() || settings.currency;
+  const currencyMode = currencyState(p.productCount);
+  // Country names in the language of the screen, not the list the API answers in English.
+  const countries = p.countries
+    .map((c) => ({ iso2: c.iso2, name: regionName(c.iso2, locale) || c.name }))
+    .sort((a, b) => a.name.localeCompare(b.name, locale));
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -77,15 +89,29 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
   return (
     <form onSubmit={submit} noValidate data-testid="shop-settings-form">
       <fieldset disabled={!p.canManage || p.busy}>
-        <TextField
-          label={t("shop.settings.f.currency")}
-          hint={t("shop.settings.f.currencyHint")}
-          error={err("currency")}
-          value={draft.currency}
-          maxLength={3}
-          onChange={(v) => set({ currency: v.toUpperCase() })}
-          testId="shop-settings-currency"
-        />
+        {currencyMode === "editable" ? (
+          <TextField
+            label={t("shop.settings.f.currency")}
+            hint={t("shop.settings.f.currencyHint")}
+            error={err("currency") ?? err("currencyUnknown")}
+            value={draft.currency}
+            maxLength={3}
+            onChange={(v) => set({ currency: v.toUpperCase() })}
+            testId="shop-settings-currency"
+          />
+        ) : (
+          <>
+            <p>
+              <strong>{t("shop.settings.f.currency")}</strong>
+            </p>
+            <p data-testid="shop-settings-currency-value">
+              {settings.currency} · {currencyLabel(settings.currency, locale)}
+            </p>
+            <p className="field-hint" data-testid="shop-settings-currency-locked">
+              {currencyMode === "locked" ? t("shop.settings.f.currencyLocked") : t("shop.settings.f.currencyChecking")}
+            </p>
+          </>
+        )}
         <TextField
           label={t("shop.settings.f.shippingFee", { currency })}
           hint={t("shop.settings.f.shippingFeeHint")}
@@ -105,7 +131,7 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
         />
         <SelectField label={t("shop.settings.f.country")} error={err("country")} value={draft.country} onChange={(v) => set({ country: v })} testId="shop-settings-country">
           <option value="">{t("shop.settings.f.countryNone")}</option>
-          {p.countries.map((c) => (
+          {countries.map((c) => (
             <option key={c.iso2} value={c.iso2}>
               {c.name}
             </option>
@@ -116,7 +142,7 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
           hint={t("shop.settings.f.ageGateHint")}
           error={err("ageGate")}
           value={draft.ageGate}
-          maxLength={2}
+          inputMode="numeric"
           onChange={(v) => set({ ageGate: v })}
           testId="shop-settings-age"
         />
@@ -125,7 +151,7 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
           hint={t("shop.settings.f.maxLineQtyHint")}
           error={err("maxLineQty")}
           value={draft.maxLineQty}
-          maxLength={2}
+          inputMode="numeric"
           onChange={(v) => set({ maxLineQty: v })}
           testId="shop-settings-maxqty"
         />
@@ -234,12 +260,17 @@ function SettingsPage({ settings }: { settings: ShopSettingsView }) {
   const canChannels = access.can("channel.read");
   const channels = useQuery({ queryKey: ["salesChannels", orgId], queryFn: () => listSalesChannels(orgId), enabled: canChannels, retry: false });
 
-  const problems = tried ? checkSettings(draft) : {};
+  const products = useQuery({ queryKey: ["shopProducts", orgId, ""], queryFn: () => listShopProducts(orgId, undefined), retry: false });
+  // Unknown (still loading, or the list failed): the currency stays closed.
+  const productCount = products.data !== undefined ? products.data.products.length : null;
+  const currencyLocked = currencyState(productCount) !== "editable";
+
+  const problems = tried ? checkSettings(draft, { currencyLocked }) : {};
 
   const submit = async () => {
     setTried(true);
     setSaved(false);
-    if (Object.keys(checkSettings(draft)).length > 0) return;
+    if (Object.keys(checkSettings(draft, { currencyLocked })).length > 0) return;
     const body: ShopSettingsUpdateRequest = settingsRequest(draft);
     if (operator) {
       if (domain !== (settings.shop_domain ?? "")) body.shop_domain = domain.trim();
@@ -273,6 +304,7 @@ function SettingsPage({ settings }: { settings: ShopSettingsView }) {
         countries={countries.data?.countries ?? []}
         channels={canChannels && channels.data !== undefined ? channels.data.channels : null}
         settings={settings}
+        productCount={productCount}
         operator={operator}
         operatorDomain={domain}
         onOperatorDomain={setDomain}

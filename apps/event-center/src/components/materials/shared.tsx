@@ -110,12 +110,12 @@ export function MoveButtons({
 }
 
 /** The picture of a stored media id (needs `media.read`; the signed address is used once). */
-export function PhotoThumb({ mediaId, canView, alt }: { mediaId: string; canView: boolean; alt: string }) {
+export function PhotoThumb({ mediaId, canView, alt, width }: { mediaId: string; canView: boolean; alt: string; width?: number }) {
   const { t } = useI18n();
-  const image = usePosterImage(mediaId, canView);
+  const image = usePosterImage(mediaId, canView, width);
   if (!canView) return <p className="field-hint">{t("mat.photo.thumbNoRight")}</p>;
   if (image.state.phase === "ok") {
-    return <img className="mat-thumb" src={image.state.url} alt={alt} loading="lazy" />;
+    return <img className="mat-thumb" src={image.state.url} alt={alt} loading="lazy" decoding="async" />;
   }
   if (image.state.phase === "loading") return <span className="mat-thumb mat-thumb-empty" aria-hidden="true" />;
   return (

@@ -6,9 +6,13 @@ import {
   needsShipping,
   allAvailable,
   buildCheckoutRequest,
+  clampField,
   itemCount,
   MAX_QTY,
+  overLineLimit,
   parseStored,
+  paymentUnavailableMessage,
+  qtyLimitMessage,
   removeItem,
   resolveLines,
   setQty,
@@ -16,6 +20,7 @@ import {
   subtotalMinor,
   totalMinor,
   validateCheckoutForm,
+  wantedQty,
   type CheckoutForm,
 } from '../lib/cart';
 
@@ -109,6 +114,7 @@ const good: CheckoutForm = {
   address2: '',
   city: 'Тель-Авив',
   postal: '',
+  note: '',
   consent18: true,
 };
 
@@ -153,6 +159,55 @@ describe('quantity cap (max_line_qty)', () => {
   });
 });
 
+describe('line limit announcement', () => {
+  it('names the limit in Russian', () => {
+    expect(qtyLimitMessage(24)).toBe('В одном заказе не больше 24 шт. этого товара');
+  });
+  it('clamps a typed quantity and says whether it was cut', () => {
+    expect(clampField('30', 24)).toEqual({ value: 24, limited: true });
+    expect(clampField('24', 24)).toEqual({ value: 24, limited: false });
+    expect(clampField('5', 24)).toEqual({ value: 5, limited: false });
+    expect(clampField('', 24)).toEqual({ value: 1, limited: false });
+    expect(clampField('abc', 24)).toEqual({ value: 1, limited: false });
+    expect(clampField('0', 24)).toEqual({ value: 1, limited: false });
+  });
+  it('reads a typed quantity as a whole number of at least 1', () => {
+    expect(wantedQty('7.9')).toBe(7);
+    expect(wantedQty(undefined)).toBe(1);
+    expect(wantedQty('-3')).toBe(1);
+  });
+  it('counts what is already in the cart against the limit', () => {
+    expect(overLineLimit(0, 24, 24)).toBe(false);
+    expect(overLineLimit(0, 30, 24)).toBe(true);
+    expect(overLineLimit(20, 5, 24)).toBe(true);
+    expect(overLineLimit(20, 4, 24)).toBe(false);
+  });
+});
+
+describe('checkout messages', () => {
+  it('asks differently for an empty and for a filled but invalid e-mail', () => {
+    expect(validateCheckoutForm({ ...good, email: '' }, 18).email).toBe('Укажите адрес электронной почты');
+    expect(validateCheckoutForm({ ...good, email: 'hermes@' }, 18).email).toBe('Проверьте адрес: в нём должна быть часть после @');
+  });
+  it('asks differently for an empty and for a short phone', () => {
+    expect(validateCheckoutForm({ ...good, phone: '  ' }, 18).phone).toBe('Укажите номер телефона');
+    expect(validateCheckoutForm({ ...good, phone: '123' }, 18).phone).toBe('Проверьте номер: нужно не меньше 9 цифр');
+    expect(validateCheckoutForm({ ...good, phone: '050-123-456' }, 18).phone).toBeUndefined();
+  });
+  it('sends the order comment as delivery_note', () => {
+    const req = buildCheckoutRequest([{ variant_id: 'v1', qty: 1 }], { ...good, note: ' позвонить за час ' }, 'https://x.test/c');
+    expect(req.delivery_note).toBe('позвонить за час');
+    expect(buildCheckoutRequest([{ variant_id: 'v1', qty: 1 }], good, 'https://x.test/c').delivery_note).toBeUndefined();
+  });
+  it('says the cart is kept and gives the shop address when payment cannot open', () => {
+    expect(paymentUnavailableMessage('sales@einatwinery.com')).toBe(
+      'Не удалось открыть страницу оплаты. Корзина сохранена, попробуйте через минуту или напишите нам: sales@einatwinery.com',
+    );
+    expect(paymentUnavailableMessage('')).toBe('Не удалось открыть страницу оплаты. Корзина сохранена, попробуйте через минуту.');
+    expect(paymentUnavailableMessage(null)).not.toContain('напишите');
+  });
+});
+
 describe('carts by product kind', () => {
   const digital: ShopProduct = { ...products[0], id: 'd', slug: 'd', kind: 'digital', variants: [{ id: 'vd', title: 'Default Title', price_minor: 3000, available: true }] };
   const catalog = [...products, digital];
@@ -162,7 +217,7 @@ describe('carts by product kind', () => {
     expect(needsShipping(lines)).toBe(false);
     expect(shippingMinor({ shipping_fee_minor: 5000 }, lines)).toBe(0);
     expect(totalMinor({ shipping_fee_minor: 5000 }, lines)).toBe(3000);
-    const form = { name: 'Ирина Левина', email: 'irina@example.com', phone: '+972501234567', address1: '', address2: '', city: '', postal: '', consent18: true };
+    const form = { name: 'Ирина Левина', email: 'irina@example.com', phone: '+972501234567', address1: '', address2: '', city: '', postal: '', note: '', consent18: true };
     expect(validateCheckoutForm(form, 18, false)).toEqual({});
     expect(buildCheckoutRequest([{ variant_id: 'vd', qty: 1 }], form, 'https://x.test/c', 'ru', 'IL', false).ship).toBeUndefined();
   });
@@ -171,6 +226,6 @@ describe('carts by product kind', () => {
     const lines = resolveLines([{ variant_id: 'vd', qty: 1 }, { variant_id: 'v1', qty: 1 }], catalog);
     expect(needsShipping(lines)).toBe(true);
     expect(shippingMinor({ shipping_fee_minor: 5000 }, lines)).toBe(5000);
-    expect(Object.keys(validateCheckoutForm({ name: 'Ирина', email: 'i@e.co', phone: '+972501234567', address1: '', address2: '', city: '', postal: '', consent18: true }, 18, true))).toEqual(['address1', 'city']);
+    expect(Object.keys(validateCheckoutForm({ name: 'Ирина', email: 'i@e.co', phone: '+972501234567', address1: '', address2: '', city: '', postal: '', note: '', consent18: true }, 18, true))).toEqual(['address1', 'city']);
   });
 });

@@ -25,6 +25,9 @@ const REJECT_KEY: Record<PosterRejection, MessageKey> = {
   tooBig: "poster.reject.tooBig",
 };
 
+/** The width asked of the media service for a picture of the product card (twice the size it is drawn at). */
+const SHOP_THUMB_WIDTH = 480;
+
 export interface ShopImagesProps {
   orgId: string;
   product: ShopProductView;
@@ -150,7 +153,7 @@ function ImageRow({
   const id = `shop-image-${index}`;
   return (
     <li className="card mat-photo" data-testid="shop-image-row">
-      <PhotoThumb mediaId={image.media_id} canView={canView} alt={image.alt !== "" ? image.alt : t("shop.images.alt.picture", { n: index + 1 })} />
+      <PhotoThumb mediaId={image.media_id} canView={canView} width={SHOP_THUMB_WIDTH} alt={image.alt !== "" ? image.alt : t("shop.images.alt.picture", { n: index + 1 })} />
       <div className="mat-photo-body">
         {index === 0 && <p className="card-meta">{t("shop.images.main")}</p>}
         <label className="field-label" htmlFor={`${id}-alt`}>

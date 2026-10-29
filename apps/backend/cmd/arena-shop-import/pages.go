@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
@@ -23,6 +24,10 @@ type PageMapping struct {
 	Slug     string `json:"slug"`
 	Title    string `json:"title,omitempty"`
 	Position int32  `json:"position"`
+	// LegacySlug is the handle the page had on the old shop. Optional: a
+	// "pages__<handle>.html" file names it already, and it is stored only
+	// when it differs from Slug.
+	LegacySlug string `json:"legacy_slug,omitempty"`
 }
 
 // PageMappingFile is the JSON mapping file.
@@ -37,6 +42,9 @@ type ImportPage struct {
 	BodyHTML string
 	Position int32
 	File     string
+	// LegacySlug is the old shop's handle when it differs from Slug ("" =
+	// none): the public page route answers it as an alias.
+	LegacySlug string
 	// RemoteImages counts pictures that still point at the old store's CDN.
 	RemoteImages int
 	Warnings     []string
@@ -61,6 +69,11 @@ func LoadPageMapping(path string) ([]PageMapping, error) {
 		}
 		if _, ok := shop.NormalizeSlug(m.Slug); !ok {
 			return nil, fmt.Errorf("%s: page %d has an unusable slug %q", path, i+1, m.Slug)
+		}
+		if m.LegacySlug != "" {
+			if _, ok := shop.NormalizeSlug(m.LegacySlug); !ok {
+				return nil, fmt.Errorf("%s: page %d has an unusable legacy_slug %q", path, i+1, m.LegacySlug)
+			}
 		}
 	}
 	return f.Pages, nil
@@ -93,6 +106,7 @@ func LoadPages(dir string, maps []PageMapping, baseURL string) (pages []ImportPa
 			continue
 		}
 		p.Slug, _ = shop.NormalizeSlug(m.Slug)
+		p.LegacySlug = legacySlugFor(m, p.Slug)
 		p.File = m.File
 		p.Position = m.Position
 		if m.Title != "" {
@@ -113,6 +127,32 @@ func LoadPages(dir string, maps []PageMapping, baseURL string) (pages []ImportPa
 		pages = append(pages, p)
 	}
 	return pages, problems
+}
+
+// legacySlugFor is the old shop's handle of a mapped page: the mapping's own
+// legacy_slug, else the handle in a "pages__<handle>.html" file name (the
+// exporter percent-encodes it), URL-decoded, lower-cased and in NFC. It is ""
+// when there is none or it equals the new slug, and a policy file
+// ("policies__...") has none: its handle lives under /policies/ and is
+// imported unchanged.
+func legacySlugFor(m PageMapping, slug string) string {
+	raw := m.LegacySlug
+	if raw == "" {
+		base := filepath.Base(m.File)
+		const prefix = "pages__"
+		if !strings.HasPrefix(base, prefix) {
+			return ""
+		}
+		raw = strings.TrimSuffix(strings.TrimPrefix(base, prefix), filepath.Ext(base))
+	}
+	if dec, err := url.PathUnescape(raw); err == nil {
+		raw = dec
+	}
+	legacy, ok := shop.NormalizeSlug(norm.NFC.String(raw))
+	if !ok || legacy == slug {
+		return ""
+	}
+	return legacy
 }
 
 func findPageFile(dir, name string) (string, bool) {
