@@ -15782,11 +15782,14 @@ type SessionChangeImpact struct {
 	// unknown). A suggestion only; the organizer may edit or clear it.
 	DefaultMessage string `json:"default_message"`
 
+	// InvitationsToIssuer Staff invitations among the Arena-route orders that have no guest e-mail. Their letter goes to the staff member who issued them, so the organizer is told "N invitations without a guest e-mail - the letter goes to the issuer".
+	InvitationsToIssuer int `json:"invitations_to_issuer"`
+
 	// Kinds What buyers would see change: `date`, `time`, `venue`, or just
 	// `cancelled`. Empty means no buyer-visible change (nobody is told).
 	Kinds []string `json:"kinds"`
 
-	// NoAddress Arena-route orders with no buyer e-mail address; their buyers cannot be written to.
+	// NoAddress Arena-route orders with no buyer e-mail address (and no issuer to fall back to); their buyers cannot be written to.
 	NoAddress int `json:"no_address"`
 
 	// Orders Paid orders with a live ticket whose buyers would be told.
@@ -17592,6 +17595,30 @@ type StaffInvitationPlace struct {
 
 	// TierName Category name.
 	TierName string `json:"tier_name"`
+}
+
+// StaffInvitationResendRequest Optional one-time address for the resend.
+type StaffInvitationResendRequest struct {
+	// Email Send to this address instead (valid for 24 hours; it never becomes the order's address). Absent or empty means the guest, else the caller, else the issuer.
+	Email *string `json:"email,omitempty"`
+}
+
+// StaffInvitationResendResponse What the resend queued.
+type StaffInvitationResendResponse struct {
+	// DifferentAddress True when the letter goes to a one-time address, not the guest's own.
+	DifferentAddress bool `json:"different_address"`
+
+	// ExpiresAt When a one-time address stops being valid; null for the guest's own address.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// OrderId Order id of the invitation.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// QueuedTickets Active tickets queued; they travel in one e-mail.
+	QueuedTickets int `json:"queued_tickets"`
+
+	// RecipientMasked The address the letter goes to, with all but the first characters hidden.
+	RecipientMasked string `json:"recipient_masked"`
 }
 
 // StaffInvitationSeatRef One seat of the session by key.
@@ -21375,6 +21402,9 @@ type ImportEventBundleJSONRequestBody = ImportEventBundleRequest
 
 // CancelStaffInvitationJSONRequestBody defines body for CancelStaffInvitation for application/json ContentType.
 type CancelStaffInvitationJSONRequestBody = StaffInvitationCancelRequest
+
+// ResendStaffInvitationJSONRequestBody defines body for ResendStaffInvitation for application/json ContentType.
+type ResendStaffInvitationJSONRequestBody = StaffInvitationResendRequest
 
 // UpsertMACSWebhookJSONRequestBody defines body for UpsertMACSWebhook for application/json ContentType.
 type UpsertMACSWebhookJSONRequestBody = UpsertMACSWebhookRequest

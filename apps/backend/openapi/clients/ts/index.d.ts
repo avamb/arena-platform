@@ -7518,6 +7518,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/invitations/{order_id}/tickets.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the tickets of a staff invitation as one PDF
+         * @description One PDF with a page per active ticket of the invitation, in the same
+         *     layout the guest receives (invitation wording, no price), served as an
+         *     attachment named `invitation-<order number>.pdf` and never cached.
+         *     Available whatever the delivery mode: the organizer can always take the
+         *     file and forward it.
+         */
+        get: operations["downloadStaffInvitationTicketsPdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/invitations/{order_id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the tickets of a staff invitation again
+         * @description Queues the active tickets of the invitation for delivery again, as one
+         *     e-mail in the invitation template with every ticket attached. Without
+         *     a body the letter goes to the guest's e-mail; when the invitation has
+         *     none it goes to the caller's own address, else to the staff member who
+         *     issued it. A given `email` is a one-time address, valid for 24 hours,
+         *     and never replaces the guest's address on the order. The letter is
+         *     sent asynchronously, so the answer is 202.
+         */
+        post: operations["resendStaffInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/complimentary": {
         parameters: {
             query?: never;
@@ -19576,8 +19626,10 @@ export interface components {
             arena_orders: number;
             /** @description Orders sold through a website; such a change cannot be saved yet (`blocked`). */
             site_orders: number;
-            /** @description Arena-route orders with no buyer e-mail address; their buyers cannot be written to. */
+            /** @description Arena-route orders with no buyer e-mail address (and no issuer to fall back to); their buyers cannot be written to. */
             no_address: number;
+            /** @description Staff invitations among the Arena-route orders that have no guest e-mail. Their letter goes to the staff member who issued them, so the organizer is told "N invitations without a guest e-mail - the letter goes to the issuer". */
+            invitations_to_issuer: number;
             /**
              * @description Empty when the change may be saved, otherwise why not:
              *     `contact_missing` (no organizer e-mail for buyers to answer) or
@@ -25713,6 +25765,30 @@ export interface components {
             skipped_ticket_ids: string[];
             /** @description Whether the guest is to be told. */
             notify_guest: boolean;
+        };
+        /** @description Optional one-time address for the resend. */
+        StaffInvitationResendRequest: {
+            /** @description Send to this address instead (valid for 24 hours; it never becomes the order's address). Absent or empty means the guest, else the caller, else the issuer. */
+            email?: string;
+        };
+        /** @description What the resend queued. */
+        StaffInvitationResendResponse: {
+            /**
+             * Format: uuid
+             * @description Order id of the invitation.
+             */
+            order_id: string;
+            /** @description Active tickets queued; they travel in one e-mail. */
+            queued_tickets: number;
+            /** @description True when the letter goes to a one-time address, not the guest's own. */
+            different_address: boolean;
+            /** @description The address the letter goes to, with all but the first characters hidden. */
+            recipient_masked: string;
+            /**
+             * Format: date-time
+             * @description When a one-time address stops being valid; null for the guest's own address.
+             */
+            expires_at: string | null;
         };
         /**
          * @description A complimentary (free / comp) ticket issuance granted to a named
@@ -57106,6 +57182,195 @@ export interface operations {
                 };
             };
             /** @description Database or the ticket service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    downloadStaffInvitationTicketsPdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Order id of the staff invitation. Any other order, or another organization's, answers 404 invitation.not_found. */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The PDF (Content-Disposition attachment). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description org_id or order_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.read in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation not found in this organization (invitation.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description invitation.tickets_not_issued - the tickets are still being issued, try again in a moment. invitation.no_active_tickets - every ticket was cancelled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error, or the PDF could not be rendered (invitation.pdf_failed). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or the PDF service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    resendStaffInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Order id of the staff invitation. Any other order, or another organization's, answers 404 invitation.not_found. */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StaffInvitationResendRequest"];
+            };
+        };
+        responses: {
+            /** @description The tickets were queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffInvitationResendResponse"];
+                };
+            };
+            /** @description invitation.invalid_body or invitation.invalid_email. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.issue in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation not found in this organization (invitation.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description invitation.tickets_not_issued or invitation.no_active_tickets (every ticket was cancelled). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description invitation.no_recipient - no address could be found, pass `email`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or the delivery service unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

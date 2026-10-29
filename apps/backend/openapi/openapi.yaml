@@ -10200,7 +10200,7 @@ components:
 
     SessionChangeImpact:
       type: object
-      required: [session_id, kinds, orders, tickets, arena_orders, site_orders, no_address, blocked, contact, default_message, current, proposed]
+      required: [session_id, kinds, orders, tickets, arena_orders, site_orders, no_address, invitations_to_issuer, blocked, contact, default_message, current, proposed]
       description: |
         Dry run of a session move or cancellation: what saving it would do,
         computed from the same rules the save applies. Nothing is written.
@@ -10231,7 +10231,10 @@ components:
           description: Orders sold through a website; such a change cannot be saved yet (`blocked`).
         no_address:
           type: integer
-          description: Arena-route orders with no buyer e-mail address; their buyers cannot be written to.
+          description: Arena-route orders with no buyer e-mail address (and no issuer to fall back to); their buyers cannot be written to.
+        invitations_to_issuer:
+          type: integer
+          description: Staff invitations among the Arena-route orders that have no guest e-mail. Their letter goes to the staff member who issued them, so the organizer is told "N invitations without a guest e-mail - the letter goes to the issuer".
         blocked:
           type: string
           description: |
@@ -17440,6 +17443,35 @@ components:
         notify_guest:
           type: boolean
           description: Whether the guest is to be told.
+    StaffInvitationResendRequest:
+      type: object
+      description: Optional one-time address for the resend.
+      properties:
+        email:
+          type: string
+          description: Send to this address instead (valid for 24 hours; it never becomes the order's address). Absent or empty means the guest, else the caller, else the issuer.
+    StaffInvitationResendResponse:
+      type: object
+      required: [order_id, queued_tickets, different_address, recipient_masked, expires_at]
+      description: What the resend queued.
+      properties:
+        order_id:
+          type: string
+          format: uuid
+          description: Order id of the invitation.
+        queued_tickets:
+          type: integer
+          description: Active tickets queued; they travel in one e-mail.
+        different_address:
+          type: boolean
+          description: True when the letter goes to a one-time address, not the guest's own.
+        recipient_masked:
+          type: string
+          description: The address the letter goes to, with all but the first characters hidden.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: When a one-time address stops being valid; null for the guest's own address.
     ComplimentaryIssuance:
       type: object
       required: [id, org_id, session_id, tier_id, recipient_email, status, created_at]
@@ -49486,6 +49518,167 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database or the ticket service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/invitations/{order_id}/tickets.pdf:
+    get:
+      operationId: downloadStaffInvitationTicketsPdf
+      summary: Download the tickets of a staff invitation as one PDF
+      description: |
+        One PDF with a page per active ticket of the invitation, in the same
+        layout the guest receives (invitation wording, no price), served as an
+        attachment named `invitation-<order number>.pdf` and never cached.
+        Available whatever the delivery mode: the organizer can always take the
+        file and forward it.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: order_id
+          description: Order id of the staff invitation. Any other order, or another organization's, answers 404 invitation.not_found.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The PDF (Content-Disposition attachment).
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: org_id or order_id is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks complimentary.read in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invitation not found in this organization (invitation.not_found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: invitation.tickets_not_issued - the tickets are still being issued, try again in a moment. invitation.no_active_tickets - every ticket was cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error, or the PDF could not be rendered (invitation.pdf_failed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database or the PDF service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/invitations/{order_id}/resend:
+    post:
+      operationId: resendStaffInvitation
+      summary: Send the tickets of a staff invitation again
+      description: |
+        Queues the active tickets of the invitation for delivery again, as one
+        e-mail in the invitation template with every ticket attached. Without
+        a body the letter goes to the guest's e-mail; when the invitation has
+        none it goes to the caller's own address, else to the staff member who
+        issued it. A given `email` is a one-time address, valid for 24 hours,
+        and never replaces the guest's address on the order. The letter is
+        sent asynchronously, so the answer is 202.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: order_id
+          description: Order id of the staff invitation. Any other order, or another organization's, answers 404 invitation.not_found.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffInvitationResendRequest"
+      responses:
+        "202":
+          description: The tickets were queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffInvitationResendResponse"
+        "400":
+          description: invitation.invalid_body or invitation.invalid_email.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks complimentary.issue in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invitation not found in this organization (invitation.not_found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: invitation.tickets_not_issued or invitation.no_active_tickets (every ticket was cancelled).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: invitation.no_recipient - no address could be found, pass `email`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database or the delivery service unavailable.
           content:
             application/json:
               schema:

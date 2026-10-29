@@ -40,6 +40,7 @@ type Handler struct {
 	audit     audit.Writer
 	logger    *slog.Logger
 	canceller TicketCanceller
+	delivery  deliveryDeps
 }
 
 // New builds the handler. audit may be nil (no audit rows); canceller nil
@@ -583,10 +584,9 @@ func (h *Handler) HandleCancel(w http.ResponseWriter, r *http.Request) {
 	for _, c := range cancelled {
 		h.canceller.PublishTicketCancelled(ctx, c.out, c.p)
 	}
-	// TODO(INV-03): send the guest the `cancel` letter when notify_guest is
-	// true and the order carries the guest's e-mail (spec 46, section 3.4,
-	// decision R-9). The choice is recorded on order_events above so the
-	// letter job can read it.
+	if notify {
+		h.notifyGuestCancelled(ctx, o, resp.CancelledTicketIDs)
+	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 

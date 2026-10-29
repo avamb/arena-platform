@@ -1,17 +1,17 @@
-{{define "subject"}}Evento cancelado — {{.EventName}}{{end}}
+{{define "subject"}}{{if .Change.Invitation}}Invitación cancelada{{else}}Evento cancelado{{end}} — {{.EventName}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="es" dir="ltr">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Evento cancelado</title></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{if .Change.Invitation}}Invitación cancelada{{else}}Evento cancelado{{end}}</title></head>
 <body style="margin:0;padding:0;background:#f2f4f5;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
   {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
   <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
   <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
-  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Tu evento ha sido cancelado</h1>
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if .Change.Invitation}}Tu invitación ha sido cancelada{{else}}Tu evento ha sido cancelado{{end}}</h1>
   <p style="margin:0 0 12px 0;">Hola{{with .HolderName}} {{.}}{{end}},</p>
-  <p style="margin:0 0 12px 0;">El organizador ha cancelado la sesión de <strong>{{.EventName}}</strong>{{with .SessionStart}} prevista para {{.}}{{end}}. Tu entrada para esta sesión ya no es válida para acceder.</p>
+  <p style="margin:0 0 12px 0;">{{if .Change.Invitation}}El organizador ha cancelado tu invitación a <strong>{{.EventName}}</strong>{{with .SessionStart}} prevista para {{.}}{{end}}. Tu entrada ya no es válida para acceder.{{else}}El organizador ha cancelado la sesión de <strong>{{.EventName}}</strong>{{with .SessionStart}} prevista para {{.}}{{end}}. Tu entrada para esta sesión ya no es válida para acceder.{{end}}</p>
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
     <tr><td><strong>Evento</strong></td><td>{{.EventName}}</td></tr>
     {{with .SessionStart}}<tr><td><strong>Sesión</strong></td><td>{{.}}</td></tr>{{end}}
@@ -50,11 +50,11 @@
 
 {{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
 
-Tu evento ha sido cancelado
+{{if .Change.Invitation}}Tu invitación ha sido cancelada{{else}}Tu evento ha sido cancelado{{end}}
 
 Hola{{with .HolderName}} {{.}}{{end}},
 
-El organizador ha cancelado la sesión de {{.EventName}}{{with .SessionStart}} prevista para {{.}}{{end}}. Tu entrada para esta sesión ya no es válida para acceder.
+{{if .Change.Invitation}}El organizador ha cancelado tu invitación a {{.EventName}}{{with .SessionStart}} prevista para {{.}}{{end}}. Tu entrada ya no es válida para acceder.{{else}}El organizador ha cancelado la sesión de {{.EventName}}{{with .SessionStart}} prevista para {{.}}{{end}}. Tu entrada para esta sesión ya no es válida para acceder.{{end}}
 
 Evento: {{.EventName}}
 {{with .SessionStart}}Sesión: {{.}}

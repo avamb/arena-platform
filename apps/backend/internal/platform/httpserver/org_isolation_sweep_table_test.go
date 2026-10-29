@@ -241,6 +241,8 @@ var orgIsolationAuditedSafe = map[string]string{
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/invitations":  "invitations",
 	"POST /v1/organizations/{org_id}/sessions/{session_id}/invitations": "invitations",
 	"POST /v1/organizations/{org_id}/invitations/{order_id}/cancel":     "invitations",
+	"POST /v1/organizations/{org_id}/invitations/{order_id}/resend":     "invitations",
+	"GET /v1/organizations/{org_id}/invitations/{order_id}/tickets.pdf": "invitations",
 	// Merchandise shop (spec 47, migration 0172): internal/platform/shop loads
 	// every product and order by (id, org_id) and answers the route's own 404;
 	// a page is keyed by (org_id, slug), a picture's media must be the
