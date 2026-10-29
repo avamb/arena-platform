@@ -187,6 +187,13 @@ func TestAllPayModule_PaidWebhookIsConfirmedWithAllPay(t *testing.T) {
 		t.Errorf("order AllPay does not hold: %+v, %v; want manual review", ev, err)
 	}
 
+	// AllPay charged in another currency than arena's (the docs: a currency
+	// that is not enabled falls back to ILS with no error): no tickets.
+	stub.addOrder("o-fallback", stubOrder{Status: StatusPaid, Amount: 12350, Currency: "EUR", ChargeCurrency: "ILS"})
+	if ev, err := parse("o-fallback"); err != nil || ev.Kind != payments.EventPaymentManualReview || ev.FailureCode != "allpay_charge_currency_differs" {
+		t.Errorf("charged in another currency: %+v, %v; want manual review", ev, err)
+	}
+
 	// Review M1: status 1 without an amount or a currency confirms nothing.
 	stub.answer[methodPaymentStatus] = `{"order_id":"o-paid","status":1}`
 	if _, err := parse("o-paid"); !errors.Is(err, payments.ErrProviderUnreachable) {
