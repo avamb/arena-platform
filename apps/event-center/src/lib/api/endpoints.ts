@@ -43,7 +43,6 @@ import type {
   ImportEventBundleDryRunResponse,
   MeResponse,
   OrderDetail,
-  OrderLetter,
   SessionTicketList,
   OrderListResponse,
   OrderRefundOptions,
@@ -89,6 +88,7 @@ import type {
   StaffInvitationIssueRequest,
   StaffInvitationIssueResponse,
   StaffInvitationListResponse,
+  StaffInvitationOrgListResponse,
 } from "@/lib/api/types";
 import type { SchemaResponse } from "@seatmap/types";
 import type { SessionPatchBody } from "@/lib/sessionChange";
@@ -452,42 +452,6 @@ export function listInvitations(orgId: string, query: InvitationQuery): Promise<
   });
 }
 
-export interface InvitationInput {
-  sessionId: string;
-  tierId: string;
-  email: string;
-  name: string;
-  /** `web-<operation>-<index>` (lib/invitations.ts batchId): a repeat replays, it never mails twice. */
-  batchId: string;
-  /** V1: mark the invitation with the organizer's private VIP flag. */
-  vip?: boolean;
-}
-
-export interface InvitationIssued {
-  issuance: { id: string };
-  tickets: { id: string; system_ticket_id: number }[];
-  letters: OrderLetter[];
-  idempotent_replay: boolean;
-}
-
-/** Issues ONE free ticket to ONE guest, so each invitation can be annulled on its own. */
-export function issueInvitation(orgId: string, input: InvitationInput): Promise<InvitationIssued> {
-  return call<InvitationIssued>({
-    route: API.complimentaryIssue,
-    params: { org_id: orgId },
-    body: {
-      session_id: input.sessionId,
-      tier_id: input.tierId,
-      qty: 1,
-      recipients: [input.email],
-      recipient_names: input.name === "" ? undefined : [input.name],
-      batch_id: input.batchId,
-      vip: input.vip === true ? true : undefined,
-      issued_by: "event_center_web",
-    },
-  });
-}
-
 /**
  * Annuls every ticket of an invitation: its barcode stops working and the
  * place goes back on sale. Arena does not tell the guest. 409
@@ -508,6 +472,27 @@ export function listStaffInvitations(orgId: string, sessionId: string): Promise<
   return call<StaffInvitationListResponse>({
     route: API.staffInvitationsList,
     params: { org_id: orgId, session_id: sessionId },
+  });
+}
+
+export type OrgInvitationState = "active" | "cancelled" | "all";
+
+export interface OrgInvitationQuery {
+  sessionId?: string;
+  eventId?: string;
+  /** Default on the server: active (an invitation whose tickets are not issued yet counts as active). */
+  state?: OrgInvitationState;
+  limit?: number;
+  /** The `next_cursor` of the previous page. */
+  cursor?: string;
+}
+
+/** A page of the staff invitations of the whole organization, newest first (needs `complimentary.read`). */
+export function listOrgStaffInvitations(orgId: string, q: OrgInvitationQuery): Promise<StaffInvitationOrgListResponse> {
+  return call<StaffInvitationOrgListResponse>({
+    route: API.staffInvitationsOrgList,
+    params: { org_id: orgId },
+    query: { session_id: q.sessionId, event_id: q.eventId, state: q.state, limit: q.limit, cursor: q.cursor },
   });
 }
 

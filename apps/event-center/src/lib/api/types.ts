@@ -188,7 +188,8 @@ export type ShopRefundResponse = S["ShopRefundResponse"];
 export type SalesChannelItem = S["Channel"];
 
 // ─── Staff invitations on chosen seats (spec 46) ─────────────────────────────
-export type StaffInvitationIssueRequest = S["StaffInvitationIssueRequest"];
+/** `vip` is optional for a caller: the generated type marks it required only because the API defaults it to false. */
+export type StaffInvitationIssueRequest = Omit<S["StaffInvitationIssueRequest"], "vip"> & { vip?: boolean };
 export type StaffInvitationSeatRef = S["StaffInvitationSeatRef"];
 export type StaffInvitationGALine = S["StaffInvitationGALine"];
 export type StaffInvitationGuest = S["StaffInvitationGuest"];
@@ -197,5 +198,8 @@ export type StaffInvitationIssueResponse = S["StaffInvitationIssueResponse"];
 export type StaffInvitationIssuer = S["StaffInvitationIssuer"];
 export type StaffInvitationListItem = S["StaffInvitationListItem"];
 export type StaffInvitationListResponse = S["StaffInvitationListResponse"];
+export type StaffInvitationSession = S["StaffInvitationSession"];
+export type StaffInvitationOrgListItem = S["StaffInvitationOrgListItem"];
+export type StaffInvitationOrgListResponse = S["StaffInvitationOrgListResponse"];
 export type StaffInvitationCancelRequest = S["StaffInvitationCancelRequest"];
 export type StaffInvitationCancelResponse = S["StaffInvitationCancelResponse"];

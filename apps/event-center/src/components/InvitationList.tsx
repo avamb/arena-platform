@@ -1,5 +1,7 @@
 /**
- * 4-4: the issued invitations, newest first, each with the state of its
+ * 4-4: the invitations issued by the OLD route (`complimentary_issuances`),
+ * shown on the screen as "Earlier invitations" next to the new list (INV-04b):
+ * nothing already issued becomes unmanageable. Newest first, each with the state of its
  * letter (`letters[]` of GET .../complimentary, read through the ticket's
  * delivery job because an invitation has no order) and the annul button.
  *
@@ -88,7 +90,19 @@ function InvitationCard({
   );
 }
 
-export function InvitationList({ orgId, canIssue }: { orgId: string; canIssue: boolean }) {
+export function InvitationList({
+  orgId,
+  canIssue,
+  title,
+  intro,
+}: {
+  orgId: string;
+  canIssue: boolean;
+  /** The heading; "Issued invitations" by default. */
+  title?: string;
+  /** A sentence under the heading. */
+  intro?: string;
+}) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<Filter>("all");
@@ -133,7 +147,8 @@ export function InvitationList({ orgId, canIssue }: { orgId: string; canIssue: b
   const ticket = annulling?.tickets[0];
   return (
     <section aria-labelledby="invitations-list-title" data-testid="invitation-list">
-      <h2 id="invitations-list-title">{t("invitations.list.title")}</h2>
+      <h2 id="invitations-list-title">{title ?? t("invitations.list.title")}</h2>
+      {intro !== undefined && <p className="muted">{intro}</p>}
       <div className="tabs" role="group" aria-label={t("invitations.list.filter")}>
         {FILTERS.map((f) => (
           <button

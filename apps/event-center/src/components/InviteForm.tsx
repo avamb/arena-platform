@@ -1,10 +1,14 @@
 /**
  * 4-4: "Invite guests". The web twin of the bot's invitation dialog
  * (eventbot/invite.go): event -> session -> general admission category ->
- * guest list -> a confirmation screen -> ONE issue call per guest (qty 1) with
- * the batch id `web-<operation>-<index>`, so every invitation can be annulled
- * on its own and a retry or a double press replays what was issued, it never
- * mails a guest twice.
+ * guest list -> a confirmation screen -> ONE issue call per guest (one place)
+ * on the staff-invitation route (spec 46, INV-04b), so every invitation is its
+ * own order and can be canceled on its own. Each guest has a request id minted
+ * with the confirmation and kept while the list is unchanged, so a retry or a
+ * double press replays what was issued, it never mails a guest twice.
+ *
+ * A date with a seat map is not issued here: the form links to the seat map of
+ * that date, where seats are picked.
  *
  * The number of tickets is the number of guests. The server stays the
  * authority on free places and on the 50-ticket cap of one round; the screen
@@ -16,25 +20,28 @@
  * (the route already requires it) and are never logged.
  */
 import { useMemo, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ErrorNotice } from "@/components/ErrorNotice";
+import { useEventSessions } from "@/components/staffInvitations/useEventSessions";
 import { Empty, ErrorBox, Loading } from "@/components/ui";
-import { fetchEventSummary, issueInvitation, listSessions, listTiers } from "@/lib/api/endpoints";
+import { issueStaffInvitation, listTiers } from "@/lib/api/endpoints";
 import { filterEvents } from "@/lib/events";
 import { formatDateTime } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import {
   MAX_GUESTS,
-  batchId,
   inviteSessionOk,
   inviteTierOk,
+  isSeatedSession,
   parseGuests,
   sendBlock,
   type Guest,
   type SendBlock,
 } from "@/lib/invitations";
+import { RequestIds, gaIssueRequest } from "@/lib/orgInvitations";
+import { STAFF_INVITATIONS_KEY, isDefinitiveRefusal } from "@/lib/staffInvitations";
 import { useEventsList } from "@/screens/EventsScreen";
-import { useOrg } from "@/screens/OrgLayout";
 
 type Phase = "edit" | "confirm" | "sending" | "done" | "partial";
 
@@ -51,14 +58,9 @@ const BLOCK_KEY: Record<SendBlock, MessageKey> = {
   overFree: "invitations.block.overFree",
 };
 
-function newOperationId(): string {
-  return globalThis.crypto.randomUUID();
-}
-
 export function InviteForm({ orgId }: { orgId: string }) {
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
-  const { access } = useOrg();
   const events = useEventsList(orgId);
   const [eventId, setEventId] = useState("");
   const [sessionId, setSessionId] = useState("");
@@ -68,42 +70,28 @@ export function InviteForm({ orgId }: { orgId: string }) {
   // V1: the organizer's private VIP mark for every ticket of the operation.
   const [vip, setVip] = useState(false);
   const [progress, setProgress] = useState<Progress>({ total: 0, done: 0, failure: null });
-  // Minted when the confirmation is first shown, dropped when anything changes.
-  const operation = useRef<string | null>(null);
+  // One request id per guest: kept while the list, the category and the VIP mark stay, dropped when anything changes.
+  const requestIds = useRef(new RequestIds());
   const sendLock = useRef(false);
 
-  const sessions = useQuery({
-    queryKey: ["sessions", orgId, eventId],
-    queryFn: () => listSessions(orgId, eventId),
-    enabled: eventId !== "",
-  });
-  // The venue's zone for the dates: the summary carries it (needs order.read);
+  // The venue's zone for the dates comes from the event summary (needs order.read);
   // without it the dates are labelled UTC rather than guessed.
-  const summary = useQuery({
-    queryKey: ["eventSummary", orgId, eventId],
-    queryFn: () => fetchEventSummary(orgId, eventId),
-    enabled: eventId !== "" && access.can("order.read"),
-  });
-  const zoneOf = (id: string): string | null => summary.data?.sessions.find((x) => x.id === id)?.venue_timezone ?? null;
+  const { sessions, sorted, zoneOf } = useEventSessions(orgId, eventId);
+  const sessionList = useMemo(() => sorted.filter((s) => inviteSessionOk(s, new Date())), [sorted]);
+  const session = sessionList.find((s) => s.id === sessionId);
+  // A seated date is issued on its seat map, so its categories are not read here.
+  const seated = session !== undefined && isSeatedSession(session);
   const tiers = useQuery({
     queryKey: ["tiers", orgId, eventId, sessionId],
     queryFn: () => listTiers(orgId, eventId, sessionId),
-    enabled: eventId !== "" && sessionId !== "",
+    enabled: eventId !== "" && sessionId !== "" && !seated,
   });
 
   const eventList = useMemo(() => filterEvents(events.data?.events ?? [], "run"), [events.data]);
-  const sessionList = useMemo(
-    () =>
-      [...(sessions.data?.sessions ?? [])]
-        .filter((s) => inviteSessionOk(s, new Date()))
-        .sort((a, b) => a.start_at.localeCompare(b.start_at)),
-    [sessions.data],
-  );
   const tierList = useMemo(
     () => [...(tiers.data?.tiers ?? [])].filter(inviteTierOk).sort((a, b) => a.sort_order - b.sort_order),
     [tiers.data],
   );
-  const session = sessionList.find((s) => s.id === sessionId);
   const tier = tierList.find((x) => x.id === tierId);
   const event = eventList.find((e) => e.id === eventId);
   const parsed = useMemo(() => parseGuests(text), [text]);
@@ -111,7 +99,7 @@ export function InviteForm({ orgId }: { orgId: string }) {
   const block = sendBlock(parsed, free);
 
   const changed = () => {
-    operation.current = null;
+    requestIds.current.reset();
     setPhase("edit");
     setProgress({ total: 0, done: 0, failure: null });
   };
@@ -119,33 +107,28 @@ export function InviteForm({ orgId }: { orgId: string }) {
   const send = async (guests: Guest[], from: number) => {
     if (sendLock.current || session === undefined || tier === undefined) return;
     sendLock.current = true;
-    if (operation.current === null) operation.current = newOperationId();
-    const op = operation.current;
+    const ids = requestIds.current;
     setPhase("sending");
     setProgress({ total: guests.length, done: from, failure: null });
     let done = from;
     try {
       for (let i = from; i < guests.length; i++) {
-        await issueInvitation(orgId, {
-          sessionId: session.id,
-          tierId: tier.id,
-          email: guests[i].email,
-          name: guests[i].name,
-          batchId: batchId(op, i),
-          vip,
-        });
+        await issueStaffInvitation(orgId, session.id, gaIssueRequest(guests[i], tier.id, locale, ids.at(i), vip));
         done = i + 1;
         setProgress({ total: guests.length, done, failure: null });
       }
       setPhase("done");
     } catch (failure) {
+      // The server read the request and refused it: the next try of this guest is a new request.
+      // A dropped connection or a 5xx may have been processed: the next try is the SAME request.
+      if (isDefinitiveRefusal(failure)) ids.renew(done);
       setProgress({ total: guests.length, done, failure });
       setPhase("partial");
     } finally {
       sendLock.current = false;
       // The places, the list and the figures changed whatever happened.
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["invitations", orgId] }),
+        queryClient.invalidateQueries({ queryKey: [STAFF_INVITATIONS_KEY, orgId] }),
         queryClient.invalidateQueries({ queryKey: ["tiers", orgId, eventId, sessionId] }),
         queryClient.invalidateQueries({ queryKey: ["sessionSummary", orgId, sessionId] }),
       ]);
@@ -153,7 +136,7 @@ export function InviteForm({ orgId }: { orgId: string }) {
   };
 
   const reset = () => {
-    operation.current = null;
+    requestIds.current.reset();
     setVip(false);
     setText("");
     setPhase("edit");
@@ -225,9 +208,22 @@ export function InviteForm({ orgId }: { orgId: string }) {
             </>
           )}
 
-          {sessionId !== "" && tiers.isLoading && <Loading />}
-          {sessionId !== "" && tiers.error !== null && <ErrorBox error={tiers.error} onRetry={() => void tiers.refetch()} />}
-          {sessionId !== "" && tiers.data !== undefined && tierList.length === 0 && (
+          {seated && session !== undefined && (
+            <p className="notice" role="status" data-testid="invite-seated">
+              {t("orgInv.issue.seated")}{" "}
+              <Link
+                to="/o/$orgId/events/$eventId/sessions/$sessionId/invitations"
+                params={{ orgId, eventId, sessionId: session.id }}
+                data-testid="invite-seated-link"
+              >
+                {t("orgInv.issue.seatedLink")}
+              </Link>
+            </p>
+          )}
+
+          {sessionId !== "" && !seated && tiers.isLoading && <Loading />}
+          {sessionId !== "" && !seated && tiers.error !== null && <ErrorBox error={tiers.error} onRetry={() => void tiers.refetch()} />}
+          {sessionId !== "" && !seated && tiers.data !== undefined && tierList.length === 0 && (
             <Empty>{t("invitations.issue.noCategories")}</Empty>
           )}
           {tierList.length > 0 && (
@@ -306,7 +302,7 @@ export function InviteForm({ orgId }: { orgId: string }) {
                     className="btn btn-primary"
                     disabled={block !== null}
                     onClick={() => {
-                      operation.current = newOperationId();
+                      requestIds.current.reset();
                       setPhase("confirm");
                     }}
                     data-testid="invite-review"
@@ -334,8 +330,8 @@ export function InviteForm({ orgId }: { orgId: string }) {
                     type="checkbox"
                     checked={vip}
                     onChange={(e) => {
-                      // A different request is a different operation: a new batch id.
-                      operation.current = newOperationId();
+                      // A different request is a different operation: new request ids.
+                      requestIds.current.reset();
                       setVip(e.target.checked);
                     }}
                     data-testid="invite-vip"
