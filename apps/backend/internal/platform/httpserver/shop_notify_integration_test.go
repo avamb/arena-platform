@@ -154,7 +154,7 @@ func TestShopNotify_PaidOrderQueuesTheEmailAndAnnouncesToShopChatsOnly(t *testin
 		t.Fatalf("a chat without the shop kind got %v", tg.sent[ticketsOnly])
 	}
 	msg := tg.sent[logistics][0]
-	for _, want := range []string{"New shop order", "Order #", "Herzl 1", "Haifa", "3100000", "2 × Rosé", "Shipping: 50.0000a0₪", "call before", o.BuyerPhone} {
+	for _, want := range []string{"New shop order", "Order #", "Herzl 1", "Haifa", "3100000", "2 × Rosé", "Shipping: 50.00 ₪", "call before", o.BuyerPhone} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("announcement lacks %q:\n%s", want, msg)
 		}
