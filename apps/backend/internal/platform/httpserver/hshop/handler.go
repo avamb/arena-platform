@@ -27,6 +27,7 @@
 //	GET  /v1/public/shop/checkout/{order_token}
 //	GET  /v1/public/shop/pages/{org_slug}
 //	GET  /v1/public/shop/{org_slug}
+//	GET  /v1/public/shop/{org_slug}/pages/{slug}
 //	GET  /v1/public/shop/{org_slug}/products/{slug}
 //	POST /v1/public/shop/{org_slug}/checkout
 package hshop

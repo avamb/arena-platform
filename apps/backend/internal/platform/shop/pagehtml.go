@@ -124,7 +124,7 @@ func pageAttrs(tag string, in []html.Attribute) (out [][2]string, keep bool) {
 	}
 	switch tag {
 	case "a":
-		if href, ok := get("href"); ok && safeHref(href, "https", "mailto") {
+		if href, ok := get("href"); ok && (safeHref(href, "https", "mailto") || safeRootPath(href)) {
 			out = append(out, [2]string{"href", href}, [2]string{"rel", "noopener noreferrer"})
 		}
 	case "img":
@@ -174,6 +174,26 @@ func safeHref(raw string, schemes ...string) bool {
 		return u.Opaque != "" || u.Path != ""
 	}
 	return false
+}
+
+// safeRootPath accepts a link to another page of the same storefront: a path
+// that starts with ONE slash ("/pages/contact", "/cart?x=1#top"). The theme's
+// own buttons are written that way (a Shopify page body links "/pages/<handle>")
+// and the storefront prefixes such a link with its own base (the organization
+// segment on a platform host), so dropping it left a button that went nowhere.
+// A protocol-relative address ("//host/x"), a backslash form and anything with
+// whitespace or control characters stay refused.
+func safeRootPath(raw string) bool {
+	if len(raw) < 2 || raw[0] != '/' || raw[1] == '/' || raw[1] == '\\' {
+		return false
+	}
+	for _, r := range raw {
+		if r <= ' ' || r == '\\' || r == 0x7f {
+			return false
+		}
+	}
+	u, err := url.Parse(raw)
+	return err == nil && u.Scheme == "" && u.Host == "" && u.Opaque == ""
 }
 
 func smallNumber(v string, maxValue int) bool {

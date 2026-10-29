@@ -5,6 +5,7 @@
  * Dawn CSS styles it.
  */
 import type { ShopData, ShopImage, ShopProduct, ShopVariant } from '../lib/api';
+import { learnedRatio } from '../lib/ratio';
 import type { CartItem } from '../lib/cart';
 import { sized, srcset } from '../lib/cdn';
 import { esc } from '../lib/html';
@@ -72,10 +73,13 @@ export function firstAvailableVariant(p: ShopProduct): ShopVariant {
   return p.variants.find((v) => v.available) ?? p.variants[0];
 }
 
-/** Aspect ratio (width / height) of an image, 1 when unknown. */
+/**
+ * Aspect ratio (width / height) of an image: the size the API gave, else what was
+ * learned when the picture loaded earlier in this tab, else 1 (fitted on load, see lib/ratio.ts).
+ */
 export function ratioOf(img: ShopImage | undefined): number {
   if (img && img.width && img.height) return img.width / img.height;
-  return 1;
+  return (img && learnedRatio(img.url)) || 1;
 }
 
 // ---- price (Dawn snippets/price.liquid) ---------------------------------------
@@ -208,7 +212,8 @@ export function productCard(ctx: Ctx, p: ShopProduct, o: CardOpts): string {
 
   return `<div class="card-wrapper product-card-wrapper underline-links-hover">
     <div
-      class="card card--standard ${first ? 'card--media' : 'card--text'}"
+      class="card card--standard ${first ? 'card--media' : 'card--text'}"${o.square ? `
+      data-square` : ''}
       style="--ratio-percent: ${pct}%;"
     >
       <div
@@ -298,4 +303,11 @@ function quickAdd(ctx: Ctx, p: ShopProduct, sid: string): string {
                       ${spinner()}
                     </div>
                   </button></form></product-form></div>`;
+}
+
+/** "Электронная почта: <address>" from the shop settings; nothing when the shop names no address. */
+export function contactLine(email: string | null | undefined, cls: string): string {
+  const e = (email ?? '').trim();
+  if (e === '') return '';
+  return `<p class="${cls}">${T.contactEmailLabel} <a href="mailto:${esc(e)}" class="link">${esc(e)}</a></p>`;
 }

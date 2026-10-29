@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
 
 func TestCleanHTML_StripsEverythingButTheSubset(t *testing.T) {
@@ -190,5 +192,63 @@ func TestShopifyHostedImages(t *testing.T) {
 	}
 	if len(shopifyHostedImages(`<p>no pictures</p>`)) != 0 {
 		t.Error("no pictures, no warning")
+	}
+}
+
+func TestLegacySlugFor(t *testing.T) {
+	cases := []struct {
+		name string
+		m    PageMapping
+		slug string
+		want string
+	}{
+		{"decoded cyrillic handle", PageMapping{File: "pages__наши-мероприятия.html"}, "events", "наши-мероприятия"},
+		{"percent-encoded handle", PageMapping{File: "pages__%D0%9E-%D0%BD%D0%B0%D1%81.html"}, "about", "о-нас"},
+		{"decomposed unicode becomes NFC", PageMapping{File: "pages__й.html"}, "x", "й"},
+		{"same as the slug", PageMapping{File: "pages__contact.html"}, "contact", ""},
+		{"policy files have none", PageMapping{File: "policies__refund-policy.html"}, "refund", ""},
+		{"explicit mapping wins", PageMapping{File: "policies__terms.html", LegacySlug: "Условия"}, "terms", "условия"},
+		{"unusable handle is no alias", PageMapping{File: "pages__a%2Fb.html"}, "x", ""},
+	}
+	for _, c := range cases {
+		if got := legacySlugFor(c.m, c.slug); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestLoadPages_FillsTheLegacySlugFromTheFileName(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pages__%D0%BE-%D0%BD%D0%B0%D1%81.html"), []byte(themePage), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pages, problems := LoadPages(dir, []PageMapping{{File: "pages__о-нас.html", Slug: "about", Position: 10}}, "")
+	if len(problems) != 0 || len(pages) != 1 || pages[0].LegacySlug != "о-нас" {
+		t.Fatalf("pages=%+v problems=%v", pages, problems)
+	}
+}
+
+// The "Напишите нам" button of the partners page links "/pages/contact". The
+// importer's cleaning and the shop's page sanitizer, in that order, must both
+// leave the address in place (finding H-01).
+func TestPartnersButtonKeepsItsLink(t *testing.T) {
+	doc := `<html><body><main id="MainContent"><section class="shopify-section">` +
+		`<div class="rte"><h1>Наши партнеры</h1><p>Станьте партнером.</p>` +
+		`<a class="button button--primary" href="/pages/contact">Напишите нам</a></div></section></main></body></html>`
+	for _, base := range []string{"", "https://www.einatwinery.com"} {
+		p, err := ExtractPage(doc, base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(p.BodyHTML, `href=`) || !strings.Contains(p.BodyHTML, "/pages/contact") {
+			t.Fatalf("base %q: the importer lost the link: %s", base, p.BodyHTML)
+		}
+		stored, err := shop.SanitizeBody(p.BodyHTML, shop.PageBodyProfile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(stored, `<a href=`) || !strings.Contains(stored, "/pages/contact") || strings.Contains(stored, "<a>") {
+			t.Errorf("base %q: the shop's sanitizer dropped the link: %s", base, stored)
+		}
 	}
 }

@@ -16644,6 +16644,9 @@ type ShopImage struct {
 	// Alt Alternative text.
 	Alt string `json:"alt"`
 
+	// Height Height of the picture in pixels, read from its header at upload; absent when the size was never recorded.
+	Height *int32 `json:"height"`
+
 	// MediaId The media object.
 	MediaId openapi_types.UUID `json:"media_id"`
 
@@ -16652,6 +16655,9 @@ type ShopImage struct {
 
 	// Url Signed download address of the picture; empty when it cannot be signed.
 	Url string `json:"url"`
+
+	// Width Width of the picture in pixels, read from its header at upload; absent when the size was never recorded (a picture uploaded before sizes were read and not yet re-imported).
+	Width *int32 `json:"width"`
 }
 
 // ShopImageAddRequest A picture to attach.
@@ -16806,13 +16812,16 @@ type ShopOrderPayment struct {
 
 // ShopPage A static storefront page.
 type ShopPage struct {
-	// BodyHtml Page text, sanitized HTML (the rich-text tags plus pictures and tables).
+	// BodyHtml Page text, sanitized HTML (the rich-text tags plus pictures and tables). A link to another page of the same storefront may be a root path such as `/pages/contact`; the storefront puts its own base in front of it.
 	BodyHtml string `json:"body_html"`
+
+	// LegacySlug The handle the page had on the shop it was imported from, when that differs from `slug` (for example a Cyrillic `наши-мероприятия` for `events`); null when the page has no other address. `GET /v1/public/shop/{org_slug}/pages/{slug}` resolves it as an alias. Set by the import, not by `PUT`.
+	LegacySlug *string `json:"legacy_slug"`
 
 	// Position Display order.
 	Position int32 `json:"position"`
 
-	// Slug Address of the page.
+	// Slug Address of the page. Always the canonical one, even when the page was asked for by its old address.
 	Slug string `json:"slug"`
 
 	// Title Page title.
@@ -17000,6 +17009,12 @@ type ShopPublicOrg struct {
 
 	// Slug Organization slug.
 	Slug string `json:"slug"`
+}
+
+// ShopPublicPageResponse One storefront page.
+type ShopPublicPageResponse struct {
+	// Page The page; its `slug` is the canonical one.
+	Page ShopPage `json:"page"`
 }
 
 // ShopPublicProduct A product on the storefront.
@@ -19998,8 +20013,21 @@ type GetV1MediaFileParams struct {
 	// Expires Unix-seconds expiry timestamp embedded in the signed URL.
 	Expires int64 `form:"expires" json:"expires"`
 
-	// Sig HMAC-SHA256 signature over `id:expires`. Required in production; optional in dev when no MEDIA_SIGNING_SECRET is set.
+	// Sig HMAC-SHA256 signature over `id:expires`. Required in production; optional in dev when no MEDIA_SIGNING_SECRET is set. The signature does not cover `w`, so a width can be added to a URL that was signed without it.
 	Sig *string `form:"sig,omitempty" json:"sig,omitempty"`
+
+	// W Ask for a smaller copy of a JPEG or PNG picture, this many pixels wide.
+	// Only the widths 165, 240, 360, 480, 533, 720, 990 and 1200 exist: any
+	// other value is rounded UP to the next one, and a value above 1200 means
+	// the original. A picture is never enlarged, so a width at or above the
+	// original's returns the original bytes. The aspect ratio and the format
+	// are kept (JPEG at quality 82). Any other format (GIF, WebP, SVG, PDF), a
+	// picture over 40 megapixels and a copy that cannot be built are served
+	// as the original. Copies are rendered once and stored beside the original.
+	// Not a whole number: 400 `media.invalid_width`. Works for the local
+	// storage backend and for any request that reaches this route; a presigned
+	// S3 URL goes to the bucket directly and ignores it.
+	W *int `form:"w,omitempty" json:"w,omitempty"`
 }
 
 // GetOnboardingApplicationParams defines parameters for GetOnboardingApplication.

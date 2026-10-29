@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { encodePath, href, isPlatformHost, locate, parseShopPath } from '../lib/route';
+import { canonicalPagePath, encodePath, href, isPlatformHost, locate, parseShopPath } from '../lib/route';
 
 describe('isPlatformHost', () => {
   it('knows the platform and dev hosts', () => {
@@ -86,5 +86,19 @@ describe('href', () => {
   it('encodePath is idempotent', () => {
     expect(encodePath('/a/ж')).toBe('/a/%D0%B6');
     expect(encodePath(encodePath('/a/ж'))).toBe('/a/%D0%B6');
+  });
+});
+
+describe('canonicalPagePath', () => {
+  it('does nothing when the answer names no slug or the same one', () => {
+    expect(canonicalPagePath('/einat', 'about', undefined, false)).toBeNull();
+    expect(canonicalPagePath('/einat', 'about', 'about', false)).toBeNull();
+  });
+  it('points an old handle at the canonical page', () => {
+    expect(canonicalPagePath('/einat', 'о-нас', 'about', false)).toBe('/einat/pages/about');
+    expect(canonicalPagePath('', 'о-нас', 'about', false)).toBe('/pages/about');
+  });
+  it('keeps policies under /policies', () => {
+    expect(canonicalPagePath('/einat', 'privacy', 'privacy-policy', true)).toBe('/einat/policies/privacy-policy');
   });
 });

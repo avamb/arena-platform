@@ -229,6 +229,8 @@ interface WireCatalog {
 }
 interface WirePage {
   slug: string;
+  /** The handle the page had on the shop it was imported from (a Cyrillic /pages/ address). */
+  legacy_slug?: string | null;
   title: string;
   body_html: string;
   position?: number;
@@ -424,7 +426,9 @@ export function getPage(orgSlug: string, slug: string): Promise<ShopPage> {
     all.catch(() => pagesMemo.delete(orgSlug));
   }
   return all.then((pages) => {
-    const p = pages.find((x) => x.slug === slug);
+    // An old address (legacy_slug) opens the same page; the answer carries the canonical slug.
+    const key = slug.normalize('NFC').toLowerCase();
+    const p = pages.find((x) => x.slug === slug) ?? pages.find((x) => x.legacy_slug != null && x.legacy_slug === key);
     if (!p) throw new ApiError(404, 'shop.page_not_found', 'page not found');
     return { slug: p.slug, title: p.title, body_html: p.body_html, kind: isPolicySlug(p.slug) ? 'policy' : 'pages' };
   });

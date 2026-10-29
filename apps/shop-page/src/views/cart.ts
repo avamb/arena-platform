@@ -4,7 +4,7 @@
  * Markup is Dawn 11's main-cart-items / main-cart-footer /
  * cart-notification-product sections.
  */
-import { subtotalMinor, type CartLine } from '../lib/cart';
+import { qtyLimitMessage, subtotalMinor, type CartLine } from '../lib/cart';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
 import { T } from '../lib/i18n';
@@ -38,8 +38,11 @@ function optionLines(line: CartLine): string {
                       <p class="product-option"></p>`;
 }
 
-function lineRow(ctx: Ctx, line: CartLine, index: number): string {
+function lineRow(ctx: Ctx, line: CartLine, index: number, limitedVariant: string | null): string {
   const n = index + 1;
+  const max = ctx.shop.settings.max_line_qty;
+  const atMax = line.qty >= max;
+  const limitNote = qtyLimitMessage(max);
   const img = line.product.images[0];
   const link = esc(url(ctx, '/products/' + line.product.slug));
   const title = esc(line.product.title);
@@ -108,7 +111,7 @@ function lineRow(ctx: Ctx, line: CartLine, index: number): string {
                               id="Quantity-${n}"
                               data-index="${n}"
                             >
-                            <button class="quantity__button no-js-hidden" name="plus" type="button">
+                            <button class="quantity__button no-js-hidden" name="plus" type="button"${atMax ? ` aria-disabled="true" title="${esc(limitNote)}"` : ''}>
                               <span class="visually-hidden">Увеличить количество ${title}</span>
                               ${icon('plus')}
                             </button>
@@ -129,7 +132,7 @@ function lineRow(ctx: Ctx, line: CartLine, index: number): string {
                         </cart-remove-button>
                       </div>
                       <div class="cart-item__error" id="Line-item-error-${n}" role="alert">
-                        <small class="cart-item__error-text"></small>
+                        <small class="cart-item__error-text">${limitedVariant === line.variant.id ? esc(limitNote) : ''}</small>
                         ${icon('error')}
                       </div>
                     </quantity-popover>
@@ -139,7 +142,7 @@ function lineRow(ctx: Ctx, line: CartLine, index: number): string {
                 </tr>`;
 }
 
-export function cartItemsTable(ctx: Ctx, lines: CartLine[]): string {
+export function cartItemsTable(ctx: Ctx, lines: CartLine[], limitedVariant: string | null = null): string {
   if (lines.length === 0) return '';
   return `<table class="cart-items">
             <caption class="visually-hidden">
@@ -166,11 +169,12 @@ export function cartItemsTable(ctx: Ctx, lines: CartLine[]): string {
               </tr>
             </thead>
 
-            <tbody>${lines.map((l, i) => lineRow(ctx, l, i)).join('')}</tbody>
+            <tbody>${lines.map((l, i) => lineRow(ctx, l, i, limitedVariant)).join('')}</tbody>
           </table>`;
 }
 
-export function cartView(ctx: Ctx, lines: CartLine[]): string {
+/** `limitedVariant`: the line whose typed quantity was cut to the shop's limit (its note is shown once). */
+export function cartView(ctx: Ctx, lines: CartLine[], limitedVariant: string | null = null): string {
   const empty = lines.length === 0;
   const all = esc(url(ctx, '/collections/all'));
   const subtotal = money(ctx, subtotalMinor(lines));
@@ -188,7 +192,7 @@ export function cartView(ctx: Ctx, lines: CartLine[]): string {
   </div>
   <form action="${esc(url(ctx, '/cart'))}" class="cart__contents critical-hidden" method="post" id="cart">
     <div class="cart__items" id="main-cart-items" data-id="cart__items">
-      <div class="js-contents">${cartItemsTable(ctx, lines)}</div>
+      <div class="js-contents">${cartItemsTable(ctx, lines, limitedVariant)}</div>
     </div>
     <p class="visually-hidden" id="cart-live-region-text" aria-live="polite" role="status"></p>
   </form>
@@ -227,7 +231,7 @@ export function cartView(ctx: Ctx, lines: CartLine[]): string {
 }
 
 /** Rows of the "item added to the cart" notification (Dawn's cart-notification-product). */
-export function notificationProduct(line: CartLine): string {
+export function notificationProduct(line: CartLine, limitNote?: string): string {
   const img = line.product.images[0];
   const image = img
     ? `<div class="cart-notification-product__image global-media-settings">
@@ -252,6 +256,7 @@ export function notificationProduct(line: CartLine): string {
   return `${image}
       <div>
         <h3 class="cart-notification-product__name h4">${esc(line.product.title)}</h3>
-        <dl>${option}</dl>
+        <dl>${option}</dl>${limitNote ? `
+        <p class="cart-notification-product__limit caption" role="status">${esc(limitNote)}</p>` : ''}
       </div>`;
 }
