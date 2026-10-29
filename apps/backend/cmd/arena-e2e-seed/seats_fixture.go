@@ -187,7 +187,9 @@ func applySeatsFixture(ctx context.Context, tx pgx.Tx) error {
 		{"tickets", `DELETE FROM tickets WHERE session_id = $1`},
 		{"payments", `DELETE FROM payment_intents WHERE checkout_session_id IN (` + sessionCheckouts + `)`},
 		{"orders", `DELETE FROM orders WHERE session_id = $1`},
-		{"consents", `DELETE FROM checkout_consents WHERE checkout_session_id IN (` + sessionCheckouts + `)`},
+		// checkout_consents are never deleted (dispute evidence, retention guard in
+		// tests/staticanalysis). Staff invitations write none, and the seats
+		// fixture is never bought through the public checkout.
 		{"checkout sessions", `DELETE FROM checkout_sessions WHERE reservation_id IN (` + sessionReservations + `)`},
 		{"held places", `DELETE FROM reservation_seats WHERE reservation_id IN (` + sessionReservations + `)`},
 		{"batches", `DELETE FROM session_seat_batches WHERE session_id = $1`},
