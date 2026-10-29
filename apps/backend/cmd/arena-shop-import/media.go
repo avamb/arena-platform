@@ -37,6 +37,7 @@ type mediaStore interface {
 	GetByID(ctx context.Context, id uuid.UUID) (mediastore.Object, error)
 	PutAndStream(ctx context.Context, key, contentType string, body io.Reader) (string, int64, error)
 	Backend() string
+	SetDimensionsIfMissing(ctx context.Context, id uuid.UUID, width, height int32) (bool, error)
 }
 
 // imageData is a downloaded or locally read picture.

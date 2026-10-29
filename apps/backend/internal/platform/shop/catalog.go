@@ -8,6 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	unorm "golang.org/x/text/unicode/norm"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
@@ -817,6 +819,60 @@ func (s *Service) PutPage(ctx context.Context, orgID uuid.UUID, slug, title, bod
 		return gen.ShopPageRow{}, err
 	}
 	return s.q.UpsertShopPage(ctx, orgID, norm, title, body, position)
+}
+
+// GetPage returns the page a public request names: by slug, or failing that by
+// the handle the page had on the shop it was imported from (legacy_slug). The
+// row carries the canonical slug whichever address was asked for.
+func (s *Service) GetPage(ctx context.Context, orgID uuid.UUID, slug string) (gen.ShopPageRow, error) {
+	if err := s.ready(); err != nil {
+		return gen.ShopPageRow{}, err
+	}
+	norm, ok := NormalizeSlug(unorm.NFC.String(slug))
+	if !ok {
+		return gen.ShopPageRow{}, ErrPageNotFound
+	}
+	p, err := s.q.GetShopPageBySlugOrLegacy(ctx, orgID, norm)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.ShopPageRow{}, ErrPageNotFound
+	}
+	return p, err
+}
+
+// SetPageLegacySlug records the old address of a page (nil clears it). The
+// value goes through the same normalization as a slug, in NFC, and a value
+// equal to the page's own slug is stored as no alias. A handle another page of
+// the organization already holds is a 409.
+func (s *Service) SetPageLegacySlug(ctx context.Context, orgID uuid.UUID, slug string, legacy *string) error {
+	if err := s.ready(); err != nil {
+		return err
+	}
+	norm, ok := NormalizeSlug(slug)
+	if !ok {
+		return ErrPageNotFound
+	}
+	var val *string
+	if legacy != nil {
+		l, ok := NormalizeSlug(unorm.NFC.String(*legacy))
+		if !ok {
+			return invalid("shop.invalid_slug", "legacy slug must be 1-200 characters without spaces, '/', '?' or '#'")
+		}
+		if l != norm {
+			val = &l
+		}
+	}
+	found, err := s.q.SetShopPageLegacySlug(ctx, orgID, norm, val)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return newErr(http.StatusConflict, "shop.legacy_slug_taken", "another page of this shop already has that old address")
+	}
+	if err != nil {
+		return err
+	}
+	if !found {
+		return ErrPageNotFound
+	}
+	return nil
 }
 
 // DeletePage removes a static page.

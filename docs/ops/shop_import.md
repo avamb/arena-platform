@@ -62,6 +62,12 @@ Rules that matter:
   otherwise downloaded from the CSV URL. The bytes decide the type (jpeg, png,
   webp, gif, up to 15 MB). A picture that cannot be read is listed under
   "missing images" and the product is still imported.
+* **Picture size**: the width and height in pixels are read from the
+  picture's header and stored on its media object (`media_objects.width` /
+  `height`); the product answers carry them so a storefront card can keep the
+  picture's aspect before it loads. On a re-run, a picture that is already
+  attached but has no size yet gets it filled in ("picture size filled in" in
+  the report); a recorded size is never overwritten.
 * **Customers: all of them, with all their marketing consents** (owner
   decision 2026-10-28). They are on by default: when `--products` is given
   and `customers_export.csv` sits in the same folder (Shopify's own file name),
@@ -225,6 +231,42 @@ before the next step:
 4. customers ride along by default (the owner decided to move all of them with
    their consents). `--skip-customers` holds them back for a separate step;
 5. run step 2 once more: every line must read "unchanged".
+
+Old page addresses (migration 0174). A page file named `pages__<handle>.html`
+gives the page its old Shopify address: when the handle differs from the new
+slug (`pages__наши-мероприятия.html` -> slug `events`) it is stored as
+`shop_pages.legacy_slug`, and `GET /v1/public/shop/{org_slug}/pages/{slug}`
+answers either address with the canonical slug. A page imported before that
+gets its old address from a plain re-run of the same command (the report says
+"updated" once, then "unchanged"). A mapping entry may also carry an explicit
+`"legacy_slug"`. A single-variant product loses the `Default Title` option
+value on the same re-run.
+
+### Filling in the size of pictures imported earlier
+
+Pictures imported before the importer recorded sizes (the 68 pictures of
+Einat Winery on the staging stand, 2026-10-28) have no width and height, and
+a migration cannot add them: the bytes live in the media store, not in the
+database. Run the same products import once more, with the same CSV (and the
+same `--images-dir` if the first run had one), without `--only-new` and
+without `--dry-run`, for instance with `--skip-customers --skip-settings` and
+no `--pages`. Every picture is read again, recognised by its checksum, and its
+size is filled in; the report shows "picture size filled in" with the count,
+and nothing is uploaded twice. Check afterwards:
+
+```sql
+SELECT count(*) FILTER (WHERE m.width IS NULL) AS without_size, count(*) AS total
+FROM shop_product_images i JOIN media_objects m ON m.id = i.media_id
+JOIN shop_products p ON p.id = i.product_id WHERE p.org_id = '<org uuid>';
+```
+
+Note that this re-run, like any re-run without `--only-new`, also writes back
+the title, description, status, type, vendor, options and variants of a
+product whose stored values differ from the CSV, so do it before the organizer
+starts editing products. `--only-new` leaves existing products, and so their
+pictures, untouched. A picture added by hand after this change gets its size
+at upload (`POST /v1/media` reads it); one added by hand before it and not in
+the CSV stays without a size, and the storefront has to fall back for it.
 
 ## Dry run on the real export (counts only)
 
