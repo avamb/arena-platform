@@ -343,14 +343,15 @@ test.describe("invitations (live)", () => {
     expect(items[0].session.id).toBe(SESSION_ID);
   });
 
-  test("more guests than free places is refused before anything is sent, and 51 guests are too many", async ({ page }) => {
+  test("more guests than free places is only a hint (closed places count too), and 51 guests are too many", async ({ page }) => {
     const calls = trackApi(page);
     await openScreen(page, "org_admin");
     await pickCategory(page);
     const many = (n: number) => Array.from({ length: n }, (_, i) => `inv-many-${i}@example.test`).join("\n");
     await page.getByTestId("invite-guests").fill(many(PLACES + 1));
-    await expect(page.getByTestId("invite-block")).toContainText(`free places (${PLACES})`);
-    await expect(page.getByTestId("invite-review")).toBeDisabled();
+    await expect(page.getByTestId("invite-over-free")).toContainText(`free places (${PLACES})`);
+    await expect(page.getByTestId("invite-block")).toHaveCount(0);
+    await expect(page.getByTestId("invite-review")).toBeEnabled();
     await page.getByTestId("invite-guests").fill(many(51));
     await expect(page.getByTestId("invite-block")).toContainText("more than 50");
     await expect(page.getByTestId("invite-review")).toBeDisabled();
