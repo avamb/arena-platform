@@ -90,6 +90,7 @@ func (s *Server) shopHandler() *hshop.Handler {
 		ReturnPolicy: s.checkoutReturnURLPolicy(),
 		Window:       widgetPaymentWindow(s.cfg),
 		Grace:        widgetPaymentGrace(s.cfg),
+		Bundle:       s.bundle,
 	}
 	if starter := s.hostedPaymentStarter(); starter != nil {
 		opts.Payments = starter

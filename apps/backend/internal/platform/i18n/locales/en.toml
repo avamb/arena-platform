@@ -4682,3 +4682,6 @@ other = "Plan «{{.Plan}}»: {{.Seats}} places, {{.Count}} categories with price
 
 ["bot.wz.t_date_seated_note"]
 other = "A date sold by a seating plan keeps its places and categories. Only the prices change."
+
+["shop.payment.description"]
+other = "{{.Org}}, order {{.Number}}"

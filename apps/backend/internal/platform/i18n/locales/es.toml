@@ -4534,3 +4534,6 @@ other = "Plano «{{.Plan}}»: {{.Seats}} plazas, {{.Count}} categorías con prec
 
 ["bot.wz.t_date_seated_note"]
 other = "Una fecha vendida por plano mantiene sus plazas y categorías. Solo cambian los precios."
+
+["shop.payment.description"]
+other = "{{.Org}}, pedido n.º {{.Number}}"

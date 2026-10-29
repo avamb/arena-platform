@@ -4676,3 +4676,6 @@ other = "Схема «{{.Plan}}»: мест {{.Seats}}, категорий с ц
 
 ["bot.wz.t_date_seated_note"]
 other = "У сеанса со схемой места и категории остаются как есть. Меняются только цены."
+
+["shop.payment.description"]
+other = "{{.Org}}, заказ № {{.Number}}"
