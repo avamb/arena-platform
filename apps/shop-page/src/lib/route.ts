@@ -128,6 +128,16 @@ export function encodePath(path: string): string {
 }
 
 /**
+ * The address a page should live at when the API answers with a canonical `slug` that
+ * differs from the one in the URL (an old or aliased handle). null = already canonical or
+ * the answer names no slug.
+ */
+export function canonicalPagePath(base: string, requested: string, canonical: string | undefined, policy: boolean): string | null {
+  if (!canonical || canonical === requested) return null;
+  return href(base, `/${policy ? 'policies' : 'pages'}/${canonical}`);
+}
+
+/**
  * Prefixes a shop-relative path ("/products/x", "/cart?foo=1") with the base.
  * Absolute URLs and anchors are returned untouched.
  */

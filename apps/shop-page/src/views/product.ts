@@ -8,6 +8,7 @@
 import type { ShopProduct, ShopVariant } from '../lib/api';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
+import { qtyLimitMessage } from '../lib/cart';
 import { sanitizeHtml } from '../lib/sanitize';
 import { T } from '../lib/i18n';
 import { icon, priceBlock, productCard, ratioOf, spinner, url, firstAvailableVariant, type Ctx } from './common';
@@ -339,7 +340,7 @@ ${priceBlock(ctx, p, { variant: selected, showBadges: true, large: true })}</div
                       value="1"
                       form="product-form-${SID}"
                     />
-                    <button class="quantity__button no-js-hidden" name="plus" type="button">
+                    <button class="quantity__button no-js-hidden" name="plus" type="button"${ctx.shop.settings.max_line_qty <= 1 ? ` aria-disabled="true" title="${esc(qtyLimitMessage(ctx.shop.settings.max_line_qty))}"` : ''}>
                       <span class="visually-hidden">Увеличить количество ${title}</span>
                       ${icon('plus')}
                     </button>
