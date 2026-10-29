@@ -5,10 +5,15 @@
  */
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/http";
+import { CATALOGS, LOCALES, type MessageKey } from "@/lib/i18n";
 import type { ShopImage, ShopProduct, ShopSettings, ShopVariant } from "@/lib/api/types";
 import {
   EMPTY_FILTERS,
   canCancelShopOrder,
+  canEditTracking,
+  isShipped,
+  orderStatusLabelKey,
+  paymentRefundKind,
   canRefundShopOrder,
   canShip,
   checkRefund,
@@ -344,5 +349,74 @@ describe("the money-cycle run: stock, delivery and history (M-01, M-03, M-04)", 
     expect(expired.map((e) => e.kind)).toEqual(["created", "expired"]);
     expect(expired[1].at).toBe("2026-10-29T16:16:00Z");
     expect(orderTimeline({ ...base, status: "expired", expires_at: null }).map((e) => e.kind)).toEqual(["created"]);
+  });
+});
+
+describe("shipped-ness survives a refund (M-10)", () => {
+  const SHIPPED = "2026-10-29T10:00:00Z";
+  const statuses = ["paid", "shipped", "partially_refunded", "refunded", "manual_review", "pending_payment", "cancelled", "expired"];
+
+  it("never offers 'mark shipped' again once shipped_at is set, whatever the status", () => {
+    for (const status of statuses) expect(canShip(status, true, "shipping", SHIPPED), status).toBe(false);
+  });
+
+  it("still offers it to a paid, a partly refunded and a parked order that was not shipped", () => {
+    for (const status of ["paid", "partially_refunded", "manual_review"]) {
+      expect(canShip(status, true, "shipping", null), status).toBe(true);
+      expect(canShip(status, true, "shipping", undefined), status).toBe(true);
+    }
+    for (const status of ["pending_payment", "cancelled", "expired", "refunded", "shipped"]) expect(canShip(status, true, "shipping", null), status).toBe(false);
+  });
+
+  it("lets a shipped order keep its tracking note, also after a partial refund, but not after a full one", () => {
+    expect(canEditTracking("shipped", true, SHIPPED)).toBe(true);
+    expect(canEditTracking("partially_refunded", true, SHIPPED)).toBe(true);
+    expect(canEditTracking("partially_refunded", true, null)).toBe(false);
+    expect(canEditTracking("refunded", true, SHIPPED)).toBe(false);
+    expect(canEditTracking("shipped", false, SHIPPED)).toBe(false);
+  });
+
+  it("knows an order is shipped from the status or from shipped_at", () => {
+    expect(isShipped({ status: "shipped" })).toBe(true);
+    expect(isShipped({ status: "partially_refunded", shipped_at: SHIPPED })).toBe(true);
+    expect(isShipped({ status: "refunded", shipped_at: SHIPPED })).toBe(true);
+    expect(isShipped({ status: "partially_refunded", shipped_at: null })).toBe(false);
+    expect(isShipped({ status: "paid" })).toBe(false);
+  });
+
+  it("names both facts on the badge of a refunded order that had been shipped", () => {
+    expect(orderStatusLabelKey("partially_refunded", SHIPPED)).toBe("shop.order.status.shipped_partially_refunded");
+    expect(orderStatusLabelKey("refunded", SHIPPED)).toBe("shop.order.status.shipped_refunded");
+    expect(orderStatusLabelKey("partially_refunded", null)).toBe("shop.order.status.partially_refunded");
+    expect(orderStatusLabelKey("refunded")).toBe("shop.order.status.refunded");
+    expect(orderStatusLabelKey("shipped", SHIPPED)).toBe("shop.order.status.shipped");
+    expect(orderStatusLabelKey("paid", null)).toBe("shop.order.status.paid");
+    expect(orderStatusLabelKey("mystery", null)).toBeNull();
+  });
+
+  it("has a badge text for every combination in all three locales", () => {
+    for (const locale of LOCALES) {
+      for (const status of statuses) {
+        for (const at of [null, SHIPPED]) {
+          const key = orderStatusLabelKey(status, at);
+          expect(key, `${status} ${at}`).not.toBeNull();
+          expect(CATALOGS[locale][key as MessageKey], `${locale} ${key}`).toBeTruthy();
+        }
+      }
+    }
+  });
+});
+
+describe("the payment block after a refund (M-12)", () => {
+  const base = { status: "paid", total: 25000, refunded_minor: 0 };
+  it("says nothing special for an order with no refund or whose payment did not succeed", () => {
+    expect(paymentRefundKind(base, "succeeded")).toBeNull();
+    expect(paymentRefundKind({ ...base, refunded_minor: 100 }, "failed")).toBeNull();
+    expect(paymentRefundKind({ ...base, refunded_minor: 100 }, null)).toBeNull();
+  });
+  it("says 'partly' for a part of the money and 'refunded' for all of it", () => {
+    expect(paymentRefundKind({ status: "partially_refunded", total: 74000, refunded_minor: 5000 }, "succeeded")).toBe("partly");
+    expect(paymentRefundKind({ status: "refunded", total: 25000, refunded_minor: 25000 }, "succeeded")).toBe("refunded");
+    expect(paymentRefundKind({ status: "paid", total: 25000, refunded_minor: 25000 }, "succeeded")).toBe("refunded");
   });
 });

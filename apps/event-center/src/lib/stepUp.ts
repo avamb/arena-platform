@@ -10,14 +10,37 @@
  * keeps the organization next to the token and gives it out only for that
  * organization.
  *
- * The token lives in memory only: never in storage, never in the address.
- * Sign-out forgets it. Refunds arrive in phase R5; this is the mechanism
- * they call (`withStepUp`).
+ * The token is NOT kept in the address or in localStorage. It is kept in
+ * memory and mirrored in the tab's sessionStorage (M-11): the dialog promises
+ * that the confirmation lasts 5 minutes, and a full page load (opening the
+ * next order by its address, a reload) used to wipe the memory copy and ask
+ * for the password again. sessionStorage dies with the tab, is read only for
+ * the same organization and until the token's end, and the refresh token of
+ * the sign-in already sits in the same storage, so this adds no reach to
+ * anyone who could read it. Sign-out forgets both copies.
  */
 import { ApiError, call } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type { AuthStepUpResponse } from "@/lib/api/types";
 import type { MessageKey } from "@/lib/i18n/en";
+
+/** The part of Web Storage the store uses (so it can be tested without a browser). */
+export interface StepUpStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+const STORAGE_KEY = "arena.events.stepup";
+
+/** The tab's sessionStorage, or null when the browser refuses it. */
+function tabStorage(): StepUpStorage | null {
+  try {
+    return typeof sessionStorage === "undefined" ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+}
 
 export const STEP_UP_HEADER = "X-Step-Up-Token";
 
@@ -29,10 +52,14 @@ export class StepUpStore {
   private orgId: string | null = null;
   private expiresAt = 0;
 
-  constructor(private readonly now: () => number = Date.now) {}
+  constructor(
+    private readonly now: () => number = Date.now,
+    private readonly storage: StepUpStorage | null = null,
+  ) {}
 
   /** The token of orgId while it still covers a request, else null. */
   current(orgId: string): string | null {
+    if (this.token === null) this.restore();
     if (this.token === null || this.orgId !== orgId || this.expiresAt - this.now() <= MARGIN_MS) return null;
     return this.token;
   }
@@ -41,16 +68,45 @@ export class StepUpStore {
     this.token = token;
     this.orgId = orgId;
     this.expiresAt = expiresAt;
+    try {
+      this.storage?.setItem(STORAGE_KEY, JSON.stringify({ token, orgId, expiresAt }));
+    } catch {
+      // Storage full or blocked: the memory copy still works until a reload.
+    }
   }
 
   clear(): void {
     this.token = null;
     this.orgId = null;
     this.expiresAt = 0;
+    try {
+      this.storage?.removeItem(STORAGE_KEY);
+    } catch {
+      // Nothing to forget in a storage that cannot be reached.
+    }
+  }
+
+  /** After a page load the memory is empty: take back the tab's copy while it is still valid. */
+  private restore(): void {
+    if (this.storage === null) return;
+    try {
+      const raw = this.storage.getItem(STORAGE_KEY);
+      if (raw === null) return;
+      const v = JSON.parse(raw) as { token?: unknown; orgId?: unknown; expiresAt?: unknown };
+      if (typeof v.token === "string" && typeof v.orgId === "string" && typeof v.expiresAt === "number" && v.expiresAt - this.now() > MARGIN_MS) {
+        this.token = v.token;
+        this.orgId = v.orgId;
+        this.expiresAt = v.expiresAt;
+      } else {
+        this.storage.removeItem(STORAGE_KEY);
+      }
+    } catch {
+      // A damaged copy is no confirmation: the password is asked again.
+    }
   }
 }
 
-export const stepUp = new StepUpStore();
+export const stepUp = new StepUpStore(Date.now, tabStorage());
 
 /** Checks the password for orgId and keeps the token. Throws ApiError on a refusal. */
 export async function confirmPassword(password: string, orgId: string, store: StepUpStore = stepUp): Promise<void> {

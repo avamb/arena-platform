@@ -593,6 +593,48 @@ func TestShop_PartialThenFullRefund(t *testing.T) {
 	}
 }
 
+// M-10: a refund after shipping must not make the order shippable again. The
+// shipped fact (shipped_at) survives, and a second "ship" only changes the
+// note: the status stays partially_refunded, shipped_at does not move and no
+// second shipping letter or event is queued.
+func TestShop_ShippedThenPartiallyRefundedIsNotShippedTwice(t *testing.T) {
+	f := newShopFixture(t)
+	_, variant := f.openShop(4500, 3)
+	code, body := f.checkout(variant, 2)
+	if code != http.StatusCreated {
+		t.Fatalf("checkout = %d %v", code, body)
+	}
+	token := body["order_token"].(string)
+	f.pay(token)
+	o, _ := f.q.GetShopOrderByToken(context.Background(), token)
+	base := "/orders/" + o.ID.String()
+
+	code, body, _ = f.do(http.MethodPost, f.orgPath(f.orgA, base+"/ship"), f.ownerA, `{"tracking_note":"TRK1"}`)
+	if code != http.StatusOK || body["status"] != "shipped" {
+		t.Fatalf("ship = %d %v", code, body)
+	}
+	shippedAt := body["shipped_at"]
+	if shippedAt == nil {
+		t.Fatalf("shipped order has no shipped_at: %v", body)
+	}
+	code, body, _ = f.do(http.MethodPost, f.orgPath(f.orgA, base+"/refund"), f.ownerA, `{"amount_minor":5000}`)
+	if code != http.StatusOK {
+		t.Fatalf("partial refund = %d %v", code, body)
+	}
+	order := body["order"].(map[string]any)
+	if order["status"] != shop.StatusPartiallyRefunded || order["shipped_at"] != shippedAt {
+		t.Fatalf("after the refund status %v shipped_at %v; want partially_refunded and %v", order["status"], order["shipped_at"], shippedAt)
+	}
+
+	code, body, _ = f.do(http.MethodPost, f.orgPath(f.orgA, base+"/ship"), f.ownerA, `{"tracking_note":"TRK2"}`)
+	if code != http.StatusOK || body["status"] != shop.StatusPartiallyRefunded || body["tracking_note"] != "TRK2" || body["shipped_at"] != shippedAt {
+		t.Fatalf("second ship = %d %v; want the note changed, status and shipped_at kept", code, body)
+	}
+	if n := f.outboxCount(shop.EventOrderShipped, o.ID); n != 1 {
+		t.Fatalf("shipped events = %d; want 1", n)
+	}
+}
+
 func TestShop_OrganizationIsolation(t *testing.T) {
 	f := newShopFixture(t)
 	product, variant := f.openShop(4500, 3)

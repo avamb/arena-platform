@@ -165,7 +165,15 @@ func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote st
 		case StatusShipped:
 			out, err = q.SetShopOrderStatus(ctx, o.ID, StatusShipped, &trackingNote, nil)
 			return err
-		case StatusPaid, StatusPartiallyRefunded:
+		case StatusPartiallyRefunded:
+			if o.ShippedAt != nil {
+				// Shipped before the refund (M-10): the parcel has gone, so it is
+				// not shipped a second time and no second letter is sent. Only
+				// the note can change, and the refund status stays.
+				out, err = q.SetShopOrderStatus(ctx, o.ID, StatusPartiallyRefunded, &trackingNote, nil)
+				return err
+			}
+		case StatusPaid:
 		case StatusManualReview:
 			if err := q.LockShopOrderVariants(ctx, o.ID); err != nil {
 				return err

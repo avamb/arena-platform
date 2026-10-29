@@ -15,7 +15,7 @@ import { fetchShopOrder, fetchShopSettings } from "@/lib/api/shopApi";
 import type { ShopOrder } from "@/lib/api/types";
 import { formatMoney, regionName } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { formatShopTime, orderTimeline, refundable, shopOrderNumber } from "@/lib/shop";
+import { formatShopTime, orderTimeline, paymentRefundKind, refundable, shopOrderNumber } from "@/lib/shop";
 import { useOrg } from "@/screens/OrgLayout";
 
 const PAY_STATES = ["created", "processing", "succeeded", "failed"] as const;
@@ -34,6 +34,8 @@ export function ShopOrderCard({ order, orgId, actions, note, country }: { order:
   const hasAddress = order.delivery_kind !== "pickup" && !noDelivery && (a.address1 !== "" || a.city !== "");
   const src = sourceKey(order.source);
   const payState = order.payment !== null && order.payment !== undefined ? order.payment.state : null;
+  // M-12: the payment itself stays "succeeded" after a refund; the block says what came back.
+  const refundKind = paymentRefundKind(order, payState);
 
   return (
     <article className="shop-page" aria-labelledby="shop-order-title" data-testid="shop-order-card">
@@ -44,7 +46,7 @@ export function ShopOrderCard({ order, orgId, actions, note, country }: { order:
       </p>
       <h1 id="shop-order-title">{t("shop.order.title", { number: shopOrderNumber(order.number) })}</h1>
       <p className="card-meta">
-        <ShopOrderStatusBadge status={order.status} />
+        <ShopOrderStatusBadge status={order.status} shippedAt={order.shipped_at} />
         <strong>{money(order.total)}</strong>
         <span>{t(deliveryLabel(order.delivery_kind))}</span>
       </p>
@@ -181,9 +183,16 @@ export function ShopOrderCard({ order, orgId, actions, note, country }: { order:
         ) : (
           <ul className="facts" data-testid="shop-order-payment">
             <li>{t("shop.order.provider", { name: order.payment.provider })}</li>
-            <li>
+            <li data-testid="shop-order-pay-state">
               {t("shop.order.payState", {
-                state: (PAY_STATES as readonly string[]).includes(payState ?? "") ? t(`shop.order.payState.${payState}` as MessageKey) : (payState ?? ""),
+                state:
+                  refundKind === "refunded"
+                    ? t("shop.order.payState.refunded")
+                    : refundKind === "partly"
+                      ? t("shop.order.payState.partlyRefunded", { refunded: money(order.refunded_minor), total: money(order.total) })
+                      : (PAY_STATES as readonly string[]).includes(payState ?? "")
+                        ? t(`shop.order.payState.${payState}` as MessageKey)
+                        : (payState ?? ""),
               })}
             </li>
           </ul>
