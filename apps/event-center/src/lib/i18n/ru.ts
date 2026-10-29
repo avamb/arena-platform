@@ -2401,6 +2401,8 @@ export const ru: Record<MessageKey, string> = {
   "shop.act.resend.hint": "Письмо уйдёт на {email}.",
   "shop.act.resend.received": "Подтверждение заказа",
   "shop.act.resend.shipped": "Письмо об отправке",
+  "shop.act.resend.refunded": "Письмо о возврате",
+  "shop.act.resend.refundedUnavailable": "Письмо о возврате недоступно: по заказу нет возврата",
   "shop.act.resend.done": "Письмо поставлено в очередь.",
   "shop.act.resend.wait": "Письмо этого заказа поставили в очередь меньше минуты назад. Повторить можно через минуту.",
   "shop.settings.title": "Настройки магазина",

@@ -2401,6 +2401,8 @@ export const en = {
   "shop.act.resend.hint": "It goes to {email}.",
   "shop.act.resend.received": "Order confirmation",
   "shop.act.resend.shipped": "Shipping e-mail",
+  "shop.act.resend.refunded": "Refund letter",
+  "shop.act.resend.refundedUnavailable": "Refund letter unavailable: the order has no refund",
   "shop.act.resend.done": "The e-mail is queued.",
   "shop.act.resend.wait": "This order's e-mail was queued less than a minute ago. Try again in a minute.",
   "shop.settings.title": "Shop settings",
