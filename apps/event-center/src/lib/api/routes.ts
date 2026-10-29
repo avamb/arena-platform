@@ -104,6 +104,8 @@ export const API = {
   // A flat route: the row's own organization is checked on the server.
   complimentaryRevoke: { method: "POST", path: "/v1/complimentary/{id}/revoke" },
   // Spec 46: staff invitations on chosen seats (the seat map in invite mode).
+  // The whole organization at once: the invitations screen and the bot list through it (INV-05).
+  staffInvitationsOrgList: { method: "GET", path: "/v1/organizations/{org_id}/invitations" },
   staffInvitationsList: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/invitations" },
   staffInvitationIssue: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/invitations" },
   staffInvitationCancel: { method: "POST", path: "/v1/organizations/{org_id}/invitations/{order_id}/cancel" },

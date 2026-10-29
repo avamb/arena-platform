@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_GUESTS,
-  batchId,
   canRevoke,
   inviteSessionOk,
+  isSeatedSession,
   inviteTierOk,
   letterNeedsAttention,
   letterSummary,
@@ -69,15 +69,6 @@ describe("sendBlock", () => {
   });
 });
 
-describe("batchId", () => {
-  it("is stable per guest, so a retry replays and never mails twice", () => {
-    expect(batchId("op1", 0)).toBe("web-op1-0");
-    expect(batchId("op1", 7)).toBe("web-op1-7");
-    expect(batchId("op1", 7)).toBe(batchId("op1", 7));
-    expect(batchId("op1", 1)).not.toBe(batchId("op2", 1));
-  });
-});
-
 describe("letterSummary", () => {
   const l = (status: string, stuck = false) => ({ status, stuck });
   it("shows none when no letter was queued", () => {
@@ -122,12 +113,15 @@ describe("annul and picker rules", () => {
     expect(inviteTierOk({ kind: "seated" })).toBe(false);
     expect(inviteTierOk({ kind: null })).toBe(false);
   });
-  it("offers only upcoming dates without a seating plan", () => {
+  it("offers upcoming dates and sends a seated one to its seat map", () => {
     const now = new Date("2026-10-15T10:00:00Z");
     const base = { status: "scheduled", end_at: "2026-11-01T20:00:00Z", seating_plan_version_id: null };
     expect(inviteSessionOk(base, now)).toBe(true);
     expect(inviteSessionOk({ ...base, status: "cancelled" }, now)).toBe(false);
     expect(inviteSessionOk({ ...base, end_at: "2026-10-01T20:00:00Z" }, now)).toBe(false);
-    expect(inviteSessionOk({ ...base, seating_plan_version_id: "v1" }, now)).toBe(false);
+    // A date with a plan is offered too: the screen links it to the seat map instead of the guest form.
+    expect(inviteSessionOk({ ...base, seating_plan_version_id: "v1" }, now)).toBe(true);
+    expect(isSeatedSession({ seating_plan_version_id: "v1" })).toBe(true);
+    expect(isSeatedSession({ seating_plan_version_id: null })).toBe(false);
   });
 });

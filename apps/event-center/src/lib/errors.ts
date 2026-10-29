@@ -123,6 +123,9 @@ export type ApiErrorStem =
   | "invitationEmpty"
   | "invitationUnknownSeat"
   | "invitationTooManyPlaces"
+  | "invitationListInvalid"
+  | "invitationNoneActive"
+  | "invitationSeatedRoute"
   | "invitationGuestName"
   | "invitationGuestEmail"
   | "invitationNoteLong"
@@ -216,6 +219,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   // Spec 46: invitations on chosen seats
   "invitationSeatsTaken", "invitationNotEnough", "invitationRequestReused", "invitationSessionCancelled", "invitationNotIssued", "invitationTicketScanned", "invitationEmailNeeded", "invitationMyEmail", "invitationEmpty",
   "invitationUnknownSeat", "invitationTooManyPlaces", "invitationGuestName", "invitationGuestEmail", "invitationNoteLong", "invitationCategory",
+  // INV-04b: the organization list and the old route on a seated date
+  "invitationListInvalid", "invitationNoneActive", "invitationSeatedRoute",
   // The shop (spec 47)
   "shopStockChanged", "shopDuplicateSlug", "shopVariantsInvalid", "shopMediaInvalid", "shopNotShippable", "shopNotCancellable", "shopNotRefundable", "shopRefundAmount", "shopCurrency", "shopOperatorOnly",
 ];
@@ -300,6 +305,12 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "invitation.note_too_long": "invitationNoteLong",
   "invitation.unknown_category": "invitationCategory",
   "invitation.seat_without_category": "invitationCategory",
+  "invitation.invalid_cursor": "invitationListInvalid",
+  "invitation.invalid_filter": "invitationListInvalid",
+  "invitation.invalid_state": "invitationListInvalid",
+  "invitation.invalid_limit": "invitationListInvalid",
+  "invitation.no_active_tickets": "invitationNoneActive",
+  "complimentary.use_invitations_route": "invitationSeatedRoute",
   "membership.last_owner": "lastOwner",
   // 4-5: the team and its invitations (bot.* routes, DELETE members)
   "bot.invitation_resend_too_soon": "resendTooSoon",

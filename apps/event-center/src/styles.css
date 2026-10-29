@@ -1739,3 +1739,13 @@ fieldset legend {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* Organization invitations: the event and date filter above the tabs. */
+.org-inv-filters {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+.org-inv-filters select {
+  max-width: 100%;
+}
