@@ -287,3 +287,29 @@ func TestInviteIssuedLinesCapAndEscape(t *testing.T) {
 		t.Errorf("a long list is cut with an ellipsis, got %d lines", strings.Count(out, "\n")+1)
 	}
 }
+
+// The VIP mark is fixed from the first attempt on: an attempt that got no
+// answer may have issued the guest, and a new batch would issue them again.
+func TestVIPChangeable_FixedFromTheFirstAttempt(t *testing.T) {
+	st := inviteDialog{Rcpt: []InviteRecipient{{Email: "a@example.com"}, {Email: "b@example.com"}}, Done: []int64{0, 0}, Batch: "b1"}
+	if !vipChangeable(st) {
+		t.Fatal("a fresh confirmation screen must allow the VIP tick")
+	}
+	st.Tried = true
+	if vipChangeable(st) {
+		t.Fatal("after an attempt whose answer may be lost the VIP tick must be fixed")
+	}
+	st = inviteDialog{Rcpt: st.Rcpt, Done: []int64{7, 0}, Batch: "b1"}
+	if vipChangeable(st) {
+		t.Fatal("after a guest was issued the VIP tick must be fixed")
+	}
+	// The flag survives the stored dialog (bot_dialogs JSON).
+	raw, err := json.Marshal(inviteDialog{Tried: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back inviteDialog
+	if err := json.Unmarshal(raw, &back); err != nil || !back.Tried {
+		t.Fatalf("Tried lost in the stored dialog: %v %+v", err, back)
+	}
+}
