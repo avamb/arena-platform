@@ -66,14 +66,14 @@ func TestFormatShopOrderPaid_CourierFormOrder(t *testing.T) {
 	for _, want := range []string{
 		"🛍 <b>New shop order</b> — Vino&amp;Co",
 		"🧾 Order #1000777",
-		"💰 Total: <b>230.00 ILS</b>",
+		"💰 Total: <b>230.00 ₪</b>",
 		"👤 Anna &lt;K&gt;", "📞 +972500000000", "✉️ anna@example.com",
 		"🚚 Delivery: shipping",
 		"🗺 Google Maps: https://www.google.com/maps/search/?api=1&amp;query=Herzl+1%2C+Haifa%2C+3100000%2C+Israel",
 		"🚗 Waze: https://waze.com/ul?q=Herzl+1%2C+Haifa%2C+3100000%2C+Israel&amp;navigate=yes",
-		"2 × Rosé — 60.00 ILS each",
-		"1 × Merlot (Magnum) — 60.00 ILS each",
-		"🚚 Shipping: 50.00 ILS",
+		"2 × Rosé — 60.00 ₪ each",
+		"1 × Merlot (Magnum) — 60.00 ₪ each",
+		"🚚 Shipping: 50.00 ₪",
 		"📝 Buyer's note: call before",
 	} {
 		if !strings.Contains(msg, want) {
@@ -175,7 +175,7 @@ func TestDispatcher_ShopOrderGoesToShopChatsOncePerAnnouncement(t *testing.T) {
 		}
 	}
 	if !strings.Contains(snd.sent[0].text, "New shop order") || !strings.Contains(snd.sent[1].text, "Shop refund") ||
-		!strings.Contains(snd.sent[1].text, "Refunded: <b>50.00 ILS</b>") {
+		!strings.Contains(snd.sent[1].text, "Refunded: <b>50.00 ₪</b>") {
 		t.Errorf("unexpected messages: %+v", snd.sent)
 	}
 	for _, k := range []string{"shop_paid:o-1", "shop_refund:o-1:5000", "shop_refund:o-1:9000"} {
@@ -257,15 +257,15 @@ func TestFormatShopOrderPaid_Russian(t *testing.T) {
 	for _, want := range []string{
 		"🛍 <b>Новый заказ в магазине</b> — Vino&amp;Co",
 		"🧾 Заказ №1000777",
-		"💰 Сумма: <b>230.00 ILS</b>",
+		"💰 Сумма: <b>230,00 ₪</b>",
 		"🚚 Доставка: курьером",
 		"📦 <b>Данные для курьера</b>",
 		"Dan L\n+972500000000\nHerzl 1\napt 4\nHaifa\n3100000\nИзраиль",
 		"🗺 Google Карты: https://www.google.com/maps/search/?api=1&amp;query=",
 		"🚗 Waze: https://waze.com/ul?q=",
 		"🛒 <b>Товары</b>",
-		"2 × Rosé — по 60.00 ILS",
-		"🚚 Доставка: 50.00 ILS",
+		"2 × Rosé — по 60,00 ₪",
+		"🚚 Доставка: 50,00 ₪",
 		"📝 Комментарий покупателя: call before",
 	} {
 		if !strings.Contains(msg, want) {
@@ -304,14 +304,14 @@ func TestFormatShopOrderRefund_RussianAndEnglish(t *testing.T) {
 	s := shopSample()
 	s.Order.RefundedMinor = 5000
 	en := FormatShopOrderRefund(s, 5000)
-	for _, want := range []string{"↩️ <b>Shop refund</b> — Vino&amp;Co", "🧾 Order #1000777", "💸 Refunded: <b>50.00 ILS</b>", "💸 Refunded so far: 50.00 ILS of 230.00 ILS", "👤 Anna &lt;K&gt;"} {
+	for _, want := range []string{"↩️ <b>Shop refund</b> — Vino&amp;Co", "🧾 Order #1000777", "💸 Refunded: <b>50.00 ₪</b>", "💸 Refunded so far: 50.00 ₪ of 230.00 ₪", "👤 Anna &lt;K&gt;"} {
 		if !strings.Contains(en, want) {
 			t.Errorf("English refund lacks %q:\n%s", want, en)
 		}
 	}
 	s.Locale = "ru"
 	ru := FormatShopOrderRefund(s, 5000)
-	for _, want := range []string{"↩️ <b>Возврат в магазине</b> — Vino&amp;Co", "🧾 Заказ №1000777", "💸 Возвращено: <b>50.00 ILS</b>", "💸 Возвращено всего: 50.00 ILS из 230.00 ILS", "👤 Anna &lt;K&gt;"} {
+	for _, want := range []string{"↩️ <b>Возврат в магазине</b> — Vino&amp;Co", "🧾 Заказ №1000777", "💸 Возвращено: <b>50,00 ₪</b>", "💸 Возвращено всего: 50,00 ₪ из 230,00 ₪", "👤 Anna &lt;K&gt;"} {
 		if !strings.Contains(ru, want) {
 			t.Errorf("Russian refund lacks %q:\n%s", want, ru)
 		}

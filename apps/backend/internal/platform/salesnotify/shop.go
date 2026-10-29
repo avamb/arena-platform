@@ -44,8 +44,9 @@ type ShopOrder struct {
 	Items  []gen.ShopOrderItemRow
 }
 
-func shopMoney(amount int64, currency string) string {
-	return esc(money(amount, currency))
+// shopMoney is an amount in the message's language: "450,00 ₪" in ru.
+func shopMoney(amount int64, currency, locale string) string {
+	return esc(formatShopMoney(amount, currency, locale))
 }
 
 // writeShopHeader renders the line both messages start with: the order.
@@ -95,7 +96,7 @@ func FormatShopOrderPaid(s ShopOrder) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", say(loc, "salesnotify.shop.new_order", map[string]any{"Org": esc(s.OrgName)}))
 	writeShopHeader(&b, loc, o)
-	fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.total", map[string]any{"Amount": shopMoney(o.Total, o.Currency)}))
+	fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.total", map[string]any{"Amount": shopMoney(o.Total, o.Currency, loc)}))
 	writeShopBuyer(&b, o)
 	switch o.DeliveryKind {
 	case "none":
@@ -118,14 +119,14 @@ func FormatShopOrderPaid(s ShopOrder) string {
 			break
 		}
 		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.item_line", map[string]any{
-			"Qty": it.Qty, "Name": esc(shopItemName(it)), "Price": shopMoney(it.UnitPriceMinor, o.Currency),
+			"Qty": it.Qty, "Name": esc(shopItemName(it)), "Price": shopMoney(it.UnitPriceMinor, o.Currency, loc),
 		}))
 	}
 	if o.ShippingFee > 0 {
-		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.shipping", map[string]any{"Amount": shopMoney(o.ShippingFee, o.Currency)}))
+		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.shipping", map[string]any{"Amount": shopMoney(o.ShippingFee, o.Currency, loc)}))
 	}
 	if o.Discount > 0 {
-		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.discount", map[string]any{"Amount": shopMoney(o.Discount, o.Currency)}))
+		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.discount", map[string]any{"Amount": shopMoney(o.Discount, o.Currency, loc)}))
 	}
 	if note := strings.TrimSpace(o.DeliveryNote); note != "" {
 		fmt.Fprintf(&b, "\n%s\n", say(loc, "salesnotify.shop.note", map[string]any{"Note": esc(clip(note, 600))}))
@@ -142,10 +143,10 @@ func FormatShopOrderRefund(s ShopOrder, refundedNow int64) string {
 	fmt.Fprintf(&b, "%s\n\n", say(loc, "salesnotify.shop.refund_title", map[string]any{"Org": esc(s.OrgName)}))
 	writeShopHeader(&b, loc, o)
 	if refundedNow > 0 {
-		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.refunded", map[string]any{"Amount": shopMoney(refundedNow, o.Currency)}))
+		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.refunded", map[string]any{"Amount": shopMoney(refundedNow, o.Currency, loc)}))
 	}
 	fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.refunded_so_far", map[string]any{
-		"Amount": shopMoney(o.RefundedMinor, o.Currency), "Total": shopMoney(o.Total, o.Currency),
+		"Amount": shopMoney(o.RefundedMinor, o.Currency, loc), "Total": shopMoney(o.Total, o.Currency, loc),
 	}))
 	writeShopBuyer(&b, o)
 	return strings.TrimRight(b.String(), "\n")
@@ -161,7 +162,7 @@ func FormatShopOrderReview(s ShopOrder) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", say(loc, "salesnotify.shop.review_title", map[string]any{"Org": esc(s.OrgName)}))
 	writeShopHeader(&b, loc, o)
-	fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.review_paid", map[string]any{"Amount": shopMoney(o.Total, o.Currency)}))
+	fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.review_paid", map[string]any{"Amount": shopMoney(o.Total, o.Currency, loc)}))
 	writeShopBuyer(&b, o)
 	fmt.Fprintf(&b, "\n%s", say(loc, "salesnotify.shop.review_body", map[string]any{"Number": o.Number}))
 	return b.String()
