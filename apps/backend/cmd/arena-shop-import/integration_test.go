@@ -168,6 +168,21 @@ func TestShopImport_IsIdempotent(t *testing.T) {
 	if n := count(`SELECT count(*) FROM shop_products WHERE org_id = $1 AND status = 'draft'`, orgID); n != 0 {
 		t.Errorf("a draft was imported without --include-drafts")
 	}
+	// Every stored picture carries its pixel size (the stub PNGs are 1x1).
+	sized := `SELECT count(*) FROM media_objects WHERE org_id = $1 AND owner_type = 'shop_product' AND width = 1 AND height = 1`
+	if n := count(sized, orgID); n != 3 {
+		t.Errorf("pictures with their size after the first run: %d; want 3", n)
+	}
+	// Pictures stored before sizes were recorded get them on a re-run.
+	if _, err := pool.Exec(ctx, `UPDATE media_objects SET width = NULL, height = NULL WHERE org_id = $1 AND owner_type = 'shop_product'`, orgID); err != nil {
+		t.Fatal(err)
+	}
+	if out := do(); !strings.Contains(out, "picture size filled in") {
+		t.Errorf("the re-run did not report the filled sizes:\n%s", out)
+	}
+	if n := count(sized, orgID); n != 3 {
+		t.Errorf("pictures with their size after the re-run: %d; want 3", n)
+	}
 	var fee, age int
 	var cur, announcement, contact string
 	if err := pool.QueryRow(ctx, `SELECT shipping_fee_minor, age_gate_min_age, currency, announcement_text, contact_email FROM shop_settings WHERE org_id = $1`, orgID).

@@ -378,3 +378,33 @@ func TestSanitizeBody_ProductStillDropsPicturesAndTables(t *testing.T) {
 		t.Fatalf("product body lost the table's text: %s", out)
 	}
 }
+
+func TestSanitizeBody_PageKeepsLinksToOtherPagesOfTheStorefront(t *testing.T) {
+	// The button of the imported "partners" page: a Shopify page body links
+	// "/pages/<handle>" and lost its href here (finding H-01).
+	in := `<p><a href="/pages/contact" class="button button--primary" style="x">Напишите нам</a></p>` +
+		`<p><a href="/pages/%D0%BE-%D0%BD%D0%B0%D1%81">О нас</a> <a href="/collections/all?x=1#top">all</a></p>` +
+		`<p><a href="//evil.example/x">protocol-relative</a> <a href="/\evil.example">backslash</a> <a href="/a b">space</a> <a href="javascript:x()">js</a></p>`
+	out, err := SanitizeBody(in, PageBodyProfile)
+	if err != nil {
+		t.Fatalf("SanitizeBody: %v", err)
+	}
+	for _, want := range []string{
+		`<a href="/pages/contact" rel="noopener noreferrer">Напишите нам</a>`,
+		`<a href="/pages/%D0%BE-%D0%BD%D0%B0%D1%81" rel="noopener noreferrer">О нас</a>`,
+		`<a href="/collections/all?x=1#top" rel="noopener noreferrer">all</a>`,
+		`<a>protocol-relative</a> <a>backslash</a> <a>space</a>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("lost %q:\n%s", want, out)
+		}
+	}
+	for _, gone := range []string{"evil.example", "javascript", `href="/a b"`, `class=`} {
+		if strings.Contains(out, gone) {
+			t.Errorf("still holds %q:\n%s", gone, out)
+		}
+	}
+	if again, _ := SanitizeBody(out, PageBodyProfile); again != out {
+		t.Errorf("sanitizing twice changed it:\n%s\n%s", out, again)
+	}
+}

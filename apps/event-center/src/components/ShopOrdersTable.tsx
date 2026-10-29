@@ -5,14 +5,16 @@
  */
 import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui";
-import { formatDateTime, formatMoney } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { browserZone, isShopOrderStatus, shopOrderNumber, shopOrderTone } from "@/lib/shop";
+import { formatShopTime, isShopOrderStatus, shopOrderNumber, shopOrderTone } from "@/lib/shop";
 import type { ShopOrder } from "@/lib/api/types";
 
 export function ShopOrderStatusBadge({ status }: { status: string }) {
   const { t } = useI18n();
-  return <Badge tone={shopOrderTone(status)}>{isShopOrderStatus(status) ? t(`shop.order.status.${status}` as MessageKey) : status}</Badge>;
+  const badge = <Badge tone={shopOrderTone(status)}>{isShopOrderStatus(status) ? t(`shop.order.status.${status}` as MessageKey) : status}</Badge>;
+  // An unpaid order that ran out of time says what happened to the goods.
+  return status === "expired" ? <span title={t("shop.order.status.expired.hint")}>{badge}</span> : badge;
 }
 
 export function deliveryLabel(kind: string): MessageKey {
@@ -20,9 +22,9 @@ export function deliveryLabel(kind: string): MessageKey {
   return kind === "pickup" ? "shop.delivery.pickup" : "shop.delivery.shipping";
 }
 
-export function ShopOrdersTable({ orgId, orders }: { orgId: string; orders: readonly ShopOrder[] }) {
+/** `country`: the shop's country (ISO 3166-1 alpha-2). Times are read in its zone and named by the country. */
+export function ShopOrdersTable({ orgId, orders, country }: { orgId: string; orders: readonly ShopOrder[]; country?: string | null }) {
   const { t, locale } = useI18n();
-  const zone = browserZone();
   return (
     <div className="table-wrap">
       <table className="table" data-testid="shop-orders-table">
@@ -44,7 +46,7 @@ export function ShopOrdersTable({ orgId, orders }: { orgId: string; orders: read
                   {shopOrderNumber(o.number)}
                 </Link>
               </td>
-              <td data-label={t("shop.orders.col.date")}>{formatDateTime(o.created_at, zone, locale)}</td>
+              <td data-label={t("shop.orders.col.date")}>{formatShopTime(o.created_at, country, locale)}</td>
               <td data-label={t("shop.orders.col.buyer")}>
                 {o.buyer.name}
                 {o.buyer.email !== "" && <span className="muted"> · {o.buyer.email}</span>}

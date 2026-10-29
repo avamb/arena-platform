@@ -4,13 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { normalizeCatalog, type ShopData } from '../lib/api';
 import { resolveLines } from '../lib/cart';
 import { EINAT_THEME } from '../lib/theme';
-import { cartView } from '../views/cart';
+import { cartView, notificationProduct } from '../views/cart';
 import { collectionView, homeView } from '../views/catalog';
 import { checkoutView, EMPTY_FORM, statusView } from '../views/checkout';
 import type { Ctx } from '../views/common';
 import { layout } from '../views/layout';
 import { productView } from '../views/product';
-import { notFoundView, pageView, policyView, searchProducts, searchView } from '../views/static';
+import { notFoundView, pageView, platformHomeView, policyView, searchProducts, searchView } from '../views/static';
 
 const shop = normalizeCatalog(JSON.parse(readFileSync(join(__dirname, '../../mock/fixtures/shop.json'), 'utf8')));
 
@@ -168,6 +168,77 @@ describe('layout', () => {
     const noGate = { ...shop, settings: { ...shop.settings, age_gate_min_age: 0 } };
     const doc = dom(layout({ ...ctx(), shop: noGate }, ''));
     expect(doc.querySelector('#popup')).toBeNull();
+  });
+});
+
+describe('Hermes storefront fixes', () => {
+  it('H-15: the age gate is a modal dialog, so no Dawn block can paint over it', () => {
+    const doc = dom(layout(ctx(), ''));
+    expect(doc.querySelector('dialog#popup #allowButton')).not.toBeNull();
+    expect(doc.querySelector('dialog#popup #denyButton')).not.toBeNull();
+  });
+
+  it('H-06: the header person icon is labelled as the contacts link it is', () => {
+    const doc = dom(layout(ctx(), ''));
+    const a = doc.querySelector('.header__icon--account') as HTMLAnchorElement;
+    expect(a.getAttribute('href')).toBe('/einatwinery/pages/contact');
+    expect(a.getAttribute('title')).toBe('Контакты');
+    expect(a.getAttribute('aria-label')).toBe('Контакты');
+    expect(doc.body.textContent).not.toContain('Войти');
+  });
+
+  it('H-02: the seller address is in the footer and on the contact page, and only there', () => {
+    const doc = dom(layout(ctx(), ''));
+    expect(doc.querySelector('.footer-block__contact a[href="mailto:sales@einatwinery.com"]')).not.toBeNull();
+    const contact = dom(pageView(ctx(), { title: 'Контакты', body_html: '<p>Задайте вопрос</p>', slug: 'contact' }));
+    expect(contact.querySelector('.shop-page-contact a[href="mailto:sales@einatwinery.com"]')).not.toBeNull();
+    const about = dom(pageView(ctx(), { title: 'О нас', body_html: '<p>x</p>', slug: 'about' }));
+    expect(about.querySelector('.shop-page-contact')).toBeNull();
+    const noMail = { ...shop, settings: { ...shop.settings, contact_email: null } };
+    expect(dom(layout({ ...ctx(), shop: noMail }, '')).querySelector('.footer-block__contact')).toBeNull();
+  });
+
+  it('H-07: the related products heading is Russian', () => {
+    const html = productView(ctx(), shop.products[1]);
+    expect(html).toContain('Вам также может понравиться');
+    expect(html).not.toContain('You may also like');
+  });
+
+  it('H-10 and H-09: the order comment field is there and the placeholder is short', () => {
+    const cart = [{ variant_id: shop.products[1].variants[0].id, qty: 1 }];
+    const doc = dom(checkoutView(ctx(cart), resolveLines(cart, shop.products), { values: { ...EMPTY_FORM, note: 'позвонить за час' }, errors: {} }));
+    expect((doc.querySelector('textarea#Checkout-note') as HTMLTextAreaElement).value).toBe('позвонить за час');
+    expect(doc.querySelector('textarea#Checkout-note')?.getAttribute('name')).toBe('note');
+    expect(doc.querySelector('#Checkout-address2')?.getAttribute('placeholder')).toBe('Подъезд, этаж, комментарий');
+    expect(doc.querySelector('.shop-checkout')?.classList.contains('page-width')).toBe(true);
+  });
+
+  it('H-03: the cart plus button at the limit is disabled with a hint, and a cut quantity gets its note', () => {
+    const v = shop.products[1].variants[0].id;
+    const max = shop.settings.max_line_qty;
+    const lines = (qty: number) => resolveLines([{ variant_id: v, qty }], shop.products);
+    const atMax = dom(cartView(ctx([{ variant_id: v, qty: max }]), lines(max), v));
+    const plus = atMax.querySelector('button[name="plus"]') as HTMLElement;
+    expect(plus.getAttribute('aria-disabled')).toBe('true');
+    expect(plus.getAttribute('title')).toBe(`В одном заказе не больше ${max} шт. этого товара`);
+    expect(atMax.querySelector('.cart-item__error-text')?.textContent).toBe(`В одном заказе не больше ${max} шт. этого товара`);
+    const below = dom(cartView(ctx([{ variant_id: v, qty: 1 }]), lines(1)));
+    expect(below.querySelector('button[name="plus"]')?.hasAttribute('title')).toBe(false);
+    expect(below.querySelector('.cart-item__error-text')?.textContent).toBe('');
+  });
+
+  it('H-03: the add-to-cart notification carries the limit note', () => {
+    const line = resolveLines([{ variant_id: shop.products[1].variants[0].id, qty: 1 }], shop.products)[0];
+    expect(notificationProduct(line, 'В одном заказе не больше 24 шт. этого товара')).toContain('cart-notification-product__limit');
+    expect(notificationProduct(line)).not.toContain('cart-notification-product__limit');
+  });
+
+  it('H-16: the styled 404 without a shop has no shop link, and the platform root says what it is', () => {
+    const lost = dom(notFoundView(null));
+    expect(lost.querySelector('.template-404 .title')?.textContent?.trim()).toBe('Страница не найдена');
+    expect(lost.querySelector('a.button')).toBeNull();
+    expect(dom(notFoundView(ctx())).querySelector('a.button')).not.toBeNull();
+    expect(dom(platformHomeView()).body.textContent).toContain('Магазины организаторов открываются по их адресам');
   });
 });
 

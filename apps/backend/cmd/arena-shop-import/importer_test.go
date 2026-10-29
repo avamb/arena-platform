@@ -142,3 +142,24 @@ func TestSanitizeBody_UsesTheShopSanitizerAndReports(t *testing.T) {
 		t.Error("an oversized text must be refused")
 	}
 }
+
+// A product imported before the placeholder was dropped stored "Default Title"
+// as the value of option 1. A re-run clears it on the same variant instead of
+// adding a second one.
+func TestPlanVariants_RerunClearsTheDefaultTitleOptionValue(t *testing.T) {
+	old := stored("Default Title", "", sp("Default Title"), 20000, 82, 0)
+	want := []ImportVariant{{Title: "Default Title", PriceMinor: 20000, TrackStock: true, Position: 0, Stock: 87}}
+	plan := planVariants([]gen.ShopVariantRow{old}, want, false)
+	if plan.Created != 0 || plan.Updated != 1 || plan.Kept != 0 || len(plan.Inputs) != 1 {
+		t.Fatalf("plan: created=%d updated=%d kept=%d inputs=%d", plan.Created, plan.Updated, plan.Kept, len(plan.Inputs))
+	}
+	in := plan.Inputs[0]
+	if in.ID == nil || *in.ID != old.ID || in.Option1 != nil || in.Stock != 82 {
+		t.Errorf("input: %+v", in)
+	}
+	// Once cleared, the next run changes nothing.
+	cleared := stored("Default Title", "", nil, 20000, 82, 0)
+	if again := planVariants([]gen.ShopVariantRow{cleared}, want, false); again.Dirty() {
+		t.Errorf("a cleared variant must be left alone: %+v", again)
+	}
+}

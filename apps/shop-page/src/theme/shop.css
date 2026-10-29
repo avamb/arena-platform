@@ -236,3 +236,48 @@
 .shop-downloads .button {
   margin-top: 1rem;
 }
+
+/* The shop's per-line quantity limit (max_line_qty), announced where the buyer hits it. */
+.cart-notification-product__limit,
+.product-form__quantity .quantity__rules:not(:empty) {
+  color: rgb(var(--color-error, 235, 0, 27));
+}
+
+.cart-notification-product__limit {
+  margin: 0.8rem 0 0;
+}
+
+.product-form__quantity .quantity__rules:empty {
+  margin-top: 0;
+}
+
+.quantity__button[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* The seller's address under the imported "Контакты" text and in the footer. */
+.shop-page-contact {
+  margin: 2.4rem 0 0;
+  font-size: 1.6rem;
+}
+
+.footer-block__contact {
+  margin: 1.2rem 0 0;
+}
+
+.shop-platform p {
+  margin: 1rem 0 0;
+}
+
+.shop-checkout__note .text-area {
+  min-height: 9rem;
+}
+
+/* Dawn's .page-width has no side padding below 750px (its sections add their own); checkout has no such section. */
+@media screen and (max-width: 749px) {
+  .page-width.section-checkout-padding {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
