@@ -52,4 +52,17 @@ describe("ShopProductsTable", () => {
     expect(html).toContain("badge badge-ok");
     expect(html).toContain("В продаже");
   });
+
+  it("marks a published product with an empty shelf: the shop shows it as sold (M-01)", async () => {
+    const empty = { id: "v1", title: "", price_minor: 2000, stock: 0, track_stock: true, held: 0, position: 0 };
+    const html = await renderInRouter(<ShopProductsTable orgId="org1" currency="ILS" products={[product({ variants: [empty] as never })]} />, "ru");
+    expect(html).toContain('data-testid="shop-product-soldout-badge"');
+    expect(html).toContain("Нет в наличии — на витрине „Продано“");
+    const stocked = await renderInRouter(<ShopProductsTable orgId="org1" currency="ILS" products={[product()]} />);
+    expect(stocked).not.toContain("shop-product-soldout-badge");
+    const draft = await renderInRouter(<ShopProductsTable orgId="org1" currency="ILS" products={[product({ status: "draft", variants: [empty] as never })]} />);
+    expect(draft).not.toContain("shop-product-soldout-badge");
+    const service = await renderInRouter(<ShopProductsTable orgId="org1" currency="ILS" products={[product({ kind: "service", variants: [{ ...empty, track_stock: false }] as never })]} />);
+    expect(service).not.toContain("shop-product-soldout-badge");
+  });
 });

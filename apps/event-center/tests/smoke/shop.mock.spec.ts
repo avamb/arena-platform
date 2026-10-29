@@ -148,6 +148,10 @@ test.describe("shop (mock)", () => {
     await page.getByTestId("shop-product-title").fill("Gift card");
     await page.getByTestId("shop-product-kind").selectOption("service");
     await page.getByTestId("shop-variant-price-0").fill("25");
+    // M-01: a service has no shelf by default, so the stock field is hidden until counting is switched on.
+    await expect(page.getByTestId("shop-variant-track-0")).not.toBeChecked();
+    await expect(page.getByTestId("shop-variant-stock-0")).toHaveCount(0);
+    await page.getByTestId("shop-variant-track-0").check();
     await page.getByTestId("shop-variant-stock-0").fill("100");
     await noA11yViolations(page);
     await page.getByTestId("shop-product-create").click();
@@ -158,6 +162,7 @@ test.describe("shop (mock)", () => {
     expect(state.writes[0]).toContain('"kind":"service"');
     expect(state.writes[0]).toContain('"price_minor":2500');
     expect(state.writes[0]).toContain('"stock":100');
+    expect(state.writes[0]).toContain('"track_stock":true');
   });
 
   test("orders: filters go to the API, and the search text never goes into the address", async ({ page }) => {
@@ -350,6 +355,22 @@ test.describe("shop (mock)", () => {
     expect(prevented).toBe(true);
     await page.getByTestId("shop-nav-orders").click();
     await page.getByTestId("unsaved-leave").click();
+    await expect(page).toHaveURL(new RegExp("/shop/orders"));
+  });
+
+  test("the unsaved-changes question sits above the Save bar and can be clicked at 1024 px (M-09)", async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 700 });
+    await mockApi(page);
+    await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/products/${PRODUCT_WINE}`);
+    await page.getByTestId("shop-product-title").fill("Riesling Reserve");
+    await page.getByTestId("shop-nav-orders").click();
+    await expect(page.getByTestId("unsaved-dialog")).toBeVisible();
+    await expect(page.getByTestId("shop-savebar")).toBeHidden();
+    await expect(page.getByTestId("unsaved-save-leave")).toBeVisible();
+    // A real click, not a forced one: it fails if anything covers the button.
+    await page.getByTestId("unsaved-save-leave").click();
     await expect(page).toHaveURL(new RegExp("/shop/orders"));
   });
 

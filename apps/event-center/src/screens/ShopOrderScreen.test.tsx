@@ -46,6 +46,14 @@ describe("ShopOrderCard", () => {
     expect(html).not.toMatch(/Haifa IL</);
   });
 
+  it("tells the payment deadline in the history, and keeps it after it passed (M-04)", async () => {
+    const waiting = await renderInRouter(<ShopOrderCard order={order({ status: "pending_payment", expires_at: "2026-10-29T16:16:00Z" })} orgId="org1" country="IL" />, "ru");
+    expect(waiting).toContain("Оплатить до");
+    expect(waiting).not.toContain("Бронь закончится");
+    const late = await renderInRouter(<ShopOrderCard order={order({ status: "expired", expires_at: "2026-10-29T16:16:00Z" })} orgId="org1" country="IL" />, "ru");
+    expect(late).toContain("<li>Не оплачен в срок · чт, 29 окт. 2026 г., 18:16 (Израиль)</li>");
+  });
+
   it("reads the history in the zone of the shop", async () => {
     const html = await renderInRouter(<ShopOrderCard order={order()} orgId="org1" country="IL" />, "ru");
     expect(html).toContain("21:36");

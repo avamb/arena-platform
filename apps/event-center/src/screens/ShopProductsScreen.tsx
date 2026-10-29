@@ -23,6 +23,7 @@ import {
   priceRange,
   productKind,
   productTone,
+  shelfEmpty,
   stockEditMode,
   stockSum,
   type ProductSort,
@@ -70,6 +71,14 @@ export function ShopProductsTable({ orgId, products, currency, canViewMedia = fa
                 <td data-label={t("shop.products.col.kind")}>{t(`shop.kind.${productKind(p)}` as MessageKey)}</td>
                 <td data-label={t("shop.products.col.status")}>
                   <Badge tone={productTone(p.status)}>{isProductStatus(p.status) ? t(`shop.product.status.${p.status}` as MessageKey) : p.status}</Badge>
+                  {p.status === "active" && shelfEmpty(p) && (
+                    <>
+                      {" "}
+                      <span data-testid="shop-product-soldout-badge">
+                        <Badge tone="bad">{t("shop.product.soldOut")}</Badge>
+                      </span>
+                    </>
+                  )}
                 </td>
                 <td data-label={t("shop.products.col.price")}>
                   {range === null

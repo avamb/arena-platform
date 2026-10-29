@@ -201,7 +201,9 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
   };
 
   const shipLabel = canEditTracking(order.status, canManage) ? "shop.act.editTracking" : "shop.act.ship";
-  const showShip = canShip(order.status, canManage) || canEditTracking(order.status, canManage);
+  // M-03: no delivery (a file, a service): nothing to ship and no parcel for a courier.
+  const noDelivery = order.delivery_kind === "none";
+  const showShip = canShip(order.status, canManage, order.delivery_kind) || canEditTracking(order.status, canManage);
 
   return (
     <section aria-labelledby="shop-order-actions" data-testid="shop-order-actions">
@@ -224,9 +226,11 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
             {t("shop.act.cancel")}
           </button>
         )}
-        <button type="button" className="btn" onClick={() => void onCourier()} data-testid="shop-order-courier">
-          {t("shop.act.courier")}
-        </button>
+        {!noDelivery && (
+          <button type="button" className="btn" onClick={() => void onCourier()} data-testid="shop-order-courier">
+            {t("shop.act.courier")}
+          </button>
+        )}
         {letters.length > 0 && (
           <button
             type="button"
@@ -239,6 +243,12 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
           </button>
         )}
       </div>
+
+      {noDelivery && (
+        <p className="muted" data-testid="shop-order-no-delivery">
+          {t("shop.act.noDelivery")}
+        </p>
+      )}
 
       {panel === "resend" && letters.length > 1 && (
         <div role="group" aria-labelledby="shop-resend-title" data-testid="shop-resend-panel">

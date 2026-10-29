@@ -15,6 +15,8 @@ import {
   checkSettings,
   checkVariants,
   emptyRow,
+  kindTracksStock,
+  shelfEmpty,
   isStockChanged,
   moneyInput,
   moveImagePlan,
@@ -303,5 +305,44 @@ describe("the settings form", () => {
     expect(checkSettings({ ...settingsDraft(settings), maxLineQty: "100" })).toEqual({ maxLineQty: true });
     expect(checkSettings({ ...settingsDraft(settings), shippingFee: "free" })).toEqual({ shippingFee: true });
     expect(checkSettings(settingsDraft(settings))).toEqual({});
+  });
+});
+
+describe("the money-cycle run: stock, delivery and history (M-01, M-03, M-04)", () => {
+  const v = (stock: number, track_stock = true) => ({ stock, track_stock });
+  it("a new row counts stock only when asked: a file or a service has no shelf", () => {
+    expect(emptyRow().trackStock).toBe(true);
+    expect(emptyRow(false).trackStock).toBe(false);
+    expect(kindTracksStock("physical")).toBe(true);
+    expect(kindTracksStock("digital")).toBe(false);
+    expect(kindTracksStock("service")).toBe(false);
+  });
+  it("sends the tracking flag explicitly, off for a service row", () => {
+    const row = { ...emptyRow(false), price: "20" };
+    const [sent] = variantsRequest([row], "EUR", 0);
+    expect(sent.track_stock).toBe(false);
+  });
+  it("knows the shelf is empty: every variant counts and none has a unit", () => {
+    expect(shelfEmpty({ kind: "physical", variants: [v(0)] })).toBe(true);
+    expect(shelfEmpty({ kind: "service", variants: [v(0), v(-1)] })).toBe(true);
+    expect(shelfEmpty({ kind: "physical", variants: [v(0), v(3)] })).toBe(false);
+    expect(shelfEmpty({ kind: "physical", variants: [v(0), v(0, false)] })).toBe(false);
+    expect(shelfEmpty({ kind: "physical", variants: [v(5, false)] })).toBe(false);
+    expect(shelfEmpty({ kind: "digital", variants: [v(0)] })).toBe(false);
+    expect(shelfEmpty({ kind: "physical", variants: [] })).toBe(false);
+  });
+  it("offers no shipping for an order without delivery", () => {
+    expect(canShip("paid", true, "none")).toBe(false);
+    expect(canShip("paid", true, "shipping")).toBe(true);
+    expect(canShip("paid", true, "pickup")).toBe(true);
+    expect(canShip("paid", true)).toBe(true);
+  });
+  it("keeps the payment deadline line after it passed, as 'not paid in time'", () => {
+    const base = { created_at: "2026-10-29T10:00:00Z", paid_at: null, shipped_at: null, cancelled_at: null, expires_at: "2026-10-29T16:16:00Z", refunded_minor: 0, updated_at: "2026-10-29T16:20:00Z" };
+    expect(orderTimeline({ ...base, status: "pending_payment" }).map((e) => e.kind)).toEqual(["created", "expires"]);
+    const expired = orderTimeline({ ...base, status: "expired" });
+    expect(expired.map((e) => e.kind)).toEqual(["created", "expired"]);
+    expect(expired[1].at).toBe("2026-10-29T16:16:00Z");
+    expect(orderTimeline({ ...base, status: "expired", expires_at: null }).map((e) => e.kind)).toEqual(["created"]);
   });
 });

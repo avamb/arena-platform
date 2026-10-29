@@ -274,7 +274,8 @@ label {
   display: grid;
   place-items: center;
   padding: 1rem;
-  z-index: 10;
+  /* Above everything, the sticky Save bar of a card included (M-09). */
+  z-index: 1000;
 }
 
 .dialog {
@@ -1548,6 +1549,12 @@ fieldset legend {
   padding-block: 0.5rem;
   background: var(--bg);
   border-block-end: 1px solid var(--border);
+}
+
+/* Hidden while the "unsaved changes" question is open: it keeps its room, so the page does not jump. */
+.shop-savebar[hidden] {
+  display: flex;
+  visibility: hidden;
 }
 
 .shop-savebar .btn {
