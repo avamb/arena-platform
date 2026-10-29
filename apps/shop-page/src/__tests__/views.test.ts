@@ -298,3 +298,39 @@ describe('kinds, options and caps', () => {
     expect(dom(statusView(xctx(), paid, { state: 'waiting' })).querySelectorAll('.shop-downloads a').length).toBe(0);
   });
 });
+
+describe('responsive media pictures', () => {
+  const asMedia = (n: number) => `https://api.arenasoldout.com/v1/media-files/img${n}?exp=4102444800&sig=s`;
+  let n = 0;
+  const mediaShop: ShopData = {
+    ...shop,
+    products: shop.products.map((p) => ({ ...p, images: p.images.map((i) => ({ ...i, url: asMedia(++n) })) })),
+  };
+  const mctx = (cart: Ctx['cart'] = []): Ctx => ({ ...ctx(cart), shop: mediaShop });
+  const widths = (img: Element | null): number[] =>
+    (img?.getAttribute('srcset') ?? '').split(',').map((c) => Number(new URL(c.trim().split(' ')[0]).searchParams.get('w')));
+
+  it('cards use 165-990 and a mid-size src', () => {
+    const img = dom(homeView(mctx())).querySelector('.card__media img');
+    expect(widths(img)).toEqual([165, 360, 533, 720, 990]);
+    expect(img?.getAttribute('src')).toContain('&w=533');
+  });
+  it('the product gallery uses 360-1200', () => {
+    const doc = dom(productView(mctx(), mediaShop.products[1]));
+    const img = doc.querySelector('.product__media-item img');
+    expect(widths(img)).toEqual([360, 533, 720, 990, 1200]);
+    expect(img?.getAttribute('src')).toContain('&w=720');
+  });
+  it('cart and checkout thumbnails use 165-360', () => {
+    const cart = [{ variant_id: mediaShop.products[1].variants[0].id, qty: 1 }];
+    const lines = resolveLines(cart, mediaShop.products);
+    expect(widths(dom(cartView(mctx(cart), lines)).querySelector('.cart-item__image'))).toEqual([165, 240, 360]);
+    expect(widths(dom(notificationProduct(lines[0])).querySelector('img'))).toEqual([165, 240, 360]);
+    expect(widths(dom(checkoutView(mctx(cart), lines, { values: { ...EMPTY_FORM }, errors: {} })).querySelector('.shop-checkout__thumb img'))).toEqual([165, 240, 360]);
+  });
+  it('caps the list at the picture width', () => {
+    const small: ShopData = { ...mediaShop, products: mediaShop.products.map((p) => ({ ...p, images: p.images.map((i) => ({ ...i, width: 400 })) })) };
+    const img = dom(homeView({ ...mctx(), shop: small })).querySelector('.card__media img');
+    expect(img?.getAttribute('srcset')).toMatch(/&w=360 360w, [^ ]+&w=533 400w$/);
+  });
+});
