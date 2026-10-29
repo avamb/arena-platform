@@ -19,3 +19,13 @@ SELECT id
 FROM   sales_channels
 WHERE  org_id = $1
   AND  kind = 'internal';
+
+-- name: LockTicketsForCancel :many
+-- Row locks on the tickets a staff invitation cancel is about to touch, in
+-- id order, and their CURRENT status. Taken AFTER the sessions row lock
+-- (IncrementSessionSeatStatusVersion), never before: the repo's lock order.
+SELECT id, status
+FROM   tickets
+WHERE  id = ANY($1::uuid[])
+ORDER BY id
+FOR UPDATE;

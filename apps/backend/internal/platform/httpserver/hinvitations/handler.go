@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -23,6 +24,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/txretry"
 )
 
 // TicketCanceller is the one ticket cancellation of htickets.Handler
@@ -554,44 +556,108 @@ func (h *Handler) HandleCancel(w http.ResponseWriter, r *http.Request) {
 			actorType, actorID = "user", actor.ID
 		}
 	}
-	resp := cancelResponse{OrderID: o.ID.String(), OrderStatus: o.Status, CancelledTicketIDs: []string{}, SkippedTicketIDs: []string{}, NotifyGuest: notify}
 
 	// One transaction for every ticket, the order_events row and the audit:
-	// the invitation is cancelled as a whole or not at all.
-	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		h.internal(w, r, "cancel: begin", err)
+	// the invitation is cancelled as a whole or not at all. Postgres may
+	// still resolve a lock race with a concurrent cancel of one of the same
+	// tickets by killing this transaction (40P01), so the WHOLE body runs
+	// again from the top, including the guest letter queued inside it.
+	var (
+		resp      cancelResponse
+		cancelled []cancelledTicket
+	)
+	err = txretry.Do(ctx, txretry.DefaultAttempts, func() error {
+		var terr error
+		resp, cancelled, terr = h.cancelOnce(ctx, o, targets, notify, actorType, actorID)
+		return terr
+	})
+	var refusal *cancelRefusal
+	if errors.As(err, &refusal) {
+		writeErr(w, r, refusal.status, refusal.code, refusal.message, refusal.details)
 		return
 	}
+	if err != nil {
+		h.internal(w, r, "cancel", err)
+		return
+	}
+	for _, c := range cancelled {
+		h.canceller.PublishTicketCancelled(ctx, c.out, c.p)
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+// cancelRefusal is an answer the cancel route gives instead of cancelling:
+// it is returned out of the transaction body so the transaction rolls back,
+// and never retried.
+type cancelRefusal struct {
+	status  int
+	code    string
+	message string
+	details map[string]any
+}
+
+func (e *cancelRefusal) Error() string { return e.code + ": " + e.message }
+
+// cancelledTicket is a ticket this attempt cancelled, kept for the
+// v1.ticket.cancelled event fired after the commit.
+type cancelledTicket struct {
+	out htickets.CancelTicketOutcome
+	p   htickets.CancelTicketParams
+}
+
+// cancelOnce is one attempt of the cancellation transaction. Lock order
+// (AGENTS.md): the sessions row FIRST (IncrementSessionSeatStatusVersion,
+// the seat_status_version bump), then the ticket rows FOR UPDATE in id
+// order, then the per-ticket work. htickets.CancelTicketInTx takes the
+// session lock before its own ticket update too, so a single-ticket cancel
+// running at the same time queues behind this transaction instead of
+// holding a ticket while waiting for the session (the 40P01 this fixed).
+func (h *Handler) cancelOnce(ctx context.Context, o gen.InvitationOrderRow, targets []gen.TicketRow, notify bool, actorType, actorID string) (cancelResponse, []cancelledTicket, error) {
+	resp := cancelResponse{OrderID: o.ID.String(), OrderStatus: o.Status, CancelledTicketIDs: []string{}, SkippedTicketIDs: []string{}, NotifyGuest: notify}
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return resp, nil, fmt.Errorf("begin: %w", err)
+	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	txq := h.queries.WithTx(tx)
+
+	if _, err := txq.IncrementSessionSeatStatusVersion(ctx, o.SessionID); err != nil {
+		return resp, nil, fmt.Errorf("lock session: %w", err)
+	}
+	ids := make([]uuid.UUID, 0, len(targets))
+	for _, t := range targets {
+		ids = append(ids, t.ID)
+	}
+	locked, err := txq.LockTicketsForCancel(ctx, ids)
+	if err != nil {
+		return resp, nil, fmt.Errorf("lock tickets: %w", err)
+	}
+	status := make(map[uuid.UUID]string, len(locked))
+	for _, l := range locked {
+		status[l.ID] = l.Status
+	}
 
 	// A ticket that was already used at the door is never cancelled: the
 	// guest is inside (spec 46, owner decision). The platform's one
 	// definition of "scanned" decides (refunds.TicketScannedTx).
 	for _, t := range targets {
-		if t.Status != "active" {
+		if status[t.ID] != "active" {
 			continue
 		}
 		scanned, serr := refunds.TicketScannedTx(ctx, tx, t.ID)
 		if serr != nil {
-			h.internal(w, r, "cancel: scan check", serr)
-			return
+			return resp, nil, fmt.Errorf("scan check: %w", serr)
 		}
 		if scanned {
-			writeErr(w, r, http.StatusConflict, "invitation.ticket_scanned",
-				"a ticket of this invitation was already used at the door; nothing was cancelled",
-				map[string]any{"ticket_id": t.ID.String()})
-			return
+			return resp, nil, &cancelRefusal{status: http.StatusConflict, code: "invitation.ticket_scanned",
+				message: "a ticket of this invitation was already used at the door; nothing was cancelled",
+				details: map[string]any{"ticket_id": t.ID.String()}}
 		}
 	}
 
-	type done struct {
-		out htickets.CancelTicketOutcome
-		p   htickets.CancelTicketParams
-	}
-	var cancelled []done
+	var cancelled []cancelledTicket
 	for _, t := range targets {
-		if t.Status != "active" {
+		if status[t.ID] != "active" {
 			resp.SkippedTicketIDs = append(resp.SkippedTicketIDs, t.ID.String())
 			continue
 		}
@@ -610,35 +676,32 @@ func (h *Handler) HandleCancel(w http.ResponseWriter, r *http.Request) {
 				resp.SkippedTicketIDs = append(resp.SkippedTicketIDs, t.ID.String())
 				continue
 			}
+			if txretry.IsSerializationFailure(cerr) {
+				return resp, nil, fmt.Errorf("cancel ticket %s: %w", t.ID, cerr)
+			}
 			h.logger.Error("invitation.cancel: ticket cancel failed",
 				slog.String("order_id", o.ID.String()), slog.String("ticket_id", t.ID.String()), slog.String("error", cerr.Error()))
-			writeErr(w, r, cerr.Status, cerr.Code, cerr.Message, map[string]any{"ticket_id": t.ID.String()})
-			return
+			return resp, nil, &cancelRefusal{status: cerr.Status, code: cerr.Code, message: cerr.Message,
+				details: map[string]any{"ticket_id": t.ID.String()}}
 		}
-		cancelled = append(cancelled, done{out: out, p: p})
+		cancelled = append(cancelled, cancelledTicket{out: out, p: p})
 		resp.CancelledTicketIDs = append(resp.CancelledTicketIDs, t.ID.String())
 	}
 
 	if len(cancelled) > 0 {
 		if err := h.recordCancel(ctx, tx, o, resp, actorType, actorID); err != nil {
-			h.internal(w, r, "cancel: record", err)
-			return
+			return resp, nil, fmt.Errorf("record: %w", err)
 		}
 	}
 	if notify {
 		if err := h.notifyGuestCancelled(ctx, tx, o, resp.CancelledTicketIDs); err != nil {
-			h.internal(w, r, "cancel: guest letter", err)
-			return
+			return resp, nil, fmt.Errorf("guest letter: %w", err)
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		h.internal(w, r, "cancel: commit", err)
-		return
+		return resp, nil, fmt.Errorf("commit: %w", err)
 	}
-	for _, c := range cancelled {
-		h.canceller.PublishTicketCancelled(ctx, c.out, c.p)
-	}
-	httputil.WriteJSON(w, http.StatusOK, resp)
+	return resp, cancelled, nil
 }
 
 // recordCancel writes the order_events row and the audit of a cancellation

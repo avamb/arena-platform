@@ -47,3 +47,39 @@ func (q *Queries) GetInternalChannelID(ctx context.Context, orgID uuid.UUID) (uu
 	err := q.db.QueryRow(ctx, getInternalChannelID, orgID).Scan(&id)
 	return id, err
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LockTicketsForCancel
+// ─────────────────────────────────────────────────────────────────────────────
+
+const lockTicketsForCancel = `-- name: LockTicketsForCancel :many
+SELECT id, status
+FROM   tickets
+WHERE  id = ANY($1::uuid[])
+ORDER BY id
+FOR UPDATE`
+
+// LockedTicketStatus is a ticket id and its status as read under a row lock.
+type LockedTicketStatus struct {
+	ID     uuid.UUID
+	Status string
+}
+
+// LockTicketsForCancel locks the named tickets in id order and answers
+// their current status. Call it after the session lock, never before.
+func (q *Queries) LockTicketsForCancel(ctx context.Context, ids []uuid.UUID) ([]LockedTicketStatus, error) {
+	rows, err := q.db.Query(ctx, lockTicketsForCancel, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []LockedTicketStatus
+	for rows.Next() {
+		var r LockedTicketStatus
+		if err := rows.Scan(&r.ID, &r.Status); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
