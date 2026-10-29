@@ -119,7 +119,8 @@ func ParseCSV(data []byte) (*parsedCSV, *IssueError) {
 	_, hasSeat := cols["seat"]
 	_, hasCat := cols["category"]
 	_, hasQty := cols["qty"]
-	if !hasKey && !(hasRow && hasSeat) && !(hasCat && hasQty) {
+	namesPlaces := hasKey || (hasRow && hasSeat) || (hasCat && hasQty)
+	if !namesPlaces {
 		return nil, batchErr(http.StatusUnprocessableEntity, "invitation_batch.invalid_header",
 			"the header names no places: use seat_key, or sector,row,seat, or category,qty",
 			map[string]any{"missing": []string{"seat_key | row,seat | category,qty"}})
