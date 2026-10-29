@@ -711,7 +711,7 @@ func (b *Bot) sendInvitations(ctx context.Context, chatID int64, editMsgID *int,
 		// or a bot restart replays the order already issued.
 		res, err := b.arena.IssueStaffInvitation(ctx, jwt, st.OrgID, StaffInvitationInput{
 			SessionID: st.SessionID, TierID: st.TierID, Qty: 1, Email: r.Email,
-			Name:      staffGuestName(r), VIP: st.VIP,
+			Name: staffGuestName(r), VIP: st.VIP,
 			RequestID: uuid.NewSHA1(uuid.NameSpaceOID, []byte("tg-"+st.Batch+"-"+invNum(int64(i)))),
 		})
 		if err != nil {
