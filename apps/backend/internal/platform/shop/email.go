@@ -36,6 +36,9 @@ type OrderEmailPayload struct {
 	OrgID   string `json:"org_id"`
 	// Kind is EmailReceived or EmailShipped.
 	Kind string `json:"kind"`
+	// Resend is set when a person asked for the letter again: the worker
+	// then ignores its "already sent" marker and mails it once more.
+	Resend bool `json:"resend,omitempty"`
 }
 
 // orderEmailAttempts is the job's retry budget (a mail outage).
