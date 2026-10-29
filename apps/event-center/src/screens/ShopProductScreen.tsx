@@ -29,7 +29,7 @@ import { ShopImages } from "@/components/ShopImages";
 import { NoShopAccess, ShopNav, ShopReadOnlyNote } from "@/components/ShopNav";
 import { ShopVariantsEditor, type VariantStat } from "@/components/ShopVariantsEditor";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
-import { ErrorBox, Loading } from "@/components/ui";
+import { Badge, ErrorBox, Loading } from "@/components/ui";
 import {
   attachShopImage,
   createShopProduct,
@@ -50,6 +50,8 @@ import {
   SHOP_LIMITS,
   checkVariants,
   emptyRow,
+  kindTracksStock,
+  shelfEmpty,
   invalidFields,
   isSingleVersion,
   isStockChanged,
@@ -111,6 +113,8 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
   const [savedParts, setSavedParts] = useState<SavedPart[]>([]);
   // Set right before the form itself navigates away (after a create or a delete): that move must not ask.
   const allowLeave = useRef(false);
+  // The "unsaved changes" question is open: the Save bar steps aside so nothing covers its buttons (M-09).
+  const [guardOpen, setGuardOpen] = useState(false);
   const [notice, setNotice] = useState<MessageKey | null>(null);
   const [fileProblem, setFileProblem] = useState<MessageKey | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -227,16 +231,16 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
   };
 
   /** ONE save for the card: details, then variants, then the descriptions of the pictures. */
-  const saveAll = async () => {
-    if (product === undefined || busy !== null || !canManage) return;
+  const saveAll = async (): Promise<boolean> => {
+    if (product === undefined || busy !== null || !canManage) return false;
     setDetailsTried(true);
     const c = checkVariants(rows, currency, optionCount, { digital });
     setCheck(c);
     if (!detailsOk || !c.ok) {
       setFocusTick((n) => n + 1);
-      return;
+      return false;
     }
-    if (!dirty) return;
+    if (!dirty) return true;
     setBusy("save");
     setStockMoved([]);
     setFailure(null);
@@ -272,12 +276,21 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
         done.push("images");
       }
       setNotice("shop.card.saved");
+      return true;
     } catch (error) {
       setFailure({ scope: step, error });
       setSavedParts(done);
+      return false;
     } finally {
       setBusy(null);
     }
+  };
+
+  /** A new product of another kind: its new rows count stock only for a physical one (M-01). Saved rows are left alone. */
+  const changeKind = (next: ShopKind) => {
+    setKind(next);
+    const tracks = kindTracksStock(next);
+    setRows((list) => list.map((r) => (r.id === undefined ? { ...r, trackStock: tracks } : r)));
   };
 
   const create = () => {
@@ -327,9 +340,9 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
 
   return (
     <div ref={root} className="shop-card">
-      <UnsavedChangesGuard dirty={dirty} allowLeave={allowLeave} />
+      <UnsavedChangesGuard dirty={dirty} allowLeave={allowLeave} onOpenChange={setGuardOpen} onSaveAndLeave={canManage && editing ? saveAll : undefined} />
       {canManage && editing && (
-        <div className="shop-savebar" data-testid="shop-savebar">
+        <div className="shop-savebar" data-testid="shop-savebar" hidden={guardOpen} aria-hidden={guardOpen ? true : undefined}>
           <button type="button" className="btn btn-primary" disabled={busy !== null || !dirty} onClick={() => void saveAll()} data-testid="shop-product-save">
             {busy === "save" ? t("shop.card.saving") : t("shop.card.save")}
           </button>
@@ -373,7 +386,7 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
           }}
           testId="shop-product-body"
         />
-        <SelectField label={t("shop.product.f.kind")} hint={t(`shop.kind.hint.${kind}` as MessageKey)} value={kind} onChange={(v) => setKind(v as ShopKind)} testId="shop-product-kind">
+        <SelectField label={t("shop.product.f.kind")} hint={t(`shop.kind.hint.${kind}` as MessageKey)} value={kind} onChange={(v) => changeKind(v as ShopKind)} testId="shop-product-kind">
           {SHOP_KINDS.map((k) => (
             <option key={k} value={k}>
               {t(`shop.kind.${k}` as MessageKey)}
@@ -443,7 +456,7 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
       <section aria-labelledby="shop-variants-title">
         <h2 id="shop-variants-title">{t("shop.variants.title")}</h2>
         <p className="field-hint">{t("shop.variants.hint")}</p>
-        <ShopVariantsEditor rows={rows} onChange={setRows} currency={currency} optionNames={used} optionCount={optionCount} check={check} disabled={disabled} digital={digital} stats={stats} />
+        <ShopVariantsEditor rows={rows} onChange={setRows} currency={currency} optionNames={used} optionCount={optionCount} check={check} disabled={disabled} digital={digital} newRowTracks={kindTracksStock(kind)} stats={stats} />
         {variantsError !== null && (
           <ErrorNotice error={variantsError} testId={isStockChanged(variantsError) ? "shop-stock-changed" : "shop-variants-error"} />
         )}
@@ -537,6 +550,11 @@ function ProductPage({ productId }: { productId: string | null }) {
     <section className="shop-page" aria-labelledby="shop-product-title-h">
       <h1 id="shop-product-title-h">{productId === null ? t("shop.product.titleNew") : (product.data?.title ?? t("shop.title"))}</h1>
       <ShopNav orgId={orgId} />
+      {productId !== null && product.data !== undefined && product.data.status === "active" && shelfEmpty(product.data) && (
+        <p data-testid="shop-product-soldout">
+          <Badge tone="bad">{t("shop.product.soldOut")}</Badge>
+        </p>
+      )}
       <p>
         <Link to="/o/$orgId/shop/products" params={{ orgId }} search={{}}>
           {t("shop.product.back")}

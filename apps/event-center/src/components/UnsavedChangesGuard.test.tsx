@@ -24,9 +24,9 @@ afterEach(() => {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** `browser`: the real history, the only one that listens for the tab being closed. */
-async function mount(dirty: boolean, allowLeave?: MutableRefObject<boolean>, browser = false) {
+async function mount(dirty: boolean, allowLeave?: MutableRefObject<boolean>, browser = false, extra: { onOpenChange?: (open: boolean) => void; onSaveAndLeave?: () => Promise<boolean> } = {}) {
   const rootRoute = createRootRoute();
-  const card = createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => <UnsavedChangesGuard dirty={dirty} allowLeave={allowLeave} /> });
+  const card = createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => <UnsavedChangesGuard dirty={dirty} allowLeave={allowLeave} {...extra} /> });
   const other = createRoute({ getParentRoute: () => rootRoute, path: "/other", component: () => <p data-testid="other">other</p> });
   const router = createRouter({ routeTree: rootRoute.addChildren([card, other]), history: browser ? createBrowserHistory() : createMemoryHistory({ initialEntries: ["/"] }) });
   const el = document.createElement("div");
@@ -103,5 +103,62 @@ describe("UnsavedChangesGuard", () => {
     const clean = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(clean);
     expect(clean.defaultPrevented).toBe(false);
+  });
+
+  it("has two actions without a way to save, three with one (M-09)", async () => {
+    const plain = await mount(true);
+    await go(plain.router, "/other");
+    expect(plain.el.querySelectorAll('[data-testid="unsaved-dialog"] button')).toHaveLength(2);
+    expect(plain.el.querySelector('[data-testid="unsaved-save-leave"]')).toBeNull();
+    for (const r of roots.splice(0)) act(() => r.unmount());
+    document.body.innerHTML = "";
+
+    const withSave = await mount(true, undefined, false, { onSaveAndLeave: () => Promise.resolve(true) });
+    await go(withSave.router, "/other");
+    const buttons = Array.from(withSave.el.querySelectorAll('[data-testid="unsaved-dialog"] button')).map((b) => b.getAttribute("data-testid"));
+    expect(buttons).toEqual(["unsaved-stay", "unsaved-save-leave", "unsaved-leave"]);
+    expect(withSave.el.querySelector('[data-testid="unsaved-save-leave"]')?.textContent).toBe("Save and leave");
+  });
+
+  it("tells the screen while the question is open, so it can hide the Save bar", async () => {
+    const seen: boolean[] = [];
+    const { router, el } = await mount(true, undefined, false, { onOpenChange: (o) => seen.push(o) });
+    expect(seen.at(-1)).toBe(false);
+    await go(router, "/other");
+    expect(seen.at(-1)).toBe(true);
+    await act(async () => {
+      (el.querySelector('[data-testid="unsaved-stay"]') as HTMLElement).click();
+      await sleep(20);
+    });
+    expect(seen.at(-1)).toBe(false);
+  });
+
+  it("saves, then leaves when the save went through", async () => {
+    const allow = { current: false };
+    let saved = 0;
+    const { router, el } = await mount(true, allow, false, {
+      onSaveAndLeave: () => {
+        saved += 1;
+        return Promise.resolve(true);
+      },
+    });
+    await go(router, "/other");
+    await act(async () => {
+      (el.querySelector('[data-testid="unsaved-save-leave"]') as HTMLElement).click();
+      await sleep(30);
+    });
+    expect(saved).toBe(1);
+    expect(router.state.location.pathname).toBe("/other");
+  });
+
+  it("stays on the card when the save did not go through", async () => {
+    const { router, el } = await mount(true, undefined, false, { onSaveAndLeave: () => Promise.resolve(false) });
+    await go(router, "/other");
+    await act(async () => {
+      (el.querySelector('[data-testid="unsaved-save-leave"]') as HTMLElement).click();
+      await sleep(30);
+    });
+    expect(router.state.location.pathname).toBe("/");
+    expect(el.querySelector('[data-testid="unsaved-dialog"]')).toBeNull();
   });
 });

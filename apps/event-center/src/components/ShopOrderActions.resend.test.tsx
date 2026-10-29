@@ -142,3 +142,24 @@ describe("the repeat e-mail button", () => {
     expect((await mount(order({ buyer: { name: "A", email: "" } }))).querySelector('[data-testid="shop-order-resend"]')).toBeNull();
   });
 });
+
+describe("an order without delivery (M-03, M-07)", () => {
+  it("has no ship button and no courier text, and says no delivery is needed", async () => {
+    const el = await mount(order({ delivery_kind: "none", ship: { address1: "", city: "", country: "" } }));
+    expect(el.querySelector('[data-testid="shop-order-ship"]')).toBeNull();
+    expect(el.querySelector('[data-testid="shop-order-courier"]')).toBeNull();
+    expect(el.querySelector('[data-testid="shop-order-no-delivery"]')?.textContent).toBe("No delivery needed");
+  });
+
+  it("keeps both for a shipped parcel, and the action reads as an action", async () => {
+    const el = await mount(order());
+    expect(el.querySelector('[data-testid="shop-order-ship"]')?.textContent).toBe("Mark shipped");
+    expect(el.querySelector('[data-testid="shop-order-courier"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="shop-order-no-delivery"]')).toBeNull();
+  });
+
+  it("after shipping, the mark-shipped action is gone and only the note can be changed", async () => {
+    const el = await mount(order({ status: "shipped", shipped_at: "2026-10-02T09:00:00Z" }));
+    expect(el.querySelector('[data-testid="shop-order-ship"]')?.textContent).toBe("Change the note");
+  });
+});

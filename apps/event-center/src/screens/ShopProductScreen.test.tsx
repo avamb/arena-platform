@@ -34,7 +34,7 @@ vi.mock("@/lib/api/shopApi", () => ({
 }));
 
 import { ApiError } from "@/lib/api/http";
-import { attachShopImage, fetchShopProduct, patchShopProduct, replaceShopVariants } from "@/lib/api/shopApi";
+import { attachShopImage, createShopProduct, fetchShopProduct, patchShopProduct, replaceShopVariants } from "@/lib/api/shopApi";
 import { I18nProvider } from "@/lib/i18n";
 import type { ShopProductView } from "@/lib/shop";
 import { ProductForm } from "@/screens/ShopProductScreen";
@@ -70,7 +70,7 @@ function product(over: Partial<ShopProductView> = {}): ShopProductView {
 }
 
 beforeEach(() => {
-  for (const fn of [patchShopProduct, replaceShopVariants, fetchShopProduct, attachShopImage]) vi.mocked(fn).mockReset();
+  for (const fn of [patchShopProduct, replaceShopVariants, fetchShopProduct, attachShopImage, createShopProduct]) vi.mocked(fn).mockReset();
 });
 afterEach(() => {
   while (roots.length > 0) act(() => (roots.pop() as Root).unmount());
@@ -234,5 +234,119 @@ describe("the product card: one Save", () => {
     });
     expect(router.state.location.pathname).toBe("/");
     expect(q(el, "unsaved-dialog").textContent).toContain("There are unsaved changes. Leave?");
+  });
+});
+
+describe("leaving with unsaved changes (M-09)", () => {
+  async function dirtyAndLeave(canManage = true) {
+    const m = await mount(product(), canManage);
+    await typeInto(q(m.el, "shop-product-title"), "Riesling 2021");
+    await act(async () => {
+      void m.router.navigate({ to: "/other" });
+      await sleep(50);
+    });
+    return m;
+  }
+
+  it("offers three ways out, and hides the Save bar while the question is open", async () => {
+    const { el, router } = await dirtyAndLeave();
+    const buttons = Array.from(el.querySelectorAll('[data-testid="unsaved-dialog"] button')).map((b) => b.getAttribute("data-testid"));
+    expect(buttons).toEqual(["unsaved-stay", "unsaved-save-leave", "unsaved-leave"]);
+    const bar = q(el, "shop-savebar");
+    expect(bar.hidden).toBe(true);
+    expect(bar.getAttribute("aria-hidden")).toBe("true");
+    await act(async () => {
+      q(el, "unsaved-stay").click();
+      await sleep(20);
+    });
+    expect(q(el, "shop-savebar").hidden).toBe(false);
+    expect(router.state.location.pathname).toBe("/");
+  });
+
+  it("'Save and leave' runs the one Save and then goes", async () => {
+    vi.mocked(patchShopProduct).mockResolvedValue(product({ title: "Riesling 2021" }));
+    const { el, router } = await dirtyAndLeave();
+    await act(async () => {
+      q(el, "unsaved-save-leave").click();
+      await sleep(80);
+    });
+    expect(patchShopProduct).toHaveBeenCalledTimes(1);
+    expect(router.state.location.pathname).toBe("/other");
+  });
+
+  it("'Save and leave' stays when the save failed, and says what is wrong", async () => {
+    vi.mocked(patchShopProduct).mockRejectedValue(new ApiError(500, "internal", "boom", undefined));
+    const { el, router } = await dirtyAndLeave();
+    await act(async () => {
+      q(el, "unsaved-save-leave").click();
+      await sleep(80);
+    });
+    expect(router.state.location.pathname).toBe("/");
+    expect(q(el, "unsaved-dialog")).toBeNull();
+    expect(q(el, "shop-savebar").hidden).toBe(false);
+    expect(status(el)).toContain("Not everything was saved");
+  });
+});
+
+describe("a new product of another kind has no shelf (M-01)", () => {
+  async function mountNew() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const rootRoute = createRootRoute();
+    const card = createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/",
+      component: () => <ProductForm orgId={ORG} currency="EUR" product={undefined} canManage canViewMedia={false} />,
+    });
+    const router = createRouter({ routeTree: rootRoute.addChildren([card]), history: createMemoryHistory({ initialEntries: ["/"] }) });
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <I18nProvider locale="en">
+            <RouterProvider router={router} />
+          </I18nProvider>
+        </QueryClientProvider>,
+      );
+      await sleep(50);
+    });
+    return el;
+  }
+  async function pickKind(el: HTMLElement, kind: string) {
+    await act(async () => {
+      const sel = q(el, "shop-product-kind") as unknown as HTMLSelectElement;
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(sel, kind);
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+      await sleep(0);
+    });
+  }
+
+  it("physical counts stock by default, a service does not and hides the stock field", async () => {
+    const el = await mountNew();
+    expect(q(el, "shop-variant-track-0").checked).toBe(true);
+    expect(q(el, "shop-variant-stock-0")).not.toBeNull();
+    await pickKind(el, "service");
+    expect(q(el, "shop-variant-track-0").checked).toBe(false);
+    expect(q(el, "shop-variant-stock-0")).toBeNull();
+    await pickKind(el, "physical");
+    expect(q(el, "shop-variant-track-0").checked).toBe(true);
+  });
+
+  it("creates a service with the tracking flag sent as false", async () => {
+    vi.mocked(createShopProduct).mockResolvedValue(product({ kind: "service" } as Partial<ShopProductView>));
+    const el = await mountNew();
+    await pickKind(el, "service");
+    await typeInto(q(el, "shop-product-title"), "Sommelier consultation");
+    await typeInto(q(el, "shop-variant-price-0"), "20");
+    await act(async () => {
+      (el.querySelector('[data-testid="shop-product-form"]') as HTMLFormElement).dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await sleep(80);
+    });
+    expect(createShopProduct).toHaveBeenCalledTimes(1);
+    const body = vi.mocked(createShopProduct).mock.calls[0][1] as { kind: string; variants: { track_stock: boolean }[] };
+    expect(body.kind).toBe("service");
+    expect(body.variants[0].track_stock).toBe(false);
   });
 });

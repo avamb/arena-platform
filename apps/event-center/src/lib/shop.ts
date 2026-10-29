@@ -152,8 +152,23 @@ function nextKey(): string {
   return `v${rowSeq}`;
 }
 
-export function emptyRow(): VariantRow {
-  return { key: nextKey(), title: "", options: ["", "", ""], sku: "", price: "", compareAt: "", stock: "0", trackStock: true };
+/** `trackStock` is off for a file or a service (M-01): they have no shelf, and a counted 0 would sell out at birth. */
+export function emptyRow(trackStock = true): VariantRow {
+  return { key: nextKey(), title: "", options: ["", "", ""], sku: "", price: "", compareAt: "", stock: "0", trackStock };
+}
+
+/** True when a new variant of this kind counts its stock by default: only a physical product has a shelf. */
+export function kindTracksStock(kind: ShopKind): boolean {
+  return kind === "physical";
+}
+
+/**
+ * M-01: the storefront shows "Sold out" for this product and the person has no hint of it: every variant counts
+ * stock and none has a unit left. A digital product never counts, so it is never empty.
+ */
+export function shelfEmpty(p: { kind?: string; variants: readonly { stock: number; track_stock: boolean }[] }): boolean {
+  if (productKind(p) === "digital" || p.variants.length === 0) return false;
+  return p.variants.every((v) => v.track_stock && v.stock <= 0);
 }
 
 const DEFAULT_TITLE = "Default Title";
@@ -401,7 +416,9 @@ export function shopOrderNumber(n: number): string {
 }
 
 /** "Mark shipped" exists for a paid order (also partly refunded, or parked for a check). */
-export function canShip(status: string, canManage: boolean): boolean {
+export function canShip(status: string, canManage: boolean, deliveryKind?: string | null): boolean {
+  // M-03: an order with no delivery (a file, a service) has nothing to hand over.
+  if (deliveryKind === "none") return false;
   return canManage && (status === "paid" || status === "partially_refunded" || status === "manual_review");
 }
 
@@ -459,7 +476,7 @@ export function refundOutcome(state: string): "done" | "pending" | "failed" | "r
 }
 
 export interface TimelineEntry {
-  kind: "created" | "paid" | "shipped" | "cancelled" | "refunded" | "expires";
+  kind: "created" | "paid" | "shipped" | "cancelled" | "refunded" | "expires" | "expired";
   at: string | null;
 }
 
@@ -469,7 +486,9 @@ export function orderTimeline(o: Pick<ShopOrder, "created_at" | "paid_at" | "shi
   if (o.paid_at) list.push({ kind: "paid", at: o.paid_at });
   if (o.shipped_at) list.push({ kind: "shipped", at: o.shipped_at });
   if (o.cancelled_at) list.push({ kind: "cancelled", at: o.cancelled_at });
+  // M-04: "pay by" while the order waits; after the time ran out the line stays, as "not paid in time".
   if (o.status === "pending_payment" && o.expires_at) list.push({ kind: "expires", at: o.expires_at });
+  if (o.status === "expired" && o.expires_at) list.push({ kind: "expired", at: o.expires_at });
   list.sort((a, b) => Date.parse(a.at ?? "") - Date.parse(b.at ?? ""));
   if (o.refunded_minor > 0) list.push({ kind: "refunded", at: o.updated_at });
   return list;

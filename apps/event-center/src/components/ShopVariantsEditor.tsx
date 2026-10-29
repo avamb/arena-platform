@@ -39,6 +39,8 @@ export interface ShopVariantsEditorProps {
   disabled?: boolean;
   /** A digital product: no stock controls, the file is not counted. */
   digital?: boolean;
+  /** Whether a variant the person adds counts its stock from the start: a service does not (M-01). Default: yes. */
+  newRowTracks?: boolean;
   /** Held and available units of the saved variants, by id. */
   stats?: Readonly<Record<string, VariantStat>>;
 }
@@ -54,7 +56,7 @@ const PROBLEM_KEY: Record<VariantProblem, MessageKey> = {
   duplicate: "shop.variants.err.duplicate",
 };
 
-export function ShopVariantsEditor({ rows, onChange, currency, optionNames, optionCount, check, disabled = false, digital = false, stats }: ShopVariantsEditorProps) {
+export function ShopVariantsEditor({ rows, onChange, currency, optionNames, optionCount, check, disabled = false, digital = false, newRowTracks = true, stats }: ShopVariantsEditorProps) {
   const { t } = useI18n();
   // One version with nothing to tell versions apart: no empty name field, a plain word instead.
   const single = isSingleVersion(rows, optionNames);
@@ -209,7 +211,7 @@ export function ShopVariantsEditor({ rows, onChange, currency, optionNames, opti
             type="button"
             className="btn"
             disabled={rows.length >= SHOP_LIMITS.maxVariants}
-            onClick={() => onChange([...rows, emptyRow()])}
+            onClick={() => onChange([...rows, emptyRow(newRowTracks)])}
             data-testid="shop-variant-add"
           >
             {t("shop.variants.add")}
