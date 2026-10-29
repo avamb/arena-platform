@@ -232,6 +232,11 @@ func TestINV06_IssueBatch_OneOrderPerGuest_ResultFile_Replay(t *testing.T) {
 	if got := f.countRows(`SELECT count(*) FROM audit_events WHERE action = 'v1.invitation.batch_issue' AND resource_id = $1`, batchID); got != 1 {
 		t.Fatalf("batch audit rows = %d, want 1", got)
 	}
+	// And one v1.invitation.issue row per order, as a single invitation writes.
+	if got := f.countRows(`SELECT count(*) FROM audit_events WHERE action = 'v1.invitation.issue'
+		AND resource_id IN (SELECT id::text FROM orders WHERE invitation_batch_id = $1)`, batchID); got != 3 {
+		t.Fatalf("order audit rows = %d, want 3", got)
+	}
 
 	// The same upload again answers the first batch.
 	code, again := f.upload(f.manager, "", csv, map[string]string{"request_id": reqID.String(), "delivery": "my_email"})
@@ -273,7 +278,8 @@ func TestINV06_IssueBatch_OneOrderPerGuest_ResultFile_Replay(t *testing.T) {
 	// The session's list shows the bulk orders with their issuance.
 	code, list := f.do(f.manager, http.MethodGet, f.issuePath(), "")
 	if code != http.StatusOK || len(list["items"].([]any)) != 3 ||
-		list["items"].([]any)[0].(map[string]any)["issued_via"] != "staff_bulk" {
+		list["items"].([]any)[0].(map[string]any)["issued_via"] != "staff_bulk" ||
+		list["items"].([]any)[0].(map[string]any)["invitation_batch_id"] != batchID {
 		t.Fatalf("list: %d %s", code, list["_raw"])
 	}
 }
@@ -412,60 +418,5 @@ func TestINV06_ConcurrentRepeatOfOneUpload_OneBatch(t *testing.T) {
 	}
 	if f.batchRows() != 1 || f.batchOrders() != 2 {
 		t.Fatalf("batches %d orders %d, want 1 and 2", f.batchRows(), f.batchOrders())
-	}
-}
-
-// TestINV06_ThousandPlacesFitOneTransaction is the budget of spec 46: 1 000
-// places - 250 guests of 4 seats - issue in one transaction. The time is
-// logged (see the budget note below).
-func TestINV06_ThousandPlacesFitOneTransaction(t *testing.T) {
-	f := newINV02Fx(t, 30*24*time.Hour)
-	ctx := context.Background()
-	for _, sql := range []string{
-		`UPDATE sessions SET capacity_total = 5000 WHERE id = $1`,
-		`UPDATE inventory_ledger SET capacity_total = 5000 WHERE session_id = $1 AND tier_id IS NULL`,
-	} {
-		if _, err := f.pool.Exec(ctx, sql, f.session); err != nil {
-			t.Fatalf("capacity: %v", err)
-		}
-	}
-	if _, err := f.pool.Exec(ctx, `
-		INSERT INTO session_seats (session_id, seat_key, sector_name, row_name, seat_number, tier_id, status, kind)
-		SELECT $1, 'B|' || r || '|' || n, 'B', r::text, n::text, $2, 'available', 'seat'
-		FROM generate_series(1, 50) r, generate_series(1, 20) n`, f.session, f.seatTier); err != nil {
-		t.Fatalf("seats: %v", err)
-	}
-	var b strings.Builder
-	b.WriteString("guest,name,email,sector,row,seat\n")
-	for r := 1; r <= 50; r++ {
-		for n := 1; n <= 20; n++ {
-			guest := (r-1)*5 + (n-1)/4 + 1 // five guests of 4 seats per row
-			fmt.Fprintf(&b, "%d,Guest %d,g%d-%s@example.test,B,%d,%d\n", guest, guest, guest, uuid.NewString()[:8], r, n)
-		}
-	}
-	// Each guest's e-mail comes from its first row only; make them unique per run.
-	run := uuid.NewString()[:8]
-	csv := strings.ReplaceAll(b.String(), "@example.test", "."+run+"@example.test")
-
-	start := time.Now()
-	code, body := f.upload(f.o.owner, "", csv, map[string]string{"request_id": uuid.NewString()})
-	took := time.Since(start)
-	if code != http.StatusCreated {
-		t.Fatalf("1000-place upload: %d %.400s", code, body["_raw"])
-	}
-	t.Logf("1000 places, 250 guests: %s end to end", took)
-	if body["places"].(float64) != 1000 || body["guests"].(float64) != 250 {
-		t.Fatalf("batch: %.300s", body["_raw"])
-	}
-	// Spec 46 budgets 5 s on the stand, where a statement costs a fraction of
-	// a millisecond. This is bound by round trips (about 43 statements per
-	// guest and 6 per place), so a developer host behind Docker Desktop at
-	// 1.6 ms per statement needs three times that; the test only guards
-	// against a regression to something far worse.
-	if took > 60*time.Second {
-		t.Fatalf("1000 places took %s", took)
-	}
-	if got := f.countRows(`SELECT count(*) FROM session_seats WHERE session_id = $1 AND status = 'sold'`, f.session); got != 1000 {
-		t.Fatalf("sold places = %d, want 1000", got)
 	}
 }

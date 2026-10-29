@@ -409,12 +409,16 @@ func allocateGA(
 			return nil, err
 		}
 		tiers[tier.ID] = tier
+		// Only General Admission places can come back from the lock below,
+		// so only those are worth asking extra for and dropping.
 		chosen := make(map[uuid.UUID]bool, len(places)+len(exclude))
 		for id := range exclude {
 			chosen[id] = true
 		}
 		for _, p := range places {
-			chosen[p.seat.ID] = true
+			if p.seat.Kind == "ga_unit" {
+				chosen[p.seat.ID] = true
+			}
 		}
 		units, err := txq.LockInvitationGAUnits(ctx, in.SessionID, line.TierID, line.Quantity+int32(len(chosen))) //nolint:gosec // capped by MaxPlaces / MaxBatchPlaces
 		if err != nil {
@@ -592,6 +596,10 @@ func writeInvitation(
 			"from_reserve": fromReserve,
 			"delivery":     in.Delivery,
 			"system_id":    order.SystemID,
+		}
+		if in.BatchID != nil {
+			meta["batch_id"] = in.BatchID.String()
+			meta["batch_seq"] = in.BatchSeq
 		}
 		if err := in.Audit(ctx, tx, order, meta); err != nil {
 			return written{}, fmt.Errorf("hinvitations: audit: %w", err)

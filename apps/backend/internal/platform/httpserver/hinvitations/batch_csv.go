@@ -10,15 +10,22 @@ import (
 	"unicode/utf8"
 )
 
-// Limits of one CSV upload (spec 46, section 3.5).
+// Limits of one CSV upload (spec 46, section 3.5). The whole file is ONE
+// transaction that holds the session's row lock, so a file is small by
+// design: a longer guest list is split into several files.
 const (
 	// MaxBatchPlaces is the most places one file may hand out.
-	MaxBatchPlaces = 1000
-	// MaxBatchFileBytes is the largest file the route reads.
-	MaxBatchFileBytes = 2 << 20
+	MaxBatchPlaces = 250
+	// MaxBatchGuests is the most guests (orders and letters) one file may make.
+	MaxBatchGuests = 100
+	// MaxBatchFileBytes is the largest file the route reads. It stays well
+	// under the router's global 1 MiB body limit, which also covers a
+	// multipart form and answers http.payload_too_large above it.
+	MaxBatchFileBytes = 512 << 10
 	// maxBatchRows bounds the data rows before any place is counted, so a
-	// file of a million blank-looking rows is refused early.
-	maxBatchRows = 5000
+	// file of a million blank-looking rows is refused early. Every row
+	// names at least one place, so more rows than places can never pass.
+	maxBatchRows = 1000
 )
 
 // csvRow is one data row of the upload. Line is the 1-based line of the file
@@ -88,15 +95,23 @@ func ParseCSV(data []byte) (*parsedCSV, *IssueError) {
 		return nil, batchErr(http.StatusBadRequest, "invitation_batch.empty_file", "the file is empty", nil)
 	}
 
+	// Excel writes a "sep=;" first line into a CSV it exports for a given
+	// separator: it names the separator and is not a header.
+	comma, lineOffset := detectDelimiter(data), 0
+	if sep, rest, ok := excelSepLine(data); ok {
+		comma, data, lineOffset = sep, rest, 1
+	}
+	// Quotes are strict: with lazy quotes an unclosed quote swallows every
+	// row after it into one field, and the file would look shorter instead
+	// of broken.
 	rd := csv.NewReader(bytes.NewReader(data))
-	rd.Comma = detectDelimiter(data)
+	rd.Comma = comma
 	rd.FieldsPerRecord = -1
-	rd.LazyQuotes = true
 	rd.TrimLeadingSpace = true
 
 	header, err := rd.Read()
 	if err != nil {
-		return nil, csvReadErr(err)
+		return nil, csvReadErr(err, lineOffset)
 	}
 	cols := map[string]int{}
 	for i, h := range header {
@@ -133,9 +148,10 @@ func ParseCSV(data []byte) (*parsedCSV, *IssueError) {
 			break
 		}
 		if err != nil {
-			return nil, csvReadErr(err)
+			return nil, csvReadErr(err, lineOffset)
 		}
 		line, _ := rd.FieldPos(0)
+		line += lineOffset
 		get := func(col string) string {
 			i, ok := cols[col]
 			if !ok || i >= len(rec) {
@@ -164,16 +180,35 @@ func ParseCSV(data []byte) (*parsedCSV, *IssueError) {
 	return out, nil
 }
 
-func csvReadErr(err error) *IssueError {
+func csvReadErr(err error, lineOffset int) *IssueError {
 	if errors.Is(err, io.EOF) {
 		return batchErr(http.StatusBadRequest, "invitation_batch.empty_file", "the file is empty", nil)
 	}
 	details := map[string]any{}
 	var pe *csv.ParseError
 	if errors.As(err, &pe) {
-		details["line"] = pe.StartLine
+		details["line"] = pe.StartLine + lineOffset
 	}
-	return batchErr(http.StatusBadRequest, "invitation_batch.invalid_csv", "the file is not a valid CSV", details)
+	return batchErr(http.StatusBadRequest, "invitation_batch.invalid_csv",
+		"the file is not a valid CSV: check the quotes around the line named in details", details)
+}
+
+// excelSepLine recognises Excel's "sep=<char>" first line and answers the
+// separator and the file without that line.
+func excelSepLine(data []byte) (sep rune, rest []byte, ok bool) {
+	if !bytes.HasPrefix(data, []byte("sep=")) {
+		return 0, data, false
+	}
+	line, after, found := bytes.Cut(data, []byte("\n"))
+	if !found {
+		return 0, data, false
+	}
+	line = bytes.TrimSuffix(line, []byte("\r"))
+	val := string(line[len("sep="):])
+	if len([]rune(val)) != 1 {
+		return 0, data, false
+	}
+	return []rune(val)[0], after, true
 }
 
 func normHeader(h string) string {

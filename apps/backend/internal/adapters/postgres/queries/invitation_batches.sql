@@ -82,3 +82,11 @@ RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
 -- Links every held seat of an invitation to its reservation in one statement.
 INSERT INTO reservation_seats (reservation_id, session_seat_id)
 SELECT $1, unnest($2::uuid[]);
+
+-- name: GetInvitationSessionCapacity :one
+-- The session-level ledger row an invitation reserves against (tier_id NULL):
+-- the dry run reads it to say what ReserveCapacity would answer.
+SELECT capacity_total, capacity_held + capacity_sold AS used
+FROM   inventory_ledger
+WHERE  session_id = $1
+  AND  tier_id IS NULL;

@@ -205,24 +205,26 @@ func (q *Queries) GetInvitationOrder(ctx context.Context, orderID, orgID uuid.UU
 
 // SessionInvitationRow is one row of the per-session invitation list.
 type SessionInvitationRow struct {
-	ID            uuid.UUID
-	SystemID      int64
-	Status        string
-	BuyerName     *string
-	Metadata      json.RawMessage
-	IssuedVia     string
-	IssuedBy      *uuid.UUID
-	IssuerEmail   *string
-	IssuerFirst   *string
-	IssuerLast    *string
-	CreatedAt     time.Time
+	ID          uuid.UUID
+	SystemID    int64
+	Status      string
+	BuyerName   *string
+	Metadata    json.RawMessage
+	IssuedVia   string
+	IssuedBy    *uuid.UUID
+	IssuerEmail *string
+	IssuerFirst *string
+	IssuerLast  *string
+	CreatedAt   time.Time
+	// BatchID is the CSV batch the invitation came from (migration 0175).
+	BatchID       *uuid.UUID
 	TicketsTotal  int64
 	TicketsActive int64
 }
 
 const listSessionInvitations = `-- name: ListSessionInvitations :many
 SELECT o.id, o.system_id, o.status, o.buyer_name, o.metadata, o.issued_via,
-       o.issued_by, u.email, u.first_name, u.last_name, o.created_at,
+       o.issued_by, u.email, u.first_name, u.last_name, o.created_at, o.invitation_batch_id,
        (SELECT count(*) FROM tickets t WHERE t.checkout_session_id = o.checkout_session_id) AS tickets_total,
        (SELECT count(*) FROM tickets t WHERE t.checkout_session_id = o.checkout_session_id AND t.status = 'active') AS tickets_active
 FROM   orders o
@@ -247,7 +249,7 @@ func (q *Queries) ListSessionInvitations(ctx context.Context, orgID, sessionID u
 		var r SessionInvitationRow
 		if err := rows.Scan(
 			&r.ID, &r.SystemID, &r.Status, &r.BuyerName, &r.Metadata, &r.IssuedVia,
-			&r.IssuedBy, &r.IssuerEmail, &r.IssuerFirst, &r.IssuerLast, &r.CreatedAt,
+			&r.IssuedBy, &r.IssuerEmail, &r.IssuerFirst, &r.IssuerLast, &r.CreatedAt, &r.BatchID,
 			&r.TicketsTotal, &r.TicketsActive,
 		); err != nil {
 			return nil, err

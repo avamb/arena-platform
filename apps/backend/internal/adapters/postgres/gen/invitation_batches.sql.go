@@ -248,3 +248,17 @@ func (q *Queries) InsertReservationSeats(ctx context.Context, reservationID uuid
 	_, err := q.db.Exec(ctx, insertReservationSeats, reservationID, seatIDs)
 	return err
 }
+
+const getInvitationSessionCapacity = `-- name: GetInvitationSessionCapacity :one
+SELECT capacity_total, capacity_held + capacity_sold AS used
+FROM   inventory_ledger
+WHERE  session_id = $1
+  AND  tier_id IS NULL`
+
+// GetInvitationSessionCapacity answers the session ledger's capacity_total
+// (nil: unlimited) and the places held or sold; pgx.ErrNoRows when the
+// session has no ledger row, which ReserveCapacity also refuses.
+func (q *Queries) GetInvitationSessionCapacity(ctx context.Context, sessionID uuid.UUID) (total *int32, used int32, err error) {
+	err = q.db.QueryRow(ctx, getInvitationSessionCapacity, sessionID).Scan(&total, &used)
+	return total, used, err
+}

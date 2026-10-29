@@ -109,6 +109,9 @@ func testPlan() (Plan, uuid.UUID, uuid.UUID) {
 			{ID: gaTier, Name: "Invitado", GA: true, Available: 3, Reserve: 2},
 		},
 	}
+	for i := range plan.Seats {
+		plan.Seats[i].TierID = &seatTier
+	}
 	return plan, seatTier, gaTier
 }
 
@@ -242,11 +245,68 @@ func TestResolveBatch_SameGuestSameCategoryMerges(t *testing.T) {
 	}
 }
 
-func TestResolveBatch_TooManyPlaces(t *testing.T) {
+func TestResolveBatch_FileLimits(t *testing.T) {
 	plan, _, _ := testPlan()
 	plan.Tiers[1].Available = 5000
-	res := resolve(t, plan, "name,category,qty\nAna,Invitado,600\nBea,Invitado,401\n", DeliveryPDFOnly)
+	res := resolve(t, plan, "name,category,qty\nAna,Invitado,200\nBea,Invitado,51\n", DeliveryPDFOnly)
 	if got := issueCodes(res); len(got) != 1 || got[0] != "too_many_places" || res.Issues[0].Row != 0 {
 		t.Fatalf("issues = %+v", res.Issues)
+	}
+	var b strings.Builder
+	b.WriteString("name,category,qty\n")
+	for i := 0; i <= MaxBatchGuests; i++ {
+		b.WriteString("Ana,Invitado,1\n")
+	}
+	res = resolve(t, plan, b.String(), DeliveryPDFOnly)
+	if got := issueCodes(res); len(got) != 1 || got[0] != "too_many_guests" {
+		t.Fatalf("issues = %+v", res.Issues)
+	}
+}
+
+func TestResolveBatch_SeatWithoutCategoryAndCapacity(t *testing.T) {
+	plan, _, _ := testPlan()
+	plan.Seats[1].TierID = nil // Sala|3|13
+	res := resolve(t, plan, "name,seat_key\nAna,Sala|3|13\n", DeliveryPDFOnly)
+	if got := issueCodes(res); len(got) != 1 || got[0] != "seat_without_category" {
+		t.Fatalf("issues = %+v", res.Issues)
+	}
+	two := 2
+	plan.CapacityLeft = &two
+	res = resolve(t, plan, "name,seat_key\nAna,Balcon|9|1\nBea,Balcon|3|12\nCy,Sala|3|12\n", DeliveryPDFOnly)
+	if got := issueCodes(res); len(got) != 1 || got[0] != "capacity_exceeded" || res.Issues[0].Row != 0 {
+		t.Fatalf("issues = %+v", res.Issues)
+	}
+}
+
+func TestResolveBatch_GuestNumbersAreComparedAsNumbers(t *testing.T) {
+	plan, _, _ := testPlan()
+	res := resolve(t, plan, "guest,name,seat_key\n1,Ana,Sala|3|13\n01,Ana,Balcon|9|1\n 1 ,Ana,Balcon|3|12\nA,Bea,Sala|3|12\na,Bea,Sala|3|14\n", DeliveryPDFOnly)
+	if len(res.Guests) != 2 || len(res.Guests[0].SeatKeys) != 3 {
+		t.Fatalf("guests = %+v issues = %+v", res.Guests, res.Issues)
+	}
+}
+
+func TestParseCSV_ExcelSepLineAndLineNumbers(t *testing.T) {
+	in := "sep=;\r\nname;seat_key\r\nAna;Sala|3|13\r\n"
+	got, err := ParseCSV([]byte(in))
+	if err != nil {
+		t.Fatalf("ParseCSV: %v", err)
+	}
+	// The sep= line is line 1, the header line 2, the first row line 3.
+	if len(got.Rows) != 1 || got.Rows[0].Name != "Ana" || got.Rows[0].Line != 3 {
+		t.Fatalf("rows = %+v", got.Rows)
+	}
+}
+
+func TestParseCSV_UnclosedQuoteIsAnError(t *testing.T) {
+	in := "name,seat_key\nAna,Sala|3|13\n\"Bea,Sala|3|12\nCy,Sala|3|14\n"
+	_, err := ParseCSV([]byte(in))
+	if err == nil || err.Code != "invitation_batch.invalid_csv" {
+		t.Fatalf("err = %v, want invalid_csv", err)
+	}
+	// A bare quote inside an unquoted field is an error too, with its line.
+	_, err = ParseCSV([]byte("name,seat_key\nAna 5\" tall,Sala|3|13\n"))
+	if err == nil || err.Code != "invitation_batch.invalid_csv" || err.Details["line"] != 2 {
+		t.Fatalf("err = %v", err)
 	}
 }

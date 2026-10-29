@@ -9580,7 +9580,7 @@ type InvitationBatchReport struct {
 
 // InvitationBatchRowIssue One problem of one row of an upload.
 type InvitationBatchRowIssue struct {
-	// Code Machine-readable code - name_required, invalid_email, email_required, place_missing, place_ambiguous, unknown_seat, ambiguous_seat, seat_taken, duplicate_seat, unknown_category, ambiguous_category, category_not_ga, invalid_qty, not_enough_places, too_many_places, or the code of a refusal of the transaction (for example invitation.seats_taken).
+	// Code Machine-readable code - name_required, invalid_email, email_required, place_missing, place_ambiguous, unknown_seat, ambiguous_seat, seat_taken, duplicate_seat, unknown_category, ambiguous_category, category_not_ga, invalid_qty, not_enough_places, too_many_places, too_many_guests, seat_without_category, capacity_exceeded, or the code of a refusal of the transaction (for example invitation.seats_taken).
 	Code string `json:"code"`
 
 	// Field The column the problem is about; empty when it is about the row or the file.
@@ -9599,8 +9599,12 @@ type InvitationBatchUploadRequest struct {
 	// Delivery Delivery of a guest WITHOUT an e-mail in the file - pdf_only (default, no letter) or my_email (a letter to the uploading user). A guest with an e-mail always gets the letter. guest_email makes a missing e-mail a row error.
 	Delivery *string `json:"delivery,omitempty"`
 
-	// File The CSV file, UTF-8 with or without a BOM, at most 2 MB and 1000
-	// places. The separator is `,` or `;` (detected from the header), the
+	// File The CSV file, UTF-8 with or without a BOM, at most 512 KB, 100
+	// guests and 250 places (split a longer list into several files; a
+	// body over the router's 1 MiB limit answers http.payload_too_large).
+	// Excel's `sep=;` first line is accepted. Quotes are strict: an
+	// unclosed quote is invitation_batch.invalid_csv with the line. The
+	// separator is `,` or `;` (detected from the header), the
 	// header row is mandatory and the columns may come in any order:
 	// `guest` (a guest number - rows with the same number are ONE order
 	// and ONE letter; the name, e-mail, phone and language come from the
@@ -17643,6 +17647,9 @@ type StaffInvitationListItem struct {
 
 	// GuestName Guest name.
 	GuestName *string `json:"guest_name"`
+
+	// InvitationBatchId The CSV batch (invitation_batches.id) a bulk invitation came from; null for a one-by-one invitation.
+	InvitationBatchId *openapi_types.UUID `json:"invitation_batch_id"`
 
 	// IssuedBy Who issued it.
 	IssuedBy StaffInvitationIssuer `json:"issued_by"`

@@ -131,6 +131,36 @@ func (f *inv02Fx) member(role string) string {
 	return tok
 }
 
+// inv02SessionCleanupSQL removes everything the invitations of one session
+// wrote (worker_jobs first: they are keyed by JSON payload, no FK).
+var inv02SessionCleanupSQL = []string{
+	`DELETE FROM outbox_events WHERE aggregate_id IN (
+	   SELECT id::text FROM orders WHERE session_id = $1
+	   UNION ALL SELECT id::text FROM tickets WHERE session_id = $1
+	   UNION ALL SELECT checkout_session_id::text FROM orders WHERE session_id = $1)`,
+	`DELETE FROM outbox WHERE aggregate_id IN (
+	   SELECT id FROM orders WHERE session_id = $1
+	   UNION ALL SELECT id FROM tickets WHERE session_id = $1)`,
+	`DELETE FROM order_events WHERE order_id IN (SELECT id FROM orders WHERE session_id = $1)`,
+	`DELETE FROM worker_jobs WHERE payload->>'checkout_session_id' IN (
+	   SELECT cs.id::text FROM checkout_sessions cs JOIN reservations r ON r.id = cs.reservation_id WHERE r.session_id = $1)
+	   OR payload->>'reservation_id' IN (SELECT id::text FROM reservations WHERE session_id = $1)
+	   OR payload->>'ticket_id' IN (SELECT id::text FROM tickets WHERE session_id = $1)`,
+	`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE session_id = $1)`,
+	`DELETE FROM barcodes WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`,
+	`DELETE FROM tickets WHERE session_id = $1`,
+	`DELETE FROM orders WHERE session_id = $1`,
+	`DELETE FROM invitation_batches WHERE session_id = $1`,
+	`DELETE FROM checkout_sessions WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,
+	`DELETE FROM reservation_seats WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,
+	`DELETE FROM reservation_ga_items WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,
+	`DELETE FROM session_seats WHERE session_id = $1`,
+	`DELETE FROM reservations WHERE session_id = $1`,
+	`DELETE FROM inventory_ledger WHERE session_id = $1`,
+	`DELETE FROM ticket_tiers WHERE session_id = $1`,
+	`DELETE FROM sessions WHERE id = $1`,
+}
+
 // cleanup removes everything the session's invitations wrote, worker_jobs
 // first (AGENTS.md: keyed by JSON payload, no FK to clean them up).
 func (f *inv02Fx) cleanup() {
@@ -147,33 +177,7 @@ func (f *inv02Fx) cleanup() {
 		}
 		rows.Close()
 	}
-	for _, sql := range []string{
-		`DELETE FROM outbox_events WHERE aggregate_id IN (
-		   SELECT id::text FROM orders WHERE session_id = $1
-		   UNION ALL SELECT id::text FROM tickets WHERE session_id = $1
-		   UNION ALL SELECT checkout_session_id::text FROM orders WHERE session_id = $1)`,
-		`DELETE FROM outbox WHERE aggregate_id IN (
-		   SELECT id FROM orders WHERE session_id = $1
-		   UNION ALL SELECT id FROM tickets WHERE session_id = $1)`,
-		`DELETE FROM order_events WHERE order_id IN (SELECT id FROM orders WHERE session_id = $1)`,
-		`DELETE FROM worker_jobs WHERE payload->>'checkout_session_id' IN (
-		   SELECT cs.id::text FROM checkout_sessions cs JOIN reservations r ON r.id = cs.reservation_id WHERE r.session_id = $1)
-		   OR payload->>'reservation_id' IN (SELECT id::text FROM reservations WHERE session_id = $1)
-		   OR payload->>'ticket_id' IN (SELECT id::text FROM tickets WHERE session_id = $1)`,
-		`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE session_id = $1)`,
-		`DELETE FROM barcodes WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`,
-		`DELETE FROM tickets WHERE session_id = $1`,
-		`DELETE FROM orders WHERE session_id = $1`,
-		`DELETE FROM invitation_batches WHERE session_id = $1`,
-		`DELETE FROM checkout_sessions WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,
-		`DELETE FROM reservation_seats WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,
-		`DELETE FROM reservation_ga_items WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,
-		`DELETE FROM session_seats WHERE session_id = $1`,
-		`DELETE FROM reservations WHERE session_id = $1`,
-		`DELETE FROM inventory_ledger WHERE session_id = $1`,
-		`DELETE FROM ticket_tiers WHERE session_id = $1`,
-		`DELETE FROM sessions WHERE id = $1`,
-	} {
+	for _, sql := range inv02SessionCleanupSQL {
 		if _, err := f.pool.Exec(ctx, sql, f.session); err != nil {
 			f.t.Logf("INV02 cleanup: %v", err)
 		}

@@ -2,8 +2,6 @@ package hinvitations
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,8 +28,26 @@ import (
 // (boundaries, the small text fields).
 const batchBodyOverhead = 64 << 10
 
-// batchWorkBudget bounds the batch transaction.
-const batchWorkBudget = 2 * time.Minute
+// batchWorkBudget bounds the batch work (the validation reads, the
+// transaction and the read-back) and batchWriteSlack is what the response
+// may take beyond it.
+const (
+	batchWorkBudget = 60 * time.Second
+	batchWriteSlack = 15 * time.Second
+)
+
+// batchWorkCtx is the detached context of the whole upload. A file is one
+// transaction that commits or rolls back whole, and it must not be cut by
+// the router's REQUEST_TIMEOUT (chi cancels the request context at 30 s) or
+// by a client that gives up: a caller that lost the answer repeats the
+// request_id and reads the batch. The connection's write deadline moves
+// past the budget too, because the server's own WriteTimeout
+// (REQUEST_TIMEOUT + 5 s) would otherwise drop the answer of a batch that
+// committed late. Every read after the commit uses this context as well.
+func batchWorkCtx(w http.ResponseWriter, r *http.Request) (context.Context, context.CancelFunc) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(batchWorkBudget + batchWriteSlack))
+	return context.WithTimeout(context.WithoutCancel(r.Context()), batchWorkBudget)
+}
 
 type batchPreviewGuest struct {
 	Guest    int    `json:"guest"`
@@ -200,10 +216,10 @@ func (h *Handler) HandleBatchCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		requestID = id
 	}
-	sum := sha256.Sum256(up.file)
-	fileHash := hex.EncodeToString(sum[:])
+	fileHash := RequestDigest(up.file, delivery)
 
-	ctx := r.Context()
+	ctx, cancel := batchWorkCtx(w, r)
+	defer cancel()
 	issuedBy, actorLabel, auditType := requestIssuer(ctx)
 	if !dry && delivery == DeliveryMyEmail && issuedBy == nil {
 		writeErr(w, r, http.StatusUnprocessableEntity, "invitation.my_email_requires_user",
@@ -222,7 +238,7 @@ func (h *Handler) HandleBatchCreate(w http.ResponseWriter, r *http.Request) {
 					"this request_id was already used for another session or another file", nil)
 				return
 			}
-			h.writeBatch(w, r, orgID, prev, true, http.StatusOK)
+			h.writeBatch(ctx, w, r, orgID, prev, true, http.StatusOK)
 			return
 		case !errors.Is(err, pgx.ErrNoRows):
 			h.internal(w, r, "batch: request lookup", err)
@@ -273,30 +289,32 @@ func (h *Handler) HandleBatchCreate(w http.ResponseWriter, r *http.Request) {
 		Rows: res.Rows, Guests: res.Guests, IssuedBy: issuedBy, Actor: actorLabel,
 	}
 	if h.audit != nil {
-		in.Audit = func(ctx context.Context, tx pgx.Tx, batch gen.InvitationBatchRow, meta map[string]any) error {
-			actorID := ""
-			if issuedBy != nil {
-				actorID = issuedBy.String()
-			}
+		actorID := ""
+		if issuedBy != nil {
+			actorID = issuedBy.String()
+		}
+		write := func(ctx context.Context, tx pgx.Tx, action, resourceType, resourceID string, meta map[string]any) error {
 			return h.audit.WriteTx(ctx, tx, audit.Event{
 				OccurredAt:   time.Now().UTC(),
 				ActorType:    auditType,
 				ActorID:      actorID,
-				Action:       "v1.invitation.batch_issue",
-				ResourceType: "invitation_batch",
-				ResourceID:   batch.ID.String(),
+				Action:       action,
+				ResourceType: resourceType,
+				ResourceID:   resourceID,
 				RequestID:    logging.RequestID(ctx),
 				TraceID:      logging.TraceID(ctx),
 				Metadata:     meta,
 			})
 		}
+		in.Audit = func(ctx context.Context, tx pgx.Tx, batch gen.InvitationBatchRow, meta map[string]any) error {
+			return write(ctx, tx, "v1.invitation.batch_issue", "invitation_batch", batch.ID.String(), meta)
+		}
+		// Each order also gets the row a single invitation writes.
+		in.AuditOrder = func(ctx context.Context, tx pgx.Tx, order gen.OrderRow, meta map[string]any) error {
+			return write(ctx, tx, "v1.invitation.issue", "order", order.ID.String(), meta)
+		}
 	}
-	// The write outlives a client or proxy that gives up: it is one
-	// transaction that commits or rolls back whole, and a client that lost
-	// the answer repeats the request_id to read the batch.
-	workCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), batchWorkBudget)
-	defer cancel()
-	out, err := IssueBatch(workCtx, h.pool, h.queries, in)
+	out, err := IssueBatch(ctx, h.pool, h.queries, in)
 	if err != nil {
 		h.writeBatchRefusal(w, r, err, res, report)
 		return
@@ -310,7 +328,7 @@ func (h *Handler) HandleBatchCreate(w http.ResponseWriter, r *http.Request) {
 	if out.Replayed {
 		status = http.StatusOK
 	}
-	h.writeBatch(w, r, orgID, batch, out.Replayed, status)
+	h.writeBatch(ctx, w, r, orgID, batch, out.Replayed, status)
 }
 
 // writeBatchRefusal answers a refused batch transaction: the underlying
@@ -324,8 +342,11 @@ func (h *Handler) writeBatchRefusal(w http.ResponseWriter, r *http.Request, err 
 	case errors.As(err, &ie):
 	default:
 		if errors.Is(err, context.DeadlineExceeded) {
+			// The deadline may have struck during COMMIT, so the outcome is
+			// unknown: repeating the request_id answers the batch if it
+			// committed and issues it if it did not.
 			writeErr(w, r, http.StatusServiceUnavailable, "invitation_batch.timeout",
-				"the file took too long to issue and nothing was written, split it into smaller files", nil)
+				"the file took too long and the result is unknown, repeat the request with the same request_id: it answers the batch if it was issued", nil)
 			return
 		}
 		h.logger.Error("invitation.batch failed", "error", err.Error())
@@ -376,8 +397,19 @@ func (h *Handler) loadPlan(ctx context.Context, sessionID uuid.UUID) (Plan, erro
 	for _, s := range seats {
 		plan.Seats = append(plan.Seats, PlanSeat{
 			ID: s.ID, Key: s.SeatKey, Sector: deref(s.SectorName), Row: deref(s.RowName),
-			Seat: deref(s.SeatNumber), Status: s.Status,
+			Seat: deref(s.SeatNumber), Status: s.Status, TierID: s.TierID,
 		})
+	}
+	capTotal, used, err := h.queries.GetInvitationSessionCapacity(ctx, sessionID)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		none := 0 // no ledger row: ReserveCapacity refuses every hold
+		plan.CapacityLeft = &none
+	case err != nil:
+		return Plan{}, err
+	case capTotal != nil:
+		left := int(*capTotal) - int(used)
+		plan.CapacityLeft = &left
 	}
 	ga := make(map[uuid.UUID]gen.InvitationGACount, len(counts))
 	for _, c := range counts {
@@ -476,8 +508,8 @@ func (h *Handler) loadBatchView(ctx context.Context, orgID uuid.UUID, batch gen.
 	return v, nil
 }
 
-func (h *Handler) writeBatch(w http.ResponseWriter, r *http.Request, orgID uuid.UUID, batch gen.InvitationBatchRow, replayed bool, status int) {
-	v, err := h.loadBatchView(r.Context(), orgID, batch)
+func (h *Handler) writeBatch(ctx context.Context, w http.ResponseWriter, r *http.Request, orgID uuid.UUID, batch gen.InvitationBatchRow, replayed bool, status int) {
+	v, err := h.loadBatchView(ctx, orgID, batch)
 	if err != nil {
 		h.internal(w, r, "batch: orders", err)
 		return
@@ -511,7 +543,7 @@ func (h *Handler) HandleBatchGet(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.writeBatch(w, r, batch.OrgID, batch, false, http.StatusOK)
+	h.writeBatch(r.Context(), w, r, batch.OrgID, batch, false, http.StatusOK)
 }
 
 // HandleBatchResult serves GET /v1/organizations/{org_id}/invitation-batches/{id}/result.csv:

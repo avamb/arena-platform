@@ -7540,13 +7540,18 @@ export interface paths {
          *     guests, places and places from the reserve - for the check table.
          *     Without it the same validation runs first and a file with errors is
          *     refused with 422 `invitation_batch.invalid` and the report in
-         *     `details.report`.
+         *     `details.report`. The check covers the plan, the seats' status and
+         *     categories and the session's capacity; a file is at most 100 guests
+         *     and 250 places because it is one transaction.
          *
-         *     Send a multipart form (`file`, `request_id`, `delivery`). The batch
-         *     and its orders are read back with the batch routes. A big file takes
-         *     a few thousand statements: if the connection times out, repeat the
-         *     same `request_id` and the first batch is answered (200, replayed
-         *     true) once it has committed.
+         *     Send a multipart form (`file`, `request_id`, `delivery`). The
+         *     `request_id` identifies the file AND its `delivery`: the same id with
+         *     another file or another delivery is 409. The batch and its orders are
+         *     read back with the batch routes. The work has a 60 second budget
+         *     independent of the router's request timeout: if the connection
+         *     drops or answers invitation_batch.timeout, repeat the same
+         *     `request_id` - it answers the batch (200, replayed true) if it
+         *     committed and issues it if it did not.
          */
         post: operations["createInvitationBatch"];
         delete?: never;
@@ -25696,6 +25701,11 @@ export interface components {
              */
             created_at: string;
             /**
+             * Format: uuid
+             * @description The CSV batch (invitation_batches.id) a bulk invitation came from; null for a one-by-one invitation.
+             */
+            invitation_batch_id?: string | null;
+            /**
              * Format: int64
              * @description Tickets issued so far.
              */
@@ -25743,8 +25753,12 @@ export interface components {
         InvitationBatchUploadRequest: {
             /**
              * Format: binary
-             * @description The CSV file, UTF-8 with or without a BOM, at most 2 MB and 1000
-             *     places. The separator is `,` or `;` (detected from the header), the
+             * @description The CSV file, UTF-8 with or without a BOM, at most 512 KB, 100
+             *     guests and 250 places (split a longer list into several files; a
+             *     body over the router's 1 MiB limit answers http.payload_too_large).
+             *     Excel's `sep=;` first line is accepted. Quotes are strict: an
+             *     unclosed quote is invitation_batch.invalid_csv with the line. The
+             *     separator is `,` or `;` (detected from the header), the
              *     header row is mandatory and the columns may come in any order:
              *     `guest` (a guest number - rows with the same number are ONE order
              *     and ONE letter; the name, e-mail, phone and language come from the
@@ -25769,7 +25783,7 @@ export interface components {
             row: number;
             /** @description The column the problem is about; empty when it is about the row or the file. */
             field: string;
-            /** @description Machine-readable code - name_required, invalid_email, email_required, place_missing, place_ambiguous, unknown_seat, ambiguous_seat, seat_taken, duplicate_seat, unknown_category, ambiguous_category, category_not_ga, invalid_qty, not_enough_places, too_many_places, or the code of a refusal of the transaction (for example invitation.seats_taken). */
+            /** @description Machine-readable code - name_required, invalid_email, email_required, place_missing, place_ambiguous, unknown_seat, ambiguous_seat, seat_taken, duplicate_seat, unknown_category, ambiguous_category, category_not_ga, invalid_qty, not_enough_places, too_many_places, too_many_guests, seat_without_category, capacity_exceeded, or the code of a refusal of the transaction (for example invitation.seats_taken). */
             code: string;
             /** @description Human-readable explanation in English. */
             message: string;
@@ -57301,7 +57315,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The transaction refused the file and wrote nothing - invitation.seats_taken (a seat was held or sold since the check), invitation.not_enough_places, invitation.capacity_exceeded, each with details.report pointing at the rows; invitation_batch.request_id_reused (the request_id belongs to another session or another file). */
+            /** @description The transaction refused the file and wrote nothing - invitation.seats_taken (a seat was held or sold since the check), invitation.not_enough_places, invitation.capacity_exceeded, each with details.report pointing at the rows; invitation_batch.request_id_reused (the request_id belongs to another session, another file or another delivery). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -57310,7 +57324,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The file is larger than 2 MB (invitation_batch.file_too_large). */
+            /** @description The file is larger than 512 KB (invitation_batch.file_too_large); a body over 1 MiB answers http.payload_too_large. */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -57319,7 +57333,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description invitation_batch.invalid (details.report lists the row errors), invitation_batch.invalid_header (details.missing), invitation_batch.too_many_rows, invitation_batch.too_many_places (over 1000), invitation.session_cancelled, invitation.my_email_requires_user (an API key has no e-mail). */
+            /** @description invitation_batch.invalid (details.report lists the row errors), invitation_batch.invalid_header (details.missing), invitation_batch.too_many_rows, invitation_batch.too_many_places (over 250), invitation.session_cancelled, invitation.my_email_requires_user (an API key has no e-mail). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -57337,7 +57351,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database unavailable, or invitation_batch.timeout - the transaction ran out of its 2 minute budget and wrote nothing. A client whose connection timed out repeats the same request_id to read the batch if it was committed. */
+            /** @description Database unavailable, or invitation_batch.timeout - the 60 second budget ran out and the result is unknown (the deadline may have struck during the commit). Repeat the request with the same request_id. */
             503: {
                 headers: {
                     [name: string]: unknown;

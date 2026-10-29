@@ -2,6 +2,8 @@ package hinvitations
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -26,9 +28,11 @@ const batchRequestIndex = "invitation_batches_org_request_uq"
 // data is checked; the transaction re-checks everything that can change
 // (seat status, free places, capacity) under the locks.
 type BatchInput struct {
-	OrgID      uuid.UUID
-	SessionID  uuid.UUID
-	RequestID  uuid.UUID
+	OrgID     uuid.UUID
+	SessionID uuid.UUID
+	RequestID uuid.UUID
+	// FileSHA256 is the digest of what the upload asked for (RequestDigest:
+	// the file and the batch delivery), stored as invitation_batches.file_sha256.
 	FileSHA256 string
 	// Rows is the number of data rows of the file.
 	Rows   int
@@ -37,9 +41,12 @@ type BatchInput struct {
 	IssuedBy *uuid.UUID
 	// Actor is the order_events actor ('user:<uuid>' or 'system').
 	Actor string
-	// Audit writes the v1.invitation.batch row on the batch transaction.
-	// Nil skips the audit.
+	// Audit writes the v1.invitation.batch_issue row on the batch
+	// transaction. Nil skips the audit.
 	Audit func(ctx context.Context, tx pgx.Tx, batch gen.InvitationBatchRow, meta map[string]any) error
+	// AuditOrder writes the v1.invitation.issue row of EACH order of the
+	// batch, in the shape a single invitation writes. Nil skips it.
+	AuditOrder func(ctx context.Context, tx pgx.Tx, order gen.OrderRow, meta map[string]any) error
 	// Now is the clock; zero means time.Now().
 	Now time.Time
 }
@@ -61,6 +68,17 @@ type GuestError struct {
 
 func (e *GuestError) Error() string { return fmt.Sprintf("guest %d: %s", e.Seq, e.Err.Error()) }
 func (e *GuestError) Unwrap() error { return e.Err }
+
+// RequestDigest is the idempotency key of an upload: the file AND the
+// batch-wide delivery, since the same file with another delivery makes other
+// letters. It is stored in invitation_batches.file_sha256.
+func RequestDigest(file []byte, delivery string) string {
+	h := sha256.New()
+	h.Write(file)
+	h.Write([]byte{0})
+	h.Write([]byte(delivery))
+	return hex.EncodeToString(h.Sum(nil))
+}
 
 var errBatchRace = errors.New("hinvitations: concurrent batch with the same request_id")
 
@@ -192,15 +210,24 @@ func batchTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in BatchInput) (u
 		return uuid.Nil, err
 	}
 	byKey := make(map[string]takenPlace, len(locked))
-	exclude := make(map[uuid.UUID]bool, len(locked))
+	exclude := map[uuid.UUID]bool{}
 	for _, p := range locked {
 		byKey[p.seat.SeatKey] = p
-		exclude[p.seat.ID] = true
+		if p.seat.Kind == "ga_unit" {
+			exclude[p.seat.ID] = true
+		}
 	}
 
 	batch, err := txq.InsertInvitationBatch(ctx, in.OrgID, in.SessionID, in.IssuedBy,
 		in.FileSHA256, in.RequestID, int32(in.Rows), int32(places)) //nolint:gosec // bounded by maxBatchRows / MaxBatchPlaces
 	if err != nil {
+		// The unique index is checked at the statement: the same request_id
+		// on ANOTHER session (a twin on this session was serialized by the
+		// sessions row lock and found by the replay lookup above).
+		if isBatchRace(err) {
+			return uuid.Nil, refuse(http.StatusConflict, "invitation_batch.request_id_reused",
+				"this request_id was already used for another session or another file", nil)
+		}
 		return uuid.Nil, fmt.Errorf("hinvitations: insert batch: %w", err)
 	}
 
@@ -229,6 +256,7 @@ func batchTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in BatchInput) (u
 			BatchID:   &batch.ID,
 			BatchSeq:  g.Seq,
 			cache:     cache,
+			Audit:     in.AuditOrder,
 		}
 		taken := make([]takenPlace, 0, len(g.SeatKeys))
 		for _, k := range g.SeatKeys {

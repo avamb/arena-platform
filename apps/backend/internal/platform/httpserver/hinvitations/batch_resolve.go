@@ -16,6 +16,9 @@ type PlanSeat struct {
 	Row    string
 	Seat   string
 	Status string
+	// TierID is the seat's category; nil means the seat has none and the
+	// issue transaction refuses it (invitation.seat_without_category).
+	TierID *uuid.UUID
 }
 
 // PlanTier is one category of the session. GA is true for a category that
@@ -33,6 +36,9 @@ type PlanTier struct {
 type Plan struct {
 	Seats []PlanSeat
 	Tiers []PlanTier
+	// CapacityLeft is what the session's ledger still has for places (the
+	// check ReserveCapacity makes); nil means no limit.
+	CapacityLeft *int
 }
 
 // RowIssue is one problem of one row of the upload (Row 0: the file as a
@@ -119,7 +125,7 @@ func ResolveBatch(rows []csvRow, plan Plan, defaultDelivery string) Resolution {
 	gaAt := map[string]int{}        // "guest/tier" -> index in that guest's GA
 
 	for _, row := range rows {
-		key := row.Guest
+		key := guestKey(row.Guest)
 		if key == "" {
 			key = "line:" + strconv.Itoa(row.Line)
 		}
@@ -223,6 +229,10 @@ func ResolveBatch(rows []csvRow, plan Plan, defaultDelivery string) Resolution {
 			issue(row.Line, "seat", "seat_taken", fmt.Sprintf("seat %s is %s and cannot be given as an invitation", seat.Key, seat.Status))
 			continue
 		}
+		if seat.TierID == nil {
+			issue(row.Line, "seat", "seat_without_category", fmt.Sprintf("seat %s has no category, assign one before issuing an invitation", seat.Key))
+			continue
+		}
 		g.SeatKeys = append(g.SeatKeys, seat.Key)
 		res.SeatLines[seat.Key] = row.Line
 		res.Seats++
@@ -231,10 +241,35 @@ func ResolveBatch(rows []csvRow, plan Plan, defaultDelivery string) Resolution {
 		}
 	}
 
-	if res.Places() > MaxBatchPlaces && len(res.Issues) == 0 {
-		issue(0, "", "too_many_places", fmt.Sprintf("the file hands out %d places, at most %d fit one upload", res.Places(), MaxBatchPlaces))
+	// File-level limits, reported on line 0 once the rows are read.
+	if len(res.Guests) > MaxBatchGuests {
+		issue(0, "", "too_many_guests", fmt.Sprintf("the file has %d guests, at most %d fit one file: split the list into several files", len(res.Guests), MaxBatchGuests))
+	}
+	if res.Places() > MaxBatchPlaces {
+		issue(0, "", "too_many_places", fmt.Sprintf("the file hands out %d places, at most %d fit one file: split the list into several files", res.Places(), MaxBatchPlaces))
+	}
+	if plan.CapacityLeft != nil && res.Places() > *plan.CapacityLeft {
+		issue(0, "", "capacity_exceeded", fmt.Sprintf("the session has capacity for %d more places, the file hands out %d", max(*plan.CapacityLeft, 0), res.Places()))
 	}
 	return res
+}
+
+// guestKey folds the guest column onto one identity: a number is compared as
+// a number ("01" is guest 1), anything else case-insensitively.
+func guestKey(raw string) string {
+	k := strings.ToLower(strings.TrimSpace(raw))
+	if k == "" {
+		return ""
+	}
+	for _, r := range k {
+		if r < '0' || r > '9' {
+			return k
+		}
+	}
+	if t := strings.TrimLeft(k, "0"); t != "" {
+		return t
+	}
+	return "0"
 }
 
 func resolveCategory(
