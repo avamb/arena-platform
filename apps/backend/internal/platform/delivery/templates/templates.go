@@ -298,6 +298,11 @@ type PaymentData struct {
 // ChangeData carries what a session-change / session-cancel e-mail says. It is
 // zero for the ticket and invitation kinds.
 type ChangeData struct {
+	// Invitation marks a cancel letter that speaks about ONE staff invitation
+	// the organizer withdrew (the session itself goes on): the cancel
+	// template then says "your invitation was cancelled" instead of "the
+	// session was cancelled".
+	Invitation bool
 	// Date / Venue say which parts of the session changed (kind "change").
 	Date  bool
 	Venue bool

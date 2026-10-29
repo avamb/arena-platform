@@ -18,9 +18,11 @@ package htickets
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
@@ -105,11 +107,28 @@ func (h *Handler) EnqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketR
 	// buyer-locale lookup happens once per purchase, not once per ticket.
 	localeCache := buyerLocaleCache{}
 
+	orderCache := invitationDeliveryCache{}
+
 	for _, t := range tickets {
 		ticketID := t.ID
 
+		// A staff invitation (a complimentary order) goes out with the
+		// invitation template to the address its delivery mode names, or not
+		// at all (spec 46, section 3.4). Every other order is unchanged.
+		route := h.deliveryRouteFor(ctx, orderCache, t.CheckoutSessionID)
+		if route.skip {
+			h.logger.Info("delivery: invitation is pdf_only; no letter queued",
+				slog.String("ticket_id", ticketID.String()),
+			)
+			continue
+		}
+		recipient := t.HolderEmail
+		if route.recipient != "" {
+			recipient = &route.recipient
+		}
+
 		// Insert delivery_jobs row (recipient_email = ticket.holder_email or nil).
-		dj, err := h.deliveryJobQueries.InsertDeliveryJob(ctx, ticketID, t.HolderEmail)
+		dj, err := h.deliveryJobQueries.InsertDeliveryJob(ctx, ticketID, recipient)
 		if err != nil {
 			h.logger.Warn("delivery: insert delivery_job failed",
 				slog.String("ticket_id", ticketID.String()),
@@ -128,6 +147,7 @@ func (h *Handler) EnqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketR
 		p := delivery.Payload{
 			TicketID: ticketID.String(),
 			Locale:   h.BuyerLocaleFor(ctx, localeCache, t.CheckoutSessionID),
+			Template: route.template,
 		}
 		if t.SeatSector != nil {
 			p.SeatSector = *t.SeatSector
@@ -295,4 +315,76 @@ func (h *Handler) EnqueueComplimentaryDeliveryJobs(ctx context.Context, tickets 
 			slog.String("template", delivery.TemplateInvitation),
 		)
 	}
+}
+
+// invitationDeliveryCache memoises checkout-session -> delivery route for one
+// enqueue batch (every ticket of a purchase shares its checkout session).
+type invitationDeliveryCache map[uuid.UUID]deliveryRoute
+
+// deliveryRoute says how the first letter of a checkout's tickets goes out.
+type deliveryRoute struct {
+	// template is the Payload.Template ("" = the ticket template).
+	template string
+	// recipient overrides the ticket holder's address when non-empty.
+	recipient string
+	// skip means no letter at all (a pdf_only invitation, or a my_email one
+	// whose issuer has no address).
+	skip bool
+}
+
+// deliveryRouteFor decides the template and the recipient of a checkout's
+// first letter from its order: a complimentary order uses the invitation
+// template (orders.source), and a staff invitation also honours its delivery
+// mode (orders.metadata.invitation.delivery): guest_email -> the guest,
+// my_email -> the issuer, pdf_only -> nobody. A failed lookup degrades to the
+// ordinary ticket letter, as every other best-effort lookup here does.
+func (h *Handler) deliveryRouteFor(ctx context.Context, cache invitationDeliveryCache, checkoutSessionID uuid.UUID) deliveryRoute {
+	if checkoutSessionID == uuid.Nil || h.deliveryJobQueries == nil {
+		return deliveryRoute{}
+	}
+	if r, ok := cache[checkoutSessionID]; ok {
+		return r
+	}
+	var route deliveryRoute
+	info, err := h.deliveryJobQueries.GetInvitationDeliveryByCheckoutSession(ctx, checkoutSessionID)
+	switch {
+	case err != nil:
+		if !errors.Is(err, pgx.ErrNoRows) {
+			h.logger.Warn("delivery: order lookup failed; using the ticket letter",
+				slog.String("checkout_session_id", checkoutSessionID.String()),
+				slog.String("error", err.Error()),
+			)
+		}
+	default:
+		route = routeForOrder(info)
+	}
+	cache[checkoutSessionID] = route
+	return route
+}
+
+// routeForOrder is the route of an order by its source: only a complimentary
+// order leaves the ordinary ticket letter.
+func routeForOrder(info gen.InvitationDeliveryRow) deliveryRoute {
+	if info.Source == "complimentary" {
+		return invitationRoute(info)
+	}
+	return deliveryRoute{}
+}
+
+// invitationRoute maps the delivery facts of a complimentary order onto its
+// route.
+func invitationRoute(info gen.InvitationDeliveryRow) deliveryRoute {
+	route := deliveryRoute{template: delivery.TemplateInvitation}
+	switch info.Delivery {
+	case "pdf_only":
+		route.skip = true
+	case "my_email":
+		route.recipient = info.IssuerEmail
+		route.skip = info.IssuerEmail == ""
+	default:
+		// guest_email, and a complimentary order issued another way (the
+		// gateway's invitations carry no delivery mode): the holder's address
+		// the ticket already carries.
+	}
+	return route
 }
