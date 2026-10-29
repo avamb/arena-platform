@@ -14,6 +14,7 @@ import { ApiError } from "@/lib/api/http";
 import type {
   ShopImage,
   ShopOrder,
+  ShopOrderCounts,
   ShopProduct,
   ShopSettings,
   ShopSettingsUpdateRequest,
@@ -474,8 +475,37 @@ export function orderTimeline(o: Pick<ShopOrder, "created_at" | "paid_at" | "shi
   return list;
 }
 
+/**
+ * The quick lists over the orders (A-08): the first one is the whole list, the others are the API's
+ * `view` values. "to_ship" is what a manager asks first thing in the morning: paid, something to hand over,
+ * not shipped yet.
+ */
+export const ORDER_TABS = ["all", "to_ship", "unpaid", "shipped", "refunds"] as const;
+export type OrderTab = (typeof ORDER_TABS)[number];
+/** The values the list route understands for `view`. */
+export type OrderView = Exclude<OrderTab, "all">;
+
+export function isOrderView(value: unknown): value is OrderView {
+  return typeof value === "string" && value !== "all" && (ORDER_TABS as readonly string[]).includes(value);
+}
+
+/** The tab that is open: the view when there is one, else the whole list. */
+export function activeOrderTab(view: OrderView | "" | undefined): OrderTab {
+  return view === undefined || view === "" ? "all" : view;
+}
+
+/** The number a tab shows, or null when it shows none (the whole list and the closed ones carry no number). */
+export function tabCount(tab: OrderTab, counts: ShopOrderCounts | undefined): number | null {
+  if (counts === undefined) return null;
+  if (tab === "to_ship") return counts.to_ship;
+  if (tab === "unpaid") return counts.unpaid;
+  return null;
+}
+
 export interface ShopOrdersFilters {
   status: ShopOrderStatus | "";
+  /** A quick list; "" is none. It narrows the list together with the status. */
+  view: OrderView | "";
   q: string;
   /** YYYY-MM-DD, inclusive. */
   from: string;
@@ -483,7 +513,7 @@ export interface ShopOrdersFilters {
   to: string;
 }
 
-export const EMPTY_FILTERS: ShopOrdersFilters = { status: "", q: "", from: "", to: "" };
+export const EMPTY_FILTERS: ShopOrdersFilters = { status: "", view: "", q: "", from: "", to: "" };
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -498,6 +528,7 @@ export function nextDay(day: string): string {
 export function ordersQuery(f: ShopOrdersFilters, limit: number, offset: number): Record<string, string | number | undefined> {
   return {
     status: f.status === "" ? undefined : f.status,
+    view: f.view === "" ? undefined : f.view,
     q: f.q.trim() === "" ? undefined : f.q.trim(),
     from: DAY.test(f.from) ? f.from : undefined,
     to: DAY.test(f.to) ? nextDay(f.to) : undefined,
@@ -508,11 +539,34 @@ export function ordersQuery(f: ShopOrdersFilters, limit: number, offset: number)
 
 export interface ShopOrdersSearch {
   status?: ShopOrderStatus;
+  view?: OrderView;
 }
 
-/** Only the status goes into the address: a buyer's e-mail or name never does. */
+/** Only the status and the quick list go into the address: a buyer's e-mail or name never does. */
 export function parseShopOrdersSearch(raw: Record<string, unknown>): ShopOrdersSearch {
-  return typeof raw.status === "string" && isShopOrderStatus(raw.status) ? { status: raw.status } : {};
+  const out: ShopOrdersSearch = {};
+  if (typeof raw.status === "string" && isShopOrderStatus(raw.status)) out.status = raw.status;
+  if (isOrderView(raw.view)) out.view = raw.view;
+  return out;
+}
+
+/** The letters of an order the buyer can be sent again (A-11): the confirmation, and the shipping one when it shipped. */
+export type OrderLetter = "received" | "shipped";
+
+export function resendLetters(order: Pick<ShopOrder, "status" | "buyer" | "delivery_kind" | "shipped_at">, canManage: boolean): OrderLetter[] {
+  if (!canManage || order.buyer.email.trim() === "") return [];
+  if (!["paid", "shipped", "partially_refunded", "refunded"].includes(order.status)) return [];
+  const out: OrderLetter[] = ["received"];
+  if (order.delivery_kind !== "none" && order.shipped_at !== null && order.shipped_at !== undefined) out.push("shipped");
+  return out;
+}
+
+/** The longest internal note of an order, in characters (the server's limit). */
+export const STAFF_NOTE_MAX = 2000;
+
+/** True when the typed note differs from the saved one (spaces around it do not count). */
+export function staffNoteChanged(typed: string, saved: string): boolean {
+  return typed.trim() !== saved.trim();
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────
@@ -838,4 +892,53 @@ export function browserZone(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+// ─── Stock edited from the products list (A-07, A-15) ────────────────────────
+
+const MAX_STOCK = 2_147_483_647;
+
+/** The stock a person typed: a whole number, 0 or more. Null for anything else. */
+export function parseStockInput(text: string): number | null {
+  const v = text.trim();
+  if (!/^\d+$/.test(v)) return null;
+  const n = Number(v);
+  return Number.isSafeInteger(n) && n <= MAX_STOCK ? n : null;
+}
+
+/** The variants of a product that count their stock: only these have a number to edit. */
+export function trackedVariants<V extends { track_stock: boolean }>(p: { variants: readonly V[] }): V[] {
+  return p.variants.filter((v) => v.track_stock);
+}
+
+/**
+ * How the list edits the stock of a product (the whole point is a phone, with no card to open):
+ * "single" is one variant that counts stock, edited in the row. "several" is a total with the variants
+ * under a disclosure. "none" counts nothing, so there is nothing to edit.
+ */
+export function stockEditMode(p: { kind?: string; variants: readonly { track_stock: boolean }[] }): "single" | "several" | "none" {
+  if (productKind(p) === "digital") return "none";
+  const tracked = trackedVariants(p);
+  if (tracked.length === 0) return "none";
+  return p.variants.length === 1 ? "single" : "several";
+}
+
+/**
+ * The body of PUT .../variants that changes ONE variant's stock and leaves the rest as the product has it.
+ * The route replaces the whole list (a variant left out is deleted), so every variant goes back, each with
+ * the stock the person saw (`expected_stock`): the server refuses the write when the shelf moved meanwhile.
+ * Null when the product has no such variant or it does not count stock.
+ */
+export function stockUpdateRequest(product: ShopProduct, variantId: string, stock: number, currency: string): ShopVariantSend[] | null {
+  const target = product.variants.find((v) => v.id === variantId);
+  if (target === undefined || !target.track_stock) return null;
+  const rows = rowsFromProduct(product, currency).map((r) => (r.id === variantId ? { ...r, stock: String(stock) } : r));
+  return variantsRequest(rows, currency, optionCountOf(optionNamesOf(product), rows));
+}
+
+/** What a variant is called in the stock list: its name, its options, or "the only version". */
+export function variantLabel(v: { title?: string | null; option1?: string | null; option2?: string | null; option3?: string | null }, only: string): string {
+  const options = [v.option1, v.option2, v.option3].filter((o): o is string => !isDefaultTitle(o)).join(" / ");
+  if (options !== "") return options;
+  return isDefaultTitle(v.title) ? only : (v.title as string);
 }

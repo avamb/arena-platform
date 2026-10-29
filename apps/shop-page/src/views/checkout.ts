@@ -9,7 +9,7 @@ import type { DownloadLink, OrderStatus } from '../lib/api';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
 import { T } from '../lib/i18n';
-import { icon, money, optionPairs, ratioOf, url, type Ctx } from './common';
+import { cartSrcset, icon, money, optionPairs, ratioOf, url, type Ctx } from './common';
 
 export const EMPTY_FORM: CheckoutForm = {
   name: '',
@@ -51,7 +51,7 @@ function field(
 function summaryRow(ctx: Ctx, line: CartLine): string {
   const img = line.product.images[0];
   const image = img
-    ? `<div class="shop-checkout__thumb"><img src="${esc(sized(img.url, 140))}" alt="${esc(img.alt ?? '')}" width="70" height="${Math.ceil(70 / ratioOf(img))}" loading="lazy"><span class="shop-checkout__qty">${line.qty}</span></div>`
+    ? `<div class="shop-checkout__thumb"><img src="${esc(sized(img.url, 165))}"${cartSrcset(img, '70px')} alt="${esc(img.alt ?? '')}" width="70" height="${Math.ceil(70 / ratioOf(img))}" loading="lazy"><span class="shop-checkout__qty">${line.qty}</span></div>`
     : '';
   const picked = optionPairs(line.product, line.variant).map(([, v]) => v).join(' / ');
   const variant = picked ? `<div class="product-option">${esc(picked)}</div>` : '';
