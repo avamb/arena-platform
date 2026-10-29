@@ -150,6 +150,9 @@ func (h *Handler) HandleIssue(w http.ResponseWriter, r *http.Request) {
 			auditType = "user"
 		}
 	}
+	if actor.Type == auth.ActorTypeService {
+		in.IssuedByAPIKey = h.apiKeyName(ctx, actor, orgID)
+	}
 	if in.Delivery == DeliveryMyEmail && in.IssuedBy == nil {
 		writeErr(w, r, http.StatusUnprocessableEntity, "invitation.my_email_requires_user",
 			"delivery my_email needs a signed-in user; an API key has no e-mail", nil)
@@ -607,6 +610,9 @@ func (h *Handler) recordCancel(ctx context.Context, tx pgx.Tx, o gen.InvitationO
 		actor = "user:" + actorID
 	}
 	if _, err := h.queries.WithTx(tx).InsertOrderEvent(ctx, o.ID, "invitation_cancelled", actor, payload); err != nil {
+		return err
+	}
+	if err := h.recordCancelledBy(ctx, tx, o.ID); err != nil {
 		return err
 	}
 	if h.audit == nil {

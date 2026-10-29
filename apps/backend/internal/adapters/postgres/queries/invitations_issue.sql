@@ -51,6 +51,19 @@ SET    issued_via = $2,
        updated_at = now()
 WHERE  id = $1;
 
+-- name: SetInvitationCancelledBy :exec
+-- Records who cancelled a staff invitation in orders.metadata.invitation
+-- (spec 46 section 3.7). $2 is {"user_id": ...} or {"api_key": name}; the
+-- sales bot reads it. The last cancellation wins.
+UPDATE orders
+SET    metadata   = COALESCE(metadata, '{}'::jsonb)
+                    || jsonb_build_object('invitation',
+                         COALESCE(metadata->'invitation', '{}'::jsonb)
+                         || jsonb_build_object('cancelled_by', $2::jsonb)),
+       updated_at = now()
+WHERE  id = $1
+  AND  issued_via IS NOT NULL;
+
 -- name: SetInvitationOrderCustomer :exec
 -- The guest's customer row, linked only once the order is paid: a pending
 -- link would collide with orders_one_pending_per_customer_session_uq when

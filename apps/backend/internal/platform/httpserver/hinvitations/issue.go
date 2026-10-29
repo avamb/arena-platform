@@ -106,6 +106,10 @@ type IssueInput struct {
 	Note      string
 	// IssuedBy is the user who issues; nil for an organization API key.
 	IssuedBy *uuid.UUID
+	// IssuedByAPIKey is the name of the organization API key that issues
+	// (IssuedBy is nil then). It is stored in orders.metadata.invitation so
+	// the sales bot can name the key (spec 46, decision R-11).
+	IssuedByAPIKey string
 	// Actor is the order_events actor ('user:<uuid>' or 'system').
 	Actor string
 	// Audit writes the v1.invitation.issue row on the issuing transaction.
@@ -648,6 +652,9 @@ func writeOrder(
 	}
 	if n := strings.TrimSpace(in.Note); n != "" {
 		meta["note"] = n
+	}
+	if k := strings.TrimSpace(in.IssuedByAPIKey); k != "" && in.IssuedBy == nil {
+		meta["issued_by_api_key"] = k
 	}
 	if l := normalizeLocale(in.Guest.Locale); l != "" {
 		meta["locale"] = l
