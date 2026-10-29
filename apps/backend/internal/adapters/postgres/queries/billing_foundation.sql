@@ -71,11 +71,12 @@ ORDER BY account_kind, currency;
 INSERT INTO billing_account_terms (
     account_id, effective_from, price_list_code, plan_kind, billing_cycle,
     shortfall_policy, issuer_id, invoice_delay_days, due_days, locked,
-    created_by, reason, fee_mode)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE(NULLIF($13, ''), 'organizer_pays'))
+    created_by, reason, fee_mode, complimentary_billing)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE(NULLIF($13, ''), 'organizer_pays'),
+        COALESCE(NULLIF($14, ''), 'free'))
 RETURNING id, account_id, effective_from, price_list_code, plan_kind, billing_cycle,
           shortfall_policy, issuer_id, invoice_delay_days, due_days, locked,
-          created_by, reason, created_at, fee_mode;
+          created_by, reason, created_at, fee_mode, complimentary_billing;
 
 -- name: InsertBillingAccountTermsIfNone :exec
 -- The first terms of an account, written only when it has none at all.
@@ -90,7 +91,7 @@ ON CONFLICT (account_id, effective_from) DO NOTHING;
 -- The terms in force at $2: the last row with effective_from <= $2.
 SELECT id, account_id, effective_from, price_list_code, plan_kind, billing_cycle,
        shortfall_policy, issuer_id, invoice_delay_days, due_days, locked,
-       created_by, reason, created_at
+       created_by, reason, created_at, fee_mode, complimentary_billing
 FROM   billing_account_terms
 WHERE  account_id = $1 AND effective_from <= $2
 ORDER BY effective_from DESC

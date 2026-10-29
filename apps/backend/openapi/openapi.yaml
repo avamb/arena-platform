@@ -17323,11 +17323,77 @@ components:
           type: string
           description: issuing right after the issue (tickets are minted asynchronously), issued once every place has its ticket.
         charge:
-          type: [object, "null"]
-          description: Billing preview of the invitation (spec 46, section 3.6); null until billing of invitations lands.
+          description: Billing preview of the invitation (spec 46, section 3.6) - what the platform will charge the organization for these tickets, computed by the same rule as the billing rate job. Null when it cannot be computed (the organization has no usable billing terms); the invitation is issued either way.
+          oneOf:
+            - $ref: "#/components/schemas/InvitationChargePreview"
+            - type: "null"
         replayed:
           type: boolean
           description: True when the request_id was already used and this is the first invitation.
+    InvitationChargePreview:
+      type: object
+      required: [mode, currency, tickets, free_tickets, charged_tickets, amount_minor, lines, free_limit, free_left, text]
+      description: |
+        What invitations cost the organization (spec 46, section 3.6). A CSV file is always charged the
+        standard rate; otherwise an account whose terms say complimentary_billing standard pays the standard
+        rate, and every other invitation is free up to the yearly free limit of the price list, then charged
+        as a general-admission ticket. The standard rate is the organization's individual rate, else the
+        fixed per-ticket rate of the price list, seated or not. A cancelled invitation keeps its charge.
+      properties:
+        mode:
+          type: string
+          description: Why the tickets cost what they cost - free (free up to the yearly limit), standard (the account's terms) or bulk (a CSV file).
+        currency:
+          type: string
+          description: Currency of the organization's billing account; every amount is in it.
+        tickets:
+          type: integer
+          description: Tickets quoted.
+        free_tickets:
+          type: integer
+          description: Tickets that cost nothing.
+        charged_tickets:
+          type: integer
+          description: Tickets that are charged.
+        amount_minor:
+          type: integer
+          format: int64
+          description: Total charge in minor units of currency.
+        lines:
+          type: array
+          description: The charged tickets grouped by unit rate; empty when every ticket is free.
+          items:
+            $ref: "#/components/schemas/InvitationChargeLine"
+        free_limit:
+          type: [integer, "null"]
+          format: int64
+          description: The yearly free limit, or null when there is none or the tickets are not billed free.
+        free_left:
+          type: [integer, "null"]
+          format: int64
+          description: What is left of the yearly free limit after these tickets, or null with free_limit.
+        text:
+          type: string
+          description: A short English summary such as "12 × 0.50 EUR = 6.00 EUR" or "free, 488 of the yearly limit left". Clients in another language build their own from the numbers.
+    InvitationChargeLine:
+      type: object
+      required: [tickets, unit_minor, amount_minor, currency]
+      description: One group of charged invitation tickets with the same unit rate.
+      properties:
+        tickets:
+          type: integer
+          description: Tickets in the group.
+        unit_minor:
+          type: integer
+          format: int64
+          description: Charge per ticket in minor units.
+        amount_minor:
+          type: integer
+          format: int64
+          description: tickets times unit_minor.
+        currency:
+          type: string
+          description: Currency of the amounts, the billing account's.
     StaffInvitationIssuer:
       type: object
       description: Who issued the invitation; all null for an organization API key.
@@ -21921,7 +21987,7 @@ components:
 
     BillingAccountTerms:
       type: object
-      required: [id, effective_from, price_list_code, plan_kind, billing_cycle, shortfall_policy, issuer_id, invoice_delay_days, due_days, fee_mode, locked, created_by, reason, created_at]
+      required: [id, effective_from, price_list_code, plan_kind, billing_cycle, shortfall_policy, issuer_id, invoice_delay_days, due_days, fee_mode, complimentary_billing, locked, created_by, reason, created_at]
       description: One dated row of the conditions of a billing account. The terms of an event are the last row that started before the event.
       properties:
         id:
@@ -21962,6 +22028,9 @@ components:
         fee_mode:
           type: string
           description: Who pays the platform commission on a sold ticket, organizer_pays (the organizer is billed) or buyer_pays (the buyer pays it as the service charge).
+        complimentary_billing:
+          type: string
+          description: How staff invitations of the account are billed, free (free up to the yearly free limit of the price list) or standard (the fixed per-ticket rate, or the organization's individual rate). An invitation issued from a CSV file always pays the standard rate.
         locked:
           type: boolean
           description: Whether only a superadmin may change the row.
@@ -22080,6 +22149,9 @@ components:
         fee_mode:
           type: string
           description: Who pays the platform commission on a sold ticket, organizer_pays (default) or buyer_pays. Any other value is 422 billing.invalid_terms.
+        complimentary_billing:
+          type: string
+          description: How staff invitations are billed from effective_from on, free (free up to the yearly free limit) or standard (the fixed per-ticket rate or the organization's individual rate). Absent keeps the value of the terms in force at effective_from. Like every terms row it starts in the future, so invitations already issued keep the charge of their own date. Any other value is 422 billing.invalid_terms.
 
     BillingCurrentRate:
       type: object
