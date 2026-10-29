@@ -118,6 +118,12 @@ type IssueInput struct {
 	// (IssuedBy is nil then). It is stored in orders.metadata.invitation so
 	// the sales bot can name the key (spec 46, decision R-11).
 	IssuedByAPIKey string
+	// Via is the Telegram client the invitation was issued from
+	// (audit.ChannelTelegramBot or audit.ChannelTelegramMiniapp), "" for the
+	// web, an API key and a CSV batch. It is stored in
+	// orders.metadata.invitation.via and is what makes the bot send the
+	// issuer the PDF into the chat (INV-09).
+	Via string
 	// Actor is the order_events actor ('user:<uuid>' or 'system').
 	Actor string
 	// Audit writes the v1.invitation.issue row on the issuing transaction.
@@ -814,6 +820,9 @@ func writeOrder(
 	}
 	if in.VIP {
 		meta["vip"] = true
+	}
+	if in.Via != "" && in.IssuedBy != nil {
+		meta["via"] = in.Via
 	}
 	if k := strings.TrimSpace(in.IssuedByAPIKey); k != "" && in.IssuedBy == nil {
 		meta["issued_by_api_key"] = k

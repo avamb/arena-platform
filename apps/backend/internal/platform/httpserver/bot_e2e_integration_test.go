@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -55,6 +56,8 @@ type stubTelegram struct {
 	// docs holds the bytes of every document the bot sent, by file name (the
 	// last one of a name wins).
 	docs map[string][]byte
+	// docChat is the chat each document (by file name) was sent to.
+	docChat map[string]int64
 	// msgs is every message the bot sent, by id: its chat, its text and the
 	// callback data of the buttons it still carries. A pressed callback is
 	// delivered on the live message that carries its data (feed.go refuses a
@@ -84,6 +87,14 @@ type stubMessage struct {
 	// replyKB is a reply keyboard (the one under the message field) the
 	// message carried, as sent; nil for an inline keyboard or none.
 	replyKB json.RawMessage
+}
+
+// documentChat is the chat a document (by file name) was last sent to.
+func (s *stubTelegram) documentChat(name string) (int64, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.docChat[name]
+	return c, ok
 }
 
 // document returns the bytes of a document the bot sent, by file name.
@@ -232,6 +243,10 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 						s.docs = map[string][]byte{}
 					}
 					s.docs[name] = body
+					if s.docChat == nil {
+						s.docChat = map[string]int64{}
+					}
+					s.docChat[name], _ = strconv.ParseInt(field("chat_id"), 10, 64)
 					s.mu.Unlock()
 				}
 			}

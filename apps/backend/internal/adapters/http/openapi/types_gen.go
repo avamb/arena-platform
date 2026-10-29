@@ -4616,6 +4616,42 @@ type BotInvitationCreateResponse struct {
 	Invitation BotInvitation `json:"invitation"`
 }
 
+// BotInvitationPdfNotice A staff invitation issued from Telegram whose PDF the bot must send into the issuer's chat. It carries no e-mail or phone of the guest.
+type BotInvitationPdfNotice struct {
+	// EventName The event the invitation is for.
+	EventName string `json:"event_name"`
+
+	// GuestName The name printed on the invitation; empty when none was given.
+	GuestName string `json:"guest_name"`
+
+	// Locale The issuer's bot language.
+	Locale string `json:"locale"`
+
+	// OrderId The invitation order; the bot fetches `GET /v1/organizations/{org_id}/invitations/{order_id}/tickets.pdf` as the issuer.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// OrgId The organization that issued the invitation.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// SessionStartAt When the date starts (UTC).
+	SessionStartAt time.Time `json:"session_start_at"`
+
+	// SessionTimezone The IANA zone of the venue, to show the start in local time.
+	SessionTimezone string `json:"session_timezone"`
+
+	// SystemId The invitation number the PDF file is named after (`invitation-<system_id>.pdf`).
+	SystemId int64 `json:"system_id"`
+
+	// TelegramUserId The Telegram account of the issuer, whose private chat gets the document.
+	TelegramUserId int64 `json:"telegram_user_id"`
+}
+
+// BotInvitationPdfNoticesResponse Answer of POST /v1/bot/invitations/pdf-notices/claim.
+type BotInvitationPdfNoticesResponse struct {
+	// Notices Invitations whose PDF is not sent yet; each is handed out once.
+	Notices []BotInvitationPdfNotice `json:"notices"`
+}
+
 // BotInvitationResendRequest Optional body of the resend route.
 type BotInvitationResendRequest struct {
 	// Locale Language of the new letter (`en`, `ru`, `es`); absent means the invitee's own language.

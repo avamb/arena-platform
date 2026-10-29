@@ -2261,6 +2261,9 @@ other = "La invitación de {{.Guest}} ya está usada: el escáner de la puerta a
 ["bot.inv.nrevoke_notyet"]
 other = "Las entradas de esta invitación aún se están emitiendo. Inténtalo de nuevo en un minuto."
 
+["bot.inv.pdf_caption"]
+other = "🎟 <b>Invitación n.º {{.Num}}</b>{{if .Name}} para {{.Name}}{{end}}\n{{.Title}}, {{.When}}\n\nReenvía este archivo al invitado: es la entrada, con un código de barras que funciona en la puerta."
+
 ["bot.inv.letter_pending"]
 other = "✉ Enviando el e-mail…"
 

@@ -31,6 +31,12 @@ func (c *ArenaClient) SampleTicketPDF(ctx context.Context, jwt string, orgID, se
 	if locale != "" {
 		path += "?locale=" + locale
 	}
+	return c.getPDF(ctx, jwt, path, "sample ticket")
+}
+
+// getPDF fetches a PDF from arena-api as the user behind jwt. what names the
+// document in errors.
+func (c *ArenaClient) getPDF(ctx context.Context, jwt, path, what string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
 		return nil, err
@@ -40,12 +46,12 @@ func (c *ArenaClient) SampleTicketPDF(ctx context.Context, jwt string, orgID, se
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	res, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GET sample ticket: %w", err)
+		return nil, fmt.Errorf("GET %s: %w", what, err)
 	}
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, sampleMaxBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("read sample ticket: %w", err)
+		return nil, fmt.Errorf("read %s: %w", what, err)
 	}
 	if res.StatusCode < 200 || res.StatusCode > 299 {
 		ae := &APIError{Status: res.StatusCode, Code: "http." + http.StatusText(res.StatusCode)}
@@ -61,7 +67,7 @@ func (c *ArenaClient) SampleTicketPDF(ctx context.Context, jwt string, orgID, se
 		return nil, ae
 	}
 	if len(raw) > sampleMaxBytes || !bytes.HasPrefix(raw, []byte("%PDF-")) {
-		return nil, fmt.Errorf("sample ticket: not a PDF (%d bytes)", len(raw))
+		return nil, fmt.Errorf("%s: not a PDF (%d bytes)", what, len(raw))
 	}
 	return raw, nil
 }
