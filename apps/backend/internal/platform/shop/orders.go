@@ -464,9 +464,16 @@ func (s *Service) syncRefundsTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, 
 		return out, nil
 	}
 	if accepted > o.RefundedMinor {
-		return out, s.appendEvent(ctx, tx, EventOrderRefunded, out, map[string]any{
+		if err := s.appendEvent(ctx, tx, EventOrderRefunded, out, map[string]any{
 			"refunded_now": accepted - o.RefundedMinor,
-		})
+		}); err != nil {
+			return out, err
+		}
+		// The buyer is told in the same transaction that records the refund
+		// as accepted, so a refund always has its letter queued and a rolled
+		// back one never does. The letter can never fail the refund.
+		s.enqueueRefundEmailTx(ctx, tx, out)
+		return out, nil
 	}
 	return out, nil
 }

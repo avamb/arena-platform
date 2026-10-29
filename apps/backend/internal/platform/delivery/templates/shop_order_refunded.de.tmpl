@@ -1,0 +1,83 @@
+{{define "subject"}}{{if .Shop.RefundFull}}Bestellung Nr. {{.Shop.OrderNumber}} erstattet{{else}}Erstattung zu Bestellung Nr. {{.Shop.OrderNumber}}{{end}} — {{.Branding.OrgName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="de" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{if .Shop.RefundFull}}Ihre Bestellung wurde erstattet{{else}}Ihre Erstattung{{end}}</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if .Shop.RefundFull}}Ihre Bestellung wurde erstattet{{else}}Ihre Erstattung{{end}}</h1>
+  <p style="margin:0 0 12px 0;">Guten Tag{{with .HolderName}} {{.}}{{end}},</p>
+  <p style="margin:0 0 12px 0;">{{if .Shop.RefundFull}}Die Bestellung <strong>Nr. {{.Shop.OrderNumber}}</strong> wurde vollständig erstattet.{{else}}Wir haben <strong>{{.Shop.RefundAmount}}</strong> für die Bestellung <strong>Nr. {{.Shop.OrderNumber}}</strong> erstattet.{{end}}</p>
+  <p style="margin:0 0 6px 0;font-weight:bold;color:#22333D;">Ihre Bestellung</p>
+  <table width="100%" cellpadding="4" style="border-collapse:collapse;font-size:14px;">
+    {{range .Shop.Items}}<tr><td>{{.Qty}} × {{.Title}}</td><td style="text-align:right;white-space:nowrap;">{{.LineTotal}}</td></tr>{{end}}
+    <tr><td style="border-top:1px solid #eceff1;color:#46555f;">Bestellsumme</td><td style="border-top:1px solid #eceff1;text-align:right;white-space:nowrap;">{{.Shop.Total}}</td></tr>
+    <tr><td style="border-top:1px solid #eceff1;color:#46555f;">Jetzt erstattet</td><td style="border-top:1px solid #eceff1;text-align:right;white-space:nowrap;"><strong>{{.Shop.RefundAmount}}</strong></td></tr>
+    {{if ne .Shop.RefundedTotal .Shop.RefundAmount}}<tr><td style="border-top:1px solid #eceff1;color:#46555f;">Insgesamt erstattet</td><td style="border-top:1px solid #eceff1;text-align:right;white-space:nowrap;">{{.Shop.RefundedTotal}}</td></tr>{{end}}
+  </table>
+  <p style="margin:16px 0 12px 0;">Das Geld geht über das Zahlungssystem auf die Karte bzw. das Zahlungsmittel zurück, mit dem Sie bezahlt haben. Die Dauer hängt von Ihrer Bank ab.</p>
+  {{with .Shop.StatusURL}}<p style="margin:16px 0 12px 0;"><a href="{{.}}" style="color:{{$.Accent}};font-weight:bold;">Bestellstatus ansehen</a></p>{{end}}
+  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">Fragen? Antworten Sie auf diese E-Mail.</p>{{end}}
+  <p style="font-size:12px;color:#666">Zugestellt an: {{.RecipientEmail}}</p>
+  </td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kontakt: <a href="{{.}}" style="color:#666">Dem Veranstalter schreiben</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">Arena Platform — automatische Nachricht</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails mit Ihren Tickets und keine wichtigen E-Mails zu Ihrer Bestellung mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+{{if .Shop.RefundFull}}Ihre Bestellung wurde erstattet{{else}}Ihre Erstattung{{end}}
+
+Guten Tag{{with .HolderName}} {{.}}{{end}},
+
+{{if .Shop.RefundFull}}Die Bestellung Nr. {{.Shop.OrderNumber}} wurde vollständig erstattet.{{else}}Wir haben {{.Shop.RefundAmount}} für die Bestellung Nr. {{.Shop.OrderNumber}} erstattet.{{end}}
+
+Das Geld geht über das Zahlungssystem auf die Karte bzw. das Zahlungsmittel zurück, mit dem Sie bezahlt haben. Die Dauer hängt von Ihrer Bank ab.
+
+Ihre Bestellung:
+{{range .Shop.Items}}- {{.Qty}} × {{.Title}}: {{.LineTotal}}
+{{end}}Bestellsumme: {{.Shop.Total}}
+Jetzt erstattet: {{.Shop.RefundAmount}}
+{{if ne .Shop.RefundedTotal .Shop.RefundAmount}}Insgesamt erstattet: {{.Shop.RefundedTotal}}
+{{end}}
+{{with .Shop.StatusURL}}Bestellstatus ansehen: {{.}}
+
+{{end}}{{if .Branding.ContactEmail}}Fragen? Antworten Sie auf diese E-Mail.
+{{end}}
+
+Zugestellt an: {{.RecipientEmail}}
+
+--
+{{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Kontakt: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kontakt: {{.}}
+{{end}}{{end}}
+Arena Platform — automatische Nachricht
+
+Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails mit Ihren Tickets und keine wichtigen E-Mails zu Ihrer Bestellung mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.
+{{end}}

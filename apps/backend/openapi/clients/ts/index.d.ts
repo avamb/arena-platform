@@ -10640,10 +10640,11 @@ export interface paths {
         put?: never;
         /**
          * Send the buyer's order e-mail once more
-         * @description Queues the letter the buyer got when the order was paid (`received`) or
-         *     shipped (`shipped`) for the worker to send again, to the address on the order,
-         *     in the buyer's language. The first send's "already sent" marker does not stop
-         *     it. Answers 202 at once; the delivery itself is asynchronous. One request per
+         * @description Queues the letter the buyer got when the order was paid (`received`),
+         *     shipped (`shipped`) or refunded (`refunded`, the letter about the newest
+         *     succeeded refund; an order with none answers 409) for the worker to send again,
+         *     to the address on the order, in the buyer's language. The first send's
+         *     "already sent" marker does not stop it. Answers 202 at once; the delivery itself is asynchronous. One request per
          *     order per minute: a second one answers 429 `shop.rate_limited` with `Retry-After`.
          *     Writes the audit event `v1.shop.order.resend_email`.
          *
@@ -31239,14 +31240,14 @@ export interface components {
         };
         /** @description Which buyer letter to send once more. */
         ShopResendEmailRequest: {
-            /** @description `received` (the order is confirmed) or `shipped` (the order is on its way). */
+            /** @description `received` (the order is confirmed), `shipped` (the order is on its way) or `refunded` (money of the order went back to the buyer). */
             kind: string;
         };
         /** @description The letter was queued for the worker. */
         ShopResendEmailResponse: {
             /** @description Always true; the worker sends the letter within moments. */
             queued: boolean;
-            /** @description The letter that was queued, `received` or `shipped`. */
+            /** @description The letter that was queued, `received`, `shipped` or `refunded`. */
             kind: string;
         };
         /** @description One page of orders. */
@@ -67972,7 +67973,7 @@ export interface operations {
                     "application/json": components["schemas"]["ShopResendEmailResponse"];
                 };
             };
-            /** @description The body is not valid JSON for this route, or `kind` is not `received` or `shipped` (`shop.invalid_body`, `shop.invalid_email_kind`). */
+            /** @description The body is not valid JSON for this route, or `kind` is not `received`, `shipped` or `refunded` (`shop.invalid_body`, `shop.invalid_email_kind`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -68008,7 +68009,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The order has no buyer e-mail (`shop.order_no_buyer_email`), or it is not in a state that has this letter, for example unpaid or never shipped (`shop.order_email_unavailable`). */
+            /** @description The order has no buyer e-mail (`shop.order_no_buyer_email`), or it is not in a state that has this letter, for example unpaid, never shipped or never refunded (`shop.order_email_unavailable`). */
             409: {
                 headers: {
                     [name: string]: unknown;
