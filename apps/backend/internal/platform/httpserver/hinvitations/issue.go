@@ -108,6 +108,10 @@ type IssueInput struct {
 	Guest     Guest
 	Delivery  string
 	Note      string
+	// VIP asks for every ticket of the order to carry the organizer's private
+	// VIP mark (task V1). It is stored in orders.metadata.invitation.vip and
+	// applied when the tickets are minted.
+	VIP bool
 	// IssuedBy is the user who issues; nil for an organization API key.
 	IssuedBy *uuid.UUID
 	// IssuedByAPIKey is the name of the organization API key that issues
@@ -296,6 +300,7 @@ func Fingerprint(in IssueInput) string {
 		Email     string   `json:"guest_email"`
 		Phone     string   `json:"guest_phone"`
 		Delivery  string   `json:"delivery"`
+		VIP       bool     `json:"vip,omitempty"` // omitted when false: older orders keep their fingerprint
 	}{
 		SessionID: in.SessionID.String(),
 		Seats:     seats,
@@ -304,6 +309,7 @@ func Fingerprint(in IssueInput) string {
 		Email:     strings.ToLower(strings.TrimSpace(in.Guest.Email)),
 		Phone:     strings.TrimSpace(in.Guest.Phone),
 		Delivery:  in.Delivery,
+		VIP:       in.VIP,
 	})
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
@@ -805,6 +811,9 @@ func writeOrder(
 	}
 	if n := strings.TrimSpace(in.Note); n != "" {
 		meta["note"] = n
+	}
+	if in.VIP {
+		meta["vip"] = true
 	}
 	if k := strings.TrimSpace(in.IssuedByAPIKey); k != "" && in.IssuedBy == nil {
 		meta["issued_by_api_key"] = k

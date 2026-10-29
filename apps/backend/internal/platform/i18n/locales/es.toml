@@ -2204,6 +2204,63 @@ other = "La invitación de {{.Guest}} ya se escaneó en la puerta, así que no s
 ["bot.inv.private_only"]
 other = "Las direcciones de los invitados solo se muestran y se escriben en un chat privado con el bot. Abre Invitaciones allí."
 
+["bot.inv.seated_text"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nEsta fecha tiene plano de asientos, así que los asientos se eligen en el plano: los libres y los que te reservaste. Pulsa el botón y el plano se abre aquí, en Telegram."
+
+["bot.inv.seated_web"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nEsta fecha tiene plano de asientos, así que los asientos se eligen en el plano del centro de eventos web:\n{{.Link}}"
+
+["bot.inv.seated_nolink"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nEsta fecha tiene plano de asientos, así que los asientos se eligen en el plano del centro de eventos web: abre el evento, luego la fecha y después Invitaciones."
+
+["bot.inv.seated_btn"]
+other = "🪑 Elegir asientos"
+
+["bot.inv.seated_failed"]
+other = "Ahora no he podido abrir el plano. Pulsa «Atrás» e inténtalo de nuevo en un minuto, o abre el centro de eventos web."
+
+["bot.inv.why_cancelled"]
+other = "la fecha está cancelada."
+
+["bot.inv.legacy_btn"]
+other = "🗂 Invitaciones anteriores"
+
+["bot.inv.legacy_note"]
+other = "🗂 <b>Invitaciones anteriores</b>: emitidas antes del nuevo sistema. Aquí también puedes anularlas."
+
+["bot.inv.nlist_title"]
+other = "🎟 <b>Invitaciones</b> · {{.Org}}\nTodas las fechas, las nuevas primero · página {{.Page}}\n{{.Legend}}"
+
+["bot.inv.nlegend"]
+other = "✔ válida  ✕ anulada"
+
+["bot.inv.ncard"]
+other = "🎟 <b>{{.Event}}</b>\n{{.When}}\n\nInvitado: {{.Guest}}\nPlazas:\n{{.Places}}\n\nEstado: {{.State}}\nEmitida: {{.Issued}}\nEmitida por: {{.By}}"
+
+["bot.inv.state_issuing"]
+other = "se están emitiendo las entradas"
+
+["bot.inv.nrevoke_ask"]
+other = "🚫 <b>¿Anular esta invitación?</b>\n\n{{.Guest}}\n{{.Event}} · {{.When}}\n\nTodas las entradas ({{.N}}) dejan de funcionar al instante y cada plaza vuelve a donde estaba: a tu reserva o a la venta. No se puede deshacer. {{.Mail}}\n\nPara anular, escribe la palabra <b>{{.Word}}</b> como mensaje."
+
+["bot.inv.nrevoke_mail"]
+other = "El invitado recibe un correo con el aviso."
+
+["bot.inv.nrevoke_nomail"]
+other = "Arena no avisa al invitado: escríbele tú."
+
+["bot.inv.nrevoke_done"]
+other = "✔ La invitación de {{.Guest}} está anulada: {{.N}} entradas. Las plazas han vuelto a donde estaban."
+
+["bot.inv.nrevoke_skipped"]
+other = "{{.N}} entradas no se han anulado porque ya se usaron en la puerta."
+
+["bot.inv.nrevoke_used"]
+other = "La invitación de {{.Guest}} ya está usada: el escáner de la puerta aceptó una entrada. Por eso no la he anulado."
+
+["bot.inv.nrevoke_notyet"]
+other = "Las entradas de esta invitación aún se están emitiendo. Inténtalo de nuevo en un minuto."
+
 ["bot.promo.btn"]
 other = "🏷 Códigos promocionales"
 

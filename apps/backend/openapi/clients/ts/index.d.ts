@@ -1582,7 +1582,7 @@ export interface paths {
          *     the session is 30 minutes, the chat gets no "signed in" notice and no
          *     code of another purpose is taken back. An unknown purpose is 400
          *     `bot.invalid_purpose`, a miniapp code without a valid `kind` and
-         *     `event_id` is 400 `bot.invalid_miniapp_target`.
+         *     `event_id` is 400 `bot.invalid_miniapp_target` (`kind: invitations` also needs `session_id`).
          */
         post: operations["createBotWebLoginCode"];
         delete?: never;
@@ -7457,6 +7457,33 @@ export interface paths {
         patch: operations["updateExternalAllocation"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the staff invitations of the whole organization
+         * @description Every staff invitation of the organization, whoever issued it and for
+         *     whichever session, newest first (spec 46, section 6.1). The Telegram
+         *     bot and the web screen list all sessions at once through it. Each item
+         *     is the session list item plus the session it is for. `state=active`
+         *     (default) leaves out invitations whose tickets are all cancelled,
+         *     `cancelled` shows only those, `all` both; an invitation whose tickets
+         *     are not issued yet counts as active. Pages are keyset pages: pass the
+         *     `next_cursor` of one page as `cursor` of the next.
+         */
+        get: operations["listOrgStaffInvitations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/invitations": {
         parameters: {
             query?: never;
@@ -12107,17 +12134,22 @@ export interface components {
              * @default web
              */
             purpose: string;
-            /** @description Which text the mini app opens: `description` or `email_note` (a plain string, not an enum). Required, and only used, for `purpose: miniapp`. */
+            /** @description What the mini app opens: `description` or `email_note` (the event's texts) or `invitations` (the staff invitations screen of one session, spec 46) - a plain string, not an enum. Required, and only used, for `purpose: miniapp`. */
             kind?: string;
             /**
              * Format: uuid
-             * @description The event whose text the mini app opens. Required, and only used, for `purpose: miniapp`.
+             * @description The event whose text (or whose session) the mini app opens. Required, and only used, for `purpose: miniapp`.
              */
             event_id?: string;
+            /**
+             * Format: uuid
+             * @description The session whose invitations the mini app opens. Required for `kind: invitations`, ignored otherwise.
+             */
+            session_id?: string;
         };
         /** @description A one-time link to the web event center for the private chat. */
         BotWebLoginCodeResponse: {
-            /** @description `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`, or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`. The code is after `#`, so it never reaches a server log. */
+            /** @description `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`, or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`, or for `kind: invitations` `<EVENT_CENTER_PUBLIC_URL>/tg/invitations?session=<session_id>&event=<event_id>#code=<code>`. The code is after `#`, so it never reaches a server log. */
             url: string;
             /**
              * Format: date-time
@@ -25693,6 +25725,11 @@ export interface components {
             delivery: string;
             /** @description Internal note, at most 1000 characters, never shown to the guest. */
             note?: string | null;
+            /**
+             * @description Mark every ticket of the invitation with the organizer's private VIP flag (it never reaches the guest). Stored on the order and applied when the tickets are minted. Part of the request fingerprint: a repeat of the same request_id with a different vip answers 409 invitation.request_id_reused.
+             * @default false
+             */
+            vip: boolean;
         };
         /** @description One seat of the session by key. */
         StaffInvitationSeatRef: {
@@ -25750,6 +25787,8 @@ export interface components {
             ticket_id?: string | null;
             /** @description Status of the place's ticket - active while it can be used, cancelled after a cancellation, null until the ticket is issued. A client offers a per-ticket cancel only for active. */
             ticket_status?: string | null;
+            /** @description The organizer's private VIP mark of the place's ticket (never shown to the guest). False until the ticket is issued. */
+            vip: boolean;
         };
         /** @description The invitation as written. */
         StaffInvitationIssueResponse: {
@@ -25895,6 +25934,42 @@ export interface components {
         StaffInvitationListResponse: {
             /** @description Newest first, at most 500. */
             items: components["schemas"]["StaffInvitationListItem"][];
+        };
+        /** @description The session a staff invitation is for. */
+        StaffInvitationSession: {
+            /**
+             * Format: uuid
+             * @description Session id.
+             */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When the session starts (UTC instant).
+             */
+            start_at: string;
+            /**
+             * Format: uuid
+             * @description Event the session belongs to.
+             */
+            event_id: string;
+            /** @description Event name. */
+            event_name: string;
+            /** @description Venue name, null when the session has no venue. */
+            venue_name?: string | null;
+            /** @description IANA time zone of the venue, UTC when it has none. */
+            timezone: string;
+        };
+        /** @description One staff invitation of the organization - the same fields as the session list item plus the session it is for. */
+        StaffInvitationOrgListItem: components["schemas"]["StaffInvitationListItem"] & {
+            /** @description The session the invitation is for. */
+            session: components["schemas"]["StaffInvitationSession"];
+        };
+        /** @description A page of the staff invitations of the organization. */
+        StaffInvitationOrgListResponse: {
+            /** @description Newest first. */
+            items: components["schemas"]["StaffInvitationOrgListItem"][];
+            /** @description Opaque cursor for the next page (pass it as the cursor query parameter), null on the last page. */
+            next_cursor: string | null;
         };
         /** @description Which tickets to cancel; an empty body cancels them all. */
         StaffInvitationCancelRequest: {
@@ -57201,6 +57276,85 @@ export interface operations {
             };
             /** @description Allocation not found. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listOrgStaffInvitations: {
+        parameters: {
+            query?: {
+                /** @description Only invitations of this session. */
+                session_id?: string;
+                /** @description Only invitations of the sessions of this event. */
+                event_id?: string;
+                /** @description active (default), cancelled or all. */
+                state?: string;
+                /** @description Page size, 1 to 200, default 50. */
+                limit?: number;
+                /** @description The next_cursor of the previous page. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the invitations of the organization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffInvitationOrgListResponse"];
+                };
+            };
+            /** @description invitation.invalid_filter (a filter is not a UUID), invitation.invalid_state, invitation.invalid_limit, invitation.invalid_cursor, or org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.read in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

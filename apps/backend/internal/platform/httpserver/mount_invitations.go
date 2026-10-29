@@ -28,6 +28,7 @@ func (s *Server) mountInvitationRoutes(r chi.Router) {
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "complimentary.read", "complimentary")
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/invitations", s.handleListInvitations)
+		pr.Get("/organizations/{org_id}/invitations", s.handleListOrgInvitations)
 		pr.Get("/organizations/{org_id}/invitations/{order_id}/tickets.pdf", s.handleInvitationTicketsPDF)
 	})
 	// Bulk invitations from a CSV file (INV-06): the upload is a write
@@ -88,6 +89,13 @@ func (s *Server) handleListInvitations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.invitationsHandler().HandleList(w, r)
+}
+
+func (s *Server) handleListOrgInvitations(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.invitationsHandler().HandleOrgList(w, r)
 }
 
 func (s *Server) handleResendInvitation(w http.ResponseWriter, r *http.Request) {

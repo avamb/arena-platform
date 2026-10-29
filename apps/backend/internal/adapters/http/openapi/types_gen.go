@@ -4718,10 +4718,10 @@ type BotTeamResponse struct {
 
 // BotWebLoginCodeRequest Body of POST /v1/bot/web-login-codes.
 type BotWebLoginCodeRequest struct {
-	// EventId The event whose text the mini app opens. Required, and only used, for `purpose: miniapp`.
+	// EventId The event whose text (or whose session) the mini app opens. Required, and only used, for `purpose: miniapp`.
 	EventId *openapi_types.UUID `json:"event_id,omitempty"`
 
-	// Kind Which text the mini app opens: `description` or `email_note` (a plain string, not an enum). Required, and only used, for `purpose: miniapp`.
+	// Kind What the mini app opens: `description` or `email_note` (the event's texts) or `invitations` (the staff invitations screen of one session, spec 46) - a plain string, not an enum. Required, and only used, for `purpose: miniapp`.
 	Kind *string `json:"kind,omitempty"`
 
 	// Purpose What the code is for: `web` or `miniapp` (a plain string, not an enum, so no generated constant is
@@ -4730,6 +4730,9 @@ type BotWebLoginCodeRequest struct {
 	// Telegram mini app editor (spec 44, RT-12a): a 30-minute session of channel `event_center_tg`, no notice,
 	// and it takes back and is taken back by no code of another purpose.
 	Purpose *string `json:"purpose,omitempty"`
+
+	// SessionId The session whose invitations the mini app opens. Required for `kind: invitations`, ignored otherwise.
+	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
 
 	// TelegramUserId The Telegram account that pressed "Open in browser" or "Edit in the editor".
 	TelegramUserId int64 `json:"telegram_user_id"`
@@ -4740,7 +4743,7 @@ type BotWebLoginCodeResponse struct {
 	// ExpiresAt When the link stops working (5 minutes after it was issued).
 	ExpiresAt time.Time `json:"expires_at"`
 
-	// Url `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`, or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`. The code is after `#`, so it never reaches a server log.
+	// Url `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`, or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`, or for `kind: invitations` `<EVENT_CENTER_PUBLIC_URL>/tg/invitations?session=<session_id>&event=<event_id>#code=<code>`. The code is after `#`, so it never reaches a server log.
 	Url string `json:"url"`
 }
 
@@ -17702,6 +17705,9 @@ type StaffInvitationIssueRequest struct {
 
 	// Seats Seats by key, free or held back by the organizer.
 	Seats *[]StaffInvitationSeatRef `json:"seats,omitempty"`
+
+	// Vip Mark every ticket of the invitation with the organizer's private VIP flag (it never reaches the guest). Stored on the order and applied when the tickets are minted. Part of the request fingerprint: a repeat of the same request_id with a different vip answers 409 invitation.request_id_reused.
+	Vip *bool `json:"vip,omitempty"`
 }
 
 // StaffInvitationIssueResponse The invitation as written.
@@ -17797,6 +17803,57 @@ type StaffInvitationListResponse struct {
 	Items []StaffInvitationListItem `json:"items"`
 }
 
+// StaffInvitationOrgListItem defines model for StaffInvitationOrgListItem.
+type StaffInvitationOrgListItem struct {
+	// CreatedAt When it was issued.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Delivery Delivery mode - guest_email, my_email or pdf_only.
+	Delivery string `json:"delivery"`
+
+	// GuestName Guest name.
+	GuestName *string `json:"guest_name"`
+
+	// InvitationBatchId The CSV batch (invitation_batches.id) a bulk invitation came from; null for a one-by-one invitation.
+	InvitationBatchId *openapi_types.UUID `json:"invitation_batch_id"`
+
+	// IssuedBy Who issued it.
+	IssuedBy StaffInvitationIssuer `json:"issued_by"`
+
+	// IssuedVia staff (one by one) or staff_bulk (a CSV file).
+	IssuedVia string `json:"issued_via"`
+
+	// OrderId Order id of the invitation.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// Places The places of the invitation.
+	Places []StaffInvitationPlace `json:"places"`
+
+	// Session The session the invitation is for.
+	Session StaffInvitationSession `json:"session"`
+
+	// Status Order status - paid, also after every ticket is cancelled (an invitation stays billed); tickets_active = 0 marks a fully cancelled invitation.
+	Status string `json:"status"`
+
+	// SystemId Order number shown to people.
+	SystemId int64 `json:"system_id"`
+
+	// TicketsActive Tickets still active.
+	TicketsActive int64 `json:"tickets_active"`
+
+	// TicketsTotal Tickets issued so far.
+	TicketsTotal int64 `json:"tickets_total"`
+}
+
+// StaffInvitationOrgListResponse A page of the staff invitations of the organization.
+type StaffInvitationOrgListResponse struct {
+	// Items Newest first.
+	Items []StaffInvitationOrgListItem `json:"items"`
+
+	// NextCursor Opaque cursor for the next page (pass it as the cursor query parameter), null on the last page.
+	NextCursor *string `json:"next_cursor"`
+}
+
 // StaffInvitationPlace One place of a staff invitation.
 type StaffInvitationPlace struct {
 	// FaceValue Face value of the place in minor units; the invitation itself costs 0.
@@ -17831,6 +17888,9 @@ type StaffInvitationPlace struct {
 
 	// TierName Category name.
 	TierName string `json:"tier_name"`
+
+	// Vip The organizer's private VIP mark of the place's ticket (never shown to the guest). False until the ticket is issued.
+	Vip bool `json:"vip"`
 }
 
 // StaffInvitationResendRequest Optional one-time address for the resend.
@@ -17861,6 +17921,27 @@ type StaffInvitationResendResponse struct {
 type StaffInvitationSeatRef struct {
 	// SeatKey session_seats.seat_key of the seat.
 	SeatKey string `json:"seat_key"`
+}
+
+// StaffInvitationSession The session a staff invitation is for.
+type StaffInvitationSession struct {
+	// EventId Event the session belongs to.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// EventName Event name.
+	EventName string `json:"event_name"`
+
+	// Id Session id.
+	Id openapi_types.UUID `json:"id"`
+
+	// StartAt When the session starts (UTC instant).
+	StartAt time.Time `json:"start_at"`
+
+	// Timezone IANA time zone of the venue, UTC when it has none.
+	Timezone string `json:"timezone"`
+
+	// VenueName Venue name, null when the session has no venue.
+	VenueName *string `json:"venue_name"`
 }
 
 // StartCheckoutRequest Request body for `POST /v1/checkout/start`. Creates a new checkout
@@ -20698,6 +20779,24 @@ type ImportEventBundleParams struct {
 	// bundle's errors inside it. Absent or `false` imports. Any other
 	// value is 400 `import.invalid_dry_run`.
 	DryRun *bool `form:"dry_run,omitempty" json:"dry_run,omitempty"`
+}
+
+// ListOrgStaffInvitationsParams defines parameters for ListOrgStaffInvitations.
+type ListOrgStaffInvitationsParams struct {
+	// SessionId Only invitations of this session.
+	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
+
+	// EventId Only invitations of the sessions of this event.
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
+
+	// State active (default), cancelled or all.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Limit Page size, 1 to 200, default 50.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The next_cursor of the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // GrantOrganizationMembershipParams defines parameters for GrantOrganizationMembership.
