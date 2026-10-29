@@ -103,6 +103,8 @@ type lineResponse struct {
 	TicketID  *string `json:"ticket_id"`
 	// TicketStatus is tickets.status of the place's ticket (active, cancelled, ...), null until it is issued.
 	TicketStatus *string `json:"ticket_status"`
+	// VIP is the organizer's private VIP mark of the place's ticket; false until the ticket is issued.
+	VIP bool `json:"vip"`
 }
 
 type issueResponse struct {
@@ -350,7 +352,7 @@ func toLine(l gen.InvitationOrderLineRow) lineResponse {
 	out := lineResponse{
 		SeatKey: l.SeatKey, Sector: l.SectorName, Row: l.RowName, Seat: l.SeatNumber, Kind: l.Kind,
 		TierID: l.TierID.String(), TierName: l.TierName, FaceValue: l.UnitPrice, Origin: l.SeatOrigin,
-		TicketStatus: l.TicketStatus,
+		TicketStatus: l.TicketStatus, VIP: l.VIP,
 	}
 	if l.TicketID != nil {
 		s := l.TicketID.String()

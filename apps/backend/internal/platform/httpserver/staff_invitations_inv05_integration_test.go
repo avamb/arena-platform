@@ -184,6 +184,22 @@ func TestINV05_VIPInvitation_TicketsMarkedAndFingerprint(t *testing.T) {
 		t.Fatalf("order metadata vip = %q (%v)", meta, err)
 	}
 
+	// Both lists carry the mark on each place.
+	for _, path := range []string{f.issuePath(), "/v1/organizations/" + f.o.org.String() + "/invitations"} {
+		_, list := f.do(f.manager, http.MethodGet, path, "")
+		var vipPlaces int
+		for _, it := range list["items"].([]any) {
+			for _, pl := range it.(map[string]any)["places"].([]any) {
+				if pl.(map[string]any)["vip"] == true {
+					vipPlaces++
+				}
+			}
+		}
+		if vipPlaces != 2 {
+			t.Fatalf("%s: %d VIP places, want 2: %s", path, vipPlaces, list["_raw"])
+		}
+	}
+
 	// The same request_id and body replays; with a different vip it is refused.
 	if code, body := f.issue(f.o.owner, vipBody); code != http.StatusOK || body["replayed"] != true {
 		t.Fatalf("replay: %d %s", code, body["_raw"])

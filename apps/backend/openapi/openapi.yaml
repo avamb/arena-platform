@@ -17265,7 +17265,7 @@ components:
           description: Language of the guest's letter (cs, de, en, es, fr, he, ru); anything else falls back to the default.
     StaffInvitationPlace:
       type: object
-      required: [tier_id, tier_name, face_value]
+      required: [tier_id, tier_name, face_value, vip]
       description: One place of a staff invitation.
       properties:
         seat_key:
@@ -17303,6 +17303,9 @@ components:
         ticket_status:
           type: [string, "null"]
           description: Status of the place's ticket - active while it can be used, cancelled after a cancellation, null until the ticket is issued. A client offers a per-ticket cancel only for active.
+        vip:
+          type: boolean
+          description: The organizer's private VIP mark of the place's ticket (never shown to the guest). False until the ticket is issued.
     StaffInvitationIssueResponse:
       type: object
       required: [order_id, system_id, status, delivery, places, from_reserve, tickets_status, replayed]

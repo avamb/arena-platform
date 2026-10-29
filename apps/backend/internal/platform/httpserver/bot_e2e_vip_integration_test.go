@@ -4,6 +4,7 @@ package httpserver
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -54,6 +55,11 @@ func TestBotE2E_Invitations_VIPTick(t *testing.T) {
 		t.Error("the invitation issued with the tick is not marked VIP")
 	}
 
+	// The list row and the card mark it (the star), as the old card did.
+	d.press("iv:l", "Все сеансы, сначала новые")
+	if card := d.press("iv:no:0", "Места:"); !strings.Contains(card, "⭐ VIP") {
+		t.Errorf("the card does not mark the VIP invitation: %s", card)
+	}
 	d.press("home", "Что будем делать")
 	e.toCategory(d, 1)
 	d.press("iv:q:1", "Кто эти 1 гостей?")
@@ -65,5 +71,10 @@ func TestBotE2E_Invitations_VIPTick(t *testing.T) {
 	}
 	if !vip(star) {
 		t.Error("the first invitation lost its mark")
+	}
+	// The plain invitation's card has no star.
+	d.press("iv:l", "Все сеансы, сначала новые")
+	if card := d.press("iv:no:0", "Места:"); strings.Contains(card, "VIP") {
+		t.Errorf("the card of a plain invitation is marked VIP: %s", card)
 	}
 }

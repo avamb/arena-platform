@@ -17888,6 +17888,9 @@ type StaffInvitationPlace struct {
 
 	// TierName Category name.
 	TierName string `json:"tier_name"`
+
+	// Vip The organizer's private VIP mark of the place's ticket (never shown to the guest). False until the ticket is issued.
+	Vip bool `json:"vip"`
 }
 
 // StaffInvitationResendRequest Optional one-time address for the resend.

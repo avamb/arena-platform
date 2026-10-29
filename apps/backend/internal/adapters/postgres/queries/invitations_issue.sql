@@ -124,7 +124,8 @@ LIMIT  $3;
 -- The places of the given invitation orders, in line order.
 SELECT oi.order_id, oi.ordinal, oi.ticket_id, oi.unit_price, oi.seat_origin,
        ss.seat_key, ss.sector_name, ss.row_name, ss.seat_number, ss.kind,
-       tt.id AS tier_id, tt.name AS tier_name, t.status AS ticket_status
+       tt.id AS tier_id, tt.name AS tier_name, t.status AS ticket_status,
+       coalesce(t.vip, false) AS vip
 FROM   order_items oi
 JOIN   ticket_tiers tt ON tt.id = oi.tier_id
 LEFT JOIN session_seats ss ON ss.id = oi.session_seat_id
