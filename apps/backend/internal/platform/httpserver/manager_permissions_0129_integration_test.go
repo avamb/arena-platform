@@ -102,6 +102,10 @@ func TestManagerPermissions0129_OrganizerPassesEveryEventCenterGate(t *testing.T
 		{"complimentary.issue", http.MethodPost, orgPath + "/sessions/" + random + "/invitations", `{}`},
 		{"complimentary.read", http.MethodGet, orgPath + "/sessions/" + random + "/invitations", ""},
 		{"complimentary.revoke", http.MethodPost, orgPath + "/invitations/" + random + "/cancel", `{}`},
+		// INV-06: the CSV batches.
+		{"complimentary.issue", http.MethodPost, orgPath + "/sessions/" + random + "/invitation-batches?dry_run=true", `guest,name`},
+		{"complimentary.read", http.MethodGet, orgPath + "/invitation-batches/" + random, ""},
+		{"complimentary.read", http.MethodGet, orgPath + "/invitation-batches/" + random + "/result.csv", ""},
 		// Spec 47: the merchandise shop (migration 0172 grants shop.read and
 		// shop.manage to the manager); a refund also needs refund.create and
 		// refund.approve.

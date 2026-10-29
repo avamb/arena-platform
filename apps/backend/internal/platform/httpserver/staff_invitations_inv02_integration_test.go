@@ -164,6 +164,7 @@ func (f *inv02Fx) cleanup() {
 		`DELETE FROM barcodes WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`,
 		`DELETE FROM tickets WHERE session_id = $1`,
 		`DELETE FROM orders WHERE session_id = $1`,
+		`DELETE FROM invitation_batches WHERE session_id = $1`,
 		`DELETE FROM checkout_sessions WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,
 		`DELETE FROM reservation_seats WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,
 		`DELETE FROM reservation_ga_items WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`,

@@ -17440,6 +17440,204 @@ components:
         notify_guest:
           type: boolean
           description: Whether the guest is to be told.
+    InvitationBatchUploadRequest:
+      type: object
+      required: [file]
+      description: |
+        A CSV upload of staff invitations (spec 46, section 3.5), sent as a
+        multipart form.
+      properties:
+        file:
+          type: string
+          format: binary
+          description: |
+            The CSV file, UTF-8 with or without a BOM, at most 2 MB and 1000
+            places. The separator is `,` or `;` (detected from the header), the
+            header row is mandatory and the columns may come in any order:
+            `guest` (a guest number - rows with the same number are ONE order
+            and ONE letter; the name, e-mail, phone and language come from the
+            guest's first row), `name` (required), `email`, `phone`, `locale`,
+            `note`, and for the place either `seat_key`, or `sector`, `row`,
+            `seat` (the sector may be left out when the row and seat are
+            unique), or `category` (a name or an id) with `qty` for General
+            Admission places.
+        request_id:
+          type: string
+          format: uuid
+          description: Client-chosen id of the upload; required unless dry_run is true. A repeat with the same id and the same file answers the first batch (200, replayed true).
+        delivery:
+          type: string
+          description: "Delivery of a guest WITHOUT an e-mail in the file - pdf_only (default, no letter) or my_email (a letter to the uploading user). A guest with an e-mail always gets the letter. guest_email makes a missing e-mail a row error."
+    InvitationBatchRowIssue:
+      type: object
+      required: [row, field, code, message]
+      description: One problem of one row of an upload.
+      properties:
+        row:
+          type: integer
+          description: Line of the file (the header is line 1); 0 for a problem of the file as a whole.
+        field:
+          type: string
+          description: The column the problem is about; empty when it is about the row or the file.
+        code:
+          type: string
+          description: Machine-readable code - name_required, invalid_email, email_required, place_missing, place_ambiguous, unknown_seat, ambiguous_seat, seat_taken, duplicate_seat, unknown_category, ambiguous_category, category_not_ga, invalid_qty, not_enough_places, too_many_places, or the code of a refusal of the transaction (for example invitation.seats_taken).
+        message:
+          type: string
+          description: Human-readable explanation in English.
+    InvitationBatchPreviewGuest:
+      type: object
+      required: [guest, name, email, delivery, places]
+      description: One guest of an upload as the validation sees it.
+      properties:
+        guest:
+          type: integer
+          description: Position of the guest in the file, from 1.
+        name:
+          type: string
+          description: Guest name from the guest's first row.
+        email:
+          type: string
+          description: Guest e-mail, empty when the file has none.
+        delivery:
+          type: string
+          description: guest_email, my_email or pdf_only.
+        places:
+          type: integer
+          description: Tickets this guest gets.
+    InvitationBatchReport:
+      type: object
+      required: [dry_run, valid, delivery, rows, guests, places, seats, ga_places, from_reserve, errors, preview]
+      description: |
+        The validation report of an upload: the answer of a dry run, and the
+        `details.report` of a refused real upload (422 invitation_batch.invalid
+        or the refusal of the transaction). Nothing was written either way.
+      properties:
+        dry_run:
+          type: boolean
+          description: True for a dry run.
+        valid:
+          type: boolean
+          description: True when the file can be issued as it is.
+        delivery:
+          type: string
+          description: The batch-wide delivery used for guests without an e-mail.
+        rows:
+          type: integer
+          description: Data rows of the file.
+        guests:
+          type: integer
+          description: Guests, that is orders and letters, the file makes.
+        places:
+          type: integer
+          description: Tickets the file hands out.
+        seats:
+          type: integer
+          description: Of them, seats on the plan.
+        ga_places:
+          type: integer
+          description: Of them, General Admission places.
+        from_reserve:
+          type: integer
+          description: Places taken from the organizer's reserve (closed seats, reserve GA places).
+        errors:
+          type: array
+          description: The problems found, by row. Empty when valid.
+          items:
+            $ref: "#/components/schemas/InvitationBatchRowIssue"
+        preview:
+          type: array
+          description: The guests of the file in order, for the check table.
+          items:
+            $ref: "#/components/schemas/InvitationBatchPreviewGuest"
+        charge:
+          type: [object, "null"]
+          description: Billing preview (spec 46, section 3.6) - a CSV file is always charged at the standard rate. Null until billing of invitations lands.
+    InvitationBatchOrder:
+      type: object
+      required: [guest, order_id, system_id, status, delivery, places, from_reserve, seat_keys]
+      description: The order one guest of a batch got.
+      properties:
+        guest:
+          type: integer
+          description: Position of the guest in the file, from 1.
+        order_id:
+          type: string
+          format: uuid
+          description: Order id.
+        system_id:
+          type: integer
+          format: int64
+          description: Order number shown to people.
+        status:
+          type: string
+          description: Order status - paid.
+        guest_name:
+          type: [string, "null"]
+          description: Guest name.
+        guest_email:
+          type: [string, "null"]
+          description: Guest e-mail; only set when the letter goes to the guest.
+        delivery:
+          type: string
+          description: guest_email, my_email or pdf_only.
+        places:
+          type: integer
+          description: Tickets of the order.
+        from_reserve:
+          type: integer
+          description: Of them, taken from the organizer's reserve.
+        seat_keys:
+          type: array
+          description: Keys of the places of the order.
+          items:
+            type: string
+    InvitationBatch:
+      type: object
+      required: [id, session_id, status, created_at, rows, guests, places, from_reserve, orders, replayed]
+      description: An issued CSV batch of staff invitations with the order of each guest.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Batch id.
+        session_id:
+          type: string
+          format: uuid
+          description: Session the batch was issued for.
+        status:
+          type: string
+          description: issued.
+        created_by:
+          type: [string, "null"]
+          description: User who uploaded the file; null for an organization API key.
+        created_at:
+          type: string
+          format: date-time
+          description: When the batch was issued.
+        rows:
+          type: integer
+          description: Data rows of the file.
+        guests:
+          type: integer
+          description: Orders the batch made.
+        places:
+          type: integer
+          description: Tickets the batch handed out.
+        from_reserve:
+          type: integer
+          description: Places taken from the organizer's reserve.
+        orders:
+          type: array
+          description: One order per guest, in file order.
+          items:
+            $ref: "#/components/schemas/InvitationBatchOrder"
+        charge:
+          type: [object, "null"]
+          description: Billing of the batch (spec 46, section 3.6); null until billing of invitations lands.
+        replayed:
+          type: boolean
+          description: True when the request_id was already used and this is the first batch.
     ComplimentaryIssuance:
       type: object
       required: [id, org_id, session_id, tier_id, recipient_email, status, created_at]
@@ -49372,6 +49570,259 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database or the ticket service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/sessions/{session_id}/invitation-batches:
+    post:
+      operationId: createInvitationBatch
+      summary: Issue staff invitations from a CSV file
+      description: |
+        Bulk staff invitations (spec 46, section 3.5). Each guest of the file
+        gets ONE order, written exactly like a one-by-one invitation, and
+        ONE letter; the whole file is issued in one transaction, so a bad
+        row, a seat sold in the meantime or a category with too few places
+        writes nothing. A CSV file is always charged at the standard rate.
+
+        With `dry_run=true` nothing is written (no `request_id` needed): the
+        answer is the validation report - per-row errors, the number of
+        guests, places and places from the reserve - for the check table.
+        Without it the same validation runs first and a file with errors is
+        refused with 422 `invitation_batch.invalid` and the report in
+        `details.report`.
+
+        Send a multipart form (`file`, `request_id`, `delivery`). The batch
+        and its orders are read back with the batch routes. A big file takes
+        a few thousand statements: if the connection times out, repeat the
+        same `request_id` and the first batch is answered (200, replayed
+        true) once it has committed.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: session_id
+          description: Session (date) of the organization the invitations are for. A session of another organization answers 404.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: dry_run
+          description: true validates the file and writes nothing (answers the report, 200). Default false.
+          in: query
+          required: false
+          schema: { type: boolean }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/InvitationBatchUploadRequest"
+      responses:
+        "200":
+          description: A dry run - the validation report; or a repeat of an upload already issued (same request_id and file) - the first batch, nothing new written.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/InvitationBatchReport"
+                  - $ref: "#/components/schemas/InvitationBatch"
+        "201":
+          description: The file was issued, tickets are being issued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationBatch"
+        "400":
+          description: Invalid request - invitation_batch.invalid_request_id, invitation_batch.invalid_delivery, invitation_batch.invalid_dry_run, invitation_batch.invalid_body, invitation_batch.file_required, invitation_batch.invalid_encoding (not UTF-8), invitation_batch.invalid_csv (details.line), invitation_batch.empty_file.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks complimentary.issue in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found in this organization (session.not_found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The transaction refused the file and wrote nothing - invitation.seats_taken (a seat was held or sold since the check), invitation.not_enough_places, invitation.capacity_exceeded, each with details.report pointing at the rows; invitation_batch.request_id_reused (the request_id belongs to another session or another file).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: The file is larger than 2 MB (invitation_batch.file_too_large).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: invitation_batch.invalid (details.report lists the row errors), invitation_batch.invalid_header (details.missing), invitation_batch.too_many_rows, invitation_batch.too_many_places (over 1000), invitation.session_cancelled, invitation.my_email_requires_user (an API key has no e-mail).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable, or invitation_batch.timeout - the transaction ran out of its 2 minute budget and wrote nothing. A client whose connection timed out repeats the same request_id to read the batch if it was committed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/invitation-batches/{id}:
+    get:
+      operationId: getInvitationBatch
+      summary: Read an issued invitation batch
+      description: |
+        A batch issued from a CSV file with one order per guest (order id,
+        order number, delivery, places and their keys). Another
+        organization's batch answers 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: id
+          description: Batch id (invitation_batches.id) from the upload answer.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The batch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationBatch"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks complimentary.read in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Batch not found in this organization (invitation_batch.not_found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/invitation-batches/{id}/result.csv:
+    get:
+      operationId: getInvitationBatchResult
+      summary: The result file of an invitation batch
+      description: |
+        A `text/csv` attachment with one line per guest and the order number
+        the guest's tickets belong to. Written like every spreadsheet the
+        platform hands out: UTF-8 with a BOM, `;` as the separator, quoted
+        text, CRLF line ends.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: id
+          description: Batch id (invitation_batches.id) from the upload answer.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: |
+            The CSV attachment, `Content-Disposition: attachment;
+            filename="invitation-batch-<first 8 characters of the id>.csv"`.
+          content:
+            text/csv:
+              schema:
+                type: string
+                description: |
+                  Header row `guest;name;email;delivery;order_number;order_id;
+                  places;from_reserve;seat_keys`, one line per guest.
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks complimentary.read in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Batch not found in this organization (invitation_batch.not_found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
           content:
             application/json:
               schema:

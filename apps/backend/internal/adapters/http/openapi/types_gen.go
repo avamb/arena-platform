@@ -9447,6 +9447,174 @@ type InventoryRowItem struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// InvitationBatch An issued CSV batch of staff invitations with the order of each guest.
+type InvitationBatch struct {
+	// Charge Billing of the batch (spec 46, section 3.6); null until billing of invitations lands.
+	Charge *map[string]interface{} `json:"charge"`
+
+	// CreatedAt When the batch was issued.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy User who uploaded the file; null for an organization API key.
+	CreatedBy *string `json:"created_by"`
+
+	// FromReserve Places taken from the organizer's reserve.
+	FromReserve int `json:"from_reserve"`
+
+	// Guests Orders the batch made.
+	Guests int `json:"guests"`
+
+	// Id Batch id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Orders One order per guest, in file order.
+	Orders []InvitationBatchOrder `json:"orders"`
+
+	// Places Tickets the batch handed out.
+	Places int `json:"places"`
+
+	// Replayed True when the request_id was already used and this is the first batch.
+	Replayed bool `json:"replayed"`
+
+	// Rows Data rows of the file.
+	Rows int `json:"rows"`
+
+	// SessionId Session the batch was issued for.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Status issued.
+	Status string `json:"status"`
+}
+
+// InvitationBatchOrder The order one guest of a batch got.
+type InvitationBatchOrder struct {
+	// Delivery guest_email, my_email or pdf_only.
+	Delivery string `json:"delivery"`
+
+	// FromReserve Of them, taken from the organizer's reserve.
+	FromReserve int `json:"from_reserve"`
+
+	// Guest Position of the guest in the file, from 1.
+	Guest int `json:"guest"`
+
+	// GuestEmail Guest e-mail; only set when the letter goes to the guest.
+	GuestEmail *string `json:"guest_email"`
+
+	// GuestName Guest name.
+	GuestName *string `json:"guest_name"`
+
+	// OrderId Order id.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// Places Tickets of the order.
+	Places int `json:"places"`
+
+	// SeatKeys Keys of the places of the order.
+	SeatKeys []string `json:"seat_keys"`
+
+	// Status Order status - paid.
+	Status string `json:"status"`
+
+	// SystemId Order number shown to people.
+	SystemId int64 `json:"system_id"`
+}
+
+// InvitationBatchPreviewGuest One guest of an upload as the validation sees it.
+type InvitationBatchPreviewGuest struct {
+	// Delivery guest_email, my_email or pdf_only.
+	Delivery string `json:"delivery"`
+
+	// Email Guest e-mail, empty when the file has none.
+	Email string `json:"email"`
+
+	// Guest Position of the guest in the file, from 1.
+	Guest int `json:"guest"`
+
+	// Name Guest name from the guest's first row.
+	Name string `json:"name"`
+
+	// Places Tickets this guest gets.
+	Places int `json:"places"`
+}
+
+// InvitationBatchReport The validation report of an upload: the answer of a dry run, and the
+// `details.report` of a refused real upload (422 invitation_batch.invalid
+// or the refusal of the transaction). Nothing was written either way.
+type InvitationBatchReport struct {
+	// Charge Billing preview (spec 46, section 3.6) - a CSV file is always charged at the standard rate. Null until billing of invitations lands.
+	Charge *map[string]interface{} `json:"charge"`
+
+	// Delivery The batch-wide delivery used for guests without an e-mail.
+	Delivery string `json:"delivery"`
+
+	// DryRun True for a dry run.
+	DryRun bool `json:"dry_run"`
+
+	// Errors The problems found, by row. Empty when valid.
+	Errors []InvitationBatchRowIssue `json:"errors"`
+
+	// FromReserve Places taken from the organizer's reserve (closed seats, reserve GA places).
+	FromReserve int `json:"from_reserve"`
+
+	// GaPlaces Of them, General Admission places.
+	GaPlaces int `json:"ga_places"`
+
+	// Guests Guests, that is orders and letters, the file makes.
+	Guests int `json:"guests"`
+
+	// Places Tickets the file hands out.
+	Places int `json:"places"`
+
+	// Preview The guests of the file in order, for the check table.
+	Preview []InvitationBatchPreviewGuest `json:"preview"`
+
+	// Rows Data rows of the file.
+	Rows int `json:"rows"`
+
+	// Seats Of them, seats on the plan.
+	Seats int `json:"seats"`
+
+	// Valid True when the file can be issued as it is.
+	Valid bool `json:"valid"`
+}
+
+// InvitationBatchRowIssue One problem of one row of an upload.
+type InvitationBatchRowIssue struct {
+	// Code Machine-readable code - name_required, invalid_email, email_required, place_missing, place_ambiguous, unknown_seat, ambiguous_seat, seat_taken, duplicate_seat, unknown_category, ambiguous_category, category_not_ga, invalid_qty, not_enough_places, too_many_places, or the code of a refusal of the transaction (for example invitation.seats_taken).
+	Code string `json:"code"`
+
+	// Field The column the problem is about; empty when it is about the row or the file.
+	Field string `json:"field"`
+
+	// Message Human-readable explanation in English.
+	Message string `json:"message"`
+
+	// Row Line of the file (the header is line 1); 0 for a problem of the file as a whole.
+	Row int `json:"row"`
+}
+
+// InvitationBatchUploadRequest A CSV upload of staff invitations (spec 46, section 3.5), sent as a
+// multipart form.
+type InvitationBatchUploadRequest struct {
+	// Delivery Delivery of a guest WITHOUT an e-mail in the file - pdf_only (default, no letter) or my_email (a letter to the uploading user). A guest with an e-mail always gets the letter. guest_email makes a missing e-mail a row error.
+	Delivery *string `json:"delivery,omitempty"`
+
+	// File The CSV file, UTF-8 with or without a BOM, at most 2 MB and 1000
+	// places. The separator is `,` or `;` (detected from the header), the
+	// header row is mandatory and the columns may come in any order:
+	// `guest` (a guest number - rows with the same number are ONE order
+	// and ONE letter; the name, e-mail, phone and language come from the
+	// guest's first row), `name` (required), `email`, `phone`, `locale`,
+	// `note`, and for the place either `seat_key`, or `sector`, `row`,
+	// `seat` (the sector may be left out when the row and seat are
+	// unique), or `category` (a name or an id) with `qty` for General
+	// Admission places.
+	File openapi_types.File `json:"file"`
+
+	// RequestId Client-chosen id of the upload; required unless dry_run is true. A repeat with the same id and the same file answers the first batch (200, replayed true).
+	RequestId *openapi_types.UUID `json:"request_id,omitempty"`
+}
+
 // LegalDocument One version of a terms template (P3a). Immutable once published.
 type LegalDocument struct {
 	// BodyTemplate The template text with its placeholders.
@@ -20592,6 +20760,12 @@ type GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// CreateInvitationBatchParams defines parameters for CreateInvitationBatch.
+type CreateInvitationBatchParams struct {
+	// DryRun true validates the file and writes nothing (answers the report, 200). Default false.
+	DryRun *bool `form:"dry_run,omitempty" json:"dry_run,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdSessionsSessionIdSalesCsvParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSalesCsv.
 type GetV1OrganizationsOrgIdSessionsSessionIdSalesCsvParams struct {
 	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
@@ -21350,6 +21524,9 @@ type PatchV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutIdJSONRequestBody =
 
 // UpdateSellerProfileJSONRequestBody defines body for UpdateSellerProfile for application/json ContentType.
 type UpdateSellerProfileJSONRequestBody = UpdateSellerProfileRequest
+
+// CreateInvitationBatchMultipartRequestBody defines body for CreateInvitationBatch for multipart/form-data ContentType.
+type CreateInvitationBatchMultipartRequestBody = InvitationBatchUploadRequest
 
 // IssueStaffInvitationJSONRequestBody defines body for IssueStaffInvitation for application/json ContentType.
 type IssueStaffInvitationJSONRequestBody = StaffInvitationIssueRequest
