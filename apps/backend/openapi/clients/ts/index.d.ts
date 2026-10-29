@@ -1614,6 +1614,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/bot/invitations/pdf-notices/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Staff invitations whose PDF the bot must send to the issuer
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN`. Returns up to 20
+         *     staff invitations of the last day that were issued from Telegram (the
+         *     bot or the Mini App, `orders.metadata.invitation.via`) by a user with
+         *     a live bot link, once every ticket of the invitation is issued, and
+         *     marks each as handed out, so it comes once. The bot then fetches the
+         *     invitation PDF as the issuer and sends it into the issuer's chat as a
+         *     document. An invitation issued on the web, by an API key or from a CSV
+         *     file is never handed out.
+         */
+        post: operations["claimBotInvitationPdfNotices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/users/{user_id}": {
         parameters: {
             query?: never;
@@ -12174,6 +12201,47 @@ export interface components {
         BotWebLoginNoticesResponse: {
             /** @description Sign-ins not reported yet; each is handed out once. */
             notices: components["schemas"]["BotWebLoginNotice"][];
+        };
+        /** @description A staff invitation issued from Telegram whose PDF the bot must send into the issuer's chat. It carries no e-mail or phone of the guest. */
+        BotInvitationPdfNotice: {
+            /**
+             * Format: uuid
+             * @description The invitation order; the bot fetches `GET /v1/organizations/{org_id}/invitations/{order_id}/tickets.pdf` as the issuer.
+             */
+            order_id: string;
+            /**
+             * Format: uuid
+             * @description The organization that issued the invitation.
+             */
+            org_id: string;
+            /**
+             * Format: int64
+             * @description The invitation number the PDF file is named after (`invitation-<system_id>.pdf`).
+             */
+            system_id: number;
+            /**
+             * Format: int64
+             * @description The Telegram account of the issuer, whose private chat gets the document.
+             */
+            telegram_user_id: number;
+            /** @description The issuer's bot language. */
+            locale: string;
+            /** @description The name printed on the invitation; empty when none was given. */
+            guest_name: string;
+            /** @description The event the invitation is for. */
+            event_name: string;
+            /**
+             * Format: date-time
+             * @description When the date starts (UTC).
+             */
+            session_start_at: string;
+            /** @description The IANA zone of the venue, to show the start in local time. */
+            session_timezone: string;
+        };
+        /** @description Answer of POST /v1/bot/invitations/pdf-notices/claim. */
+        BotInvitationPdfNoticesResponse: {
+            /** @description Invitations whose PDF is not sent yet; each is handed out once. */
+            notices: components["schemas"]["BotInvitationPdfNotice"][];
         };
         AuthLogoutRequest: {
             /**
@@ -35873,6 +35941,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BotWebLoginNoticesResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    claimBotInvitationPdfNotices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invitations whose PDF is to be sent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotInvitationPdfNoticesResponse"];
                 };
             };
             /** @description Missing or wrong service token */

@@ -332,6 +332,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		go b.onbNoticeLoop(ctx)
 	}
 	go b.webNoticeLoop(ctx)
+	go b.invPDFLoop(ctx)
 	go b.dialogSweepLoop(ctx)
 	go b.draftSweepLoop(ctx)
 	go b.recoverLostRefundSends(ctx)

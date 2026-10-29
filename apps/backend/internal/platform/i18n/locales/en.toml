@@ -2409,6 +2409,9 @@ other = "The invitation for {{.Guest}} is already used: the scanner at the door 
 ["bot.inv.nrevoke_notyet"]
 other = "The tickets of this invitation are still being issued. Try again in a minute."
 
+["bot.inv.pdf_caption"]
+other = "🎟 <b>Invitation No. {{.Num}}</b>{{if .Name}} for {{.Name}}{{end}}\n{{.Title}}, {{.When}}\n\nForward this file to the guest: it is the ticket, with a barcode that works at the door."
+
 ["bot.promo.btn"]
 other = "🏷 Promo codes"
 

@@ -251,6 +251,7 @@ var flatRouteFamilies = []flatFamily{
 	{"GET", "/v1/bot/onboarding/application", flatPlatform, "service token of the Telegram bot"},
 	{"GET", "/v1/bot/onboarding/form-schema", flatPlatform, "service token of the Telegram bot"},
 	{"POST", "/v1/bot/invitations/accept", flatPlatform, "service token of the Telegram bot"},
+	{"POST", "/v1/bot/invitations/pdf-notices/claim", flatPlatform, "service token of the Telegram bot"},
 	{"POST", "/v1/bot/web-login-codes", flatPlatform, "service token of the Telegram bot"},
 	{"POST", "/v1/bot/web-login-notices/claim", flatPlatform, "service token of the Telegram bot"},
 	{"POST", "/v1/bot/onboarding/applications", flatPlatform, "service token of the Telegram bot"},

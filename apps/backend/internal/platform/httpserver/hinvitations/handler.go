@@ -160,6 +160,9 @@ func (h *Handler) HandleIssue(w http.ResponseWriter, r *http.Request) {
 			auditType = "user"
 		}
 	}
+	if in.IssuedBy != nil {
+		in.Via = telegramVia(ctx, actor)
+	}
 	if actor.Type == auth.ActorTypeService {
 		in.IssuedByAPIKey = h.apiKeyName(ctx, actor, orgID)
 	}
@@ -712,4 +715,17 @@ func unavailable(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) internal(w http.ResponseWriter, r *http.Request, what string, err error) {
 	h.logger.Error("invitation."+what+" failed", slog.String("error", err.Error()))
 	writeErr(w, r, http.StatusInternalServerError, "invitation.internal", "the invitations could not be read", nil)
+}
+
+// telegramVia names the Telegram client a request came from, or "". The Mini
+// App is told by its authenticated session (an event_center_tg token), never
+// by a header; the bot declares itself with X-Client-Channel.
+func telegramVia(ctx context.Context, actor auth.Actor) string {
+	if actor.Channel == audit.ChannelEventCenterTG {
+		return audit.ChannelTelegramMiniapp
+	}
+	if ch, ok := audit.ClientChannelFromContext(ctx); ok && ch == audit.ChannelTelegramBot {
+		return audit.ChannelTelegramBot
+	}
+	return ""
 }
