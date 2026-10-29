@@ -9,6 +9,7 @@ import { useI18n, type MessageKey } from "@/lib/i18n";
 import { errorKey } from "@/lib/errors";
 import type { DownloadedFile } from "@/lib/api/http";
 import type { Tone } from "@/lib/orders";
+import { saveBlob } from "@/lib/tgDownload";
 
 export function Loading({ label }: { label?: string }) {
   const { t } = useI18n();
@@ -71,16 +72,7 @@ export function Empty({ children }: { children: ReactNode }) {
 }
 
 /** Hands a downloaded file to the browser. */
-export function saveFile(file: DownloadedFile): void {
-  const url = URL.createObjectURL(file.blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = file.filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+export const saveFile = saveBlob;
 
 /**
  * A button that downloads a file and says what happened, out loud for a

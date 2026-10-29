@@ -266,6 +266,35 @@ label {
   flex: 1 1 auto;
 }
 
+/*
+ * The staff invitations page /tg/invitations (spec 46, 4.2): the web screen's own parts in a phone layout. The card is
+ * at most 640 px wide whatever the window, so the two-column hall layout of the web (min-width 900px of the viewport)
+ * must never apply: one column, the hall a little lower, the actions as wide as the card allows.
+ */
+.tg-inv .inv-layout {
+  flex-direction: column;
+  align-items: stretch;
+}
+.tg-inv .inv-hallcol,
+.tg-inv .inv-side {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+}
+.tg-inv .inv-hall {
+  height: clamp(15rem, 46dvh, 24rem);
+}
+.tg-inv .inv-form .btn-primary {
+  width: 100%;
+}
+.tg-inv .inv-row-actions .btn,
+.tg-inv .inv-actions .btn {
+  flex: 1 1 auto;
+}
+.tg-inv .cards {
+  padding-inline-start: 0;
+}
+
 /* The password question before a money action (StepUpDialog). */
 .dialog-backdrop {
   position: fixed;

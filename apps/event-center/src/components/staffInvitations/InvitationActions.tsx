@@ -3,15 +3,19 @@
  * holds every ticket of the order and is always there, whatever the delivery;
  * the letter can be sent again unless the invitation was PDF only.
  *
+ * In the Telegram mini app the file goes through the share sheet when the
+ * window has one (lib/tgDownload.ts explains why not `downloadFile`).
+ *
  * If the server does not have the routes yet (a 404 or 405 no handler wrote),
  * the button says so and the rest of the screen keeps working.
  */
 import { useState } from "react";
-import { saveFile } from "@/components/ui";
 import { downloadStaffInvitationPdf, resendStaffInvitation } from "@/lib/api/endpoints";
 import { describeApiError } from "@/lib/errors";
 import { useI18n } from "@/lib/i18n";
 import { isMissingRoute } from "@/lib/staffInvitations";
+import { deliverPdf } from "@/lib/tgDownload";
+import { insideTelegram } from "@/lib/tgEdit";
 
 interface Props {
   orgId: string;
@@ -41,7 +45,9 @@ export function InvitationActions({ orgId, orderId, systemId, ready = true, canR
     setBusy("pdf");
     setSay(null);
     try {
-      saveFile(await downloadStaffInvitationPdf(orgId, orderId, systemId));
+      const way = await deliverPdf(await downloadStaffInvitationPdf(orgId, orderId, systemId));
+      // A Telegram window may swallow a plain download: say where the sure way is.
+      if (way === "saved" && insideTelegram()) setSay({ text: t("tgInv.pdfHint"), bad: false });
     } catch (err) {
       fail(err);
     } finally {

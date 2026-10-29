@@ -16,7 +16,7 @@ lower() { tr 'A-Z' 'a-z'; }
 
 main_index="$(curl -fsS "$base/")"
 
-for path in /tg "/tg?next=%2Fo%2Fx" /tg/edit "/tg/edit?x=1" /tg/other/deep/link; do
+for path in /tg "/tg?next=%2Fo%2Fx" /tg/edit "/tg/edit?x=1" "/tg/invitations?session=x&event=y" /tg/other/deep/link; do
   headers="$(curl -fsSI "$base$path")"
   body="$(curl -fsS "$base$path")"
   for want in \
