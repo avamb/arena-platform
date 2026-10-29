@@ -6,6 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
@@ -27,14 +30,14 @@ func parseTimeParam(raw string) (*time.Time, bool) {
 	return nil, false
 }
 
-// HandleListOrders serves GET .../shop/orders?status=&q=&from=&to=&limit=&offset=.
+// HandleListOrders serves GET .../shop/orders?status=&view=&q=&from=&to=&limit=&offset=.
 func (h *Handler) HandleListOrders(w http.ResponseWriter, r *http.Request) {
 	org, ok := orgID(w, r)
 	if !ok {
 		return
 	}
 	qs := r.URL.Query()
-	f := shop.OrderFilter{Status: qs.Get("status"), Query: qs.Get("q")}
+	f := shop.OrderFilter{Status: qs.Get("status"), View: qs.Get("view"), Query: qs.Get("q")}
 	var okFrom, okTo bool
 	f.From, okFrom = parseTimeParam(qs.Get("from"))
 	f.To, okTo = parseTimeParam(qs.Get("to"))
@@ -70,6 +73,107 @@ func (h *Handler) HandleListOrders(w http.ResponseWriter, r *http.Request) {
 		next = &n
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"orders": out, "next_offset": next})
+}
+
+// HandleOrderCounts serves GET .../shop/orders/counts: how many orders each
+// tab of the list holds (all, to_ship, unpaid, shipped, refunds).
+func (h *Handler) HandleOrderCounts(w http.ResponseWriter, r *http.Request) {
+	org, ok := orgID(w, r)
+	if !ok {
+		return
+	}
+	c, err := h.o.Service.CountOrders(r.Context(), org)
+	if err != nil {
+		h.fail(w, r, "count orders", err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httputil.WriteJSON(w, http.StatusOK, c)
+}
+
+// HandlePatchOrder serves PATCH .../shop/orders/{order_id} {staff_note}: the
+// internal note of the order, for staff only.
+func (h *Handler) HandlePatchOrder(w http.ResponseWriter, r *http.Request) {
+	org, ok := orgID(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "order_id", shop.ErrOrderNotFound)
+	if !ok {
+		return
+	}
+	var b struct {
+		StaffNote *string `json:"staff_note"`
+	}
+	if !readBody(w, r, &b, false) {
+		return
+	}
+	if b.StaffNote == nil {
+		writeErr(w, r, http.StatusBadRequest, "shop.invalid_body", "staff_note is required (an empty text erases the note)")
+		return
+	}
+	author := shop.StaffNoteAuthor{Label: "staff"}
+	if actor, ok := auth.ActorFromContext(r.Context()); ok {
+		switch actor.Type {
+		case auth.ActorTypeUser:
+			if uid, err := uuid.Parse(actor.ID); err == nil {
+				author.UserID = &uid
+			}
+		case auth.ActorTypeService:
+			author.Label = "API key"
+		}
+	}
+	o, err := h.o.Service.SetStaffNote(r.Context(), org, id, *b.StaffNote, author)
+	if err != nil {
+		h.fail(w, r, "save order note", err)
+		return
+	}
+	// The note's text is never copied into the audit trail: it may name the buyer.
+	h.writeAudit(r, "v1.shop.order.note", "shop_order", id.String(), org, map[string]any{"number": o.Number, "cleared": *b.StaffNote == ""})
+	httputil.WriteJSON(w, http.StatusOK, toOrderJSON(o))
+}
+
+// HandleResendEmail serves POST .../shop/orders/{order_id}/resend-email
+// {kind: received|shipped}: queues the buyer's letter once more. One request
+// per order per minute (429 shop.rate_limited and Retry-After).
+func (h *Handler) HandleResendEmail(w http.ResponseWriter, r *http.Request) {
+	org, ok := orgID(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "order_id", shop.ErrOrderNotFound)
+	if !ok {
+		return
+	}
+	var b struct {
+		Kind string `json:"kind"`
+	}
+	if !readBody(w, r, &b, false) {
+		return
+	}
+	if b.Kind != shop.EmailReceived && b.Kind != shop.EmailShipped {
+		writeErr(w, r, http.StatusBadRequest, "shop.invalid_email_kind", "kind must be received or shipped")
+		return
+	}
+	// The budget is per order, and the order is looked up with its organization
+	// first: a foreign id must answer its own 404, not spend a minute.
+	if _, err := h.o.Service.GetOrder(r.Context(), org, id); err != nil {
+		h.fail(w, r, "resend e-mail", err)
+		return
+	}
+	if ok, retry := h.resend.allow(id.String(), time.Now()); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(retry))
+		writeErr(w, r, http.StatusTooManyRequests, "shop.rate_limited", "The letter was queued a moment ago. Wait one minute before sending it again.")
+		return
+	}
+	if err := h.o.Service.ResendEmail(r.Context(), org, id, b.Kind); err != nil {
+		// Nothing was queued, so the order's minute is not spent.
+		h.resend.release(id.String())
+		h.fail(w, r, "resend e-mail", err)
+		return
+	}
+	h.writeAudit(r, "v1.shop.order.resend_email", "shop_order", id.String(), org, map[string]any{"kind": b.Kind})
+	httputil.WriteJSON(w, http.StatusAccepted, map[string]any{"queued": true, "kind": b.Kind})
 }
 
 // HandleGetOrder serves GET .../shop/orders/{order_id}.

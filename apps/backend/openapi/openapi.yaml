@@ -23496,7 +23496,7 @@ components:
     ShopOrder:
       type: object
       description: A shop order. total = subtotal - discount + shipping_fee.
-      required: [id, org_id, number, status, source, buyer, ship, delivery_kind, delivery_note, currency, subtotal, discount, shipping_fee, total, refunded_minor, tracking_note, items, created_at, updated_at]
+      required: [id, org_id, number, status, source, buyer, ship, delivery_kind, delivery_note, currency, subtotal, discount, shipping_fee, total, refunded_minor, tracking_note, staff_note, items, created_at, updated_at]
       properties:
         id:
           type: string
@@ -23566,6 +23566,10 @@ components:
         tracking_note:
           type: string
           description: Tracking number or note given when shipped.
+        staff_note:
+          allOf:
+            - $ref: "#/components/schemas/ShopStaffNote"
+          description: The internal note of the shop staff. Never shown to the buyer or on the storefront.
         items:
           type: array
           description: The lines in order.
@@ -23600,6 +23604,78 @@ components:
           type: string
           format: date-time
           description: Last change.
+
+    ShopStaffNote:
+      type: object
+      description: The internal note of a shop order. An order without a note has an empty text, an empty author and a null time.
+      required: [text, by, at]
+      properties:
+        text:
+          type: string
+          description: The note, up to 2000 characters; empty when there is none.
+        by:
+          type: string
+          description: Who wrote it, by name (the e-mail when the account has no name), as it was when the note was saved.
+        at:
+          type: [string, "null"]
+          format: date-time
+          description: When the note was saved; null when there is no note.
+
+    ShopOrderNoteRequest:
+      type: object
+      description: The internal note of an order.
+      required: [staff_note]
+      properties:
+        staff_note:
+          type: string
+          description: The whole note, up to 2000 characters. An empty text erases it.
+
+    ShopOrderCounts:
+      type: object
+      description: How many orders each tab of the order list holds.
+      required: [all, to_ship, unpaid, shipped, refunds]
+      properties:
+        all:
+          type: integer
+          format: int64
+          description: Every order of the shop.
+        to_ship:
+          type: integer
+          format: int64
+          description: Paid or partly refunded orders with something to hand over (shipping or pickup) that are not shipped yet. An order of digital products or services only is never counted.
+        unpaid:
+          type: integer
+          format: int64
+          description: Orders still waiting for their payment (`pending_payment`).
+        shipped:
+          type: integer
+          format: int64
+          description: Shipped orders.
+        refunds:
+          type: integer
+          format: int64
+          description: Refunded and partly refunded orders.
+
+    ShopResendEmailRequest:
+      type: object
+      description: Which buyer letter to send once more.
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          description: "`received` (the order is confirmed) or `shipped` (the order is on its way)."
+
+    ShopResendEmailResponse:
+      type: object
+      description: The letter was queued for the worker.
+      required: [queued, kind]
+      properties:
+        queued:
+          type: boolean
+          description: Always true; the worker sends the letter within moments.
+        kind:
+          type: string
+          description: The letter that was queued, `received` or `shipped`.
 
     ShopOrderList:
       type: object
@@ -58195,6 +58271,12 @@ paths:
           description: "Only orders of this status: `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review`."
           schema:
             type: string
+        - name: view
+          in: query
+          required: false
+          description: "A tab of the order list, combined with `status` when both are given: `to_ship` (paid or partly refunded, something to hand over, not shipped yet), `unpaid`, `shipped` or `refunds`. `GET .../shop/orders/counts` gives the size of each."
+          schema:
+            type: string
         - name: q
           in: query
           required: false
@@ -58233,11 +58315,63 @@ paths:
               schema:
                 $ref: "#/components/schemas/ShopOrderList"
         "400":
-          description: A filter is malformed (`shop.invalid_filter`).
+          description: A filter is malformed (`shop.invalid_filter`, also for an unknown `view`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/orders/counts:
+    get:
+      operationId: getShopOrderCounts
+      summary: Count the shop orders of each tab
+      description: |
+        How many orders each tab of the order list holds, in one request: all,
+        to ship, unpaid, shipped and refunds. Use it for the numbers on the tabs;
+        `GET .../shop/orders?view=` lists the orders behind each number.
+
+        Requires JWT or API key + the `shop.read` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopOrderCounts"
         "401":
           description: Missing or invalid JWT or API key.
           content:
@@ -58312,6 +58446,181 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Caller lacks the `shop.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updateShopOrderNote
+      summary: Write the internal note of a shop order
+      description: |
+        Replaces the internal note of the order (an empty text erases it). The note
+        is for the shop's staff: it is not shown to the buyer, in the buyer's letters,
+        on the storefront or in the courier text. The answer carries who saved it and
+        when. Allowed for an order of any status.
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: order_id
+          in: path
+          required: true
+          description: UUID of the shop order (an order of another organization answers 404).
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopOrderNoteRequest"
+      responses:
+        "200":
+          description: The order with its note.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopOrder"
+        "400":
+          description: The body is not valid JSON for this route or `staff_note` is missing (`shop.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such order in this organization (`shop.order_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The note is too long (`shop.text_too_long`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.manage` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/orders/{order_id}/resend-email:
+    post:
+      operationId: resendShopOrderEmail
+      summary: Send the buyer's order e-mail once more
+      description: |
+        Queues the letter the buyer got when the order was paid (`received`) or
+        shipped (`shipped`) for the worker to send again, to the address on the order,
+        in the buyer's language. The first send's "already sent" marker does not stop
+        it. Answers 202 at once; the delivery itself is asynchronous. One request per
+        order per minute: a second one answers 429 `shop.rate_limited` with `Retry-After`.
+        Writes the audit event `v1.shop.order.resend_email`.
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: order_id
+          in: path
+          required: true
+          description: UUID of the shop order (an order of another organization answers 404).
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopResendEmailRequest"
+      responses:
+        "202":
+          description: The letter was queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopResendEmailResponse"
+        "400":
+          description: The body is not valid JSON for this route, or `kind` is not `received` or `shipped` (`shop.invalid_body`, `shop.invalid_email_kind`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such order in this organization (`shop.order_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The order has no buyer e-mail (`shop.order_no_buyer_email`), or it is not in a state that has this letter, for example unpaid or never shipped (`shop.order_email_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: The letter of this order was queued less than a minute ago (`shop.rate_limited`; `Retry-After` gives the seconds to wait).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.manage` permission or is not a member of the organization.
           content:
             application/json:
               schema:

@@ -128,7 +128,6 @@ func paidWebhookFields(orderID string) map[string]any {
 		"order_id":         orderID,
 		"status":           json.Number("1"),
 		"amount":           json.Number("123.5"),
-		"currency":         "ILS",
 		"currency_display": "ILS",
 		"currency_payment": "ILS",
 		"currency_course":  json.Number("1"),
