@@ -4,11 +4,16 @@
  *
  * There is no reorder route: "attaching a picture again moves and relabels
  * it", so a move re-attaches every picture with its new place (`moveImagePlan`).
+ * The description of a picture (its alt text) is typed here but saved by the product card's ONE Save button
+ * (A-02): the card owns the typed texts (`alts`) and sends them with the rest. Adding, moving and removing a
+ * picture act at once, as they always did.
+ *
  * The picture itself is fetched as a blob with `media.read` (the page's
  * Content-Security-Policy allows only blob and data images), like the event
  * poster and the gallery.
  */
 import { useRef, useState } from "react";
+import { ErrorNotice } from "@/components/ErrorNotice";
 import { Empty } from "@/components/ui";
 import { ActionNotice, MoveButtons, PhotoThumb, useAction } from "@/components/materials/shared";
 import { attachShopImage, detachShopImage, uploadShopImage } from "@/lib/api/shopApi";
@@ -36,9 +41,16 @@ export interface ShopImagesProps {
   canView: boolean;
   /** The product as the server now has it. */
   onProduct: (product: ShopProductView) => void;
+  /** The descriptions typed and not saved yet, by picture. */
+  alts: Readonly<Record<string, string>>;
+  onAlt: (mediaId: string, text: string) => void;
+  /** The card is saving: the fields rest. */
+  disabled?: boolean;
+  /** Why saving the descriptions failed, when it did. */
+  error?: unknown;
 }
 
-export function ShopImages({ orgId, product, canManage, canView, onProduct }: ShopImagesProps) {
+export function ShopImages({ orgId, product, canManage, canView, onProduct, alts, onAlt, disabled = false, error = null }: ShopImagesProps) {
   const { t } = useI18n();
   const action = useAction();
   const [reject, setReject] = useState<PosterRejection | null>(null);
@@ -78,18 +90,16 @@ export function ShopImages({ orgId, product, canManage, canView, onProduct }: Sh
       <ul className="cards mat-photos">
         {images.map((im, index) => (
           <ImageRow
-            key={`${im.media_id}:${im.alt}`}
+            key={im.media_id}
             index={index}
             count={images.length}
             image={im}
+            alt={alts[im.media_id] ?? im.alt}
             canManage={canManage}
             canView={canView}
             busy={action.busy}
-            onAlt={(alt) =>
-              void action.run(async () => {
-                onProduct(await attachShopImage(orgId, product.id, im.media_id, im.position, alt));
-              })
-            }
+            resting={disabled}
+            onAlt={(text) => onAlt(im.media_id, text)}
             onMove={move}
             onRemove={() =>
               void action.run(async () => {
@@ -122,6 +132,7 @@ export function ShopImages({ orgId, product, canManage, canView, onProduct }: Sh
         </div>
       )}
       <ActionNotice action={action} testId="shop-images" />
+      {error !== null && <ErrorNotice error={error} testId="shop-images-error" />}
     </section>
   );
 }
@@ -130,9 +141,11 @@ function ImageRow({
   index,
   count,
   image,
+  alt,
   canManage,
   canView,
   busy,
+  resting,
   onAlt,
   onMove,
   onRemove,
@@ -140,16 +153,17 @@ function ImageRow({
   index: number;
   count: number;
   image: { media_id: string; alt: string };
+  /** The description as typed (the saved one until the person types). */
+  alt: string;
   canManage: boolean;
   canView: boolean;
   busy: boolean;
+  resting: boolean;
   onAlt: (alt: string) => void;
   onMove: (index: number, delta: -1 | 1) => void;
   onRemove: () => void;
 }) {
   const { t } = useI18n();
-  const [alt, setAlt] = useState(image.alt);
-  const changed = alt.trim() !== image.alt;
   const id = `shop-image-${index}`;
   return (
     <li className="card mat-photo" data-testid="shop-image-row">
@@ -165,8 +179,8 @@ function ImageRow({
           type="text"
           value={alt}
           maxLength={SHOP_LIMITS.alt}
-          disabled={!canManage || busy}
-          onChange={(e) => setAlt(e.target.value)}
+          disabled={!canManage || busy || resting}
+          onChange={(e) => onAlt(e.target.value)}
           aria-describedby={`${id}-hint`}
           data-testid={`${id}-alt`}
         />
@@ -175,9 +189,6 @@ function ImageRow({
         </p>
         {canManage && (
           <div className="actions">
-            <button type="button" className="btn btn-primary" disabled={busy || !changed} onClick={() => onAlt(alt.trim())} data-testid={`${id}-alt-save`}>
-              {t("shop.images.altSave")}
-            </button>
             <MoveButtons index={index} count={count} disabled={busy} onMove={(d) => onMove(index, d)} testId={id} />
             <button type="button" className="btn" disabled={busy} onClick={onRemove} data-testid={`${id}-remove`}>
               {t("shop.images.remove")}

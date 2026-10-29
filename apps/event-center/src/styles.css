@@ -1533,3 +1533,100 @@ fieldset legend {
     white-space: nowrap;
   }
 }
+
+/* A shop product card: ONE Save for the whole card (A-02). On a wide screen the bar sticks to the top of the page,
+   on a phone it is a bar at the bottom of the screen, where the thumb reaches it. */
+.shop-savebar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  margin-block-end: 0.75rem;
+  padding-block: 0.5rem;
+  background: var(--bg);
+  border-block-end: 1px solid var(--border);
+}
+
+.shop-savebar .btn {
+  min-height: 44px;
+  min-width: 8rem;
+}
+
+.shop-savebar-status {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+
+@media (max-width: 599px) {
+  .shop-savebar {
+    position: fixed;
+    inset-inline: 0;
+    top: auto;
+    bottom: 0;
+    margin: 0;
+    padding-inline: 1rem;
+    padding-block-end: max(0.5rem, env(safe-area-inset-bottom, 0px));
+    border-block-end: 0;
+    border-block-start: 1px solid var(--border);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.12);
+  }
+  /* Room under the last block, so the fixed bar never covers it. */
+  .shop-card {
+    padding-block-end: 6rem;
+  }
+}
+
+/* The stock of a product edited in the products list (A-07): a big field for a thumb, the answer beside it. */
+.shop-stock-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.shop-page input.shop-stock-input {
+  width: 6.5rem;
+  min-height: 44px;
+  font-size: 1rem;
+}
+
+.shop-stock-status {
+  min-width: 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.shop-stock-details {
+  margin-block-start: 0.25rem;
+}
+
+.shop-stock-summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.shop-stock-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shop-stock-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+}
+
+.shop-stock-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

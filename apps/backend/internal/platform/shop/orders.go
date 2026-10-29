@@ -59,6 +59,9 @@ func (s *Service) GetOrder(ctx context.Context, orgID, id uuid.UUID) (OrderView,
 // OrderFilter filters the order list (see gen.ListShopOrdersParams).
 type OrderFilter struct {
 	Status string
+	// View is a tab of the list: ViewToShip, ViewUnpaid, ViewShipped or
+	// ViewRefunds. "" is the whole list.
+	View   string
 	Query  string
 	From   *time.Time
 	To     *time.Time
@@ -71,6 +74,28 @@ var orderStatuses = map[string]bool{
 	StatusExpired: true, StatusRefunded: true, StatusPartiallyRefunded: true, StatusManualReview: true,
 }
 
+// The tabs of the order list. to_ship is what a manager asks first thing in
+// the morning: paid, something to hand over, not shipped yet.
+const (
+	ViewToShip  = "to_ship"
+	ViewUnpaid  = "unpaid"
+	ViewShipped = "shipped"
+	ViewRefunds = "refunds"
+)
+
+var orderViews = map[string]bool{ViewToShip: true, ViewUnpaid: true, ViewShipped: true, ViewRefunds: true}
+
+// OrderCounts is how many orders each tab of the list holds.
+type OrderCounts = gen.ShopOrderCounts
+
+// CountOrders counts the orders of every tab in one query.
+func (s *Service) CountOrders(ctx context.Context, orgID uuid.UUID) (OrderCounts, error) {
+	if err := s.ready(); err != nil {
+		return OrderCounts{}, err
+	}
+	return s.q.CountShopOrders(ctx, orgID)
+}
+
 // ListOrders lists one page of orders, newest first, with their lines.
 func (s *Service) ListOrders(ctx context.Context, orgID uuid.UUID, f OrderFilter) ([]OrderView, error) {
 	if err := s.ready(); err != nil {
@@ -79,6 +104,9 @@ func (s *Service) ListOrders(ctx context.Context, orgID uuid.UUID, f OrderFilter
 	if f.Status != "" && !orderStatuses[f.Status] {
 		return nil, newErr(http.StatusBadRequest, "shop.invalid_filter", "status is not an order status")
 	}
+	if f.View != "" && !orderViews[f.View] {
+		return nil, newErr(http.StatusBadRequest, "shop.invalid_filter", "view must be to_ship, unpaid, shipped or refunds")
+	}
 	if f.Limit <= 0 {
 		f.Limit = 50
 	}
@@ -86,7 +114,7 @@ func (s *Service) ListOrders(ctx context.Context, orgID uuid.UUID, f OrderFilter
 		return nil, newErr(http.StatusBadRequest, "shop.invalid_filter", "limit must be 1-200 and offset zero or more")
 	}
 	rows, err := s.q.ListShopOrders(ctx, gen.ListShopOrdersParams{
-		OrgID: orgID, Status: f.Status, Query: strings.TrimSpace(f.Query), From: f.From, To: f.To,
+		OrgID: orgID, Status: f.Status, View: f.View, Query: strings.TrimSpace(f.Query), From: f.From, To: f.To,
 		Limit: int32(f.Limit), Offset: int32(f.Offset), //nolint:gosec // bounded above
 	})
 	if err != nil {

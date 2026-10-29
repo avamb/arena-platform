@@ -71,7 +71,8 @@ arena отправляет `test_mode=1` для каждой конфигура�
 | `order_id` | id checkout-сессии arena (UUID). Он же `payment_intents.provider_payment_id`. |
 | `items` | одна строка на всю корзину: `name` (название мероприятия, до 200 символов), `qty` 1, `price`, `vat` |
 | `price` | итог checkout-сессии в **основных** единицах (`123.5`, а не `12350`) |
-| `currency` | валюта сеанса: только `ILS`, `USD` или `EUR` (раздел 6) |
+| `currency_display` | валюта сеанса: только `ILS`, `USD` или `EUR` (раздел 6). Обязательное поле `mode=api15`: валюта всех сумм запроса и та, что видит покупатель |
+| `currency_payment` | та же валюта: в ней списывается карта и рассчитывается счёт (по умолчанию ILS). Arena конвертацию не просит, поэтому оба поля равны |
 | `webhook_url` | `<API_PUBLIC_URL>/v1/payment-intents/webhook/{config_id}` |
 | `success_url` и `backlink_url` | маршрут arena `/v1/public/payment-return?r=<страница покупателя>&checkout_token=…` (раздел 4.1) |
 | `expire` | Unix-время конца окна оплаты, не раньше чем через 60 с |
@@ -83,6 +84,8 @@ arena отправляет `test_mode=1` для каждой конфигура�
 | `inst` | `max_installments`, только если больше 1, валюта ILS и итог заказа не меньше `installments_min_amount` |
 | `test_mode` | `1` для конфигурации в режиме `test`, `0` для режима `live` |
 | `sign` | раздел 5 |
+
+> 29.10.2026, стенд: прежнее поле `currency` — параметр v14, при `mode=api15` AllPay отвечает ошибкой 2 «Missing required parameters: currency_display», поэтому теперь шлём `currency_display` и `currency_payment`, а `currency` не шлём. Суммы в `paymentstatus` и вебхуке приходят в `currency_display`, списано `(amount − discount) × currency_course` в `currency_payment`; если они различаются (AllPay молча списывает в ILS, когда валюта не подключена), платёж уходит в ручную проверку, а возврат не отправляется.
 
 Ответ: `payment_url` для редиректа. Ошибка приходит с HTTP 200 и полями `error_code`, `error_msg`. Любая ошибка старта — это HTTP 503 `checkout.payment_start_failed`. Бронь освобождают обычные свипы.
 

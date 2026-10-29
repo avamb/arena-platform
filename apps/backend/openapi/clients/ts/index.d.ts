@@ -10430,6 +10430,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/shop/orders/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count the shop orders of each tab
+         * @description How many orders each tab of the order list holds, in one request: all,
+         *     to ship, unpaid, shipped and refunds. Use it for the numbers on the tabs;
+         *     `GET .../shop/orders?view=` lists the orders behind each number.
+         *
+         *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
+         */
+        get: operations["getShopOrderCounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/shop/orders/{order_id}": {
         parameters: {
             query?: never;
@@ -10449,6 +10473,42 @@ export interface paths {
         get: operations["getShopOrder"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Write the internal note of a shop order
+         * @description Replaces the internal note of the order (an empty text erases it). The note
+         *     is for the shop's staff: it is not shown to the buyer, in the buyer's letters,
+         *     on the storefront or in the courier text. The answer carries who saved it and
+         *     when. Allowed for an order of any status.
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        patch: operations["updateShopOrderNote"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/orders/{order_id}/resend-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the buyer's order e-mail once more
+         * @description Queues the letter the buyer got when the order was paid (`received`) or
+         *     shipped (`shipped`) for the worker to send again, to the address on the order,
+         *     in the buyer's language. The first send's "already sent" marker does not stop
+         *     it. Answers 202 at once; the delivery itself is asynchronous. One request per
+         *     order per minute: a second one answers 429 `shop.rate_limited` with `Retry-After`.
+         *     Writes the audit event `v1.shop.order.resend_email`.
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        post: operations["resendShopOrderEmail"];
         delete?: never;
         options?: never;
         head?: never;
@@ -30711,6 +30771,8 @@ export interface components {
             buyer_locale?: string | null;
             /** @description Tracking number or note given when shipped. */
             tracking_note: string;
+            /** @description The internal note of the shop staff. Never shown to the buyer or on the storefront. */
+            staff_note: components["schemas"]["ShopStaffNote"];
             /** @description The lines in order. */
             items: components["schemas"]["ShopOrderItem"][];
             /** @description The payment, or null when the order has none. */
@@ -30745,6 +30807,63 @@ export interface components {
              * @description Last change.
              */
             updated_at: string;
+        };
+        /** @description The internal note of a shop order. An order without a note has an empty text, an empty author and a null time. */
+        ShopStaffNote: {
+            /** @description The note, up to 2000 characters; empty when there is none. */
+            text: string;
+            /** @description Who wrote it, by name (the e-mail when the account has no name), as it was when the note was saved. */
+            by: string;
+            /**
+             * Format: date-time
+             * @description When the note was saved; null when there is no note.
+             */
+            at: string | null;
+        };
+        /** @description The internal note of an order. */
+        ShopOrderNoteRequest: {
+            /** @description The whole note, up to 2000 characters. An empty text erases it. */
+            staff_note: string;
+        };
+        /** @description How many orders each tab of the order list holds. */
+        ShopOrderCounts: {
+            /**
+             * Format: int64
+             * @description Every order of the shop.
+             */
+            all: number;
+            /**
+             * Format: int64
+             * @description Paid or partly refunded orders with something to hand over (shipping or pickup) that are not shipped yet. An order of digital products or services only is never counted.
+             */
+            to_ship: number;
+            /**
+             * Format: int64
+             * @description Orders still waiting for their payment (`pending_payment`).
+             */
+            unpaid: number;
+            /**
+             * Format: int64
+             * @description Shipped orders.
+             */
+            shipped: number;
+            /**
+             * Format: int64
+             * @description Refunded and partly refunded orders.
+             */
+            refunds: number;
+        };
+        /** @description Which buyer letter to send once more. */
+        ShopResendEmailRequest: {
+            /** @description `received` (the order is confirmed) or `shipped` (the order is on its way). */
+            kind: string;
+        };
+        /** @description The letter was queued for the worker. */
+        ShopResendEmailResponse: {
+            /** @description Always true; the worker sends the letter within moments. */
+            queued: boolean;
+            /** @description The letter that was queued, `received` or `shipped`. */
+            kind: string;
         };
         /** @description One page of orders. */
         ShopOrderList: {
@@ -66671,6 +66790,8 @@ export interface operations {
             query?: {
                 /** @description Only orders of this status: `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review`. */
                 status?: string;
+                /** @description A tab of the order list, combined with `status` when both are given: `to_ship` (paid or partly refunded, something to hand over, not shipped yet), `unpaid`, `shipped` or `refunds`. `GET .../shop/orders/counts` gives the size of each. */
+                view?: string;
                 /** @description Order number, or part of the buyer's e-mail or name. */
                 q?: string;
                 /** @description Created at or after this instant (RFC 3339, or YYYY-MM-DD for UTC midnight). */
@@ -66700,13 +66821,72 @@ export interface operations {
                     "application/json": components["schemas"]["ShopOrderList"];
                 };
             };
-            /** @description A filter is malformed (`shop.invalid_filter`). */
+            /** @description A filter is malformed (`shop.invalid_filter`, also for an unknown `view`). */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getShopOrderCounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopOrderCounts"];
                 };
             };
             /** @description Missing or invalid JWT or API key. */
@@ -66790,6 +66970,199 @@ export interface operations {
             };
             /** @description No such order in this organization (`shop.order_not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateShopOrderNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop order (an order of another organization answers 404). */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopOrderNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description The order with its note. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopOrder"];
+                };
+            };
+            /** @description The body is not valid JSON for this route or `staff_note` is missing (`shop.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such order in this organization (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The note is too long (`shop.text_too_long`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    resendShopOrderEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop order (an order of another organization answers 404). */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopResendEmailRequest"];
+            };
+        };
+        responses: {
+            /** @description The letter was queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopResendEmailResponse"];
+                };
+            };
+            /** @description The body is not valid JSON for this route, or `kind` is not `received` or `shipped` (`shop.invalid_body`, `shop.invalid_email_kind`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such order in this organization (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order has no buyer e-mail (`shop.order_no_buyer_email`), or it is not in a state that has this letter, for example unpaid or never shipped (`shop.order_email_unavailable`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The letter of this order was queued less than a minute ago (`shop.rate_limited`; `Retry-After` gives the seconds to wait). */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

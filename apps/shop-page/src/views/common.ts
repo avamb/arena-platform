@@ -7,7 +7,7 @@
 import type { ShopData, ShopImage, ShopProduct, ShopVariant } from '../lib/api';
 import { learnedRatio } from '../lib/ratio';
 import type { CartItem } from '../lib/cart';
-import { sized, srcset } from '../lib/cdn';
+import { CARD_WIDTHS, CART_WIDTHS, sized, srcset } from '../lib/cdn';
 import { esc } from '../lib/html';
 import { T } from '../lib/i18n';
 import { ICONS } from '../lib/icons';
@@ -147,9 +147,14 @@ export function priceBlock(ctx: Ctx, p: ShopProduct, opts: PriceOpts = {}): stri
   }</div>`;
 }
 
-// ---- product card (Dawn snippets/card-product.liquid) -------------------------
+/** ` srcset=... sizes=...` for a cart / checkout thumbnail drawn `cssWidth` wide, or '' when it cannot be resized. */
+export function cartSrcset(img: ShopImage, cssWidth: string): string {
+  const ss = srcset(img.url, img.width, CART_WIDTHS);
+  return ss ? `
+            srcset="${esc(ss)}" sizes="${cssWidth}"` : '';
+}
 
-const CARD_WIDTHS = [165, 360, 533, 720, 940, 1066];
+// ---- product card (Dawn snippets/card-product.liquid) -------------------------
 
 export interface CardOpts {
   sectionId: string;

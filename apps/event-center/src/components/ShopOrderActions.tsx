@@ -10,6 +10,10 @@
  *   money went back, is on its way, or was refused.
  * - "Copy for the courier": the delivery details to the clipboard. When the
  *   browser refuses, the text is shown to be copied by hand.
+ * - "Send the e-mail again" (A-11): queues the buyer's confirmation or, for a
+ *   shipped order, the shipping letter once more. Asks which one only when
+ *   both exist. One request per order per minute: the API answers 429 and the
+ *   card says to wait.
  *
  * Every write needs `shop.manage`; the courier text needs only `shop.read`.
  */
@@ -19,7 +23,7 @@ import { ConfirmWordDialog } from "@/components/ConfirmWordDialog";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { TextAreaField, TextField } from "@/components/FormField";
 import { useStepUp } from "@/components/StepUpDialog";
-import { cancelShopOrder, fetchShopOrder, refundShopOrder, shipShopOrder } from "@/lib/api/shopApi";
+import { cancelShopOrder, fetchShopOrder, refundShopOrder, resendShopOrderEmail, shipShopOrder } from "@/lib/api/shopApi";
 import { ApiError } from "@/lib/api/http";
 import type { ShopOrder, ShopRefund } from "@/lib/api/types";
 import { formatMoney } from "@/lib/format";
@@ -38,7 +42,9 @@ import {
   refundBody,
   refundOutcome,
   refundable,
+  resendLetters,
   shopOrderNumber,
+  type OrderLetter,
 } from "@/lib/shop";
 
 export interface ShopOrderActionsProps {
@@ -51,7 +57,7 @@ export interface ShopOrderActionsProps {
   country?: string | null;
 }
 
-type Panel = "ship" | "refund" | null;
+type Panel = "ship" | "refund" | "resend" | null;
 
 export function ShopOrderActions({ orgId, order, canManage, canRefund, country }: ShopOrderActionsProps) {
   const { t, locale } = useI18n();
@@ -75,6 +81,27 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
   const store = (o: ShopOrder) => {
     queryClient.setQueryData(["shopOrder", orgId, o.id], o);
     void queryClient.invalidateQueries({ queryKey: ["shopOrders", orgId] });
+    void queryClient.invalidateQueries({ queryKey: ["shopOrderCounts", orgId] });
+  };
+
+  const letters = resendLetters(order, canManage);
+  const sendLetter = async (kind: OrderLetter) => {
+    setBusy(true);
+    setFailure(null);
+    setNote(null);
+    try {
+      await resendShopOrderEmail(orgId, order.id, kind);
+      setPanel(null);
+      setNote({ key: "shop.act.resend.done" });
+    } catch (error) {
+      // One request per order per minute: say when to come back instead of a generic "too many requests".
+      if (error instanceof ApiError && error.status === 429) {
+        setPanel(null);
+        setNote({ key: "shop.act.resend.wait", bad: true });
+      } else setFailure(error);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const onShip = async (e: FormEvent) => {
@@ -200,7 +227,35 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
         <button type="button" className="btn" onClick={() => void onCourier()} data-testid="shop-order-courier">
           {t("shop.act.courier")}
         </button>
+        {letters.length > 0 && (
+          <button
+            type="button"
+            className="btn"
+            disabled={busy}
+            onClick={() => (letters.length === 1 ? void sendLetter(letters[0]) : setPanel(panel === "resend" ? null : "resend"))}
+            data-testid="shop-order-resend"
+          >
+            {t("shop.act.resend")}
+          </button>
+        )}
       </div>
+
+      {panel === "resend" && letters.length > 1 && (
+        <div role="group" aria-labelledby="shop-resend-title" data-testid="shop-resend-panel">
+          <h3 id="shop-resend-title">{t("shop.act.resend.title")}</h3>
+          <p className="field-hint">{t("shop.act.resend.hint", { email: order.buyer.email })}</p>
+          <div className="actions">
+            {letters.map((k) => (
+              <button key={k} type="button" className="btn btn-primary" disabled={busy} onClick={() => void sendLetter(k)} data-testid={`shop-resend-${k}`}>
+                {t(`shop.act.resend.${k}` as MessageKey)}
+              </button>
+            ))}
+            <button type="button" className="btn" onClick={() => setPanel(null)} data-testid="shop-resend-close">
+              {t("confirmWord.cancel")}
+            </button>
+          </div>
+        </div>
+      )}
 
       {panel === "ship" && (
         <form onSubmit={(e) => void onShip(e)} noValidate data-testid="shop-ship-form">

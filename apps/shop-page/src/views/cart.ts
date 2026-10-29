@@ -8,7 +8,7 @@ import { qtyLimitMessage, subtotalMinor, type CartLine } from '../lib/cart';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
 import { T } from '../lib/i18n';
-import { icon, money, optionPairs, ratioOf, spinner, url, type Ctx } from './common';
+import { cartSrcset, icon, money, optionPairs, ratioOf, spinner, url, type Ctx } from './common';
 
 function sectionPadding(cls: string, top: number, bottom: number): string {
   return `<style data-shopify>.${cls} {
@@ -61,7 +61,7 @@ function lineRow(ctx: Ctx, line: CartLine, index: number, limitedVariant: string
     ? `<a href="${link}" class="cart-item__link" aria-hidden="true" tabindex="-1"> </a>
                       <div class="cart-item__image-container gradient global-media-settings">
                         <img
-                          src="${esc(sized(img.url, 300))}"
+                          src="${esc(sized(img.url, 240))}"${cartSrcset(img, '100px')}
                           class="cart-item__image"
                           alt="${esc(img.alt ?? '')}"
                           loading="lazy"
@@ -236,7 +236,7 @@ export function notificationProduct(line: CartLine, limitNote?: string): string 
   const image = img
     ? `<div class="cart-notification-product__image global-media-settings">
           <img
-            src="${esc(sized(img.url, 140))}"
+            src="${esc(sized(img.url, 165))}"${cartSrcset(img, '70px')}
             alt="${esc(img.alt ?? '')}"
             width="70"
             height="${Math.ceil(70 / ratioOf(img))}"
