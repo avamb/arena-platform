@@ -105,6 +105,24 @@ func (q *Queries) SetOrderStaffIssuance(ctx context.Context, orderID uuid.UUID, 
 	return err
 }
 
+const setInvitationCancelledBy = `-- name: SetInvitationCancelledBy :exec
+UPDATE orders
+SET    metadata   = COALESCE(metadata, '{}'::jsonb)
+                    || jsonb_build_object('invitation',
+                         COALESCE(metadata->'invitation', '{}'::jsonb)
+                         || jsonb_build_object('cancelled_by', $2::jsonb)),
+       updated_at = now()
+WHERE  id = $1
+  AND  issued_via IS NOT NULL`
+
+// SetInvitationCancelledBy records who cancelled a staff invitation in
+// orders.metadata.invitation.cancelled_by (spec 46 section 3.7). cancelledBy
+// is {"user_id": ...} or {"api_key": name}; the last cancellation wins.
+func (q *Queries) SetInvitationCancelledBy(ctx context.Context, orderID uuid.UUID, cancelledBy []byte) error {
+	_, err := q.db.Exec(ctx, setInvitationCancelledBy, orderID, string(cancelledBy))
+	return err
+}
+
 const setInvitationOrderCustomer = `-- name: SetInvitationOrderCustomer :exec
 UPDATE orders
 SET    customer_id = $2,
