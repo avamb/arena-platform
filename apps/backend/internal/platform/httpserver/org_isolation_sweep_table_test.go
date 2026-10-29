@@ -238,7 +238,10 @@ var orgIsolationAuditedSafe = map[string]string{
 	// session with GetInvitationSessionTarget and compare its organization;
 	// cancel loads the order with GetInvitationOrder(order_id, org_id).
 	// staff_invitations_inv02_integration_test.go drives a foreign org and expects 404.
-	"GET /v1/organizations/{org_id}/sessions/{session_id}/invitations":  "invitations",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/invitations": "invitations",
+	// The organization-wide list (INV-05) selects orders by org_id in SQL;
+	// staff_invitations_inv05_integration_test.go drives a foreign org.
+	"GET /v1/organizations/{org_id}/invitations":                        "invitations",
 	"POST /v1/organizations/{org_id}/sessions/{session_id}/invitations": "invitations",
 	"POST /v1/organizations/{org_id}/invitations/{order_id}/cancel":     "invitations",
 	"POST /v1/organizations/{org_id}/invitations/{order_id}/resend":     "invitations",

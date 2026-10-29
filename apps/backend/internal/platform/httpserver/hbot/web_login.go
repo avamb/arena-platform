@@ -44,6 +44,10 @@ const WebLoginCodeTTL = 5 * time.Minute
 const (
 	MiniappKindDescription = "description"
 	MiniappKindEmailNote   = "email_note"
+	// MiniappKindInvitations opens the staff invitations screen of one
+	// session (spec 46, INV-05): the link is
+	// <EVENT_CENTER_PUBLIC_URL>/tg/invitations?session=<id>&event=<id>#code=<code>.
+	MiniappKindInvitations = "invitations"
 )
 
 // webLoginNoticeBatch caps one claim of sign-in notices.
@@ -59,7 +63,9 @@ func (h *Handler) WithEventCenterURL(origin string) *Handler {
 // HandleCreateWebLoginCode serves POST /v1/bot/web-login-codes.
 // Body {"telegram_user_id": 123} for "Open in browser" (purpose web, the
 // default), or {"telegram_user_id": 123, "purpose": "miniapp", "kind":
-// "description" or "email_note", "event_id": "<uuid>"} for the mini app editor.
+// "description" or "email_note", "event_id": "<uuid>"} for the mini app editor,
+// or kind "invitations" with "event_id" and "session_id" for the staff
+// invitations screen (spec 46, INV-05).
 //
 //	201 {url, expires_at}             the link for the private chat
 //	400 bot.invalid_purpose           purpose is neither web nor miniapp
@@ -88,6 +94,7 @@ func (h *Handler) HandleCreateWebLoginCode(w http.ResponseWriter, r *http.Reques
 		Purpose        string `json:"purpose"`
 		Kind           string `json:"kind"`
 		EventID        string `json:"event_id"`
+		SessionID      string `json:"session_id"`
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4*1024))
 	if err != nil || json.Unmarshal(body, &req) != nil {
@@ -106,18 +113,23 @@ func (h *Handler) HandleCreateWebLoginCode(w http.ResponseWriter, r *http.Reques
 	if purpose == "" {
 		purpose = gen.WebLoginPurposeWeb
 	}
-	var linkSuffix string
+	var linkSuffix, invitationsPath string
 	switch purpose {
 	case gen.WebLoginPurposeWeb:
 	case gen.WebLoginPurposeMiniapp:
 		eventID, perr := uuid.Parse(strings.TrimSpace(req.EventID))
-		if perr != nil || (req.Kind != MiniappKindDescription && req.Kind != MiniappKindEmailNote) {
+		sessionID, serr := uuid.Parse(strings.TrimSpace(req.SessionID))
+		switch {
+		case perr == nil && (req.Kind == MiniappKindDescription || req.Kind == MiniappKindEmailNote):
+			linkSuffix = "&kind=" + req.Kind + "&event=" + eventID.String()
+		case perr == nil && serr == nil && req.Kind == MiniappKindInvitations:
+			invitationsPath = "/tg/invitations?session=" + sessionID.String() + "&event=" + eventID.String()
+		default:
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-				"bot.invalid_miniapp_target", "a miniapp code needs kind (description or email_note) and a valid event_id", r,
+				"bot.invalid_miniapp_target", "a miniapp code needs kind (description, email_note or invitations), a valid event_id and, for invitations, a valid session_id", r,
 				map[string]any{"field": "kind"}))
 			return
 		}
-		linkSuffix = "&kind=" + req.Kind + "&event=" + eventID.String()
 	default:
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"bot.invalid_purpose", "purpose must be web or miniapp", r,
@@ -201,6 +213,9 @@ func (h *Handler) HandleCreateWebLoginCode(w http.ResponseWriter, r *http.Reques
 	url := h.eventCenterURL + "/login/link#code=" + code
 	if purpose == gen.WebLoginPurposeMiniapp {
 		url = h.eventCenterURL + "/tg/edit#code=" + code + linkSuffix
+		if invitationsPath != "" {
+			url = h.eventCenterURL + invitationsPath + "#code=" + code
+		}
 	}
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"url":        url,

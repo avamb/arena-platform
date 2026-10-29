@@ -328,3 +328,77 @@ func (q *Queries) ListInvitationOrderLines(ctx context.Context, orderIDs []uuid.
 	}
 	return out, rows.Err()
 }
+
+// OrgInvitationRow is one row of the organization-wide invitation list: the
+// same facts as SessionInvitationRow plus the session the invitation is for.
+type OrgInvitationRow struct {
+	SessionInvitationRow
+	SessionID       uuid.UUID
+	SessionStartAt  time.Time
+	EventID         uuid.UUID
+	EventName       string
+	VenueName       *string
+	SessionTimezone string
+}
+
+// OrgInvitationFilter narrows ListOrgInvitations. State is "active",
+// "cancelled" or "all"; CursorAt/CursorID are the last row of the previous
+// page (both nil = first page).
+type OrgInvitationFilter struct {
+	SessionID *uuid.UUID
+	EventID   *uuid.UUID
+	State     string
+	CursorAt  *time.Time
+	CursorID  *uuid.UUID
+	Limit     int32
+}
+
+const listOrgInvitations = `-- name: ListOrgInvitations :many
+SELECT o.id, o.system_id, o.status, o.buyer_name, o.metadata, o.issued_via,
+       o.issued_by, u.email, u.first_name, u.last_name, o.created_at, o.invitation_batch_id,
+       tc.total, tc.active,
+       s.id, s.start_at, s.event_id, e.name, v.name, COALESCE(v.timezone, 'UTC')
+FROM   orders o
+JOIN   sessions s ON s.id = o.session_id
+JOIN   events e ON e.id = s.event_id
+LEFT JOIN venues v ON v.id = s.venue_id
+LEFT JOIN users u ON u.id = o.issued_by
+CROSS JOIN LATERAL (
+    SELECT count(*) AS total, count(*) FILTER (WHERE t.status = 'active') AS active
+    FROM   tickets t WHERE t.checkout_session_id = o.checkout_session_id
+) tc
+WHERE  o.org_id = $1
+  AND  o.source = 'complimentary'
+  AND  o.issued_via IS NOT NULL
+  AND  ($2::uuid IS NULL OR o.session_id = $2)
+  AND  ($3::uuid IS NULL OR s.event_id = $3)
+  AND  ($4::text = 'all'
+        OR ($4::text = 'cancelled' AND tc.total > 0 AND tc.active = 0)
+        OR ($4::text = 'active' AND NOT (tc.total > 0 AND tc.active = 0)))
+  AND  ($5::timestamptz IS NULL OR (o.created_at, o.id) < ($5, $6::uuid))
+ORDER  BY o.created_at DESC, o.id DESC
+LIMIT  $7`
+
+// ListOrgInvitations lists the staff invitations of the whole organization,
+// newest first, scoped by org_id (spec 46 section 6.1).
+func (q *Queries) ListOrgInvitations(ctx context.Context, orgID uuid.UUID, f OrgInvitationFilter) ([]OrgInvitationRow, error) {
+	rows, err := q.db.Query(ctx, listOrgInvitations, orgID, f.SessionID, f.EventID, f.State, f.CursorAt, f.CursorID, f.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OrgInvitationRow
+	for rows.Next() {
+		var r OrgInvitationRow
+		if err := rows.Scan(
+			&r.ID, &r.SystemID, &r.Status, &r.BuyerName, &r.Metadata, &r.IssuedVia,
+			&r.IssuedBy, &r.IssuerEmail, &r.IssuerFirst, &r.IssuerLast, &r.CreatedAt, &r.BatchID,
+			&r.TicketsTotal, &r.TicketsActive,
+			&r.SessionID, &r.SessionStartAt, &r.EventID, &r.EventName, &r.VenueName, &r.SessionTimezone,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

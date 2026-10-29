@@ -438,27 +438,32 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]listItem, 0, len(rows))
 	for _, row := range rows {
-		it := listItem{
-			OrderID: row.ID.String(), SystemID: row.SystemID, Status: row.Status, GuestName: row.BuyerName,
-			Delivery: deliveryOf(row.Metadata), IssuedVia: row.IssuedVia, CreatedAt: row.CreatedAt,
-			TicketsTotal: row.TicketsTotal, TicketsActive: row.TicketsActive,
-			IssuedBy: issuerResponse{Email: row.IssuerEmail, FirstName: row.IssuerFirst, LastName: row.IssuerLast},
-			Places:   byOrder[row.ID],
-		}
-		if it.Places == nil {
-			it.Places = []lineResponse{}
-		}
-		if row.IssuedBy != nil {
-			s := row.IssuedBy.String()
-			it.IssuedBy.UserID = &s
-		}
-		if row.BatchID != nil {
-			s := row.BatchID.String()
-			it.InvitationBatchID = &s
-		}
-		items = append(items, it)
+		items = append(items, newListItem(row, byOrder[row.ID]))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// newListItem builds one list item from its order row and its places.
+func newListItem(row gen.SessionInvitationRow, places []lineResponse) listItem {
+	it := listItem{
+		OrderID: row.ID.String(), SystemID: row.SystemID, Status: row.Status, GuestName: row.BuyerName,
+		Delivery: deliveryOf(row.Metadata), IssuedVia: row.IssuedVia, CreatedAt: row.CreatedAt,
+		TicketsTotal: row.TicketsTotal, TicketsActive: row.TicketsActive,
+		IssuedBy: issuerResponse{Email: row.IssuerEmail, FirstName: row.IssuerFirst, LastName: row.IssuerLast},
+		Places:   places,
+	}
+	if it.Places == nil {
+		it.Places = []lineResponse{}
+	}
+	if row.IssuedBy != nil {
+		s := row.IssuedBy.String()
+		it.IssuedBy.UserID = &s
+	}
+	if row.BatchID != nil {
+		s := row.BatchID.String()
+		it.InvitationBatchID = &s
+	}
+	return it
 }
 
 type cancelBody struct {
