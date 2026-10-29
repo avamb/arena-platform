@@ -35,8 +35,8 @@ func (h *Handler) apiKeyName(ctx context.Context, actor auth.Actor, orgID uuid.U
 func (h *Handler) recordCancelledBy(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) error {
 	actor, _ := auth.ActorFromContext(ctx)
 	var who map[string]string
-	switch {
-	case actor.Type == auth.ActorTypeService:
+	switch actor.Type {
+	case auth.ActorTypeService:
 		// The key was authenticated by this request, so its row is readable
 		// on the transaction itself (never a pool read inside an open tx).
 		var name string
@@ -48,7 +48,7 @@ func (h *Handler) recordCancelledBy(ctx context.Context, tx pgx.Tx, orderID uuid
 			}
 		}
 		who = map[string]string{"api_key": name}
-	case actor.Type == auth.ActorTypeUser || actor.Type == auth.ActorTypeStubUser:
+	case auth.ActorTypeUser, auth.ActorTypeStubUser:
 		if _, err := uuid.Parse(actor.ID); err != nil {
 			return nil
 		}
