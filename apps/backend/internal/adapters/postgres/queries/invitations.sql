@@ -2,7 +2,7 @@
 -- The hidden channel "Invitations" (sales_channels.kind = 'internal') that
 -- every staff invitation order is written on. At most one per organization
 -- (partial unique index sales_channels_one_internal_per_org_uq, migration
--- 0175); created lazily by the first invitation.
+-- 0176); created lazily by the first invitation.
 
 -- name: InsertInternalChannel :one
 -- Race-safe create: a concurrent first invitation loses on the partial

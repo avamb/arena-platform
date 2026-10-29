@@ -100,6 +100,16 @@ func newStubAllPayServer(t *testing.T, accounts ...*allpayFixture) *stubAllPaySe
 		oid, _ := body["order_id"].(string)
 		switch r.URL.Query().Get("show") {
 		case "getpayment":
+			// mode=api15 is strict about the currency: currency_display is
+			// required and a non-empty v14 `currency` is error 2.
+			if c, _ := body["currency"].(string); c != "" {
+				_, _ = w.Write([]byte(`{"error_code":2,"error_msg":"API error 2: unexpected parameter: currency"}`))
+				return
+			}
+			if c, _ := body["currency_display"].(string); c == "" {
+				_, _ = w.Write([]byte(`{"error_code":2,"error_msg":"API error 2: Missing required parameters: currency_display"}`))
+				return
+			}
 			s.orders = append(s.orders, body)
 			var total int64
 			for _, it := range body["items"].([]any) {
@@ -108,7 +118,7 @@ func newStubAllPayServer(t *testing.T, accounts ...*allpayFixture) *stubAllPaySe
 				qty, _ := strconv.ParseInt(fmt.Sprint(item["qty"]), 10, 64)
 				total += price * qty
 			}
-			cur, _ := body["currency"].(string)
+			cur, _ := body["currency_display"].(string)
 			s.ledger[oid] = &allpayLedgerOrder{login: login, amount: total, currency: cur}
 			_, _ = fmt.Fprintf(w, `{"payment_url":"https://allpay.test/~login/pay/?payment_id=%s&code=xyz"}`, oid)
 		case "checkkeys":
@@ -119,7 +129,8 @@ func newStubAllPayServer(t *testing.T, accounts ...*allpayFixture) *stubAllPaySe
 				_, _ = w.Write([]byte(`{"error_code":6,"error_msg":"Order not found"}`))
 				return
 			}
-			ans := map[string]any{"order_id": oid, "status": o.currentStatus(), "amount": json.Number(allpay.MinorToMajor(o.amount)), "currency": o.currency}
+			ans := map[string]any{"order_id": oid, "status": o.currentStatus(), "amount": json.Number(allpay.MinorToMajor(o.amount)),
+				"currency_display": o.currency, "currency_payment": o.currency, "currency_course": json.Number("1")}
 			if o.currentStatus() == allpay.StatusPartiallyRefunded {
 				ans["refunded"] = json.Number(allpay.MinorToMajor(o.refunded))
 			}
@@ -351,8 +362,14 @@ func TestAllPay_StartAndWebhookPayTheOrder(t *testing.T) {
 	if got := ord["order_id"]; got != csID.String() {
 		t.Errorf("order_id = %v; want the checkout session id %s", got, csID)
 	}
-	if got := ord["currency"]; got != "ILS" {
-		t.Errorf("currency = %v; want ILS", got)
+	if got := ord["currency_display"]; got != "ILS" {
+		t.Errorf("currency_display = %v; want ILS", got)
+	}
+	if got := ord["currency_payment"]; got != "ILS" {
+		t.Errorf("currency_payment = %v; want ILS", got)
+	}
+	if _, sent := ord["currency"]; sent {
+		t.Errorf("currency was sent; mode=api15 refuses it")
 	}
 	items, _ := ord["items"].([]any)
 	if len(items) != 1 {

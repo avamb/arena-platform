@@ -8,6 +8,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { NoShopAccess, ShopNav } from "@/components/ShopNav";
 import { ShopOrderActions } from "@/components/ShopOrderActions";
+import { ShopOrderNote } from "@/components/ShopOrderNote";
 import { ShopOrderStatusBadge, deliveryLabel } from "@/components/ShopOrdersTable";
 import { ErrorBox, Loading } from "@/components/ui";
 import { fetchShopOrder, fetchShopSettings } from "@/lib/api/shopApi";
@@ -24,7 +25,7 @@ function sourceKey(source: string): MessageKey | null {
 }
 
 /** The order as a card. Pure: the screen gives it the order, the actions are a child. */
-export function ShopOrderCard({ order, orgId, actions, country }: { order: ShopOrder; orgId: string; actions?: ReactNode; country?: string | null }) {
+export function ShopOrderCard({ order, orgId, actions, note, country }: { order: ShopOrder; orgId: string; actions?: ReactNode; note?: ReactNode; country?: string | null }) {
   const { t, locale } = useI18n();
   const money = (v: number) => formatMoney(v, order.currency, locale);
   const a = order.ship;
@@ -64,6 +65,8 @@ export function ShopOrderCard({ order, orgId, actions, country }: { order: ShopO
       )}
 
       {actions}
+
+      {note}
 
       <section aria-labelledby="shop-order-buyer">
         <h2 id="shop-order-buyer">{t("shop.order.buyer")}</h2>
@@ -221,6 +224,7 @@ export function ShopOrderScreen() {
         order={order.data}
         orgId={orgId}
         country={country}
+        note={<ShopOrderNote key={`note:${orgId}:${order.data.id}`} orgId={orgId} order={order.data} canManage={access.can("shop.manage")} country={country} />}
         actions={<ShopOrderActions key={`${orgId}:${order.data.id}`} orgId={orgId} order={order.data} country={country} canManage={access.can("shop.manage")} canRefund={access.can("refund.create") && access.can("refund.approve")} />}
       />
     </>

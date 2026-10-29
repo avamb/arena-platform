@@ -10,12 +10,13 @@ import { useState, type FormEvent } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { NoShopAccess, ShopNav } from "@/components/ShopNav";
+import { ShopOrderTabs } from "@/components/ShopOrderTabs";
 import { ShopOrdersTable } from "@/components/ShopOrdersTable";
 import { Empty, ErrorBox, Loading } from "@/components/ui";
-import { fetchShopSettings, listShopOrders } from "@/lib/api/shopApi";
+import { fetchShopOrderCounts, fetchShopSettings, listShopOrders } from "@/lib/api/shopApi";
 import { formatNumber } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { EMPTY_FILTERS, SHOP_ORDER_STATUSES, isShopOrderStatus, ordersQuery, type ShopOrdersFilters } from "@/lib/shop";
+import { EMPTY_FILTERS, SHOP_ORDER_STATUSES, activeOrderTab, isShopOrderStatus, ordersQuery, type OrderTab, type ShopOrdersFilters } from "@/lib/shop";
 import { useOrg } from "@/screens/OrgLayout";
 
 export const SHOP_ORDERS_PAGE_SIZE = 50;
@@ -26,9 +27,10 @@ export function ShopOrdersScreen() {
   const search = useSearch({ from: "/o/$orgId/shop/orders" });
   const navigate = useNavigate({ from: "/o/$orgId/shop/orders" });
   const canRead = access.can("shop.read");
-  const [applied, setApplied] = useState<Omit<ShopOrdersFilters, "status">>({ q: "", from: "", to: "" });
+  const [applied, setApplied] = useState<Omit<ShopOrdersFilters, "status" | "view">>({ q: "", from: "", to: "" });
   const [draft, setDraft] = useState(applied);
-  const filters: ShopOrdersFilters = { ...EMPTY_FILTERS, ...applied, status: search.status ?? "" };
+  const filters: ShopOrdersFilters = { ...EMPTY_FILTERS, ...applied, status: search.status ?? "", view: search.view ?? "" };
+  const tab = activeOrderTab(filters.view);
 
   const orders = useInfiniteQuery({
     queryKey: ["shopOrders", orgId, filters],
@@ -37,12 +39,16 @@ export function ShopOrdersScreen() {
     getNextPageParam: (last) => last.next_offset ?? undefined,
     enabled: canRead,
   });
+  // The numbers on the tabs. The card's actions refresh them (a shipped order leaves "To ship").
+  const counts = useQuery({ queryKey: ["shopOrderCounts", orgId], queryFn: () => fetchShopOrderCounts(orgId), enabled: canRead, refetchOnWindowFocus: true });
   // The shop's country sets the zone of every time on the screen.
   const settings = useQuery({ queryKey: ["shopSettings", orgId], queryFn: () => fetchShopSettings(orgId), enabled: canRead });
 
   if (!canRead) return <NoShopAccess />;
   const rows = orders.data?.pages.flatMap((p) => p.orders) ?? [];
-  const filtered = filters.status !== "" || filters.q.trim() !== "" || filters.from !== "" || filters.to !== "";
+  const filtered = filters.status !== "" || filters.view !== "" || filters.q.trim() !== "" || filters.from !== "" || filters.to !== "";
+  const pickTab = (next: OrderTab) => void navigate({ search: next === "all" ? {} : { view: next } });
+  const emptyText = filters.view === "to_ship" && !filters.q.trim() && filters.status === "" ? t("shop.orders.emptyToShip") : filtered ? t("shop.orders.emptySearch") : t("shop.orders.empty");
 
   const onSearch = (e: FormEvent) => {
     e.preventDefault();
@@ -59,6 +65,7 @@ export function ShopOrdersScreen() {
     <section className="shop-page" aria-labelledby="shop-orders-title">
       <h1 id="shop-orders-title">{t("shop.orders.title")}</h1>
       <ShopNav orgId={orgId} />
+      <ShopOrderTabs active={tab} counts={counts.data} onPick={pickTab} />
       <form className="shop-filters" role="search" onSubmit={onSearch} data-testid="shop-orders-filters">
         <div>
           <label htmlFor="shop-orders-status">{t("shop.orders.f.status")}</label>
@@ -109,7 +116,7 @@ export function ShopOrdersScreen() {
       </form>
       {orders.isLoading && <Loading />}
       {orders.error !== null && <ErrorBox error={orders.error} onRetry={() => void orders.refetch()} />}
-      {orders.data !== undefined && rows.length === 0 && <Empty>{filtered ? t("shop.orders.emptySearch") : t("shop.orders.empty")}</Empty>}
+      {orders.data !== undefined && rows.length === 0 && <Empty>{emptyText}</Empty>}
       {rows.length > 0 && (
         <>
           <ShopOrdersTable orgId={orgId} orders={rows} country={settings.data?.country_iso2} />
