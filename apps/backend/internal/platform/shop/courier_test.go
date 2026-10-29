@@ -76,3 +76,39 @@ func TestCountryName(t *testing.T) {
 		}
 	}
 }
+
+func TestStripApartment(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"ул. Тестовая 1, кв. 2", "ул. Тестовая 1"},
+		{"ул. Тестовая 1 кв 12", "ул. Тестовая 1"},
+		{"ул. Тестовая 1, квартира 7", "ул. Тестовая 1"},
+		{"ул. Тестовая 1, кв.2", "ул. Тестовая 1"},
+		{"Herzl 1, apt 4", "Herzl 1"},
+		{"Herzl 1, Apt. 4b", "Herzl 1"},
+		{"Herzl 1 Apartment 7", "Herzl 1"},
+		{"הרצל 1, דירה 5", "הרצל 1"},
+		{"ул. Квартальная 5", "ул. Квартальная 5"},
+		{"ул. Квартальная", "ул. Квартальная"},
+		{"Aptos Street 3", "Aptos Street 3"},
+		{"кв 2", "кв 2"},
+		{"Herzl 1", "Herzl 1"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := StripApartment(c.in); got != c.want {
+			t.Errorf("StripApartment(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestCourierFields_MapQueryDropsAnApartmentTypedIntoLine1ButTheAddressKeepsIt(t *testing.T) {
+	c := CourierFieldsOfIn(gen.ShopOrderRow{
+		ShipAddress1: "ул. Тестовая 1, кв. 2", ShipCity: "Хайфа", ShipPostal: "3200000", ShipCountry: "IL",
+	}, "ru")
+	if q := c.MapQuery(); q != "ул. Тестовая 1, Хайфа, 3200000, Израиль" {
+		t.Errorf("MapQuery = %q", q)
+	}
+	if got := c.Lines()[0]; got != "ул. Тестовая 1, кв. 2" {
+		t.Errorf("printed address line = %q, the apartment must stay", got)
+	}
+}

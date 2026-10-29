@@ -209,7 +209,10 @@ describe('Hermes storefront fixes', () => {
     const doc = dom(checkoutView(ctx(cart), resolveLines(cart, shop.products), { values: { ...EMPTY_FORM, note: 'позвонить за час' }, errors: {} }));
     expect((doc.querySelector('textarea#Checkout-note') as HTMLTextAreaElement).value).toBe('позвонить за час');
     expect(doc.querySelector('textarea#Checkout-note')?.getAttribute('name')).toBe('note');
-    expect(doc.querySelector('#Checkout-address2')?.getAttribute('placeholder')).toBe('Подъезд, этаж, домофон');
+    expect(doc.querySelector('#Checkout-address1')?.getAttribute('placeholder')).toBe('Улица и дом');
+    expect(doc.querySelector('#Checkout-address1')?.getAttribute('autocomplete')).toBe('address-line1');
+    expect(doc.querySelector('#Checkout-address2')?.getAttribute('placeholder')).toBe('Квартира, подъезд, этаж, домофон');
+    expect(doc.querySelector('#Checkout-address2')?.getAttribute('autocomplete')).toBe('address-line2');
     expect(doc.querySelector('.shop-checkout')?.classList.contains('page-width')).toBe(true);
   });
 

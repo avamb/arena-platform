@@ -107,8 +107,8 @@ function addressBlock(ctx: Ctx, st: CheckoutViewState, label: string, shipping: 
   const country = ctx.shop.settings.country_iso2 || 'IL';
   const il = country.toUpperCase() === 'IL';
   return `<h2 class="shop-checkout__heading h3">Адрес доставки</h2>
-      ${field('address1', 'Улица, дом, квартира', st.values, e, { autocomplete: 'address-line1', required: true })}
-      ${field('address2', 'Подъезд, этаж, домофон', st.values, e, { autocomplete: 'address-line2' })}
+      ${field('address1', 'Улица и дом', st.values, e, { autocomplete: 'address-line1', required: true })}
+      ${field('address2', 'Квартира, подъезд, этаж, домофон', st.values, e, { autocomplete: 'address-line2' })}
       ${field('city', 'Город', st.values, e, { autocomplete: 'address-level2', required: true })}
       ${countryField(country)}
       ${field('postal', 'Почтовый индекс', st.values, e, { autocomplete: 'postal-code', required: true, hint: postalHint(country), ...(il ? { inputmode: 'numeric' } : {}) })}

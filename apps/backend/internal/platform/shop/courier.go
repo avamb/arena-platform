@@ -2,6 +2,7 @@ package shop
 
 import (
 	"net/url"
+	"regexp"
 	"strings"
 
 	"golang.org/x/text/language"
@@ -109,11 +110,32 @@ func (c CourierFields) street() string {
 // a city.
 func (c CourierFields) HasAddress() bool { return c.Address1 != "" || c.City != "" }
 
+// trailingApartment matches an apartment fragment at the END of address line
+// 1 ("..., кв. 2", "apt 4", "Apartment 7", "דירה 5"). Orders placed before
+// the storefront had a separate apartment line carry it there. It is
+// deliberately narrow: the keyword must be followed by a dot or a space and then one token,
+// so a street such as "ул. Квартальная 5" is left alone.
+var trailingApartment = regexp.MustCompile(`(?i)[,\s]\s*(?:кв|квартира|apt|apartment|דירה)(?:\.\s*|\s+)\S+$`)
+
+// StripApartment removes a trailing apartment fragment from an address line
+// for the map query. It never changes what is printed to the courier.
+func StripApartment(line string) string {
+	line = strings.TrimSpace(line)
+	if m := trailingApartment.FindStringIndex(line); m != nil {
+		if rest := strings.TrimRight(strings.TrimSpace(line[:m[0]]), ","); rest != "" {
+			return strings.TrimSpace(rest)
+		}
+	}
+	return line
+}
+
 // MapQuery is the address as one search string for a map: street, city,
 // postal code, country. Address line 2 (entrance, floor, intercom) is left
-// out on purpose, it only confuses a geocoder.
+// out on purpose, it only confuses a geocoder, and so is an apartment that an
+// older order typed at the end of line 1 (StripApartment). The printed
+// address is not affected.
 func (c CourierFields) MapQuery() string {
-	return strings.Join(nonEmpty(c.Address1, c.City, c.Postal, c.Country), ", ")
+	return strings.Join(nonEmpty(StripApartment(c.Address1), c.City, c.Postal, c.Country), ", ")
 }
 
 // GoogleMapsURL is a Google Maps search for the address. No geocoding call is
