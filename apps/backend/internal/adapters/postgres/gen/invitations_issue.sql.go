@@ -148,7 +148,7 @@ func (q *Queries) SetInvitationOrderCustomer(ctx context.Context, orderID, custo
 	return nil
 }
 
-const setOrderItemsSeatOrigin = `-- name: SetOrderItemsSeatOrigin :exec
+const setOrderItemsSeatOrigin = `-- name: SetOrderItemsSeatOrigin :execrows
 UPDATE order_items oi
 SET    seat_origin = v.origin
 FROM   unnest($2::uuid[], $3::text[]) AS v(seat_id, origin)
@@ -157,9 +157,14 @@ WHERE  oi.order_id = $1
 
 // SetOrderItemsSeatOrigin records, per line, the status each seat had
 // before the invitation took it. seatIDs and origins are parallel slices.
-func (q *Queries) SetOrderItemsSeatOrigin(ctx context.Context, orderID uuid.UUID, seatIDs []uuid.UUID, origins []string) error {
-	_, err := q.db.Exec(ctx, setOrderItemsSeatOrigin, orderID, seatIDs, origins)
-	return err
+// It answers the number of lines updated: the caller compares it with the
+// number of places, a shortfall means a line lost its seat link.
+func (q *Queries) SetOrderItemsSeatOrigin(ctx context.Context, orderID uuid.UUID, seatIDs []uuid.UUID, origins []string) (int64, error) {
+	tag, err := q.db.Exec(ctx, setOrderItemsSeatOrigin, orderID, seatIDs, origins)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // InvitationRequestRef is the order an earlier request with the same
