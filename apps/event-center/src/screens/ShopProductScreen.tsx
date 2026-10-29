@@ -14,7 +14,7 @@
  * the details (PATCH) and the variants (PUT) with their own buttons, because
  * the API has two routes.
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ErrorNotice } from "@/components/ErrorNotice";
@@ -35,6 +35,7 @@ import {
   uploadShopDigitalFile,
   type ShopProductFields,
 } from "@/lib/api/shopApi";
+import { currencyLabel } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { overMarkupLimit, overVisibleLimit } from "@/lib/richText";
 import {
@@ -43,6 +44,8 @@ import {
   SHOP_LIMITS,
   checkVariants,
   emptyRow,
+  invalidFields,
+  isSingleVersion,
   isStockChanged,
   stockChangedDetails,
   optionCountOf,
@@ -78,6 +81,9 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const editing = product !== undefined;
+  const root = useRef<HTMLDivElement>(null);
+  // Bumped on every failed attempt to save: the effect below then takes the person to the first wrong field.
+  const [focusTick, setFocusTick] = useState(0);
 
   const [title, setTitle] = useState(product?.title ?? "");
   const [status, setStatus] = useState<string>(product?.status ?? "draft");
@@ -94,7 +100,7 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
   const [notice, setNotice] = useState<MessageKey | null>(null);
   const [fileProblem, setFileProblem] = useState<MessageKey | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [stockMoved, setStockMoved] = useState<{ title: string; expected: number | null; stock: number }[]>([]);
+  const [stockMoved, setStockMoved] = useState<{ title: string; expected: number | null; stock: number; typed: string }[]>([]);
 
   const digital = kind === "digital";
   const used = leadingNames(names);
@@ -104,6 +110,24 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
   const titleBad = title.trim() === "" || [...title.trim()].length > SHOP_LIMITS.title;
   const bodyBad = bodyTouched.current && (overVisibleLimit(body, "description") || overMarkupLimit(body, "description"));
   const detailsOk = !titleBad && !bodyBad;
+
+  useEffect(() => {
+    if (focusTick === 0) return;
+    const first = root.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    if (first === null || first === undefined) return;
+    first.scrollIntoView({ block: "center" });
+    first.focus({ preventScroll: true });
+  }, [focusTick]);
+
+  // The names of the wrong fields, in page order, for the line next to the button.
+  const detailsWrong = invalidFields({ title: detailsTried && titleBad, body: detailsTried && bodyBad }, null);
+  const variantsWrong = invalidFields({ title: false, body: false }, check);
+  const fixLine = (wrong: readonly string[]) =>
+    wrong.length === 0 ? null : (
+      <p className="field-error" role="alert" data-testid="shop-product-fix">
+        {t("shop.product.fixFields", { fields: wrong.map((f) => t(`shop.product.field.${f}` as MessageKey)).join(", ") })}
+      </p>
+    );
 
   const stats: Record<string, VariantStat> = {};
   for (const v of product?.variants ?? []) stats[v.id] = { held: v.held, available: v.available ?? null };
@@ -144,7 +168,11 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
 
   const saveDetails = () => {
     setDetailsTried(true);
-    if (!detailsOk || product === undefined) return;
+    if (product === undefined) return;
+    if (!detailsOk) {
+      setFocusTick((n) => n + 1);
+      return;
+    }
     void run("details", async () => {
       setProduct(await patchShopProduct(orgId, product.id, fields()));
       setNotice("shop.product.saved");
@@ -155,7 +183,10 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
     if (product === undefined) return;
     const c = checkVariants(rows, currency, optionCount, { digital });
     setCheck(c);
-    if (!c.ok) return;
+    if (!c.ok) {
+      setFocusTick((n) => n + 1);
+      return;
+    }
     void run("variants", async () => {
       try {
         const saved = await replaceShopVariants(orgId, product.id, variantsRequest(rows, currency, optionCount, { digital }));
@@ -166,7 +197,14 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
       } catch (error) {
         if (!isStockChanged(error)) throw error;
         // The shelf moved while the screen was open: show the server's numbers, say so, change nothing else.
-        setStockMoved(stockChangedDetails(error).map((d) => ({ title: rows.find((r) => r.id === d.id)?.title || rows.find((r) => r.id === d.id)?.options.filter((o) => o !== "").join(" / ") || "", expected: d.expected, stock: d.stock })));
+        setStockMoved(
+          stockChangedDetails(error).map((d) => {
+            const row = rows.find((r) => r.id === d.id);
+            const name = row === undefined ? "" : row.title || row.options.filter((o) => o !== "").join(" / ");
+            // The number typed is shown beside the fresh one, so nobody has to remember it.
+            return { title: name !== "" ? name : isSingleVersion(rows, used) ? t("shop.variants.single") : "", expected: d.expected, stock: d.stock, typed: row?.stock ?? "" };
+          }),
+        );
         const fresh = await fetchShopProduct(orgId, product.id);
         setProduct(fresh);
         setRows(rowsFromProduct(fresh, currency));
@@ -180,7 +218,10 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
     setDetailsTried(true);
     const c = checkVariants(rows, currency, optionCount, { digital });
     setCheck(c);
-    if (!detailsOk || !c.ok) return;
+    if (!detailsOk || !c.ok) {
+      setFocusTick((n) => n + 1);
+      return;
+    }
     void run("create", async () => {
       const made = await createShopProduct(orgId, { ...fields(), variants: variantsRequest(rows, currency, optionCount, { digital }) });
       void queryClient.invalidateQueries({ queryKey: ["shopProducts", orgId] });
@@ -206,7 +247,7 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
   const fileError = failure !== null && failure.scope === "file" ? failure.error : null;
 
   return (
-    <>
+    <div ref={root}>
       <h2>{t("shop.product.f.title")}</h2>
       <form
         onSubmit={(e) => {
@@ -310,6 +351,7 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
             </button>
           </p>
         )}
+        {canManage && editing && fixLine(detailsWrong)}
       </form>
       {notice !== null && notice !== "shop.variants.saved" && (
         <p className="notice notice-ok" role="status" data-testid="shop-product-notice">
@@ -327,7 +369,7 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
         {variantsError !== null && isStockChanged(variantsError) && stockMoved.length > 0 && (
           <ul className="facts" data-testid="shop-stock-moved">
             {stockMoved.map((m, i) => (
-              <li key={i}>{t("shop.variants.stockMoved", { title: m.title === "" ? `#${i + 1}` : m.title, was: m.expected ?? "", now: m.stock })}</li>
+              <li key={i}>{t("shop.variants.stockMoved", { title: m.title === "" ? `#${i + 1}` : m.title, was: m.expected ?? "", now: m.stock, typed: m.typed })}</li>
             ))}
           </ul>
         )}
@@ -349,6 +391,7 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
             </button>
           </p>
         )}
+        {canManage && editing && fixLine(variantsWrong)}
       </section>
 
       {canManage && !editing && (
@@ -359,6 +402,7 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
               {busy === "create" ? t("shop.product.saving") : t("shop.product.create")}
             </button>
           </p>
+          {fixLine([...detailsWrong, ...variantsWrong.filter((f) => !detailsWrong.includes(f))])}
         </>
       )}
 
@@ -396,12 +440,12 @@ function ProductForm({ orgId, currency, product, canManage, canViewMedia }: { or
           }}
         />
       )}
-    </>
+    </div>
   );
 }
 
 function ProductPage({ productId }: { productId: string | null }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { orgId, access } = useOrg();
   const search = useSearch({ strict: false }) as { created?: boolean };
   const canRead = access.can("shop.read");
@@ -437,7 +481,7 @@ function ProductPage({ productId }: { productId: string | null }) {
       {ready && (
         <>
           <p className="muted" data-testid="shop-product-currency">
-            {t("shop.product.currencyNote", { currency })}
+            {t("shop.product.currencyNote", { currency: currencyLabel(currency, locale) })}
           </p>
           <ProductForm
             key={productId ?? "new"}

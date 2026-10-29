@@ -20,7 +20,8 @@ import type {
   ShopVariant,
   ShopVariantInput,
 } from "@/lib/api/types";
-import { currencyFractionDigits } from "@/lib/format";
+import { isIsoCurrency } from "@/lib/currencies";
+import { currencyFractionDigits, formatDateTime, formatMoneySymbol, regionName } from "@/lib/format";
 import type { Tone } from "@/lib/orders";
 
 // ─── What the API will add (lane "shop-core") ───────────────────────────────
@@ -156,12 +157,23 @@ export function emptyRow(): VariantRow {
 
 const DEFAULT_TITLE = "Default Title";
 
+/** Shopify's own name of a product with one version: a technical word, never something a person typed. */
+export function isDefaultTitle(value: string | null | undefined): boolean {
+  const v = (value ?? "").trim();
+  return v === "" || v.toLowerCase() === DEFAULT_TITLE.toLowerCase();
+}
+
+/** A text for a field: the technical "Default Title" is shown as an empty field. */
+function visibleName(value: string | null | undefined): string {
+  return isDefaultTitle(value) ? "" : (value ?? "");
+}
+
 export function rowFromVariant(v: ShopVariant, currency: string): VariantRow {
   return {
     key: nextKey(),
     id: v.id,
-    title: v.title === DEFAULT_TITLE ? "" : v.title,
-    options: [v.option1 ?? "", v.option2 ?? "", v.option3 ?? ""],
+    title: visibleName(v.title),
+    options: [visibleName(v.option1), visibleName(v.option2), visibleName(v.option3)],
     sku: v.sku ?? "",
     price: moneyInput(v.price_minor, currency),
     compareAt: v.compare_at_minor === null || v.compare_at_minor === undefined ? "" : moneyInput(v.compare_at_minor, currency),
@@ -187,6 +199,25 @@ export function optionCountOf(names: readonly string[], rows: readonly VariantRo
     for (let i = 0; i < 3; i++) if (r.options[i].trim() !== "") used = Math.max(used, i + 1);
   }
   return Math.min(SHOP_LIMITS.maxOptions, Math.max(names.length, used));
+}
+
+/** True when the row carries no name and no option value at all. */
+export function rowIsNameless(row: VariantRow): boolean {
+  return row.title.trim() === "" && row.options.every((o) => o.trim() === "");
+}
+
+/** The option names Shopify gives a product that has no options. */
+function onlyDefaultOptionNames(names: readonly string[]): boolean {
+  return names.length === 0 || (names.length === 1 && names[0].trim().toLowerCase() === "title");
+}
+
+/**
+ * A product with ONE version and nothing to tell versions apart: the editor shows "The only
+ * version" instead of an empty name field (or a field named after a technical option). As soon
+ * as the person names an option or adds a second variant, the fields come back.
+ */
+export function isSingleVersion(rows: readonly VariantRow[], optionNames: readonly string[]): boolean {
+  return rows.length === 1 && rowIsNameless(rows[0]) && onlyDefaultOptionNames(optionNames);
 }
 
 /** The title of a row: its option values joined, else the typed title. */
@@ -516,6 +547,7 @@ export function settingsDraft(s: ShopSettings): SettingsDraft {
 
 export type SettingsProblem =
   | "currency"
+  | "currencyUnknown"
   | "shippingFee"
   | "shippingLabel"
   | "country"
@@ -525,10 +557,15 @@ export type SettingsProblem =
   | "logisticsNote"
   | "maxLineQty";
 
-export function checkSettings(d: SettingsDraft): Partial<Record<SettingsProblem, true>> {
+/**
+ * The rule of the form. `currencyLocked`: the shop has products, the currency is shown and not typed,
+ * so it is not judged here (the server keeps the stored one).
+ */
+export function checkSettings(d: SettingsDraft, opts: { currencyLocked?: boolean } = {}): Partial<Record<SettingsProblem, true>> {
   const bad: Partial<Record<SettingsProblem, true>> = {};
   const cur = d.currency.trim().toUpperCase();
-  if (!/^[A-Z]{3}$/.test(cur)) bad.currency = true;
+  if (opts.currencyLocked !== true && !/^[A-Z]{3}$/.test(cur)) bad.currency = true;
+  else if (opts.currencyLocked !== true && !isIsoCurrency(cur)) bad.currencyUnknown = true;
   else if (parseMoney(d.shippingFee.trim() === "" ? "0" : d.shippingFee, cur) === null) bad.shippingFee = true;
   if ([...d.shippingLabel.trim()].length > SHOP_LIMITS.shippingLabel) bad.shippingLabel = true;
   if (d.country.trim() !== "" && !/^[A-Za-z]{2}$/.test(d.country.trim())) bad.country = true;
@@ -576,6 +613,200 @@ export async function copyText(text: string, clip: Pick<Clipboard, "writeText"> 
     return false;
   }
 }
+
+// ─── Currency of the shop ────────────────────────────────────────────────────
+
+/**
+ * The currency may be typed only while the shop has NO product: every price is stored in it, and
+ * a typo would silently turn 200 ILS into 200 EUR. `productCount` null means "not known yet":
+ * the field stays closed until the answer comes.
+ */
+export function currencyState(productCount: number | null | undefined): "editable" | "locked" | "checking" {
+  if (productCount === null) return "checking";
+  return productCount === undefined || productCount === 0 ? "editable" : "locked";
+}
+
+// ─── Time of the shop ────────────────────────────────────────────────────────
+
+/** Countries with ONE time zone: the shop's times are read in its zone, not in the zone of the reader. */
+export const SHOP_COUNTRY_ZONES: Readonly<Record<string, string>> = {
+  IL: "Asia/Jerusalem",
+  CZ: "Europe/Prague",
+  ES: "Europe/Madrid",
+  FR: "Europe/Paris",
+  DE: "Europe/Berlin",
+  IT: "Europe/Rome",
+  PT: "Europe/Lisbon",
+  GE: "Asia/Tbilisi",
+  PL: "Europe/Warsaw",
+  AT: "Europe/Vienna",
+  NL: "Europe/Amsterdam",
+  BE: "Europe/Brussels",
+  CH: "Europe/Zurich",
+  GB: "Europe/London",
+  IE: "Europe/Dublin",
+  GR: "Europe/Athens",
+  RS: "Europe/Belgrade",
+  ME: "Europe/Podgorica",
+  BA: "Europe/Sarajevo",
+  HR: "Europe/Zagreb",
+  SI: "Europe/Ljubljana",
+  SK: "Europe/Bratislava",
+  HU: "Europe/Budapest",
+  RO: "Europe/Bucharest",
+  BG: "Europe/Sofia",
+  EE: "Europe/Tallinn",
+  LV: "Europe/Riga",
+  LT: "Europe/Vilnius",
+  FI: "Europe/Helsinki",
+  SE: "Europe/Stockholm",
+  NO: "Europe/Oslo",
+  DK: "Europe/Copenhagen",
+  CY: "Asia/Nicosia",
+  AE: "Asia/Dubai",
+  TR: "Europe/Istanbul",
+  AR: "America/Argentina/Buenos_Aires",
+  CL: "America/Santiago",
+  CO: "America/Bogota",
+  PE: "America/Lima",
+  UY: "America/Montevideo",
+};
+
+/** The zone of the shop's country, or undefined when the country is unknown or has several zones. */
+export function shopZoneFor(country: string | null | undefined): string | undefined {
+  if (country === null || country === undefined) return undefined;
+  return SHOP_COUNTRY_ZONES[country.trim().toUpperCase()];
+}
+
+/**
+ * A moment as the SHOP reads it: in the zone of the shop's country, with the country named in brackets
+ * ("(Израиль)"). A shop with no country (or one with several zones) falls back to the browser's zone.
+ */
+export function formatShopTime(iso: string | null | undefined, country: string | null | undefined, locale: string, browser: string | undefined = browserZone()): string {
+  const zone = shopZoneFor(country);
+  if (zone === undefined) return formatDateTime(iso, browser, locale);
+  return formatDateTime(iso, zone, locale, regionName(country, locale));
+}
+
+// ─── Courier text ────────────────────────────────────────────────────────────
+
+/** The label of a line: the product, the variant in brackets unless it is the single technical one. */
+export function itemLabel(it: { product_title: string; variant_title?: string | null }): string {
+  return isDefaultTitle(it.variant_title) ? it.product_title : `${it.product_title} (${(it.variant_title ?? "").trim()})`;
+}
+
+export interface CourierLabels {
+  /** "Order №1042" */
+  order: string;
+  /** "Buyer's comment: ..." for a note */
+  comment: (note: string) => string;
+}
+
+/**
+ * The delivery details for a courier form, one per line: the order number, then name, phone, city,
+ * address, postal code, the country when it is not the shop's own, the goods, the total, and the buyer's
+ * comment last. Empty parts are left out; the total carries the currency symbol ("740,00 ₪").
+ */
+export function courierText(
+  order: Pick<ShopOrder, "buyer" | "ship" | "items" | "total" | "currency" | "delivery_note" | "delivery_kind">,
+  opts: { locale: string; shopCountry?: string | null; labels: CourierLabels },
+): string {
+  const lines: string[] = [opts.labels.order];
+  const add = (v: string | null | undefined) => {
+    const t = (v ?? "").trim();
+    if (t !== "") lines.push(t);
+  };
+  const a = order.ship;
+  const hasAddress = order.delivery_kind !== "none" && order.delivery_kind !== "pickup";
+  add(a.name !== undefined && a.name.trim() !== "" ? a.name : order.buyer.name);
+  add(order.buyer.phone);
+  if (hasAddress) {
+    add(a.city);
+    const street = [a.address1, a.address2].map((part) => (part ?? "").trim()).filter((part) => part !== "").join(", ");
+    add(street);
+    add(a.postal);
+    const own = (opts.shopCountry ?? "").trim().toUpperCase();
+    const there = (a.country ?? "").trim().toUpperCase();
+    if (there !== "" && there !== own) add(regionName(there, opts.locale));
+  }
+  for (const it of order.items) add(`${itemLabel(it)} × ${it.qty}`);
+  add(formatMoneySymbol(order.total, order.currency, opts.locale));
+  if (order.delivery_note.trim() !== "") add(opts.labels.comment(order.delivery_note.trim()));
+  return lines.join("\n");
+}
+
+// ─── Product list: search and sort ───────────────────────────────────────────
+
+export const PRODUCT_SORTS = ["title", "status", "stock"] as const;
+export type ProductSort = (typeof PRODUCT_SORTS)[number];
+
+export function isProductSort(value: string): value is ProductSort {
+  return (PRODUCT_SORTS as readonly string[]).includes(value);
+}
+
+const STATUS_ORDER: Record<string, number> = { active: 0, draft: 1, archived: 2 };
+
+/**
+ * Products whose title holds the typed words (any case, any order, accents ignored), sorted by name,
+ * by status (on sale, draft, archived) or by stock (least first, products that do not count stock last).
+ * Ties keep the name order.
+ */
+export function filterAndSortProducts<P extends { title: string; status: string; variants: readonly { stock: number; track_stock: boolean }[] }>(
+  products: readonly P[],
+  query: string,
+  sort: ProductSort,
+  locale: string,
+): P[] {
+  const fold = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase(locale);
+  const words = fold(query).split(/\s+/).filter((w) => w !== "");
+  const kept = products.filter((p) => {
+    const title = fold(p.title);
+    return words.every((w) => title.includes(w));
+  });
+  const byName = (a: P, b: P) => a.title.localeCompare(b.title, locale, { sensitivity: "base", numeric: true });
+  const cmp = (a: P, b: P): number => {
+    if (sort === "status") return (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
+    if (sort === "stock") {
+      const sa = stockSum(a);
+      const sb = stockSum(b);
+      if (sa === sb) return 0;
+      if (sa === null) return 1;
+      if (sb === null) return -1;
+      return sa - sb;
+    }
+    return 0;
+  };
+  return [...kept].sort((a, b) => cmp(a, b) || byName(a, b));
+}
+
+// ─── Product form: which fields are wrong ────────────────────────────────────
+
+export type InvalidField = "title" | "body" | "price" | "compareAt" | "stock" | "sku" | "variantName" | "variants";
+
+/**
+ * The fields that failed, once, in the order they stand on the page: the product's name and description,
+ * then what the variants check found. The form names them next to its button.
+ */
+export function invalidFields(details: { title: boolean; body: boolean }, check: VariantsCheck | null): InvalidField[] {
+  const found = new Set<InvalidField>();
+  const add = (f: InvalidField) => found.add(f);
+  if (details.title) add("title");
+  if (details.body) add("body");
+  if (check !== null) {
+    if (check.list !== null) add("variants");
+    for (const errors of Object.values(check.rows)) {
+      if (errors.title || errors.optionTooLong || errors.duplicate) add("variantName");
+      if (errors.sku) add("sku");
+      if (errors.price) add("price");
+      if (errors.compareAt || errors.compareBelowPrice) add("compareAt");
+      if (errors.stock) add("stock");
+    }
+  }
+  return PAGE_ORDER.filter((f) => found.has(f));
+}
+
+/** Where the fields stand on the page, top to bottom. */
+const PAGE_ORDER: readonly InvalidField[] = ["title", "body", "variants", "variantName", "sku", "price", "compareAt", "stock"];
 
 // ─── Addresses ───────────────────────────────────────────────────────────────
 
