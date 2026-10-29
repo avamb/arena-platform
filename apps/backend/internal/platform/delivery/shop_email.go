@@ -394,7 +394,12 @@ func (h *shopEmail) buildMessage(ctx context.Context, o gen.ShopOrderRow, kind s
 	}
 	if refund != nil {
 		data.Shop.RefundAmount = shop.FormatMinor(refund.Amount, o.Currency)
-		data.Shop.RefundedTotal = shop.FormatMinor(min(refund.Running, o.Total), o.Currency)
+		// A test file of this package declares its own min, so no builtin here.
+		running := refund.Running
+		if running > o.Total {
+			running = o.Total
+		}
+		data.Shop.RefundedTotal = shop.FormatMinor(running, o.Currency)
 		data.Shop.RefundFull = refund.Running >= o.Total
 	}
 	out, err := h.renderer.Render(kind, locale, data)
