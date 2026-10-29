@@ -162,7 +162,35 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
 }
 
 /** Where the paid order's files stand: asked for, not ready yet, failed, or listed. */
-export type DownloadsState = { state: 'loading' | 'waiting' | 'error' } | { state: 'ready'; links: DownloadLink[] };
+export type DownloadsState =
+  | { state: 'loading' | 'waiting' }
+  | { state: 'error'; refreshed?: boolean }
+  | { state: 'ready'; links: DownloadLink[]; refreshed?: boolean };
+
+/**
+ * An order line's name: the product, with its variant after a dash unless the
+ * variant is empty or the single default one (the backend's `shop.ItemLabel`).
+ */
+export function lineLabel(productTitle: string, variantTitle: string | null | undefined): string {
+  const v = (variantTitle ?? '').trim();
+  return v !== '' && v !== 'Default Title' ? `${productTitle} — ${v}` : productTitle;
+}
+
+/**
+ * What the buyer is told right after pressing "Обновить ссылки". Only a state
+ * reached through a refresh carries a message: «Ссылки обновлены, действуют до HH:MM»
+ * (the earliest `expires_at` of the new links, in `timeZone`, default the buyer's own)
+ * or a short error line.
+ */
+export function refreshFeedback(dl: DownloadsState | undefined, timeZone?: string): string {
+  if (!dl) return '';
+  if (dl.state === 'error') return dl.refreshed ? 'Не удалось обновить ссылки. Попробуйте ещё раз.' : '';
+  if (dl.state !== 'ready' || !dl.refreshed) return '';
+  const times = dl.links.map((l) => Date.parse(l.expires_at)).filter((t) => !Number.isNaN(t));
+  if (times.length === 0) return 'Ссылки обновлены';
+  const hhmm = new Date(Math.min(...times)).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone });
+  return `Ссылки обновлены, действуют до ${hhmm}`;
+}
 
 /** The order holds a digital line (or the API did not say what kind the lines are). */
 export function hasDigitalLines(st: OrderStatus): boolean {
@@ -179,6 +207,7 @@ const safeHref = (u: string): boolean => /^https?:\/\//i.test(u);
 
 /** The links are signed for 15 minutes, so the block always offers a refresh. */
 function downloadsBlock(dl: DownloadsState): string {
+  const note = refreshFeedback(dl);
   const refresh = `<button type="button" class="button button--secondary" data-refresh-downloads>Обновить ссылки</button>`;
   let body: string;
   switch (dl.state) {
@@ -187,18 +216,18 @@ function downloadsBlock(dl: DownloadsState): string {
       body = `<p>Готовим ваши файлы. Это займёт несколько секунд.</p>`;
       break;
     case 'error':
-      body = `<p>Не удалось получить ссылки. Попробуйте ещё раз.</p>${refresh}`;
+      body = `<p role="status" data-downloads-note>${esc(note || 'Не удалось получить ссылки. Попробуйте ещё раз.')}</p>${refresh}`;
       break;
     default: {
       const items = dl.links
         .filter((l) => safeHref(l.url))
         .map((l) => {
-          const name = l.variant_title ? `${l.product_title} — ${l.variant_title}` : l.product_title;
+          const name = lineLabel(l.product_title, l.variant_title);
           return `<li><a href="${esc(l.url)}" class="link" rel="noopener" download>${esc(name)}</a></li>`;
         })
         .join('');
       body = items
-        ? `<ul class="shop-downloads__list list-unstyled" role="list">${items}</ul><p class="caption">Ссылки действуют 15 минут. Если время вышло, обновите их.</p>${refresh}`
+        ? `<ul class="shop-downloads__list list-unstyled" role="list">${items}</ul><p class="caption">Ссылки действуют 15 минут. Если время вышло, обновите их.</p>${refresh}${note ? `<p class="caption" role="status" data-downloads-note>${esc(note)}</p>` : ''}`
         : '';
     }
   }

@@ -338,8 +338,10 @@ async function refreshDownloads(): Promise<void> {
   const st = lastStatus;
   downloads = { state: 'loading' };
   paintStatus(statusView(ctxOf(state), st, downloads));
-  downloads = await loadDownloads(r.token, st);
+  const fresh = await loadDownloads(r.token, st);
   if (currentRoute().kind !== 'status') return;
+  // Say what happened next to the button: new links carry their expiry, a failure a short line.
+  downloads = fresh?.state === 'ready' ? { ...fresh, refreshed: true } : fresh?.state === 'waiting' ? fresh : { state: 'error', refreshed: true };
   paintStatus(statusView(ctxOf(state), st, downloads));
 }
 
