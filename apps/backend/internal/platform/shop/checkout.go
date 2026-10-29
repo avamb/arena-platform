@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -144,10 +146,41 @@ func normalizeCheckout(in *CheckoutInput) error {
 	return nil
 }
 
-// requireShipping refuses a cart with physical goods and no full address.
+// requireShipping refuses a cart with physical goods and no full address: a
+// street, a city, a country and a postal code that fits the country.
 func requireShipping(a Address) error {
 	if a.Address1 == "" || a.City == "" || !ValidCountry(a.Country) {
 		return invalid("shop.invalid_address", "ship.address1, ship.city and a two-letter ship.country are required")
+	}
+	return validatePostal(a.Country, a.Postal)
+}
+
+// Postal code limits. Israel moved to 7-digit codes in 2013; every other
+// country just has to give something plausible (3-12 characters, which covers
+// Ireland's Eircode, the UK, Canada and the 4-6 digit codes of the rest).
+const (
+	israelPostalDigits = 7
+	minPostalLen       = 3
+	maxShippingPostal  = 12
+)
+
+var israelPostalPattern = regexp.MustCompile(`^[0-9]{7}$`)
+
+// validatePostal checks the postal code of a shipping address. Empty is 422
+// shop.postal_required; a code that does not fit the country is 422
+// shop.invalid_postal. The caller trims the value.
+func validatePostal(country, postal string) error {
+	if postal == "" {
+		return invalid("shop.postal_required", "ship.postal is required when the order is shipped")
+	}
+	if country == "IL" {
+		if !israelPostalPattern.MatchString(postal) {
+			return invalid("shop.invalid_postal", fmt.Sprintf("ship.postal must be exactly %d digits for Israel", israelPostalDigits))
+		}
+		return nil
+	}
+	if n := utf8.RuneCountInString(postal); n < minPostalLen || n > maxShippingPostal {
+		return invalid("shop.invalid_postal", fmt.Sprintf("ship.postal must be %d-%d characters", minPostalLen, maxShippingPostal))
 	}
 	return nil
 }

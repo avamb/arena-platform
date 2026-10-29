@@ -29,7 +29,7 @@ func TestBuildShopOrderData_PhysicalOrder(t *testing.T) {
 		d.Discount != "10.00 ILS" || d.Shipping != "50.00 ILS" {
 		t.Errorf("amounts wrong: %+v", d)
 	}
-	wantAddr := []string{"Anna K", "+972500000000", "Haifa", "Herzl 1", "apt 4", "3100000"}
+	wantAddr := []string{"Anna K", "+972500000000", "Herzl 1", "apt 4", "Haifa", "3100000"}
 	if !reflect.DeepEqual(d.Address, wantAddr) || d.Pickup {
 		t.Errorf("address = %q pickup=%v", d.Address, d.Pickup)
 	}

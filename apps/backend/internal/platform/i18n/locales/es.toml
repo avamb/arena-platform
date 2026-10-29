@@ -4537,3 +4537,67 @@ other = "Una fecha vendida por plano mantiene sus plazas y categorías. Solo cam
 
 ["shop.payment.description"]
 other = "{{.Org}}, pedido n.º {{.Number}}"
+
+# --- salesnotify.shop.*: Telegram announcements of the merchandise shop ---
+["salesnotify.shop.new_order"]
+other = "🛍 <b>Nuevo pedido de la tienda</b> — {{.Org}}"
+
+["salesnotify.shop.order_number"]
+other = "🧾 Pedido n.º {{.Number}}"
+
+["salesnotify.shop.total"]
+other = "💰 Total: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.delivery_none"]
+other = "📦 Sin envío (producto digital o servicio)"
+
+["salesnotify.shop.delivery_pickup"]
+other = "🏬 Entrega: recogida en tienda"
+
+["salesnotify.shop.delivery_shipping"]
+other = "🚚 Entrega: envío con mensajero"
+
+["salesnotify.shop.courier_form"]
+other = "📦 <b>Datos para el mensajero</b>"
+
+["salesnotify.shop.map_google"]
+other = "🗺 Google Maps: {{.Url}}"
+
+["salesnotify.shop.map_waze"]
+other = "🚗 Waze: {{.Url}}"
+
+["salesnotify.shop.items"]
+other = "🛒 <b>Artículos</b>"
+
+["salesnotify.shop.items_more"]
+other = "… y {{.Count}} línea(s) más"
+
+["salesnotify.shop.item_line"]
+other = "{{.Qty}} × {{.Name}} — {{.Price}} cada uno"
+
+["salesnotify.shop.shipping"]
+other = "🚚 Envío: {{.Amount}}"
+
+["salesnotify.shop.discount"]
+other = "🏷 Descuento: -{{.Amount}}"
+
+["salesnotify.shop.note"]
+other = "📝 Nota del comprador: {{.Note}}"
+
+["salesnotify.shop.refund_title"]
+other = "↩️ <b>Reembolso de la tienda</b> — {{.Org}}"
+
+["salesnotify.shop.refunded"]
+other = "💸 Reembolsado: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.refunded_so_far"]
+other = "💸 Reembolsado hasta ahora: {{.Amount}} de {{.Total}}"
+
+["salesnotify.shop.review_title"]
+other = "⚠️ <b>Un pedido de la tienda necesita tu atención</b> — {{.Org}}"
+
+["salesnotify.shop.review_paid"]
+other = "💰 Pagado: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_body"]
+other = "El pago del pedido {{.Number}} llegó cuando la reserva ya había terminado y el producto ya no estaba libre. Revisa el pedido en el centro de eventos."

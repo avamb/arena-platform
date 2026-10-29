@@ -92,14 +92,14 @@ func TestPublicStatus(t *testing.T) {
 func TestCourierText(t *testing.T) {
 	o := gen.ShopOrderRow{
 		BuyerName: "Anna K", BuyerPhone: "+972500000000", ShipCity: "Haifa",
-		ShipAddress1: "Herzl 1", ShipAddress2: "apt 4", ShipPostal: "3100000",
+		ShipAddress1: "Herzl 1", ShipAddress2: "apt 4", ShipPostal: "3100000", ShipCountry: "IL",
 		Total: 23000, Currency: "ILS", DeliveryNote: "call before",
 	}
 	items := []gen.ShopOrderItemRow{
 		{ProductTitle: "Rosé", VariantTitle: "Default Title", Qty: 2},
 		{ProductTitle: "Merlot", VariantTitle: "Magnum", Qty: 1},
 	}
-	want := "Anna K\n+972500000000\nHaifa\nHerzl 1, apt 4\n3100000\nRosé x 2\nMerlot (Magnum) x 1\n230.00 ILS\ncall before"
+	want := "Anna K\n+972500000000\nHerzl 1, apt 4\nHaifa\n3100000\nIsrael\nRosé x 2\nMerlot (Magnum) x 1\n230.00 ILS\ncall before"
 	if got := CourierText(o, items); got != want {
 		t.Errorf("CourierText =\n%s\nwant\n%s", got, want)
 	}
@@ -131,7 +131,7 @@ func validCheckout() CheckoutInput {
 	return CheckoutInput{
 		Items:   []CheckoutItem{{VariantID: v, Qty: 1}, {VariantID: v, Qty: 2}},
 		Buyer:   Buyer{Name: " Anna ", Email: "anna@example.test"},
-		Ship:    Address{Address1: "Herzl 1", City: "Haifa", Country: "il"},
+		Ship:    Address{Address1: "Herzl 1", City: "Haifa", Postal: "3100000", Country: "il"},
 		Locale:  "RU-ru",
 		HoldFor: time.Minute,
 	}
@@ -287,7 +287,7 @@ func TestRefundStatus(t *testing.T) {
 }
 
 func TestRequireShipping(t *testing.T) {
-	if err := requireShipping(Address{Address1: "Herzl 1", City: "Haifa", Country: "IL"}); err != nil {
+	if err := requireShipping(Address{Address1: "Herzl 1", City: "Haifa", Postal: "3100000", Country: "IL"}); err != nil {
 		t.Fatalf("full address refused: %v", err)
 	}
 	for name, a := range map[string]Address{
@@ -406,5 +406,52 @@ func TestSanitizeBody_PageKeepsLinksToOtherPagesOfTheStorefront(t *testing.T) {
 	}
 	if again, _ := SanitizeBody(out, PageBodyProfile); again != out {
 		t.Errorf("sanitizing twice changed it:\n%s\n%s", out, again)
+	}
+}
+
+func TestRequireShipping_Postal(t *testing.T) {
+	ship := func(country, postal string) Address {
+		return Address{Address1: "Herzl 1", City: "Haifa", Postal: postal, Country: country}
+	}
+	cases := []struct {
+		name string
+		a    Address
+		code string // "" = accepted
+	}{
+		{"IL 7 digits", ship("IL", "3100000"), ""},
+		{"IL 6 digits", ship("IL", "310000"), "shop.invalid_postal"},
+		{"IL 8 digits", ship("IL", "31000000"), "shop.invalid_postal"},
+		{"IL letters", ship("IL", "31000AB"), "shop.invalid_postal"},
+		{"IL with a space", ship("IL", "310 0000"), "shop.invalid_postal"},
+		{"IL empty", ship("IL", ""), "shop.postal_required"},
+		{"ES 5 digits", ship("ES", "28013"), ""},
+		{"4 characters outside IL", ship("CZ", "1000"), ""},
+		{"UK style", ship("GB", "SW1A 1AA"), ""},
+		{"too short outside IL", ship("ES", "12"), "shop.invalid_postal"},
+		{"too long outside IL", ship("ES", "1234567890123"), "shop.invalid_postal"},
+		{"empty outside IL", ship("ES", ""), "shop.postal_required"},
+	}
+	for _, c := range cases {
+		err := requireShipping(c.a)
+		if c.code == "" {
+			if err != nil {
+				t.Errorf("%s: err = %v, want accepted", c.name, err)
+			}
+			continue
+		}
+		var se *Error
+		if !errors.As(err, &se) || se.Status != 422 || se.Code != c.code {
+			t.Errorf("%s: err = %v, want 422 %s", c.name, err, c.code)
+		}
+	}
+}
+
+// A cart with no physical product takes no address, so no postal code: the
+// postal rule lives in requireShipping and normalizeCheckout leaves it alone.
+func TestNormalizeCheckout_EmptyPostalIsNotRefusedHere(t *testing.T) {
+	in := validCheckout()
+	in.Ship.Postal = ""
+	if err := normalizeCheckout(&in); err != nil {
+		t.Fatalf("normalizeCheckout refused an empty postal: %v (only a shipped order needs one)", err)
 	}
 }

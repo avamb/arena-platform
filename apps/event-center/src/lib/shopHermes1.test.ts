@@ -19,6 +19,7 @@ import {
   isDefaultTitle,
   isSingleVersion,
   itemLabel,
+  mapLinks,
   rowFromVariant,
   settingsDraft,
   shopZoneFor,
@@ -192,6 +193,11 @@ describe("the courier text (E-06, E-11)", () => {
     expect(lines).toContain("Haifa");
     expect(lines).toContain("Herzl 1, apt 4");
     expect(lines).toContain("3300000");
+    expect(lines).toContain("Израиль");
+    // Name, phone, street, city, postal code, country: street before city.
+    const at = ["Dana Levi", "+972 50 123 4567", "Herzl 1, apt 4", "Haifa", "3300000", "Израиль"].map((l) => lines.indexOf(l));
+    expect(at).toEqual([...at].sort((x, y) => x - y));
+    expect(at.every((i) => i > 0)).toBe(true);
     expect(lines).toContain("Red wine × 2");
     expect(lines).toContain("Gift box (Large) × 1");
   });
@@ -202,10 +208,23 @@ describe("the courier text (E-06, E-11)", () => {
     expect(courierText(order, { locale: "ru", shopCountry: "IL", labels })).not.toContain("ILS");
   });
 
-  it("names a foreign country in words and leaves the shop's own out", () => {
+  it("always names the country in words, the shop's own for an order that has none", () => {
     const abroad = { ...(order as object), ship: { address1: "Calle 1", city: "Madrid", country: "ES" } } as never;
-    expect(courierText(abroad, { locale: "ru", shopCountry: "IL", labels })).toContain("Испания");
-    expect(courierText(order, { locale: "ru", shopCountry: "IL", labels })).not.toContain("Израиль");
+    expect(courierText(abroad, { locale: "ru", shopCountry: "IL", labels }).split("\n")).toContain("Испания");
+    expect(courierText(order, { locale: "ru", shopCountry: "IL", labels }).split("\n")).toContain("Израиль");
+    const old = { ...(order as object), ship: { address1: "Herzl 1", city: "Haifa" } } as never;
+    expect(courierText(old, { locale: "ru", shopCountry: "IL", labels }).split("\n")).toContain("Израиль");
+  });
+
+  it("adds Google Maps and Waze links built from the address without the entrance line", () => {
+    const text = courierText(order, { locale: "ru", shopCountry: "IL", labels });
+    const q = encodeURIComponent("Herzl 1, Haifa, 3300000, Israel");
+    expect(text).toContain(`🗺 Google Maps: https://www.google.com/maps/search/?api=1&query=${q}`);
+    expect(text).toContain(`🚗 Waze: https://waze.com/ul?q=${q}&navigate=yes`);
+    expect(mapLinks("ул. Тестовая 1").waze).toContain(encodeURIComponent("ул. Тестовая 1"));
+    // Nothing to send a courier to: no links.
+    const none = { ...(order as object), delivery_kind: "none" } as never;
+    expect(courierText(none, { locale: "ru", shopCountry: "IL", labels })).not.toContain("Waze");
   });
 
   it("leaves out what is empty: no comment, no address for a pickup", () => {

@@ -37,18 +37,20 @@ const maxShopItemLines = 30
 // ShopOrder is one shop order as the announcement shows it.
 type ShopOrder struct {
 	OrgName string
-	Order   gen.ShopOrderRow
-	Items   []gen.ShopOrderItemRow
+	// Locale is the organization's language (organizations.default_locale);
+	// the texts of the announcement and the country name follow it, "" is en.
+	Locale string
+	Order  gen.ShopOrderRow
+	Items  []gen.ShopOrderItemRow
 }
 
 func shopMoney(amount int64, currency string) string {
 	return esc(money(amount, currency))
 }
 
-// writeShopHeader renders the lines both messages start with: the order and
-// the buyer.
-func writeShopHeader(b *strings.Builder, o gen.ShopOrderRow) {
-	fmt.Fprintf(b, "🧾 Order #%d\n", o.Number)
+// writeShopHeader renders the line both messages start with: the order.
+func writeShopHeader(b *strings.Builder, loc string, o gen.ShopOrderRow) {
+	fmt.Fprintf(b, "%s\n", say(loc, "salesnotify.shop.order_number", map[string]any{"Number": o.Number}))
 }
 
 // writeShopBuyer renders the buyer's name, phone and e-mail.
@@ -64,46 +66,69 @@ func writeShopBuyer(b *strings.Builder, o gen.ShopOrderRow) {
 	}
 }
 
-// FormatShopOrderPaid renders a paid shop order for the logistics chat.
+// writeCourierForm prints the courier form field by field in the courier
+// form's order, then the two map links built from the full address. The
+// country is named in the message's language.
+func writeCourierForm(b *strings.Builder, loc string, o gen.ShopOrderRow) {
+	c := shop.CourierFieldsOfIn(o, loc)
+	lines := c.Lines()
+	if len(lines) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "\n%s\n", say(loc, "salesnotify.shop.courier_form", nil))
+	for _, l := range lines {
+		fmt.Fprintf(b, "%s\n", esc(l))
+	}
+	if o.DeliveryKind == "pickup" || !c.HasAddress() {
+		return
+	}
+	q := c.MapQuery()
+	fmt.Fprintf(b, "\n%s\n", say(loc, "salesnotify.shop.map_google", map[string]any{"Url": esc(shop.GoogleMapsURL(q))}))
+	fmt.Fprintf(b, "%s\n", say(loc, "salesnotify.shop.map_waze", map[string]any{"Url": esc(shop.WazeURL(q))}))
+}
+
+// FormatShopOrderPaid renders a paid shop order for the logistics chat, in
+// the organization's language (s.Locale).
 func FormatShopOrderPaid(s ShopOrder) string {
 	o := s.Order
+	loc := s.Locale
 	var b strings.Builder
-	fmt.Fprintf(&b, "🛍 <b>New shop order</b> — %s\n\n", esc(s.OrgName))
-	writeShopHeader(&b, o)
-	fmt.Fprintf(&b, "💰 Total: <b>%s</b>\n", shopMoney(o.Total, o.Currency))
+	fmt.Fprintf(&b, "%s\n\n", say(loc, "salesnotify.shop.new_order", map[string]any{"Org": esc(s.OrgName)}))
+	writeShopHeader(&b, loc, o)
+	fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.total", map[string]any{"Amount": shopMoney(o.Total, o.Currency)}))
 	writeShopBuyer(&b, o)
-	if o.DeliveryKind == "pickup" {
-		b.WriteString("🏬 Delivery: pickup\n")
-	} else {
-		b.WriteString("🚚 Delivery: shipping\n")
-	}
-
-	// The courier form, field by field and in the courier form's order.
-	if lines := shop.CourierFieldsOf(o).Lines(); len(lines) > 0 {
-		b.WriteString("\n📦 <b>Courier form</b>\n")
-		for _, l := range lines {
-			fmt.Fprintf(&b, "%s\n", esc(l))
-		}
+	switch o.DeliveryKind {
+	case "none":
+		// A file or a service: nothing travels, so no courier form either.
+		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.delivery_none", nil))
+	case "pickup":
+		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.delivery_pickup", nil))
+		writeCourierForm(&b, loc, o)
+	default:
+		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.delivery_shipping", nil))
+		writeCourierForm(&b, loc, o)
 	}
 
 	if len(s.Items) > 0 {
-		b.WriteString("\n🛒 <b>Items</b>\n")
+		fmt.Fprintf(&b, "\n%s\n", say(loc, "salesnotify.shop.items", nil))
 	}
 	for i, it := range s.Items {
 		if i == maxShopItemLines {
-			fmt.Fprintf(&b, "… and %d more line(s)\n", len(s.Items)-maxShopItemLines)
+			fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.items_more", map[string]any{"Count": len(s.Items) - maxShopItemLines}))
 			break
 		}
-		fmt.Fprintf(&b, "%d × %s — %s each\n", it.Qty, esc(shopItemName(it)), shopMoney(it.UnitPriceMinor, o.Currency))
+		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.item_line", map[string]any{
+			"Qty": it.Qty, "Name": esc(shopItemName(it)), "Price": shopMoney(it.UnitPriceMinor, o.Currency),
+		}))
 	}
 	if o.ShippingFee > 0 {
-		fmt.Fprintf(&b, "🚚 Shipping: %s\n", shopMoney(o.ShippingFee, o.Currency))
+		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.shipping", map[string]any{"Amount": shopMoney(o.ShippingFee, o.Currency)}))
 	}
 	if o.Discount > 0 {
-		fmt.Fprintf(&b, "🏷 Discount: -%s\n", shopMoney(o.Discount, o.Currency))
+		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.discount", map[string]any{"Amount": shopMoney(o.Discount, o.Currency)}))
 	}
 	if note := strings.TrimSpace(o.DeliveryNote); note != "" {
-		fmt.Fprintf(&b, "\n📝 Buyer's note: %s\n", esc(clip(note, 600)))
+		fmt.Fprintf(&b, "\n%s\n", say(loc, "salesnotify.shop.note", map[string]any{"Note": esc(clip(note, 600))}))
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
@@ -112,13 +137,16 @@ func FormatShopOrderPaid(s ShopOrder) string {
 // is the amount of this refund, 0 when the event did not say.
 func FormatShopOrderRefund(s ShopOrder, refundedNow int64) string {
 	o := s.Order
+	loc := s.Locale
 	var b strings.Builder
-	fmt.Fprintf(&b, "↩️ <b>Shop refund</b> — %s\n\n", esc(s.OrgName))
-	writeShopHeader(&b, o)
+	fmt.Fprintf(&b, "%s\n\n", say(loc, "salesnotify.shop.refund_title", map[string]any{"Org": esc(s.OrgName)}))
+	writeShopHeader(&b, loc, o)
 	if refundedNow > 0 {
-		fmt.Fprintf(&b, "💸 Refunded: <b>%s</b>\n", shopMoney(refundedNow, o.Currency))
+		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.refunded", map[string]any{"Amount": shopMoney(refundedNow, o.Currency)}))
 	}
-	fmt.Fprintf(&b, "💸 Refunded so far: %s of %s\n", shopMoney(o.RefundedMinor, o.Currency), shopMoney(o.Total, o.Currency))
+	fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.refunded_so_far", map[string]any{
+		"Amount": shopMoney(o.RefundedMinor, o.Currency), "Total": shopMoney(o.Total, o.Currency),
+	}))
 	writeShopBuyer(&b, o)
 	return strings.TrimRight(b.String(), "\n")
 }
@@ -129,12 +157,13 @@ func FormatShopOrderRefund(s ShopOrder, refundedNow int64) string {
 // gets their own ops alert from the watchdog, not this one.
 func FormatShopOrderReview(s ShopOrder) string {
 	o := s.Order
+	loc := s.Locale
 	var b strings.Builder
-	fmt.Fprintf(&b, "⚠️ <b>Shop order needs your attention</b> — %s\n\n", esc(s.OrgName))
-	writeShopHeader(&b, o)
-	fmt.Fprintf(&b, "💰 Paid: <b>%s</b>\n", shopMoney(o.Total, o.Currency))
+	fmt.Fprintf(&b, "%s\n\n", say(loc, "salesnotify.shop.review_title", map[string]any{"Org": esc(s.OrgName)}))
+	writeShopHeader(&b, loc, o)
+	fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.review_paid", map[string]any{"Amount": shopMoney(o.Total, o.Currency)}))
 	writeShopBuyer(&b, o)
-	fmt.Fprintf(&b, "\nPayment for order %d arrived after the hold ended, the goods were no longer free. Check the order in the event center.", o.Number)
+	fmt.Fprintf(&b, "\n%s", say(loc, "salesnotify.shop.review_body", map[string]any{"Number": o.Number}))
 	return b.String()
 }
 
@@ -148,6 +177,9 @@ func clip(s string, n int) string {
 }
 
 // composeShop loads the order a shop event names and renders the message.
+// None of the shop messages carries the events-bot footer: the logistics chat
+// is a courier's, not an organizer's, and "create your events from Telegram"
+// is noise there. Ticket sales keep it (salesnotify.go).
 func (d *Dispatcher) composeShop(ctx context.Context, ev outbox.Event) (key string, trigger Trigger, text, orgID string, err error) {
 	id := payloadString(ev.Payload, "order_id", ev.AggregateID)
 	orgID = payloadString(ev.Payload, "org_id", "")
@@ -156,10 +188,10 @@ func (d *Dispatcher) composeShop(ctx context.Context, ev outbox.Event) (key stri
 		return "", 0, "", "", err
 	}
 	if ev.EventType == EventShopOrderManualReview {
-		return "shop_review:" + id, TriggerShopOrderReview, d.withFooter(FormatShopOrderReview(order)), orgID, nil
+		return "shop_review:" + id, TriggerShopOrderReview, FormatShopOrderReview(order), orgID, nil
 	}
 	if ev.EventType == EventShopOrderPaid {
-		return "shop_paid:" + id, TriggerShopOrderPaid, d.withFooter(FormatShopOrderPaid(order)), orgID, nil
+		return "shop_paid:" + id, TriggerShopOrderPaid, FormatShopOrderPaid(order), orgID, nil
 	}
 	// The amount "refunded so far" is part of the key: two refunds of one
 	// order are two announcements, a retry of one is not.
@@ -169,7 +201,7 @@ func (d *Dispatcher) composeShop(ctx context.Context, ev outbox.Event) (key stri
 	}
 	now, _ := payloadInt(ev.Payload, "refunded_now")
 	key = fmt.Sprintf("shop_refund:%s:%d", id, so)
-	return key, TriggerShopOrderRefunded, d.withFooter(FormatShopOrderRefund(order, now)), orgID, nil
+	return key, TriggerShopOrderRefunded, FormatShopOrderRefund(order, now), orgID, nil
 }
 
 // ShopOrder implements Store for the shop. An order of another organization
@@ -192,9 +224,9 @@ func (s *PGStore) ShopOrder(ctx context.Context, orgID, orderID string) (ShopOrd
 	if err != nil {
 		return ShopOrder{}, err
 	}
-	var name string
-	if err := s.pool.QueryRow(ctx, `SELECT name FROM organizations WHERE id = $1`, org).Scan(&name); err != nil {
+	var name, locale string
+	if err := s.pool.QueryRow(ctx, `SELECT name, COALESCE(default_locale, '') FROM organizations WHERE id = $1`, org).Scan(&name, &locale); err != nil {
 		return ShopOrder{}, err
 	}
-	return ShopOrder{OrgName: name, Order: row, Items: items}, nil
+	return ShopOrder{OrgName: name, Locale: locale, Order: row, Items: items}, nil
 }

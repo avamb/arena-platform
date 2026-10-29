@@ -209,8 +209,28 @@ describe('Hermes storefront fixes', () => {
     const doc = dom(checkoutView(ctx(cart), resolveLines(cart, shop.products), { values: { ...EMPTY_FORM, note: 'позвонить за час' }, errors: {} }));
     expect((doc.querySelector('textarea#Checkout-note') as HTMLTextAreaElement).value).toBe('позвонить за час');
     expect(doc.querySelector('textarea#Checkout-note')?.getAttribute('name')).toBe('note');
-    expect(doc.querySelector('#Checkout-address2')?.getAttribute('placeholder')).toBe('Подъезд, этаж, комментарий');
+    expect(doc.querySelector('#Checkout-address2')?.getAttribute('placeholder')).toBe('Подъезд, этаж, домофон');
     expect(doc.querySelector('.shop-checkout')?.classList.contains('page-width')).toBe(true);
+  });
+
+  it('asks a required postal code with the Israeli hint and shows the shop country read-only', () => {
+    const cart = [{ variant_id: shop.products[1].variants[0].id, qty: 1 }];
+    const lines = resolveLines(cart, shop.products);
+    const doc = dom(checkoutView(ctx(cart), lines, { values: { ...EMPTY_FORM }, errors: {} }));
+    const postal = doc.querySelector('#Checkout-postal') as HTMLInputElement;
+    expect(postal.getAttribute('inputmode')).toBe('numeric');
+    expect(postal.getAttribute('aria-describedby')).toBe('Checkout-postal-hint');
+    expect(doc.querySelector('label[for="Checkout-postal"]')?.textContent).toContain('*');
+    expect(doc.querySelector('#Checkout-postal-hint')?.textContent).toBe('7 цифр, как на письмах Почты Израиля');
+    const country = doc.querySelector('#Checkout-country') as HTMLInputElement;
+    expect(country.hasAttribute('readonly')).toBe(true);
+    expect(country.hasAttribute('name')).toBe(false);
+    expect(country.value).toBe('Израиль');
+    const order = Array.from(doc.querySelectorAll('#checkout-form input[id^="Checkout-"]')).map((i) => i.id);
+    expect(order.indexOf('Checkout-country')).toBe(order.indexOf('Checkout-city') + 1);
+    const bad = dom(checkoutView(ctx(cart), lines, { values: { ...EMPTY_FORM, postal: '123' }, errors: { postal: 'Проверьте индекс: 7 цифр' } }));
+    expect(bad.querySelector('#Checkout-postal')?.getAttribute('aria-describedby')).toBe('Checkout-postal-error Checkout-postal-hint');
+    expect(bad.querySelector('#Checkout-postal-error')?.textContent).toContain('Проверьте индекс: 7 цифр');
   });
 
   it('H-03: the cart plus button at the limit is disabled with a hint, and a cut quantity gets its note', () => {

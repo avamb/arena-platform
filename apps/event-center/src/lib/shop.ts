@@ -775,10 +775,19 @@ export interface CourierLabels {
   comment: (note: string) => string;
 }
 
+/** A map search for an address (street, city, postal code, country; entrance and floor stay out of it). */
+export function mapLinks(query: string): { google: string; waze: string } {
+  const q = encodeURIComponent(query);
+  // TODO geocode: with coordinates on the order, link to "...&query=<lat>,<lng>" and "ul?ll=<lat>,<lng>&navigate=yes".
+  return { google: `https://www.google.com/maps/search/?api=1&query=${q}`, waze: `https://waze.com/ul?q=${q}&navigate=yes` };
+}
+
 /**
- * The delivery details for a courier form, one per line: the order number, then name, phone, city,
- * address, postal code, the country when it is not the shop's own, the goods, the total, and the buyer's
- * comment last. Empty parts are left out; the total carries the currency symbol ("740,00 ₪").
+ * The delivery details for a courier form, one per line: the order number, then name, phone, street
+ * (with the entrance and floor), city, postal code and the country, the Google Maps and Waze links of
+ * that address, the goods, the total, and the buyer's comment last. The street comes before the city, as on
+ * an envelope. Empty parts are left out; the total carries the currency symbol ("740,00 ₪"). The country
+ * is always named; an old order without one gets the shop's own (`shopCountry`).
  */
 export function courierText(
   order: Pick<ShopOrder, "buyer" | "ship" | "items" | "total" | "currency" | "delivery_note" | "delivery_kind">,
@@ -794,13 +803,19 @@ export function courierText(
   add(a.name !== undefined && a.name.trim() !== "" ? a.name : order.buyer.name);
   add(order.buyer.phone);
   if (hasAddress) {
-    add(a.city);
-    const street = [a.address1, a.address2].map((part) => (part ?? "").trim()).filter((part) => part !== "").join(", ");
+    const clean = (v: string | null | undefined) => (v ?? "").trim();
+    const street = [a.address1, a.address2].map(clean).filter((part) => part !== "").join(", ");
     add(street);
+    add(a.city);
     add(a.postal);
-    const own = (opts.shopCountry ?? "").trim().toUpperCase();
-    const there = (a.country ?? "").trim().toUpperCase();
-    if (there !== "" && there !== own) add(regionName(there, opts.locale));
+    const code = clean(a.country).toUpperCase() || clean(opts.shopCountry).toUpperCase();
+    add(regionName(code, opts.locale));
+    if (clean(a.address1) !== "" || clean(a.city) !== "") {
+      // The map query leaves the entrance and floor out: they only confuse a geocoder.
+      const query = [a.address1, a.city, a.postal, regionName(code, "en")].map(clean).filter((part) => part !== "").join(", ");
+      const links = mapLinks(query);
+      lines.push(`🗺 Google Maps: ${links.google}`, `🚗 Waze: ${links.waze}`);
+    }
   }
   for (const it of order.items) add(`${itemLabel(it)} × ${it.qty}`);
   add(formatMoneySymbol(order.total, order.currency, opts.locale));

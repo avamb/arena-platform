@@ -162,3 +162,67 @@ other = "סרקו וקנו כרטיסים"
 
 ["shop.payment.description"]
 other = "{{.Org}}, הזמנה מס׳ {{.Number}}"
+
+# --- salesnotify.shop.*: Telegram announcements of the merchandise shop ---
+["salesnotify.shop.new_order"]
+other = "🛍 <b>הזמנה חדשה בחנות</b> — {{.Org}}"
+
+["salesnotify.shop.order_number"]
+other = "🧾 הזמנה מס' {{.Number}}"
+
+["salesnotify.shop.total"]
+other = "💰 סה״כ: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.delivery_none"]
+other = "📦 ללא משלוח (מוצר דיגיטלי או שירות)"
+
+["salesnotify.shop.delivery_pickup"]
+other = "🏬 מסירה: איסוף עצמי"
+
+["salesnotify.shop.delivery_shipping"]
+other = "🚚 מסירה: משלוח בשליח"
+
+["salesnotify.shop.courier_form"]
+other = "📦 <b>פרטים לשליח</b>"
+
+["salesnotify.shop.map_google"]
+other = "🗺 Google Maps: {{.Url}}"
+
+["salesnotify.shop.map_waze"]
+other = "🚗 Waze: {{.Url}}"
+
+["salesnotify.shop.items"]
+other = "🛒 <b>פריטים</b>"
+
+["salesnotify.shop.items_more"]
+other = "… ועוד {{.Count}} שורות"
+
+["salesnotify.shop.item_line"]
+other = "{{.Qty}} × {{.Name}} — {{.Price}} ליחידה"
+
+["salesnotify.shop.shipping"]
+other = "🚚 משלוח: {{.Amount}}"
+
+["salesnotify.shop.discount"]
+other = "🏷 הנחה: -{{.Amount}}"
+
+["salesnotify.shop.note"]
+other = "📝 הערת הקונה: {{.Note}}"
+
+["salesnotify.shop.refund_title"]
+other = "↩️ <b>החזר כספי בחנות</b> — {{.Org}}"
+
+["salesnotify.shop.refunded"]
+other = "💸 הוחזר: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.refunded_so_far"]
+other = "💸 הוחזר עד כה: {{.Amount}} מתוך {{.Total}}"
+
+["salesnotify.shop.review_title"]
+other = "⚠️ <b>הזמנה בחנות דורשת את תשומת לבך</b> — {{.Org}}"
+
+["salesnotify.shop.review_paid"]
+other = "💰 שולם: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_body"]
+other = "התשלום על הזמנה {{.Number}} הגיע אחרי שהשמירה על המוצרים הסתיימה והמוצרים כבר לא היו פנויים. בדקו את ההזמנה במרכז האירועים."

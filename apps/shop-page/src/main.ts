@@ -40,6 +40,7 @@ import {
   setQty,
   wantedQty,
   validateCheckoutForm,
+  validatePostal,
   type CartItem,
   type CheckoutForm,
 } from './lib/cart';
@@ -724,7 +725,7 @@ async function submitCheckout(form: HTMLFormElement): Promise<void> {
   const lines = resolveLines(s.cart, s.shop.products);
   // A cart without a physical product takes no address and no delivery fee.
   const ships = needsShipping(lines);
-  const errors = validateCheckoutForm(values, s.shop.settings.age_gate_min_age, ships);
+  const errors = validateCheckoutForm(values, s.shop.settings.age_gate_min_age, ships, s.shop.settings.country_iso2 || 'IL');
   checkoutState = { values, errors };
   if (Object.keys(errors).length > 0) {
     await rerender();
@@ -772,6 +773,13 @@ async function submitCheckout(form: HTMLFormElement): Promise<void> {
         } catch {
           /* keep the old catalog */
         }
+      } else if (e.code === 'shop.postal_required' || e.code === 'shop.invalid_postal') {
+        // The server's own verdict on the postal code: show it under the field, in Russian.
+        const country = s.shop.settings.country_iso2 || 'IL';
+        checkoutState = { values, errors: { postal: validatePostal(values.postal, country) ?? 'Проверьте индекс: 7 цифр' } };
+        await rerender();
+        (document.querySelector('#Checkout-postal') as HTMLElement | null)?.focus();
+        return;
       } else if (e.status === 422 || e.status === 400) {
         message = 'Проверьте введённые данные: ' + e.message;
       } else if (e.status === 503) {

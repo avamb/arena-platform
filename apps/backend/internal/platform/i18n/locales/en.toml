@@ -4685,3 +4685,67 @@ other = "A date sold by a seating plan keeps its places and categories. Only the
 
 ["shop.payment.description"]
 other = "{{.Org}}, order {{.Number}}"
+
+# --- salesnotify.shop.*: Telegram announcements of the merchandise shop ---
+["salesnotify.shop.new_order"]
+other = "🛍 <b>New shop order</b> — {{.Org}}"
+
+["salesnotify.shop.order_number"]
+other = "🧾 Order #{{.Number}}"
+
+["salesnotify.shop.total"]
+other = "💰 Total: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.delivery_none"]
+other = "📦 No delivery (digital / service)"
+
+["salesnotify.shop.delivery_pickup"]
+other = "🏬 Delivery: pickup"
+
+["salesnotify.shop.delivery_shipping"]
+other = "🚚 Delivery: shipping"
+
+["salesnotify.shop.courier_form"]
+other = "📦 <b>Courier form</b>"
+
+["salesnotify.shop.map_google"]
+other = "🗺 Google Maps: {{.Url}}"
+
+["salesnotify.shop.map_waze"]
+other = "🚗 Waze: {{.Url}}"
+
+["salesnotify.shop.items"]
+other = "🛒 <b>Items</b>"
+
+["salesnotify.shop.items_more"]
+other = "… and {{.Count}} more line(s)"
+
+["salesnotify.shop.item_line"]
+other = "{{.Qty}} × {{.Name}} — {{.Price}} each"
+
+["salesnotify.shop.shipping"]
+other = "🚚 Shipping: {{.Amount}}"
+
+["salesnotify.shop.discount"]
+other = "🏷 Discount: -{{.Amount}}"
+
+["salesnotify.shop.note"]
+other = "📝 Buyer's note: {{.Note}}"
+
+["salesnotify.shop.refund_title"]
+other = "↩️ <b>Shop refund</b> — {{.Org}}"
+
+["salesnotify.shop.refunded"]
+other = "💸 Refunded: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.refunded_so_far"]
+other = "💸 Refunded so far: {{.Amount}} of {{.Total}}"
+
+["salesnotify.shop.review_title"]
+other = "⚠️ <b>Shop order needs your attention</b> — {{.Org}}"
+
+["salesnotify.shop.review_paid"]
+other = "💰 Paid: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_body"]
+other = "Payment for order {{.Number}} arrived after the hold ended, the goods were no longer free. Check the order in the event center."

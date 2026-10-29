@@ -16727,7 +16727,7 @@ type ShopAddress struct {
 	// Name Recipient; empty means the buyer.
 	Name *string `json:"name,omitempty"`
 
-	// Postal Postal code.
+	// Postal Postal code. Required when the order is shipped (422 `shop.postal_required` when empty). For `country` IL it must be exactly 7 digits, any other country takes 3-12 characters (422 `shop.invalid_postal`).
 	Postal *string `json:"postal,omitempty"`
 }
 
@@ -16778,7 +16778,7 @@ type ShopCheckoutRequest struct {
 	// ReturnUrl Storefront page the provider sends the buyer back to (an allowed origin), with `checkout_token`.
 	ReturnUrl *string `json:"return_url,omitempty"`
 
-	// Ship Where the goods go. Required when the cart holds a physical product (422 `shop.invalid_address` without it); left out for a cart of digital products and services only.
+	// Ship Where the goods go. Required when the cart holds a physical product (422 `shop.invalid_address` without a street, city and country, `shop.postal_required` or `shop.invalid_postal` for the postal code); left out for a cart of digital products and services only.
 	Ship *ShopAddress `json:"ship,omitempty"`
 }
 

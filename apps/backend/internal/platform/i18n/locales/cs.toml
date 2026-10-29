@@ -162,3 +162,67 @@ other = "Naskenujte a kupte si vstupenky"
 
 ["shop.payment.description"]
 other = "{{.Org}}, objednávka č. {{.Number}}"
+
+# --- salesnotify.shop.*: Telegram announcements of the merchandise shop ---
+["salesnotify.shop.new_order"]
+other = "🛍 <b>Nová objednávka v obchodě</b> — {{.Org}}"
+
+["salesnotify.shop.order_number"]
+other = "🧾 Objednávka č. {{.Number}}"
+
+["salesnotify.shop.total"]
+other = "💰 Celkem: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.delivery_none"]
+other = "📦 Bez doručení (digitální zboží nebo služba)"
+
+["salesnotify.shop.delivery_pickup"]
+other = "🏬 Doručení: osobní odběr"
+
+["salesnotify.shop.delivery_shipping"]
+other = "🚚 Doručení: kurýrem"
+
+["salesnotify.shop.courier_form"]
+other = "📦 <b>Údaje pro kurýra</b>"
+
+["salesnotify.shop.map_google"]
+other = "🗺 Mapy Google: {{.Url}}"
+
+["salesnotify.shop.map_waze"]
+other = "🚗 Waze: {{.Url}}"
+
+["salesnotify.shop.items"]
+other = "🛒 <b>Zboží</b>"
+
+["salesnotify.shop.items_more"]
+other = "… a ještě {{.Count}} řádků"
+
+["salesnotify.shop.item_line"]
+other = "{{.Qty}} × {{.Name}} — {{.Price}} za kus"
+
+["salesnotify.shop.shipping"]
+other = "🚚 Doprava: {{.Amount}}"
+
+["salesnotify.shop.discount"]
+other = "🏷 Sleva: -{{.Amount}}"
+
+["salesnotify.shop.note"]
+other = "📝 Poznámka kupujícího: {{.Note}}"
+
+["salesnotify.shop.refund_title"]
+other = "↩️ <b>Vrácení peněz v obchodě</b> — {{.Org}}"
+
+["salesnotify.shop.refunded"]
+other = "💸 Vráceno: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.refunded_so_far"]
+other = "💸 Vráceno celkem: {{.Amount}} z {{.Total}}"
+
+["salesnotify.shop.review_title"]
+other = "⚠️ <b>Objednávka v obchodě vyžaduje pozornost</b> — {{.Org}}"
+
+["salesnotify.shop.review_paid"]
+other = "💰 Zaplaceno: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_body"]
+other = "Platba za objednávku {{.Number}} dorazila po skončení rezervace a zboží už nebylo volné. Zkontrolujte objednávku v event centru."
