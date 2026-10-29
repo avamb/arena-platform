@@ -193,15 +193,16 @@ func (h *Handler) toPublicProduct(ctx context.Context, p shop.ProductView) publi
 
 // pageJSON is a static storefront page.
 type pageJSON struct {
-	Slug      string    `json:"slug"`
-	Title     string    `json:"title"`
-	BodyHTML  string    `json:"body_html"`
-	Position  int32     `json:"position"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Slug       string    `json:"slug"`
+	LegacySlug *string   `json:"legacy_slug"`
+	Title      string    `json:"title"`
+	BodyHTML   string    `json:"body_html"`
+	Position   int32     `json:"position"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 func toPageJSON(p gen.ShopPageRow) pageJSON {
-	return pageJSON{Slug: p.Slug, Title: p.Title, BodyHTML: p.BodyHTML, Position: p.Position, UpdatedAt: p.UpdatedAt}
+	return pageJSON{Slug: p.Slug, LegacySlug: p.LegacySlug, Title: p.Title, BodyHTML: p.BodyHTML, Position: p.Position, UpdatedAt: p.UpdatedAt}
 }
 
 // orderItemJSON is one order line.

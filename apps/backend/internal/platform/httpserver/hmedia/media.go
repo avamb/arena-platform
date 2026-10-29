@@ -329,6 +329,7 @@ func (h *Handler) DeleteMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 // DownloadMedia serves GET /v1/media-files/{id} (no auth — signature is the credential).
+// The optional w query parameter asks for a resized copy of a JPEG or PNG.
 func (h *Handler) DownloadMedia(w http.ResponseWriter, r *http.Request) {
 	if h.media == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -375,6 +376,31 @@ func (h *Handler) DownloadMedia(w http.ResponseWriter, r *http.Request) {
 			"media.get_failed", "failed to fetch media object", r,
 		))
 		return
+	}
+
+	// Optional resize: ?w=<width> serves a smaller copy of a JPEG or PNG
+	// (rounded up to an allowed width, never upscaled). The signature does
+	// not cover it, and any failure to build the copy falls back to the
+	// original below.
+	if raw := strings.TrimSpace(r.URL.Query().Get("w")); raw != "" {
+		wantW, convErr := strconv.Atoi(raw)
+		if convErr != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
+				"media.invalid_width", "w must be a whole number of pixels", r,
+			))
+			return
+		}
+		if vres, ok := h.media.OpenVariant(ctx, obj, wantW); ok {
+			defer func() { _ = vres.Body.Close() }()
+			if vres.ContentType != "" {
+				w.Header().Set("Content-Type", vres.ContentType)
+			}
+			w.Header().Set("Content-Length", strconv.FormatInt(vres.Size, 10))
+			w.Header().Set("Cache-Control", "private, max-age=60")
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.Copy(w, vres.Body)
+			return
+		}
 	}
 
 	res, err := h.media.Storage().Get(ctx, obj.StorageKey)

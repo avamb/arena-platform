@@ -676,21 +676,24 @@ func (q *Queries) LockShopVariantsForCheckout(ctx context.Context, orgID uuid.UU
 
 // ShopPageRow is one static storefront page.
 type ShopPageRow struct {
-	ID        uuid.UUID `json:"id"`
-	OrgID     uuid.UUID `json:"org_id"`
-	Slug      string    `json:"slug"`
-	Title     string    `json:"title"`
-	BodyHTML  string    `json:"body_html"`
-	Position  int32     `json:"position"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID       uuid.UUID `json:"id"`
+	OrgID    uuid.UUID `json:"org_id"`
+	Slug     string    `json:"slug"`
+	Title    string    `json:"title"`
+	BodyHTML string    `json:"body_html"`
+	Position int32     `json:"position"`
+	// LegacySlug is the handle the page had on the shop it was imported from
+	// (migration 0174), nil when it has no other address.
+	LegacySlug *string   `json:"legacy_slug"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-const shopPageColumns = `id, org_id, slug, title, body_html, position, created_at, updated_at`
+const shopPageColumns = `id, org_id, slug, title, body_html, position, legacy_slug, created_at, updated_at`
 
 func scanShopPageRow(row interface{ Scan(dest ...any) error }) (ShopPageRow, error) {
 	var p ShopPageRow
-	err := row.Scan(&p.ID, &p.OrgID, &p.Slug, &p.Title, &p.BodyHTML, &p.Position, &p.CreatedAt, &p.UpdatedAt)
+	err := row.Scan(&p.ID, &p.OrgID, &p.Slug, &p.Title, &p.BodyHTML, &p.Position, &p.LegacySlug, &p.CreatedAt, &p.UpdatedAt)
 	return p, err
 }
 
@@ -725,6 +728,28 @@ RETURNING ` + shopPageColumns
 // UpsertShopPage creates or replaces a static page by slug.
 func (q *Queries) UpsertShopPage(ctx context.Context, orgID uuid.UUID, slug, title, body string, position int32) (ShopPageRow, error) {
 	return scanShopPageRow(q.db.QueryRow(ctx, upsertShopPage, orgID, slug, title, body, position))
+}
+
+const getShopPageBySlugOrLegacy = `-- name: GetShopPageBySlugOrLegacy :one
+SELECT ` + shopPageColumns + ` FROM shop_pages
+WHERE org_id = $1 AND (slug = $2 OR legacy_slug = $2)
+ORDER BY (slug = $2) DESC
+LIMIT 1`
+
+// GetShopPageBySlugOrLegacy finds a page by its slug, or failing that by the
+// handle it had on the shop it was imported from. A slug match wins.
+func (q *Queries) GetShopPageBySlugOrLegacy(ctx context.Context, orgID uuid.UUID, key string) (ShopPageRow, error) {
+	return scanShopPageRow(q.db.QueryRow(ctx, getShopPageBySlugOrLegacy, orgID, key))
+}
+
+const setShopPageLegacySlug = `-- name: SetShopPageLegacySlug :execrows
+UPDATE shop_pages SET legacy_slug = $3 WHERE org_id = $1 AND slug = $2`
+
+// SetShopPageLegacySlug records (or clears, with nil) the old address of a
+// page. It reports whether the page exists.
+func (q *Queries) SetShopPageLegacySlug(ctx context.Context, orgID uuid.UUID, slug string, legacy *string) (bool, error) {
+	tag, err := q.db.Exec(ctx, setShopPageLegacySlug, orgID, slug, legacy)
+	return tag.RowsAffected() == 1, err
 }
 
 const deleteShopPage = `-- name: DeleteShopPage :execrows
