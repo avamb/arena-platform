@@ -121,6 +121,12 @@ export type ApiErrorStem =
   | "invitationEmailNeeded"
   | "invitationMyEmail"
   | "invitationEmpty"
+  | "invitationUnknownSeat"
+  | "invitationTooManyPlaces"
+  | "invitationGuestName"
+  | "invitationGuestEmail"
+  | "invitationNoteLong"
+  | "invitationCategory"
   // 4-5
   | "resendTooSoon"
   | "invitationChannel"
@@ -209,6 +215,7 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "seatNothingToRevert", "seatTooMany", "seatTierGone", "seatStageNeeded", "seatNoPlan",
   // Spec 46: invitations on chosen seats
   "invitationSeatsTaken", "invitationNotEnough", "invitationRequestReused", "invitationSessionCancelled", "invitationNotIssued", "invitationTicketScanned", "invitationEmailNeeded", "invitationMyEmail", "invitationEmpty",
+  "invitationUnknownSeat", "invitationTooManyPlaces", "invitationGuestName", "invitationGuestEmail", "invitationNoteLong", "invitationCategory",
   // The shop (spec 47)
   "shopStockChanged", "shopDuplicateSlug", "shopVariantsInvalid", "shopMediaInvalid", "shopNotShippable", "shopNotCancellable", "shopNotRefundable", "shopRefundAmount", "shopCurrency", "shopOperatorOnly",
 ];
@@ -286,6 +293,13 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "invitation.guest_email_required": "invitationEmailNeeded",
   "invitation.my_email_requires_user": "invitationMyEmail",
   "invitation.empty": "invitationEmpty",
+  "invitation.unknown_seat": "invitationUnknownSeat",
+  "invitation.too_many": "invitationTooManyPlaces",
+  "invitation.invalid_guest_name": "invitationGuestName",
+  "invitation.invalid_guest_email": "invitationGuestEmail",
+  "invitation.note_too_long": "invitationNoteLong",
+  "invitation.unknown_category": "invitationCategory",
+  "invitation.seat_without_category": "invitationCategory",
   "membership.last_owner": "lastOwner",
   // 4-5: the team and its invitations (bot.* routes, DELETE members)
   "bot.invitation_resend_too_soon": "resendTooSoon",

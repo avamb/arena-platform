@@ -65,8 +65,7 @@ interface Row {
   guest_name: string;
   delivery: string;
   request_id: string;
-  places: { seat_key: string; tier_id: string; tier_name: string; origin: string }[];
-  active: boolean;
+  places: { seat_key: string; tier_id: string; tier_name: string; origin: string; ticketId: string; cancelled: boolean }[];
   readsLeft: number;
 }
 
@@ -107,7 +106,7 @@ export async function mockInvitationsSeats(page: Page, permissions: string[] = A
   const rows: Row[] = [];
   let next = 1000000500;
 
-  const placeOf = (r: Row["places"][number]) => {
+  const placeOf = (r: Row["places"][number], issuing: boolean) => {
     const [sector, row, seat] = r.seat_key.split("|");
     return {
       seat_key: r.seat_key,
@@ -119,7 +118,8 @@ export async function mockInvitationsSeats(page: Page, permissions: string[] = A
       tier_name: r.tier_name,
       face_value: r.tier_id === TIER_PARTER ? 2500 : 1500,
       origin: r.origin,
-      ticket_id: null,
+      ticket_id: issuing ? null : r.ticketId,
+      ticket_status: issuing ? null : r.cancelled ? "cancelled" : "active",
     };
   };
   const listItem = (r: Row) => {
@@ -134,8 +134,8 @@ export async function mockInvitationsSeats(page: Page, permissions: string[] = A
       issued_by: { user_id: "u1", email: "manager@example.test", first_name: "Marta", last_name: "Gil" },
       created_at: new Date().toISOString(),
       tickets_total: issuing ? 0 : r.places.length,
-      tickets_active: issuing || !r.active ? 0 : r.places.length,
-      places: r.places.map(placeOf),
+      tickets_active: issuing ? 0 : r.places.filter((p) => !p.cancelled).length,
+      places: r.places.map((p) => placeOf(p, issuing)),
     };
   };
 
@@ -241,7 +241,7 @@ export async function mockInvitationsSeats(page: Page, permissions: string[] = A
         const was = state.seats.get(s.seat_key) === "unavailable" ? "unavailable" : "available";
         state.origin.set(s.seat_key, was);
         state.seats.set(s.seat_key, "sold");
-        return { seat_key: s.seat_key, tier_id: tierOf(s.seat_key), tier_name: tierName(s.seat_key), origin: was };
+        return { seat_key: s.seat_key, tier_id: tierOf(s.seat_key), tier_name: tierName(s.seat_key), origin: was, ticketId: "tk-" + s.seat_key, cancelled: false };
       });
       const row: Row = {
         order_id: `0193f01a-0000-7000-8000-00000000c${String(rows.length).padStart(3, "0")}`,
@@ -250,7 +250,6 @@ export async function mockInvitationsSeats(page: Page, permissions: string[] = A
         delivery: body.delivery,
         request_id: body.request_id,
         places,
-        active: true,
         readsLeft: state.issuingReads,
       };
       rows.push(row);
@@ -266,12 +265,16 @@ export async function mockInvitationsSeats(page: Page, permissions: string[] = A
       state.cancelled.push(body);
       const row = rows.find((r) => r.order_id === cancel[1]);
       if (row === undefined) return json(route, 404, { error: { code: "invitation.not_found", message: "no" } });
-      row.active = false;
-      for (const p of row.places) state.seats.set(p.seat_key, p.origin === "unavailable" ? "unavailable" : "available");
+      const named = Array.isArray(body.ticket_ids) ? (body.ticket_ids as string[]) : null;
+      const hit = row.places.filter((p) => !p.cancelled && (named === null || named.includes(p.ticketId)));
+      for (const p of hit) {
+        p.cancelled = true;
+        state.seats.set(p.seat_key, p.origin === "unavailable" ? "unavailable" : "available");
+      }
       return json(route, 200, {
         order_id: row.order_id,
         order_status: "paid",
-        cancelled_ticket_ids: row.places.map((_, i) => `t${i}`),
+        cancelled_ticket_ids: hit.map((p) => p.ticketId),
         skipped_ticket_ids: [],
         notify_guest: body.notify_guest !== false,
       });
@@ -290,7 +293,7 @@ export async function mockInvitationsSeats(page: Page, permissions: string[] = A
       status: "paid",
       guest_name: r.guest_name,
       delivery: r.delivery,
-      places: r.places.map(placeOf),
+      places: r.places.map((p) => placeOf(p, true)),
       from_reserve: r.places.filter((p) => p.origin === "unavailable").length,
       tickets_status: "issuing",
       charge: null,

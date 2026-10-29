@@ -113,7 +113,8 @@ export function dropUnpickable(selected: ReadonlySet<string>, seats: ReadonlyMap
 // ─── General admission ───────────────────────────────────────────────────────
 
 /** A category that sells places without a seat (a hybrid session also has seated ones). */
-export function isGaTier(t: Pick<TicketTierItem, "ga_unit_count" | "seat_count">): boolean {
+export function isGaTier(t: Pick<TicketTierItem, "ga_unit_count" | "seat_count" | "kind">): boolean {
+  if (t.kind === "ga") return true;
   return (t.ga_unit_count ?? 0) > 0 && (t.seat_count ?? 0) === 0;
 }
 
@@ -256,13 +257,33 @@ export function newRequestId(): string {
 }
 
 /**
- * One id per submit attempt, reused while the body stays the same: a retry
- * after a dropped connection must reach the server as the SAME request (the API
- * answers the first order again), while a changed selection is a new request.
- * The API refuses one id with two different bodies (409 `invitation.request_id_reused`).
+ * The digest of a body the way the SERVER sees it (hinvitations.Fingerprint): the seats and the General Admission
+ * lines in a canonical order, the guest's name and phone trimmed, the e-mail trimmed and lower-cased, and the
+ * delivery. The note and the letter's language are NOT part of it: the server answers the first invitation for
+ * a repeat that differs only there, so the client must call that the same request too.
+ */
+export function serverFingerprint(body: IssueBody): string {
+  const seats = (body.seats ?? []).map((s) => s.seat_key).sort();
+  const ga = (body.ga ?? [])
+    .map((l) => ({ tier_id: l.tier_id, qty: l.qty }))
+    .sort((a, c) => (a.tier_id !== c.tier_id ? (a.tier_id < c.tier_id ? -1 : 1) : a.qty - c.qty));
+  return JSON.stringify({
+    seats,
+    ga,
+    name: body.guest.name.trim(),
+    email: (body.guest.email ?? "").trim().toLowerCase(),
+    phone: (body.guest.phone ?? "").trim(),
+    delivery: body.delivery,
+  });
+}
+
+/**
+ * One id per submit attempt, reused while the request is the same: a retry after a dropped connection must reach
+ * the server as the SAME request (the API answers the first order again), while a changed selection is a new
+ * request. The API refuses one id with two different bodies (409 `invitation.request_id_reused`).
  */
 export function requestIdFor(prev: PendingRequest | null, body: IssueBody, make: () => string = newRequestId): PendingRequest {
-  const fingerprint = JSON.stringify(body);
+  const fingerprint = serverFingerprint(body);
   if (prev !== null && prev.fingerprint === fingerprint) return prev;
   return { id: make(), fingerprint };
 }
@@ -273,21 +294,27 @@ export function withRequestId(body: IssueBody, id: string): StaffInvitationIssue
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
-function seatKeysOf(err: unknown, code: string): string[] {
-  if (!(err instanceof ApiError) || err.code !== code) return [];
+function seatKeysOf(err: unknown, codes: readonly string[]): string[] {
+  if (!(err instanceof ApiError) || !codes.includes(err.code)) return [];
   const keys = err.details?.["seat_keys"];
   return Array.isArray(keys) ? keys.filter((k): k is string => typeof k === "string") : [];
 }
 
 /** The seats someone else took (409 `invitation.seats_taken`), empty for any other error. */
 export function takenSeatKeys(err: unknown): string[] {
-  return seatKeysOf(err, "invitation.seats_taken");
+  return seatKeysOf(err, ["invitation.seats_taken"]);
+}
+
+/** Seats the server named as unusable: taken ones, or keys it does not know (400 `invitation.unknown_seat`). */
+export function refusedSeatKeys(err: unknown): string[] {
+  return seatKeysOf(err, ["invitation.seats_taken", "invitation.unknown_seat"]);
 }
 
 /** True when the server answered "the seats changed under you": the map must be read again. */
 export function isSeatConflict(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return false;
+  if (err.status === 400 && err.code === "invitation.unknown_seat") return true;
   return (
-    err instanceof ApiError &&
     err.status === 409 &&
     (err.code === "invitation.seats_taken" || err.code === "invitation.not_enough_places" || err.code === "invitation.capacity_exceeded")
   );
@@ -349,6 +376,13 @@ export function pollDelay(items: readonly StaffInvitationListItem[], now: number
   return waiting ? POLL_MS : false;
 }
 
+/** True when the tickets of an invitation are still missing long after the issue: polling has stopped, something is stuck. */
+export function issuingGaveUp(item: Pick<StaffInvitationListItem, "tickets_total" | "places" | "created_at">, now: number = Date.now()): boolean {
+  if (invitationState({ ...item, tickets_active: 0 }) !== "issuing") return false;
+  const at = Date.parse(item.created_at);
+  return !Number.isNaN(at) && now - at >= POLL_GIVE_UP_MS;
+}
+
 export interface OriginCounts {
   /** Places that go back to the organizer's reserve on cancellation. */
   readonly reserve: number;
@@ -360,6 +394,19 @@ export function originCounts(places: readonly Pick<StaffInvitationPlace, "origin
   let reserve = 0;
   for (const p of places) if (p.origin === "unavailable") reserve++;
   return { reserve, sale: places.length - reserve };
+}
+
+/**
+ * The places whose ticket can still be used. A place without a ticket yet (tickets are minted a moment after the
+ * issue) counts as active, a place whose ticket is cancelled does not.
+ */
+export function activePlaces<T extends Pick<StaffInvitationPlace, "ticket_status">>(places: readonly T[]): T[] {
+  return places.filter((p) => p.ticket_status == null || p.ticket_status === "active");
+}
+
+/** True when a per-ticket cancel makes sense for this place: it has a ticket, the ticket is active, and it is not the last one. */
+export function canCancelPlace(place: Pick<StaffInvitationPlace, "ticket_id" | "ticket_status">, activeCount: number): boolean {
+  return place.ticket_id != null && place.ticket_status === "active" && activeCount > 1;
 }
 
 /** The guest's name for the list, or nothing when the invitation has none. */

@@ -272,15 +272,18 @@ type InvitationOrderLineRow struct {
 	Kind       *string
 	TierID     uuid.UUID
 	TierName   string
+	// TicketStatus is tickets.status of the place's ticket, nil until it is issued.
+	TicketStatus *string
 }
 
 const listInvitationOrderLines = `-- name: ListInvitationOrderLines :many
 SELECT oi.order_id, oi.ordinal, oi.ticket_id, oi.unit_price, oi.seat_origin,
        ss.seat_key, ss.sector_name, ss.row_name, ss.seat_number, ss.kind,
-       tt.id AS tier_id, tt.name AS tier_name
+       tt.id AS tier_id, tt.name AS tier_name, t.status AS ticket_status
 FROM   order_items oi
 JOIN   ticket_tiers tt ON tt.id = oi.tier_id
 LEFT JOIN session_seats ss ON ss.id = oi.session_seat_id
+LEFT JOIN tickets t ON t.id = oi.ticket_id
 WHERE  oi.order_id = ANY($1::uuid[])
 ORDER  BY oi.order_id, oi.ordinal`
 
@@ -297,7 +300,7 @@ func (q *Queries) ListInvitationOrderLines(ctx context.Context, orderIDs []uuid.
 		if err := rows.Scan(
 			&r.OrderID, &r.Ordinal, &r.TicketID, &r.UnitPrice, &r.SeatOrigin,
 			&r.SeatKey, &r.SectorName, &r.RowName, &r.SeatNumber, &r.Kind,
-			&r.TierID, &r.TierName,
+			&r.TierID, &r.TierName, &r.TicketStatus,
 		); err != nil {
 			return nil, err
 		}

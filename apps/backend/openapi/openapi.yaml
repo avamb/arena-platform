@@ -17289,6 +17289,9 @@ components:
         ticket_id:
           type: [string, "null"]
           description: The ticket of this place once issued.
+        ticket_status:
+          type: [string, "null"]
+          description: Status of the place's ticket - active while it can be used, cancelled after a cancellation, null until the ticket is issued. A client offers a per-ticket cancel only for active.
     StaffInvitationIssueResponse:
       type: object
       required: [order_id, system_id, status, delivery, places, from_reserve, tickets_status, replayed]

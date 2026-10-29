@@ -198,7 +198,7 @@ export function SessionScreen() {
           </Link>
         )}
         {/* Spec 46: invitations on chosen seats (and general admission places) of this date. */}
-        {access.can("complimentary.read") && (
+        {(access.can("complimentary.read") || access.can("complimentary.issue")) && (
           <Link
             to="/o/$orgId/events/$eventId/sessions/$sessionId/invitations"
             params={{ orgId, eventId, sessionId }}

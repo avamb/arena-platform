@@ -3,7 +3,12 @@ import { ApiError } from "@/lib/api/http";
 import type { AdminSeatRow, StaffInvitationListItem } from "@/lib/api/types";
 import {
   MAX_PLACES,
+  activePlaces,
   buildIssueBody,
+  canCancelPlace,
+  issuingGaveUp,
+  refusedSeatKeys,
+  serverFingerprint,
   canAct,
   chargeLine,
   dropUnpickable,
@@ -114,6 +119,8 @@ describe("general admission", () => {
     expect(isGaTier({ ga_unit_count: 10, seat_count: 0 })).toBe(true);
     expect(isGaTier({ ga_unit_count: 10, seat_count: 5 })).toBe(false);
     expect(isGaTier({ ga_unit_count: null, seat_count: 5 })).toBe(false);
+    expect(isGaTier({ kind: "ga", ga_unit_count: null, seat_count: null })).toBe(true);
+    expect(isGaTier({ kind: "seated", ga_unit_count: 0, seat_count: 5 })).toBe(false);
   });
   it("counts free and reserved places of one category", () => {
     const rows = [
@@ -194,6 +201,25 @@ describe("the request", () => {
     expect(changed.id).toBe("id2");
     expect(requestIdFor(changed, buildIssueBody(form({ name: "Other" }), ["S|1|1", "S|1|2"], []), make).id).toBe("id3");
   });
+  it("fingerprints exactly what the server does: not the note, not the letter language, e-mail case and spaces ignored", () => {
+    const base = buildIssueBody(form({ email: "Ana@Example.com" }), ["S|1|2", "S|1|1"], [{ tier_id: "t3", qty: 1 }]);
+    const same = buildIssueBody(form({ email: " ana@example.com ", note: "another note", locale: "ru", name: " Ana López " }), ["S|1|1", "S|1|2"], [{ tier_id: "t3", qty: 1 }]);
+    expect(serverFingerprint(same)).toBe(serverFingerprint(base));
+    for (const other of [
+      buildIssueBody(form({ email: "Ana@Example.com" }), ["S|1|1"], [{ tier_id: "t3", qty: 1 }]),
+      buildIssueBody(form({ email: "Ana@Example.com" }), ["S|1|2", "S|1|1"], [{ tier_id: "t3", qty: 2 }]),
+      buildIssueBody(form({ email: "Ana@Example.com", name: "Other" }), ["S|1|2", "S|1|1"], [{ tier_id: "t3", qty: 1 }]),
+      buildIssueBody(form({ email: "Ana@Example.com", phone: "+34" }), ["S|1|2", "S|1|1"], [{ tier_id: "t3", qty: 1 }]),
+      buildIssueBody(form({ email: "Ana@Example.com", delivery: "pdf_only" }), ["S|1|2", "S|1|1"], [{ tier_id: "t3", qty: 1 }]),
+    ]) {
+      expect(serverFingerprint(other)).not.toBe(serverFingerprint(base));
+    }
+  });
+  it("keeps the id when only the note or the language changes", () => {
+    const first = requestIdFor(null, buildIssueBody(form(), ["S|1|1"], []), () => "id1");
+    const again = requestIdFor(first, buildIssueBody(form({ note: "x", locale: "ru" }), ["S|1|1"], []), () => "id2");
+    expect(again.id).toBe("id1");
+  });
   it("a definite 4xx closes the attempt, a dropped connection or a 5xx keeps it", () => {
     expect(isDefinitiveRefusal(new ApiError(409, "invitation.seats_taken", "x"))).toBe(true);
     expect(isDefinitiveRefusal(new ApiError(422, "x", "x"))).toBe(true);
@@ -209,6 +235,14 @@ describe("errors", () => {
     expect(takenSeatKeys(e)).toEqual(["S|1|1", "S|1|2"]);
     expect(takenSeatKeys(new ApiError(409, "invitation.not_enough_places", "x"))).toEqual([]);
     expect(takenSeatKeys(new Error("x"))).toEqual([]);
+  });
+  it("reads the refused seats from an unknown_seat 400 too", () => {
+    const e = new ApiError(400, "invitation.unknown_seat", "x", undefined, { seat_keys: ["Z|9|9"] });
+    expect(refusedSeatKeys(e)).toEqual(["Z|9|9"]);
+    expect(takenSeatKeys(e)).toEqual([]);
+    expect(isSeatConflict(e)).toBe(true);
+    expect(refusedSeatKeys(new ApiError(409, "invitation.seats_taken", "x", undefined, { seat_keys: ["S|1|1"] }))).toEqual(["S|1|1"]);
+    expect(refusedSeatKeys(new ApiError(409, "invitation.not_enough_places", "x"))).toEqual([]);
   });
   it("knows when the seats changed under the person", () => {
     expect(isSeatConflict(new ApiError(409, "invitation.seats_taken", "x"))).toBe(true);
@@ -260,6 +294,22 @@ describe("the list", () => {
     expect(pollDelay([item(2, 2), item(0, 0)], now)).toBe(2000);
     expect(pollDelay([item(0, 0)], Date.parse("2026-10-29T10:11:00Z"))).toBe(false);
     expect(pollDelay([], now)).toBe(false);
+  });
+  it("counts only places with a live ticket", () => {
+    const p = (s: string | null) => ({ ticket_status: s });
+    expect(activePlaces([p("active"), p("cancelled"), p(null), p("active")]).length).toBe(3);
+  });
+  it("offers a per-ticket cancel for an active ticket, never for the last one", () => {
+    expect(canCancelPlace({ ticket_id: "t", ticket_status: "active" }, 2)).toBe(true);
+    expect(canCancelPlace({ ticket_id: "t", ticket_status: "active" }, 1)).toBe(false);
+    expect(canCancelPlace({ ticket_id: "t", ticket_status: "cancelled" }, 3)).toBe(false);
+    expect(canCancelPlace({ ticket_id: null, ticket_status: null }, 3)).toBe(false);
+  });
+  it("tells when tickets are missing long after the issue", () => {
+    const stuck = item(0, 0);
+    expect(issuingGaveUp(stuck, Date.parse("2026-10-29T10:05:00Z"))).toBe(false);
+    expect(issuingGaveUp(stuck, Date.parse("2026-10-29T10:10:01Z"))).toBe(true);
+    expect(issuingGaveUp(item(2, 2), Date.parse("2026-10-29T12:00:00Z"))).toBe(false);
   });
   it("counts where the places go back to", () => {
     expect(originCounts([place("unavailable"), place("available"), place(null)])).toEqual({ reserve: 1, sale: 2 });

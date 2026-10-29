@@ -101,24 +101,87 @@ test.describe("invitations on the seat map (mock)", () => {
     expect((state.issued[0] as { request_id: string }).request_id).not.toBe((state.issued[1] as { request_id: string }).request_id);
   });
 
-  test("a lost answer is retried with the SAME request id, the server answers the first invitation", async ({ page }) => {
+  test("a lost answer locks the form and map, and Retry sends the SAME request, the server answers the first invitation", async ({ page }) => {
     const state = await start(page);
     await seat(page, "B|1|2").click();
     await page.getByTestId("inv-name").fill("Marta Gil");
     await page.getByTestId("inv-delivery-pdf_only").check();
 
+    // The server commits the invitation, the answer is lost.
     state.dropNextAnswer = true;
     await page.getByTestId("inv-submit").click();
+    await expect(page.getByTestId("inv-stalled")).toBeVisible();
     await expect(page.getByTestId("inv-error")).toBeVisible();
-    // The seat is still picked: the person did not lose the pick.
+    // Locked: the fields are disabled, a tap on the map picks nothing, "send" is gone.
+    await expect(page.getByTestId("inv-name")).toBeDisabled();
+    await expect(page.getByTestId("inv-submit")).toHaveCount(0);
+    await seat(page, "B|1|3").click();
     await expect(picked(page)).toHaveCount(1);
 
-    await page.getByTestId("inv-submit").click();
+    // The hall is read again in the background: the seat is sold now (by our own invitation), yet it stays in the pick.
+    await page.waitForResponse((r) => r.url().includes("/seats/admin") && r.request().method() === "GET", { timeout: 15_000 });
+    await expect(picked(page)).toHaveCount(1);
+    await expect(page.getByTestId("inv-conflict")).toHaveCount(0);
+
+    await page.getByTestId("inv-retry").click();
     await expect(page.getByTestId("inv-result")).toBeVisible();
     await expect(page.getByTestId("inv-replayed")).toBeVisible();
     expect(state.issued).toHaveLength(2);
     expect((state.issued[0] as { request_id: string }).request_id).toBe((state.issued[1] as { request_id: string }).request_id);
+    // The retry is the same body, byte for byte.
+    expect(state.issued[1]).toEqual(state.issued[0]);
     await expect(page.getByTestId("inv-row")).toHaveCount(1);
+    await expect(page.getByTestId("inv-name")).toBeEnabled();
+  });
+
+  test("Discard gives up an open attempt and unlocks the form", async ({ page }) => {
+    const state = await start(page);
+    await seat(page, "B|1|2").click();
+    await page.getByTestId("inv-name").fill("Marta Gil");
+    await page.getByTestId("inv-delivery-pdf_only").check();
+    state.dropNextAnswer = true;
+    await page.getByTestId("inv-submit").click();
+    await expect(page.getByTestId("inv-stalled")).toBeVisible();
+    await page.getByTestId("inv-discard").click();
+    await expect(page.getByTestId("inv-name")).toBeEnabled();
+    await expect(page.getByTestId("inv-submit")).toBeVisible();
+    // The invitation did go through on the server: the list shows it.
+    await expect(page.getByTestId("inv-row")).toHaveCount(1);
+  });
+
+  test("one ticket of an invitation can be canceled, the rest stays valid", async ({ page }) => {
+    const state = await start(page);
+    state.issuingReads = 0;
+    await seat(page, "A|2|3").click(); // from the reserve
+    await seat(page, "A|2|2").click(); // from sale
+    await page.getByTestId("inv-name").fill("Ana López");
+    await page.getByTestId("inv-delivery-pdf_only").check();
+    await page.getByTestId("inv-submit").click();
+    const row = page.getByTestId("inv-row").first();
+    await expect(row).toHaveAttribute("data-state", "active", { timeout: 15_000 });
+    await expect(row.getByTestId("inv-row-place")).toHaveCount(2);
+
+    // The place from the reserve: the question names only that one place.
+    await row.locator('[data-testid="inv-row-place"]', { hasText: "seat 3" }).getByTestId("inv-cancel-place").click();
+    const dialog = page.getByTestId("inv-cancel-dialog");
+    await expect(dialog).toContainText("1 seats go back to your reserve");
+    await expect(dialog).not.toContainText("go back on sale");
+    await page.getByTestId("inv-cancel-dialog-submit").click();
+    await expect(page.getByTestId("inv-cancelled")).toBeVisible();
+    expect(state.cancelled).toEqual([{ ticket_ids: ["tk-A|2|3"], notify_guest: true }]);
+
+    // The row lists only the live place and counts the canceled one. No per-ticket cancel on the last place.
+    await expect(row).toHaveAttribute("data-state", "partial");
+    await expect(row.getByTestId("inv-row-place")).toHaveCount(1);
+    await expect(row.getByTestId("inv-row-canceled")).toContainText("1");
+    await expect(row.getByTestId("inv-cancel-place")).toHaveCount(0);
+    expect(state.seats.get("A|2|3")).toBe("unavailable");
+    expect(state.seats.get("A|2|2")).toBe("sold");
+
+    // The whole-invitation question now counts only the live place.
+    await row.getByTestId("inv-cancel").click();
+    await expect(page.getByTestId("inv-cancel-dialog")).toContainText("1 places go back on sale");
+    await expect(page.getByTestId("inv-cancel-dialog")).not.toContainText("your reserve");
   });
 
   test("cancel asks where the seats go back, tells the guest by default, and the list shows it canceled", async ({ page }) => {
@@ -180,6 +243,21 @@ test.describe("invitations on the seat map (mock)", () => {
     await page.goto(url);
     await expect(page.getByTestId("inv-list")).toBeVisible();
     await expect(page.getByTestId("inv-issue")).toHaveCount(0);
+  });
+
+  test("a person who cannot open the hall is told so, and the screen does not ask for the hall", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const api = await mockApi(page);
+    await mockInvitationsSeats(page, ["event.read", "session.read", "tier.read", "complimentary.read", "complimentary.issue"]);
+    await signIn(page);
+    await page.goto(url);
+    await expect(page.getByTestId("inv-no-hall-access")).toBeVisible();
+    await expect(page.getByTestId("inv-hall")).toHaveCount(0);
+    await expect(page.getByTestId("inv-list")).toBeVisible();
+    expect(api.requests.filter((r) => r.includes("/seats/admin") || r.includes("/schema"))).toEqual([]);
+    // The session page still links here for a person who may issue.
+    await page.goto(`/o/${ORG_A}/events/${EVENT}/sessions/${SESSION}`);
+    await expect(page.getByTestId("session-invitations-link")).toBeVisible();
   });
 
   test("phone: nothing scrolls sideways and axe finds nothing", async ({ page }) => {

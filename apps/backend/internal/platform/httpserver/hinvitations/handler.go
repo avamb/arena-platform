@@ -98,6 +98,8 @@ type lineResponse struct {
 	FaceValue int64   `json:"face_value"`
 	Origin    *string `json:"origin"`
 	TicketID  *string `json:"ticket_id"`
+	// TicketStatus is tickets.status of the place's ticket (active, cancelled, ...), null until it is issued.
+	TicketStatus *string `json:"ticket_status"`
 }
 
 type issueResponse struct {
@@ -313,6 +315,7 @@ func toLine(l gen.InvitationOrderLineRow) lineResponse {
 	out := lineResponse{
 		SeatKey: l.SeatKey, Sector: l.SectorName, Row: l.RowName, Seat: l.SeatNumber, Kind: l.Kind,
 		TierID: l.TierID.String(), TierName: l.TierName, FaceValue: l.UnitPrice, Origin: l.SeatOrigin,
+		TicketStatus: l.TicketStatus,
 	}
 	if l.TicketID != nil {
 		s := l.TicketID.String()

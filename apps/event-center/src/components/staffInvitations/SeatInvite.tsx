@@ -47,15 +47,19 @@ import {
   groupSelection,
   isDefinitiveRefusal,
   isGaTier,
+  POLL_GIVE_UP_MS,
   invitationState,
+  issuingGaveUp,
   isSeatConflict,
   pickSeats,
+  refusedSeatKeys,
   pollDelay,
   requestIdFor,
   seatIndex,
   takenSeatKeys,
   withRequestId,
   type FormProblem,
+  type IssueBody,
   type GuestForm,
   type PendingRequest,
   type SeatInfo,
@@ -104,7 +108,6 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
   const tiersQ = useQuery({
     queryKey: ["tiers", orgId, eventId, sessionId],
     queryFn: () => listTiers(orgId, eventId, sessionId),
-    enabled: canSeeHall,
   });
 
   const noMap = schemaQ.error instanceof ApiError && schemaQ.error.status === 404;
@@ -128,7 +131,10 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
   const [tried, setTried] = useState(false);
   const [note, setNote] = useState<{ kind: "refused" | "limit"; count: number } | null>(null);
   const [result, setResult] = useState<StaffInvitationIssueResponse | null>(null);
-  const pending = useRef<PendingRequest | null>(null);
+  // The attempt in flight: the request id and the exact body it was first sent with. While it is open the pick and
+  // the form are locked, so a retry is byte for byte the same request. It closes on success and on a definite refusal.
+  const attempt = useRef<{ req: PendingRequest; body: IssueBody } | null>(null);
+  const [locked, setLocked] = useState(false);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
 
@@ -137,14 +143,16 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
   const set = <K extends keyof GuestForm>(key: K, value: GuestForm[K]) => setForm((f) => ({ ...f, [key]: value }));
 
   // A seat that was picked and is no longer free (a buyer, a hold, a colleague): out of the pick, outlined.
+  // Not while an attempt is open: if the server committed it and the answer was lost, our OWN seats come back sold,
+  // and dropping them would change the body (and the request id) of the retry.
   useEffect(() => {
-    if (seats.size === 0) return;
+    if (seats.size === 0 || locked) return;
     const kept = dropUnpickable(selectedRef.current, seats);
     if (kept.size === selectedRef.current.size) return;
     const gone = [...selectedRef.current].filter((k) => !kept.has(k));
     setSelected(kept);
     setConflict((c) => new Set([...c, ...gone]));
-  }, [seats]);
+  }, [seats, locked]);
 
   const tierColor = useCallback((s: SeatInfo | undefined) => (s?.tierId != null ? (colors.get(s.tierId) ?? "#d1d5db") : "#d1d5db"), [colors]);
   const look = useCallback(
@@ -157,6 +165,7 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
 
   const pick = useCallback(
     (keys: readonly string[]) => {
+      if (locked) return;
       const res = pickSeats(selected, keys, seats, MAX_PLACES - gaTotal(ga));
       setSelected(res.next);
       setConflict(new Set());
@@ -165,7 +174,7 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
       else if (res.refused > 0) setNote({ kind: "refused", count: res.refused });
       else setNote(null);
     },
-    [selected, seats, ga],
+    [selected, seats, ga, locked],
   );
   const onSeats = useCallback((keys: string[]) => pick(keys), [pick]);
   const onRowHandle = useCallback(
@@ -176,6 +185,7 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
   );
 
   const setGaQty = (tierId: string, next: number, max: number) => {
+    if (locked) return;
     const room = MAX_PLACES - selected.size - (gaTotal(ga) - (ga[tierId] ?? 0));
     const qty = Math.max(0, Math.min(next, max, room));
     setGa((g) => ({ ...g, [tierId]: qty }));
@@ -185,12 +195,16 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
   // ── send ────────────────────────────────────────────────────────────────
   const issue = useMutation({
     mutationFn: () => {
-      const body = buildIssueBody(form, selected, gaLines(ga));
-      pending.current = requestIdFor(pending.current, body);
-      return issueStaffInvitation(orgId, sessionId, withRequestId(body, pending.current.id));
+      // The first send fixes the body and the id, a retry sends them again as they were.
+      if (attempt.current === null) {
+        const body = buildIssueBody(form, selected, gaLines(ga));
+        attempt.current = { req: requestIdFor(null, body), body };
+      }
+      return issueStaffInvitation(orgId, sessionId, withRequestId(attempt.current.body, attempt.current.req.id));
     },
     onSuccess: (res) => {
-      pending.current = null;
+      attempt.current = null;
+      setLocked(false);
       setResult(res);
       setSelected(new Set());
       setConflict(new Set());
@@ -206,14 +220,16 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
       onIssued?.(res);
     },
     onError: (err) => {
-      // A definite answer closes the attempt. A dropped connection or a 5xx keeps the id: the retry is the same request.
-      if (isDefinitiveRefusal(err)) pending.current = null;
+      // A definite answer (a 4xx) closes the attempt. A dropped connection, a timeout or a 5xx may have been processed:
+      // the attempt stays open, locked, and the only way on is the same request again.
+      if (!isDefinitiveRefusal(err)) return;
+      attempt.current = null;
+      setLocked(false);
       if (isSeatConflict(err)) {
+        const refused = refusedSeatKeys(err);
+        if (refused.length > 0) setSelected((s) => new Set([...s].filter((k) => !refused.includes(k))));
         const taken = takenSeatKeys(err);
-        if (taken.length > 0) {
-          setSelected((s) => new Set([...s].filter((k) => !taken.includes(k))));
-          setConflict(new Set(taken));
-        }
+        if (taken.length > 0) setConflict(new Set(taken));
         void qc.invalidateQueries({ queryKey: ["seats-admin", sessionId] });
         void qc.invalidateQueries({ queryKey: ["tiers", orgId, eventId, sessionId] });
       }
@@ -222,18 +238,25 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
 
   const submit = () => {
     setTried(true);
-    if (problems.length > 0 || issue.isPending) return;
+    if (issue.isPending) return;
+    // A retry needs no validation: it is the request that was already sent.
+    if (attempt.current === null && problems.length > 0) return;
+    setLocked(true);
     issue.mutate();
   };
 
+  // Gives up an open attempt: the list tells whether the invitation was issued after all.
+  const discard = () => {
+    attempt.current = null;
+    setLocked(false);
+    issue.reset();
+    void qc.invalidateQueries({ queryKey: [STAFF_INVITATIONS_KEY, orgId, sessionId] });
+    void qc.invalidateQueries({ queryKey: ["seats-admin", sessionId] });
+    void qc.invalidateQueries({ queryKey: ["tiers", orgId, eventId, sessionId] });
+  };
+  const stalled = locked && !issue.isPending && issue.isError;
+
   // ── render ──────────────────────────────────────────────────────────────
-  if (!canSeeHall) {
-    return (
-      <p className="notice notice-warn" role="status" data-testid="inv-no-hall-access">
-        {t("seatInv.noMapAccess")}
-      </p>
-    );
-  }
   if (seatsQ.isLoading || tiersQ.isLoading || schemaQ.isLoading) return <Loading />;
   const hardError = [seatsQ.error, tiersQ.error, noMap ? null : schemaQ.error].find((e) => e !== null && e !== undefined);
   if (hardError !== undefined) return <ErrorNotice error={hardError} />;
@@ -244,6 +267,8 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
   const seatText = (s: SeatInfo) => t("seatInv.seat", { sector: s.sector, row: s.row, seat: s.seat });
   const charge = result !== null ? chargeLine(result.charge) : null;
   const conflictText = [...conflict].map((k) => seats.get(k)).filter((s): s is SeatInfo => s !== undefined).map(seatText);
+  // A person who cannot open the hall can still invite to places without a seat. The counts of those come from the hall.
+  const hallBlocked = !canSeeHall && seatTiers.length > 0;
   const placeProblem = tried ? problems.find((p) => p === "noPlaces" || p === "tooMany") : undefined;
 
   return (
@@ -251,14 +276,18 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
       <h2 id="inv-issue-title">{t("seatInv.map.title")}</h2>
       <div className="inv-layout">
         <div className="inv-hallcol">
-          {noMap || index === null || geometry === undefined ? (
+          {hallBlocked ? (
+            <p className="notice notice-warn" role="status" data-testid="inv-no-hall-access">
+              {t("seatInv.noMapAccess")}
+            </p>
+          ) : noMap || !canSeeHall || index === null || geometry === undefined ? (
             <p className="notice" role="status" data-testid="inv-no-map">
               {t("seatInv.noMap")}
             </p>
           ) : (
             <>
               <ToolBar tool={tool} onTool={setTool} />
-              <div className="sm-map inv-hall" data-testid="inv-hall">
+              <div className="sm-map inv-hall" data-testid="inv-hall" data-locked={locked ? "1" : undefined}>
                 <SeatMapCanvas
                   ref={mapRef}
                   geometry={geometry}
@@ -339,6 +368,7 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
                             <button
                               type="button"
                               className="btn inv-remove"
+                              disabled={locked}
                               aria-label={t("seatInv.picked.remove", { seat: seatText(s) })}
                               onClick={() => pick([s.key])}
                             >
@@ -355,7 +385,7 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
                     {t("seatInv.picked.fromReserve", { count: formatNumber(fromReserve, locale) })}
                   </p>
                 )}
-                <button type="button" className="btn" onClick={() => setSelected(new Set())} data-testid="inv-clear">
+                <button type="button" className="btn" disabled={locked} onClick={() => setSelected(new Set())} data-testid="inv-clear">
                   {t("seatInv.picked.clear")}
                 </button>
               </>
@@ -368,16 +398,21 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
               {gaTiers.map((x) => {
                 const c = gaCounts(rows, x.id);
                 const qty = ga[x.id] ?? 0;
-                const max = c.free + c.reserve;
+                // Without the hall the counts are unknown: the server answers not_enough_places if the category runs out.
+                const max = canSeeHall ? c.free + c.reserve : MAX_PLACES;
                 return (
                   <div key={x.id} className="inv-ga-row" data-testid="inv-ga-row" data-tier={x.id}>
-                    <span>{t("seatInv.ga.row", { category: x.name, free: formatNumber(c.free, locale), reserve: formatNumber(c.reserve, locale) })}</span>
+                    <span>
+                      {canSeeHall
+                        ? t("seatInv.ga.row", { category: x.name, free: formatNumber(c.free, locale), reserve: formatNumber(c.reserve, locale) })
+                        : x.name}
+                    </span>
                     <span className="inv-stepper" role="group" aria-label={t("seatInv.ga.qty", { category: x.name })}>
-                      <button type="button" className="btn" disabled={qty === 0} aria-label={t("seatInv.ga.less", { category: x.name })} onClick={() => setGaQty(x.id, qty - 1, max)} data-testid="inv-ga-less">
+                      <button type="button" className="btn" disabled={locked || qty === 0} aria-label={t("seatInv.ga.less", { category: x.name })} onClick={() => setGaQty(x.id, qty - 1, max)} data-testid="inv-ga-less">
                         −
                       </button>
                       <output aria-live="polite" data-testid="inv-ga-qty">{qty}</output>
-                      <button type="button" className="btn" disabled={qty >= max || places >= MAX_PLACES} aria-label={t("seatInv.ga.more", { category: x.name })} onClick={() => setGaQty(x.id, qty + 1, max)} data-testid="inv-ga-more">
+                      <button type="button" className="btn" disabled={locked || qty >= max || places >= MAX_PLACES} aria-label={t("seatInv.ga.more", { category: x.name })} onClick={() => setGaQty(x.id, qty + 1, max)} data-testid="inv-ga-more">
                         +
                       </button>
                     </span>
@@ -398,6 +433,7 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
             }}
           >
             <h3 id="inv-guest-title">{t("seatInv.guest.title")}</h3>
+            <fieldset className="inv-fieldset" disabled={locked} data-testid="inv-fields">
             <TextField label={t("seatInv.guest.name")} value={form.name} onChange={(v) => set("name", v)} testId="inv-name" autoComplete="off" error={fieldProblem("name") ?? fieldProblem("nameTooLong")} />
             <TextField label={t("seatInv.guest.email")} type="email" value={form.email} onChange={(v) => set("email", v)} testId="inv-email" error={fieldProblem("email") ?? fieldProblem("emailRequired")} />
             <TextField label={t("seatInv.guest.phone")} type="tel" value={form.phone} onChange={(v) => set("phone", v)} testId="inv-phone" />
@@ -420,15 +456,32 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
               ))}
             </fieldset>
 
+            </fieldset>
+
             {placeProblem !== undefined && (
               <p className="field-error" role="alert" data-testid="inv-places-error">
                 {t(PROBLEM_KEY[placeProblem], { max: MAX_PLACES })}
               </p>
             )}
             {issue.error !== null && takenSeatKeys(issue.error).length === 0 && <ErrorNotice error={issue.error} testId="inv-error" />}
-            <button type="submit" className="btn btn-primary" disabled={issue.isPending} data-testid="inv-submit">
-              {issue.isPending ? t("seatInv.submit.busy") : t("seatInv.submit", { count: formatNumber(places, locale) })}
-            </button>
+            {stalled ? (
+              <div className="notice notice-warn" role="alert" data-testid="inv-stalled">
+                <p>
+                  <strong>{t("seatInv.retry.title")}</strong>
+                </p>
+                <p>{t("seatInv.retry.body")}</p>
+                <button type="submit" className="btn btn-primary" data-testid="inv-retry">
+                  {t("seatInv.retry.button")}
+                </button>{" "}
+                <button type="button" className="btn" onClick={discard} data-testid="inv-discard">
+                  {t("seatInv.retry.discard")}
+                </button>
+              </div>
+            ) : (
+              <button type="submit" className="btn btn-primary" disabled={issue.isPending} data-testid="inv-submit">
+                {issue.isPending ? t("seatInv.submit.busy") : t("seatInv.submit", { count: formatNumber(places, locale) })}
+              </button>
+            )}
           </form>
 
           {result !== null && (
@@ -462,11 +515,30 @@ function ResultActions({ orgId, sessionId, result, canRead }: { orgId: string; s
   });
   const { t } = useI18n();
   const item = state.data;
-  const ready = item === undefined ? !canRead : invitationState(item) !== "issuing";
+  const [, tick] = useState(0);
+  const issuing = item !== undefined && invitationState(item) === "issuing";
+  const gaveUp = item !== undefined && issuingGaveUp(item);
+  // Polling stops after a while: wake up then, so the text below does not say "issuing" for ever.
+  const createdAt = item?.created_at;
+  useEffect(() => {
+    if (!issuing || gaveUp || createdAt === undefined) return;
+    const left = Date.parse(createdAt) + POLL_GIVE_UP_MS - Date.now();
+    if (Number.isNaN(left)) return;
+    const id = setTimeout(() => tick((n) => n + 1), Math.max(0, left) + 50);
+    return () => clearTimeout(id);
+  }, [issuing, gaveUp, createdAt]);
+  // The buttons wait only while the list says the tickets are being minted. If the list fails, does not
+  // know the order, or has waited too long, the server decides: it answers 409 until the tickets exist.
+  const waiting = canRead && (state.isLoading || (issuing && !gaveUp));
   return (
     <>
-      {!ready && <p data-testid="inv-issuing">{t("seatInv.result.issuing")}</p>}
-      <InvitationActions orgId={orgId} orderId={result.order_id} systemId={result.system_id} ready={ready} canResend={result.delivery !== "pdf_only"} />
+      {waiting && <p data-testid="inv-issuing">{t("seatInv.result.issuing")}</p>}
+      {gaveUp && (
+        <p className="bad-text" role="status" data-testid="inv-slow">
+          {t("seatInv.result.slow")}
+        </p>
+      )}
+      <InvitationActions orgId={orgId} orderId={result.order_id} systemId={result.system_id} ready={!waiting} canResend={result.delivery !== "pdf_only"} />
     </>
   );
 }
