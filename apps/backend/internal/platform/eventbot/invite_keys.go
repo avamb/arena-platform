@@ -18,6 +18,15 @@ var inviteKeys = []string{
 	"bot.inv.revoke_btn", "bot.inv.revoke_ask", "bot.inv.revoke_wrong", "bot.inv.revoke_word",
 	"bot.inv.revoke_done", "bot.inv.revoke_already", "bot.inv.revoke_used", "bot.inv.private_only",
 	"bot.inv.vip_line", "bot.inv.vip_on_btn", "bot.inv.vip_off_btn",
+	// spec 46, INV-05: staff invitations, the seated date, the new list
+	"bot.inv.seated_text", "bot.inv.seated_web", "bot.inv.seated_nolink", "bot.inv.seated_btn",
+	"bot.inv.seated_failed", "bot.inv.why_cancelled", "bot.inv.legacy_btn", "bot.inv.legacy_note",
+	"bot.inv.nlist_title", "bot.inv.nlegend", "bot.inv.ncard", "bot.inv.state_issuing",
+	"bot.inv.nrevoke_ask", "bot.inv.nrevoke_mail", "bot.inv.nrevoke_nomail", "bot.inv.nrevoke_done",
+	"bot.inv.nrevoke_skipped", "bot.inv.nrevoke_used", "bot.inv.nrevoke_notyet",
+	// the guest's letter on the card
+	"bot.inv.letter_pending", "bot.inv.letter_sent", "bot.inv.letter_failed", "bot.inv.letter_skipped",
+	"bot.inv.letter_disabled",
 }
 
 func init() {

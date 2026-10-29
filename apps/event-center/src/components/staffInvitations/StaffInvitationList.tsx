@@ -12,7 +12,9 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmPressDialog } from "@/components/ConfirmPressDialog";
+import { BatchMark } from "@/components/staffInvitations/BatchMark";
 import { InvitationActions } from "@/components/staffInvitations/InvitationActions";
+import { InvitationLetter } from "@/components/staffInvitations/InvitationLetter";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
 import { cancelStaffInvitation, listStaffInvitations } from "@/lib/api/endpoints";
 import type { StaffInvitationListItem, StaffInvitationPlace } from "@/lib/api/types";
@@ -170,6 +172,8 @@ export function StaffInvitationList({ orgId, sessionId, canIssue, canRevoke }: P
                 <span className="card-meta" data-testid="inv-row-state">
                   <Badge tone={TONE[state]}>{t(`seatInv.state.${state}` as MessageKey)}</Badge>
                 </span>
+                <InvitationLetter item={item} testId="inv-row-letter" />
+                {item.invitation_batch_id != null && <BatchMark orgId={orgId} batchId={item.invitation_batch_id} systemId={item.system_id} />}
                 {canAct(item) && (
                   <p className="inv-row-actions">
                     <InvitationActions orgId={orgId} orderId={item.order_id} systemId={item.system_id} canResend={canIssue && item.delivery !== "pdf_only"} />

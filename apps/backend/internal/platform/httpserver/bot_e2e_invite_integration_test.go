@@ -37,6 +37,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventbot"
 )
 
@@ -74,6 +75,40 @@ func seedInviteBotOrg(t *testing.T, pool *pgxpool.Pool, orgID uuid.UUID) *invBot
 	}
 	t.Cleanup(func() {
 		c := context.Background()
+		// The staff invitations (orders, reservations, checkout sessions, jobs)
+		// the dialog wrote, then the guests' customer rows no other organization knows.
+		var customerIDs []uuid.UUID
+		if rows, err := pool.Query(c, `SELECT customer_id FROM customer_org_links WHERE org_id = $1`, orgID); err == nil {
+			for rows.Next() {
+				var id uuid.UUID
+				if rows.Scan(&id) == nil {
+					customerIDs = append(customerIDs, id)
+				}
+			}
+			rows.Close()
+		}
+		for _, sid := range []uuid.UUID{s.session, s.seatedSession} {
+			for _, sql := range inv02SessionCleanupSQL {
+				if _, err := pool.Exec(c, sql, sid); err != nil {
+					t.Logf("invite bot cleanup: %v", err)
+				}
+			}
+		}
+		for _, sql := range []string{
+			`DELETE FROM customer_org_links WHERE org_id = $1`,
+			`DELETE FROM outbox_events WHERE aggregate_id = $1::text`,
+			`DELETE FROM agent_feed_tokens WHERE sales_channel_id IN (SELECT id FROM sales_channels WHERE org_id = $1)`,
+			`DELETE FROM sales_channels WHERE org_id = $1`,
+		} {
+			if _, err := pool.Exec(c, sql, orgID); err != nil {
+				t.Logf("invite bot cleanup: %s: %v", sql, err)
+			}
+		}
+		if len(customerIDs) > 0 {
+			_, _ = pool.Exec(c, `DELETE FROM customers c WHERE c.id = ANY($1::uuid[])
+				AND NOT EXISTS (SELECT 1 FROM customer_org_links l WHERE l.customer_id = c.id)
+				AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id)`, customerIDs)
+		}
 		sessions := `(SELECT s.id FROM sessions s JOIN events e ON e.id = s.event_id WHERE e.org_id = $1)`
 		tickets := `(SELECT id FROM tickets WHERE session_id IN ` + sessions + `)`
 		for _, sql := range []string{
@@ -142,13 +177,17 @@ type invE2E struct {
 	stop  func()
 }
 
-func newInviteE2E(t *testing.T) *invE2E {
+func newInviteE2E(t *testing.T) *invE2E { return newInviteE2EWith(t, nil, nil) }
+
+// newInviteE2EWith is newInviteE2E with a hook on the API config and one on
+// the bot's options (the Mini App scenario switches the flag and the address on).
+func newInviteE2EWith(t *testing.T, mutate func(*config.Config), tweak func(*eventbot.Options)) *invE2E {
 	t.Helper()
 	pool := onboardingIntegrationPool(t)
 	e := &invE2E{t: t, pool: pool}
 	e.f = newBotInviteFixture(t, pool)
 	e.other = newBotInviteFixture(t, pool)
-	e.srv = buildBotIntegrationServer(t, pool)
+	e.srv = buildBotIntegrationServerCfg(t, pool, mutate)
 	e.api = httptest.NewServer(e.srv.router)
 	t.Cleanup(e.api.Close)
 	e.seed = seedInviteBotOrg(t, pool, e.f.orgID)
@@ -156,7 +195,11 @@ func newInviteE2E(t *testing.T) *invE2E {
 	linkECBotUser(t, e.f, e.srv, ecManagerTG, "manager")
 	linkECBotUser(t, e.other, e.srv, ecOutsiderTG, "owner")
 	e.tg = newStubTelegram(t)
-	e.stop = startDialogTestBot(t, pool, e.api, e.tg)
+	if tweak != nil {
+		e.stop = textFmtBot(t, pool, e.api, e.tg, 3*time.Second, tweak)
+	} else {
+		e.stop = startDialogTestBot(t, pool, e.api, e.tg)
+	}
 	t.Cleanup(func() { e.stop() })
 	return e
 }
@@ -213,6 +256,75 @@ func (e *invE2E) places(tier uuid.UUID, status string) int {
 	return e.count(`SELECT count(*) FROM session_seats WHERE session_id = $1 AND tier_id = $2 AND status = $3 AND kind = 'ga_unit'`, e.seed.session, tier, status)
 }
 
+// staffOrders counts the staff invitations (spec 46 orders) of the organization.
+func (e *invE2E) staffOrders() int {
+	return e.count(`SELECT count(*) FROM orders WHERE org_id = $1 AND source = 'complimentary' AND issued_via = 'staff'`, e.seed.orgID)
+}
+
+// mintTickets does the worker's job for every staff invitation that has no
+// tickets yet (the e2e runs no worker).
+func (e *invE2E) mintTickets() {
+	e.t.Helper()
+	ctx := context.Background()
+	rows, err := e.pool.Query(ctx, `SELECT checkout_session_id FROM orders o WHERE o.org_id = $1 AND o.source = 'complimentary'
+		AND NOT EXISTS (SELECT 1 FROM tickets t WHERE t.checkout_session_id = o.checkout_session_id)`, e.seed.orgID)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			e.t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	for _, id := range ids {
+		cs, err := gen.New(e.pool).GetCheckoutSessionByID(ctx, id)
+		if err != nil {
+			e.t.Fatal(err)
+		}
+		if _, err := e.srv.ticketsHandler().IssueTicketsForCheckout(ctx, cs); err != nil {
+			e.t.Fatalf("IssueTicketsForCheckout: %v", err)
+		}
+	}
+}
+
+// staffInv is one staff invitation order with its (single) ticket.
+type staffInv struct {
+	orderID                              uuid.UUID
+	sysID                                int64
+	email, name, delivery, origin, state string
+	ticketID                             uuid.UUID
+	ticketStatus, seatKey                string
+}
+
+// staffInvs reads the organization's staff invitations keyed by the guest's
+// e-mail (the guest of a name-less line is named by the address).
+func (e *invE2E) staffInvs() map[string]staffInv {
+	e.t.Helper()
+	rows, err := e.pool.Query(context.Background(), `
+		SELECT o.id, o.system_id, coalesce(o.buyer_email, ''), coalesce(o.buyer_name, ''), coalesce(o.metadata->'invitation'->>'delivery', ''),
+		       coalesce((SELECT oi.seat_origin FROM order_items oi WHERE oi.order_id = o.id LIMIT 1), ''), o.status,
+		       coalesce(t.id, '00000000-0000-0000-0000-000000000000'::uuid), coalesce(t.status, ''), coalesce(t.seat_key, '')
+		FROM orders o LEFT JOIN tickets t ON t.checkout_session_id = o.checkout_session_id
+		WHERE o.org_id = $1 AND o.source = 'complimentary'`, e.seed.orgID)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer rows.Close()
+	out := map[string]staffInv{}
+	for rows.Next() {
+		var c staffInv
+		if err := rows.Scan(&c.orderID, &c.sysID, &c.email, &c.name, &c.delivery, &c.origin, &c.state, &c.ticketID, &c.ticketStatus, &c.seatKey); err != nil {
+			e.t.Fatal(err)
+		}
+		out[c.email] = c
+	}
+	return out
+}
+
 func (e *invE2E) issuances() int {
 	return e.count(`SELECT count(*) FROM complimentary_issuances WHERE org_id = $1`, e.seed.orgID)
 }
@@ -223,7 +335,7 @@ func (e *invE2E) email(label string) string { return label + "-" + e.seed.suffix
 type invState struct {
 	Step                          string
 	EventIDs, SessionIDs, TierIDs []uuid.UUID
-	ListIDs                       []uuid.UUID
+	ListIDs, NOrderIDs            []uuid.UUID
 	Qty                           int
 	Rcpt                          []map[string]any
 	Done                          []int64
@@ -242,6 +354,7 @@ func (e *invE2E) dialog(tg int64) (invState, bool) {
 		SessionIDs []uuid.UUID      `json:"session_ids"`
 		TierIDs    []uuid.UUID      `json:"tier_ids"`
 		ListIDs    []uuid.UUID      `json:"list_ids"`
+		NOrderIDs  []uuid.UUID      `json:"n_order_ids"`
 		Qty        int              `json:"qty"`
 		Rcpt       []map[string]any `json:"rcpt"`
 		Done       []int64          `json:"done"`
@@ -249,7 +362,7 @@ func (e *invE2E) dialog(tg int64) (invState, bool) {
 	if err := json.Unmarshal(raw, &st); err != nil {
 		e.t.Fatal(err)
 	}
-	return invState{Step: step, EventIDs: st.EventIDs, SessionIDs: st.SessionIDs, TierIDs: st.TierIDs, ListIDs: st.ListIDs, Qty: st.Qty, Rcpt: st.Rcpt, Done: st.Done}, true
+	return invState{Step: step, EventIDs: st.EventIDs, SessionIDs: st.SessionIDs, TierIDs: st.TierIDs, ListIDs: st.ListIDs, NOrderIDs: st.NOrderIDs, Qty: st.Qty, Rcpt: st.Rcpt, Done: st.Done}, true
 }
 
 // toCategory walks the dialog to the quantity question of the category
@@ -306,9 +419,26 @@ func (e *invE2E) tickets() map[string]compTicket {
 	return out
 }
 
-// The owner issues three invitations, the list and the card show them, a
-// wrong word annuls nothing, the right one does and returns the place, a
-// scanned ticket cannot be annulled.
+// issueViaAPI issues n one-place staff invitations on the VIP category of the
+// general-admission date through the real route, as the owner.
+func (e *invE2E) issueViaAPI(n int, label string) {
+	e.t.Helper()
+	for i := 0; i < n; i++ {
+		code, body := e.call(ecOwnerTG, http.MethodPost, "/v1/organizations/"+e.seed.orgID.String()+"/sessions/"+e.seed.session.String()+"/invitations", map[string]any{
+			"request_id": uuid.NewString(),
+			"ga":         []map[string]any{{"tier_id": e.seed.vip.String(), "qty": 1}},
+			"guest":      map[string]any{"name": fmt.Sprintf("%s %d", label, i), "email": e.email(fmt.Sprintf("%s%d", label, i))},
+			"delivery":   "guest_email",
+		})
+		if code != http.StatusCreated {
+			e.t.Fatalf("issue %d: %d %s", i, code, body)
+		}
+	}
+}
+
+// The owner issues three invitations through the new route, the list and the
+// card show them, a wrong word annuls nothing, the right one does and returns
+// the place, a ticket scanned at the door cannot be annulled.
 func TestBotE2E_Invitations_OwnerIssuesListsAndAnnuls(t *testing.T) {
 	e := newInviteE2E(t)
 	d := e.driver(ecOwnerTG)
@@ -352,28 +482,29 @@ func TestBotE2E_Invitations_OwnerIssuesListsAndAnnuls(t *testing.T) {
 		}
 	}
 	// Nothing is issued before the last press.
-	if n := e.issuances(); n != 0 {
-		t.Fatalf("%d issuances before the confirmation", n)
+	if n := e.staffOrders(); n != 0 {
+		t.Fatalf("%d orders before the confirmation", n)
 	}
 
-	// ── send ────────────────────────────────────────────────────────────────
+	// ── send: one order per guest through the new route ─────────────────────
 	done := d.press("iv:go", "Выдано приглашений: 3")
-	tk := e.tickets()
-	if len(tk) != 3 {
-		t.Fatalf("tickets = %+v, want 3", tk)
+	inv := e.staffInvs()
+	if len(inv) != 3 {
+		t.Fatalf("orders = %+v, want 3", inv)
 	}
 	for _, want := range []struct{ email, name string }{{anna, "Anna Test"}, {boris, "Boris Test"}, {carl, "Carl Test"}} {
-		c, ok := tk[want.email]
-		if !ok || c.name != want.name || c.status != "active" || c.delivery != 1 || c.worker != 1 || !strings.HasPrefix(c.seatKey, "ga|t1|") {
-			t.Errorf("ticket of %s = %+v, want an active ticket named %q with a delivery job, a worker job and a VIP place", want.email, c, want.name)
+		c, ok := inv[want.email]
+		if !ok || c.name != want.name || c.delivery != "guest_email" || c.origin != "available" || c.state != "paid" {
+			t.Errorf("order of %s = %+v, want a paid order named %q, delivered to the guest, from a free place", want.email, c, want.name)
 		}
 		if !strings.Contains(done, fmt.Sprintf("№%d", c.sysID)) {
-			t.Errorf("the result lacks the ticket number %d of %s:\n%s", c.sysID, want.email, done)
+			t.Errorf("the result lacks the order number %d of %s:\n%s", c.sysID, want.email, done)
 		}
 	}
-	if n := e.issuances(); n != 3 {
-		t.Errorf("issuances = %d, want one per guest", n)
+	if n := e.issuances(); n != 0 {
+		t.Errorf("the legacy table got %d issuances, the bot must use the new route", n)
 	}
+	// The places are sold in the issue transaction itself.
 	if sold, free := e.places(e.seed.vip, "sold"), e.places(e.seed.vip, "available"); sold != 3 || free != 3 {
 		t.Errorf("VIP places sold/free = %d/%d, want 3/3", sold, free)
 	}
@@ -382,105 +513,147 @@ func TestBotE2E_Invitations_OwnerIssuesListsAndAnnuls(t *testing.T) {
 	}
 	// A second press of "Send" finds nothing to send and issues nothing.
 	d.press("iv:go", "Не найдено")
-	if n := e.issuances(); n != 3 {
-		t.Errorf("a second press issued: %d issuances", n)
+	if n := e.staffOrders(); n != 3 {
+		t.Errorf("a second press issued: %d orders", n)
+	}
+	e.mintTickets()
+	inv = e.staffInvs()
+	for _, em := range []string{anna, boris, carl} {
+		if c := inv[em]; c.ticketStatus != "active" || !strings.HasPrefix(c.seatKey, "ga|t1|") {
+			t.Errorf("ticket of %s = %+v, want an active ticket on a VIP place", em, c)
+		}
 	}
 
-	// ── the list: newest first, with states ─────────────────────────────────
-	d.press("iv:l", "Выдано: 3")
+	// ── the list: every date at once, newest first ──────────────────────────
+	d.press("iv:l", "Все сеансы, сначала новые")
 	st, _ := e.dialog(d.id)
-	if st.Step != "list" || len(st.ListIDs) != 3 {
+	if st.Step != "nlist" || len(st.NOrderIDs) != 3 {
 		t.Fatalf("list dialog = %+v, want 3 rows", st)
 	}
-	code, body := e.call(ecOwnerTG, http.MethodGet, "/v1/organizations/"+e.seed.orgID.String()+"/complimentary?limit=2", nil)
+	code, body := e.call(ecOwnerTG, http.MethodGet, "/v1/organizations/"+e.seed.orgID.String()+"/invitations?limit=2", nil)
 	if code != http.StatusOK {
 		t.Fatalf("list: %d %s", code, body)
 	}
 	var page struct {
-		Issuances []struct {
-			ID    uuid.UUID `json:"id"`
-			State string    `json:"state"`
-			Event *string   `json:"event_name"`
-			Tier  *string   `json:"tier_name"`
-			Count int       `json:"ticket_count"`
-		} `json:"issuances"`
-		Total   int  `json:"total"`
-		HasMore bool `json:"has_more"`
+		Items []struct {
+			OrderID uuid.UUID `json:"order_id"`
+			Session struct {
+				EventName string `json:"event_name"`
+			} `json:"session"`
+		} `json:"items"`
+		NextCursor *string `json:"next_cursor"`
 	}
 	if err := json.Unmarshal(body, &page); err != nil {
 		t.Fatal(err)
 	}
-	if page.Total != 3 || !page.HasMore || len(page.Issuances) != 2 || page.Issuances[0].ID != st.ListIDs[0] {
-		t.Errorf("API page = %+v, want total 3, more, newest first matching the bot's first row %v", page, st.ListIDs[0])
+	if len(page.Items) != 2 || page.NextCursor == nil || page.Items[0].OrderID != st.NOrderIDs[0] || page.Items[0].Session.EventName != e.seed.eventName {
+		t.Errorf("API page = %s, want 2 rows and a cursor, newest first matching the bot's first row %v", body, st.NOrderIDs[0])
 	}
-	if p := page.Issuances[0]; p.State != "valid" || p.Event == nil || *p.Event != e.seed.eventName || p.Tier == nil || *p.Tier != "VIP" || p.Count != 1 {
-		t.Errorf("first row = %+v", p)
+	if st.NOrderIDs[0] != inv[carl].orderID {
+		t.Errorf("the newest row is %v, want Carl's order %v", st.NOrderIDs[0], inv[carl].orderID)
 	}
 
 	// ── the card and the annul word ─────────────────────────────────────────
-	d.press("iv:lo:0", "действует")
-	d.press("iv:rv", "Аннулировать это приглашение?")
+	if card := d.press("iv:no:0", "Места:"); !strings.Contains(card, "✉ Отправляем письмо") {
+		t.Errorf("the card of a guest_email invitation shows its queued letter: %q", card)
+	}
+	d.press("iv:nrv", "Аннулировать это приглашение?")
 	d.say("нет", "Текст не совпал")
-	if e.count(`SELECT count(*) FROM tickets WHERE status = 'revoked' AND complimentary_issuance_id IN (SELECT id FROM complimentary_issuances WHERE org_id = $1)`, e.seed.orgID) != 0 {
+	if e.count(`SELECT count(*) FROM tickets WHERE status = 'cancelled' AND checkout_session_id IN (SELECT checkout_session_id FROM orders WHERE org_id = $1)`, e.seed.orgID) != 0 {
 		t.Fatal("a wrong word annulled something")
 	}
-	d.say("аннулировать", "аннулировано. Место вернулось в продажу")
-	if n := e.count(`SELECT count(*) FROM complimentary_issuances WHERE org_id = $1 AND status = 'revoked'`, e.seed.orgID); n != 1 {
-		t.Errorf("revoked issuances = %d, want 1", n)
+	d.say("аннулировать", "аннулировано: билетов 1")
+	inv = e.staffInvs()
+	if inv[carl].ticketStatus != "cancelled" || inv[anna].ticketStatus != "active" || inv[boris].ticketStatus != "active" {
+		t.Errorf("annulled the wrong ticket: carl %q anna %q boris %q", inv[carl].ticketStatus, inv[anna].ticketStatus, inv[boris].ticketStatus)
+	}
+	if inv[carl].state != "paid" {
+		t.Errorf("an annulled invitation stays a paid order (it stays billed): %q", inv[carl].state)
 	}
 	if sold, free := e.places(e.seed.vip, "sold"), e.places(e.seed.vip, "available"); sold != 2 || free != 4 {
 		t.Errorf("VIP places sold/free after the annul = %d/%d, want 2/4", sold, free)
 	}
-	if tk := e.tickets(); tk[carl].status != "revoked" || tk[anna].status != "active" {
-		t.Errorf("annulled the wrong ticket: carl %q anna %q", tk[carl].status, tk[anna].status)
-	}
-	// Annulling twice: the second says so and changes nothing.
-	d.press("iv:l", "Выдано: 3")
-	d.press("iv:lo:0", "аннулировано") // the card of the annulled one
-	d.press("iv:rv", "Выдано: 3")      // no annul question for an annulled invitation: back to the list
+	// An annulled invitation offers no second annul: back to the list.
+	d.press("iv:l", "Все сеансы, сначала новые")
+	d.press("iv:no:0", "Места:") // Carl's card, annulled
+	d.press("iv:nrv", "Все сеансы, сначала новые")
 
-	// ── a ticket scanned at the door is "used" and cannot be annulled ───────
-	if _, err := e.pool.Exec(context.Background(),
-		`INSERT INTO barcodes (authority_id, external_ref, ticket_id, status, scanned_at)
-		 SELECT id, $2, $1, 'scanned', now() FROM barcode_authorities WHERE type = 'platform'`, tk[boris].id, fmt.Sprintf("%013d", time.Now().UnixNano()%10000000000000)); err != nil {
+	// ── a ticket scanned at the door cannot be annulled ─────────────────────
+	if _, err := e.pool.Exec(context.Background(), `UPDATE tickets SET used_at = now() WHERE id = $1`, inv[boris].ticketID); err != nil {
 		t.Fatal(err)
 	}
-	code, body = e.call(ecOwnerTG, http.MethodGet, "/v1/organizations/"+e.seed.orgID.String()+"/complimentary?state=used", nil)
-	if code != http.StatusOK || !strings.Contains(string(body), `"total":1`) || !strings.Contains(string(body), boris) {
-		t.Errorf("state=used list: %d %s", code, body)
-	}
-	d.press("iv:l", "Выдано: 3")
+	d.press("iv:l", "Все сеансы, сначала новые")
 	st, _ = e.dialog(d.id)
-	for i, id := range st.ListIDs { // find Boris's row (newest first: boris is the middle one)
-		var holder string
-		_ = e.pool.QueryRow(context.Background(), `SELECT t.holder_email FROM tickets t WHERE t.complimentary_issuance_id = $1`, id).Scan(&holder)
-		if holder != boris {
-			continue
+	row := -1
+	for i, id := range st.NOrderIDs {
+		if id == inv[boris].orderID {
+			row = i
 		}
-		d.press(fmt.Sprintf("iv:lo:%d", i), "использовано на входе")
-		d.press("iv:rv", "Выдано: 3") // not valid any more: no annul question
-		break
 	}
-	var borisIssuance uuid.UUID
-	if err := e.pool.QueryRow(context.Background(), `SELECT complimentary_issuance_id FROM tickets WHERE id = $1`, tk[boris].id).Scan(&borisIssuance); err != nil {
-		t.Fatal(err)
+	if row < 0 {
+		t.Fatalf("Boris's order is not on the list: %v", st.NOrderIDs)
 	}
-	code, body = e.call(ecOwnerTG, http.MethodPost, "/v1/complimentary/"+borisIssuance.String()+"/revoke", map[string]string{})
-	var env struct {
-		Error struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	_ = json.Unmarshal(body, &env)
-	if code != http.StatusConflict || env.Error.Code != "complimentary.scanned_ticket_requires_manual_review" {
-		t.Errorf("revoking a scanned ticket: %d %s, want 409 in the error envelope", code, body)
-	}
-	if tk := e.tickets(); tk[boris].status != "active" {
-		t.Errorf("a scanned ticket was annulled: %q", tk[boris].status)
+	d.press(fmt.Sprintf("iv:no:%d", row), "Места:")
+	d.press("iv:nrv", "Аннулировать это приглашение?")
+	d.say("аннулировать", "уже использовано")
+	if inv = e.staffInvs(); inv[boris].ticketStatus != "active" {
+		t.Errorf("a scanned ticket was annulled: %q", inv[boris].ticketStatus)
 	}
 }
 
-// The manager has the same hands: issues one invitation and annuls it.
+// The new list pages by cursor, and what was issued before the new
+// invitations (complimentary_issuances) stays reachable, read-only except for
+// its own annul.
+func TestBotE2E_Invitations_ListPagesAndEarlierInvitationsStayManageable(t *testing.T) {
+	e := newInviteE2E(t)
+	d := e.driver(ecOwnerTG)
+
+	// Without any invitation the list is empty and there is no "earlier" button.
+	d.press("iv:l", "Приглашений пока не выдавали")
+	if st, _ := e.dialog(d.id); st.Step != "nlist" || len(st.NOrderIDs) != 0 {
+		t.Fatalf("empty list dialog = %+v", st)
+	}
+
+	e.issueViaAPI(6, "paged")
+	d.press("iv:l", "страница 1")
+	st, _ := e.dialog(d.id)
+	if len(st.NOrderIDs) != 5 {
+		t.Fatalf("page 1 has %d rows, want 5", len(st.NOrderIDs))
+	}
+	first := st.NOrderIDs[0]
+	d.press("iv:np:2", "страница 2")
+	st, _ = e.dialog(d.id)
+	if len(st.NOrderIDs) != 1 || st.NOrderIDs[0] == first {
+		t.Fatalf("page 2 rows = %v, want the one oldest order", st.NOrderIDs)
+	}
+	d.press("iv:np:1", "страница 1")
+	if st, _ = e.dialog(d.id); len(st.NOrderIDs) != 5 || st.NOrderIDs[0] != first {
+		t.Fatalf("back on page 1: %v", st.NOrderIDs)
+	}
+
+	// An invitation of the old kind (the general-admission date still takes
+	// the old route): the list shows the way to it, and it can be annulled.
+	code, body := e.call(ecOwnerTG, http.MethodPost, "/v1/organizations/"+e.seed.orgID.String()+"/complimentary", map[string]any{
+		"session_id": e.seed.session, "tier_id": e.seed.std, "qty": 1, "batch_id": "old-" + e.seed.suffix, "recipients": []string{e.email("old")},
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("old issue: %d %s", code, body)
+	}
+	d.press("iv:l", "страница 1")
+	d.press("iv:lg", "Прежние приглашения")
+	if st, _ = e.dialog(d.id); st.Step != "list" || len(st.ListIDs) != 1 {
+		t.Fatalf("earlier invitations dialog = %+v, want the one old issuance", st)
+	}
+	d.press("iv:lo:0", "действует")
+	d.press("iv:rv", "Аннулировать это приглашение?")
+	d.say("аннулировать", "аннулировано. Место вернулось в продажу")
+	if n := e.count(`SELECT count(*) FROM complimentary_issuances WHERE org_id = $1 AND status = 'revoked'`, e.seed.orgID); n != 1 {
+		t.Errorf("revoked old issuances = %d, want 1", n)
+	}
+}
+
+// The manager has the same hands: issues one invitation to an address only
+// (the address names the guest on the ticket) and annuls it.
 func TestBotE2E_Invitations_ManagerIssuesAndAnnuls(t *testing.T) {
 	e := newInviteE2E(t)
 	d := e.driver(ecManagerTG)
@@ -490,19 +663,20 @@ func TestBotE2E_Invitations_ManagerIssuesAndAnnuls(t *testing.T) {
 	d.press("iv:q:1", "Кто эти 1 гостей?")
 	d.say(guest, "Отправить приглашения?")
 	d.press("iv:go", "Выдано приглашений: 1")
-	tk := e.tickets()
-	if c := tk[guest]; c.status != "active" || c.name != "" || !strings.HasPrefix(c.seatKey, "ga|t2|") || c.delivery != 1 {
-		t.Fatalf("ticket = %+v, want an active unnamed ticket on a Standard place", c)
+	e.mintTickets()
+	c := e.staffInvs()[guest]
+	if c.ticketStatus != "active" || c.name != guest || !strings.HasPrefix(c.seatKey, "ga|t2|") || c.delivery != "guest_email" {
+		t.Fatalf("order = %+v, want an active ticket on a Standard place named by the address", c)
 	}
 	if e.places(e.seed.std, "sold") != 1 {
 		t.Error("Standard must have one place sold")
 	}
-	d.press("iv:l", "Выдано: 1")
-	d.press("iv:lo:0", "действует")
-	d.press("iv:rv", "Аннулировать это приглашение?")
+	d.press("iv:l", "Все сеансы, сначала новые")
+	d.press("iv:no:0", "Места:")
+	d.press("iv:nrv", "Аннулировать это приглашение?")
 	d.say("ANNUL", "аннулировано")
-	if e.places(e.seed.std, "sold") != 0 || e.tickets()[guest].status != "revoked" {
-		t.Error("the annul must return the place and revoke the ticket")
+	if e.places(e.seed.std, "sold") != 0 || e.staffInvs()[guest].ticketStatus != "cancelled" {
+		t.Error("the annul must return the place and cancel the ticket")
 	}
 	// The event card carries the entry point too.
 	d.press("iv:e:"+e.seed.event.String(), "Выберите дату")
@@ -532,9 +706,9 @@ func TestBotE2E_Invitations_CategoryRunsOutHalfWay(t *testing.T) {
 			t.Errorf("the partial answer lacks %q:\n%s", want, res)
 		}
 	}
-	tk := e.tickets()
-	if len(tk) != 1 || tk[first].status != "active" {
-		t.Errorf("tickets = %+v, want only the first guest", tk)
+	inv := e.staffInvs()
+	if len(inv) != 1 || inv[first].name != "First Guest" {
+		t.Errorf("orders = %+v, want only the first guest", inv)
 	}
 	if _, ok := e.dialog(d.id); ok {
 		t.Error("a refusal for want of places ends the dialog")
@@ -552,7 +726,7 @@ func TestBotE2E_Invitations_CategoryRunsOutHalfWay(t *testing.T) {
 
 // The dialog is on disk: a restart in the middle of the guests loses nothing,
 // the Home button ends it, a dialog that ran out is reported once, and a seated
-// date is refused in words.
+// date shows the way to the seat map in words (the flag is off here).
 func TestBotE2E_Invitations_RestartHomeExpiryAndSeatedDate(t *testing.T) {
 	e := newInviteE2E(t)
 	d := e.driver(ecOwnerTG)
@@ -568,7 +742,7 @@ func TestBotE2E_Invitations_RestartHomeExpiryAndSeatedDate(t *testing.T) {
 	// The confirmation was sent before the restart: its button is out of
 	// date and issues nothing (owner decision 2026-10-14).
 	e.tg.pressStale(t, d.id, "iv:go")
-	if n := e.issuances(); n != 0 {
+	if n := e.staffOrders(); n != 0 {
 		t.Fatalf("the old screen's button issued %d invitation(s)", n)
 	}
 	// From the menu the person starts again on new screens.
@@ -578,11 +752,11 @@ func TestBotE2E_Invitations_RestartHomeExpiryAndSeatedDate(t *testing.T) {
 	d.say("One, "+g1, "Принято пока (1 из 2)")
 	d.say("Two, "+g2, "Отправить приглашения?")
 	d.press("iv:go", "Выдано приглашений: 2")
-	if tk := e.tickets(); len(tk) != 2 || tk[g1].name != "One" || tk[g2].name != "Two" {
-		t.Fatalf("tickets = %+v", tk)
+	if inv := e.staffInvs(); len(inv) != 2 || inv[g1].name != "One" || inv[g2].name != "Two" {
+		t.Fatalf("orders = %+v", inv)
 	}
-	if n := e.issuances(); n != 2 {
-		t.Errorf("issuances = %d, want 2", n)
+	if n := e.staffOrders(); n != 2 {
+		t.Errorf("orders = %d, want 2", n)
 	}
 
 	// Home ends a dialog: a text typed afterwards is nobody's answer.
@@ -595,7 +769,7 @@ func TestBotE2E_Invitations_RestartHomeExpiryAndSeatedDate(t *testing.T) {
 	m := e.tg.mark()
 	e.tg.push(e2eMessageAs(d.id, "stray-"+e.seed.suffix+"@example.test"))
 	e.tg.waitSince(t, m, "Я не понял")
-	if n := e.issuances(); n != 2 {
+	if n := e.staffOrders(); n != 2 {
 		t.Errorf("a stray address issued: %d", n)
 	}
 
@@ -607,18 +781,75 @@ func TestBotE2E_Invitations_RestartHomeExpiryAndSeatedDate(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.say("late-"+e.seed.suffix+"@example.test", "Этот диалог устарел")
-	if n := e.issuances(); n != 2 {
+	if n := e.staffOrders(); n != 2 {
 		t.Errorf("an expired dialog issued: %d", n)
 	}
 	d.press("iv:go", "Не найдено")
 
-	// The seated date: no invitation without a seat.
+	// The seated date: the seats are picked on the map. With the Mini App
+	// flag off the screen is a text, with the link to the web screen when the
+	// bot knows the event center's address (it does not here).
 	d.press("iv:i", "Выберите мероприятие")
 	d.press("iv:eo:1", "Выберите дату")
-	d.press("iv:so:0", "есть схема зала")
+	got := d.press("iv:so:0", "есть схема зала")
+	if !strings.Contains(got, "веб-ивент-центре") {
+		t.Errorf("the seated screen does not point at the web event center:\n%s", got)
+	}
 	if st, _ := e.dialog(d.id); st.Step != "ti" || len(st.TierIDs) != 0 {
 		t.Errorf("seated date dialog = %+v, want the category step with no category to pick", st)
 	}
+	if n := e.count(`SELECT count(*) FROM web_login_codes WHERE purpose = 'miniapp' AND user_id = $1`, e.userOf(d.id)); n != 0 {
+		t.Errorf("a code was drawn with the flag off: %d", n)
+	}
+}
+
+// A seated date with BOT_MINIAPP_INVITES_ENABLED on: the entry is a callback
+// button, no code exists until it is pressed, and the press draws exactly one
+// one-time code and turns that button into a web_app button that opens
+// /tg/invitations for THIS session and event. The code is in the fragment.
+func TestBotE2E_Invitations_SeatedDateOpensTheMiniApp(t *testing.T) {
+	e := newInviteE2EWith(t, func(c *config.Config) { c.EventCenterPublicURL = "https://events.example.test" },
+		func(o *eventbot.Options) {
+			o.MiniappInvites = true
+			o.EventCenterURL = "https://events.example.test"
+		})
+	d := e.driver(ecOwnerTG)
+	user := e.userOf(d.id)
+	openCodes := func() int {
+		return e.count(`SELECT count(*) FROM web_login_codes WHERE user_id = $1 AND purpose = 'miniapp' AND used_at IS NULL AND revoked_at IS NULL`, user)
+	}
+
+	d.press("iv:new", "Бесплатные билеты для гостей")
+	d.press("iv:i", "Выберите мероприятие")
+	d.press("iv:eo:1", "Выберите дату")
+	d.press("iv:so:0", "Нажмите кнопку")
+	screen, _, _ := e.tg.lastOf(d.id)
+	if n := openCodes(); n != 0 {
+		t.Fatalf("%d codes drawn when the screen was drawn, want none until the press", n)
+	}
+	// The press draws one code and the button becomes a web_app button.
+	d.press("iv:ma", "Ссылка действует 5 минут")
+	if n := openCodes(); n != 1 {
+		t.Fatalf("%d open codes after one press, want 1", n)
+	}
+	apps := e.tg.webAppsOf(screen)
+	prefix := "https://events.example.test/tg/invitations?session=" + e.seed.seatedSession.String() + "&event=" + e.seed.seatedEvent.String() + "#code="
+	if len(apps) != 1 || !strings.HasPrefix(apps[0], prefix) || len(apps[0]) <= len(prefix)+20 {
+		t.Fatalf("web_app buttons of the screen: %v, want one starting with %s", apps, prefix)
+	}
+	// The code opens the page: it exchanges for a session of the same user.
+	code := strings.TrimPrefix(apps[0], prefix)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/auth/web/link", strings.NewReader(`{"code":"`+code+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	e.srv.router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("the code does not sign in: %d %s", rec.Code, rec.Body.String())
+	}
+	// A GA date of the same organization has no Mini App button: it goes on to categories.
+	d.press("iv:i", "Выберите мероприятие")
+	d.press("iv:eo:0", "Выберите дату")
+	d.press("iv:so:0", "Выберите категорию")
 }
 
 // Somebody from ANOTHER organization gets nothing — from the bot and from the
@@ -633,17 +864,15 @@ func TestBotE2E_Invitations_OtherOrganizationAndGroupChat(t *testing.T) {
 	owner.press("iv:q:1", "Кто эти 1 гостей?")
 	owner.say(guest, "Отправить приглашения?")
 	owner.press("iv:go", "Выдано приглашений: 1")
-	var issuance uuid.UUID
-	if err := e.pool.QueryRow(context.Background(), `SELECT id FROM complimentary_issuances WHERE org_id = $1`, e.seed.orgID).Scan(&issuance); err != nil {
-		t.Fatal(err)
-	}
+	e.mintTickets()
+	order := e.staffInvs()[guest]
 
 	// The outsider's own organization has no events: nothing to invite to.
 	out.press("iv:i", "нет предстоящей даты")
 	// An event of the first organization by id: not found.
 	out.press("iv:e:"+e.seed.event.String(), "Не найдено")
 	// Presses with no dialog behind them, aimed at the first organization's rows.
-	for _, c := range []string{"iv:eo:0", "iv:so:0", "iv:to:0", "iv:q:1", "iv:go", "iv:lo:0", "iv:rv", "iv:lp:1"} {
+	for _, c := range []string{"iv:eo:0", "iv:so:0", "iv:to:0", "iv:q:1", "iv:go", "iv:lo:0", "iv:rv", "iv:lp:1", "iv:no:0", "iv:nrv", "iv:np:2", "iv:ma"} {
 		got := out.press(c, "Не найдено")
 		if strings.Contains(got, guest) || strings.Contains(got, e.seed.eventName) {
 			t.Errorf("%s leaked to another organization:\n%s", c, got)
@@ -651,25 +880,27 @@ func TestBotE2E_Invitations_OtherOrganizationAndGroupChat(t *testing.T) {
 	}
 	out.say(guest, "Я не понял")
 	// The outsider's list is their own (empty), never ours.
-	got := out.press("iv:l", "Выдано: 0")
+	got := out.press("iv:l", "Приглашений пока не выдавали")
 	if strings.Contains(got, guest) {
 		t.Errorf("the other organization's list shows our guest:\n%s", got)
 	}
 
-	// The API: the flat revoke route answers an outsider 403 and annuls nothing,
-	// our list is closed to them, and they cannot issue in our organization.
-	if code, body := e.call(ecOutsiderTG, http.MethodPost, "/v1/complimentary/"+issuance.String()+"/revoke", map[string]string{}); code != http.StatusForbidden {
-		t.Errorf("foreign revoke: %d %s, want 403", code, body)
+	// The API: the outsider cannot cancel, list or issue in our organization,
+	// and sees nothing in their own list.
+	org := e.seed.orgID.String()
+	if code, body := e.call(ecOutsiderTG, http.MethodPost, "/v1/organizations/"+org+"/invitations/"+order.orderID.String()+"/cancel", map[string]any{}); code != http.StatusForbidden && code != http.StatusNotFound {
+		t.Errorf("foreign cancel: %d %s, want 403 or 404", code, body)
 	}
-	if code, _ := e.call(ecOutsiderTG, http.MethodGet, "/v1/organizations/"+e.seed.orgID.String()+"/complimentary", nil); code != http.StatusForbidden {
-		t.Errorf("foreign list: %d, want 403", code)
+	if code, _ := e.call(ecOutsiderTG, http.MethodGet, "/v1/organizations/"+org+"/invitations", nil); code != http.StatusForbidden && code != http.StatusNotFound {
+		t.Errorf("foreign list: %d, want 403 or 404", code)
 	}
-	if code, _ := e.call(ecOutsiderTG, http.MethodPost, "/v1/organizations/"+e.seed.orgID.String()+"/complimentary", map[string]any{
-		"session_id": e.seed.session, "tier_id": e.seed.vip, "qty": 1, "batch_id": "x-" + e.seed.suffix, "recipients": []string{"x@example.test"},
-	}); code != http.StatusForbidden {
-		t.Errorf("foreign issue: %d, want 403", code)
+	if code, _ := e.call(ecOutsiderTG, http.MethodPost, "/v1/organizations/"+org+"/sessions/"+e.seed.session.String()+"/invitations", map[string]any{
+		"request_id": uuid.NewString(), "ga": []map[string]any{{"tier_id": e.seed.vip.String(), "qty": 1}},
+		"guest": map[string]any{"name": "x"}, "delivery": "pdf_only",
+	}); code != http.StatusForbidden && code != http.StatusNotFound {
+		t.Errorf("foreign issue: %d, want 403 or 404", code)
 	}
-	if e.tickets()[guest].status != "active" || e.issuances() != 1 {
+	if e.staffInvs()[guest].ticketStatus != "active" || e.staffOrders() != 1 {
 		t.Error("the outsider changed our invitations")
 	}
 

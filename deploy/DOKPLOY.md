@@ -365,6 +365,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `BILLING_ORGANIZER_ENABLED` (`true` opens credit packs and platform invoices to organizers; default off = those routes answer 404 `billing.organizer_disabled`, the operator console is unaffected) | ● | — | — | — |
 | `EVENTS_TELEGRAM_BOT_TOKEN` | — | — | ✅ | — |
 | `BOT_ARENA_API_URL`, `BOT_METRICS_ADDR`, `BOT_SELF_ONBOARDING_ENABLED`, `BOT_ONBOARDING_SITE_BUTTON` | — | — | ● | — |
+| `BOT_MINIAPP_INVITES_ENABLED` (`true` makes «Приглашения» of a seated date a web_app button into the Mini App page `/tg/invitations` of the event center, spec 46 INV-05; default off, then the bot sends a text with a link to the web screen. Needs `EVENT_CENTER_PUBLIC_URL` with https on the API and the bot, and the `/tg/invitations` page deployed) | — | — | ● | — |
 | `BOT_MINIAPP_EDITOR_ENABLED` (`true` shows the «Править в редакторе» web_app button in the bot, spec 44 RT-12a; default off. Needs `EVENT_CENTER_PUBLIC_URL` with https on the API and the `/tg/` nginx location of the event center. Until RT-12b the page is a placeholder, so leave it off in production. To roll back, turn it off and redeploy the bot FIRST, then roll back the API image, the migration last: docs/ops/event_center_rollout_ru.md section 4) | — | — | ● | — |
 | `POSTER_LLM_API_KEY` (secret), `POSTER_LLM_MODEL` | ● | — | — | — |
 | `POSTER_LLM_BASE_URL` (production: unset or `https://api.anthropic.com`) | ● | — | — | — |

@@ -9,6 +9,7 @@ import { LoginScreen } from "@/screens/LoginScreen";
 import { LinkLoginScreen } from "@/screens/LinkLoginScreen";
 import { TgEditScreen } from "@/screens/TgEditScreen";
 import { TgEnterScreen } from "@/screens/TgEnterScreen";
+import { TgInvitationsScreen } from "@/screens/TgInvitationsScreen";
 import { parseTgEnterSearch } from "@/lib/tgEnter";
 import { ForgotPasswordScreen } from "@/screens/ForgotPasswordScreen";
 import { SetPasswordScreen } from "@/screens/SetPasswordScreen";
@@ -82,6 +83,14 @@ const tgEditRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/tg/edit",
   component: TgEditScreen,
+});
+
+// The Telegram mini app page of the staff invitations (spec 46, 4.2): opened by the bot's web_app
+// button on the session card. Public: the one-time code is the proof.
+const tgInvitationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tg/invitations",
+  component: TgInvitationsScreen,
 });
 
 // The entry of the Telegram mini app for every other screen (the bot's web_app
@@ -346,6 +355,7 @@ export const routeTree = rootRoute.addChildren([
   linkLoginRoute,
   tgEditRoute,
   tgEnterRoute,
+  tgInvitationsRoute,
   forgotRoute,
   resetPasswordRoute,
   acceptInviteRoute,

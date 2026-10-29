@@ -86,6 +86,7 @@ type issueBody struct {
 	Guest     guestBody `json:"guest"`
 	Delivery  string    `json:"delivery"`
 	Note      *string   `json:"note"`
+	VIP       bool      `json:"vip"`
 }
 
 // lineResponse is one place of an invitation.
@@ -102,6 +103,8 @@ type lineResponse struct {
 	TicketID  *string `json:"ticket_id"`
 	// TicketStatus is tickets.status of the place's ticket (active, cancelled, ...), null until it is issued.
 	TicketStatus *string `json:"ticket_status"`
+	// VIP is the organizer's private VIP mark of the place's ticket; false until the ticket is issued.
+	VIP bool `json:"vip"`
 }
 
 type issueResponse struct {
@@ -276,6 +279,7 @@ func validateIssue(b issueBody) (IssueInput, *IssueError) {
 	}
 	in.Delivery = b.Delivery
 	in.Note = trimPtr(b.Note)
+	in.VIP = b.VIP
 	if utf8.RuneCountInString(in.Note) > maxNoteRunes {
 		return in, refuse(http.StatusBadRequest, "invitation.note_too_long", "note is at most 1000 characters", nil)
 	}
@@ -348,7 +352,7 @@ func toLine(l gen.InvitationOrderLineRow) lineResponse {
 	out := lineResponse{
 		SeatKey: l.SeatKey, Sector: l.SectorName, Row: l.RowName, Seat: l.SeatNumber, Kind: l.Kind,
 		TierID: l.TierID.String(), TierName: l.TierName, FaceValue: l.UnitPrice, Origin: l.SeatOrigin,
-		TicketStatus: l.TicketStatus,
+		TicketStatus: l.TicketStatus, VIP: l.VIP,
 	}
 	if l.TicketID != nil {
 		s := l.TicketID.String()
@@ -389,6 +393,9 @@ type listItem struct {
 	TicketsTotal      int64          `json:"tickets_total"`
 	TicketsActive     int64          `json:"tickets_active"`
 	Places            []lineResponse `json:"places"`
+	// Letter is the state of the guest's letter; null when no letter was queued
+	// (pdf_only, or the tickets are not issued yet).
+	Letter *letterResponse `json:"letter"`
 }
 
 // HandleList serves GET /v1/organizations/{org_id}/sessions/{session_id}/invitations:
@@ -425,40 +432,40 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		ids = append(ids, row.ID)
 	}
-	byOrder := map[uuid.UUID][]lineResponse{}
-	if len(ids) > 0 {
-		lines, err := h.queries.ListInvitationOrderLines(ctx, ids)
-		if err != nil {
-			h.internal(w, r, "list: lines", err)
-			return
-		}
-		for _, l := range lines {
-			byOrder[l.OrderID] = append(byOrder[l.OrderID], toLine(l))
-		}
+	ex, err := h.loadPageExtras(ctx, ids)
+	if err != nil {
+		h.internal(w, r, "list: places and letters", err)
+		return
 	}
 	items := make([]listItem, 0, len(rows))
 	for _, row := range rows {
-		it := listItem{
-			OrderID: row.ID.String(), SystemID: row.SystemID, Status: row.Status, GuestName: row.BuyerName,
-			Delivery: deliveryOf(row.Metadata), IssuedVia: row.IssuedVia, CreatedAt: row.CreatedAt,
-			TicketsTotal: row.TicketsTotal, TicketsActive: row.TicketsActive,
-			IssuedBy: issuerResponse{Email: row.IssuerEmail, FirstName: row.IssuerFirst, LastName: row.IssuerLast},
-			Places:   byOrder[row.ID],
-		}
-		if it.Places == nil {
-			it.Places = []lineResponse{}
-		}
-		if row.IssuedBy != nil {
-			s := row.IssuedBy.String()
-			it.IssuedBy.UserID = &s
-		}
-		if row.BatchID != nil {
-			s := row.BatchID.String()
-			it.InvitationBatchID = &s
-		}
-		items = append(items, it)
+		items = append(items, newListItem(row, ex.places[row.ID], ex.letters[row.ID]))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// newListItem builds one list item from its order row and its places.
+func newListItem(row gen.SessionInvitationRow, places []lineResponse, letter *letterResponse) listItem {
+	it := listItem{
+		OrderID: row.ID.String(), SystemID: row.SystemID, Status: row.Status, GuestName: row.BuyerName,
+		Delivery: deliveryOf(row.Metadata), IssuedVia: row.IssuedVia, CreatedAt: row.CreatedAt,
+		TicketsTotal: row.TicketsTotal, TicketsActive: row.TicketsActive,
+		IssuedBy: issuerResponse{Email: row.IssuerEmail, FirstName: row.IssuerFirst, LastName: row.IssuerLast},
+		Places:   places,
+		Letter:   letter,
+	}
+	if it.Places == nil {
+		it.Places = []lineResponse{}
+	}
+	if row.IssuedBy != nil {
+		s := row.IssuedBy.String()
+		it.IssuedBy.UserID = &s
+	}
+	if row.BatchID != nil {
+		s := row.BatchID.String()
+		it.InvitationBatchID = &s
+	}
+	return it
 }
 
 type cancelBody struct {

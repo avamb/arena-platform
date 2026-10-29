@@ -2352,6 +2352,78 @@ other = "The invitation for {{.Guest}} is already used: the scanner at the door 
 ["bot.inv.private_only"]
 other = "Guests' addresses are shown and typed only in a private chat with the bot. Open Invitations there."
 
+["bot.inv.seated_text"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nThis date has a seating plan, so you pick the seats on the map: free seats and the ones you hold back for yourself. Press the button to open the map here in Telegram."
+
+["bot.inv.seated_web"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nThis date has a seating plan, so you pick the seats on the map in the web event center:\n{{.Link}}"
+
+["bot.inv.seated_nolink"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nThis date has a seating plan, so you pick the seats on the map in the web event center: open the event, then the date, then Invitations."
+
+["bot.inv.seated_btn"]
+other = "🪑 Choose seats"
+
+["bot.inv.seated_failed"]
+other = "I could not open the seat map just now. Press «Back» and try again in a minute, or open the web event center."
+
+["bot.inv.why_cancelled"]
+other = "the date is canceled."
+
+["bot.inv.legacy_btn"]
+other = "🗂 Earlier invitations"
+
+["bot.inv.legacy_note"]
+other = "🗂 <b>Earlier invitations</b>: issued before the new invitations. You can still annul them here."
+
+["bot.inv.nlist_title"]
+other = "🎟 <b>Invitations</b> · {{.Org}}\nAll dates, newest first · page {{.Page}}\n{{.Legend}}"
+
+["bot.inv.nlegend"]
+other = "✔ valid  ✕ annulled  ⚠ letter failed"
+
+["bot.inv.ncard"]
+other = "🎟 <b>{{.Event}}</b>\n{{.When}}\n\nGuest: {{.Guest}}\nPlaces:\n{{.Places}}\n\nStatus: {{.State}}\nIssued: {{.Issued}}\nIssued by: {{.By}}{{.Letter}}"
+
+["bot.inv.state_issuing"]
+other = "the tickets are being issued"
+
+["bot.inv.nrevoke_ask"]
+other = "🚫 <b>Annul this invitation?</b>\n\n{{.Guest}}\n{{.Event}} · {{.When}}\n\nAll {{.N}} tickets stop working at once and each place goes back where it came from: to your held-back seats or to sale. This cannot be undone. {{.Mail}}\n\nTo annul, type the word <b>{{.Word}}</b> as a message."
+
+["bot.inv.nrevoke_mail"]
+other = "The guest gets an e-mail about it."
+
+["bot.inv.nrevoke_nomail"]
+other = "Arena does not tell the guest: write to them yourself."
+
+["bot.inv.nrevoke_done"]
+other = "✔ The invitation for {{.Guest}} is annulled: {{.N}} tickets. The places are back where they came from."
+
+["bot.inv.nrevoke_skipped"]
+other = "{{.N}} tickets were not annulled because they are already used at the door."
+
+["bot.inv.nrevoke_used"]
+other = "The invitation for {{.Guest}} is already used: the scanner at the door accepted a ticket. So I did not annul it."
+
+["bot.inv.nrevoke_notyet"]
+other = "The tickets of this invitation are still being issued. Try again in a minute."
+
+["bot.inv.letter_pending"]
+other = "✉ Sending the letter…"
+
+["bot.inv.letter_sent"]
+other = "✉ Letter sent {{.When}}"
+
+["bot.inv.letter_failed"]
+other = "⚠ Letter failed. The guest most likely has not received it. Check the e-mail address and send it again in the event center."
+
+["bot.inv.letter_skipped"]
+other = "✉ Letter not sent"
+
+["bot.inv.letter_disabled"]
+other = "✉ Letter not sent, e-mail sending is off"
+
 ["bot.promo.btn"]
 other = "🏷 Promo codes"
 

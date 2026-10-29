@@ -123,10 +123,21 @@ export type ApiErrorStem =
   | "invitationEmpty"
   | "invitationUnknownSeat"
   | "invitationTooManyPlaces"
+  | "invitationListInvalid"
+  | "invitationNoneActive"
+  | "invitationSeatedRoute"
   | "invitationGuestName"
   | "invitationGuestEmail"
   | "invitationNoteLong"
   | "invitationCategory"
+  // INV-06b: the CSV upload
+  | "batchTooBig"
+  | "batchCsvBroken"
+  | "batchEncoding"
+  | "batchEmptyFile"
+  | "batchHeader"
+  | "batchInvalid"
+  | "batchTimeout"
   // 4-5
   | "resendTooSoon"
   | "invitationChannel"
@@ -216,6 +227,10 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   // Spec 46: invitations on chosen seats
   "invitationSeatsTaken", "invitationNotEnough", "invitationRequestReused", "invitationSessionCancelled", "invitationNotIssued", "invitationTicketScanned", "invitationEmailNeeded", "invitationMyEmail", "invitationEmpty",
   "invitationUnknownSeat", "invitationTooManyPlaces", "invitationGuestName", "invitationGuestEmail", "invitationNoteLong", "invitationCategory",
+  // INV-04b: the organization list and the old route on a seated date
+  "invitationListInvalid", "invitationNoneActive", "invitationSeatedRoute",
+  // INV-06b: the CSV upload
+  "batchTooBig", "batchCsvBroken", "batchEncoding", "batchEmptyFile", "batchHeader", "batchInvalid", "batchTimeout",
   // The shop (spec 47)
   "shopStockChanged", "shopDuplicateSlug", "shopVariantsInvalid", "shopMediaInvalid", "shopNotShippable", "shopNotCancellable", "shopNotRefundable", "shopRefundAmount", "shopCurrency", "shopOperatorOnly",
 ];
@@ -300,6 +315,28 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "invitation.note_too_long": "invitationNoteLong",
   "invitation.unknown_category": "invitationCategory",
   "invitation.seat_without_category": "invitationCategory",
+  "invitation.invalid_cursor": "invitationListInvalid",
+  "invitation.invalid_filter": "invitationListInvalid",
+  "invitation.invalid_state": "invitationListInvalid",
+  "invitation.invalid_limit": "invitationListInvalid",
+  "invitation.no_active_tickets": "invitationNoneActive",
+  "complimentary.use_invitations_route": "invitationSeatedRoute",
+  // INV-06b: the CSV upload (the 409 refusals of the transaction keep their single-invitation codes, the screen reads their report)
+  "invitation_batch.too_many_rows": "batchTooBig",
+  "invitation_batch.too_many_places": "batchTooBig",
+  "invitation_batch.file_too_large": "batchTooBig",
+  "invitation_batch.invalid_csv": "batchCsvBroken",
+  "invitation_batch.invalid_encoding": "batchEncoding",
+  "invitation_batch.empty_file": "batchEmptyFile",
+  "invitation_batch.file_required": "batchEmptyFile",
+  "invitation_batch.invalid_header": "batchHeader",
+  "invitation_batch.invalid": "batchInvalid",
+  "invitation_batch.timeout": "batchTimeout",
+  "invitation_batch.request_id_reused": "invitationRequestReused",
+  "invitation_batch.invalid_request_id": "invalid",
+  "invitation_batch.invalid_delivery": "invalid",
+  "invitation_batch.invalid_dry_run": "invalid",
+  "invitation_batch.invalid_body": "invalid",
   "membership.last_owner": "lastOwner",
   // 4-5: the team and its invitations (bot.* routes, DELETE members)
   "bot.invitation_resend_too_soon": "resendTooSoon",

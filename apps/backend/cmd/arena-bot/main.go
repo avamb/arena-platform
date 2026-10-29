@@ -105,6 +105,7 @@ func run() error {
 		SelfOnboarding: cfg.BotSelfOnboardingEnabled,
 		SiteButton:     cfg.BotOnboardingSiteButton,
 		MiniappEditor:  cfg.BotMiniappEditorEnabled,
+		MiniappInvites: cfg.BotMiniappInvitesEnabled,
 		SchemeButton:   cfg.BotSchemeButton,
 		EventCenterURL: cfg.EventCenterPublicURL,
 	})

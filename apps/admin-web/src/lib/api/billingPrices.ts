@@ -36,6 +36,7 @@ export type PriceListPack = Schemas["BillingPriceListPack"];
 export type RateOverride = Schemas["BillingRateOverride"];
 export type BillingAccount = Schemas["BillingAdminAccount"];
 export type FeeMode = "organizer_pays" | "buyer_pays";
+export type ComplimentaryBilling = "free" | "standard";
 export type AccountTerms = Schemas["BillingAccountTerms"];
 export type CreatePriceListRequest = Schemas["BillingCreatePriceListRequest"];
 export type CreateRateOverrideRequest = Schemas["BillingCreateRateOverrideRequest"];
@@ -600,6 +601,7 @@ export interface TermsForm {
   readonly invoiceDelayDays: string;
   readonly dueDays: string;
   readonly feeMode: FeeMode;
+  readonly complimentaryBilling: ComplimentaryBilling;
 }
 
 export function termsFormFrom(current: AccountTerms | undefined): TermsForm {
@@ -612,8 +614,18 @@ export function termsFormFrom(current: AccountTerms | undefined): TermsForm {
     invoiceDelayDays: current?.invoice_delay_days == null ? "" : String(current.invoice_delay_days),
     dueDays: current?.due_days == null ? "" : String(current.due_days),
     feeMode: current?.fee_mode === "buyer_pays" ? "buyer_pays" : "organizer_pays",
+    complimentaryBilling: current?.complimentary_billing === "standard" ? "standard" : "free",
   };
 }
+
+/** How staff invitations are billed (spec 46, section 3.6). */
+export const COMPLIMENTARY_BILLING_MODES: readonly { value: ComplimentaryBilling; label: string }[] = [
+  { value: "free", label: "Free (within the yearly free limit)" },
+  { value: "standard", label: "Standard per-ticket rate" },
+];
+
+export const COMPLIMENTARY_BILLING_EXPLANATION =
+  "Invitations issued by staff. A CSV upload is always charged at the standard rate. A cancelled invitation keeps its charge. The change applies from the date these terms start.";
 
 export const FEE_MODES: readonly { value: FeeMode; label: string; explanation: string }[] = [
   {
@@ -672,6 +684,7 @@ export function buildTermsRequest(
       invoice_delay_days: delay,
       due_days: due,
       fee_mode: form.feeMode,
+      complimentary_billing: form.complimentaryBilling,
     },
   };
 }

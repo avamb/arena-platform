@@ -8,6 +8,7 @@ import { StepUpProvider } from "@/components/StepUpDialog";
 import { I18nProvider } from "@/lib/i18n";
 import { captureLinkCode } from "@/lib/linkCode";
 import { captureTgEdit } from "@/lib/tgEdit";
+import { captureTgInvitations } from "@/lib/tgInvitations";
 import { router } from "@/router";
 import "@/styles.css";
 
@@ -16,6 +17,8 @@ import "@/styles.css";
 captureLinkCode();
 // The Telegram mini app link does the same at /tg/edit (spec 44, RT-12).
 captureTgEdit();
+// The staff invitations page does the same at /tg/invitations (spec 46, 4.2).
+captureTgInvitations();
 
 const queryClient = new QueryClient({
   defaultOptions: {

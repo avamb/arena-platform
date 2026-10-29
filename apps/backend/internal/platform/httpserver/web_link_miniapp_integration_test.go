@@ -118,6 +118,9 @@ func TestWebLinkMiniapp_ThirtyMinuteSessionNoNoticeOtherCodesUntouched(t *testin
 		`,"purpose":"miniapp"`,
 		fmt.Sprintf(`,"purpose":"miniapp","kind":"poster","event_id":%q`, event),
 		`,"purpose":"miniapp","kind":"description","event_id":"nope"`,
+		// INV-05: the invitations screen names a session as well as the event
+		fmt.Sprintf(`,"purpose":"miniapp","kind":"invitations","event_id":%q`, event),
+		fmt.Sprintf(`,"purpose":"miniapp","kind":"invitations","event_id":%q,"session_id":"nope"`, event),
 	} {
 		if code, out := issue(tg, extra); code != http.StatusBadRequest || errCode(out) != "bot.invalid_miniapp_target" {
 			t.Fatalf("miniapp target %s: %d %v", extra, code, out)
@@ -164,6 +167,18 @@ func TestWebLinkMiniapp_ThirtyMinuteSessionNoNoticeOtherCodesUntouched(t *testin
 	}
 	if purposeOf(first) != "miniapp" {
 		t.Fatalf("purpose of the miniapp code is %q", purposeOf(first))
+	}
+	// INV-05: the staff invitations screen of one session. The sign-in code
+	// is in the fragment, the session and the event in the query.
+	sessionID := uuid.NewString()
+	icode, iout := issue(tg, fmt.Sprintf(`,"purpose":"miniapp","kind":"invitations","event_id":%q,"session_id":%q`, event, sessionID))
+	if icode != http.StatusCreated {
+		t.Fatalf("invitations code: %d %v", icode, iout)
+	}
+	iurl, _ := iout["url"].(string)
+	ipre := "https://events.example.test/tg/invitations?session=" + sessionID + "&event=" + event + "#code="
+	if !strings.HasPrefix(iurl, ipre) || purposeOf(strings.TrimPrefix(iurl, ipre)) != "miniapp" {
+		t.Fatalf("invitations link %q, want %s<code> of purpose miniapp", iurl, ipre)
 	}
 	var revoked int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM web_login_codes WHERE code_hash = $1 AND revoked_at IS NOT NULL`, users.TokenHash(webCode)).Scan(&revoked); err != nil || revoked != 0 {

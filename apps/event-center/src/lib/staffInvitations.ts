@@ -11,6 +11,7 @@
  * holds a guest's contact details.
  */
 import { ApiError } from "@/lib/api/http";
+import type { Tone } from "@/lib/orders";
 import type {
   AdminSeatRow,
   StaffInvitationIssueRequest,
@@ -361,6 +362,69 @@ export function canAct(item: Pick<StaffInvitationListItem, "tickets_total" | "ti
   return s === "active" || s === "partial";
 }
 
+// ─── The letter of an invitation ─────────────────────────────────────────────
+
+export type LetterKind = "none" | "pending" | "sent" | "failed" | "skipped" | "disabled";
+
+export interface LetterView {
+  kind: LetterKind;
+  tone: Tone;
+  /** The time the letter went out ("14:05", with a date when it was not today), only for `sent`. */
+  when: string;
+  /** Key of the hint under a failed letter, only for `failed`. */
+  hint: "seatInv.letter.failedHint" | "seatInv.letter.addressRejected" | null;
+}
+
+/**
+ * The time a letter went out in the viewer's zone: just the clock when it was
+ * today, else the short date and the clock. Empty for a time that does not parse.
+ */
+export function formatLetterTime(iso: string | null | undefined, tz: string | undefined, locale: string, now: number = Date.now()): string {
+  if (iso == null) return "";
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  const loc = locale === "en" ? "en-GB" : locale;
+  const opts: Intl.DateTimeFormatOptions = { timeZone: tz };
+  try {
+    const day = (d: Date) => new Intl.DateTimeFormat("en-CA", opts).format(d);
+    const clock = new Intl.DateTimeFormat(loc, { ...opts, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(at);
+    if (day(at) === day(new Date(now))) return clock;
+    return `${new Intl.DateTimeFormat(loc, { ...opts, day: "numeric", month: "short" }).format(at)} ${clock}`;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * What the list shows about the guest's letter. Nothing (`none`) for an
+ * invitation without a letter (pdf_only, tickets not issued yet) and for a
+ * fully canceled one, whose letter no longer matters.
+ */
+export function letterView(
+  item: Pick<StaffInvitationListItem, "letter" | "tickets_total" | "tickets_active" | "places">,
+  tz: string | undefined,
+  locale: string,
+  now: number = Date.now(),
+): LetterView {
+  const none: LetterView = { kind: "none", tone: "neutral", when: "", hint: null };
+  const l = item.letter;
+  if (l == null || invitationState(item) === "cancelled") return none;
+  switch (l.status) {
+    case "pending":
+      return { kind: "pending", tone: "wait", when: "", hint: null };
+    case "sent":
+      return { kind: "sent", tone: "ok", when: formatLetterTime(l.sent_at, tz, locale, now), hint: null };
+    case "failed":
+      return { kind: "failed", tone: "bad", when: "", hint: l.last_error_code === "address_rejected" ? "seatInv.letter.addressRejected" : "seatInv.letter.failedHint" };
+    case "skipped":
+      return { kind: "skipped", tone: "neutral", when: "", hint: null };
+    case "disabled":
+      return { kind: "disabled", tone: "neutral", when: "", hint: null };
+    default:
+      return none;
+  }
+}
+
 /** How often the list is read while tickets are being minted. */
 export const POLL_MS = 2000;
 /** The list stops asking this long after the newest unfinished invitation was issued (something is stuck, the person reloads). */
@@ -369,6 +433,11 @@ export const POLL_GIVE_UP_MS = 10 * 60_000;
 /** The delay until the next read of the list, or false when every invitation is done. */
 export function pollDelay(items: readonly StaffInvitationListItem[], now: number = Date.now()): number | false {
   const waiting = items.some((i) => {
+    // A letter still on its way: read again so "sending" turns into "sent" without a reload.
+    if (i.letter?.status === "pending" && invitationState(i) !== "cancelled") {
+      const issued = Date.parse(i.created_at);
+      return Number.isNaN(issued) || now - issued < POLL_GIVE_UP_MS;
+    }
     if (invitationState(i) !== "issuing") return false;
     const at = Date.parse(i.created_at);
     return Number.isNaN(at) || now - at < POLL_GIVE_UP_MS;

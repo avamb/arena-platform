@@ -266,6 +266,35 @@ label {
   flex: 1 1 auto;
 }
 
+/*
+ * The staff invitations page /tg/invitations (spec 46, 4.2): the web screen's own parts in a phone layout. The card is
+ * at most 640 px wide whatever the window, so the two-column hall layout of the web (min-width 900px of the viewport)
+ * must never apply: one column, the hall a little lower, the actions as wide as the card allows.
+ */
+.tg-inv .inv-layout {
+  flex-direction: column;
+  align-items: stretch;
+}
+.tg-inv .inv-hallcol,
+.tg-inv .inv-side {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+}
+.tg-inv .inv-hall {
+  height: clamp(15rem, 46dvh, 24rem);
+}
+.tg-inv .inv-form .btn-primary {
+  width: 100%;
+}
+.tg-inv .inv-row-actions .btn,
+.tg-inv .inv-actions .btn {
+  flex: 1 1 auto;
+}
+.tg-inv .cards {
+  padding-inline-start: 0;
+}
+
 /* The password question before a money action (StepUpDialog). */
 .dialog-backdrop {
   position: fixed;
@@ -1637,6 +1666,31 @@ fieldset legend {
   opacity: 0.7;
 }
 
+/* INV-06b: the CSV upload. */
+.inv-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+}
+.inv-help {
+  margin-block: 0.75rem;
+}
+.inv-help summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.inv-batch-mark {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 /* A shop product card: ONE Save for the whole card (A-02). On a wide screen the bar sticks to the top of the page,
    on a phone it is a bar at the bottom of the screen, where the thumb reaches it. */
 .shop-savebar {
@@ -1738,4 +1792,14 @@ fieldset legend {
 .shop-stock-name {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* Organization invitations: the event and date filter above the tabs. */
+.org-inv-filters {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+.org-inv-filters select {
+  max-width: 100%;
 }

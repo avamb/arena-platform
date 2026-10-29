@@ -62,6 +62,10 @@ type Options struct {
 	// "Edit in the editor" next to the description preview and on the
 	// email-note screen (spec 44, RT-12a). Default off.
 	MiniappEditor bool
+	// MiniappInvites (BOT_MINIAPP_INVITES_ENABLED) makes "Invitations" of a
+	// seated date a web_app button into the Mini App page /tg/invitations
+	// (spec 46, INV-05). Default off: a text with a link to the web screen.
+	MiniappInvites bool
 	// SchemeButton (BOT_SCHEME_BUTTON: "off", "url" or "web_app") is the
 	// "Seat map" button on the card of a seated date; EventCenterURL
 	// (EVENT_CENTER_PUBLIC_URL) is where it leads. Either empty/off shows none.
@@ -112,6 +116,7 @@ type Bot struct {
 	noticeEvery    time.Duration
 	siteButton     bool
 	miniappEditor  bool
+	miniappInvites bool
 	schemeMode     string
 	eventCenterURL string
 	onb            *onbDialogs
@@ -262,6 +267,7 @@ func New(opts Options) (*Bot, error) {
 		noticeEvery:    opts.NoticeEvery,
 		siteButton:     opts.SiteButton,
 		miniappEditor:  opts.MiniappEditor,
+		miniappInvites: opts.MiniappInvites,
 		schemeMode:     opts.SchemeButton,
 		eventCenterURL: opts.EventCenterURL,
 		onbForms:       &onbFormCache{m: map[string]onbFormEntry{}},

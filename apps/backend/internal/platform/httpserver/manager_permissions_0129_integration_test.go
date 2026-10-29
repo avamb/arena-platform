@@ -101,6 +101,7 @@ func TestManagerPermissions0129_OrganizerPassesEveryEventCenterGate(t *testing.T
 		// cancels staff invitations, the owner's included (decision R-5).
 		{"complimentary.issue", http.MethodPost, orgPath + "/sessions/" + random + "/invitations", `{}`},
 		{"complimentary.read", http.MethodGet, orgPath + "/sessions/" + random + "/invitations", ""},
+		{"complimentary.read", http.MethodGet, orgPath + "/invitations", ""},
 		{"complimentary.revoke", http.MethodPost, orgPath + "/invitations/" + random + "/cancel", `{}`},
 		{"complimentary.issue", http.MethodPost, orgPath + "/invitations/" + random + "/resend", `{}`},
 		{"complimentary.read", http.MethodGet, orgPath + "/invitations/" + random + "/tickets.pdf", ""},

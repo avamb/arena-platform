@@ -104,11 +104,17 @@ export const API = {
   // A flat route: the row's own organization is checked on the server.
   complimentaryRevoke: { method: "POST", path: "/v1/complimentary/{id}/revoke" },
   // Spec 46: staff invitations on chosen seats (the seat map in invite mode).
+  // The whole organization at once: the invitations screen and the bot list through it (INV-05).
+  staffInvitationsOrgList: { method: "GET", path: "/v1/organizations/{org_id}/invitations" },
   staffInvitationsList: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/invitations" },
   staffInvitationIssue: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/invitations" },
   staffInvitationCancel: { method: "POST", path: "/v1/organizations/{org_id}/invitations/{order_id}/cancel" },
   staffInvitationPdf: { method: "GET", path: "/v1/organizations/{org_id}/invitations/{order_id}/tickets.pdf" },
   staffInvitationResend: { method: "POST", path: "/v1/organizations/{org_id}/invitations/{order_id}/resend" },
+  // INV-06b: bulk invitations from a CSV file (multipart upload, dry run, result file).
+  invitationBatchCreate: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/invitation-batches" },
+  invitationBatchGet: { method: "GET", path: "/v1/organizations/{org_id}/invitation-batches/{id}" },
+  invitationBatchResult: { method: "GET", path: "/v1/organizations/{org_id}/invitation-batches/{id}/result.csv" },
   // 4-5: the team. The invitation has two channels (web, telegram); removing a
   // member names the ONE role to revoke in the body (AGENTS.md).
   botTeam: { method: "GET", path: "/v1/organizations/{org_id}/bot-team" },

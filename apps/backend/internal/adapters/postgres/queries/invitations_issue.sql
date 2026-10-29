@@ -124,10 +124,67 @@ LIMIT  $3;
 -- The places of the given invitation orders, in line order.
 SELECT oi.order_id, oi.ordinal, oi.ticket_id, oi.unit_price, oi.seat_origin,
        ss.seat_key, ss.sector_name, ss.row_name, ss.seat_number, ss.kind,
-       tt.id AS tier_id, tt.name AS tier_name, t.status AS ticket_status
+       tt.id AS tier_id, tt.name AS tier_name, t.status AS ticket_status,
+       coalesce(t.vip, false) AS vip
 FROM   order_items oi
 JOIN   ticket_tiers tt ON tt.id = oi.tier_id
 LEFT JOIN session_seats ss ON ss.id = oi.session_seat_id
 LEFT JOIN tickets t ON t.id = oi.ticket_id
 WHERE  oi.order_id = ANY($1::uuid[])
 ORDER  BY oi.order_id, oi.ordinal;
+
+-- name: ListOrgInvitations :many
+-- Every staff invitation of the organization, whoever issued it and for
+-- whichever session, newest first (spec 46 section 6.1, INV-05): the bot and
+-- the web screen list all sessions at once. $4 is active, cancelled or all
+-- (cancelled = tickets were issued and none is active any more), $5/$6 the
+-- keyset cursor (created_at, id) of the last row of the previous page.
+SELECT o.id, o.system_id, o.status, o.buyer_name, o.metadata, o.issued_via,
+       o.issued_by, u.email, u.first_name, u.last_name, o.created_at, o.invitation_batch_id,
+       tc.total, tc.active,
+       s.id, s.start_at, s.event_id, e.name, v.name, COALESCE(v.timezone, 'UTC')
+FROM   orders o
+JOIN   sessions s ON s.id = o.session_id
+JOIN   events e ON e.id = s.event_id
+LEFT JOIN venues v ON v.id = s.venue_id
+LEFT JOIN users u ON u.id = o.issued_by
+CROSS JOIN LATERAL (
+    SELECT count(*) AS total, count(*) FILTER (WHERE t.status = 'active') AS active
+    FROM   tickets t WHERE t.checkout_session_id = o.checkout_session_id
+) tc
+WHERE  o.org_id = $1
+  AND  o.source = 'complimentary'
+  AND  o.issued_via IS NOT NULL
+  AND  ($2::uuid IS NULL OR o.session_id = $2)
+  AND  ($3::uuid IS NULL OR s.event_id = $3)
+  AND  ($4::text = 'all'
+        OR ($4::text = 'cancelled' AND tc.total > 0 AND tc.active = 0)
+        OR ($4::text = 'active' AND NOT (tc.total > 0 AND tc.active = 0)))
+  AND  ($5::timestamptz IS NULL OR (o.created_at, o.id) < ($5, $6::uuid))
+ORDER  BY o.created_at DESC, o.id DESC
+LIMIT  $7;
+
+-- name: ListInvitationLetters :many
+-- The ticket-letter state of the given invitation orders, one row per order
+-- that has at least one delivery job (spec 46 section 3.4): the jobs of the
+-- order's active tickets counted by status (every ticket's jobs when none is
+-- active any more), the latest sent_at and the latest error text of a job
+-- that did not go out. One statement for a whole page of the list.
+SELECT o.id,
+       count(dj.id),
+       count(*) FILTER (WHERE dj.status = 'failed'),
+       count(*) FILTER (WHERE dj.status IN ('pending', 'processing')),
+       count(*) FILTER (WHERE dj.status = 'sent'),
+       count(*) FILTER (WHERE dj.status = 'skipped'),
+       count(*) FILTER (WHERE dj.status = 'disabled'),
+       max(dj.sent_at) FILTER (WHERE dj.status = 'sent'),
+       (array_agg(dj.last_error ORDER BY dj.updated_at DESC)
+            FILTER (WHERE dj.status IN ('failed', 'skipped', 'disabled') AND dj.last_error IS NOT NULL))[1]
+FROM   orders o
+JOIN   tickets t ON t.checkout_session_id = o.checkout_session_id
+JOIN   delivery_jobs dj ON dj.ticket_id = t.id
+WHERE  o.id = ANY($1::uuid[])
+  AND  (t.status = 'active'
+        OR NOT EXISTS (SELECT 1 FROM tickets a
+                       WHERE a.checkout_session_id = o.checkout_session_id AND a.status = 'active'))
+GROUP  BY o.id;
