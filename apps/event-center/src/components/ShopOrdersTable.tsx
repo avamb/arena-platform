@@ -7,12 +7,14 @@ import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui";
 import { formatMoney } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { formatShopTime, isShopOrderStatus, shopOrderNumber, shopOrderTone } from "@/lib/shop";
+import { formatShopTime, orderStatusLabelKey, shopOrderNumber, shopOrderTone } from "@/lib/shop";
 import type { ShopOrder } from "@/lib/api/types";
 
-export function ShopOrderStatusBadge({ status }: { status: string }) {
+/** `shippedAt`: a refund overwrites the status, so an order shipped earlier says both facts (M-10). */
+export function ShopOrderStatusBadge({ status, shippedAt }: { status: string; shippedAt?: string | null }) {
   const { t } = useI18n();
-  const badge = <Badge tone={shopOrderTone(status)}>{isShopOrderStatus(status) ? t(`shop.order.status.${status}` as MessageKey) : status}</Badge>;
+  const key = orderStatusLabelKey(status, shippedAt);
+  const badge = <Badge tone={shopOrderTone(status)}>{key !== null ? t(key as MessageKey) : status}</Badge>;
   // An unpaid order that ran out of time says what happened to the goods.
   return status === "expired" ? <span title={t("shop.order.status.expired.hint")}>{badge}</span> : badge;
 }
@@ -53,7 +55,7 @@ export function ShopOrdersTable({ orgId, orders, country }: { orgId: string; ord
               </td>
               <td data-label={t("shop.orders.col.total")}>{formatMoney(o.total, o.currency, locale)}</td>
               <td data-label={t("shop.orders.col.status")}>
-                <ShopOrderStatusBadge status={o.status} />
+                <ShopOrderStatusBadge status={o.status} shippedAt={o.shipped_at} />
               </td>
               <td data-label={t("shop.orders.col.delivery")}>{t(deliveryLabel(o.delivery_kind))}</td>
             </tr>

@@ -61,6 +61,43 @@ describe("ShopOrderCard", () => {
   });
 });
 
+describe("the badge and the payment block after a refund (M-10, M-12)", () => {
+  const payment = { id: "p", provider: "stripe", state: "succeeded", amount: 25000, currency: "ILS" };
+  const SHIPPED = "2026-10-29T10:00:00Z";
+
+  it("shows 'shipped' and 'refunded partly' together on an order that was shipped before the refund", async () => {
+    const html = await renderInRouter(
+      <ShopOrderCard order={order({ status: "partially_refunded", total: 74000, refunded_minor: 5000, payment, shipped_at: SHIPPED })} orgId="org1" country="IL" />,
+      "ru",
+    );
+    expect(html).toContain("Отправлен · Возвращён частично");
+  });
+
+  it("keeps the plain refund badge for an order that was never shipped", async () => {
+    const html = await renderInRouter(<ShopOrderCard order={order({ status: "refunded", total: 25000, refunded_minor: 25000, payment })} orgId="org1" country="IL" />, "ru");
+    expect(html).toContain(">Возвращён<");
+    expect(html).not.toContain("Отправлен ·");
+  });
+
+  it("says the payment was refunded after a full refund", async () => {
+    const html = await renderInRouter(<ShopOrderCard order={order({ status: "refunded", total: 25000, refunded_minor: 25000, payment, shipped_at: SHIPPED })} orgId="org1" country="IL" />, "ru");
+    expect(html).toContain("Состояние: возвращена");
+    expect(html).not.toContain("Состояние: оплачена");
+  });
+
+  it("says how much of a partly refunded payment came back", async () => {
+    const html = await renderInRouter(<ShopOrderCard order={order({ status: "partially_refunded", total: 74000, refunded_minor: 5000, payment: { ...payment, amount: 74000 } })} orgId="org1" country="IL" />, "ru");
+    expect(html).toMatch(/Состояние: оплачена, возвращено .*50.* из .*740/);
+  });
+
+  it("keeps 'paid' for an order with no refund, in every language", async () => {
+    const paid = order({ status: "paid", total: 25000, payment });
+    expect(await renderInRouter(<ShopOrderCard order={paid} orgId="org1" country="IL" />, "ru")).toContain("Состояние: оплачена<");
+    expect(await renderInRouter(<ShopOrderCard order={paid} orgId="org1" country="IL" />, "en")).toContain("State: paid<");
+    expect(await renderInRouter(<ShopOrderCard order={paid} orgId="org1" country="IL" />, "es")).toContain("Estado: pagado<");
+  });
+});
+
 describe("the text for an address that does not exist (E-01)", () => {
   it("is short and never blames the reader", () => {
     expect(CATALOGS.en["common.error.notFound"]).toBe("There is no such page.");

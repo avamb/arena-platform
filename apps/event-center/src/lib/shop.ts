@@ -415,16 +415,49 @@ export function shopOrderNumber(n: number): string {
   return `№${n}`;
 }
 
-/** "Mark shipped" exists for a paid order (also partly refunded, or parked for a check). */
-export function canShip(status: string, canManage: boolean, deliveryKind?: string | null): boolean {
+/**
+ * Whether the order has been handed over. `status` says so only until a refund
+ * overwrites it (shipped -> partially_refunded / refunded), so the fact is
+ * read from `shipped_at` too (M-10).
+ */
+export function isShipped(o: { status: string; shipped_at?: string | null }): boolean {
+  return o.status === "shipped" || (o.shipped_at !== null && o.shipped_at !== undefined && o.shipped_at !== "");
+}
+
+/**
+ * "Mark shipped" exists for a paid order (also partly refunded, or parked for a check) that has not
+ * been shipped yet. Once `shippedAt` is set it never comes back, whatever a refund did to the status.
+ */
+export function canShip(status: string, canManage: boolean, deliveryKind?: string | null, shippedAt?: string | null): boolean {
   // M-03: an order with no delivery (a file, a service) has nothing to hand over.
   if (deliveryKind === "none") return false;
+  if (isShipped({ status, shipped_at: shippedAt })) return false;
   return canManage && (status === "paid" || status === "partially_refunded" || status === "manual_review");
 }
 
-/** A shipped order can still get its tracking note changed. */
-export function canEditTracking(status: string, canManage: boolean): boolean {
-  return canManage && status === "shipped";
+/** A shipped order can still get its tracking note changed (also after a partial refund; a fully refunded one is closed). */
+export function canEditTracking(status: string, canManage: boolean, shippedAt?: string | null): boolean {
+  if (!canManage) return false;
+  return status === "shipped" || (status === "partially_refunded" && isShipped({ status, shipped_at: shippedAt }));
+}
+
+/**
+ * The badge text of an order: the status, and next to a refund status the fact that the order had
+ * been shipped ("Shipped · Partly refunded"). The keys are in the three locales.
+ */
+export function orderStatusLabelKey(status: string, shippedAt?: string | null): string | null {
+  if (!isShopOrderStatus(status)) return null;
+  if ((status === "refunded" || status === "partially_refunded") && isShipped({ status, shipped_at: shippedAt })) {
+    return `shop.order.status.shipped_${status}`;
+  }
+  return `shop.order.status.${status}`;
+}
+
+/** What the payment block says about a paid order: refunded as a whole, refunded in part, or just the state. */
+export function paymentRefundKind(order: Pick<ShopOrder, "status" | "total" | "refunded_minor">, payState: string | null): "refunded" | "partly" | null {
+  if (payState !== "succeeded") return null;
+  if (order.refunded_minor <= 0) return null;
+  return order.status === "refunded" || order.refunded_minor >= order.total ? "refunded" : "partly";
 }
 
 /** Cancel exists for an order that still waits for its payment, and only that. */

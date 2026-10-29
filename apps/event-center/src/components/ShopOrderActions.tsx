@@ -38,6 +38,7 @@ import {
   checkRefund,
   copyText,
   courierText,
+  isShipped,
   isShopOrderStatus,
   refundBody,
   refundOutcome,
@@ -200,10 +201,10 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
     }
   };
 
-  const shipLabel = canEditTracking(order.status, canManage) ? "shop.act.editTracking" : "shop.act.ship";
+  const shipLabel = canEditTracking(order.status, canManage, order.shipped_at) ? "shop.act.editTracking" : "shop.act.ship";
   // M-03: no delivery (a file, a service): nothing to ship and no parcel for a courier.
   const noDelivery = order.delivery_kind === "none";
-  const showShip = canShip(order.status, canManage, order.delivery_kind) || canEditTracking(order.status, canManage);
+  const showShip = canShip(order.status, canManage, order.delivery_kind, order.shipped_at) || canEditTracking(order.status, canManage, order.shipped_at);
 
   return (
     <section aria-labelledby="shop-order-actions" data-testid="shop-order-actions">
@@ -281,7 +282,7 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
           />
           <p>
             <button type="submit" className="btn btn-primary" disabled={busy} data-testid="shop-ship-submit">
-              {order.status === "shipped" ? t("shop.act.ship.save") : t("shop.act.ship.confirm")}
+              {isShipped(order) ? t("shop.act.ship.save") : t("shop.act.ship.confirm")}
             </button>
           </p>
         </form>
