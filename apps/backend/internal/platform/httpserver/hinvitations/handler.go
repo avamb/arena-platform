@@ -373,17 +373,19 @@ type issuerResponse struct {
 }
 
 type listItem struct {
-	OrderID       string         `json:"order_id"`
-	SystemID      int64          `json:"system_id"`
-	Status        string         `json:"status"`
-	GuestName     *string        `json:"guest_name"`
-	Delivery      string         `json:"delivery"`
-	IssuedVia     string         `json:"issued_via"`
-	IssuedBy      issuerResponse `json:"issued_by"`
-	CreatedAt     time.Time      `json:"created_at"`
-	TicketsTotal  int64          `json:"tickets_total"`
-	TicketsActive int64          `json:"tickets_active"`
-	Places        []lineResponse `json:"places"`
+	OrderID   string         `json:"order_id"`
+	SystemID  int64          `json:"system_id"`
+	Status    string         `json:"status"`
+	GuestName *string        `json:"guest_name"`
+	Delivery  string         `json:"delivery"`
+	IssuedVia string         `json:"issued_via"`
+	IssuedBy  issuerResponse `json:"issued_by"`
+	CreatedAt time.Time      `json:"created_at"`
+	// InvitationBatchID is the CSV batch of a bulk invitation; null otherwise.
+	InvitationBatchID *string        `json:"invitation_batch_id"`
+	TicketsTotal      int64          `json:"tickets_total"`
+	TicketsActive     int64          `json:"tickets_active"`
+	Places            []lineResponse `json:"places"`
 }
 
 // HandleList serves GET /v1/organizations/{org_id}/sessions/{session_id}/invitations:
@@ -446,6 +448,10 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 		if row.IssuedBy != nil {
 			s := row.IssuedBy.String()
 			it.IssuedBy.UserID = &s
+		}
+		if row.BatchID != nil {
+			s := row.BatchID.String()
+			it.InvitationBatchID = &s
 		}
 		items = append(items, it)
 	}

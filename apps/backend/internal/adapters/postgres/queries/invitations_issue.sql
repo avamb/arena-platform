@@ -108,7 +108,7 @@ WHERE  o.id = $1
 -- Every staff invitation of the session, whoever issued it (spec 46 R-5),
 -- newest first, with the issuer's e-mail and name and the ticket counts.
 SELECT o.id, o.system_id, o.status, o.buyer_name, o.metadata, o.issued_via,
-       o.issued_by, u.email, u.first_name, u.last_name, o.created_at,
+       o.issued_by, u.email, u.first_name, u.last_name, o.created_at, o.invitation_batch_id,
        (SELECT count(*) FROM tickets t WHERE t.checkout_session_id = o.checkout_session_id) AS tickets_total,
        (SELECT count(*) FROM tickets t WHERE t.checkout_session_id = o.checkout_session_id AND t.status = 'active') AS tickets_active
 FROM   orders o
