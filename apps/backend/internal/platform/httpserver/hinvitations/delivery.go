@@ -280,28 +280,27 @@ func (h *Handler) resendRecipient(ctx context.Context, o gen.InvitationOrderRow,
 }
 
 // notifyGuestCancelled queues the letter that tells the guest their
-// invitation was cancelled (spec 46, section 3.4, decision R-9). It is a
+// invitation was cancelled (spec 46, section 3.4, decision R-9). It runs on
+// the cancellation's own transaction, so the letter is queued exactly when
+// the cancellation commits: a failure here rolls the cancellation back and
+// the caller answers 500, never a cancelled seat without its letter. It is a
 // no-op unless the order carries the guest's own address (delivery my_email
-// and pdf_only orders have none: the guest was never written to) and
-// returns nothing: a failure to queue is logged, never allowed to undo a
-// cancellation that already committed.
-func (h *Handler) notifyGuestCancelled(ctx context.Context, o gen.InvitationOrderRow, cancelledTicketIDs []string) {
+// and pdf_only orders have none: the guest was never written to).
+func (h *Handler) notifyGuestCancelled(ctx context.Context, tx pgx.Tx, o gen.InvitationOrderRow, cancelledTicketIDs []string) error {
 	if len(cancelledTicketIDs) == 0 {
-		return
+		return nil
 	}
-	info, err := h.queries.GetInvitationDeliveryByCheckoutSession(ctx, o.CheckoutSessionID)
+	info, err := h.queries.WithTx(tx).GetInvitationDeliveryByCheckoutSession(ctx, o.CheckoutSessionID)
 	if err != nil {
-		h.logger.Warn("invitation.cancel: guest address lookup failed; no letter queued",
-			slog.String("order_id", o.ID.String()), slog.String("error", err.Error()))
-		return
+		return fmt.Errorf("guest address lookup: %w", err)
 	}
 	if info.BuyerEmail == "" {
-		return
+		return nil
 	}
-	if _, err := worker.EnqueueInTx(ctx, h.queries.DB(), delivery.JobTypeInvitationCancelEmail,
+	if _, err := worker.EnqueueInTx(ctx, tx, delivery.JobTypeInvitationCancelEmail,
 		delivery.InvitationCancelPayload{OrderID: o.ID.String(), TicketIDs: cancelledTicketIDs},
 		delivery.InvitationCancelEmailMaxAttempts); err != nil {
-		h.logger.Error("invitation.cancel: could not queue the guest letter",
-			slog.String("order_id", o.ID.String()), slog.String("error", err.Error()))
+		return fmt.Errorf("queue the guest letter: %w", err)
 	}
+	return nil
 }

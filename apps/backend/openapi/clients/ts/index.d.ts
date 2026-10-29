@@ -26026,8 +26026,8 @@ export interface components {
             errors: components["schemas"]["InvitationBatchRowIssue"][];
             /** @description The guests of the file in order, for the check table. */
             preview: components["schemas"]["InvitationBatchPreviewGuest"][];
-            /** @description Billing preview (spec 46, section 3.6) - a CSV file is always charged at the standard rate. Null until billing of invitations lands. */
-            charge?: Record<string, never> | null;
+            /** @description Billing preview (spec 46, section 3.6) - a CSV file is always charged at the standard rate, computed by the same rule as the billing rate job. Null when it cannot be computed or the file hands out no places; the file is issued either way. */
+            charge?: components["schemas"]["InvitationChargePreview"] | null;
         };
         /** @description The order one guest of a batch got. */
         InvitationBatchOrder: {
@@ -26089,8 +26089,8 @@ export interface components {
             from_reserve: number;
             /** @description One order per guest, in file order. */
             orders: components["schemas"]["InvitationBatchOrder"][];
-            /** @description Billing of the batch (spec 46, section 3.6); null until billing of invitations lands. */
-            charge?: Record<string, never> | null;
+            /** @description Billing of the batch (spec 46, section 3.6) - the standard rate for every place of the file, priced at the time of the upload. Null when it cannot be computed. */
+            charge?: components["schemas"]["InvitationChargePreview"] | null;
             /** @description True when the request_id was already used and this is the first batch. */
             replayed: boolean;
         };

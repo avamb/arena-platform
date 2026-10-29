@@ -4,7 +4,7 @@
  * openapi.yaml.
  */
 import { ApiError, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
-import { API, INV03_ROUTES } from "@/lib/api/routes";
+import { API } from "@/lib/api/routes";
 import type { PageStatsResponse } from "@/lib/api/types";
 import type {
   BillingAccountInvoice,
@@ -544,7 +544,7 @@ export function cancelStaffInvitation(
 /** One PDF with every ticket of the invitation (INV-03). */
 export function downloadStaffInvitationPdf(orgId: string, orderId: string, systemId: number): Promise<DownloadedFile> {
   return download({
-    route: INV03_ROUTES.staffInvitationPdf,
+    route: API.staffInvitationPdf,
     params: { org_id: orgId, order_id: orderId },
     accept: "application/pdf",
     fallbackName: `invitation-${systemId}.pdf`,
@@ -553,7 +553,7 @@ export function downloadStaffInvitationPdf(orgId: string, orderId: string, syste
 
 /** Sends the letter of the invitation again (INV-03). */
 export function resendStaffInvitation(orgId: string, orderId: string): Promise<void> {
-  return call<void>({ route: INV03_ROUTES.staffInvitationResend, params: { org_id: orgId, order_id: orderId }, body: {} });
+  return call<void>({ route: API.staffInvitationResend, params: { org_id: orgId, order_id: orderId }, body: {} });
 }
 
 // ─── 4-5: the team ───────────────────────────────────────────────────────────

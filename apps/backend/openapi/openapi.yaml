@@ -17660,8 +17660,10 @@ components:
           items:
             $ref: "#/components/schemas/InvitationBatchPreviewGuest"
         charge:
-          type: [object, "null"]
-          description: Billing preview (spec 46, section 3.6) - a CSV file is always charged at the standard rate. Null until billing of invitations lands.
+          description: Billing preview (spec 46, section 3.6) - a CSV file is always charged at the standard rate, computed by the same rule as the billing rate job. Null when it cannot be computed or the file hands out no places; the file is issued either way.
+          oneOf:
+            - $ref: "#/components/schemas/InvitationChargePreview"
+            - type: "null"
     InvitationBatchOrder:
       type: object
       required: [guest, order_id, system_id, status, delivery, places, from_reserve, seat_keys]
@@ -17742,8 +17744,10 @@ components:
           items:
             $ref: "#/components/schemas/InvitationBatchOrder"
         charge:
-          type: [object, "null"]
-          description: Billing of the batch (spec 46, section 3.6); null until billing of invitations lands.
+          description: Billing of the batch (spec 46, section 3.6) - the standard rate for every place of the file, priced at the time of the upload. Null when it cannot be computed.
+          oneOf:
+            - $ref: "#/components/schemas/InvitationChargePreview"
+            - type: "null"
         replayed:
           type: boolean
           description: True when the request_id was already used and this is the first batch.

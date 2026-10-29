@@ -39,6 +39,9 @@ type BatchInput struct {
 	Guests []BatchGuest
 	// IssuedBy is the user who uploads; nil for an organization API key.
 	IssuedBy *uuid.UUID
+	// IssuedByAPIKey is the name of the organization API key that uploads,
+	// for the sales bot line (spec 46 section 3.7); empty for a user.
+	IssuedByAPIKey string
 	// Actor is the order_events actor ('user:<uuid>' or 'system').
 	Actor string
 	// Audit writes the v1.invitation.batch_issue row on the batch
@@ -244,19 +247,20 @@ func batchTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in BatchInput) (u
 			SessionID: in.SessionID,
 			// One deterministic id per guest: the order's external_ref is
 			// unique per channel, so a guest can never be written twice.
-			RequestID: uuid.NewSHA1(in.RequestID, []byte(fmt.Sprintf("guest:%d", g.Seq))),
-			SeatKeys:  g.SeatKeys,
-			GA:        g.GA,
-			Guest:     Guest{Name: g.Name, Email: g.Email, Phone: g.Phone, Locale: g.Locale},
-			Delivery:  g.Delivery,
-			Note:      g.Note,
-			IssuedBy:  in.IssuedBy,
-			Actor:     in.Actor,
-			Now:       in.Now,
-			BatchID:   &batch.ID,
-			BatchSeq:  g.Seq,
-			cache:     cache,
-			Audit:     in.AuditOrder,
+			RequestID:      uuid.NewSHA1(in.RequestID, []byte(fmt.Sprintf("guest:%d", g.Seq))),
+			SeatKeys:       g.SeatKeys,
+			GA:             g.GA,
+			Guest:          Guest{Name: g.Name, Email: g.Email, Phone: g.Phone, Locale: g.Locale},
+			Delivery:       g.Delivery,
+			Note:           g.Note,
+			IssuedBy:       in.IssuedBy,
+			IssuedByAPIKey: in.IssuedByAPIKey,
+			Actor:          in.Actor,
+			Now:            in.Now,
+			BatchID:        &batch.ID,
+			BatchSeq:       g.Seq,
+			cache:          cache,
+			Audit:          in.AuditOrder,
 		}
 		taken := make([]takenPlace, 0, len(g.SeatKeys))
 		for _, k := range g.SeatKeys {

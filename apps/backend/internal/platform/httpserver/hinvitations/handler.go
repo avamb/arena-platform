@@ -615,15 +615,18 @@ func (h *Handler) HandleCancel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if notify {
+		if err := h.notifyGuestCancelled(ctx, tx, o, resp.CancelledTicketIDs); err != nil {
+			h.internal(w, r, "cancel: guest letter", err)
+			return
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		h.internal(w, r, "cancel: commit", err)
 		return
 	}
 	for _, c := range cancelled {
 		h.canceller.PublishTicketCancelled(ctx, c.out, c.p)
-	}
-	if notify {
-		h.notifyGuestCancelled(ctx, o, resp.CancelledTicketIDs)
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }

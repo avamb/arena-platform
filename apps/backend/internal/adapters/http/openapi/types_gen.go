@@ -9455,8 +9455,8 @@ type InventoryRowItem struct {
 
 // InvitationBatch An issued CSV batch of staff invitations with the order of each guest.
 type InvitationBatch struct {
-	// Charge Billing of the batch (spec 46, section 3.6); null until billing of invitations lands.
-	Charge *map[string]interface{} `json:"charge"`
+	// Charge Billing of the batch (spec 46, section 3.6) - the standard rate for every place of the file, priced at the time of the upload. Null when it cannot be computed.
+	Charge *InvitationChargePreview `json:"charge"`
 
 	// CreatedAt When the batch was issued.
 	CreatedAt time.Time `json:"created_at"`
@@ -9547,8 +9547,8 @@ type InvitationBatchPreviewGuest struct {
 // `details.report` of a refused real upload (422 invitation_batch.invalid
 // or the refusal of the transaction). Nothing was written either way.
 type InvitationBatchReport struct {
-	// Charge Billing preview (spec 46, section 3.6) - a CSV file is always charged at the standard rate. Null until billing of invitations lands.
-	Charge *map[string]interface{} `json:"charge"`
+	// Charge Billing preview (spec 46, section 3.6) - a CSV file is always charged at the standard rate, computed by the same rule as the billing rate job. Null when it cannot be computed or the file hands out no places; the file is issued either way.
+	Charge *InvitationChargePreview `json:"charge"`
 
 	// Delivery The batch-wide delivery used for guests without an e-mail.
 	Delivery string `json:"delivery"`

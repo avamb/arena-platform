@@ -19,6 +19,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/billing"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/csvexport"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
@@ -72,8 +73,8 @@ type batchReport struct {
 	Errors      []RowIssue          `json:"errors"`
 	Preview     []batchPreviewGuest `json:"preview"`
 	// Charge is the billing preview (spec 46, section 3.6): a CSV file is
-	// always charged at the standard rate. Filled by INV-07.
-	Charge any `json:"charge"`
+	// always charged at the standard rate. Nil when billing cannot say.
+	Charge *billing.ComplimentaryQuote `json:"charge"`
 }
 
 type batchOrderResponse struct {
@@ -100,9 +101,9 @@ type batchResponse struct {
 	Places      int32                `json:"places"`
 	FromReserve int32                `json:"from_reserve"`
 	Orders      []batchOrderResponse `json:"orders"`
-	// Charge is the billing preview (INV-07); null until it lands.
-	Charge   any  `json:"charge"`
-	Replayed bool `json:"replayed"`
+	// Charge is the billing of the batch at its upload time (INV-07).
+	Charge   *billing.ComplimentaryQuote `json:"charge"`
+	Replayed bool                        `json:"replayed"`
 }
 
 // upload is what the route reads out of the request.
@@ -273,6 +274,7 @@ func (h *Handler) HandleBatchCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	res := ResolveBatch(parsed.Rows, plan, delivery)
 	report := buildReport(res, delivery, dry)
+	report.Charge = h.batchCharge(ctx, orgID, sessionID, time.Now(), res.Seats, res.GAPlaces)
 
 	if dry {
 		httputil.WriteJSON(w, http.StatusOK, report)
@@ -284,9 +286,15 @@ func (h *Handler) HandleBatchCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The sales bot names the API key behind a service upload (spec 46 section
+	// 3.7); read on the pool, before the batch transaction opens.
+	apiKey := ""
+	if actor, ok := auth.ActorFromContext(ctx); ok && actor.Type == auth.ActorTypeService {
+		apiKey = h.apiKeyName(ctx, actor, orgID)
+	}
 	in := BatchInput{
 		OrgID: orgID, SessionID: sessionID, RequestID: requestID, FileSHA256: fileHash,
-		Rows: res.Rows, Guests: res.Guests, IssuedBy: issuedBy, Actor: actorLabel,
+		Rows: res.Rows, Guests: res.Guests, IssuedBy: issuedBy, IssuedByAPIKey: apiKey, Actor: actorLabel,
 	}
 	if h.audit != nil {
 		actorID := ""
@@ -432,7 +440,6 @@ func buildReport(res Resolution, delivery string, dry bool) batchReport {
 		GAPlaces: res.GAPlaces, FromReserve: res.FromReserve,
 		Errors:  res.Issues,
 		Preview: make([]batchPreviewGuest, 0, len(res.Guests)),
-		Charge:  nil,
 	}
 	if rep.Errors == nil {
 		rep.Errors = []RowIssue{}
@@ -519,6 +526,15 @@ func (h *Handler) writeBatch(ctx context.Context, w http.ResponseWriter, r *http
 		CreatedAt: batch.CreatedAt, Rows: batch.Rows, Guests: len(v.orders), Places: batch.Seats,
 		FromReserve: batch.FromReserve, Orders: v.orders, Replayed: replayed,
 	}
+	seated := 0
+	for _, o := range v.orders {
+		for _, k := range o.SeatKeys {
+			if !strings.HasPrefix(k, "ga|") {
+				seated++
+			}
+		}
+	}
+	resp.Charge = h.batchCharge(ctx, batch.OrgID, batch.SessionID, batch.CreatedAt, seated, int(batch.Seats)-seated)
 	if batch.CreatedBy != nil {
 		s := batch.CreatedBy.String()
 		resp.CreatedBy = &s
@@ -607,4 +623,20 @@ func (h *Handler) batchFromPath(w http.ResponseWriter, r *http.Request) (gen.Inv
 		return gen.InvitationBatchRow{}, false
 	}
 	return batch, true
+}
+
+// batchCharge is the billing preview of a CSV file (spec 46, section 3.6):
+// a file is always charged at the standard rate. It never blocks the upload:
+// nil when the file hands out no places or billing cannot price it.
+func (h *Handler) batchCharge(ctx context.Context, orgID, sessionID uuid.UUID, at time.Time, seated, unseated int) *billing.ComplimentaryQuote {
+	if seated+unseated <= 0 {
+		return nil
+	}
+	q, err := billing.QuoteComplimentaryForSession(ctx, h.queries, orgID, sessionID, at, seated, unseated, true)
+	if err != nil {
+		h.logger.WarnContext(ctx, "invitation batch charge preview unavailable",
+			"org_id", orgID.String(), "session_id", sessionID.String(), "error", err)
+		return nil
+	}
+	return &q
 }

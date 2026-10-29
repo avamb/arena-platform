@@ -562,8 +562,10 @@ export const PARITY: readonly ParityRow[] = [
       `POST ${O}/sessions/{session_id}/invitations`,
       `GET ${O}/sessions/{session_id}/invitations`,
       `POST ${O}/invitations/{order_id}/cancel`,
+      `GET ${O}/invitations/{order_id}/tickets.pdf`,
+      `POST ${O}/invitations/{order_id}/resend`,
     ],
-    note: "Спека 46. Отмена «возвращает место» туда, откуда оно взято; кнопки «Скачать PDF» и «Отправить ещё раз» (INV-03) пока вне таблицы маршрутов.",
+    note: "Спека 46. Отмена «возвращает место» туда, откуда оно взято; «Скачать PDF» — один файл на все места заказа, «Отправить ещё раз» — гостю или на разовый адрес.",
   },
   // ── Команда ─────────────────────────────────────────────────────────
   {
