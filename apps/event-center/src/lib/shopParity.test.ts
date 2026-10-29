@@ -80,6 +80,15 @@ describe("the repeat e-mail (A-11)", () => {
     for (const status of ["pending_payment", "cancelled", "expired", "manual_review"]) expect(resendLetters({ ...paid, status }, true), status).toEqual([]);
   });
 
+  it("offers the refund letter once any money went back, by status or by amount", () => {
+    expect(resendLetters({ ...paid, status: "partially_refunded", refunded_minor: 500 }, true)).toEqual(["received", "refunded"]);
+    expect(resendLetters({ ...paid, status: "refunded", refunded_minor: 4490 }, true)).toEqual(["received", "refunded"]);
+    expect(resendLetters({ ...paid, refunded_minor: 100 }, true)).toEqual(["received", "refunded"]);
+    expect(resendLetters({ ...paid, status: "partially_refunded", refunded_minor: 500, shipped_at: "2026-10-06T09:00:00Z" }, true)).toEqual(["received", "shipped", "refunded"]);
+    expect(resendLetters({ ...paid, refunded_minor: 0 }, true)).toEqual(["received"]);
+    expect(resendLetters({ ...paid, status: "refunded", refunded_minor: 4490 }, false)).toEqual([]);
+  });
+
   it("never offers a shipping letter for goods that do not ship", () => {
     expect(resendLetters({ ...paid, status: "shipped", delivery_kind: "none", shipped_at: "2026-10-06T09:00:00Z" }, true)).toEqual(["received"]);
   });

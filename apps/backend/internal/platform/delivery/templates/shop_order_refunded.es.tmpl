@@ -1,0 +1,83 @@
+{{define "subject"}}{{if .Shop.RefundFull}}Pedido n.º {{.Shop.OrderNumber}} reembolsado{{else}}Reembolso del pedido n.º {{.Shop.OrderNumber}}{{end}} — {{.Branding.OrgName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="es" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{if .Shop.RefundFull}}Tu pedido ha sido reembolsado{{else}}Tu reembolso{{end}}</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if .Shop.RefundFull}}Tu pedido ha sido reembolsado{{else}}Tu reembolso{{end}}</h1>
+  <p style="margin:0 0 12px 0;">Hola{{with .HolderName}} {{.}}{{end}},</p>
+  <p style="margin:0 0 12px 0;">{{if .Shop.RefundFull}}El pedido <strong>n.º {{.Shop.OrderNumber}}</strong> ha sido reembolsado por completo.{{else}}Hemos reembolsado <strong>{{.Shop.RefundAmount}}</strong> del pedido <strong>n.º {{.Shop.OrderNumber}}</strong>.{{end}}</p>
+  <p style="margin:0 0 6px 0;font-weight:bold;color:#22333D;">Tu pedido</p>
+  <table width="100%" cellpadding="4" style="border-collapse:collapse;font-size:14px;">
+    {{range .Shop.Items}}<tr><td>{{.Qty}} × {{.Title}}</td><td style="text-align:right;white-space:nowrap;">{{.LineTotal}}</td></tr>{{end}}
+    <tr><td style="border-top:1px solid #eceff1;color:#46555f;">Total del pedido</td><td style="border-top:1px solid #eceff1;text-align:right;white-space:nowrap;">{{.Shop.Total}}</td></tr>
+    <tr><td style="border-top:1px solid #eceff1;color:#46555f;">Reembolsado ahora</td><td style="border-top:1px solid #eceff1;text-align:right;white-space:nowrap;"><strong>{{.Shop.RefundAmount}}</strong></td></tr>
+    {{if ne .Shop.RefundedTotal .Shop.RefundAmount}}<tr><td style="border-top:1px solid #eceff1;color:#46555f;">Total reembolsado</td><td style="border-top:1px solid #eceff1;text-align:right;white-space:nowrap;">{{.Shop.RefundedTotal}}</td></tr>{{end}}
+  </table>
+  <p style="margin:16px 0 12px 0;">El dinero vuelve, a través del sistema de pago, a la tarjeta o al método de pago que usaste. El plazo depende de tu banco.</p>
+  {{with .Shop.StatusURL}}<p style="margin:16px 0 12px 0;"><a href="{{.}}" style="color:{{$.Accent}};font-weight:bold;">Ver el estado del pedido</a></p>{{end}}
+  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">¿Tienes preguntas? Responde a este correo.</p>{{end}}
+  <p style="font-size:12px;color:#666">Enviado a: {{.RecipientEmail}}</p>
+  </td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Contacto: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contacto: <a href="{{.}}" style="color:#666">Escribir al organizador</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">Arena Platform — mensaje automático</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Si pulsas «Cancelar suscripción», dejarás de recibir los correos con tus entradas y los correos importantes sobre tu pedido. No enviamos correos publicitarios sin tu consentimiento.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+{{if .Shop.RefundFull}}Tu pedido ha sido reembolsado{{else}}Tu reembolso{{end}}
+
+Hola{{with .HolderName}} {{.}}{{end}},
+
+{{if .Shop.RefundFull}}El pedido n.º {{.Shop.OrderNumber}} ha sido reembolsado por completo.{{else}}Hemos reembolsado {{.Shop.RefundAmount}} del pedido n.º {{.Shop.OrderNumber}}.{{end}}
+
+El dinero vuelve, a través del sistema de pago, a la tarjeta o al método de pago que usaste. El plazo depende de tu banco.
+
+Tu pedido:
+{{range .Shop.Items}}- {{.Qty}} × {{.Title}}: {{.LineTotal}}
+{{end}}Total del pedido: {{.Shop.Total}}
+Reembolsado ahora: {{.Shop.RefundAmount}}
+{{if ne .Shop.RefundedTotal .Shop.RefundAmount}}Total reembolsado: {{.Shop.RefundedTotal}}
+{{end}}
+{{with .Shop.StatusURL}}Ver el estado del pedido: {{.}}
+
+{{end}}{{if .Branding.ContactEmail}}¿Tienes preguntas? Responde a este correo.
+{{end}}
+
+Enviado a: {{.RecipientEmail}}
+
+--
+{{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Contacto: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contacto: {{.}}
+{{end}}{{end}}
+Arena Platform — mensaje automático
+
+Si pulsas «Cancelar suscripción», dejarás de recibir los correos con tus entradas y los correos importantes sobre tu pedido. No enviamos correos publicitarios sin tu consentimiento.
+{{end}}

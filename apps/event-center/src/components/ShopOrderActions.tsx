@@ -11,8 +11,8 @@
  * - "Copy for the courier": the delivery details to the clipboard. When the
  *   browser refuses, the text is shown to be copied by hand.
  * - "Send the e-mail again" (A-11): queues the buyer's confirmation or, for a
- *   shipped order, the shipping letter once more. Asks which one only when
- *   both exist. One request per order per minute: the API answers 429 and the
+ *   shipped order, the shipping letter once more, for a refunded one, the
+ *   refund letter. Asks which one only when several exist. One request per order per minute: the API answers 429 and the
  *   card says to wait.
  *
  * Every write needs `shop.manage`; the courier text needs only `shop.read`.
@@ -99,6 +99,10 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
       if (error instanceof ApiError && error.status === 429) {
         setPanel(null);
         setNote({ key: "shop.act.resend.wait", bad: true });
+      } else if (kind === "refunded" && error instanceof ApiError && error.status === 409) {
+        // The refund letter needs a succeeded refund: say so calmly instead of showing a raw error.
+        setPanel(null);
+        setNote({ key: "shop.act.resend.refundedUnavailable", bad: true });
       } else setFailure(error);
     } finally {
       setBusy(false);

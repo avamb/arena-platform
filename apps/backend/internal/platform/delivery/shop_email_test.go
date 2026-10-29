@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
@@ -91,6 +93,11 @@ func TestShopEmailSkipReason(t *testing.T) {
 		{shop.StatusCancelled, shop.EmailReceived, nil, "b@example.com", true},
 		{shop.StatusPaid, shop.EmailReceived, nil, "  ", true},
 		{shop.StatusManualReview, shop.EmailReceived, nil, "b@example.com", true},
+		{shop.StatusPartiallyRefunded, shop.EmailRefunded, nil, "b@example.com", false},
+		{shop.StatusRefunded, shop.EmailRefunded, nil, "b@example.com", false},
+		{shop.StatusManualReview, shop.EmailRefunded, nil, "b@example.com", false},
+		{shop.StatusCancelled, shop.EmailRefunded, nil, "b@example.com", true},
+		{shop.StatusRefunded, shop.EmailRefunded, nil, "", true},
 	}
 	for i, c := range cases {
 		o.Status, o.ShippedAt, o.BuyerEmail = c.status, c.shipped, c.email
@@ -122,5 +129,15 @@ func TestStatusURL(t *testing.T) {
 	}
 	if got := statusURL(shopOrg{Slug: "vino"}, "", "tok"); got != "" {
 		t.Errorf("no base, no link, got %q", got)
+	}
+}
+
+func TestSentKey_RefundLetterIsRememberedPerRefund(t *testing.T) {
+	a, b := uuid.New(), uuid.New()
+	if sentKey(shop.EmailRefunded, a) == sentKey(shop.EmailRefunded, b) {
+		t.Error("two refunds of one order share a sent marker")
+	}
+	if sentKey(shop.EmailReceived, a) != "email_received_sent_at" || sentKey(shop.EmailShipped, b) != "email_shipped_sent_at" {
+		t.Error("the received and shipped markers changed")
 	}
 }

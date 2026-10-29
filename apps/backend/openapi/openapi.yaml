@@ -24059,7 +24059,7 @@ components:
       properties:
         kind:
           type: string
-          description: "`received` (the order is confirmed) or `shipped` (the order is on its way)."
+          description: "`received` (the order is confirmed), `shipped` (the order is on its way) or `refunded` (money of the order went back to the buyer)."
 
     ShopResendEmailResponse:
       type: object
@@ -24071,7 +24071,7 @@ components:
           description: Always true; the worker sends the letter within moments.
         kind:
           type: string
-          description: The letter that was queued, `received` or `shipped`.
+          description: The letter that was queued, `received`, `shipped` or `refunded`.
 
     ShopOrderList:
       type: object
@@ -59453,10 +59453,11 @@ paths:
       operationId: resendShopOrderEmail
       summary: Send the buyer's order e-mail once more
       description: |
-        Queues the letter the buyer got when the order was paid (`received`) or
-        shipped (`shipped`) for the worker to send again, to the address on the order,
-        in the buyer's language. The first send's "already sent" marker does not stop
-        it. Answers 202 at once; the delivery itself is asynchronous. One request per
+        Queues the letter the buyer got when the order was paid (`received`),
+        shipped (`shipped`) or refunded (`refunded`, the letter about the newest
+        succeeded refund; an order with none answers 409) for the worker to send again,
+        to the address on the order, in the buyer's language. The first send's
+        "already sent" marker does not stop it. Answers 202 at once; the delivery itself is asynchronous. One request per
         order per minute: a second one answers 429 `shop.rate_limited` with `Retry-After`.
         Writes the audit event `v1.shop.order.resend_email`.
 
@@ -59493,7 +59494,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ShopResendEmailResponse"
         "400":
-          description: The body is not valid JSON for this route, or `kind` is not `received` or `shipped` (`shop.invalid_body`, `shop.invalid_email_kind`).
+          description: The body is not valid JSON for this route, or `kind` is not `received`, `shipped` or `refunded` (`shop.invalid_body`, `shop.invalid_email_kind`).
           content:
             application/json:
               schema:
@@ -59505,7 +59506,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
-          description: The order has no buyer e-mail (`shop.order_no_buyer_email`), or it is not in a state that has this letter, for example unpaid or never shipped (`shop.order_email_unavailable`).
+          description: The order has no buyer e-mail (`shop.order_no_buyer_email`), or it is not in a state that has this letter, for example unpaid, never shipped or never refunded (`shop.order_email_unavailable`).
           content:
             application/json:
               schema:

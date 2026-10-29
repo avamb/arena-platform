@@ -17426,13 +17426,13 @@ type ShopRefundResponse struct {
 
 // ShopResendEmailRequest Which buyer letter to send once more.
 type ShopResendEmailRequest struct {
-	// Kind `received` (the order is confirmed) or `shipped` (the order is on its way).
+	// Kind `received` (the order is confirmed), `shipped` (the order is on its way) or `refunded` (money of the order went back to the buyer).
 	Kind string `json:"kind"`
 }
 
 // ShopResendEmailResponse The letter was queued for the worker.
 type ShopResendEmailResponse struct {
-	// Kind The letter that was queued, `received` or `shipped`.
+	// Kind The letter that was queued, `received`, `shipped` or `refunded`.
 	Kind string `json:"kind"`
 
 	// Queued Always true; the worker sends the letter within moments.

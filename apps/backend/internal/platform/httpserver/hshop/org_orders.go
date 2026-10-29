@@ -134,7 +134,7 @@ func (h *Handler) HandlePatchOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleResendEmail serves POST .../shop/orders/{order_id}/resend-email
-// {kind: received|shipped}: queues the buyer's letter once more. One request
+// {kind: received|shipped|refunded}: queues the buyer's letter once more. One request
 // per order per minute (429 shop.rate_limited and Retry-After).
 func (h *Handler) HandleResendEmail(w http.ResponseWriter, r *http.Request) {
 	org, ok := orgID(w, r)
@@ -151,8 +151,8 @@ func (h *Handler) HandleResendEmail(w http.ResponseWriter, r *http.Request) {
 	if !readBody(w, r, &b, false) {
 		return
 	}
-	if b.Kind != shop.EmailReceived && b.Kind != shop.EmailShipped {
-		writeErr(w, r, http.StatusBadRequest, "shop.invalid_email_kind", "kind must be received or shipped")
+	if b.Kind != shop.EmailReceived && b.Kind != shop.EmailShipped && b.Kind != shop.EmailRefunded {
+		writeErr(w, r, http.StatusBadRequest, "shop.invalid_email_kind", "kind must be received, shipped or refunded")
 		return
 	}
 	// The budget is per order, and the order is looked up with its organization

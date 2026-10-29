@@ -602,14 +602,21 @@ export function parseShopOrdersSearch(raw: Record<string, unknown>): ShopOrdersS
   return out;
 }
 
-/** The letters of an order the buyer can be sent again (A-11): the confirmation, and the shipping one when it shipped. */
-export type OrderLetter = "received" | "shipped";
+/**
+ * The letters of an order the buyer can be sent again (A-11): the confirmation, the shipping one when it shipped,
+ * and the refund one when any money went back (a refunded or partly refunded status, or a refunded amount).
+ */
+export type OrderLetter = "received" | "shipped" | "refunded";
 
-export function resendLetters(order: Pick<ShopOrder, "status" | "buyer" | "delivery_kind" | "shipped_at">, canManage: boolean): OrderLetter[] {
+export function resendLetters(
+  order: Pick<ShopOrder, "status" | "buyer" | "delivery_kind" | "shipped_at"> & { refunded_minor?: number },
+  canManage: boolean,
+): OrderLetter[] {
   if (!canManage || order.buyer.email.trim() === "") return [];
   if (!["paid", "shipped", "partially_refunded", "refunded"].includes(order.status)) return [];
   const out: OrderLetter[] = ["received"];
   if (order.delivery_kind !== "none" && order.shipped_at !== null && order.shipped_at !== undefined) out.push("shipped");
+  if (order.status === "partially_refunded" || order.status === "refunded" || (order.refunded_minor ?? 0) > 0) out.push("refunded");
   return out;
 }
 
