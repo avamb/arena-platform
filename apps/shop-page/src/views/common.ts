@@ -304,3 +304,10 @@ function quickAdd(ctx: Ctx, p: ShopProduct, sid: string): string {
                     </div>
                   </button></form></product-form></div>`;
 }
+
+/** "Электронная почта: <address>" from the shop settings; nothing when the shop names no address. */
+export function contactLine(email: string | null | undefined, cls: string): string {
+  const e = (email ?? '').trim();
+  if (e === '') return '';
+  return `<p class="${cls}">${T.contactEmailLabel} <a href="mailto:${esc(e)}" class="link">${esc(e)}</a></p>`;
+}

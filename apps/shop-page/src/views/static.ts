@@ -8,14 +8,18 @@ import type { ShopPage, ShopProduct } from '../lib/api';
 import { esc } from '../lib/html';
 import { resultsLabel, T } from '../lib/i18n';
 import { sanitizeHtml } from '../lib/sanitize';
-import { productCard, url, type Ctx } from './common';
+import { contactLine, productCard, url, type Ctx } from './common';
 
 export const isSectionBody = (html: string): boolean => /class="shopify-section/.test(html);
 
 export function pageView(ctx: Ctx, page: ShopPage): string {
-  void ctx;
   const body = sanitizeHtml(page.body_html);
-  if (isSectionBody(page.body_html)) return body;
+  // The "Контакты" page names the shop's address under the imported text: the text itself
+  // carries no way to reach the seller.
+  const contact = page.slug === 'contact' ? contactLine(ctx.shop.settings.contact_email, 'shop-page-contact') : '';
+  if (isSectionBody(page.body_html)) {
+    return contact ? `${body}<div class="page-width page-width--narrow">${contact}</div>` : body;
+  }
   return `<section id="shopify-section-page__main" class="shopify-section section"><style data-shopify>.section-page-main-padding {
     padding-top: 21px;
     padding-bottom: 21px;
@@ -31,7 +35,7 @@ export function pageView(ctx: Ctx, page: ShopPage): string {
   </h1>
   <div class="rte">
     ${body}
-  </div>
+  </div>${contact}
 </div>
 </section>`;
 }
@@ -49,7 +53,8 @@ export function policyView(page: ShopPage): string {
 </div>`;
 }
 
-export function notFoundView(ctx: Ctx): string {
+/** `ctx` null: no shop is known (unknown organization), so there is nowhere to send the visitor. */
+export function notFoundView(ctx: Ctx | null): string {
   return `<style type="text/css">
   .template-404 .title + * {
     margin-top: 1rem;
@@ -69,9 +74,21 @@ export function notFoundView(ctx: Ctx): string {
   <h1 class="title">
     ${T.notFoundTitle}
   </h1>
-  <a href="${esc(url(ctx, '/collections/all'))}" class="button">
+  ${
+    ctx
+      ? `<a href="${esc(url(ctx, '/collections/all'))}" class="button">
     ${T.notFoundButton}
-  </a>
+  </a>`
+      : ''
+  }
+</div>`;
+}
+
+/** The bare platform address (no organization in the path): a short placeholder, not a shop. */
+export function platformHomeView(): string {
+  return `<div class="template-404 page-width page-margin center shop-platform">
+  <h1 class="title">Arena Sold Out</h1>
+  <p>${T.platformPlaceholder}</p>
 </div>`;
 }
 

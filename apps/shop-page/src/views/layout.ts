@@ -9,7 +9,7 @@ import { esc } from '../lib/html';
 import { cartCountLabel, T } from '../lib/i18n';
 import { itemCount } from '../lib/cart';
 import type { MenuItem } from '../lib/api';
-import { icon, url, type Ctx } from './common';
+import { contactLine, icon, url, type Ctx } from './common';
 
 /** Shopify's handleize: lowercase, runs of non-letters become one dash. */
 export function handleize(s: string): string {
@@ -148,7 +148,7 @@ function header(ctx: Ctx, home: boolean): string {
               >
                 ${icon('account')}
 
-${T.login}</a><div class="menu-drawer__localization header-localization">
+${T.contacts}</a><div class="menu-drawer__localization header-localization">
 </div>${socialList(ctx, 'list list-social list-unstyled', 'list-social__link link')}
           </div>
         </div>
@@ -217,10 +217,10 @@ ${home ? '<h1 class="header__heading">' : ''}<a href="${esc(url(ctx, '/'))}" cla
   </details>
 </details-modal>
 
-<a href="${accountHref}" class="header__icon header__icon--account link focus-inset small-hide">
+<a href="${accountHref}" class="header__icon header__icon--account link focus-inset small-hide" title="${T.contacts}" aria-label="${T.contacts}">
           ${icon('account')}
 
-          <span class="visually-hidden">${T.login}</span>
+          <span class="visually-hidden">${T.contacts}</span>
         </a><a href="${esc(url(ctx, '/cart'))}" class="header__icon header__icon--cart link focus-inset" id="cart-icon-bubble">${cartBubble(count)}</a>
     </div>
   </header>
@@ -327,7 +327,7 @@ function footer(ctx: Ctx): string {
                 class="footer-block grid__item"
 
 
-              ><div class="footer-block__brand-info"><h2 class="footer-block__heading rte">${esc(t.brandHeadline)}</h2><div class="rte">${t.brandHtml}</div>
+              ><div class="footer-block__brand-info"><h2 class="footer-block__heading rte">${esc(t.brandHeadline)}</h2><div class="rte">${t.brandHtml}</div>${contactLine(ctx.shop.settings.contact_email, 'footer-block__contact')}
 
 ${socialList(ctx, 'list-unstyled list-social footer__list-social', 'link list-social__link')}
 </div></div></div><div
@@ -380,7 +380,10 @@ function ageGate(ctx: Ctx): string {
   const minAge = ctx.shop.settings.age_gate_min_age ?? 0;
   if (minAge <= 0) return '';
   const g = ctx.theme.ageGate;
-  return `<div id="popup" data-exit-url="${esc(g.exitUrl)}">
+  // A modal <dialog>: it opens in the browser's top layer, so nothing of Dawn (every
+  // product block and quantity field has its own stacking context) can paint over it,
+  // and the page behind it is inert until the visitor answers.
+  return `<dialog id="popup" data-exit-url="${esc(g.exitUrl)}" aria-label="${esc(g.heading)}">
         <div class="popup-content">
             <div class="popup-contents">
             <div class="section-heading">${esc(g.heading)}</div>
@@ -391,7 +394,7 @@ function ageGate(ctx: Ctx): string {
             </div>
         </div>
         </div>
-    </div>`;
+    </dialog>`;
 }
 
 export function layout(ctx: Ctx, mainHtml: string, home = false): string {
