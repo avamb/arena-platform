@@ -2401,6 +2401,8 @@ export const es: Record<MessageKey, string> = {
   "shop.act.resend.hint": "Se enviará a {email}.",
   "shop.act.resend.received": "Confirmación del pedido",
   "shop.act.resend.shipped": "Correo de envío",
+  "shop.act.resend.refunded": "Carta de reembolso",
+  "shop.act.resend.refundedUnavailable": "Carta de reembolso no disponible: el pedido no tiene reembolso",
   "shop.act.resend.done": "El correo está en cola.",
   "shop.act.resend.wait": "El correo de este pedido se puso en cola hace menos de un minuto. Inténtalo de nuevo en un minuto.",
   "shop.settings.title": "Ajustes de la tienda",

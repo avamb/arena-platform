@@ -138,7 +138,7 @@ export function saveShopOrderNote(orgId: string, orderId: string, staffNote: str
 }
 
 /** Queues the buyer's letter once more. One request per order per minute: a second answers 429. */
-export function resendShopOrderEmail(orgId: string, orderId: string, kind: "received" | "shipped"): Promise<ShopResendEmailResponse> {
+export function resendShopOrderEmail(orgId: string, orderId: string, kind: "received" | "shipped" | "refunded"): Promise<ShopResendEmailResponse> {
   return call<ShopResendEmailResponse>({ route: API.shopOrderResendEmail, params: ord(orgId, orderId), body: { kind } });
 }
 
