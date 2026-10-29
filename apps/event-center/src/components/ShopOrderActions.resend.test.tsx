@@ -117,6 +117,30 @@ describe("the repeat e-mail button", () => {
     expect(note(el)).toBe("The e-mail is queued.");
   });
 
+  it("offers the refund letter next to the confirmation for a refunded order, and sends the chosen one", async () => {
+    vi.mocked(resendShopOrderEmail).mockResolvedValue({ queued: true, kind: "refunded" });
+    const el = await mount(order({ status: "partially_refunded", refunded_minor: 1000 }));
+    await press(el, "shop-order-resend");
+    expect(resendShopOrderEmail).not.toHaveBeenCalled();
+    expect(el.querySelector('[data-testid="shop-resend-received"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="shop-resend-refunded"]')?.textContent).toBe("Refund letter");
+    expect(el.querySelector('[data-testid="shop-resend-shipped"]')).toBeNull();
+    await press(el, "shop-resend-refunded");
+    expect(resendShopOrderEmail).toHaveBeenCalledWith(ORG, ID, "refunded");
+    expect(note(el)).toBe("The e-mail is queued.");
+  });
+
+  it("says calmly that there is no refund letter when the API answers 409 for it", async () => {
+    vi.mocked(resendShopOrderEmail).mockImplementation(async () => {
+      throw new ApiError(409, "shop.order_email_unavailable", "no");
+    });
+    const el = await mount(order({ status: "refunded", refunded_minor: 4490 }));
+    await press(el, "shop-order-resend");
+    await press(el, "shop-resend-refunded");
+    expect(note(el)).toBe("Refund letter unavailable: the order has no refund");
+    expect(el.querySelector('[data-testid="shop-order-error"]')).toBeNull();
+  });
+
   it("says to wait a minute when the API refuses a second request", async () => {
     vi.mocked(resendShopOrderEmail).mockImplementation(async () => {
       throw new ApiError(429, "shop.rate_limited", "wait");

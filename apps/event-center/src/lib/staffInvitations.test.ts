@@ -24,6 +24,8 @@ import {
   isMissingRoute,
   isPickable,
   isSeatConflict,
+  formatLetterTime,
+  letterView,
   issuerName,
   originCounts,
   pickSeats,
@@ -327,5 +329,46 @@ describe("the charge", () => {
     expect(chargeLine({})).toBeNull();
     expect(chargeLine({ amount_minor: 150 })).toBeNull();
     expect(chargeLine({ amount_minor: 150, currency: "EUR" })).toEqual({ amountMinor: 150, currency: "EUR" });
+  });
+});
+
+describe("the letter of an invitation", () => {
+  const withLetter = (letter: StaffInvitationListItem["letter"], total = 2, active = 2) => ({ ...item(total, active), letter });
+  const NOW = Date.parse("2026-10-29T15:00:00Z");
+
+  it("shows nothing for an invitation without a letter", () => {
+    expect(letterView(withLetter(null), "UTC", "en", NOW).kind).toBe("none");
+    expect(letterView(item(2, 2), "UTC", "en", NOW).kind).toBe("none");
+  });
+  it("maps each status to a kind and a tone", () => {
+    const v = (status: string, code: string | null = null) =>
+      letterView(withLetter({ status, sent_at: null, last_error_code: code }), "UTC", "en", NOW);
+    expect(v("pending")).toMatchObject({ kind: "pending", tone: "wait", hint: null });
+    expect(v("skipped")).toMatchObject({ kind: "skipped", tone: "neutral" });
+    expect(v("disabled")).toMatchObject({ kind: "disabled", tone: "neutral" });
+    expect(v("surprise").kind).toBe("none");
+  });
+  it("tells a failed letter to be sent again, and names a refused address", () => {
+    const failed = (code: string | null) => letterView(withLetter({ status: "failed", sent_at: null, last_error_code: code }), "UTC", "en", NOW);
+    expect(failed("send_failed")).toMatchObject({ kind: "failed", tone: "bad", hint: "seatInv.letter.failedHint" });
+    expect(failed(null).hint).toBe("seatInv.letter.failedHint");
+    expect(failed("address_rejected").hint).toBe("seatInv.letter.addressRejected");
+  });
+  it("shows the time of a sent letter, with the date when it was not today", () => {
+    const today = letterView(withLetter({ status: "sent", sent_at: "2026-10-29T14:05:00Z", last_error_code: null }), "UTC", "en", NOW);
+    expect(today).toMatchObject({ kind: "sent", tone: "ok", when: "14:05" });
+    expect(formatLetterTime("2026-10-28T09:30:00Z", "UTC", "en", NOW)).toMatch(/28.*09:30/);
+    expect(formatLetterTime("2026-10-29T14:05:00Z", "Europe/Madrid", "en", NOW)).toBe("15:05");
+    expect(formatLetterTime(null, "UTC", "en", NOW)).toBe("");
+    expect(formatLetterTime("not a date", "UTC", "en", NOW)).toBe("");
+  });
+  it("forgets the letter of a fully canceled invitation", () => {
+    expect(letterView(withLetter({ status: "failed", sent_at: null, last_error_code: null }, 2, 0), "UTC", "en", NOW).kind).toBe("none");
+  });
+  it("keeps polling while a letter is on its way", () => {
+    const pending = { ...item(2, 2), letter: { status: "pending", sent_at: null, last_error_code: null } };
+    expect(pollDelay([pending], Date.parse("2026-10-29T10:00:30Z"))).toBe(2000);
+    expect(pollDelay([pending], Date.parse("2026-10-29T10:11:00Z"))).toBe(false);
+    expect(pollDelay([{ ...pending, letter: { ...pending.letter, status: "sent" } }], Date.parse("2026-10-29T10:00:30Z"))).toBe(false);
   });
 });

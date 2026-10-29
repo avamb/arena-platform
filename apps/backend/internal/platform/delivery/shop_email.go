@@ -2,7 +2,8 @@
 // the buyer of a merchandise shop order (spec 47 section 7, lane L5).
 //
 // internal/platform/shop queues one job in the SAME transaction that marks the
-// order paid ("received") or shipped ("shipped"). The handler:
+// order paid ("received"), shipped ("shipped") or a refund succeeded
+// ("refunded", one letter per refund). The handler:
 //
 //  1. loads the order, its lines, the shop settings and the organization;
 //  2. skips what no longer makes sense (an order that was cancelled or expired
@@ -95,6 +96,16 @@ func (h *shopEmail) handle(ctx context.Context, payload []byte) error {
 		kind = templates.TemplateKindShopOrderReceived
 	case shop.EmailShipped:
 		kind = templates.TemplateKindShopOrderShipped
+	case shop.EmailRefunded:
+		kind = templates.TemplateKindShopOrderRefunded
+	}
+	var refundID uuid.UUID
+	if p.Kind == shop.EmailRefunded {
+		var err3 error
+		if refundID, err3 = uuid.Parse(p.RefundID); err3 != nil {
+			h.logger.Error("delivery: shop refund e-mail without a refund id", slog.String("order_id", p.OrderID))
+			return nil
+		}
 	}
 	if err1 != nil || err2 != nil || kind == "" {
 		h.logger.Error("delivery: invalid ids or kind in shop e-mail payload", slog.String("kind", p.Kind))
@@ -117,7 +128,7 @@ func (h *shopEmail) handle(ctx context.Context, payload []byte) error {
 	// not swallow it. A redelivered job of the same request is a duplicate
 	// letter at worst, which the one-per-minute limit of the route bounds.
 	if !p.Resend {
-		if sent, err := h.alreadySent(ctx, orderID, p.Kind); err != nil {
+		if sent, err := h.alreadySent(ctx, orderID, sentKey(p.Kind, refundID)); err != nil {
 			return err
 		} else if sent {
 			return nil
@@ -129,7 +140,20 @@ func (h *shopEmail) handle(ctx context.Context, payload []byte) error {
 		return nil
 	}
 
-	msg, err := h.buildMessage(ctx, o, kind)
+	var refund *shopRefund
+	if p.Kind == shop.EmailRefunded {
+		r, err := h.loadRefund(ctx, o, refundID)
+		if err != nil {
+			return err
+		}
+		if r == nil {
+			h.logger.Info("delivery: shop e-mail not sent", slog.String("order_id", orderID.String()),
+				slog.String("reason", "the refund did not succeed or is not this order's"))
+			return nil
+		}
+		refund = r
+	}
+	msg, err := h.buildMessage(ctx, o, kind, refund)
 	if err != nil {
 		return err
 	}
@@ -138,7 +162,7 @@ func (h *shopEmail) handle(ctx context.Context, payload []byte) error {
 			slog.String("order_id", orderID.String()), slog.String("kind", p.Kind))
 		return fmt.Errorf("delivery: send shop e-mail for order %s: %w", orderID, err)
 	}
-	if err := h.markSent(ctx, orderID, p.Kind); err != nil {
+	if err := h.markSent(ctx, orderID, sentKey(p.Kind, refundID)); err != nil {
 		// The letter is out; failing here would retry (and mail) it again.
 		h.logger.Error("delivery: could not remember the shop e-mail", slog.String("order_id", orderID.String()),
 			slog.String("error", err.Error()))
@@ -153,8 +177,14 @@ func shopEmailSkipReason(o gen.ShopOrderRow, kind string) string {
 		return "no address for the buyer"
 	}
 	switch o.Status {
-	case shop.StatusCancelled, shop.StatusExpired, shop.StatusPendingPayment, shop.StatusManualReview:
+	case shop.StatusCancelled, shop.StatusExpired, shop.StatusPendingPayment:
 		return "the order is " + o.Status
+	case shop.StatusManualReview:
+		// Money that went back is the buyer's business even while the order
+		// waits for the organizer's decision.
+		if kind != shop.EmailRefunded {
+			return "the order is " + o.Status
+		}
 	}
 	if kind == shop.EmailShipped && o.DeliveryKind == shop.DeliveryNone {
 		return "nothing ships: a digital or service order"
@@ -165,21 +195,60 @@ func shopEmailSkipReason(o gen.ShopOrderRow, kind string) string {
 	return ""
 }
 
-func sentKey(kind string) string { return "email_" + kind + "_sent_at" }
+// sentKey is the shop_orders.metadata key that remembers a send. The refund
+// letter is remembered per refund (an order may be refunded several times).
+func sentKey(kind string, refundID uuid.UUID) string {
+	if kind == shop.EmailRefunded {
+		return "email_" + kind + "_" + refundID.String() + "_sent_at"
+	}
+	return "email_" + kind + "_sent_at"
+}
 
-func (h *shopEmail) alreadySent(ctx context.Context, orderID uuid.UUID, kind string) (bool, error) {
+func (h *shopEmail) alreadySent(ctx context.Context, orderID uuid.UUID, key string) (bool, error) {
 	var sent bool
-	if err := h.opts.DB.QueryRow(ctx, `SELECT metadata ? $2 FROM shop_orders WHERE id = $1`, orderID, sentKey(kind)).Scan(&sent); err != nil {
+	if err := h.opts.DB.QueryRow(ctx, `SELECT metadata ? $2 FROM shop_orders WHERE id = $1`, orderID, key).Scan(&sent); err != nil {
 		return false, fmt.Errorf("delivery: read shop e-mail marker: %w", err)
 	}
 	return sent, nil
 }
 
-func (h *shopEmail) markSent(ctx context.Context, orderID uuid.UUID, kind string) error {
+func (h *shopEmail) markSent(ctx context.Context, orderID uuid.UUID, key string) error {
 	_, err := h.opts.DB.Exec(ctx,
 		`UPDATE shop_orders SET metadata = metadata || jsonb_build_object($2::text, now()) WHERE id = $1`,
-		orderID, sentKey(kind))
+		orderID, key)
 	return err
+}
+
+// shopRefund is the refund a refunded letter is about: its own amount and what
+// the order had got back once it succeeded (the refunds that succeeded up to
+// and including it), so a letter that is sent late, or sent again, still says
+// what it said the first time.
+type shopRefund struct {
+	Amount, Running int64
+}
+
+// loadRefund reads the refund of the order's payment. nil: it is not this
+// order's, or it is not a succeeded one (the provider reversed it).
+func (h *shopEmail) loadRefund(ctx context.Context, o gen.ShopOrderRow, id uuid.UUID) (*shopRefund, error) {
+	if o.PaymentIntentID == nil {
+		return nil, nil
+	}
+	var r shopRefund
+	err := h.opts.DB.QueryRow(ctx, `
+		SELECT r.amount,
+		       (SELECT COALESCE(sum(x.amount), 0)::bigint FROM refunds x
+		         WHERE x.payment_intent_id = r.payment_intent_id AND x.state = 'succeeded'
+		           AND (x.updated_at, x.id) <= (r.updated_at, r.id))
+		  FROM refunds r
+		 WHERE r.id = $1 AND r.payment_intent_id = $2 AND r.state = 'succeeded'`,
+		id, *o.PaymentIntentID).Scan(&r.Amount, &r.Running)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("delivery: read shop refund %s: %w", id, err)
+	}
+	return &r, nil
 }
 
 // shopOrg is the organization data a shop letter needs.
@@ -281,7 +350,7 @@ func buildShopOrderData(o gen.ShopOrderRow, items []gen.ShopOrderItemRow, status
 	return d
 }
 
-func (h *shopEmail) buildMessage(ctx context.Context, o gen.ShopOrderRow, kind string) (email.Message, error) {
+func (h *shopEmail) buildMessage(ctx context.Context, o gen.ShopOrderRow, kind string, refund *shopRefund) (email.Message, error) {
 	items, err := h.q.ListShopOrderItems(ctx, []uuid.UUID{o.ID})
 	if err != nil {
 		return email.Message{}, fmt.Errorf("delivery: read shop order lines: %w", err)
@@ -322,6 +391,16 @@ func (h *shopEmail) buildMessage(ctx context.Context, o gen.ShopOrderRow, kind s
 		HolderName:     strings.TrimSpace(o.BuyerName),
 		Branding:       branding,
 		Shop:           buildShopOrderData(o, items, statusURL(g, h.opts.ShopBaseURL, o.OrderToken)),
+	}
+	if refund != nil {
+		data.Shop.RefundAmount = shop.FormatMinor(refund.Amount, o.Currency)
+		// A test file of this package declares its own min, so no builtin here.
+		running := refund.Running
+		if running > o.Total {
+			running = o.Total
+		}
+		data.Shop.RefundedTotal = shop.FormatMinor(running, o.Currency)
+		data.Shop.RefundFull = refund.Running >= o.Total
 	}
 	out, err := h.renderer.Render(kind, locale, data)
 	if err != nil {

@@ -2374,10 +2374,10 @@ other = "🗂 <b>Прежние приглашения</b>: выданные д�
 other = "🎟 <b>Приглашения</b> · {{.Org}}\nВсе сеансы, сначала новые · страница {{.Page}}\n{{.Legend}}"
 
 ["bot.inv.nlegend"]
-other = "✔ действует  ✕ аннулировано"
+other = "✔ действует  ✕ аннулировано  ⚠ письмо не ушло"
 
 ["bot.inv.ncard"]
-other = "🎟 <b>{{.Event}}</b>\n{{.When}}\n\nГость: {{.Guest}}\nМеста:\n{{.Places}}\n\nСтатус: {{.State}}\nВыдано: {{.Issued}}\nВыдал: {{.By}}"
+other = "🎟 <b>{{.Event}}</b>\n{{.When}}\n\nГость: {{.Guest}}\nМеста:\n{{.Places}}\n\nСтатус: {{.State}}\nВыдано: {{.Issued}}\nВыдал: {{.By}}{{.Letter}}"
 
 ["bot.inv.state_issuing"]
 other = "билеты выпускаются"
@@ -2405,6 +2405,21 @@ other = "Билеты этого приглашения ещё выпускаю�
 
 ["bot.inv.pdf_caption"]
 other = "🎟 <b>Приглашение № {{.Num}}</b>{{if .Name}} для {{.Name}}{{end}}\n{{.Title}}, {{.When}}\n\nПерешлите этот файл гостю: это билет со штрих-кодом, который сработает на входе."
+
+["bot.inv.letter_pending"]
+other = "✉ Отправляем письмо…"
+
+["bot.inv.letter_sent"]
+other = "✉ Письмо отправлено {{.When}}"
+
+["bot.inv.letter_failed"]
+other = "⚠ Письмо не ушло. Скорее всего, гость его не получил. Проверьте e-mail и отправьте письмо ещё раз в ивент-центре."
+
+["bot.inv.letter_skipped"]
+other = "✉ Письмо не отправлено"
+
+["bot.inv.letter_disabled"]
+other = "✉ Письмо не отправлено, отправка писем выключена"
 
 ["bot.promo.btn"]
 other = "🏷 Промокоды"

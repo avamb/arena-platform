@@ -396,6 +396,9 @@ type listItem struct {
 	TicketsTotal      int64          `json:"tickets_total"`
 	TicketsActive     int64          `json:"tickets_active"`
 	Places            []lineResponse `json:"places"`
+	// Letter is the state of the guest's letter; null when no letter was queued
+	// (pdf_only, or the tickets are not issued yet).
+	Letter *letterResponse `json:"letter"`
 }
 
 // HandleList serves GET /v1/organizations/{org_id}/sessions/{session_id}/invitations:
@@ -432,32 +435,27 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		ids = append(ids, row.ID)
 	}
-	byOrder := map[uuid.UUID][]lineResponse{}
-	if len(ids) > 0 {
-		lines, err := h.queries.ListInvitationOrderLines(ctx, ids)
-		if err != nil {
-			h.internal(w, r, "list: lines", err)
-			return
-		}
-		for _, l := range lines {
-			byOrder[l.OrderID] = append(byOrder[l.OrderID], toLine(l))
-		}
+	ex, err := h.loadPageExtras(ctx, ids)
+	if err != nil {
+		h.internal(w, r, "list: places and letters", err)
+		return
 	}
 	items := make([]listItem, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, newListItem(row, byOrder[row.ID]))
+		items = append(items, newListItem(row, ex.places[row.ID], ex.letters[row.ID]))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 // newListItem builds one list item from its order row and its places.
-func newListItem(row gen.SessionInvitationRow, places []lineResponse) listItem {
+func newListItem(row gen.SessionInvitationRow, places []lineResponse, letter *letterResponse) listItem {
 	it := listItem{
 		OrderID: row.ID.String(), SystemID: row.SystemID, Status: row.Status, GuestName: row.BuyerName,
 		Delivery: deliveryOf(row.Metadata), IssuedVia: row.IssuedVia, CreatedAt: row.CreatedAt,
 		TicketsTotal: row.TicketsTotal, TicketsActive: row.TicketsActive,
 		IssuedBy: issuerResponse{Email: row.IssuerEmail, FirstName: row.IssuerFirst, LastName: row.IssuerLast},
 		Places:   places,
+		Letter:   letter,
 	}
 	if it.Places == nil {
 		it.Places = []lineResponse{}

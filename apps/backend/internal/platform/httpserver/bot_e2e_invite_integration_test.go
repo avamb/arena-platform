@@ -554,7 +554,9 @@ func TestBotE2E_Invitations_OwnerIssuesListsAndAnnuls(t *testing.T) {
 	}
 
 	// ── the card and the annul word ─────────────────────────────────────────
-	d.press("iv:no:0", "Места:")
+	if card := d.press("iv:no:0", "Места:"); !strings.Contains(card, "✉ Отправляем письмо") {
+		t.Errorf("the card of a guest_email invitation shows its queued letter: %q", card)
+	}
 	d.press("iv:nrv", "Аннулировать это приглашение?")
 	d.say("нет", "Текст не совпал")
 	if e.count(`SELECT count(*) FROM tickets WHERE status = 'cancelled' AND checkout_session_id IN (SELECT checkout_session_id FROM orders WHERE org_id = $1)`, e.seed.orgID) != 0 {

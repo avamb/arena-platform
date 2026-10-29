@@ -26,6 +26,9 @@ var inviteKeys = []string{
 	"bot.inv.nrevoke_skipped", "bot.inv.nrevoke_used", "bot.inv.nrevoke_notyet",
 	// INV-09: the invitation PDF sent into the issuer's chat
 	"bot.inv.pdf_caption",
+	// the guest's letter on the card
+	"bot.inv.letter_pending", "bot.inv.letter_sent", "bot.inv.letter_failed", "bot.inv.letter_skipped",
+	"bot.inv.letter_disabled",
 }
 
 func init() {

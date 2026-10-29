@@ -405,3 +405,62 @@ func (q *Queries) ListOrgInvitations(ctx context.Context, orgID uuid.UUID, f Org
 	}
 	return out, rows.Err()
 }
+
+// InvitationLetterRow is the delivery_jobs of one invitation order folded into
+// counts by status (see ListInvitationLetters).
+type InvitationLetterRow struct {
+	OrderID  uuid.UUID
+	Jobs     int64
+	Failed   int64
+	Pending  int64
+	Sent     int64
+	Skipped  int64
+	Disabled int64
+	// SentAt is the latest sent_at among the sent jobs, nil when none was sent.
+	SentAt *time.Time
+	// LastError is the latest error text of a job that did not go out; it is
+	// internal and never leaves the API as it is.
+	LastError *string
+}
+
+const listInvitationLetters = `-- name: ListInvitationLetters :many
+SELECT o.id,
+       count(dj.id),
+       count(*) FILTER (WHERE dj.status = 'failed'),
+       count(*) FILTER (WHERE dj.status IN ('pending', 'processing')),
+       count(*) FILTER (WHERE dj.status = 'sent'),
+       count(*) FILTER (WHERE dj.status = 'skipped'),
+       count(*) FILTER (WHERE dj.status = 'disabled'),
+       max(dj.sent_at) FILTER (WHERE dj.status = 'sent'),
+       (array_agg(dj.last_error ORDER BY dj.updated_at DESC)
+            FILTER (WHERE dj.status IN ('failed', 'skipped', 'disabled') AND dj.last_error IS NOT NULL))[1]
+FROM   orders o
+JOIN   tickets t ON t.checkout_session_id = o.checkout_session_id
+JOIN   delivery_jobs dj ON dj.ticket_id = t.id
+WHERE  o.id = ANY($1::uuid[])
+  AND  (t.status = 'active'
+        OR NOT EXISTS (SELECT 1 FROM tickets a
+                       WHERE a.checkout_session_id = o.checkout_session_id AND a.status = 'active'))
+GROUP  BY o.id`
+
+// ListInvitationLetters answers the letter state of the given orders in one
+// statement. An order without delivery jobs has no row.
+func (q *Queries) ListInvitationLetters(ctx context.Context, orderIDs []uuid.UUID) ([]InvitationLetterRow, error) {
+	rows, err := q.db.Query(ctx, listInvitationLetters, orderIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []InvitationLetterRow
+	for rows.Next() {
+		var r InvitationLetterRow
+		if err := rows.Scan(
+			&r.OrderID, &r.Jobs, &r.Failed, &r.Pending, &r.Sent, &r.Skipped, &r.Disabled,
+			&r.SentAt, &r.LastError,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

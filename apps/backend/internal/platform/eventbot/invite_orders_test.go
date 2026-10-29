@@ -101,3 +101,49 @@ func TestStaffInvitationCallbacks_FitTelegram(t *testing.T) {
 		}
 	}
 }
+
+func TestStaffInvLetterLine_StateOnTheCardInEveryLanguage(t *testing.T) {
+	t.Parallel()
+	b := ecTestBot(t)
+	raw := func(letter string, active int) openapi.StaffInvitationOrgListItem {
+		var it openapi.StaffInvitationOrgListItem
+		j := `{"order_id":"` + uuid.NewString() + `","system_id":7,"status":"paid","guest_name":"Ana","delivery":"guest_email","issued_via":"staff",
+		"issued_by":{"user_id":null,"email":null,"first_name":null,"last_name":null},"created_at":"2099-01-01T00:00:00Z","invitation_batch_id":null,
+		"tickets_total":2,"tickets_active":` + string(rune('0'+active)) + `,"places":[],"letter":` + letter + `,
+		"session":{"id":"` + uuid.NewString() + `","start_at":"2099-10-15T18:00:00Z","event_id":"` + uuid.NewString() + `","event_name":"Swan Lake","venue_name":null,"timezone":"Europe/Madrid"}}`
+		if err := json.Unmarshal([]byte(j), &it); err != nil {
+			t.Fatal(err)
+		}
+		return it
+	}
+	sent := raw(`{"status":"sent","sent_at":"2026-10-29T14:05:00Z","last_error_code":null}`, 2)
+	failed := raw(`{"status":"failed","sent_at":null,"last_error_code":"send_failed"}`, 2)
+	for _, loc := range []string{"en", "ru", "es"} {
+		if got := b.staffInvLetterLine(loc, sent); !strings.HasPrefix(got, "\n✉") || !strings.Contains(got, "29.10.2026 15:05") {
+			t.Errorf("%s sent line = %q", loc, got)
+		}
+		if got := b.staffInvLetterLine(loc, failed); !strings.HasPrefix(got, "\n⚠") {
+			t.Errorf("%s failed line = %q", loc, got)
+		}
+		for _, status := range []string{"pending", "skipped", "disabled"} {
+			it := raw(`{"status":"`+status+`","sent_at":null,"last_error_code":null}`, 2)
+			if got := b.staffInvLetterLine(loc, it); !strings.HasPrefix(got, "\n✉") {
+				t.Errorf("%s %s line = %q", loc, status, got)
+			}
+		}
+	}
+	// No letter at all (pdf_only, tickets not issued yet) and a fully annulled invitation say nothing.
+	if got := b.staffInvLetterLine("en", raw(`null`, 2)); got != "" {
+		t.Errorf("no letter: %q", got)
+	}
+	if got := b.staffInvLetterLine("en", raw(`{"status":"failed","sent_at":null,"last_error_code":null}`, 0)); got != "" {
+		t.Errorf("annulled invitation: %q", got)
+	}
+	// A failed letter marks the row, a sent one does not.
+	if staffInvChip(failed) != "⚠" || staffInvChip(sent) != "✔" {
+		t.Errorf("chips: failed %q sent %q", staffInvChip(failed), staffInvChip(sent))
+	}
+	if label := staffInvRowLabel(failed); !strings.HasPrefix(label, "⚠") {
+		t.Errorf("row label = %q", label)
+	}
+}
