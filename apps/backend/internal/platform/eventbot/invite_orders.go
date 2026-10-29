@@ -127,6 +127,9 @@ func staffInvGuest(it openapi.StaffInvitationOrgListItem) string {
 	if it.GuestName != nil && strings.TrimSpace(*it.GuestName) != "" {
 		who = strings.TrimSpace(*it.GuestName)
 	}
+	if len(it.Places) > 0 && it.Places[0].Vip {
+		who = "⭐ " + who
+	}
 	if n := len(it.Places); n > 1 {
 		who += " ×" + invNum(int64(n))
 	}
@@ -273,6 +276,9 @@ func staffPlaceLine(p openapi.StaffInvitationPlace) string {
 		s = "🪑 " + Esc(strings.Join(parts, " · ")) + " · " + Esc(truncate(p.TierName, 20))
 	} else {
 		s = "🎟 " + Esc(truncate(p.TierName, 30))
+	}
+	if p.Vip {
+		s = "⭐ VIP · " + s
 	}
 	if p.TicketStatus != nil && *p.TicketStatus == "cancelled" {
 		s = "✕ " + s

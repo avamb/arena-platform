@@ -25787,6 +25787,8 @@ export interface components {
             ticket_id?: string | null;
             /** @description Status of the place's ticket - active while it can be used, cancelled after a cancellation, null until the ticket is issued. A client offers a per-ticket cancel only for active. */
             ticket_status?: string | null;
+            /** @description The organizer's private VIP mark of the place's ticket (never shown to the guest). False until the ticket is issued. */
+            vip: boolean;
         };
         /** @description The invitation as written. */
         StaffInvitationIssueResponse: {

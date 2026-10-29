@@ -54,8 +54,8 @@ func TestStaffInvRowAndCard(t *testing.T) {
 	raw := `{"order_id":"` + uuid.NewString() + `","system_id":1000000501,"status":"paid","guest_name":"Ana López","delivery":"pdf_only",
 	"issued_via":"staff","issued_by":{"user_id":null,"email":"boss@example.com","first_name":"Eva","last_name":null},
 	"created_at":"2099-01-01T00:00:00Z","invitation_batch_id":null,"tickets_total":2,"tickets_active":2,
-	"places":[{"tier_id":"` + uuid.NewString() + `","tier_name":"Parterre","face_value":2500,"kind":"seat","seat_key":"A|1|5","sector":"A","row":"1","seat":"5","ticket_status":"active"},
-	          {"tier_id":"` + uuid.NewString() + `","tier_name":"Standing","face_value":1500,"kind":"ga_unit","ticket_status":"cancelled"}],
+	"places":[{"tier_id":"` + uuid.NewString() + `","tier_name":"Parterre","face_value":2500,"kind":"seat","seat_key":"A|1|5","sector":"A","row":"1","seat":"5","ticket_status":"active","vip":true},
+	          {"tier_id":"` + uuid.NewString() + `","tier_name":"Standing","face_value":1500,"kind":"ga_unit","ticket_status":"cancelled","vip":false}],
 	"session":{"id":"` + uuid.NewString() + `","start_at":"2099-10-15T18:00:00Z","event_id":"` + uuid.NewString() + `","event_name":"Swan Lake","venue_name":"Hall","timezone":"Europe/Madrid"}}`
 	var it openapi.StaffInvitationOrgListItem
 	if err := json.Unmarshal([]byte(raw), &it); err != nil {
@@ -73,6 +73,12 @@ func TestStaffInvRowAndCard(t *testing.T) {
 	lines := staffPlaceLines(it.Places)
 	if !strings.Contains(lines, "🪑 A · 1 · 5 · Parterre") || !strings.Contains(lines, "✕ 🎟 Standing") {
 		t.Errorf("places = %q", lines)
+	}
+	if !strings.Contains(lines, "⭐ VIP · 🪑 A") || strings.Count(lines, "VIP") != 1 {
+		t.Errorf("only the VIP place carries the star: %q", lines)
+	}
+	if got := staffInvGuest(it); !strings.HasPrefix(got, "⭐ ") {
+		t.Errorf("a VIP row starts with the star: %q", got)
 	}
 	if got := staffInvIssuer(it); got != "Eva · boss@example.com" {
 		t.Errorf("issuer = %q", got)
