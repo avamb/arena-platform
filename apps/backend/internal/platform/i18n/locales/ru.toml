@@ -4679,3 +4679,67 @@ other = "У сеанса со схемой места и категории ос
 
 ["shop.payment.description"]
 other = "{{.Org}}, заказ № {{.Number}}"
+
+# --- salesnotify.shop.*: Telegram announcements of the merchandise shop ---
+["salesnotify.shop.new_order"]
+other = "🛍 <b>Новый заказ в магазине</b> — {{.Org}}"
+
+["salesnotify.shop.order_number"]
+other = "🧾 Заказ №{{.Number}}"
+
+["salesnotify.shop.total"]
+other = "💰 Сумма: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.delivery_none"]
+other = "📦 Без доставки (цифровой товар или услуга)"
+
+["salesnotify.shop.delivery_pickup"]
+other = "🏬 Доставка: самовывоз"
+
+["salesnotify.shop.delivery_shipping"]
+other = "🚚 Доставка: курьером"
+
+["salesnotify.shop.courier_form"]
+other = "📦 <b>Данные для курьера</b>"
+
+["salesnotify.shop.map_google"]
+other = "🗺 Google Карты: {{.Url}}"
+
+["salesnotify.shop.map_waze"]
+other = "🚗 Waze: {{.Url}}"
+
+["salesnotify.shop.items"]
+other = "🛒 <b>Товары</b>"
+
+["salesnotify.shop.items_more"]
+other = "… и ещё {{.Count}} поз."
+
+["salesnotify.shop.item_line"]
+other = "{{.Qty}} × {{.Name}} — по {{.Price}}"
+
+["salesnotify.shop.shipping"]
+other = "🚚 Доставка: {{.Amount}}"
+
+["salesnotify.shop.discount"]
+other = "🏷 Скидка: -{{.Amount}}"
+
+["salesnotify.shop.note"]
+other = "📝 Комментарий покупателя: {{.Note}}"
+
+["salesnotify.shop.refund_title"]
+other = "↩️ <b>Возврат в магазине</b> — {{.Org}}"
+
+["salesnotify.shop.refunded"]
+other = "💸 Возвращено: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.refunded_so_far"]
+other = "💸 Возвращено всего: {{.Amount}} из {{.Total}}"
+
+["salesnotify.shop.review_title"]
+other = "⚠️ <b>Заказ в магазине требует внимания</b> — {{.Org}}"
+
+["salesnotify.shop.review_paid"]
+other = "💰 Оплачено: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_body"]
+other = "Оплата заказа {{.Number}} пришла, когда бронь уже закончилась, а товара не осталось. Проверьте заказ в ивент-центре."

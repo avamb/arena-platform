@@ -274,6 +274,17 @@
   min-height: 9rem;
 }
 
+.shop-checkout__hint {
+  display: block;
+  margin: 0.4rem 0 0;
+  opacity: 0.75;
+}
+
+.shop-checkout__country .field__input {
+  cursor: default;
+  opacity: 0.8;
+}
+
 /* Dawn's .page-width has no side padding below 750px (its sections add their own); checkout has no such section. */
 @media screen and (max-width: 749px) {
   .page-width.section-checkout-padding {

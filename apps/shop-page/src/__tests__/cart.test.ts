@@ -20,6 +20,8 @@ import {
   subtotalMinor,
   totalMinor,
   validateCheckoutForm,
+  validatePostal,
+  postalHint,
   wantedQty,
   type CheckoutForm,
 } from '../lib/cart';
@@ -113,7 +115,7 @@ const good: CheckoutForm = {
   address1: 'Герцль 1, кв. 5',
   address2: '',
   city: 'Тель-Авив',
-  postal: '',
+  postal: '6100000',
   note: '',
   consent18: true,
 };
@@ -123,8 +125,26 @@ describe('checkout form', () => {
     expect(validateCheckoutForm(good, 18)).toEqual({});
   });
   it('names every missing field', () => {
-    const e = validateCheckoutForm({ ...good, name: '', email: 'x', phone: '12', address1: '', city: '', consent18: false }, 18);
-    expect(Object.keys(e).sort()).toEqual(['address1', 'city', 'consent18', 'email', 'name', 'phone']);
+    const e = validateCheckoutForm({ ...good, name: '', email: 'x', phone: '12', address1: '', city: '', postal: '', consent18: false }, 18);
+    expect(Object.keys(e).sort()).toEqual(['address1', 'city', 'consent18', 'email', 'name', 'phone', 'postal']);
+  });
+  it('requires the postal code of a shipped order: 7 digits for Israel, 3-12 characters elsewhere', () => {
+    expect(validateCheckoutForm({ ...good, postal: '' }, 0).postal).toBe('Укажите почтовый индекс');
+    expect(validateCheckoutForm({ ...good, postal: '   ' }, 0).postal).toBe('Укажите почтовый индекс');
+    expect(validateCheckoutForm({ ...good, postal: '610000' }, 0).postal).toBe('Проверьте индекс: 7 цифр');
+    expect(validateCheckoutForm({ ...good, postal: '61000000' }, 0).postal).toBe('Проверьте индекс: 7 цифр');
+    expect(validateCheckoutForm({ ...good, postal: '61000AB' }, 0).postal).toBe('Проверьте индекс: 7 цифр');
+    expect(validateCheckoutForm({ ...good, postal: ' 6100000 ' }, 0).postal).toBeUndefined();
+    expect(validateCheckoutForm({ ...good, postal: '1000' }, 0, true, 'CZ').postal).toBeUndefined();
+    expect(validateCheckoutForm({ ...good, postal: '12' }, 0, true, 'ES').postal).toBe('Проверьте индекс: от 3 до 12 символов');
+    expect(validateCheckoutForm({ ...good, postal: '' }, 0, true, 'ES').postal).toBe('Укажите почтовый индекс');
+    expect(validatePostal('3100000')).toBeUndefined();
+    expect(postalHint('IL')).toBe('7 цифр, как на письмах Почты Израиля');
+    expect(postalHint('ES')).toBe('');
+  });
+  it('sends the postal code and the shop country with the request', () => {
+    const req = buildCheckoutRequest([{ variant_id: 'v1', qty: 1 }], good, 'https://x.test/c', 'ru', 'CZ');
+    expect(req.ship).toMatchObject({ postal: '6100000', country: 'CZ' });
   });
   it('does not ask for the age consent when the shop has no age gate', () => {
     expect(validateCheckoutForm({ ...good, consent18: false }, 0)).toEqual({});
@@ -134,7 +154,7 @@ describe('checkout form', () => {
     expect(req).toEqual({
       items: [{ variant_id: 'v1', qty: 2 }],
       buyer: { name: 'Ирина Левина', email: 'irina@example.com', phone: '+972 50 123 4567' },
-      ship: { address1: 'Герцль 1, кв. 5', address2: 'подъезд 2', city: 'Тель-Авив', country: 'IL' },
+      ship: { address1: 'Герцль 1, кв. 5', address2: 'подъезд 2', city: 'Тель-Авив', postal: '6100000', country: 'IL' },
       locale: 'ru',
       return_url: 'https://x.test/e/checkout/result',
       age_confirmed: good.consent18,
@@ -226,6 +246,6 @@ describe('carts by product kind', () => {
     const lines = resolveLines([{ variant_id: 'vd', qty: 1 }, { variant_id: 'v1', qty: 1 }], catalog);
     expect(needsShipping(lines)).toBe(true);
     expect(shippingMinor({ shipping_fee_minor: 5000 }, lines)).toBe(5000);
-    expect(Object.keys(validateCheckoutForm({ name: 'Ирина', email: 'i@e.co', phone: '+972501234567', address1: '', address2: '', city: '', postal: '', note: '', consent18: true }, 18, true))).toEqual(['address1', 'city']);
+    expect(Object.keys(validateCheckoutForm({ name: 'Ирина', email: 'i@e.co', phone: '+972501234567', address1: '', address2: '', city: '', postal: '', note: '', consent18: true }, 18, true))).toEqual(['address1', 'city', 'postal']);
   });
 });

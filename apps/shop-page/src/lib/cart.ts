@@ -192,8 +192,28 @@ export function paymentUnavailableMessage(contactEmail: string | null | undefine
   return email ? `${base} или напишите нам: ${email}` : `${base}.`;
 }
 
-/** `shipping` false: a cart without a physical product takes no address. */
-export function validateCheckoutForm(f: CheckoutForm, minAge: number | null | undefined, shipping = true): FormErrors {
+/** Israel has used 7-digit postal codes since 2013. */
+const IL_POSTAL = /^[0-9]{7}$/;
+
+/** The hint under the postal field: what the shop's country expects. */
+export function postalHint(country: string | null | undefined): string {
+  return (country ?? 'IL').toUpperCase() === 'IL' ? '7 цифр, как на письмах Почты Израиля' : '';
+}
+
+/**
+ * The postal code of a shipped order, mirroring the server (`shop.postal_required`, `shop.invalid_postal`):
+ * required; exactly 7 digits for Israel, 3-12 characters elsewhere. Undefined means it is fine.
+ */
+export function validatePostal(postal: string, country: string | null | undefined = 'IL'): string | undefined {
+  const p = postal.trim();
+  if (p === '') return 'Укажите почтовый индекс';
+  if ((country ?? 'IL').toUpperCase() === 'IL') return IL_POSTAL.test(p) ? undefined : 'Проверьте индекс: 7 цифр';
+  const n = Array.from(p).length;
+  return n >= 3 && n <= 12 ? undefined : 'Проверьте индекс: от 3 до 12 символов';
+}
+
+/** `shipping` false: a cart without a physical product takes no address. `country` is the shop's (the ship country). */
+export function validateCheckoutForm(f: CheckoutForm, minAge: number | null | undefined, shipping = true, country: string | null | undefined = 'IL'): FormErrors {
   const e: FormErrors = {};
   if (f.name.trim().length < 2) e.name = 'Укажите имя и фамилию';
   const email = f.email.trim();
@@ -204,6 +224,10 @@ export function validateCheckoutForm(f: CheckoutForm, minAge: number | null | un
   else if (phone.replace(/\D/g, '').length < MIN_PHONE_DIGITS) e.phone = `Проверьте номер: нужно не меньше ${MIN_PHONE_DIGITS} цифр`;
   if (shipping && f.address1.trim().length < 3) e.address1 = 'Укажите адрес доставки';
   if (shipping && f.city.trim().length < 2) e.city = 'Укажите город';
+  if (shipping) {
+    const postal = validatePostal(f.postal, country);
+    if (postal) e.postal = postal;
+  }
   if ((minAge ?? 0) > 0 && !f.consent18) e.consent18 = 'Необходимо подтвердить возраст';
   return e;
 }

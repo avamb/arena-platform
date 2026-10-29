@@ -262,7 +262,7 @@ func (f *shopFixture) checkoutAs(variantID string, qty int, email string) (int, 
 	code, body, _ := f.do(http.MethodPost, "/v1/public/shop/"+f.orgASlug+"/checkout", "", fmt.Sprintf(`{
 		"items":[{"variant_id":%q,"qty":%d}],
 		"buyer":{"name":"Anna","email":%q},
-		"ship":{"address1":"Herzl 1","city":"Haifa","country":"IL"},
+		"ship":{"address1":"Herzl 1","city":"Haifa","postal":"3100000","country":"IL"},
 		"return_url":"%s/checkout"}`, variantID, qty, email, shopTestBase))
 	return code, body
 }
@@ -617,7 +617,7 @@ func TestShop_MixedCartNeedsAnAddress(t *testing.T) {
 	cart := func(withShip bool) (int, map[string]any) {
 		ship := ""
 		if withShip {
-			ship = `"ship":{"address1":"Herzl 1","city":"Haifa","country":"IL"},`
+			ship = `"ship":{"address1":"Herzl 1","city":"Haifa","postal":"3100000","country":"IL"},`
 		}
 		code, body, _ := f.do(http.MethodPost, "/v1/public/shop/"+f.orgASlug+"/checkout", "", fmt.Sprintf(`{
 			"items":[{"variant_id":%q,"qty":1},{"variant_id":%q,"qty":1}],

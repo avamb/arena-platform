@@ -4,7 +4,7 @@
  * order). Dawn's form, button and typography classes keep it inside the theme;
  * the page layout itself has no Shopify original (Shopify hosts its checkout).
  */
-import { MAX_NOTE_LEN, needsShipping, subtotalMinor, shippingMinor, totalMinor, type CartLine, type CheckoutForm, type FormErrors } from '../lib/cart';
+import { MAX_NOTE_LEN, needsShipping, postalHint, subtotalMinor, shippingMinor, totalMinor, type CartLine, type CheckoutForm, type FormErrors } from '../lib/cart';
 import type { DownloadLink, OrderStatus } from '../lib/api';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
@@ -28,9 +28,10 @@ function field(
   label: string,
   values: CheckoutForm,
   errors: FormErrors,
-  opts: { type?: string; autocomplete?: string; required?: boolean; inputmode?: string } = {},
+  opts: { type?: string; autocomplete?: string; required?: boolean; inputmode?: string; hint?: string } = {},
 ): string {
   const err = errors[id];
+  const describedBy = [err ? `Checkout-${id}-error` : '', opts.hint ? `Checkout-${id}-hint` : ''].filter(Boolean).join(' ');
   return `<div class="field${err ? ' field--with-error' : ''}">
           <input
             class="field__input"
@@ -41,11 +42,11 @@ function field(
             placeholder="${esc(label)}"${opts.autocomplete ? `
             autocomplete="${opts.autocomplete}"` : ''}${opts.inputmode ? `
             inputmode="${opts.inputmode}"` : ''}${err ? `
-            aria-invalid="true"
-            aria-describedby="Checkout-${id}-error"` : ''}
+            aria-invalid="true"` : ''}${describedBy ? `
+            aria-describedby="${describedBy}"` : ''}
           >
           <label class="field__label" for="Checkout-${id}">${esc(label)}${opts.required ? ' <span aria-hidden="true">*</span>' : ''}</label>
-        </div>${err ? `<small class="form__message" id="Checkout-${id}-error"><span class="visually-hidden">${'Ошибка'}</span>${icon('error')}${esc(err)}</small>` : ''}`;
+        </div>${opts.hint ? `<small class="shop-checkout__hint caption" id="Checkout-${id}-hint">${esc(opts.hint)}</small>` : ''}${err ? `<small class="form__message" id="Checkout-${id}-error"><span class="visually-hidden">${'Ошибка'}</span>${icon('error')}${esc(err)}</small>` : ''}`;
 }
 
 function summaryRow(ctx: Ctx, line: CartLine): string {
@@ -81,14 +82,36 @@ export interface CheckoutViewState {
   submitting?: boolean;
 }
 
+/** The country's name in the storefront's language ("IL" -> "Израиль"); the code itself when the browser does not know it. */
+export function countryLabel(iso2: string | null | undefined, locale = 'ru'): string {
+  const code = (iso2 ?? '').trim().toUpperCase();
+  if (code === '') return '';
+  try {
+    return new Intl.DisplayNames([locale], { type: 'region' }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/** The ship country is the shop's own and is not chosen by the buyer: shown, never edited. */
+function countryField(country: string): string {
+  return `<div class="field shop-checkout__country">
+          <input class="field__input" id="Checkout-country" type="text" value="${esc(countryLabel(country))}" placeholder="Страна" readonly aria-readonly="true" autocomplete="country-name">
+          <label class="field__label" for="Checkout-country">Страна</label>
+        </div>`;
+}
+
 /** Address and delivery fee: only for a cart that holds a physical product. */
 function addressBlock(ctx: Ctx, st: CheckoutViewState, label: string, shipping: number): string {
   const e = st.errors;
+  const country = ctx.shop.settings.country_iso2 || 'IL';
+  const il = country.toUpperCase() === 'IL';
   return `<h2 class="shop-checkout__heading h3">Адрес доставки</h2>
       ${field('address1', 'Улица, дом, квартира', st.values, e, { autocomplete: 'address-line1', required: true })}
-      ${field('address2', 'Подъезд, этаж, комментарий', st.values, e, { autocomplete: 'address-line2' })}
+      ${field('address2', 'Подъезд, этаж, домофон', st.values, e, { autocomplete: 'address-line2' })}
       ${field('city', 'Город', st.values, e, { autocomplete: 'address-level2', required: true })}
-      ${field('postal', 'Почтовый индекс', st.values, e, { autocomplete: 'postal-code', inputmode: 'numeric' })}
+      ${countryField(country)}
+      ${field('postal', 'Почтовый индекс', st.values, e, { autocomplete: 'postal-code', required: true, hint: postalHint(country), ...(il ? { inputmode: 'numeric' } : {}) })}
       <h2 class="shop-checkout__heading h3">Доставка</h2>
       <div class="shop-checkout__delivery">
         <span class="shop-checkout__delivery-name">${label}</span>
