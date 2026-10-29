@@ -10729,6 +10729,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/shop/{org_slug}/pages/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Storefront page
+         * @description One static page by its slug, or by the handle it had on the shop it was
+         *     imported from (`legacy_slug`); a slug match wins. The answer always names
+         *     the canonical `slug`, so a client that arrived on an old address (for
+         *     example `/pages/наши-мероприятия`) can show the new one. The match is
+         *     case-insensitive and Unicode-normalized (NFC). No login; rate-limited
+         *     per client address.
+         */
+        get: operations["getPublicShopPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/shop/{org_slug}/products/{slug}": {
         parameters: {
             query?: never;
@@ -30333,6 +30358,16 @@ export interface components {
             position: number;
             /** @description Alternative text. */
             alt: string;
+            /**
+             * Format: int32
+             * @description Width of the picture in pixels, read from its header at upload; absent when the size was never recorded (a picture uploaded before sizes were read and not yet re-imported).
+             */
+            width?: number | null;
+            /**
+             * Format: int32
+             * @description Height of the picture in pixels, read from its header at upload; absent when the size was never recorded.
+             */
+            height?: number | null;
         };
         /** @description A variant as the organization sees it. */
         ShopVariant: {
@@ -30570,11 +30605,13 @@ export interface components {
         };
         /** @description A static storefront page. */
         ShopPage: {
-            /** @description Address of the page. */
+            /** @description Address of the page. Always the canonical one, even when the page was asked for by its old address. */
             slug: string;
+            /** @description The handle the page had on the shop it was imported from, when that differs from `slug` (for example a Cyrillic `наши-мероприятия` for `events`); null when the page has no other address. `GET /v1/public/shop/{org_slug}/pages/{slug}` resolves it as an alias. Set by the import, not by `PUT`. */
+            legacy_slug: string | null;
             /** @description Page title. */
             title: string;
-            /** @description Page text, sanitized HTML (the rich-text tags plus pictures and tables). */
+            /** @description Page text, sanitized HTML (the rich-text tags plus pictures and tables). A link to another page of the same storefront may be a root path such as `/pages/contact`; the storefront puts its own base in front of it. */
             body_html: string;
             /**
              * Format: int32
@@ -30586,6 +30623,11 @@ export interface components {
              * @description Last change.
              */
             updated_at: string;
+        };
+        /** @description One storefront page. */
+        ShopPublicPageResponse: {
+            /** @description The page; its `slug` is the canonical one. */
+            page: components["schemas"]["ShopPage"];
         };
         /** @description Storefront pages. */
         ShopPageList: {
@@ -53134,8 +53176,22 @@ export interface operations {
             query: {
                 /** @description Unix-seconds expiry timestamp embedded in the signed URL. */
                 expires: number;
-                /** @description HMAC-SHA256 signature over `id:expires`. Required in production; optional in dev when no MEDIA_SIGNING_SECRET is set. */
+                /** @description HMAC-SHA256 signature over `id:expires`. Required in production; optional in dev when no MEDIA_SIGNING_SECRET is set. The signature does not cover `w`, so a width can be added to a URL that was signed without it. */
                 sig?: string;
+                /**
+                 * @description Ask for a smaller copy of a JPEG or PNG picture, this many pixels wide.
+                 *     Only the widths 165, 240, 360, 480, 533, 720, 990 and 1200 exist: any
+                 *     other value is rounded UP to the next one, and a value above 1200 means
+                 *     the original. A picture is never enlarged, so a width at or above the
+                 *     original's returns the original bytes. The aspect ratio and the format
+                 *     are kept (JPEG at quality 82). Any other format (GIF, WebP, SVG, PDF), a
+                 *     picture over 40 megapixels and a copy that cannot be built are served
+                 *     as the original. Copies are rendered once and stored beside the original.
+                 *     Not a whole number: 400 `media.invalid_width`. Works for the local
+                 *     storage backend and for any request that reaches this route; a presigned
+                 *     S3 URL goes to the bucket directly and ignores it.
+                 */
+                w?: number;
             };
             header?: never;
             path: {
@@ -53146,7 +53202,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Streaming response carrying the stored bytes. */
+            /** @description Streaming response carrying the stored bytes, or the resized copy when `w` asked for one (then `Content-Type` and `Content-Length` are the copy's). */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -53155,7 +53211,7 @@ export interface operations {
                     "application/octet-stream": string;
                 };
             };
-            /** @description Invalid media id or missing expires parameter. */
+            /** @description Invalid media id, missing expires parameter, or `w` is not a whole number (`media.invalid_width`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -67647,6 +67703,71 @@ export interface operations {
                 };
             };
             /** @description No open shop with this slug (`shop.not_found`); a shop the platform operator has not enabled reads as missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicShopPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the organization that owns the shop. */
+                org_slug: string;
+                /** @description Slug or old address (`legacy_slug`) of the page. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page. */
+            200: {
+                headers: {
+                    /** @description `public, max-age=30`: the answer may be cached for 30 seconds. */
+                    "Cache-Control"?: string;
+                    /** @description Includes `Origin`. */
+                    Vary?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopPublicPageResponse"];
+                };
+            };
+            /** @description No open shop with this slug (`shop.not_found`) or no page with this slug or old address (`shop.page_not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;

@@ -24,7 +24,7 @@ const settings: ShopSettings = {
   updated_at: "2026-10-01T10:00:00Z",
 };
 
-function render(over: Partial<ShopSettingsFormProps> = {}, extra: Record<string, unknown> = {}): string {
+function render(over: Partial<ShopSettingsFormProps> = {}, extra: Record<string, unknown> = {}, locale: "en" | "ru" | "es" = "en"): string {
   const props: ShopSettingsFormProps = {
     draft: settingsDraft(settings),
     onDraft: () => undefined,
@@ -49,7 +49,7 @@ function render(over: Partial<ShopSettingsFormProps> = {}, extra: Record<string,
     ...over,
   };
   return renderToStaticMarkup(
-    <I18nProvider locale="en">
+    <I18nProvider locale={locale}>
       <ShopSettingsForm {...props} />
     </I18nProvider>,
   );
@@ -95,6 +95,50 @@ describe("ShopSettingsForm", () => {
     const html = render({ canManage: false });
     expect(html).not.toContain('data-testid="shop-settings-save"');
     expect(html).toMatch(/<fieldset disabled="">/);
+  });
+
+  it("types the currency only while the shop has no products", () => {
+    const html = render({ productCount: 0 });
+    expect(html).toContain('data-testid="shop-settings-currency"');
+    expect(html).not.toContain('data-testid="shop-settings-currency-value"');
+  });
+
+  it("shows the currency read only, with its symbol and a note, once the shop has products", () => {
+    const html = render({ productCount: 39 }, { currency: "ILS" });
+    expect(html).not.toContain('data-testid="shop-settings-currency"');
+    expect(html).toContain('data-testid="shop-settings-currency-value"');
+    expect(html).toContain("ILS · ₪");
+    expect(html).toContain("You can change the currency through support while the shop has products.");
+    const ru = render({ productCount: 39 }, { currency: "ILS" }, "ru");
+    expect(ru).toContain("Валюту можно изменить через поддержку, пока в магазине есть товары.");
+    expect(ru).toContain("₪");
+  });
+
+  it("keeps the currency closed while the number of products is not known", () => {
+    const html = render({ productCount: null });
+    expect(html).not.toContain('data-testid="shop-settings-currency"');
+    expect(html).toContain("Until then the currency stays as it is.");
+  });
+
+  it("says that a currency code does not exist", () => {
+    const draft = { ...settingsDraft(settings), currency: "ILX" };
+    const html = render({ draft, problems: checkSettings(draft) });
+    expect(html).toContain("There is no such currency code. Type a code like EUR or ILS.");
+  });
+
+  it("names the countries in the language of the screen and sorts them by that name", () => {
+    const html = render({}, {}, "ru");
+    expect(html).toContain("Израиль</option>");
+    expect(html).toContain("Испания</option>");
+    expect(html).not.toContain(">Spain<");
+    expect(html.indexOf("Израиль")).toBeLessThan(html.indexOf("Испания"));
+  });
+
+  it("does not cut a long number: the age and the limit take what is typed and the check judges it", () => {
+    const html = render({ draft: { ...settingsDraft(settings), ageGate: "150", maxLineQty: "150" } });
+    expect(html).toContain('value="150"');
+    expect(html).not.toMatch(/maxLength="2"/);
+    expect(html).toContain('inputMode="numeric"');
   });
 
   it("names each mistake in words", () => {

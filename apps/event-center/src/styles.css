@@ -1470,3 +1470,66 @@ fieldset legend {
 .shop-page .actions select {
   width: auto;
 }
+
+/* Shop: badges and column headings never break in the middle of a word (a narrow laptop, a phone). */
+.shop-page .badge,
+.shop-page .table th {
+  white-space: nowrap;
+}
+
+.shop-page .table td {
+  overflow-wrap: break-word;
+}
+
+/* The list of products: a small picture and, when there are several, how many. */
+.shop-pictures {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.shop-thumb {
+  display: block;
+  width: 3rem;
+  height: 3rem;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--neutral-bg);
+}
+
+.shop-thumb-empty {
+  display: inline-block;
+}
+
+/* A phone: a row is a card, and the label of a cell keeps room so the words of it do not break. */
+@media (max-width: 599px) {
+  .shop-page .table td::before {
+    flex: 0 0 auto;
+    min-width: 6.5rem;
+    max-width: 45%;
+    text-align: start;
+  }
+  .shop-page .table td {
+    align-items: center;
+  }
+}
+
+/* A phone: the top menu is ONE row that scrolls sideways, so the page starts at the top of the screen (shared by every screen of the event center). */
+@media (max-width: 599px) {
+  .topnav,
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    max-width: 100%;
+  }
+  .topnav {
+    width: 100%;
+  }
+  .topnav a,
+  .tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
