@@ -53,6 +53,16 @@ type ShopOrderRow struct {
 	StaffNote       string          `json:"staff_note"`
 	StaffNoteBy     string          `json:"staff_note_by"`
 	StaffNoteAt     *time.Time      `json:"staff_note_at"`
+
+	// The geocoded point of the shipping address (migration 0177). All NULL
+	// until the shop.geocode_address job ran; lat/lng are set for the
+	// statuses "ok" and "approximate" only.
+	ShipLat              *float64   `json:"ship_lat"`
+	ShipLng              *float64   `json:"ship_lng"`
+	ShipGeocodeStatus    *string    `json:"ship_geocode_status"`
+	ShipGeocodedAt       *time.Time `json:"ship_geocoded_at"`
+	ShipFormattedAddress *string    `json:"ship_formatted_address"`
+	ShipPlaceID          *string    `json:"ship_place_id"`
 }
 
 const shopOrderColumns = `id, org_id, number, order_token, customer_id, status, buyer_name, buyer_email, buyer_phone,
@@ -60,7 +70,8 @@ const shopOrderColumns = `id, org_id, number, order_token, customer_id, status, 
        delivery_note, currency, subtotal, discount, shipping_fee, total, refunded_minor,
        payment_intent_id, provider, buyer_locale, source, external_ref, paid_at, shipped_at,
        cancelled_at, tracking_note, expires_at, metadata, created_at, updated_at,
-       staff_note, staff_note_by, staff_note_at`
+       staff_note, staff_note_by, staff_note_at,
+       ship_lat, ship_lng, ship_geocode_status, ship_geocoded_at, ship_formatted_address, ship_place_id`
 
 func scanShopOrderRow(row interface{ Scan(dest ...any) error }) (ShopOrderRow, error) {
 	var o ShopOrderRow
@@ -70,7 +81,8 @@ func scanShopOrderRow(row interface{ Scan(dest ...any) error }) (ShopOrderRow, e
 		&o.Discount, &o.ShippingFee, &o.Total, &o.RefundedMinor, &o.PaymentIntentID, &o.Provider,
 		&o.BuyerLocale, &o.Source, &o.ExternalRef, &o.PaidAt, &o.ShippedAt, &o.CancelledAt,
 		&o.TrackingNote, &o.ExpiresAt, &o.Metadata, &o.CreatedAt, &o.UpdatedAt,
-		&o.StaffNote, &o.StaffNoteBy, &o.StaffNoteAt)
+		&o.StaffNote, &o.StaffNoteBy, &o.StaffNoteAt,
+		&o.ShipLat, &o.ShipLng, &o.ShipGeocodeStatus, &o.ShipGeocodedAt, &o.ShipFormattedAddress, &o.ShipPlaceID)
 	return o, err
 }
 
@@ -612,4 +624,33 @@ func (q *Queries) SetShopOrderStaffNote(ctx context.Context, id uuid.UUID, note,
 		by = ""
 	}
 	return scanShopOrderRow(q.db.QueryRow(ctx, setShopOrderStaffNote, id, note, by))
+}
+
+// SetShopOrderGeocodeParams is the answer of the geocoder for one order.
+// Lat and Lng are nil for not_found and failed; FormattedAddress and PlaceID
+// are nil when the geocoder gave none.
+type SetShopOrderGeocodeParams struct {
+	ID               uuid.UUID
+	Status           string
+	Lat              *float64
+	Lng              *float64
+	FormattedAddress *string
+	PlaceID          *string
+}
+
+const setShopOrderGeocode = `-- name: SetShopOrderGeocode :exec
+UPDATE shop_orders
+SET    ship_lat = $2,
+       ship_lng = $3,
+       ship_geocode_status = $4,
+       ship_geocoded_at = now(),
+       ship_formatted_address = $5,
+       ship_place_id = $6
+WHERE  id = $1`
+
+// SetShopOrderGeocode stores the geocoder's answer on an order. It does not
+// touch updated_at: a geocode is not an edit a person made.
+func (q *Queries) SetShopOrderGeocode(ctx context.Context, p SetShopOrderGeocodeParams) error {
+	_, err := q.db.Exec(ctx, setShopOrderGeocode, p.ID, p.Lat, p.Lng, p.Status, p.FormattedAddress, p.PlaceID)
+	return err
 }
