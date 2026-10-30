@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
@@ -98,31 +99,42 @@ func (s *Service) CountOrders(ctx context.Context, orgID uuid.UUID) (OrderCounts
 
 // ListOrders lists one page of orders, newest first, with their lines.
 func (s *Service) ListOrders(ctx context.Context, orgID uuid.UUID, f OrderFilter) ([]OrderView, error) {
+	out, _, err := s.ListOrdersPage(ctx, orgID, f)
+	return out, err
+}
+
+// ListOrdersPage is ListOrders that also says whether another page follows:
+// one row more than the page is read and left out, so an exact multiple of
+// the page size has no empty last page (SA-37).
+func (s *Service) ListOrdersPage(ctx context.Context, orgID uuid.UUID, f OrderFilter) (out []OrderView, more bool, err error) {
 	if err := s.ready(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if f.Status != "" && !orderStatuses[f.Status] {
-		return nil, newErr(http.StatusBadRequest, "shop.invalid_filter", "status is not an order status")
+		return nil, false, newErr(http.StatusBadRequest, "shop.invalid_filter", "status is not an order status")
 	}
 	if f.View != "" && !orderViews[f.View] {
-		return nil, newErr(http.StatusBadRequest, "shop.invalid_filter", "view must be to_ship, unpaid, shipped or refunds")
+		return nil, false, newErr(http.StatusBadRequest, "shop.invalid_filter", "view must be to_ship, unpaid, shipped or refunds")
 	}
 	if f.Limit <= 0 {
 		f.Limit = 50
 	}
 	if f.Limit > 200 || f.Offset < 0 || f.Offset > 1_000_000 {
-		return nil, newErr(http.StatusBadRequest, "shop.invalid_filter", "limit must be 1-200 and offset zero or more")
+		return nil, false, newErr(http.StatusBadRequest, "shop.invalid_filter", "limit must be 1-200 and offset zero or more")
 	}
 	rows, err := s.q.ListShopOrders(ctx, gen.ListShopOrdersParams{
 		OrgID: orgID, Status: f.Status, View: f.View, Query: strings.TrimSpace(f.Query), From: f.From, To: f.To,
-		Limit: int32(f.Limit), Offset: int32(f.Offset), //nolint:gosec // bounded above
+		Limit: int32(f.Limit + 1), Offset: int32(f.Offset), //nolint:gosec // bounded above
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	out := make([]OrderView, 0, len(rows))
+	if len(rows) > f.Limit {
+		rows, more = rows[:f.Limit], true
+	}
+	out = make([]OrderView, 0, len(rows))
 	if len(rows) == 0 {
-		return out, nil
+		return out, false, nil
 	}
 	ids := make([]uuid.UUID, len(rows))
 	for i, o := range rows {
@@ -130,7 +142,7 @@ func (s *Service) ListOrders(ctx context.Context, orgID uuid.UUID, f OrderFilter
 	}
 	items, err := s.q.ListShopOrderItems(ctx, ids)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	byOrder := map[uuid.UUID][]gen.ShopOrderItemRow{}
 	for _, it := range items {
@@ -139,7 +151,7 @@ func (s *Service) ListOrders(ctx context.Context, orgID uuid.UUID, f OrderFilter
 	for _, o := range rows {
 		out = append(out, OrderView{ShopOrderRow: o, Items: byOrder[o.ID]})
 	}
-	return out, nil
+	return out, more, nil
 }
 
 // Ship marks a paid order shipped and writes v1.shop.order.shipped. Shipping
@@ -160,6 +172,12 @@ func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote st
 		}
 		if err != nil {
 			return err
+		}
+		if o.DeliveryKind == DeliveryNone {
+			// Digital or service goods: there is no parcel, no address and no
+			// letter, so "shipped" would only write a false event (SA-32).
+			return newErr(http.StatusConflict, "shop.order_not_shippable",
+				"this order has nothing to ship: it holds only digital or service goods")
 		}
 		switch o.Status {
 		case StatusShipped:
@@ -202,6 +220,15 @@ func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote st
 			return err
 		}
 		s.enqueueOrderEmailTx(ctx, tx, EmailShipped, out)
+		if o.RefundedMinor > 0 {
+			// Part of the order was refunded before it was handed over: the
+			// shipment must not erase that. The status follows the money
+			// again through the one rule every refund writer uses (SA-10).
+			out, err = s.syncRefundsTx(ctx, tx, q, out)
+			if err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -277,13 +304,24 @@ type RefundInput struct {
 	Amount      *int64
 	Reason      string
 	RequestedBy string
+	// IdempotencyKey is the Idempotency-Key of the call (1 to 255
+	// characters, required): a repeat with the same key answers the first
+	// refund and writes nothing, so a retry after a dropped answer can never
+	// return the money twice.
+	IdempotencyKey string
 }
 
 // RefundResult is the order after the refund and the refund itself.
 type RefundResult struct {
 	Order  OrderView
 	Refund refunds.Refund
+	// Replayed: the key had been used by an earlier call, whose refund this
+	// is. Nothing new was written.
+	Replayed bool
 }
+
+// MaxIdempotencyKeyLen is the longest Idempotency-Key a refund call accepts.
+const MaxIdempotencyKeyLen = 255
 
 // Refund returns money of a paid order through its payment provider. The
 // refunds row is written on the order's payment intent and approved in one
@@ -294,6 +332,11 @@ type RefundResult struct {
 // partially_refunded when some did. Stock is never put back automatically
 // (opened or shipped goods); the operator corrects it in the variant list.
 func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, error) {
+	key := strings.TrimSpace(in.IdempotencyKey)
+	if key == "" || len(key) > MaxIdempotencyKeyLen {
+		return RefundResult{}, newErr(http.StatusBadRequest, "shop.idempotency_key_required",
+			"an Idempotency-Key header of 1 to 255 characters is required")
+	}
 	reason := strings.TrimSpace(in.Reason)
 	if !textOK(reason, MaxNoteLen) {
 		return RefundResult{}, invalid("shop.text_too_long", "reason is limited to 2000 characters")
@@ -302,6 +345,7 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, err
 		refundID uuid.UUID
 		amount   int64
 		currency string
+		replayed bool
 	)
 	if err := s.ready(); err != nil {
 		return RefundResult{}, err
@@ -331,6 +375,19 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, err
 		}
 		if !sameUUID(o.PaymentIntentID, peek.PaymentIntentID) {
 			return newErr(http.StatusConflict, "shop.order_changed", "the order changed while the refund was being prepared; try again")
+		}
+		// A repeated call finds its refund before any other check: the
+		// first call may have used up what was left of the order.
+		prior, perr := q.GetShopRefundByKey(ctx, in.OrgID, key)
+		if perr != nil && !errors.Is(perr, pgx.ErrNoRows) {
+			return perr
+		}
+		if perr == nil {
+			if prior.ShopOrderID == nil || *prior.ShopOrderID != in.OrderID || (in.Amount != nil && *in.Amount != prior.Amount) {
+				return errKeyReused()
+			}
+			refundID, amount, replayed = prior.ID, prior.Amount, true
+			return nil
 		}
 		switch o.Status {
 		case StatusPaid, StatusShipped, StatusPartiallyRefunded, StatusManualReview:
@@ -377,6 +434,15 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, err
 		if err != nil {
 			return err
 		}
+		if err := q.SetShopRefundKey(ctx, row.ID, o.ID, key); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				// The key was taken by a refund of another payment between
+				// the lookup and the write (that payment's lock is not ours).
+				return errKeyReused()
+			}
+			return err
+		}
 		if _, err := refunds.MarkApprovedTx(ctx, tx, row.ID, pi.Provider); err != nil {
 			return fmt.Errorf("shop: approve refund: %w", err)
 		}
@@ -389,6 +455,9 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, err
 
 	var r refunds.Refund
 	if s.refunds != nil {
+		// On a replay Drive is the repeat's job too: it returns an answered
+		// refund unchanged and sends one that was recorded but never reached
+		// the provider (the first call's connection was cut).
 		r, err = s.refunds.Drive(ctx, refundID)
 		if err != nil {
 			// The refund is recorded and approved; refund.sweep retries it.
@@ -398,6 +467,12 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, err
 	}
 	if r.ID == uuid.Nil {
 		r = refunds.Refund{ID: refundID, State: refunds.StateProviderPending, Amount: amount, Currency: currency}
+		if replayed {
+			if row, gerr := s.q.GetRefundByID(ctx, refundID); gerr == nil {
+				r = refunds.Refund{ID: row.ID, State: row.State, Amount: row.Amount, Currency: row.Currency,
+					ProviderRefundID: row.ProviderRefundID, FailureReason: row.FailureReason}
+			}
+		}
 	}
 	if _, err := s.SyncRefunds(ctx, in.OrgID, in.OrderID); err != nil {
 		return RefundResult{}, err
@@ -406,7 +481,12 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, err
 	if err != nil {
 		return RefundResult{}, err
 	}
-	return RefundResult{Order: view, Refund: r}, nil
+	return RefundResult{Order: view, Refund: r, Replayed: replayed}, nil
+}
+
+func errKeyReused() *Error {
+	return newErr(http.StatusConflict, "shop.idempotency_key_reused",
+		"this Idempotency-Key was already used for a different refund request")
 }
 
 // SyncRefunds folds the order's succeeded refunds into it (see

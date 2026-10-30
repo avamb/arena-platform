@@ -40,10 +40,13 @@ const sendingKeepSQL = "1 day"
 // subject, the ticket numbers, a hash of the rendered body, the attached
 // files' hashes and the template version (dispute evidence; MinRetention).
 type NewLetter struct {
-	OrgID     uuid.UUID
-	OrderID   *uuid.UUID
-	Kind      string
-	Recipient string
+	OrgID   uuid.UUID
+	OrderID *uuid.UUID
+	// ShopOrderID names the merchandise shop order a shop_* letter is about
+	// (OrderID stays nil: a shop order is not a row of orders).
+	ShopOrderID *uuid.UUID
+	Kind        string
+	Recipient   string
 
 	// DeliveryJobIDs are the delivery_jobs rows the letter carries. They are
 	// linked to the letter at Begin, so a ticket job marked sent proves the
@@ -162,11 +165,12 @@ func Begin(ctx context.Context, db DB, l NewLetter) (uuid.UUID, error) {
 		return uuid.Nil, err
 	}
 	if _, err := db.Exec(ctx, `INSERT INTO email_letters (id, org_id, order_id, kind, recipient, provider, status,
-		    subject, ticket_numbers, body_sha256, attachments, template_version, from_address, reply_to)
-		VALUES ($1, $2, $3, $4, $5, $6, 'sending', $7, $8, $9, $10, $11, $12, $13)`,
+		    subject, ticket_numbers, body_sha256, attachments, template_version, from_address, reply_to,
+		    shop_order_id)
+		VALUES ($1, $2, $3, $4, $5, $6, 'sending', $7, $8, $9, $10, $11, $12, $13, $14)`,
 		id, l.OrgID, l.OrderID, l.Kind, l.Recipient, ProviderBrevo,
 		nonEmpty(l.Subject), numbers, nonEmpty(l.BodySHA256), attJSON, nonEmpty(l.TemplateVersion),
-		nonEmpty(l.FromAddress), nonEmpty(l.ReplyTo)); err != nil {
+		nonEmpty(l.FromAddress), nonEmpty(l.ReplyTo), l.ShopOrderID); err != nil {
 		return uuid.Nil, fmt.Errorf("emailstatus: begin letter: %w", err)
 	}
 	if len(l.DeliveryJobIDs) > 0 {

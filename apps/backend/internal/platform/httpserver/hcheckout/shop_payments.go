@@ -25,6 +25,7 @@ import (
 type ShopPayments interface {
 	FulfillPaidOrderTx(ctx context.Context, tx pgx.Tx, paymentIntentID uuid.UUID, meta map[string]any) (handled bool, err error)
 	MarkPaymentFailedTx(ctx context.Context, tx pgx.Tx, paymentIntentID uuid.UUID) (handled bool, err error)
+	MarkPaymentReviewTx(ctx context.Context, tx pgx.Tx, paymentIntentID uuid.UUID, meta map[string]any) (handled bool, err error)
 }
 
 // WithShopPayments wires the shop. Without it a payment intent without a
@@ -36,9 +37,12 @@ func (h *Handler) WithShopPayments(s ShopPayments) *Handler {
 }
 
 // applyShopPayment hands a shop payment's new state to the shop: succeeded
-// pays the order, failed expires it. Any other state (processing,
-// manual_review) leaves the order pending; the expiry sweep skips an order
-// whose intent succeeded or is parked for review.
+// pays the order, failed expires it, manual_review (the amount the provider
+// reports differs from the order's, the payment status is not trusted)
+// parks the order in manual_review too, so the expiry sweep never expires
+// an order whose money may have arrived and the operator sees it under the
+// manual-review tab (SA-09). Any other state (processing) leaves the order
+// pending.
 func (h *Handler) applyShopPayment(ctx context.Context, tx pgx.Tx, paymentIntentID uuid.UUID, updated gen.PaymentIntentRow, req webhookPaymentIntentRequest) (bool, error) {
 	if h.shopPayments == nil || updated.CheckoutSessionID != nil {
 		return false, nil
@@ -52,6 +56,12 @@ func (h *Handler) applyShopPayment(ctx context.Context, tx pgx.Tx, paymentIntent
 		})
 	case "failed":
 		return h.shopPayments.MarkPaymentFailedTx(ctx, tx, paymentIntentID)
+	case "manual_review":
+		return h.shopPayments.MarkPaymentReviewTx(ctx, tx, paymentIntentID, map[string]any{
+			"payment_intent_id":   paymentIntentID.String(),
+			"provider_payment_id": req.ProviderPaymentID,
+			"event_type":          req.EventType,
+		})
 	default:
 		return false, nil
 	}

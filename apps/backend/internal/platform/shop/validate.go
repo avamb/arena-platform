@@ -251,12 +251,48 @@ func CourierText(o gen.ShopOrderRow, items []gen.ShopOrderItemRow) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// FormatMinor prints minor units as a major-unit amount with two decimals and
-// the currency code ("2500", "ILS" -> "25.00 ILS"). For display only.
+// zeroDecimalCurrencies have no minor unit: arena's minor unit of a yen is a
+// yen (the Stripe adapter documents the same rule).
+var zeroDecimalCurrencies = map[string]bool{
+	"BIF": true, "CLP": true, "DJF": true, "GNF": true, "ISK": true, "JPY": true, "KMF": true,
+	"KRW": true, "MGA": true, "PYG": true, "RWF": true, "UGX": true, "VND": true,
+	"VUV": true, "XAF": true, "XOF": true, "XPF": true,
+}
+
+// threeDecimalCurrencies keep three decimals.
+var threeDecimalCurrencies = map[string]bool{
+	"BHD": true, "JOD": true, "KWD": true, "OMR": true, "TND": true,
+}
+
+// CurrencyExponent is the number of decimals of a currency's major unit: 0
+// for the yen, 3 for the dinar, 2 for everything else.
+func CurrencyExponent(currency string) int {
+	c := strings.ToUpper(strings.TrimSpace(currency))
+	switch {
+	case zeroDecimalCurrencies[c]:
+		return 0
+	case threeDecimalCurrencies[c]:
+		return 3
+	default:
+		return 2
+	}
+}
+
+// FormatMinor prints minor units as a major-unit amount with the decimals of
+// the currency and its code ("2500", "ILS" -> "25.00 ILS", "2500", "JPY" ->
+// "2500 JPY"). For display only.
 func FormatMinor(amount int64, currency string) string {
 	sign := ""
 	if amount < 0 {
 		sign, amount = "-", -amount
 	}
-	return fmt.Sprintf("%s%d.%02d %s", sign, amount/100, amount%100, currency)
+	exp := CurrencyExponent(currency)
+	if exp == 0 {
+		return fmt.Sprintf("%s%d %s", sign, amount, currency)
+	}
+	unit := int64(1)
+	for i := 0; i < exp; i++ {
+		unit *= 10
+	}
+	return fmt.Sprintf("%s%d.%0*d %s", sign, amount/unit, exp, amount%unit, currency)
 }

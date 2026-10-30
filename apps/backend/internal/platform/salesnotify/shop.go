@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -33,6 +34,15 @@ import (
 // maxShopItemLines keeps a very large order inside Telegram's 4096-character
 // limit: the rest is summarised in one line.
 const maxShopItemLines = 30
+
+// shopMessageBudget is how many characters the goods list may grow the
+// message to: Telegram refuses a message over 4096 characters, and the
+// rest is kept free for the closing lines and for the markup of the text.
+// maxShopItemName cuts one very long product title.
+const (
+	shopMessageBudget = 3800
+	maxShopItemName   = 120
+)
 
 // ShopOrder is one shop order as the announcement shows it.
 type ShopOrder struct {
@@ -113,24 +123,36 @@ func FormatShopOrderPaid(s ShopOrder) string {
 	if len(s.Items) > 0 {
 		fmt.Fprintf(&b, "\n%s\n", say(loc, "salesnotify.shop.items", nil))
 	}
-	for i, it := range s.Items {
-		if i == maxShopItemLines {
-			fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.items_more", map[string]any{"Count": len(s.Items) - maxShopItemLines}))
-			break
-		}
-		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.item_line", map[string]any{
-			"Qty": it.Qty, "Name": esc(shopItemName(it)), "Price": shopMoney(it.UnitPriceMinor, o.Currency, loc),
-		}))
-	}
+	// The closing lines are composed first, so the goods can be cut to what
+	// is left of Telegram's 4096 characters (SA-37): an order of many
+	// long-named lines used to be refused by Telegram and never announced.
+	var tail strings.Builder
 	if o.ShippingFee > 0 {
-		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.shipping", map[string]any{"Amount": shopMoney(o.ShippingFee, o.Currency, loc)}))
+		fmt.Fprintf(&tail, "%s\n", say(loc, "salesnotify.shop.shipping", map[string]any{"Amount": shopMoney(o.ShippingFee, o.Currency, loc)}))
 	}
 	if o.Discount > 0 {
-		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.discount", map[string]any{"Amount": shopMoney(o.Discount, o.Currency, loc)}))
+		fmt.Fprintf(&tail, "%s\n", say(loc, "salesnotify.shop.discount", map[string]any{"Amount": shopMoney(o.Discount, o.Currency, loc)}))
 	}
 	if note := strings.TrimSpace(o.DeliveryNote); note != "" {
-		fmt.Fprintf(&b, "\n%s\n", say(loc, "salesnotify.shop.note", map[string]any{"Note": esc(clip(note, 600))}))
+		fmt.Fprintf(&tail, "\n%s\n", say(loc, "salesnotify.shop.note", map[string]any{"Note": esc(clip(note, 600))}))
 	}
+	used := utf8.RuneCountInString(b.String()) + utf8.RuneCountInString(tail.String())
+	for i, it := range s.Items {
+		line := say(loc, "salesnotify.shop.item_line", map[string]any{
+			"Qty": it.Qty, "Name": esc(clip(shopItemName(it), maxShopItemName)), "Price": shopMoney(it.UnitPriceMinor, o.Currency, loc),
+		}) + "\n"
+		more := ""
+		if i < len(s.Items)-1 {
+			more = say(loc, "salesnotify.shop.items_more", map[string]any{"Count": len(s.Items) - i - 1}) + "\n"
+		}
+		if i == maxShopItemLines || used+utf8.RuneCountInString(line)+utf8.RuneCountInString(more) > shopMessageBudget {
+			fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.items_more", map[string]any{"Count": len(s.Items) - i}))
+			break
+		}
+		b.WriteString(line)
+		used += utf8.RuneCountInString(line)
+	}
+	b.WriteString(tail.String())
 	return strings.TrimRight(b.String(), "\n")
 }
 
