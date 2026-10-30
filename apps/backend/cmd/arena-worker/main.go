@@ -864,6 +864,8 @@ func buildMediaRepo(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger)
 		Pool:          pool,
 		Storage:       st,
 		SigningSecret: cfg.MediaSigningKey(),
+		// The prerender job renders under the same one-at-a-time limit.
+		VariantWorkers: cfg.MediaVariantWorkers,
 	})
 	if err != nil {
 		logger.Error("media repo init failed", "error", err.Error())
@@ -929,6 +931,11 @@ func registerMediaGCHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *confi
 		Repo:   repo,
 		Logger: logger,
 	}))
+	reg.Register(mediastore.RenderVariantsJobType, mediastore.NewRenderVariantsHandler(mediastore.RenderVariantsHandlerOptions{
+		Repo:   repo,
+		Logger: logger,
+	}))
+	logger.Info("media.render_variants handler registered", "widths", mediastore.PrerenderWidths)
 	logger.Info("media-gc handler registered",
 		"backend", cfg.MediaBackend,
 		"retention", mediastore.DefaultRetention.String(),

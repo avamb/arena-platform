@@ -322,5 +322,5 @@ func buildMedia(pool *pgxpool.Pool, log *slog.Logger) (*mediastore.Repo, error) 
 		return nil, fmt.Errorf("storage: %w", err)
 	}
 	log.Info("media storage configured", "backend", cfg.MediaBackend)
-	return mediastore.New(mediastore.Options{Pool: pool, Storage: st, SigningSecret: cfg.MediaSigningKey()})
+	return mediastore.New(mediastore.Options{Pool: pool, Storage: st, SigningSecret: cfg.MediaSigningKey(), VariantWorkers: cfg.MediaVariantWorkers, PrerenderVariants: true})
 }

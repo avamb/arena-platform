@@ -25,6 +25,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
 )
@@ -74,6 +75,14 @@ type Repo struct {
 	// signed local-backend download paths, e.g. "https://api.example.com"
 	// or "" (relative). The signed path itself is /v1/media-files/{id}.
 	downloadURLBase string
+
+	// variantSF collapses concurrent requests for one resized copy onto a
+	// single render; renderSem lets only a few renders (decoding a 20 MP photo
+	// costs ~230 MB) run at a time. See variants.go.
+	variantSF  singleflight.Group
+	renderSem  chan struct{}
+	prerender  bool
+	renderHook func(key string) // tests: called once per actual render
 }
 
 // Options bundles the constructor inputs.
@@ -82,6 +91,14 @@ type Options struct {
 	Storage         storage.Storage
 	SigningSecret   []byte
 	DownloadURLBase string
+	// VariantWorkers caps how many resized copies are rendered at once in
+	// this process (MEDIA_VARIANT_WORKERS). Zero means DefaultVariantWorkers.
+	VariantWorkers int
+	// PrerenderVariants makes Insert queue a media.render_variants worker job
+	// for every new picture, so the first buyer does not wait for a render.
+	// Only the processes that create media (arena-api, arena-shop-import) set
+	// it; it needs the worker_jobs table.
+	PrerenderVariants bool
 }
 
 // New returns a Repo built from opts. Both Pool and Storage are required.
@@ -97,7 +114,13 @@ func New(opts Options) (*Repo, error) {
 		storage:         opts.Storage,
 		signingSecret:   opts.SigningSecret,
 		downloadURLBase: strings.TrimRight(opts.DownloadURLBase, "/"),
+		prerender:       opts.PrerenderVariants,
 	}
+	n := opts.VariantWorkers
+	if n < 1 {
+		n = DefaultVariantWorkers
+	}
+	r.renderSem = make(chan struct{}, n)
 	return r, nil
 }
 
@@ -146,6 +169,7 @@ func (r *Repo) Insert(ctx context.Context, in InsertInput) (Object, error) {
 	if err != nil {
 		return Object{}, fmt.Errorf("mediastore: insert: %w", err)
 	}
+	r.queuePrerender(ctx, obj)
 	return obj, nil
 }
 

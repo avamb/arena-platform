@@ -484,6 +484,13 @@ type Config struct {
 	MediaS3SecretAccessKey string `env:"MEDIA_S3_SECRET_ACCESS_KEY" required:"false" default:""`
 	MediaS3UsePathStyle    bool   `env:"MEDIA_S3_USE_PATH_STYLE"    required:"false" default:"true"`
 
+	// MediaVariantWorkers caps how many resized copies of a picture
+	// (GET /v1/media-files/{id}?w=) one process renders at the same time
+	// (1..8, default 1). A render of a 20 MP photo peaks at ~230 MB, so the
+	// default keeps arena-api inside its memory limit however many shop cards
+	// ask for a new width at once.
+	MediaVariantWorkers int `env:"MEDIA_VARIANT_WORKERS" required:"false" default:"1"`
+
 	// -------------------------------------------------------------------------
 	// Ops watchdog / Telegram alerting (internal/platform/opsalert,
 	// internal/platform/opswatchdog) — sale notifications and early-warning
@@ -1287,6 +1294,16 @@ func LoadFor(role Role) (*Config, error) {
 	}
 	cfg.Bil24TokenCacheTTL = d
 
+	// MEDIA_VARIANT_WORKERS - concurrent picture renders per process.
+	iMVW, err := getenvInt("MEDIA_VARIANT_WORKERS", 1)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	if iMVW < 1 || iMVW > 8 {
+		parseErrs = append(parseErrs, fmt.Errorf("MEDIA_VARIANT_WORKERS %d is out of range (allowed: 1..8)", iMVW))
+	}
+	cfg.MediaVariantWorkers = iMVW
+
 	// Media S3 path-style flag.
 	b, err = getenvBool("MEDIA_S3_USE_PATH_STYLE", true)
 	if err != nil {
@@ -1357,6 +1374,14 @@ func (c *Config) Validate() error {
 	}
 	if !c.Role.valid() {
 		errs = append(errs, fmt.Errorf("config role %q is unknown", c.Role))
+	}
+
+	// 0 is the unset value of a hand-built Config (mediastore then uses its
+	// default); LoadFor rejects an explicit 0.
+	if c.MediaVariantWorkers < 0 || c.MediaVariantWorkers > 8 {
+		errs = append(errs, fmt.Errorf(
+			"MEDIA_VARIANT_WORKERS %d is out of range (allowed: 1..8)", c.MediaVariantWorkers,
+		))
 	}
 
 	// --- HTTP -----------------------------------------------------------------
