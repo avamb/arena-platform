@@ -107,4 +107,21 @@ describe("the text for an address that does not exist (E-01)", () => {
       for (const word of ["organization", "организац", "organizaci", "deleted", "удалил", "eliminó"]) expect(text, `${locale} ${word}`).not.toContain(word);
     }
   });
+
+  it("names the reason an order waits for a check, in three languages (task: review_reason)", async () => {
+    const o = order({ status: "manual_review", review_reason: "late_payment_no_stock" });
+    expect(await renderInRouter(<ShopOrderCard order={o} orgId="org1" />, "en")).toContain("Reason: Paid, checking availability");
+    expect(await renderInRouter(<ShopOrderCard order={o} orgId="org1" />, "ru")).toContain("Причина: Оплачен, уточняем наличие");
+    const unconfirmed = order({ status: "manual_review", review_reason: "payment_unconfirmed" });
+    expect(await renderInRouter(<ShopOrderCard order={unconfirmed} orgId="org1" />, "en")).toContain("Reason: Payment is being verified");
+    expect(await renderInRouter(<ShopOrderCard order={unconfirmed} orgId="org1" />, "es")).toContain("Motivo: Pago en verificación");
+  });
+
+  it("keeps the general text when the order has no reason yet, and shows no reason for other statuses", async () => {
+    const plain = await renderInRouter(<ShopOrderCard order={order({ status: "manual_review" })} orgId="org1" />, "en");
+    expect(plain).toContain("The payment came after the hold ended");
+    expect(plain).not.toContain("shop-order-review-reason");
+    const paid = await renderInRouter(<ShopOrderCard order={order({ status: "paid", review_reason: "payment_unconfirmed" })} orgId="org1" />, "en");
+    expect(paid).not.toContain("shop-order-review");
+  });
 });

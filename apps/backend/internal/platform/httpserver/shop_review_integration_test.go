@@ -596,8 +596,29 @@ func TestShop_DigitalProductCheckoutAndDownloads(t *testing.T) {
 		t.Fatalf("downloads = %v; want one file", list)
 	}
 	d := list[0].(map[string]any)
-	if d["product_title"] == "" || !strings.Contains(d["url"].(string), "/v1/media-files/"+file.String()) {
-		t.Fatalf("download = %v", d)
+	fileURL := d["url"].(string)
+	itemPath := "/v1/public/shop/checkout/" + token + "/downloads/"
+	if d["product_title"] == "" || !strings.Contains(fileURL, itemPath) {
+		t.Fatalf("download = %v; want a link to the file route %s", d, itemPath)
+	}
+	filePath := fileURL[strings.Index(fileURL, "/v1/public/"):]
+	downloadCount := func() int {
+		var n int
+		if err := f.pool.QueryRow(context.Background(),
+			`SELECT COALESCE(sum(oi.download_count), 0) FROM shop_order_items oi JOIN shop_orders o ON o.id = oi.order_id WHERE o.order_token = $1`, token).Scan(&n); err != nil {
+			t.Fatalf("download count: %v", err)
+		}
+		return n
+	}
+	// SB-05: looking at the order page, refreshing the links, listing them
+	// again and again is not a download. Only serving the file counts.
+	for i := 0; i < shop.DownloadsPerLine+5; i++ {
+		if code, body, _ := f.do(http.MethodGet, downloads, "", ""); code != http.StatusOK {
+			t.Fatalf("listing %d = %d %v; want 200 however often the page is opened", i+1, code, body)
+		}
+	}
+	if n := downloadCount(); n != 0 {
+		t.Fatalf("download count after %d listings = %d; want 0 (SB-05)", shop.DownloadsPerLine+5, n)
 	}
 	if v := f.variant(variantID); v.Stock != 0 || v.TrackStock {
 		t.Fatalf("digital variant after the sale: stock %d track %v; want 0 and false", v.Stock, v.TrackStock)
@@ -613,31 +634,52 @@ func TestShop_DigitalProductCheckoutAndDownloads(t *testing.T) {
 	}
 	replacement := f.shopMedia(shop.DigitalOwnerType)
 	f.exec(`UPDATE shop_products SET digital_media_id = $1 WHERE id = $2`, replacement, productID)
-	code, body, _ = f.do(http.MethodGet, downloads, "", "")
-	if code != http.StatusOK || !strings.Contains(body["downloads"].([]any)[0].(map[string]any)["url"].(string), "/v1/media-files/"+file.String()) {
-		t.Fatalf("downloads after the product's file was replaced = %d %v; want the file bought", code, body)
-	}
 
-	// Twenty links per line: two were issued, so 18 more answer, then 410.
-	for i := 3; i <= shop.DownloadsPerLine; i++ {
-		if code, body, _ := f.do(http.MethodGet, downloads, "", ""); code != http.StatusOK {
-			t.Fatalf("download %d = %d %v; want 200", i, code, body)
+	// The file route counts one download and sends the buyer to the file.
+	code, _, hdr = f.do(http.MethodGet, filePath, "", "")
+	if code != http.StatusFound || !strings.Contains(hdr.Get("Location"), "/v1/media-files/"+file.String()) ||
+		hdr.Get("Cache-Control") != "no-store" {
+		t.Fatalf("file route = %d Location %q; want 302 to the file bought", code, hdr.Get("Location"))
+	}
+	if n := downloadCount(); n != 1 {
+		t.Fatalf("download count after one download = %d; want 1", n)
+	}
+	// A line that is not the order's, or a malformed id, is the route's 404.
+	for _, bad := range []string{uuid.NewString(), "not-a-uuid"} {
+		if code, body, _ := f.do(http.MethodGet, itemPath+bad, "", ""); code != http.StatusNotFound {
+			t.Fatalf("file route for %q = %d %v; want 404", bad, code, body)
 		}
 	}
-	code, body, _ = f.do(http.MethodGet, downloads, "", "")
+
+	// Twenty downloads per line: one was served, 19 more answer, then 410.
+	for i := 2; i <= shop.DownloadsPerLine; i++ {
+		if code, _, _ := f.do(http.MethodGet, filePath, "", ""); code != http.StatusFound {
+			t.Fatalf("download %d = %d; want 302", i, code)
+		}
+	}
+	code, body, _ = f.do(http.MethodGet, filePath, "", "")
 	if code != http.StatusGone || shopErrCode(body) != "shop.download_expired" {
 		t.Fatalf("download over the limit = %d %v; want 410 shop.download_expired", code, body)
 	}
-
-	// Thirty days after payment the order is closed even with links left.
-	f.exec(`UPDATE shop_order_items SET download_count = 0 WHERE order_id = (SELECT id FROM shop_orders WHERE order_token = $1)`, token)
-	if code, body, _ := f.do(http.MethodGet, downloads, "", ""); code != http.StatusOK {
-		t.Fatalf("download after the counter reset = %d %v; want 200", code, body)
+	if n := downloadCount(); n != shop.DownloadsPerLine {
+		t.Fatalf("download count = %d; want %d", n, shop.DownloadsPerLine)
 	}
-	f.exec(`UPDATE shop_orders SET paid_at = now() - interval '31 days' WHERE order_token = $1`, token)
 	code, body, _ = f.do(http.MethodGet, downloads, "", "")
 	if code != http.StatusGone || shopErrCode(body) != "shop.download_expired" {
-		t.Fatalf("download 31 days after payment = %d %v; want 410 shop.download_expired", code, body)
+		t.Fatalf("listing once every line used its downloads = %d %v; want 410", code, body)
+	}
+
+	// Thirty days after payment the order is closed even with downloads left.
+	f.exec(`UPDATE shop_order_items SET download_count = 0 WHERE order_id = (SELECT id FROM shop_orders WHERE order_token = $1)`, token)
+	if code, _, _ := f.do(http.MethodGet, filePath, "", ""); code != http.StatusFound {
+		t.Fatalf("download after the counter reset = %d; want 302", code)
+	}
+	f.exec(`UPDATE shop_orders SET paid_at = now() - interval '31 days' WHERE order_token = $1`, token)
+	for _, path := range []string{downloads, filePath} {
+		code, body, _ = f.do(http.MethodGet, path, "", "")
+		if code != http.StatusGone || shopErrCode(body) != "shop.download_expired" {
+			t.Fatalf("%s 31 days after payment = %d %v; want 410 shop.download_expired", path, code, body)
+		}
 	}
 }
 

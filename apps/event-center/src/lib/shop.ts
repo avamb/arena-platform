@@ -142,8 +142,18 @@ export interface VariantRow {
   compareAt: string;
   stock: string;
   trackStock: boolean;
-  /** The stock the person saw when the screen loaded: sent back as `expected_stock`. */
+  /** The stock the person saw when the screen loaded: sent back as `expected_stock`, but only when they edited it. */
   loadedStock?: number;
+}
+
+/**
+ * True when the person changed the stock of a row they loaded. Only such a row sends `stock` and
+ * `expected_stock` (SA-04): a row whose stock was not touched leaves the shelf to the server, so a sale
+ * made while the card was open can neither refuse the save nor be overwritten by it.
+ */
+export function stockEdited(r: VariantRow, digital = false): boolean {
+  if (digital || r.id === undefined || !r.trackStock || r.loadedStock === undefined) return false;
+  return r.stock.trim() !== String(r.loadedStock);
 }
 
 let rowSeq = 0;
@@ -310,20 +320,100 @@ export function variantsRequest(rows: readonly VariantRow[], currency: string, o
       sku: r.sku.trim() === "" ? null : r.sku.trim(),
       price_minor: parseMoney(r.price, currency) ?? 0,
       compare_at_minor: r.compareAt.trim() === "" ? null : parseMoney(r.compareAt, currency),
-      stock: digital ? 0 : r.trackStock ? Number(r.stock.trim()) : (r.loadedStock ?? 0),
       track_stock: digital ? false : r.trackStock,
       position: i,
       option1: optionCount >= 1 && r.options[0].trim() !== "" ? r.options[0].trim() : null,
       option2: optionCount >= 2 && r.options[1].trim() !== "" ? r.options[1].trim() : null,
       option3: optionCount >= 3 && r.options[2].trim() !== "" ? r.options[2].trim() : null,
     };
-    if (r.id !== undefined) {
+    if (r.id === undefined) {
+      // A new row: its first stock (a file or a row that does not count stock starts at 0).
+      out.stock = digital || !r.trackStock ? 0 : Number(r.stock.trim());
+    } else {
       out.id = r.id;
-      // The stock the person saw: the server refuses the save when the shelf moved meanwhile.
-      if (!digital && r.loadedStock !== undefined) out.expected_stock = r.loadedStock;
+      // Only an edited stock goes out, with the number the person saw: the server refuses the save when the
+      // shelf moved meanwhile. A row without it keeps the server's stock.
+      if (stockEdited(r, digital)) {
+        out.stock = Number(r.stock.trim());
+        out.expected_stock = r.loadedStock;
+      }
     }
     return out;
   });
+}
+
+/** The ids of the variants a product has, as the editor saw them (`expected_variant_ids` of PUT .../variants). */
+export function variantIdsOf(p: { variants: readonly { id: string }[] }): string[] {
+  return p.variants.map((v) => v.id);
+}
+
+/**
+ * The rows after the API refused a save with 409 `shop.stock_changed` (SA-04): ONLY the stock the person saw in
+ * the affected rows is brought up to date. Prices, SKUs, names, new rows and every typed number stay as they are,
+ * so pressing Save again sends the same edits against the fresh shelf.
+ */
+export function rowsAfterStockMoved(rows: readonly VariantRow[], moved: readonly { id: string; stock: number }[]): VariantRow[] {
+  return rows.map((r) => {
+    const m = r.id === undefined ? undefined : moved.find((x) => x.id === r.id);
+    return m === undefined ? r : { ...r, loadedStock: m.stock };
+  });
+}
+
+/** True when the API refused a variants save because the set of variants is no longer the one the editor loaded. */
+export function isVariantsChanged(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "shop.variants_changed";
+}
+
+/**
+ * The rows after 409 `shop.variants_changed` (SA-13): a colleague added or removed a variant. The person's edits
+ * stay, rows of variants that are gone are dropped, variants added elsewhere are appended as saved. `loadedIds`
+ * is the set the editor had; a variant the person deleted from the screen stays deleted.
+ */
+export function mergeVariantSet(
+  rows: readonly VariantRow[],
+  fresh: { variants: readonly ShopVariant[] },
+  loadedIds: readonly string[],
+  currency: string,
+): { rows: VariantRow[]; removed: number; added: number } {
+  const live = new Set(fresh.variants.map((v) => v.id));
+  const known = new Set(loadedIds);
+  const kept = rows.filter((r) => r.id === undefined || live.has(r.id));
+  const onScreen = new Set(rows.map((r) => r.id));
+  const added = fresh.variants.filter((v) => !known.has(v.id) && !onScreen.has(v.id)).map((v) => rowFromVariant(v, currency));
+  return { rows: [...kept, ...added], removed: rows.length - kept.length, added: added.length };
+}
+
+/** What the details form holds, for `productPatch`. */
+export interface ProductDetailsState {
+  title: string;
+  status: string;
+  kind: ShopKind;
+  optionNames: readonly string[];
+  digitalId: string | null;
+  body: string;
+  bodyTouched: boolean;
+}
+
+/** The body of PATCH .../products/{id} (SA-13): ONLY the fields that differ from the saved product. */
+export function productPatch(now: ProductDetailsState, saved: ShopProductView): {
+  title?: string;
+  status?: string;
+  kind?: string;
+  option_names?: string[];
+  digital_media_id?: string | null;
+  body_html?: string;
+} {
+  const out: ReturnType<typeof productPatch> = {};
+  if (now.title.trim() !== saved.title) out.title = now.title.trim();
+  if (now.status !== saved.status) out.status = now.status;
+  if (now.kind !== productKind(saved)) out.kind = now.kind;
+  if (JSON.stringify(now.optionNames) !== JSON.stringify(optionNamesOf(saved))) out.option_names = [...now.optionNames];
+  // Absent keeps the file, null removes it. Only a digital product has one.
+  if (now.kind === "digital") {
+    if (now.digitalId !== (saved.digital_media_id ?? null)) out.digital_media_id = now.digitalId;
+  } else if ((saved.digital_media_id ?? null) !== null) out.digital_media_id = null;
+  if (now.bodyTouched && now.body !== (saved.body_html ?? "")) out.body_html = now.body;
+  return out;
 }
 
 /** True when the API refused a variants save because the stock moved since the screen loaded. */
@@ -465,9 +555,60 @@ export function canCancelShopOrder(status: string, canManage: boolean): boolean 
   return canManage && status === "pending_payment";
 }
 
+/**
+ * The rows of every loaded page of a list read by offset, each id once (SB-14). A new order that arrives between two
+ * presses of "Show more" pushes the last row of the page before onto the next page; the first copy stays.
+ */
+export function uniqueById<T extends { id: string }>(pages: readonly { readonly orders: readonly T[] }[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const page of pages) {
+    for (const o of page.orders) {
+      if (seen.has(o.id)) continue;
+      seen.add(o.id);
+      out.push(o);
+    }
+  }
+  return out;
+}
+
+/**
+ * The operator's decision on an order in "needs a check" (fulfil, or refund and cancel). `allowed` is shop.manage
+ * together with refund.create and refund.approve, like the refund itself. Other statuses have no such decision.
+ */
+export function canResolveShopOrder(status: string, allowed: boolean): boolean {
+  return allowed && status === "manual_review";
+}
+
+/** The review reasons the card knows how to explain; anything else falls back to the general text. */
+export function reviewReasonOf(reason: string | null | undefined): "late_payment_no_stock" | "payment_unconfirmed" | null {
+  return reason === "late_payment_no_stock" || reason === "payment_unconfirmed" ? reason : null;
+}
+
 /** What can still go back to the buyer, minor units. */
 export function refundable(order: Pick<ShopOrder, "total" | "refunded_minor">): number {
   return Math.max(0, order.total - order.refunded_minor);
+}
+
+/**
+ * What can go back to the buyer, minor units, as the card knows it. The card sees only SUCCEEDED refunds
+ * (`refunded_minor`), the server also subtracts the ones still on their way. When the server has said what is
+ * left (`serverLeft`, from `details.refundable_minor` of a refused refund), the smaller of the two wins.
+ */
+export function refundableNow(order: Pick<ShopOrder, "total" | "refunded_minor">, serverLeft: number | null = null): number {
+  const own = refundable(order);
+  return serverLeft === null ? own : Math.max(0, Math.min(own, serverLeft));
+}
+
+/**
+ * What the server said is left to refund (SA-19): `details.refundable_minor` of 422 `shop.invalid_refund_amount`,
+ * 0 for 409 `shop.nothing_to_refund`. Null for any other failure.
+ */
+export function refundableFromError(err: unknown): number | null {
+  if (!(err instanceof ApiError)) return null;
+  if (err.code === "shop.nothing_to_refund") return 0;
+  const left = err.details?.refundable_minor;
+  return typeof left === "number" && Number.isFinite(left) && left >= 0 ? left : null;
 }
 
 /** Refund exists when money was taken through arena and some of it is left. */
@@ -478,14 +619,38 @@ export function canRefundShopOrder(order: Pick<ShopOrder, "status" | "total" | "
   return refundable(order) > 0;
 }
 
+/**
+ * The lines that 409 `shop.out_of_stock` names in `details.items` (SA-19): the variant, how many the order holds and
+ * how many are free on the shelf. Empty for any other failure.
+ */
+export function shortItems(err: unknown): { variant_id: string; ordered: number; available: number }[] {
+  if (!(err instanceof ApiError) || err.code !== "shop.out_of_stock") return [];
+  const list = err.details?.items;
+  if (!Array.isArray(list)) return [];
+  const out: { variant_id: string; ordered: number; available: number }[] = [];
+  for (const v of list) {
+    if (v === null || typeof v !== "object") continue;
+    const o = v as { variant_id?: unknown; ordered?: unknown; available?: unknown };
+    if (typeof o.variant_id === "string" && typeof o.ordered === "number" && typeof o.available === "number") {
+      out.push({ variant_id: o.variant_id, ordered: o.ordered, available: o.available });
+    }
+  }
+  return out;
+}
+
 export type RefundCheck =
   | { ok: true; amountMinor: number | null; full: boolean }
   | { ok: false; problem: "amount" | "tooMuch" | "reasonTooLong" };
 
 /** A blank amount refunds what is left. Otherwise 1 to what is left. */
-export function checkRefund(order: Pick<ShopOrder, "total" | "refunded_minor" | "currency">, amountText: string, reason: string): RefundCheck {
+export function checkRefund(
+  order: Pick<ShopOrder, "total" | "refunded_minor" | "currency">,
+  amountText: string,
+  reason: string,
+  serverLeft: number | null = null,
+): RefundCheck {
   if ([...reason.trim()].length > SHOP_LIMITS.refundReason) return { ok: false, problem: "reasonTooLong" };
-  const left = refundable(order);
+  const left = refundableNow(order, serverLeft);
   if (amountText.trim() === "") return { ok: true, amountMinor: null, full: true };
   const minor = parseMoney(amountText, order.currency);
   if (minor === null || minor < 1) return { ok: false, problem: "amount" };
@@ -576,17 +741,61 @@ export function nextDay(day: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** The query of GET .../shop/orders. A malformed day is left out, not sent. */
-export function ordersQuery(f: ShopOrdersFilters, limit: number, offset: number): Record<string, string | number | undefined> {
-  return {
-    status: f.status === "" ? undefined : f.status,
-    view: f.view === "" ? undefined : f.view,
-    q: f.q.trim() === "" ? undefined : f.q.trim(),
-    from: DAY.test(f.from) ? f.from : undefined,
-    to: DAY.test(f.to) ? nextDay(f.to) : undefined,
-    limit,
-    offset: offset > 0 ? offset : undefined,
-  };
+/** The offset of a zone from UTC at an instant, in milliseconds. */
+function zoneOffsetMs(zone: string, at: number): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: zone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(new Date(at));
+  const n = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  return Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"), n("second")) - Math.floor(at / 1000) * 1000;
+}
+
+/**
+ * The instant a calendar day starts in a time zone, as RFC 3339 in UTC (SA-25): the day of an order is the day the
+ * SHOP reads on its screen, not the UTC day. An unknown zone falls back to UTC.
+ */
+export function dayStartIso(day: string, zone: string | undefined): string {
+  const [y, m, d] = day.split("-").map(Number);
+  const midnightUtc = Date.UTC(y, m - 1, d);
+  let at = midnightUtc;
+  if (zone !== undefined) {
+    try {
+      // Twice, so a day on which the clocks change still lands on its own midnight.
+      at = midnightUtc - zoneOffsetMs(zone, midnightUtc);
+      at = midnightUtc - zoneOffsetMs(zone, at);
+    } catch {
+      at = midnightUtc;
+    }
+  }
+  return new Date(at).toISOString();
+}
+
+/** The zone the shop reads its times in: its country's zone, else the browser's, else UTC. */
+export function shopTimeZone(country: string | null | undefined): string {
+  return shopZoneFor(country) ?? browserZone() ?? "UTC";
+}
+
+/**
+ * The body of POST .../shop/orders/search (SA-17, SA-25). The same filters as the old query, but in the body: a
+ * buyer's e-mail or name never goes into an address that a proxy logs. `from` is the start of the first day and
+ * `to` the start of the day after the last one, both RFC 3339 in the shop's zone. A malformed day is left out.
+ */
+export function ordersSearchBody(f: ShopOrdersFilters, limit: number, offset: number, zone?: string): Record<string, string | number> {
+  const body: Record<string, string | number> = { limit };
+  if (f.status !== "") body.status = f.status;
+  if (f.view !== "") body.view = f.view;
+  if (f.q.trim() !== "") body.q = f.q.trim();
+  if (DAY.test(f.from)) body.from = dayStartIso(f.from, zone);
+  if (DAY.test(f.to)) body.to = dayStartIso(nextDay(f.to), zone);
+  if (offset > 0) body.offset = offset;
+  return body;
 }
 
 export interface ShopOrdersSearch {
@@ -698,7 +907,7 @@ export function checkSettings(d: SettingsDraft, opts: { currencyLocked?: boolean
  * The body of PUT .../shop/settings: the WHOLE row. The domain and the enabled flag belong to the platform
  * operator and are not sent from here (the API refuses them for anybody else).
  */
-export function settingsRequest(d: SettingsDraft): ShopSettingsUpdateRequest {
+export function settingsRequest(d: SettingsDraft, loadedUpdatedAt?: string | null): ShopSettingsUpdateRequest {
   const currency = d.currency.trim().toUpperCase();
   const body: ShopSettingsUpdateRequest = {
     currency,
@@ -713,7 +922,29 @@ export function settingsRequest(d: SettingsDraft): ShopSettingsUpdateRequest {
   };
   // Absent keeps the stored value.
   if (d.maxLineQty.trim() !== "") body.max_line_qty = Number(d.maxLineQty.trim());
+  // The version the person loaded, sent back as the server printed it: a newer save is refused (SA-12).
+  if (loadedUpdatedAt !== null && loadedUpdatedAt !== undefined && loadedUpdatedAt !== "") body.expected_updated_at = loadedUpdatedAt;
   return body;
+}
+
+/** True when the API refused a settings save because somebody saved them after they were loaded (SA-12). */
+export function isSettingsChanged(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "shop.settings_changed";
+}
+
+/** True when a draft differs from the saved settings (the form has something to save, or to lose). */
+export function settingsDirty(d: SettingsDraft, saved: ShopSettings): boolean {
+  return JSON.stringify(d) !== JSON.stringify(settingsDraft(saved));
+}
+
+/**
+ * Whether the shop's money goes where the organizer decided (SA-23). Without a chosen channel the checkout takes
+ * the first channel of the organization whose provider is set up, which may not be the one meant for the shop.
+ */
+export function channelWarning(d: Pick<SettingsDraft, "salesChannelId">, channelCount: number | null): "none" | "unchosen" | "noChannels" {
+  if (d.salesChannelId !== "") return "none";
+  if (channelCount === 0) return "noChannels";
+  return "unchosen";
 }
 
 /** The courier text goes to the clipboard: true when the browser allowed it. */

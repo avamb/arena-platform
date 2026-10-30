@@ -16880,10 +16880,16 @@ type ShopCheckoutStatus struct {
 	// PaymentUrl Payment page to go back to while pending; empty otherwise.
 	PaymentUrl string `json:"payment_url"`
 
+	// ReviewMessage A ready sentence for the buyer that goes with `review_reason`, in the language the order was placed in (English when that has no catalog); null when there is no review.
+	ReviewMessage *string `json:"review_message"`
+
+	// ReviewReason `payment_unconfirmed` (the payment is being checked) or `late_payment_no_stock` (paid, the availability is being checked) while the order waits for a person; null otherwise. Clients word it from this code.
+	ReviewReason *string `json:"review_reason"`
+
 	// ShippingFee Delivery fee, minor units.
 	ShippingFee int64 `json:"shipping_fee"`
 
-	// Status `pending`, `paid`, `expired` or `cancelled`.
+	// Status `pending`, `paid`, `expired` or `cancelled`. An order parked for review reads by its cause: with `review_reason` `payment_unconfirmed` it is `pending` (nothing is known to be paid; there is no `payment_url` and no `expires_at`), with `late_payment_no_stock` it is `paid`.
 	Status string `json:"status"`
 
 	// Subtotal Sum of the lines, minor units.
@@ -16895,13 +16901,13 @@ type ShopCheckoutStatus struct {
 
 // ShopDownload One file a buyer bought.
 type ShopDownload struct {
-	// ExpiresAt When `url` stops working; read the list again for a fresh one.
+	// ExpiresAt When the order's download period ends (30 days after payment); after that `url` answers 410 `shop.download_expired`.
 	ExpiresAt time.Time `json:"expires_at"`
 
 	// ProductTitle The product, as sold.
 	ProductTitle string `json:"product_title"`
 
-	// Url Absolute signed download URL of the file; it works for 15 minutes.
+	// Url Absolute address of the file route (`GET /v1/public/shop/checkout/{order_token}/downloads/{item_id}`). It does not expire by itself and costs nothing to read; opening it is the download: it is counted against the line's limit and answers 302 to a short-lived signed URL of the file.
 	Url string `json:"url"`
 
 	// VariantTitle The variant, as sold.
@@ -17003,6 +17009,9 @@ type ShopOrder struct {
 	// RefundedMinor What succeeded refunds have returned so far, minor units.
 	RefundedMinor int64 `json:"refunded_minor"`
 
+	// ReviewReason Why a `manual_review` order waits, null otherwise. `late_payment_no_stock`: the money was taken but the hold had ended and the goods were gone (`paid_at` is set; settle it with `POST .../resolve`: `fulfil` or `refund_and_cancel`). `payment_unconfirmed`: the provider's report is not trusted (the amount differs, the payment was reversed before arena confirmed it), the money may not have arrived and `paid_at` is empty; nothing is decided about the goods yet, the order follows the payment: when the payment intent is settled as `succeeded` (the provider's next webhook, or `POST /v1/payment-intents/{id}/transition`) the order is paid like any other, when `failed` it ends `expired`. The order cannot be shipped before that (`shop.payment_unconfirmed`).
+	ReviewReason *string `json:"review_reason"`
+
 	// Ship Where the goods go.
 	Ship ShopAddress `json:"ship"`
 
@@ -17018,7 +17027,7 @@ type ShopOrder struct {
 	// StaffNote The internal note of the shop staff. Never shown to the buyer or on the storefront.
 	StaffNote ShopStaffNote `json:"staff_note"`
 
-	// Status `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review` (a payment that arrived after the hold ended while the goods were gone: the money is recorded, nothing left the shelf, the operator ships or refunds it).
+	// Status `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review` (parked for a person; `review_reason` says why).
 	Status string `json:"status"`
 
 	// Subtotal Sum of the lines, minor units.
@@ -17505,6 +17514,27 @@ type ShopResendEmailResponse struct {
 	Queued bool `json:"queued"`
 }
 
+// ShopResolveRequest The operator's decision on an order parked as `late_payment_no_stock`.
+type ShopResolveRequest struct {
+	// Action `fulfil`: the goods are there again; the stock is checked once more and the order is paid like any other (taken off the shelf, `v1.shop.order.paid`, the buyer's "received" letter), ready to ship. `refund_and_cancel`: the goods will not come; the whole payment goes back through the refund engine and the order ends `refunded` as soon as the provider confirms it (it stays `manual_review` while the refund is pending, and stays there for another try if the refund fails).
+	Action string `json:"action"`
+}
+
+// ShopResolveResponse The order after the decision.
+type ShopResolveResponse struct {
+	// Action The action that was taken, as asked.
+	Action string `json:"action"`
+
+	// Order The order.
+	Order ShopOrder `json:"order"`
+
+	// Refund The refund, for `refund_and_cancel`; null for `fulfil`.
+	Refund *ShopRefund `json:"refund"`
+
+	// Replayed True when the `Idempotency-Key` had been used before and this is the first call's result. Nothing new was written.
+	Replayed bool `json:"replayed"`
+}
+
 // ShopSettings The shop settings of an organization (migration 0172). Money in minor units of `currency`.
 type ShopSettings struct {
 	// AgeGateMinAge Minimum buyer age the storefront asks to confirm, or null for no age gate.
@@ -17572,6 +17602,12 @@ type ShopSettingsUpdateRequest struct {
 
 	// Enabled Opens (true) or closes (false) the storefront and its checkout, platform superadmin only; absent, null or the current value keeps it.
 	Enabled *bool `json:"enabled"`
+
+	// ExpectedUpdatedAt The `updated_at` the editor loaded the settings with, sent back unchanged.
+	// When the stored settings were saved since (a colleague, the operator) the
+	// request is refused with 409 `shop.settings_changed` and nothing is applied.
+	// Absent or null skips the check.
+	ExpectedUpdatedAt *time.Time `json:"expected_updated_at"`
 
 	// LogisticsNote Internal note for the logistician, up to 2000 characters.
 	LogisticsNote *string `json:"logistics_note,omitempty"`
@@ -17661,7 +17697,9 @@ type ShopVariantInput struct {
 	// The event center sends the loaded value. When the stock changed since
 	// (a sale, an import, another editor) the whole request is refused with
 	// 409 `shop.stock_changed`, whose details list each variant's current
-	// stock, and nothing is applied. Absent skips the check.
+	// stock, and nothing is applied. Absent leaves the stock of an existing
+	// variant untouched (the event center sends it only for a row whose stock
+	// the person edited).
 	ExpectedStock *int32 `json:"expected_stock"`
 
 	// Id An existing variant of the product to update; absent creates one.
@@ -17685,7 +17723,9 @@ type ShopVariantInput struct {
 	// Sku Stock keeping unit, up to 100 characters.
 	Sku *string `json:"sku"`
 
-	// Stock Units on the shelf, zero or more.
+	// Stock Units on the shelf, zero or more. For an existing variant (with `id`) it is
+	// written only together with `expected_stock`; a row without `expected_stock`
+	// keeps the stored stock whatever is sent here.
 	Stock *int32 `json:"stock,omitempty"`
 
 	// Title Variant title; empty means `Default Title`.
@@ -17697,6 +17737,12 @@ type ShopVariantInput struct {
 
 // ShopVariantsReplaceRequest The complete variant list of a product.
 type ShopVariantsReplaceRequest struct {
+	// ExpectedVariantIds The ids of the variants the editor loaded. When the product's live variants
+	// are not exactly this set (a colleague added or removed one) the request is
+	// refused with 409 `shop.variants_changed` and nothing is applied, because the
+	// replace deletes every variant it leaves out. Absent or null skips the check.
+	ExpectedVariantIds *[]openapi_types.UUID `json:"expected_variant_ids"`
+
 	// Variants 1-100 variants; variants left out are deleted.
 	Variants []ShopVariantInput `json:"variants"`
 }
@@ -21204,6 +21250,12 @@ type RefundShopOrderParams struct {
 	IdempotencyKey string `json:"Idempotency-Key"`
 }
 
+// ResolveShopOrderParams defines parameters for ResolveShopOrder.
+type ResolveShopOrderParams struct {
+	// IdempotencyKey Client-chosen key of 1 to 255 characters (a UUID) that identifies this decision; one per open dialog.
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
 // ListShopProductsParams defines parameters for ListShopProducts.
 type ListShopProductsParams struct {
 	// Status Only products of this status: `draft`, `active` or `archived`.
@@ -21923,6 +21975,9 @@ type RefundShopOrderJSONRequestBody = ShopRefundRequest
 
 // ResendShopOrderEmailJSONRequestBody defines body for ResendShopOrderEmail for application/json ContentType.
 type ResendShopOrderEmailJSONRequestBody = ShopResendEmailRequest
+
+// ResolveShopOrderJSONRequestBody defines body for ResolveShopOrder for application/json ContentType.
+type ResolveShopOrderJSONRequestBody = ShopResolveRequest
 
 // ShipShopOrderJSONRequestBody defines body for ShipShopOrder for application/json ContentType.
 type ShipShopOrderJSONRequestBody = ShopShipRequest

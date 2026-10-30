@@ -331,6 +331,13 @@ describe('kinds, options and caps', () => {
     expect(html).not.toContain('по доставке');
     expect(dom(statusView(xctx(), paid, { state: 'waiting' })).querySelectorAll('.shop-downloads a').length).toBe(0);
   });
+
+  it('says the download period is over and offers no refresh after 410 shop.download_expired', () => {
+    const paid = { status: 'paid' as const, number: 7, items: [{ product_kind: 'digital' as const, product_title: 'Гид', variant_title: '', qty: 1, unit_price_minor: 3000, total_minor: 3000 }] };
+    const doc = dom(statusView(xctx(), paid, { state: 'expired' }));
+    expect(doc.querySelector('[data-downloads-note]')?.textContent).toContain('Срок скачивания');
+    expect(doc.querySelector('[data-refresh-downloads]')).toBeNull();
+  });
 });
 
 describe('responsive media pictures', () => {

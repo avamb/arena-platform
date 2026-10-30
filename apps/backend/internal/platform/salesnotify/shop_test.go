@@ -8,6 +8,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
 
 func shopSample() ShopOrder {
@@ -244,8 +245,51 @@ func TestDispatcher_ManualReviewReachesShopChatsOnce(t *testing.T) {
 			t.Errorf("review message lacks %q:\n%s", want, snd.sent[0].text)
 		}
 	}
-	if !store.claimed["shop_review:o-1"] {
+	if !store.claimed["shop_review:o-1:"] {
 		t.Error("the announcement was not claimed")
+	}
+}
+
+// SB-02: an order parked because its payment is not confirmed is announced
+// without the "Paid" line, in every language, and as its own announcement once
+// the same order is parked again as a late payment.
+func TestFormatShopOrderReview_UnconfirmedPaymentIsNotPaid(t *testing.T) {
+	unconfirmed, late := shop.ReviewPaymentUnconfirmed, shop.ReviewLatePaymentNoStock
+	for loc, paid := range map[string]string{"en": "Paid:", "ru": "Оплачено:", "es": "Pagado:", "cs": "Zaplaceno:"} {
+		s := shopSample()
+		s.Locale = loc
+		s.Order.ReviewReason = &unconfirmed
+		msg := FormatShopOrderReview(s)
+		if strings.Contains(msg, paid) {
+			t.Errorf("%s: an unconfirmed payment is announced as paid:\n%s", loc, msg)
+		}
+		if !strings.Contains(msg, "⏳") || !strings.Contains(msg, "1000777") {
+			t.Errorf("%s: the unconfirmed-payment text is missing:\n%s", loc, msg)
+		}
+	}
+	s := shopSample()
+	s.Order.ReviewReason = &unconfirmed
+	if msg := FormatShopOrderReview(s); !strings.Contains(msg, "not confirmed") || strings.Contains(msg, "arrived after the hold ended") {
+		t.Errorf("unconfirmed text:\n%s", msg)
+	}
+	s.Order.ReviewReason = &late
+	if msg := FormatShopOrderReview(s); !strings.Contains(msg, "Paid") || !strings.Contains(msg, "arrived after the hold ended") {
+		t.Errorf("late-payment text:\n%s", msg)
+	}
+
+	store := newFakeStore(Subscription{ID: "logistics", OrgID: orgVino, ChatID: "-2", OnOrderPaid: true, Kinds: []string{KindShop}})
+	first := shopSample()
+	first.Order.ReviewReason = &unconfirmed
+	store.shopOrds["o-1"] = first
+	snd := &fakeSender{}
+	d := NewDispatcher(store, snd, nil)
+	d.Handle(context.Background(), shopEvent(EventShopOrderManualReview, "o-1", nil))
+	second := shopSample()
+	second.Order.ReviewReason = &late
+	store.shopOrds["o-1"] = second
+	d.Handle(context.Background(), shopEvent(EventShopOrderManualReview, "o-1", nil))
+	if len(snd.sent) != 2 {
+		t.Fatalf("announcements = %d; want 2 (unconfirmed, then late payment)", len(snd.sent))
 	}
 }
 

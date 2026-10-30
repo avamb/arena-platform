@@ -1,4 +1,4 @@
--- 0180_invitation_pdf_notice_index.sql — an index for the bot's PDF notice poll.
+-- 0181_invitation_pdf_notice_index.sql — an index for the bot's PDF notice poll.
 --
 -- ClaimInvitationPDFNotices (INV-09) runs every few seconds and picks the
 -- staff invitations issued in the last day, oldest first. Its filter is

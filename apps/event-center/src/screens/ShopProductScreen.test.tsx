@@ -166,8 +166,11 @@ describe("the product card: one Save", () => {
     await typeInto(q(el, "shop-image-0-alt"), "Bottle");
     await save(el);
     expect(order).toEqual(["patch", "variants", "image"]);
-    expect(vi.mocked(patchShopProduct).mock.calls[0][2]).toMatchObject({ title: "Riesling 2021" });
+    // SA-13: only the field that changed goes in the PATCH.
+    expect(vi.mocked(patchShopProduct).mock.calls[0][2]).toEqual({ title: "Riesling 2021" });
     expect(vi.mocked(replaceShopVariants).mock.calls[0][2][0]).toMatchObject({ id: "v1", stock: 20, expected_stock: 12 });
+    // SA-13: the variants go with the set the person loaded.
+    expect(vi.mocked(replaceShopVariants).mock.calls[0][3]).toEqual(["v1"]);
     expect(vi.mocked(attachShopImage).mock.calls[0]).toEqual([ORG, "p1", "m1", 0, "Bottle"]);
     expect(status(el)).toBe("Everything is saved.");
     expect(q(el, "shop-product-save").disabled).toBe(true);
@@ -199,10 +202,53 @@ describe("the product card: one Save", () => {
     expect(q(el, "shop-stock-changed")).not.toBeNull();
     expect(q(el, "shop-stock-moved").textContent).toContain("you saw 12, now 9");
     expect(q(el, "shop-stock-moved").textContent).toContain("You typed 20");
-    expect(q(el, "shop-variant-stock-0").value).toBe("9");
+    // SA-04: what the person typed stays, only the number they saw moved on (12 became 9).
+    expect(q(el, "shop-variant-stock-0").value).toBe("20");
     // The description the person typed is still there, waiting for the next Save.
     expect(q(el, "shop-image-0-alt").value).toBe("Bottle");
     expect(q(el, "shop-product-save").disabled).toBe(false);
+  });
+
+  it("sends no stock for a row whose stock was not touched, so a price edit survives a sale (SA-04)", async () => {
+    vi.mocked(replaceShopVariants).mockResolvedValue(product({ variants: [variant("v1", 9, { price_minor: 2500 })], updated_at: "2026-10-02T10:00:01Z" }));
+    const { el } = await mount(product());
+    await typeInto(q(el, "shop-variant-price-0"), "25.00");
+    await save(el);
+    const sent = vi.mocked(replaceShopVariants).mock.calls[0][2][0];
+    expect(sent).toMatchObject({ id: "v1", price_minor: 2500 });
+    expect(sent.stock).toBeUndefined();
+    expect(sent.expected_stock).toBeUndefined();
+  });
+
+  it("keeps typed prices and new rows when the stock moved, and the next Save uses the fresh number (SA-04)", async () => {
+    vi.mocked(replaceShopVariants).mockRejectedValueOnce(new ApiError(409, "shop.stock_changed", "moved", undefined, { variants: [{ id: "v1", expected_stock: 12, stock: 9 }] }));
+    vi.mocked(fetchShopProduct).mockResolvedValue(product({ variants: [variant("v1", 9)], updated_at: "2026-10-02T10:00:02Z" }));
+    const { el } = await mount(product());
+    await typeInto(q(el, "shop-variant-price-0"), "25.00");
+    await typeInto(q(el, "shop-variant-stock-0"), "20");
+    await save(el);
+    expect(q(el, "shop-variant-price-0").value).toBe("25.00");
+    expect(q(el, "shop-variant-stock-0").value).toBe("20");
+    vi.mocked(replaceShopVariants).mockResolvedValueOnce(product({ variants: [variant("v1", 20, { price_minor: 2500 })], updated_at: "2026-10-02T10:00:03Z" }));
+    await save(el);
+    expect(vi.mocked(replaceShopVariants).mock.calls[1][2][0]).toMatchObject({ id: "v1", price_minor: 2500, stock: 20, expected_stock: 9 });
+  });
+
+  it("merges a variant a colleague added and keeps the edits when the set changed (SA-13)", async () => {
+    vi.mocked(replaceShopVariants).mockRejectedValueOnce(new ApiError(409, "shop.variants_changed", "changed", undefined, { variant_ids: ["v1", "v2"] }));
+    vi.mocked(fetchShopProduct).mockResolvedValue(product({ variants: [variant("v1", 12, { title: "Standard" }), variant("v2", 4, { title: "Magnum", position: 1 })], updated_at: "2026-10-02T10:00:02Z" }));
+    const { el } = await mount(product({ variants: [variant("v1", 12, { title: "Standard" })] }));
+    await typeInto(q(el, "shop-variant-price-0"), "25.00");
+    await save(el);
+    expect(q(el, "shop-variants-changed")).not.toBeNull();
+    expect(q(el, "shop-variants-merged").textContent).toContain("1 versions added elsewhere");
+    expect(q(el, "shop-variant-price-0").value).toBe("25.00");
+    expect(q(el, "shop-variant-price-1")).not.toBeNull();
+    // The next Save carries the merged set.
+    vi.mocked(replaceShopVariants).mockResolvedValueOnce(product({ updated_at: "2026-10-02T10:00:03Z" }));
+    await save(el);
+    expect(vi.mocked(replaceShopVariants).mock.calls[1][3]).toEqual(["v1", "v2"]);
+    expect(vi.mocked(replaceShopVariants).mock.calls[1][2]).toHaveLength(2);
   });
 
   it("names a wrong field before anything is sent", async () => {

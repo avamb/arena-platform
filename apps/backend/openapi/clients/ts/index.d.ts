@@ -10836,6 +10836,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/shop/orders/{order_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Settle a shop order parked for its goods
+         * @description Decides an order parked in `manual_review` with `review_reason`
+         *     `late_payment_no_stock` (the payment arrived after the hold ended and the
+         *     goods were gone; the money is taken). `action: fulfil` checks the stock once
+         *     more and pays the order like any other (409 `shop.out_of_stock`, with the short
+         *     lines in the details, when the goods are still not free; 409
+         *     `shop.payment_unconfirmed` when the payment is not `succeeded`).
+         *     `action: refund_and_cancel` returns the whole payment through the refund engine
+         *     (the same engine and rules as `.../refund`): the order ends `refunded` once the
+         *     provider confirms, stays `manual_review` while the refund is pending, and stays
+         *     for another try when it fails (the answer carries the refund and its state).
+         *     An order whose `review_reason` is `payment_unconfirmed` has nothing to decide
+         *     yet: it answers 409 `shop.order_not_resolvable` and follows its payment instead
+         *     (settle the payment intent as `succeeded` or `failed`). An order that is not in
+         *     `manual_review` answers 409 `shop.order_not_in_review`, except for a repeat of
+         *     the call that settled it. From the web event center the request needs a fresh
+         *     password confirmation (`X-Step-Up-Token`).
+         *
+         *     The call needs an `Idempotency-Key` of 1 to 255 characters (one per open dialog).
+         *     Repeating it with the same key answers the first decision with `replayed: true`
+         *     and writes nothing; `refund_and_cancel` uses the key as the refund's key, so one
+         *     click can never return the money twice.
+         *
+         *     Requires JWT or API key + the `shop.manage`, `refund.create` and `refund.approve` permissions and membership of the organization.
+         */
+        post: operations["resolveShopOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/shop/orders/{order_id}/courier-text": {
         parameters: {
             query?: never;
@@ -10892,7 +10934,10 @@ export interface paths {
         /**
          * Status of a storefront order
          * @description Where the buyer's order stands: `pending` (with `payment_url` to go
-         *     back to the payment page), `paid`, `expired` or `cancelled`. The token in the
+         *     back to the payment page), `paid`, `expired` or `cancelled`. An order parked
+         *     for review reads by its cause (`review_reason`, `review_message`): `pending`
+         *     without a payment page while its payment is being checked, `paid` while the
+         *     availability of its goods is being checked. The token in the
          *     path is the credential; the provider sends the buyer back to the storefront
          *     with it as `checkout_token`. No login; rate-limited per address and per
          *     token.
@@ -10915,18 +10960,47 @@ export interface paths {
         };
         /**
          * Files of a paid storefront order
-         * @description The files the buyer bought: one short-lived signed URL per digital line
-         *     of the order (spec 47 section 1b). Only while the order's payment stands
-         *     (`paid`, `shipped` or `partially_refunded`); an order that is pending,
-         *     expired, cancelled, refunded or parked for review answers 404 like a
-         *     token that names nothing. Each line serves the file it was sold with,
-         *     fixed at purchase. The period is bounded: 30 days after payment and 20
-         *     links per line, counted each time this route issues one; after that the
+         * @description The files the buyer bought: one link per digital line of the order (spec
+         *     47 section 1b), each pointing at the file route. Listing signs nothing and
+         *     counts nothing: opening the order page or refreshing the links is not a
+         *     download. Only while the order's payment stands (`paid`, `shipped` or
+         *     `partially_refunded`); an order that is pending, expired, cancelled,
+         *     refunded or parked for review answers 404 like a token that names nothing.
+         *     Each line serves the file it was sold with, fixed at purchase. The period is
+         *     bounded: 30 days after payment and 20 downloads per line; after that the
          *     answer is 410 `shop.download_expired`. The token in the path is the
          *     credential. No login; rate-limited per address and per token; never
          *     cached.
          */
         get: operations["listPublicShopCheckoutDownloads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/shop/checkout/{order_token}/downloads/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download one file of a paid storefront order
+         * @description The one place a download is counted. It checks what the list checks (the
+         *     order's payment stands, 30 days after payment, 20 downloads per line),
+         *     signs the file's URL, counts one download against the line's limit in a
+         *     single atomic step and answers 302 to the short-lived signed URL. A file
+         *     that cannot be signed costs the buyer nothing (503
+         *     `shop.download_unavailable`). A line that is not a digital line of the order,
+         *     has no file, or a malformed `item_id` answers 404 like a token that names
+         *     nothing. The token in the path is the credential. No login; rate-limited per
+         *     address and per token; never cached.
+         */
+        get: operations["downloadPublicShopCheckoutFile"];
         put?: never;
         post?: never;
         delete?: never;
@@ -30915,6 +30989,14 @@ export interface components {
             max_line_qty?: number | null;
             /** @description Opens (true) or closes (false) the storefront and its checkout, platform superadmin only; absent, null or the current value keeps it. */
             enabled?: boolean | null;
+            /**
+             * Format: date-time
+             * @description The `updated_at` the editor loaded the settings with, sent back unchanged.
+             *     When the stored settings were saved since (a colleague, the operator) the
+             *     request is refused with 409 `shop.settings_changed` and nothing is applied.
+             *     Absent or null skips the check.
+             */
+            expected_updated_at?: string | null;
         };
         /** @description A picture of a product. */
         ShopImage: {
@@ -31071,7 +31153,9 @@ export interface components {
             compare_at_minor?: number | null;
             /**
              * Format: int32
-             * @description Units on the shelf, zero or more.
+             * @description Units on the shelf, zero or more. For an existing variant (with `id`) it is
+             *     written only together with `expected_stock`; a row without `expected_stock`
+             *     keeps the stored stock whatever is sent here.
              */
             stock?: number;
             /** @description Whether stock limits sales; absent means true. */
@@ -31093,7 +31177,9 @@ export interface components {
              *     The event center sends the loaded value. When the stock changed since
              *     (a sale, an import, another editor) the whole request is refused with
              *     409 `shop.stock_changed`, whose details list each variant's current
-             *     stock, and nothing is applied. Absent skips the check.
+             *     stock, and nothing is applied. Absent leaves the stock of an existing
+             *     variant untouched (the event center sends it only for a row whose stock
+             *     the person edited).
              */
             expected_stock?: number | null;
         };
@@ -31161,6 +31247,13 @@ export interface components {
         ShopVariantsReplaceRequest: {
             /** @description 1-100 variants; variants left out are deleted. */
             variants: components["schemas"]["ShopVariantInput"][];
+            /**
+             * @description The ids of the variants the editor loaded. When the product's live variants
+             *     are not exactly this set (a colleague added or removed one) the request is
+             *     refused with 409 `shop.variants_changed` and nothing is applied, because the
+             *     replace deletes every variant it leaves out. Absent or null skips the check.
+             */
+            expected_variant_ids?: string[] | null;
         };
         /** @description A picture to attach. */
         ShopImageAddRequest: {
@@ -31311,8 +31404,10 @@ export interface components {
              * @description Order number shown to people.
              */
             number: number;
-            /** @description `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review` (a payment that arrived after the hold ended while the goods were gone: the money is recorded, nothing left the shelf, the operator ships or refunds it). */
+            /** @description `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review` (parked for a person; `review_reason` says why). */
             status: string;
+            /** @description Why a `manual_review` order waits, null otherwise. `late_payment_no_stock`: the money was taken but the hold had ended and the goods were gone (`paid_at` is set; settle it with `POST .../resolve`: `fulfil` or `refund_and_cancel`). `payment_unconfirmed`: the provider's report is not trusted (the amount differs, the payment was reversed before arena confirmed it), the money may not have arrived and `paid_at` is empty; nothing is decided about the goods yet, the order follows the payment: when the payment intent is settled as `succeeded` (the provider's next webhook, or `POST /v1/payment-intents/{id}/transition`) the order is paid like any other, when `failed` it ends `expired`. The order cannot be shipped before that (`shop.payment_unconfirmed`). */
+            review_reason?: string | null;
             /** @description `web` (the storefront) or `shopify` (imported). */
             source: string;
             /**
@@ -31476,6 +31571,22 @@ export interface components {
             amount_minor?: number | null;
             /** @description Why, up to 2000 characters. */
             reason?: string;
+        };
+        /** @description The operator's decision on an order parked as `late_payment_no_stock`. */
+        ShopResolveRequest: {
+            /** @description `fulfil`: the goods are there again; the stock is checked once more and the order is paid like any other (taken off the shelf, `v1.shop.order.paid`, the buyer's "received" letter), ready to ship. `refund_and_cancel`: the goods will not come; the whole payment goes back through the refund engine and the order ends `refunded` as soon as the provider confirms it (it stays `manual_review` while the refund is pending, and stays there for another try if the refund fails). */
+            action: string;
+        };
+        /** @description The order after the decision. */
+        ShopResolveResponse: {
+            /** @description The action that was taken, as asked. */
+            action: string;
+            /** @description True when the `Idempotency-Key` had been used before and this is the first call's result. Nothing new was written. */
+            replayed: boolean;
+            /** @description The order. */
+            order: components["schemas"]["ShopOrder"];
+            /** @description The refund, for `refund_and_cancel`; null for `fulfil`. */
+            refund: components["schemas"]["ShopRefund"] | null;
         };
         /** @description The filters of the shop order list, in a body. */
         ShopOrderSearchRequest: {
@@ -31724,11 +31835,11 @@ export interface components {
             product_title: string;
             /** @description The variant, as sold. */
             variant_title: string;
-            /** @description Absolute signed download URL of the file; it works for 15 minutes. */
+            /** @description Absolute address of the file route (`GET /v1/public/shop/checkout/{order_token}/downloads/{item_id}`). It does not expire by itself and costs nothing to read; opening it is the download: it is counted against the line's limit and answers 302 to a short-lived signed URL of the file. */
             url: string;
             /**
              * Format: date-time
-             * @description When `url` stops working; read the list again for a fresh one.
+             * @description When the order's download period ends (30 days after payment); after that `url` answers 410 `shop.download_expired`.
              */
             expires_at: string;
         };
@@ -31741,8 +31852,12 @@ export interface components {
         ShopCheckoutStatus: {
             /** @description `shipping` when the order holds a physical product, `none` for digital products and services only. */
             delivery_kind: string;
-            /** @description `pending`, `paid`, `expired` or `cancelled`. */
+            /** @description `pending`, `paid`, `expired` or `cancelled`. An order parked for review reads by its cause: with `review_reason` `payment_unconfirmed` it is `pending` (nothing is known to be paid; there is no `payment_url` and no `expires_at`), with `late_payment_no_stock` it is `paid`. */
             status: string;
+            /** @description `payment_unconfirmed` (the payment is being checked) or `late_payment_no_stock` (paid, the availability is being checked) while the order waits for a person; null otherwise. Clients word it from this code. */
+            review_reason?: string | null;
+            /** @description A ready sentence for the buyer that goes with `review_reason`, in the language the order was placed in (English when that has no catalog); null when there is no review. */
+            review_message?: string | null;
             /**
              * Format: int64
              * @description Order number.
@@ -67072,7 +67187,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Another organization already uses this domain (`shop.duplicate_domain`). */
+            /** @description Another organization already uses this domain (`shop.duplicate_domain`), the settings were saved since `expected_updated_at` (`shop.settings_changed`), or the currency cannot change because the organization already has shop products or orders, whose prices are not converted (`shop.currency_locked`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -67081,7 +67196,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`). */
+            /** @description A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`) or the payment provider of the sales channel cannot charge in the currency (`shop.currency_unsupported`; AllPay charges ILS, USD and EUR only). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -67737,7 +67852,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The stock of a variant changed since the editor loaded it (`shop.stock_changed`, details list each variant's current stock); nothing was applied. */
+            /** @description The stock of a variant changed since the editor loaded it (`shop.stock_changed`, details list each variant's current stock), or the set of variants is not the one in `expected_variant_ids` (`shop.variants_changed`, details list the live variant ids); nothing was applied. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -68525,7 +68640,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The order is not paid, or it holds only digital or service goods and has nothing to ship (`shop.order_not_shippable`), or it is parked in `manual_review` and its goods are not free on the shelf (`shop.out_of_stock`, `details.items` lists the short lines). */
+            /** @description The order is not paid, or it holds only digital or service goods and has nothing to ship (`shop.order_not_shippable`), or it is parked in `manual_review` and its goods are not free on the shelf (`shop.out_of_stock`, `details.items` lists the short lines), or it is parked in `manual_review` because its payment waits for a human and that payment has not succeeded (`shop.payment_unconfirmed`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -68719,6 +68834,101 @@ export interface operations {
             };
             /** @description The amount is not between 1 and what is left (`shop.invalid_refund_amount`, details carry `refundable_minor`) or the reason is too long (`shop.text_too_long`). */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    resolveShopOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-chosen key of 1 to 255 characters (a UUID) that identifies this decision; one per open dialog. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop order (an order of another organization answers 404). */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description The order after the decision (and the refund, for `refund_and_cancel`). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopResolveResponse"];
+                };
+            };
+            /** @description The body is not valid JSON for this route (`shop.invalid_body`), `action` is not `fulfil` or `refund_and_cancel` (`shop.invalid_action`), or the `Idempotency-Key` header is missing or longer than 255 characters (`shop.idempotency_key_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `shop.manage`, `refund.create` or `refund.approve`, or is not a member (`permissions.denied`), or the web did not confirm the password (`auth.step_up_required`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such order in this organization (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order is not in `manual_review` (`shop.order_not_in_review`), waits for its payment rather than its goods (`shop.order_not_resolvable`), the goods are still not free (`shop.out_of_stock`), the payment is not `succeeded` (`shop.payment_unconfirmed`), a refund refusal of `.../refund` (`shop.order_not_refundable`, `shop.nothing_to_refund`), or the `Idempotency-Key` was used for a different request (`shop.idempotency_key_reused`). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -68968,7 +69178,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The download period of the order is over (`shop.download_expired`), 30 days after payment or when every digital line used its 20 links. */
+            /** @description The download period of the order is over (`shop.download_expired`), 30 days after payment or when every digital line used its 20 downloads. */
             410: {
                 headers: {
                     [name: string]: unknown;
@@ -68996,6 +69206,76 @@ export interface operations {
                 };
             };
             /** @description The database is unavailable (`dependency.database_unavailable`), or a file cannot be signed right now (`shop.download_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    downloadPublicShopCheckoutFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The order token checkout answered (64 hex characters). */
+                order_token: string;
+                /** @description UUID of the order line, as in the `url` of the downloads list. */
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the signed URL of the file; the download is counted. */
+            302: {
+                headers: {
+                    /** @description The short-lived signed URL of the file. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No paid order with this token, or no downloadable line with this id (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The download period of the order is over (`shop.download_expired`), 30 days after payment or when the line used its 20 downloads. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`), or the file cannot be signed right now (`shop.download_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;

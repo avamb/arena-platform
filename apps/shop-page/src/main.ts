@@ -44,6 +44,7 @@ import {
   visibleCount,
   visibleItems,
   wantedQty,
+  withTitles,
   validateCheckoutForm,
   validatePostal,
   type CartItem,
@@ -115,6 +116,43 @@ async function orgForHost(host: string): Promise<string> {
 }
 
 // ---- rendering ------------------------------------------------------------------
+
+/** The cart, the checkout and an order page are private: tell crawlers not to index them (robots.txt only stops crawling). */
+function setRobots(noindex: boolean): void {
+  let m = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+  if (!noindex) {
+    m?.remove();
+    return;
+  }
+  if (!m) {
+    m = document.createElement('meta');
+    m.name = 'robots';
+    document.head.appendChild(m);
+  }
+  m.content = 'noindex';
+}
+
+/** Changes the buyer did not ask for (the shop withdrew a product, the stock fell), shown once above the page. */
+let cartNotices: string[] = [];
+
+function showCartNotices(): void {
+  if (cartNotices.length === 0) return;
+  const main = document.getElementById('MainContent');
+  if (!main) return;
+  const box = document.createElement('div');
+  box.className = 'shop-notices page-width';
+  box.setAttribute('role', 'status');
+  const ul = document.createElement('ul');
+  ul.className = 'list-unstyled';
+  for (const n of cartNotices) {
+    const li = document.createElement('li');
+    li.textContent = n;
+    ul.appendChild(li);
+  }
+  box.appendChild(ul);
+  main.prepend(box);
+  cartNotices = [];
+}
 
 function setMeta(title: string, description?: string): void {
   document.title = title;
@@ -284,6 +322,8 @@ function draw(kind: Route['kind'], ctx: Ctx, main: string, title: string, descri
   applyTheme(kind);
   root().innerHTML = layout(ctx, main, kind === 'home');
   setMeta(title, description);
+  setRobots(kind === 'cart' || kind === 'checkout' || kind === 'status');
+  showCartNotices();
   fixContentLinks(ctx.base);
   applyAgeGate();
   fitLoadedImages();
@@ -338,6 +378,7 @@ async function refreshCatalog(): Promise<void> {
 function syncCart(): void {
   const s = state as State;
   const r = reconcileCart(s.cart, s.shop.products, s.shop.settings.max_line_qty);
+  cartNotices.push(...r.notes);
   if (r.changed) commitCart(r.items);
 }
 
@@ -368,6 +409,7 @@ async function loadDownloads(token: string, st: OrderStatus): Promise<DownloadsS
     const links = await getDownloads(token);
     return links.length > 0 ? { state: 'ready', links } : undefined;
   } catch (e) {
+    if (e instanceof ApiError && e.status === 410) return { state: 'expired' };
     return e instanceof ApiError && e.status === 404 ? { state: 'waiting' } : { state: 'error' };
   }
 }
@@ -432,7 +474,7 @@ async function refreshDownloads(): Promise<void> {
   const fresh = await loadDownloads(r.token, st);
   if (currentRoute().kind !== 'status') return;
   // Say what happened next to the button: new links carry their expiry, a failure a short line.
-  downloads = fresh?.state === 'ready' ? { ...fresh, refreshed: true } : fresh?.state === 'waiting' ? fresh : { state: 'error', refreshed: true };
+  downloads = fresh?.state === 'ready' ? { ...fresh, refreshed: true } : fresh?.state === 'waiting' || fresh?.state === 'expired' ? fresh : { state: 'error', refreshed: true };
   paintStatus(statusView(ctxOf(state), st, downloads));
 }
 
@@ -472,10 +514,11 @@ function closeAgeGate(): void {
 
 function commitCart(items: CartItem[]): void {
   const s = state as State;
-  s.cart = items;
-  saveCart(s.org, items);
+  // Every line is saved with its name, so a later "we removed it" note can say which product it was.
+  s.cart = withTitles(items, s.shop.products);
+  saveCart(s.org, s.cart);
   const bubble = document.getElementById('cart-icon-bubble');
-  if (bubble) bubble.innerHTML = cartBubble(visibleCount(items, s.shop.products));
+  if (bubble) bubble.innerHTML = cartBubble(visibleCount(s.cart, s.shop.products));
 }
 
 function openNotification(variantId: string, limitNote?: string): void {
@@ -1005,6 +1048,7 @@ function sendContact(form: HTMLFormElement): void {
 
 /** A page with no shop behind it (bare platform address, unknown organization): styled with the theme, no header or footer. */
 function standalone(html: string, title: string): void {
+  setRobots(false);
   document.documentElement.className = document.documentElement.className.replace('no-js', 'js');
   applyTheme('not_found');
   root().innerHTML = `<main id="MainContent" class="content-for-layout focus-none" role="main" tabindex="-1">${html}</main>`;
@@ -1046,8 +1090,9 @@ async function boot(): Promise<void> {
     // A product that was hidden or deleted since the basket was saved must not stay in it.
     const stored = loadCart(org);
     const cart = reconcileCart(stored, shop.products, shop.settings.max_line_qty);
-    state = { org, base: loc.base, shop, cart: cart.items };
-    if (cart.changed) saveCart(org, cart.items);
+    state = { org, base: loc.base, shop, cart: withTitles(cart.items, shop.products) };
+    saveCart(org, state.cart);
+    cartNotices.push(...cart.notes);
   } catch (e) {
     console.error(e);
     if (isNotFound(e)) fatal(T.notFoundTitle);

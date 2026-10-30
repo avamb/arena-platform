@@ -11,19 +11,37 @@
  * The form is a pure component (`ShopSettingsForm`); the screen owns the
  * queries and the save. PUT replaces the whole row, so the form always sends
  * every field it shows.
+ *
+ * SA-12: the version (`updated_at`) the form was built from goes back with the save. When a colleague saved the
+ * settings meanwhile the API answers 409 `shop.settings_changed`, nothing is overwritten, and the person is offered
+ * to reload. While anything is unsaved, leaving the page asks first (`UnsavedChangesGuard`, as on the product card).
+ * SA-23: with no sales channel chosen the form warns where the shop's money goes.
  */
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { SelectField, TextAreaField, TextField } from "@/components/FormField";
 import { NoShopAccess, ShopNav, ShopReadOnlyNote } from "@/components/ShopNav";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { ErrorBox, Loading } from "@/components/ui";
 import { fetchShopSettings, listSalesChannels, listShopProducts, saveShopSettings } from "@/lib/api/shopApi";
 import { listCountries } from "@/lib/api/endpoints";
 import type { ShopSettingsUpdateRequest } from "@/lib/api/types";
 import { currencyLabel, regionName } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { SHOP_LIMITS, checkSettings, currencyState, settingsDraft, settingsRequest, type SettingsDraft, type SettingsProblem, type ShopSettingsView } from "@/lib/shop";
+import {
+  SHOP_LIMITS,
+  channelWarning,
+  checkSettings,
+  currencyState,
+  isSettingsChanged,
+  settingsDirty,
+  settingsDraft,
+  settingsRequest,
+  type SettingsDraft,
+  type SettingsProblem,
+  type ShopSettingsView,
+} from "@/lib/shop";
 import { useOrg } from "@/screens/OrgLayout";
 
 const PROBLEM_KEY: Record<SettingsProblem, MessageKey> = {
@@ -47,6 +65,8 @@ export interface ShopSettingsFormProps {
   countries: readonly { iso2: string; name: string }[];
   /** The channels of the organization; null when the person may not list them (`channel.read`). */
   channels: readonly { id: string; name: string }[] | null;
+  /** The list of channels is still on its way: the channel warning waits for it. */
+  channelsLoading?: boolean;
   settings: ShopSettingsView;
   /** The platform operator: may change the domain and the open flag. */
   operator: boolean;
@@ -59,6 +79,16 @@ export interface ShopSettingsFormProps {
    * is stored in it). null while it is not known; undefined means none.
    */
   productCount?: number | null;
+  /**
+   * SB-13: a helper list that did not load says so, with a way to try again, instead of leaving the form on
+   * "checking" / "no country" / "no rights" for good. The rest of the form stays usable.
+   */
+  productsError?: unknown;
+  onRetryProducts?: () => void;
+  countriesError?: unknown;
+  onRetryCountries?: () => void;
+  channelsError?: unknown;
+  onRetryChannels?: () => void;
   /** `shop.manage`: without it the form is read only. */
   canManage: boolean;
   busy: boolean;
@@ -80,6 +110,10 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
   const countries = p.countries
     .map((c) => ({ iso2: c.iso2, name: regionName(c.iso2, locale) || c.name }))
     .sort((a, b) => a.name.localeCompare(b.name, locale));
+  // The stored country stays selectable even when the list did not load, so the field never claims "no country".
+  if (draft.country !== "" && !countries.some((c) => c.iso2 === draft.country)) {
+    countries.unshift({ iso2: draft.country, name: regionName(draft.country, locale) || draft.country });
+  }
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -107,9 +141,16 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
             <p data-testid="shop-settings-currency-value">
               {settings.currency} · {currencyLabel(settings.currency, locale)}
             </p>
-            <p className="field-hint" data-testid="shop-settings-currency-locked">
-              {currencyMode === "locked" ? t("shop.settings.f.currencyLocked") : t("shop.settings.f.currencyChecking")}
-            </p>
+            {currencyMode === "checking" && p.productsError !== undefined && p.productsError !== null ? (
+              <div data-testid="shop-settings-products-error">
+                <ErrorBox error={p.productsError} onRetry={p.onRetryProducts} />
+                <p className="field-hint">{t("shop.settings.f.currencyCheckFailed")}</p>
+              </div>
+            ) : (
+              <p className="field-hint" data-testid="shop-settings-currency-locked">
+                {currencyMode === "locked" ? t("shop.settings.f.currencyLocked") : t("shop.settings.f.currencyChecking")}
+              </p>
+            )}
           </>
         )}
         <TextField
@@ -129,6 +170,11 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
           onChange={(v) => set({ shippingLabel: v })}
           testId="shop-settings-label"
         />
+        {p.countriesError !== undefined && p.countriesError !== null && (
+          <div data-testid="shop-settings-countries-error">
+            <ErrorBox error={p.countriesError} onRetry={p.onRetryCountries} />
+          </div>
+        )}
         <SelectField label={t("shop.settings.f.country")} error={err("country")} value={draft.country} onChange={(v) => set({ country: v })} testId="shop-settings-country">
           <option value="">{t("shop.settings.f.countryNone")}</option>
           {countries.map((c) => (
@@ -196,6 +242,15 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
               </option>
             ))}
           </SelectField>
+        ) : p.channelsError !== undefined && p.channelsError !== null ? (
+          <>
+            <p>
+              <strong>{t("shop.settings.f.channel")}</strong>
+            </p>
+            <div data-testid="shop-settings-channels-error">
+              <ErrorBox error={p.channelsError} onRetry={p.onRetryChannels} />
+            </div>
+          </>
         ) : (
           <>
             <p>
@@ -205,6 +260,15 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
               {t("shop.settings.f.channelLocked")}
             </p>
           </>
+        )}
+        {p.channelsLoading !== true && (p.channelsError === undefined || p.channelsError === null) && channelWarning(draft, p.channels === null ? null : p.channels.length) !== "none" && (
+          <p className="notice notice-warn" role="status" data-testid="shop-settings-channel-warning">
+            {channelWarning(draft, p.channels === null ? null : p.channels.length) === "noChannels"
+              ? t("shop.settings.channelNone")
+              : p.channels === null
+                ? t("shop.settings.channelWarnRights")
+                : t("shop.settings.channelWarn")}
+          </p>
         )}
       </fieldset>
 
@@ -242,7 +306,8 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
   );
 }
 
-function SettingsPage({ settings }: { settings: ShopSettingsView }) {
+/** The form with its queries and its save. Exported for the tests of the version check and the leave question. */
+export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
   const { t, locale } = useI18n();
   const { orgId, access } = useOrg();
   const queryClient = useQueryClient();
@@ -254,7 +319,13 @@ function SettingsPage({ settings }: { settings: ShopSettingsView }) {
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [reloaded, setReloaded] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  // The settings the form was built from. The query may refresh behind the form (a colleague saved): the form
+  // keeps its own baseline, so the version it sends back is the one the person actually saw.
+  const [baseline, setBaseline] = useState<ShopSettingsView>(settings);
+  const allowLeave = useRef(false);
+  const saving = useRef(false);
 
   const countries = useQuery({ queryKey: ["geo", "countries", locale], queryFn: () => listCountries(locale), staleTime: Number.POSITIVE_INFINITY, retry: false });
   const canChannels = access.can("channel.read");
@@ -266,23 +337,55 @@ function SettingsPage({ settings }: { settings: ShopSettingsView }) {
   const currencyLocked = currencyState(productCount) !== "editable";
 
   const problems = tried ? checkSettings(draft, { currencyLocked }) : {};
+  const dirty = canManage && (settingsDirty(draft, baseline) || (operator && (domain !== (baseline.shop_domain ?? "") || enabled !== baseline.enabled)));
 
-  const submit = async () => {
+  /** Saves the form; true when the settings were stored (the question on leaving the page uses it). */
+  const submit = async (): Promise<boolean> => {
+    // The leave question and the button may both call this: a second PUT with the same version would answer 409.
+    if (saving.current) return false;
     setTried(true);
     setSaved(false);
-    if (Object.keys(checkSettings(draft, { currencyLocked })).length > 0) return;
-    const body: ShopSettingsUpdateRequest = settingsRequest(draft);
+    setReloaded(false);
+    if (Object.keys(checkSettings(draft, { currencyLocked })).length > 0) return false;
+    const body: ShopSettingsUpdateRequest = settingsRequest(draft, baseline.updated_at);
     if (operator) {
-      if (domain !== (settings.shop_domain ?? "")) body.shop_domain = domain.trim();
-      if (enabled !== settings.enabled) body.enabled = enabled;
+      if (domain !== (baseline.shop_domain ?? "")) body.shop_domain = domain.trim();
+      if (enabled !== baseline.enabled) body.enabled = enabled;
     }
+    saving.current = true;
     setBusy(true);
     setFailure(null);
     try {
       const stored = await saveShopSettings(orgId, body);
       queryClient.setQueryData(["shopSettings", orgId], stored);
+      setBaseline(stored);
       setDraft(settingsDraft(stored));
+      setDomain(stored.shop_domain ?? "");
+      setEnabled(stored.enabled);
       setSaved(true);
+      return true;
+    } catch (error) {
+      setFailure(error);
+      return false;
+    } finally {
+      saving.current = false;
+      setBusy(false);
+    }
+  };
+
+  /** After 409 `shop.settings_changed`: read the settings again and drop the typed changes. */
+  const reload = async () => {
+    setBusy(true);
+    setFailure(null);
+    try {
+      const fresh = await fetchShopSettings(orgId);
+      queryClient.setQueryData(["shopSettings", orgId], fresh);
+      setBaseline(fresh);
+      setDraft(settingsDraft(fresh));
+      setDomain(fresh.shop_domain ?? "");
+      setEnabled(fresh.enabled);
+      setTried(false);
+      setReloaded(true);
     } catch (error) {
       setFailure(error);
     } finally {
@@ -292,6 +395,7 @@ function SettingsPage({ settings }: { settings: ShopSettingsView }) {
 
   return (
     <>
+      <UnsavedChangesGuard dirty={dirty} allowLeave={allowLeave} onSaveAndLeave={canManage ? submit : undefined} />
       {!settings.configured && (
         <p className="notice notice-warn" role="status" data-testid="shop-settings-unconfigured">
           {t("shop.settings.notConfigured")}
@@ -303,8 +407,15 @@ function SettingsPage({ settings }: { settings: ShopSettingsView }) {
         problems={problems}
         countries={countries.data?.countries ?? []}
         channels={canChannels && channels.data !== undefined ? channels.data.channels : null}
-        settings={settings}
+        channelsLoading={canChannels && channels.isPending}
+        settings={baseline}
         productCount={productCount}
+        productsError={products.isError ? products.error : undefined}
+        onRetryProducts={() => void products.refetch()}
+        countriesError={countries.isError ? countries.error : undefined}
+        onRetryCountries={() => void countries.refetch()}
+        channelsError={canChannels && channels.isError ? channels.error : undefined}
+        onRetryChannels={() => void channels.refetch()}
         operator={operator}
         operatorDomain={domain}
         onOperatorDomain={setDomain}
@@ -315,6 +426,18 @@ function SettingsPage({ settings }: { settings: ShopSettingsView }) {
         onSubmit={() => void submit()}
       />
       {failure !== null && <ErrorNotice error={failure} testId="shop-settings-error" />}
+      {isSettingsChanged(failure) && (
+        <p>
+          <button type="button" className="btn" disabled={busy} onClick={() => void reload()} data-testid="shop-settings-reload">
+            {t("shop.settings.reload")}
+          </button>
+        </p>
+      )}
+      {reloaded && (
+        <p className="notice notice-ok" role="status" data-testid="shop-settings-reloaded">
+          {t("shop.settings.reloaded")}
+        </p>
+      )}
       {saved && (
         <p className="notice notice-ok" role="status" data-testid="shop-settings-saved">
           {t("shop.settings.saved")}

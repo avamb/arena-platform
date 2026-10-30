@@ -226,3 +226,40 @@ other = "💰 Zaplaceno: <b>{{.Amount}}</b>"
 
 ["salesnotify.shop.review_body"]
 other = "Platba za objednávku {{.Number}} dorazila po skončení rezervace a zboží už nebylo volné. Zkontrolujte objednávku v event centru."
+
+["salesnotify.shop.review_unconfirmed_amount"]
+other = "⏳ Platba zatím není potvrzena: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_unconfirmed_body"]
+other = "Platba za objednávku {{.Number}} není potvrzena platební bránou, peníze nemusely dorazit. Zboží neodesílejte ani nevydávejte, dokud platba nebude potvrzena: jakmile se tak stane, objednávka se ohlásí jako zaplacená. Podrobnosti jsou v event centru."
+
+["shop.public.review_payment_unconfirmed"]
+other = "Kontrolujeme vaši platbu a napíšeme vám."
+
+["shop.public.review_late_payment_no_stock"]
+other = "Vaše platba dorazila. Ověřujeme dostupnost zboží a napíšeme vám."
+
+# --- salesnotify.shop.courier_*: the plain courier text of an order card ---
+["salesnotify.shop.courier_order"]
+other = "Objednávka č. {{.Number}}"
+
+["salesnotify.shop.courier_pickup"]
+other = "Osobní odběr"
+
+["salesnotify.shop.courier_none"]
+other = "Bez doručení (digitální zboží nebo služba)"
+
+["salesnotify.shop.courier_item"]
+other = "{{.Name}} × {{.Qty}}"
+
+["salesnotify.shop.courier_total"]
+other = "Celkem: {{.Amount}}"
+
+["salesnotify.shop.courier_note"]
+other = "Poznámka kupujícího: {{.Note}}"
+
+["salesnotify.shop.courier_map_google"]
+other = "Mapy Google: {{.Url}}"
+
+["salesnotify.shop.courier_map_waze"]
+other = "Waze: {{.Url}}"

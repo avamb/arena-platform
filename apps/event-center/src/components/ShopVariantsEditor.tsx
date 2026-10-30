@@ -8,6 +8,7 @@
  * screen sends it back as `expected_stock`, so two people editing the same
  * variant never overwrite each other's numbers.
  */
+import { useEffect, useRef } from "react";
 import { MoveButtons } from "@/components/materials/shared";
 import { TextField } from "@/components/FormField";
 import { useI18n, type MessageKey } from "@/lib/i18n";
@@ -60,6 +61,29 @@ export function ShopVariantsEditor({ rows, onChange, currency, optionNames, opti
   const { t } = useI18n();
   // One version with nothing to tell versions apart: no empty name field, a plain word instead.
   const single = isSingleVersion(rows, optionNames);
+  const root = useRef<HTMLDivElement>(null);
+  // Where the focus goes after the rows changed (it would be lost with the control that was pressed).
+  const pending = useRef<{ what: "add" } | { what: "move"; key: string; delta: -1 | 1 } | { what: "remove"; index: number } | null>(null);
+  useEffect(() => {
+    const p = pending.current;
+    const box = root.current;
+    if (p === null || box === null) return;
+    pending.current = null;
+    const items = Array.from(box.querySelectorAll<HTMLElement>('[data-testid="shop-variant-row"]'));
+    const live = (el: HTMLElement | null | undefined) => (el !== null && el !== undefined && !(el as HTMLButtonElement).disabled ? el : null);
+    let target: HTMLElement | null = null;
+    if (p.what === "add") {
+      target = live(items[items.length - 1]?.querySelector<HTMLElement>("input:not([disabled]):not([type=checkbox]), button:not([disabled])"));
+    } else if (p.what === "move") {
+      const at = rows.findIndex((r) => r.key === p.key);
+      const pick = (d: "up" | "down") => items[at]?.querySelector<HTMLElement>(`[data-testid="shop-variant-${at}-${d}"]`);
+      target = live(pick(p.delta < 0 ? "up" : "down")) ?? live(pick(p.delta < 0 ? "down" : "up"));
+    } else {
+      const next = items[Math.min(p.index, items.length - 1)];
+      target = live(next?.querySelector<HTMLElement>(`[data-testid^="shop-variant-remove-"]`)) ?? box.querySelector<HTMLElement>('[data-testid="shop-variant-add"]');
+    }
+    target?.focus();
+  });
 
   const patch = (key: string, change: Partial<VariantRow>) => onChange(rows.map((r) => (r.key === key ? { ...r, ...change } : r)));
   const setOption = (key: string, i: number, value: string) =>
@@ -72,12 +96,18 @@ export function ShopVariantsEditor({ rows, onChange, currency, optionNames, opti
       }),
     );
   const move = (index: number, delta: -1 | 1) => {
+    pending.current = { what: "move", key: rows[index].key, delta };
     const next = [...rows];
     const [item] = next.splice(index, 1);
     next.splice(index + delta, 0, item);
     onChange(next);
   };
-  const remove = (key: string) => onChange(rows.filter((r) => r.key !== key));
+  const remove = (key: string) => {
+    pending.current = { what: "remove", index: rows.findIndex((r) => r.key === key) };
+    onChange(rows.filter((r) => r.key !== key));
+  };
+  // The option that is too long gets the message, not always the first one.
+  const optionTooLong = (r: VariantRow, i: number) => [...r.options[i].trim()].length > SHOP_LIMITS.option;
   const errorOf = (key: string, p: VariantProblem): string | undefined => {
     const e: RowErrors | undefined = check?.rows[key];
     if (e?.[p] !== true) return undefined;
@@ -85,7 +115,7 @@ export function ShopVariantsEditor({ rows, onChange, currency, optionNames, opti
   };
 
   return (
-    <div data-testid="shop-variants">
+    <div ref={root} data-testid="shop-variants">
       {check?.list === "empty" && (
         <p className="field-error" role="alert" data-testid="shop-variants-empty">
           {t("shop.variants.err.empty")}
@@ -125,7 +155,10 @@ export function ShopVariantsEditor({ rows, onChange, currency, optionNames, opti
                     <TextField
                       key={i}
                       label={optionNames[i] ?? t("shop.options.name", { n: i + 1 })}
-                      error={i === 0 ? (errorOf(r.key, "title") ?? errorOf(r.key, "optionTooLong") ?? errorOf(r.key, "duplicate")) : undefined}
+                      error={
+                        (i === 0 ? (errorOf(r.key, "title") ?? errorOf(r.key, "duplicate")) : undefined) ??
+                        (optionTooLong(r, i) ? errorOf(r.key, "optionTooLong") : undefined)
+                      }
                       value={r.options[i]}
                       maxLength={SHOP_LIMITS.option}
                       onChange={(v) => setOption(r.key, i, v)}
@@ -189,12 +222,21 @@ export function ShopVariantsEditor({ rows, onChange, currency, optionNames, opti
               </fieldset>
               {!disabled && (
                 <div className="actions">
-                  <MoveButtons index={index} count={rows.length} disabled={false} onMove={(d) => move(index, d)} testId={`shop-variant-${index}`} />
+                  <MoveButtons
+                    index={index}
+                    count={rows.length}
+                    disabled={false}
+                    onMove={(d) => move(index, d)}
+                    testId={`shop-variant-${index}`}
+                    upLabel={t("shop.variants.moveUp", { n: index + 1 })}
+                    downLabel={t("shop.variants.moveDown", { n: index + 1 })}
+                  />
                   <button
                     type="button"
                     className="btn"
                     disabled={rows.length === 1}
                     onClick={() => remove(r.key)}
+                    aria-label={t("shop.variants.removeN", { n: index + 1 })}
                     data-testid={`shop-variant-remove-${index}`}
                   >
                     {t("shop.variants.remove")}
@@ -211,11 +253,21 @@ export function ShopVariantsEditor({ rows, onChange, currency, optionNames, opti
             type="button"
             className="btn"
             disabled={rows.length >= SHOP_LIMITS.maxVariants}
-            onClick={() => onChange([...rows, emptyRow(newRowTracks)])}
+            onClick={() => {
+              pending.current = { what: "add" };
+              onChange([...rows, emptyRow(newRowTracks)]);
+            }}
+            aria-describedby={rows.length >= SHOP_LIMITS.maxVariants ? "shop-variant-add-limit" : undefined}
             data-testid="shop-variant-add"
           >
             {t("shop.variants.add")}
           </button>
+          {rows.length >= SHOP_LIMITS.maxVariants && (
+            <span className="field-hint" id="shop-variant-add-limit">
+              {" "}
+              {t("shop.variants.err.tooMany", { max: SHOP_LIMITS.maxVariants })}
+            </span>
+          )}
         </p>
       )}
     </div>

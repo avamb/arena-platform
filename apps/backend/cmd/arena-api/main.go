@@ -364,6 +364,10 @@ func buildMediaRepo(cfg *config.Config, logger *slog.Logger, pool *pgxpool.Pool)
 		Pool:          pool,
 		Storage:       st,
 		SigningSecret: signingSecret,
+		// One render at a time, and a head start for every new picture (the
+		// media.render_variants job runs in arena-worker).
+		VariantWorkers:    cfg.MediaVariantWorkers,
+		PrerenderVariants: true,
 	})
 }
 

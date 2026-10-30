@@ -189,10 +189,13 @@ describe("ShopStockCell: several variants and none", () => {
     await typeInto(input(el, 1), "8");
     await leave(input(el, 1));
     const body = vi.mocked(replaceShopVariants).mock.calls[0][2];
+    // SA-04: the variant nobody touched goes back with no stock at all, the edited one with the number it had.
     expect(body.map((v) => [v.id, v.stock, v.expected_stock])).toEqual([
-      ["v1", 12, 12],
+      ["v1", undefined, undefined],
       ["v2", 8, 3],
     ]);
+    // SA-13: the ids the list saw travel along, so a variant a colleague added is not deleted.
+    expect(vi.mocked(replaceShopVariants).mock.calls[0][3]).toEqual(["v1", "v2"]);
   });
 
   it("has nothing to edit when no variant counts its stock", async () => {

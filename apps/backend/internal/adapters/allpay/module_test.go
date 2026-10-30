@@ -209,3 +209,17 @@ func TestAllPayModule_PaidWebhookIsConfirmedWithAllPay(t *testing.T) {
 		t.Errorf("unreadable status: %v; want ErrProviderUnreachable", err)
 	}
 }
+
+// The descriptor tells the shop settings which currencies AllPay can charge;
+// it must stay equal to what the adapter itself accepts.
+func TestAllPayModule_DescriptorCurrenciesMatchTheAdapter(t *testing.T) {
+	got := ProviderDescriptor().Capabilities.Currencies
+	if len(got) != len(billingCurrencies) {
+		t.Fatalf("descriptor currencies %v; adapter accepts %v", got, billingCurrencies)
+	}
+	for _, c := range got {
+		if !billingCurrencies[c] {
+			t.Errorf("descriptor lists %s, the adapter refuses it", c)
+		}
+	}
+}

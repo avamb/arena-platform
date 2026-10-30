@@ -83,17 +83,22 @@ export function MoveButtons({
   disabled,
   onMove,
   testId,
+  upLabel,
+  downLabel,
 }: {
   index: number;
   count: number;
   disabled: boolean;
   onMove: (delta: -1 | 1) => void;
   testId: string;
+  /** The accessible names that say WHICH item moves (a list of identical "Move up" buttons tells nothing). */
+  upLabel?: string;
+  downLabel?: string;
 }) {
   const { t } = useI18n();
   return (
     <span className="actions">
-      <button type="button" className="btn" disabled={disabled || index === 0} onClick={() => onMove(-1)} data-testid={`${testId}-up`}>
+      <button type="button" className="btn" disabled={disabled || index === 0} onClick={() => onMove(-1)} aria-label={upLabel} data-testid={`${testId}-up`}>
         {t("mat.moveUp")}
       </button>
       <button
@@ -101,6 +106,7 @@ export function MoveButtons({
         className="btn"
         disabled={disabled || index === count - 1}
         onClick={() => onMove(1)}
+        aria-label={downLabel}
         data-testid={`${testId}-down`}
       >
         {t("mat.moveDown")}

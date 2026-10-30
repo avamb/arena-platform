@@ -186,7 +186,7 @@ func (f *shopFixture) cleanup() {
 func (f *shopFixture) do(method, path, token, body string) (int, map[string]any, http.Header) {
 	f.t.Helper()
 	key := ""
-	if method == http.MethodPost && strings.HasSuffix(path, "/refund") {
+	if method == http.MethodPost && (strings.HasSuffix(path, "/refund") || strings.HasSuffix(path, "/resolve")) {
 		key = uuid.NewString()
 	}
 	return f.doKeyed(method, path, token, body, key)
@@ -366,7 +366,7 @@ func TestShop_ProductCRUD(t *testing.T) {
 	// add a gift box.
 	first := body["variants"].([]any)[0].(map[string]any)["id"].(string)
 	code, body, _ = f.do(http.MethodPut, f.orgPath(f.orgA, "/products/"+id+"/variants"), f.ownerA, fmt.Sprintf(
-		`{"variants":[{"id":%q,"title":"750 ml","price_minor":11000,"stock":8},{"title":"Gift box","price_minor":30000,"stock":2}]}`, first))
+		`{"variants":[{"id":%q,"title":"750 ml","price_minor":11000,"stock":8,"expected_stock":5},{"title":"Gift box","price_minor":30000,"stock":2}]}`, first))
 	if code != http.StatusOK {
 		t.Fatalf("PUT variants = %d %v", code, body)
 	}
@@ -504,6 +504,11 @@ func TestShop_CheckoutHoldsStockAndWebhookPaysTheOrder(t *testing.T) {
 	code, body, _ = f.do(http.MethodGet, f.orgPath(f.orgA, "/orders/"+o.ID.String()+"/courier-text"), f.ownerA, "")
 	if code != http.StatusOK || !strings.Contains(body["_raw"].(string), "Herzl 1") {
 		t.Fatalf("courier text = %d %v", code, body)
+	}
+	// The text shares the Telegram builder: the order number leads it and the
+	// buyer's note and the map links are in it (C-05).
+	if first, _, _ := strings.Cut(body["_raw"].(string), "\n"); !strings.Contains(first, fmt.Sprint(o.Number)) || !strings.Contains(body["_raw"].(string), "google.com/maps") {
+		t.Fatalf("courier text lacks the order number or the map link: %v", body["_raw"])
 	}
 	code, body, _ = f.do(http.MethodPost, f.orgPath(f.orgA, "/orders/"+o.ID.String()+"/ship"), f.ownerA, `{"tracking_note":"TRK1"}`)
 	if code != http.StatusOK || body["status"] != "shipped" || f.outboxCount(shop.EventOrderShipped, o.ID) != 1 {

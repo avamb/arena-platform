@@ -10,7 +10,9 @@ import {
   buildCheckoutRequest,
   limitMessage,
   parseShortage,
+  parseStored,
   reconcileCart,
+  withTitles,
   stockLimitMessage,
   variantLimit,
   variantLimitById,
@@ -29,6 +31,7 @@ import { idToken, productCard, type Ctx } from '../views/common';
 import { layout } from '../views/layout';
 import { productView } from '../views/product';
 import { unreachableView } from '../views/static';
+import { CART_NOTE, itemsLabel } from '../lib/i18n';
 import { cartView } from '../views/cart';
 import { resolveLines } from '../lib/cart';
 
@@ -200,6 +203,8 @@ describe('SA-15 / SA-16: errors are told in Russian by code', () => {
   it('captcha codes, the line limit and an unreachable shop', () => {
     expect(checkoutErrorMessage(err(422, 'shop.captcha_required'))).toContain('не робот');
     expect(checkoutErrorMessage(err(422, 'shop.captcha_failed'))).toContain('Проверка не пройдена');
+    // A captcha check that could not run is not a payment problem.
+    expect(checkoutErrorMessage(err(503, 'shop.captcha_unavailable'), 'shop@x.test')).toContain('не робот');
     expect(checkoutErrorMessage(err(422, 'shop.invalid_items', { max_line_qty: 6 }))).toContain('6');
     expect(checkoutErrorMessage(err(0, 'network'))).toBe('Не удалось связаться с магазином, попробуйте ещё раз.');
     expect(checkoutErrorMessage(err(503, 'checkout.payment_not_configured'), 'shop@x.test')).toContain('shop@x.test');
@@ -327,5 +332,71 @@ describe('SA-21 / SA-36: theme-driven domain, in-memory age answer', () => {
   });
   it('the layout still renders for a shop with the age gate', () => {
     expect(layout(ctxWith(catalog), '')).toContain('id="popup"');
+  });
+});
+
+describe('stage C: C-02 hint panel, C-03 robots.txt, C-04 notes, C-07 phone summary', () => {
+  const cart = [{ variant_id: 'a1', qty: 2 }, { variant_id: 'b1', qty: 1 }];
+  const lines = resolveLines(cart, catalog);
+  const view = (st: Parameters<typeof checkoutView>[2]) => dom(checkoutView(ctxWith(catalog, cart), lines, st));
+
+  it('C-02: the unpaid-order panel has a title, one line, the main button first, and the pay button is gone', () => {
+    const doc = view({ values: { ...EMPTY_FORM }, errors: {}, resume: { paymentUrl: 'https://pay.test/x', number: 12, totalLabel: '30.00 NIS' } });
+    const panel = doc.querySelector('#checkout-resume');
+    expect(panel?.classList.contains('form__message')).toBe(false);
+    expect(panel?.querySelector('h2')?.textContent).toContain('неоплаченный заказ');
+    expect(panel?.querySelectorAll('p')).toHaveLength(1);
+    const buttons = Array.from(panel?.querySelectorAll('.shop-checkout__resume-actions > *') ?? []);
+    expect(buttons.map((b) => b.textContent)).toEqual(['Вернуться к оплате', 'Оформить новый заказ']);
+    expect(buttons[0].classList.contains('button--secondary')).toBe(false);
+    expect(buttons[1].classList.contains('button--secondary')).toBe(true);
+    expect(doc.querySelector('#checkout-pay')).toBeNull();
+    expect(view({ values: { ...EMPTY_FORM }, errors: {} }).querySelector('#checkout-pay')).not.toBeNull();
+  });
+
+  it('C-03: robots.txt closes /checkout/ and no longer names the missing /order/', () => {
+    const txt = readFileSync(join(__dirname, '../../public/robots.txt'), 'utf8');
+    expect(txt).toMatch(/^Disallow: \/checkout\/\s*$/m);
+    expect(txt).not.toContain('/order/');
+  });
+
+  it('C-04: the notes name the product', () => {
+    expect(CART_NOTE.removed('Вино')).toBe('Товар «Вино» снят с продажи, мы убрали его из корзины.');
+    expect(CART_NOTE.removed()).toBe('Товар снят с продажи, мы убрали его из корзины.');
+    expect(CART_NOTE.cut('Вино', 3)).toBe('«Вино»: в наличии только 3 шт., количество уменьшено.');
+    const r = reconcileCart([{ variant_id: 'a1', qty: 9, title: 'Alpha' }, { variant_id: 'old', qty: 1, title: 'Гость' }, { variant_id: 'old2', qty: 1 }], catalog, 24);
+    expect(r.notes).toEqual([
+      '«Alpha»: в наличии только 3 шт., количество уменьшено.',
+      'Товар «Гость» снят с продажи, мы убрали его из корзины.',
+      'Товар снят с продажи, мы убрали его из корзины.',
+    ]);
+    expect(reconcileCart([{ variant_id: 'a1', qty: 1 }], catalog, 24).notes).toEqual([]);
+  });
+
+  it('C-04: a stored name survives parsing, and lines are named from the catalog', () => {
+    expect(parseStored(JSON.stringify([{ variant_id: 'a1', qty: 2, title: 'Alpha' }, { variant_id: 'b1', qty: 1 }]))).toEqual([
+      { variant_id: 'a1', qty: 2, title: 'Alpha' },
+      { variant_id: 'b1', qty: 1 },
+    ]);
+    expect(withTitles([{ variant_id: 'b1', qty: 1 }, { variant_id: 'x', qty: 1, title: 'Kept' }], catalog)).toEqual([
+      { variant_id: 'b1', qty: 1, title: 'Beta — Red' },
+      { variant_id: 'x', qty: 1, title: 'Kept' },
+    ]);
+  });
+
+  it('C-07: a folded order line above the form, the full block is hidden on phones by CSS', () => {
+    const doc = view({ values: { ...EMPTY_FORM }, errors: {} });
+    const details = doc.querySelector('details#checkout-mobile-summary');
+    expect(details).not.toBeNull();
+    expect(details?.hasAttribute('open')).toBe(false);
+    expect(details?.querySelector('summary')?.textContent).toMatch(/^Ваш заказ · 3 товара · 90.00 NIS$/);
+    expect(details?.querySelectorAll('.shop-checkout__line')).toHaveLength(2);
+    expect(details?.nextElementSibling).toBe(doc.querySelector('.shop-checkout__grid'));
+    const css = readFileSync(join(__dirname, '../theme/shop.css'), 'utf8');
+    expect(css).toMatch(/@media screen and \(max-width: 767px\)[\s\S]*\.shop-checkout__summary \{\s*display: none;/);
+  });
+
+  it('plural of the item count', () => {
+    expect([1, 2, 4, 5, 11, 12, 21, 22, 25].map(itemsLabel)).toEqual(['1 товар', '2 товара', '4 товара', '5 товаров', '11 товаров', '12 товаров', '21 товар', '22 товара', '25 товаров']);
   });
 });

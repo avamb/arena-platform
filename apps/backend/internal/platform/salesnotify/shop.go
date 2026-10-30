@@ -52,6 +52,10 @@ type ShopOrder struct {
 	Locale string
 	Order  gen.ShopOrderRow
 	Items  []gen.ShopOrderItemRow
+	// ShopCountry is the shop's own country (shop_settings.country_iso2, upper
+	// case ISO 3166-1 alpha-2, "" when unset). Only the order card's courier
+	// text reads it: a parcel inside that country does not print it.
+	ShopCountry string
 }
 
 // shopMoney is an amount in the message's language: "450,00 ₪" in ru.
@@ -79,23 +83,31 @@ func writeShopBuyer(b *strings.Builder, o gen.ShopOrderRow) {
 
 // writeCourierForm prints the courier form field by field in the courier
 // form's order, then the two map links built from the full address. The
-// country is named in the message's language.
-func writeCourierForm(b *strings.Builder, loc string, o gen.ShopOrderRow) {
+// country is named in the message's language. It is the ONE writer of the
+// form: the Telegram announcement (HTML, with a heading, every country) and
+// the order card's courier text (plain, no heading, the shop's own country
+// left out) differ only in the courierStyle they pass.
+func writeCourierForm(b *strings.Builder, loc string, o gen.ShopOrderRow, st courierStyle) {
 	c := shop.CourierFieldsOfIn(o, loc)
+	q := c.MapQuery() // the map always gets the country, whatever is printed
+	if st.hidesCountry(c.CountryCode) {
+		c.Country = ""
+	}
 	lines := c.Lines()
 	if len(lines) == 0 {
 		return
 	}
-	fmt.Fprintf(b, "\n%s\n", say(loc, "salesnotify.shop.courier_form", nil))
+	if st.heading {
+		fmt.Fprintf(b, "\n%s\n", say(loc, "salesnotify.shop.courier_form", nil))
+	}
 	for _, l := range lines {
-		fmt.Fprintf(b, "%s\n", esc(l))
+		fmt.Fprintf(b, "%s\n", st.esc(l))
 	}
 	if o.DeliveryKind == "pickup" || !c.HasAddress() {
 		return
 	}
-	q := c.MapQuery()
-	fmt.Fprintf(b, "\n%s\n", say(loc, "salesnotify.shop.map_google", map[string]any{"Url": esc(shop.GoogleMapsURL(q))}))
-	fmt.Fprintf(b, "%s\n", say(loc, "salesnotify.shop.map_waze", map[string]any{"Url": esc(shop.WazeURL(q))}))
+	fmt.Fprintf(b, "\n%s\n", say(loc, st.mapKey("google"), map[string]any{"Url": st.esc(shop.GoogleMapsURL(q))}))
+	fmt.Fprintf(b, "%s\n", say(loc, st.mapKey("waze"), map[string]any{"Url": st.esc(shop.WazeURL(q))}))
 }
 
 // FormatShopOrderPaid renders a paid shop order for the logistics chat, in
@@ -114,10 +126,10 @@ func FormatShopOrderPaid(s ShopOrder) string {
 		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.delivery_none", nil))
 	case "pickup":
 		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.delivery_pickup", nil))
-		writeCourierForm(&b, loc, o)
+		writeCourierForm(&b, loc, o, telegramCourierStyle)
 	default:
 		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.delivery_shipping", nil))
-		writeCourierForm(&b, loc, o)
+		writeCourierForm(&b, loc, o, telegramCourierStyle)
 	}
 
 	if len(s.Items) > 0 {
@@ -174,16 +186,30 @@ func FormatShopOrderRefund(s ShopOrder, refundedNow int64) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// FormatShopOrderReview renders the notice for a payment that arrived after
-// the order's hold ended and found its goods gone. The money is taken and the
-// order is parked: the organizer decides (ship late, or refund). The operator
-// gets their own ops alert from the watchdog, not this one.
+// FormatShopOrderReview renders the notice for an order parked in
+// manual_review. There are two causes and the text never mixes them up (SB-02):
+//
+//   - late_payment_no_stock: the payment arrived after the hold ended and found
+//     the goods gone. The money IS taken ("Paid"); the organizer decides
+//     (ship late, or refund).
+//   - payment_unconfirmed: the provider's report is not trusted (the amount
+//     differs, the payment was reversed before arena confirmed it). The money
+//     may NOT have arrived, so the message says "not confirmed", has no
+//     "Paid" line and asks the logistician to wait.
+//
+// The operator gets their own ops alert from the watchdog, not this one.
 func FormatShopOrderReview(s ShopOrder) string {
 	o := s.Order
 	loc := s.Locale
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", say(loc, "salesnotify.shop.review_title", map[string]any{"Org": esc(s.OrgName)}))
 	writeShopHeader(&b, loc, o)
+	if o.ReviewReason != nil && *o.ReviewReason == shop.ReviewPaymentUnconfirmed {
+		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.review_unconfirmed_amount", map[string]any{"Amount": shopMoney(o.Total, o.Currency, loc)}))
+		writeShopBuyer(&b, o)
+		fmt.Fprintf(&b, "\n%s", say(loc, "salesnotify.shop.review_unconfirmed_body", map[string]any{"Number": o.Number}))
+		return b.String()
+	}
 	fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.review_paid", map[string]any{"Amount": shopMoney(o.Total, o.Currency, loc)}))
 	writeShopBuyer(&b, o)
 	fmt.Fprintf(&b, "\n%s", say(loc, "salesnotify.shop.review_body", map[string]any{"Number": o.Number}))
@@ -211,7 +237,14 @@ func (d *Dispatcher) composeShop(ctx context.Context, ev outbox.Event) (key stri
 		return "", 0, "", "", err
 	}
 	if ev.EventType == EventShopOrderManualReview {
-		return "shop_review:" + id, TriggerShopOrderReview, FormatShopOrderReview(order), orgID, nil
+		// The cause is part of the key: an order parked as an unconfirmed
+		// payment that is then parked again as a late payment (the payment
+		// succeeded, the goods were gone) is a new announcement.
+		reason := ""
+		if order.Order.ReviewReason != nil {
+			reason = *order.Order.ReviewReason
+		}
+		return "shop_review:" + id + ":" + reason, TriggerShopOrderReview, FormatShopOrderReview(order), orgID, nil
 	}
 	if ev.EventType == EventShopOrderPaid {
 		return "shop_paid:" + id, TriggerShopOrderPaid, FormatShopOrderPaid(order), orgID, nil

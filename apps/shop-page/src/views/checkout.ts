@@ -8,7 +8,7 @@ import { MAX_NOTE_LEN, needsShipping, postalHint, subtotalMinor, shippingMinor, 
 import type { DownloadLink, OrderStatus } from '../lib/api';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
-import { MSG, resumeOrderText, T } from '../lib/i18n';
+import { itemsLabel, MSG, resumeOrderText, T } from '../lib/i18n';
 import type { StatusPhase } from '../lib/poll';
 import { cartSrcset, icon, money, optionPairs, ratioOf, url, type Ctx } from './common';
 
@@ -95,11 +95,14 @@ export interface ResumeOffer {
 }
 
 function resumePanel(r: ResumeOffer): string {
-  return `<div class="shop-checkout__resume form__message" role="alert" id="checkout-resume">
-        <strong>${MSG.resumeTitle}</strong>
-        <p>${esc(resumeOrderText(r.number, r.totalLabel))} ${MSG.resumeText}</p>
-        <a href="${esc(r.paymentUrl)}" class="button" id="return-to-payment">${MSG.returnToPayment}</a>
-        <button type="button" class="button button--secondary" data-resume-ignore>${MSG.resumeNew}</button>
+  // A hint, not a form error: no red, a title, one line, the two ways on under it.
+  return `<div class="shop-checkout__resume" role="status" id="checkout-resume">
+        <h2 class="shop-checkout__resume-title h4">${MSG.resumeTitle}</h2>
+        <p class="shop-checkout__resume-text">${esc(resumeOrderText(r.number, r.totalLabel))} ${MSG.resumeText}</p>
+        <div class="shop-checkout__resume-actions">
+          <a href="${esc(r.paymentUrl)}" class="button" id="return-to-payment">${MSG.returnToPayment}</a>
+          <button type="button" class="button button--secondary" data-resume-ignore>${MSG.resumeNew}</button>
+        </div>
       </div>`;
 }
 
@@ -147,6 +150,23 @@ function addressBlock(ctx: Ctx, st: CheckoutViewState, label: string, shipping: 
       </div>`;
 }
 
+/**
+ * Phone width (under 768 px): the order on one folded line above the form, "Ваш заказ · 2 товара · 580.00 NIS",
+ * opened by a tap. The full block below the form is hidden there by CSS, so the buyer sees what they pay for before the button.
+ */
+function mobileSummary(ctx: Ctx, lines: CartLine[], subtotal: number, shipping: number, total: number, ships: boolean, label: string): string {
+  const units = lines.reduce((n, l) => n + l.qty, 0);
+  return `<details class="shop-checkout__mobile-summary" id="checkout-mobile-summary">
+    <summary><span>Ваш заказ · ${itemsLabel(units)} · ${esc(money(ctx, total))}</span></summary>
+    <ul class="shop-checkout__lines list-unstyled" role="list">${lines.map((l) => summaryRow(ctx, l)).join('')}</ul>
+    <dl class="shop-checkout__totals">
+      <div><dt>Товары</dt><dd>${esc(money(ctx, subtotal))}</dd></div>
+      ${ships ? `<div><dt>${label}</dt><dd>${esc(money(ctx, shipping))}</dd></div>` : ''}
+      <div class="shop-checkout__total"><dt>Итого</dt><dd>${esc(money(ctx, total))}</dd></div>
+    </dl>
+  </details>`;
+}
+
 export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState): string {
   const s = ctx.shop.settings;
   const all = esc(url(ctx, '/collections/all'));
@@ -178,6 +198,7 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
     <h1 class="title title--primary">Оформление заказа</h1>
     <a href="${esc(url(ctx, '/cart'))}" class="underlined-link">Вернуться в корзину</a>
   </div>
+  ${mobileSummary(ctx, lines, subtotal, shipping, total, ships, label)}
   <div class="shop-checkout__grid">
     <form id="checkout-form" class="shop-checkout__form" method="post" action="${esc(url(ctx, '/checkout'))}" novalidate>
       <h2 class="shop-checkout__heading h3">Контактные данные</h2>
@@ -195,9 +216,14 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
           : ''
       }${s.captcha_site_key ? `
       <div id="checkout-captcha" class="shop-checkout__captcha" data-sitekey="${esc(s.captcha_site_key)}"></div>` : ''}${messageBlock(st)}${st.resume ? resumePanel(st.resume) : ''}
-      <button type="submit" class="button button--full-width shop-checkout__pay" id="checkout-pay"${st.submitting ? ' disabled' : ''}>
+      ${
+        // While the unpaid-order hint is up, "Оплатить" would compete with "Вернуться к оплате".
+        st.resume
+          ? ''
+          : `<button type="submit" class="button button--full-width shop-checkout__pay" id="checkout-pay"${st.submitting ? ' disabled' : ''}>
         Оплатить ${esc(money(ctx, total))}
-      </button>
+      </button>`
+      }
     </form>
     <aside class="shop-checkout__summary" aria-label="Ваш заказ">
       <h2 class="shop-checkout__heading h3">Ваш заказ</h2>
@@ -215,6 +241,8 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
 /** Where the paid order's files stand: asked for, not ready yet, failed, or listed. */
 export type DownloadsState =
   | { state: 'loading' | 'waiting' }
+  /** 410 shop.download_expired: the period or the link count is used up; a refresh cannot help. */
+  | { state: 'expired' }
   | { state: 'error'; refreshed?: boolean }
   | { state: 'ready'; links: DownloadLink[]; refreshed?: boolean };
 
@@ -268,6 +296,9 @@ function downloadsBlock(dl: DownloadsState): string {
       break;
     case 'error':
       body = `<p role="status" data-downloads-note>${esc(note || 'Не удалось получить ссылки. Попробуйте ещё раз.')}</p>${refresh}`;
+      break;
+    case 'expired':
+      body = `<p role="status" data-downloads-note>Срок скачивания файлов этого заказа закончился. Если файлы нужны снова, напишите продавцу.</p>`;
       break;
     default: {
       const items = dl.links

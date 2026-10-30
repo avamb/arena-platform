@@ -78,6 +78,7 @@ diagram below summarises the topology Dokploy should reproduce:
 | Metrics scrape | `GET /metrics` (Prometheus exposition on `:8080`) |
 | Start policy | `Always` |
 | Replicas | ≥ 1 (horizontally scalable behind Dokploy's Traefik router) |
+| Memory limit | **not below 768 MB** (`mem_limit 768m`). One picture render peaks at ~230 MB on top of the ordinary working set; at 512 MB the kernel OOM-killed `arena-api` twice in 6 minutes (2026-10-30, the shop storefront asked for several new picture widths at once). `MEDIA_VARIANT_WORKERS` (§2.6) keeps it to one render at a time |
 
 Dokploy must expose `8080` as the public HTTP port and route the application
 domain to it. Healthcheck is wired by the image's `HEALTHCHECK` directive (see
@@ -350,6 +351,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `SHOP_TURNSTILE_SECRET`, `SHOP_TURNSTILE_SITE_KEY` (Cloudflare Turnstile of the merchandise shop checkout: with the secret set a checkout needs `captcha_token` and the catalog publishes the site key as `captcha_site_key`; the widget must list every storefront host; empty secret = no captcha) | ● | — | — | — |
 | `MEDIA_BACKEND`, `MEDIA_LOCAL_ROOT`, `MEDIA_S3_ENDPOINT`, `MEDIA_S3_REGION`, `MEDIA_S3_BUCKET`, `MEDIA_S3_ACCESS_KEY_ID`, `MEDIA_S3_SECRET_ACCESS_KEY`, `MEDIA_S3_USE_PATH_STYLE` | ● | ● | — | — |
 | `MEDIA_SIGNING_SECRET` (same value on api and worker) | ✅ with a media backend | ✅ with a media backend | — | — |
+| `MEDIA_VARIANT_WORKERS` (1..8, default 1: how many resized copies of a picture, `GET /v1/media-files/{id}?w=`, one process renders at once. A render of a 20 MP photo peaks at ~230 MB, so keep 1 unless the container has memory to spare; the `media.render_variants` job in the worker uses the same limit) | ● | ● | — | — |
 | `BOT_SERVICE_TOKEN` | ● | — | ● | — |
 | `TELEGRAM_MINIAPP_SECRET_KEY` | ● | — | — | — |
 | `EVENTS_TELEGRAM_BOT_USERNAME` | ● | ● | — | — |

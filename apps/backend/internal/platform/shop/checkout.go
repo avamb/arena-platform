@@ -535,32 +535,16 @@ type Download struct {
 // an unpaid order cannot be told from a missing one.
 //
 // The period is bounded (audit SA-34): thirty days after payment
-// (DownloadWindow) and DownloadsPerLine links per line. Past the window, or
-// when every digital line used its links, the answer is ErrDownloadExpired.
-// A line that used its links is left out while others still have some. The
-// list does not count anything: the caller signs the links first and then
-// calls ConsumeDownload for each, so a signing failure costs the buyer no
-// download.
-func (s *Service) Downloads(ctx context.Context, token string) ([]Download, error) {
-	v, err := s.OrderByToken(ctx, token)
+// (DownloadWindow) and DownloadsPerLine downloads per line. Past the window, or
+// when every digital line used its downloads, the answer is ErrDownloadExpired.
+// A line that used its downloads is left out while others still have some.
+// The list counts nothing and signs nothing (SB-05): looking at the order page
+// or refreshing the links is not a download. A download is counted when the
+// file is actually served, by Download and ConsumeDownload.
+func (s *Service) Downloads(ctx context.Context, token string) ([]Download, time.Time, error) {
+	v, rows, until, err := s.downloadRows(ctx, token)
 	if err != nil {
-		return nil, err
-	}
-	switch v.Status {
-	case StatusPaid, StatusShipped, StatusPartiallyRefunded:
-	default:
-		return nil, ErrOrderNotFound
-	}
-	paidAt := v.CreatedAt
-	if v.PaidAt != nil {
-		paidAt = *v.PaidAt
-	}
-	rows, err := s.q.ListShopOrderDownloads(ctx, v.ID)
-	if err != nil {
-		return nil, err
-	}
-	if len(rows) > 0 && time.Now().After(paidAt.Add(DownloadWindow)) {
-		return nil, ErrDownloadExpired
+		return nil, time.Time{}, err
 	}
 	out := make([]Download, 0, len(rows))
 	exhausted := 0
@@ -576,13 +560,64 @@ func (s *Service) Downloads(ctx context.Context, token string) ([]Download, erro
 			VariantTitle: r.VariantTitle, MediaID: *r.MediaID})
 	}
 	if len(out) == 0 && exhausted > 0 {
-		return nil, ErrDownloadExpired
+		return nil, time.Time{}, ErrDownloadExpired
 	}
-	return out, nil
+	return out, until, nil
 }
 
-// ConsumeDownload counts one issued link on a line, atomically; false when
-// the line used its DownloadsPerLine links in the meantime.
+// DownloadOf is the one line itemID of the order the token names, as it is
+// offered for download right now: same checks as Downloads. A line that is not
+// a digital line of the order, or has no file, is ErrOrderNotFound; one that
+// used its DownloadsPerLine downloads is ErrDownloadExpired. It counts nothing:
+// the caller signs the file's URL first and then calls ConsumeDownload.
+func (s *Service) DownloadOf(ctx context.Context, token string, itemID uuid.UUID) (Download, error) {
+	v, rows, _, err := s.downloadRows(ctx, token)
+	if err != nil {
+		return Download{}, err
+	}
+	for _, r := range rows {
+		if r.ItemID != itemID || r.MediaID == nil {
+			continue
+		}
+		if r.DownloadCount >= DownloadsPerLine {
+			return Download{}, ErrDownloadExpired
+		}
+		return Download{OrderID: v.ID, ItemID: r.ItemID, ProductTitle: r.ProductTitle,
+			VariantTitle: r.VariantTitle, MediaID: *r.MediaID}, nil
+	}
+	return Download{}, ErrOrderNotFound
+}
+
+// downloadRows loads the order of a token and its digital lines, enforcing
+// the payment status and the download window. until is the end of the window.
+func (s *Service) downloadRows(ctx context.Context, token string) (OrderView, []gen.ShopOrderDownload, time.Time, error) {
+	v, err := s.OrderByToken(ctx, token)
+	if err != nil {
+		return OrderView{}, nil, time.Time{}, err
+	}
+	switch v.Status {
+	case StatusPaid, StatusShipped, StatusPartiallyRefunded:
+	default:
+		return OrderView{}, nil, time.Time{}, ErrOrderNotFound
+	}
+	paidAt := v.CreatedAt
+	if v.PaidAt != nil {
+		paidAt = *v.PaidAt
+	}
+	rows, err := s.q.ListShopOrderDownloads(ctx, v.ID)
+	if err != nil {
+		return OrderView{}, nil, time.Time{}, err
+	}
+	until := paidAt.Add(DownloadWindow)
+	if len(rows) > 0 && time.Now().After(until) {
+		return OrderView{}, nil, time.Time{}, ErrDownloadExpired
+	}
+	return v, rows, until, nil
+}
+
+// ConsumeDownload counts one download on a line, atomically; false when the
+// line used its DownloadsPerLine downloads in the meantime. Call it only when
+// the file is about to be served.
 func (s *Service) ConsumeDownload(ctx context.Context, d Download) (bool, error) {
 	if err := s.ready(); err != nil {
 		return false, err

@@ -9,6 +9,9 @@ import { CATALOGS, LOCALES, type MessageKey } from "@/lib/i18n";
 import type { ShopImage, ShopProduct, ShopSettings, ShopVariant } from "@/lib/api/types";
 import {
   EMPTY_FILTERS,
+  canResolveShopOrder,
+  reviewReasonOf,
+  uniqueById,
   canCancelShopOrder,
   canEditTracking,
   isShipped,
@@ -27,7 +30,8 @@ import {
   moveImagePlan,
   nextDay,
   oversold,
-  ordersQuery,
+  ordersSearchBody,
+  dayStartIso,
   orderTimeline,
   parseMoney,
   parseProductsSearch,
@@ -36,14 +40,27 @@ import {
   refundBody,
   refundOutcome,
   refundable,
+  refundableFromError,
+  refundableNow,
   rowFromVariant,
+  rowsAfterStockMoved,
   rowsFromProduct,
+  channelWarning,
+  isSettingsChanged,
+  isVariantsChanged,
+  mergeVariantSet,
+  productPatch,
+  settingsDirty,
   settingsDraft,
   settingsRequest,
+  shortItems,
   stockChangedDetails,
+  stockEdited,
   stockSum,
+  variantIdsOf,
   variantsChanged,
   variantsRequest,
+  type ShopProductView,
   type VariantRow,
 } from "@/lib/shop";
 
@@ -94,7 +111,77 @@ describe("the variants editor", () => {
     rows[0] = { ...rows[0], stock: "10" }; // the person changed 7 to 10
     const body = variantsRequest(rows, "EUR", 2);
     expect(body[0]).toMatchObject({ id: "v1", stock: 10, expected_stock: 7, price_minor: 1250, option1: "Red", option2: "L", position: 0 });
-    expect(body[1]).toMatchObject({ id: "v2", stock: 0, expected_stock: 0, position: 1 });
+    // A variant whose stock the person did not touch sends no stock and no expected_stock (SA-04).
+    expect(body[1]).toMatchObject({ id: "v2", position: 1 });
+    expect(body[1].stock).toBeUndefined();
+    expect(body[1].expected_stock).toBeUndefined();
+  });
+
+  it("calls a stock edited only when the typed number differs from the one the person saw", () => {
+    const rows = rowsFromProduct(product, "EUR");
+    expect(stockEdited(rows[0])).toBe(false);
+    expect(stockEdited({ ...rows[0], stock: " 7 " })).toBe(false);
+    expect(stockEdited({ ...rows[0], stock: "8" })).toBe(true);
+    expect(stockEdited({ ...rows[0], stock: "8", trackStock: false })).toBe(false);
+    expect(stockEdited({ ...rows[0], stock: "8" }, true)).toBe(false);
+    expect(stockEdited({ ...emptyRow(), stock: "8" })).toBe(false); // a new row sends its stock anyway
+  });
+
+  it("is not changed by a sale that moved the saved stock behind the screen (no false unsaved changes)", () => {
+    const rows = rowsFromProduct(product, "EUR");
+    const afterSale = [{ ...product.variants[0], stock: 4 }, product.variants[1]];
+    expect(variantsChanged(rows, afterSale, "EUR", 2)).toBe(false);
+    // An edit of the stock is still an edit.
+    expect(variantsChanged([{ ...rows[0], stock: "9" }, rows[1]], afterSale, "EUR", 2)).toBe(true);
+  });
+
+  it("brings up to date ONLY the stock the person saw in the rows the 409 names", () => {
+    const rows = rowsFromProduct(product, "EUR");
+    const typed = [{ ...rows[0], stock: "10", price: "13.00" }, { ...rows[1], sku: "NEW" }, { ...emptyRow(), title: "Added", price: "1" }];
+    const after = rowsAfterStockMoved(typed, [{ id: "v1", stock: 4 }]);
+    expect(after[0]).toMatchObject({ id: "v1", loadedStock: 4, stock: "10", price: "13.00" });
+    expect(after[1]).toBe(typed[1]);
+    expect(after[2]).toBe(typed[2]);
+    // Saving again sends the typed 10 against the fresh 4.
+    expect(variantsRequest(after, "EUR", 2)[0]).toMatchObject({ id: "v1", stock: 10, expected_stock: 4, price_minor: 1300 });
+  });
+
+  it("merges the variants a colleague added or removed into the rows and keeps the edits (SA-13)", () => {
+    const rows = rowsFromProduct(product, "EUR");
+    const typed = [{ ...rows[0], price: "99.00" }, rows[1]];
+    const fresh = { variants: [product.variants[0], variant({ id: "v3", title: "Green / L", option1: "Green" })] };
+    const merged = mergeVariantSet(typed, fresh, ["v1", "v2"], "EUR");
+    expect(merged.removed).toBe(1);
+    expect(merged.added).toBe(1);
+    expect(merged.rows.map((r) => r.id)).toEqual(["v1", "v3"]);
+    expect(merged.rows[0].price).toBe("99.00");
+    // A variant the person deleted on the screen stays deleted, it is not "added elsewhere".
+    const deleted = mergeVariantSet([rows[0]], { variants: product.variants }, ["v1", "v2"], "EUR");
+    expect(deleted.rows.map((r) => r.id)).toEqual(["v1"]);
+    expect(deleted.added).toBe(0);
+  });
+
+  it("recognizes the changed set of the API and lists the ids of a product", () => {
+    expect(isVariantsChanged(new ApiError(409, "shop.variants_changed", "x"))).toBe(true);
+    expect(isVariantsChanged(new ApiError(409, "shop.stock_changed", "x"))).toBe(false);
+    expect(variantIdsOf(product)).toEqual(["v1", "v2"]);
+  });
+
+  it("patches only the details that changed (SA-13)", () => {
+    const saved = { ...product, title: "Rosé", status: "active", kind: "physical", option_names: ["Colour"], body_html: "<p>Dry</p>", digital_media_id: null } as unknown as ShopProductView;
+    const now = { title: " Rosé ", status: "active", kind: "physical" as const, optionNames: ["Colour"], digitalId: null, body: "<p>Dry</p>", bodyTouched: false };
+    expect(productPatch(now, saved)).toEqual({});
+    expect(productPatch({ ...now, status: "archived" }, saved)).toEqual({ status: "archived" });
+    expect(productPatch({ ...now, title: "Rosé 2021", optionNames: ["Colour", "Size"] }, saved)).toEqual({ title: "Rosé 2021", option_names: ["Colour", "Size"] });
+    // An untouched or unchanged description is not sent.
+    expect(productPatch({ ...now, body: "<p>Other</p>" }, saved)).toEqual({});
+    expect(productPatch({ ...now, body: "<p>Other</p>", bodyTouched: true }, saved)).toEqual({ body_html: "<p>Other</p>" });
+    expect(productPatch({ ...now, body: "<p>Dry</p>", bodyTouched: true }, saved)).toEqual({});
+    // Turning away from a digital product removes its file.
+    const digital = { ...saved, kind: "digital", digital_media_id: "m1" } as unknown as ShopProductView;
+    expect(productPatch({ ...now, kind: "physical" }, digital)).toEqual({ kind: "physical", digital_media_id: null });
+    expect(productPatch({ ...now, kind: "digital", digitalId: "m1" }, digital)).toEqual({});
+    expect(productPatch({ ...now, kind: "digital", digitalId: "m2" }, digital)).toEqual({ digital_media_id: "m2" });
   });
 
   it("sends no id and no expected_stock for a variant the person added", () => {
@@ -107,7 +194,11 @@ describe("the variants editor", () => {
 
   it("keeps the saved stock of a variant that does not count it", () => {
     const rows = [{ ...rowFromVariant(variant({ stock: 12 }), "EUR"), trackStock: false }];
-    expect(variantsRequest(rows, "EUR", 2)[0]).toMatchObject({ track_stock: false, stock: 12, expected_stock: 12 });
+    // Not counted, not touched: no stock goes out and the server keeps the shelf (SA-04).
+    const out = variantsRequest(rows, "EUR", 2)[0];
+    expect(out).toMatchObject({ track_stock: false });
+    expect(out.stock).toBeUndefined();
+    expect(out.expected_stock).toBeUndefined();
   });
 
   it("names a one-version product with an empty title and no options", () => {
@@ -145,8 +236,11 @@ describe("the variants editor", () => {
   it("sends a digital product's variant with no stock and no expected_stock", () => {
     const rows = rowsFromProduct(product, "EUR");
     const body = variantsRequest(rows, "EUR", 2, { digital: true });
-    expect(body[0]).toMatchObject({ id: "v1", stock: 0, track_stock: false });
+    expect(body[0]).toMatchObject({ id: "v1", track_stock: false });
+    expect(body[0].stock).toBeUndefined();
     expect(body[0].expected_stock).toBeUndefined();
+    // A NEW row of a digital product starts at 0.
+    expect(variantsRequest([{ ...emptyRow(false), price: "5" }], "EUR", 0, { digital: true })[0].stock).toBe(0);
     const bad = { ...rows[0], stock: "x" };
     expect(checkVariants([bad], "EUR", 2, { digital: true }).ok).toBe(true);
     expect(checkVariants([bad], "EUR", 2).ok).toBe(false);
@@ -192,6 +286,26 @@ describe("the order actions", () => {
     expect(canCancelShopOrder("paid", true)).toBe(false);
   });
   const order = { status: "paid", total: 5000, refunded_minor: 1000, currency: "EUR", payment: { id: "p", provider: "stripe", state: "succeeded", amount: 5000, currency: "EUR" } } as const;
+  it("takes what the server says is left when it is less than the card knows (SA-19)", () => {
+    expect(refundableNow(order)).toBe(4000);
+    expect(refundableNow(order, 1500)).toBe(1500);
+    expect(refundableNow(order, 9000)).toBe(4000);
+    expect(refundableNow(order, 0)).toBe(0);
+    expect(checkRefund(order, "30", "", 1500)).toEqual({ ok: false, problem: "tooMuch" });
+    expect(checkRefund(order, "10", "", 1500)).toEqual({ ok: true, amountMinor: 1000, full: false });
+    expect(checkRefund(order, "", "", 1500)).toEqual({ ok: true, amountMinor: null, full: true });
+  });
+  it("reads what is left out of a refused refund (SA-19)", () => {
+    expect(refundableFromError(new ApiError(422, "shop.invalid_refund_amount", "x", undefined, { refundable_minor: 1500 }))).toBe(1500);
+    expect(refundableFromError(new ApiError(409, "shop.nothing_to_refund", "x"))).toBe(0);
+    expect(refundableFromError(new ApiError(500, "shop.failed", "x"))).toBeNull();
+    expect(refundableFromError(new Error("x"))).toBeNull();
+  });
+  it("lists the lines a shipment is short of (SA-19)", () => {
+    const err = new ApiError(409, "shop.out_of_stock", "x", undefined, { items: [{ variant_id: "v1", ordered: 3, available: 1 }, { nope: true }] });
+    expect(shortItems(err)).toEqual([{ variant_id: "v1", ordered: 3, available: 1 }]);
+    expect(shortItems(new ApiError(409, "shop.stock_changed", "x"))).toEqual([]);
+  });
   it("refunds only paid money that is left", () => {
     expect(refundable(order)).toBe(4000);
     expect(canRefundShopOrder(order, true)).toBe(true);
@@ -236,20 +350,31 @@ describe("the order actions", () => {
   });
 });
 
-describe("the orders query", () => {
-  it("sends only what is filled, and the day after the last day", () => {
-    expect(ordersQuery({ ...EMPTY_FILTERS, status: "paid", q: " anna ", from: "2026-10-01", to: "2026-10-31" }, 50, 0)).toEqual({
+describe("the orders search", () => {
+  it("sends only what is filled, the days as RFC 3339 instants of the shop's zone (SA-17, SA-25)", () => {
+    // Jerusalem is UTC+3 in October (summer time until the last Sunday: 25 October 2026), UTC+2 afterwards.
+    expect(ordersSearchBody({ ...EMPTY_FILTERS, status: "paid", q: " anna ", from: "2026-10-01", to: "2026-10-31" }, 50, 0, "Asia/Jerusalem")).toEqual({
       status: "paid",
       q: "anna",
-      from: "2026-10-01",
-      to: "2026-11-01",
+      from: "2026-09-30T21:00:00.000Z",
+      to: "2026-10-31T22:00:00.000Z",
       limit: 50,
-      offset: undefined,
     });
-    expect(ordersQuery(EMPTY_FILTERS, 50, 100)).toMatchObject({ status: undefined, q: undefined, from: undefined, to: undefined, offset: 100 });
+    expect(ordersSearchBody(EMPTY_FILTERS, 50, 100)).toEqual({ limit: 50, offset: 100 });
   });
   it("leaves out a day that is not a day", () => {
-    expect(ordersQuery({ ...EMPTY_FILTERS, from: "yesterday", to: "2026-13" }, 50, 0)).toMatchObject({ from: undefined, to: undefined });
+    expect(ordersSearchBody({ ...EMPTY_FILTERS, from: "yesterday", to: "2026-13" }, 50, 0)).toEqual({ limit: 50 });
+  });
+  it("starts a day at the shop's midnight, also on the day the clocks change", () => {
+    expect(dayStartIso("2026-10-29", "UTC")).toBe("2026-10-29T00:00:00.000Z");
+    expect(dayStartIso("2026-10-29", undefined)).toBe("2026-10-29T00:00:00.000Z");
+    expect(dayStartIso("2026-10-29", "Europe/Madrid")).toBe("2026-10-28T23:00:00.000Z");
+    // Madrid went back to winter time on 25 October 2026 at 03:00: the day starts at 22:00 UTC, the next one at 23:00.
+    expect(dayStartIso("2026-10-25", "Europe/Madrid")).toBe("2026-10-24T22:00:00.000Z");
+    expect(dayStartIso("2026-10-26", "Europe/Madrid")).toBe("2026-10-25T23:00:00.000Z");
+    expect(dayStartIso("2026-10-29", "Not/AZone")).toBe("2026-10-29T00:00:00.000Z");
+    // 00:30 in Jerusalem on 29 October is still 28 October in UTC, but it belongs to the shop's 29 October.
+    expect(new Date("2026-10-28T22:30:00Z").getTime()).toBeGreaterThanOrEqual(new Date(dayStartIso("2026-10-29", "Asia/Jerusalem")).getTime());
   });
   it("counts the day after across a month and a year", () => {
     expect(nextDay("2026-02-28")).toBe("2026-03-01");
@@ -418,5 +543,81 @@ describe("the payment block after a refund (M-12)", () => {
     expect(paymentRefundKind({ status: "partially_refunded", total: 74000, refunded_minor: 5000 }, "succeeded")).toBe("partly");
     expect(paymentRefundKind({ status: "refunded", total: 25000, refunded_minor: 25000 }, "succeeded")).toBe("refunded");
     expect(paymentRefundKind({ status: "paid", total: 25000, refunded_minor: 25000 }, "succeeded")).toBe("refunded");
+  });
+});
+
+describe("the settings form (SA-12, SA-23)", () => {
+  const saved = {
+    org_id: "o",
+    configured: true,
+    currency: "ILS",
+    shipping_fee_minor: 2500,
+    shipping_label: "Courier",
+    country_iso2: "IL",
+    age_gate_min_age: null,
+    announcement_text: "",
+    contact_email: null,
+    logistics_note: "",
+    sales_channel_id: null,
+    shop_domain: null,
+    max_line_qty: 24,
+    enabled: true,
+    updated_at: "2026-10-30T10:00:00.123456Z",
+  } as ShopSettings;
+
+  it("sends back the version it was loaded with, exactly as the server printed it", () => {
+    const body = settingsRequest(settingsDraft(saved), saved.updated_at);
+    expect(body.expected_updated_at).toBe("2026-10-30T10:00:00.123456Z");
+    expect(settingsRequest(settingsDraft(saved)).expected_updated_at).toBeUndefined();
+    expect(settingsRequest(settingsDraft(saved), null).expected_updated_at).toBeUndefined();
+  });
+
+  it("knows when the form differs from the saved settings", () => {
+    const d = settingsDraft(saved);
+    expect(settingsDirty(d, saved)).toBe(false);
+    expect(settingsDirty({ ...d, shippingFee: "30.00" }, saved)).toBe(true);
+  });
+
+  it("recognizes the refusal of a stale version", () => {
+    expect(isSettingsChanged(new ApiError(409, "shop.settings_changed", "x"))).toBe(true);
+    expect(isSettingsChanged(new ApiError(409, "shop.currency_locked", "x"))).toBe(false);
+  });
+
+  it("warns when no sales channel is chosen, and when there is none to choose", () => {
+    expect(channelWarning({ salesChannelId: "c1" }, 3)).toBe("none");
+    expect(channelWarning({ salesChannelId: "" }, 3)).toBe("unchosen");
+    expect(channelWarning({ salesChannelId: "" }, null)).toBe("unchosen");
+    expect(channelWarning({ salesChannelId: "" }, 0)).toBe("noChannels");
+  });
+
+  it("has a text for every new shop error in every language", () => {
+    const codes = ["shopNothingToRefund", "shopOutOfStock", "shopOrderChanged", "shopOrderEmailUnavailable", "shopOrderNoBuyerEmail", "shopDuplicateDomain", "shopVariantsChanged", "shopSettingsChanged", "shopCurrencyLocked", "shopCurrencyUnsupported"];
+    for (const locale of LOCALES) {
+      for (const stem of codes) {
+        for (const part of ["title", "next"]) expect(CATALOGS[locale][`apiError.${stem}.${part}` as MessageKey], `${locale} ${stem}.${part}`).toBeTruthy();
+      }
+    }
+  });
+});
+
+describe("pages read by offset (SB-14)", () => {
+  it("keeps each order once and in the order of the first appearance", () => {
+    const pages = [{ orders: [{ id: "c" }, { id: "b" }] }, { orders: [{ id: "b" }, { id: "a" }] }];
+    expect(uniqueById(pages).map((o) => o.id)).toEqual(["c", "b", "a"]);
+    expect(uniqueById([])).toEqual([]);
+  });
+});
+
+describe("the decision on an order in manual_review", () => {
+  it("is offered only for that status and only to someone who may refund", () => {
+    expect(canResolveShopOrder("manual_review", true)).toBe(true);
+    expect(canResolveShopOrder("manual_review", false)).toBe(false);
+    expect(canResolveShopOrder("paid", true)).toBe(false);
+  });
+  it("knows the two reasons and ignores anything else", () => {
+    expect(reviewReasonOf("late_payment_no_stock")).toBe("late_payment_no_stock");
+    expect(reviewReasonOf("payment_unconfirmed")).toBe("payment_unconfirmed");
+    expect(reviewReasonOf("something_new")).toBeNull();
+    expect(reviewReasonOf(undefined)).toBeNull();
   });
 });

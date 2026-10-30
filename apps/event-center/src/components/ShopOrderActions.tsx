@@ -7,9 +7,20 @@
  *   typed word of an order (CANCEL ORDER) and the password again (`withStepUp`).
  * - "Refund": an amount (empty = everything that is left) and a reason, then
  *   the typed word REFUND and the password again. The answer says whether the
- *   money went back, is on its way, or was refused.
- * - "Copy for the courier": the delivery details to the clipboard. When the
- *   browser refuses, the text is shown to be copied by hand.
+ *   money went back, is on its way, or was refused. One refund operation has
+ *   one Idempotency-Key (SA-01), kept while the amount and the reason stay the
+ *   same and the answer is lost, so a retry never returns the money twice.
+ *   After a failure the order is read again and what is left is shown, taking
+ *   the server's `refundable_minor` over the card's own figure (SA-19).
+ * - "Fulfil the order" / "Refund and cancel" for an order in "needs a check" (`manual_review`): the operator's
+ *   decision, each with the typed word, the password again and an Idempotency-Key kept in the tab like a refund's.
+ *   The route belongs to the backend lane (`POST .../shop/orders/{id}/resolve`).
+ * - Focus: a closed dialog gives the focus back to its opener, and when the opener is gone (the panel closed after
+ *   a success) the focus goes to the result line, so a keyboard user is never dropped on the page top.
+ * - "Copy for the courier": the text the SERVER builds (the same one the
+ *   logistician gets in Telegram, SA-35) to the clipboard. When the browser
+ *   refuses, the text is shown to be copied by hand. Only when the server
+ *   cannot be reached the card builds the text itself.
  * - "Send the e-mail again" (A-11): queues the buyer's confirmation or, for a
  *   shipped order, the shipping letter once more, for a refunded one, the
  *   refund letter. Asks which one only when several exist. One request per order per minute: the API answers 429 and the
@@ -17,21 +28,23 @@
  *
  * Every write needs `shop.manage`; the courier text needs only `shop.read`.
  */
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConfirmWordDialog } from "@/components/ConfirmWordDialog";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { TextAreaField, TextField } from "@/components/FormField";
 import { useStepUp } from "@/components/StepUpDialog";
-import { cancelShopOrder, fetchShopOrder, refundShopOrder, resendShopOrderEmail, shipShopOrder } from "@/lib/api/shopApi";
+import { cancelShopOrder, fetchCourierText, fetchShopOrder, refundShopOrder, resendShopOrderEmail, resolveShopOrder, shipShopOrder } from "@/lib/api/shopApi";
 import { ApiError } from "@/lib/api/http";
-import type { ShopOrder, ShopRefund } from "@/lib/api/types";
+import type { ShopOrder, ShopOrderResolveAction, ShopRefund } from "@/lib/api/types";
 import { formatMoney } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
+import { forgetRefundKey, refundKeyFor } from "@/lib/shopRefundKeys";
 import { StepUpCancelled, withStepUp } from "@/lib/stepUp";
 import {
   SHOP_LIMITS,
   canCancelShopOrder,
+  canResolveShopOrder,
   canEditTracking,
   canRefundShopOrder,
   canShip,
@@ -40,13 +53,21 @@ import {
   courierText,
   isShipped,
   isShopOrderStatus,
+  itemLabel,
   refundBody,
   refundOutcome,
-  refundable,
+  refundableFromError,
+  refundableNow,
   resendLetters,
   shopOrderNumber,
+  shortItems,
   type OrderLetter,
 } from "@/lib/shop";
+
+/** A failure after which the request may still have been recorded (no answer, a timeout, a server error). */
+function mayHaveBeenRecorded(err: unknown): boolean {
+  return !(err instanceof ApiError) || err.status === 0 || err.status === 408 || err.status >= 500;
+}
 
 export interface ShopOrderActionsProps {
   orgId: string;
@@ -75,9 +96,25 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
   const [failure, setFailure] = useState<unknown>(null);
   const [note, setNote] = useState<{ key: MessageKey; params?: Record<string, string>; bad?: boolean } | null>(null);
   const [courier, setCourier] = useState<{ copied: boolean; text: string } | null>(null);
+  // What the server said is left to refund (it counts refunds still on their way; the card cannot see them).
+  const [serverLeft, setServerLeft] = useState<number | null>(null);
+  const [refundFailure, setRefundFailure] = useState<{ error: unknown; retrySafe: boolean } | null>(null);
+  const refundBusy = useRef(false);
+  // The operator's decision on an order that waits for a check: which one is being confirmed.
+  const [resolveOpen, setResolveOpen] = useState<ShopOrderResolveAction | null>(null);
+  const resolveBusy = useRef(false);
+  // After a success the opener of a dialog is gone: the result line takes the focus (see the header).
+  const noteRef = useRef<HTMLParagraphElement>(null);
+  const focusNote = useRef(false);
+  useEffect(() => {
+    if (focusNote.current && note !== null) {
+      focusNote.current = false;
+      noteRef.current?.focus();
+    }
+  }, [note]);
 
   const money = (v: number) => formatMoney(v, order.currency, locale);
-  const left = refundable(order);
+  const left = refundableNow(order, serverLeft);
 
   const store = (o: ShopOrder) => {
     queryClient.setQueryData(["shopOrder", orgId, o.id], o);
@@ -124,6 +161,14 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
       setNote({ key: "shop.act.ship.done" });
     } catch (error) {
       setFailure(error);
+      // The order may have moved on (a late payment, a refund): read it again so the card shows its real state.
+      if (error instanceof ApiError && error.status === 409) {
+        try {
+          store(await fetchShopOrder(orgId, order.id));
+        } catch {
+          /* the failure above is what the person sees */
+        }
+      }
     } finally {
       setBusy(false);
     }
@@ -131,7 +176,12 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
 
   const onCancel = async () => {
     try {
-      const done = await withStepUp(orgId, (headers) => cancelShopOrder(orgId, order.id, headers), stepUp.ask);
+      const done = await withStepUp(
+        orgId,
+        (headers) => cancelShopOrder(orgId, order.id, headers),
+        // An unpaid order moves no money: the password question says what really happens (C-06).
+        (org) => stepUp.ask(org, "stepUp.introNoMoney"),
+      );
       store(done);
     } catch (err) {
       // The person closed the password question: nothing was sent, the dialog stays.
@@ -148,32 +198,91 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
       throw err; // the dialog shows what went wrong and what to do
     }
     setCancelOpen(false);
+    focusNote.current = true;
     setNote({ key: "shop.act.cancel.done" });
+  };
+
+  const onResolve = async () => {
+    const action = resolveOpen;
+    if (action === null || resolveBusy.current) return;
+    // One decision, one key: kept in the tab while the answer is unknown, dropped once it is final.
+    const held = `${order.id}:resolve:${action}`;
+    const key = refundKeyFor(held, action);
+    resolveBusy.current = true;
+    let done: ShopOrder;
+    try {
+      done = await withStepUp(orgId, (headers) => resolveShopOrder(orgId, order.id, action, headers, key), stepUp.ask);
+    } catch (err) {
+      if (err instanceof StepUpCancelled) return;
+      if (!mayHaveBeenRecorded(err)) forgetRefundKey(held);
+      if (err instanceof ApiError && err.status === 409) {
+        // The order moved on meanwhile (a colleague decided, the payment came): show what it is now.
+        try {
+          store(await fetchShopOrder(orgId, order.id));
+        } catch {
+          /* the failure below is what the person sees */
+        }
+      }
+      throw err; // the dialog shows what went wrong and what to do
+    } finally {
+      resolveBusy.current = false;
+    }
+    forgetRefundKey(held);
+    store(done);
+    setResolveOpen(null);
+    focusNote.current = true;
+    setNote({ key: action === "fulfil" ? "shop.act.resolve.fulfil.done" : "shop.act.resolve.refundCancel.done" });
   };
 
   const onRefundContinue = (e: FormEvent) => {
     e.preventDefault();
-    const c = checkRefund(order, amount, reason);
+    const c = checkRefund(order, amount, reason, serverLeft);
     if (!c.ok) {
       setRefundProblem(c.problem === "amount" ? "shop.act.refund.err.amount" : c.problem === "tooMuch" ? "shop.act.refund.err.tooMuch" : "shop.act.refund.err.reason");
       return;
     }
     setRefundProblem(null);
+    setRefundFailure(null);
     setWordOpen(true);
   };
 
-  const refundCheck = checkRefund(order, amount, reason);
+  const refundCheck = checkRefund(order, amount, reason, serverLeft);
   const refundAmount = refundCheck.ok ? (refundCheck.amountMinor ?? left) : left;
 
   const onRefund = async () => {
-    if (!refundCheck.ok) return;
+    if (!refundCheck.ok || refundBusy.current) return;
+    const body = refundBody(refundCheck, reason);
+    // One operation, one key: the same amount and reason keep the key a lost answer left behind.
+    const fingerprint = JSON.stringify(body);
+    // The key outlives the dialog AND the page (sessionStorage, SB-12): a lost answer followed by a reload must
+    // retry with the same key, or the server would treat the retry as a second refund.
+    const key = refundKeyFor(order.id, fingerprint);
     let answer;
+    refundBusy.current = true;
     try {
-      answer = await withStepUp(orgId, (headers) => refundShopOrder(orgId, order.id, refundBody(refundCheck, reason), headers), stepUp.ask);
+      answer = await withStepUp(orgId, (headers) => refundShopOrder(orgId, order.id, body, headers, key), stepUp.ask);
     } catch (err) {
       if (err instanceof StepUpCancelled) return;
-      throw err;
+      const unsure = mayHaveBeenRecorded(err);
+      // A refusal means nothing was recorded: the next try is a new operation. An unsure failure keeps the key.
+      if (!unsure) forgetRefundKey(order.id);
+      const serverSays = refundableFromError(err);
+      if (serverSays !== null) setServerLeft(serverSays);
+      setRefundFailure({ error: err, retrySafe: unsure });
+      setWordOpen(false);
+      // Read the order again: the card must show what is really left, not the figure it had before.
+      try {
+        store(await fetchShopOrder(orgId, order.id));
+      } catch {
+        /* the refund failure above is what the person sees */
+      }
+      return;
+    } finally {
+      refundBusy.current = false;
     }
+    forgetRefundKey(order.id);
+    setServerLeft(null);
+    setRefundFailure(null);
     store(answer.order);
     const r: ShopRefund = answer.refund;
     const outcome = refundOutcome(r.state);
@@ -181,6 +290,7 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
     setPanel(null);
     setAmount("");
     setReason("");
+    focusNote.current = true;
     if (outcome === "done") setNote({ key: "shop.act.refund.done", params: { amount: formatMoney(r.amount, r.currency, locale) } });
     else if (outcome === "pending") setNote({ key: "shop.act.refund.pending" });
     else if (outcome === "review") setNote({ key: "shop.act.refund.review", bad: true });
@@ -191,12 +301,19 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
     setFailure(null);
     setNote(null);
     try {
-      // Built here from the order on the screen: it starts with the order number and ends with the buyer's comment.
-      const text = courierText(order, {
-        locale,
-        shopCountry: country,
-        labels: { order: t("shop.courier.order", { number: shopOrderNumber(order.number) }), comment: (note) => t("shop.courier.comment", { note }) },
-      });
+      // The server builds the text (SA-35): it is the one the logistician gets in Telegram. The card builds its own
+      // only when the server cannot be reached at all.
+      let text: string;
+      try {
+        text = await fetchCourierText(orgId, order.id);
+      } catch (error) {
+        if (!(error instanceof ApiError) || (error.status !== 0 && error.status < 500)) throw error;
+        text = courierText(order, {
+          locale,
+          shopCountry: country,
+          labels: { order: t("shop.courier.order", { number: shopOrderNumber(order.number) }), comment: (note) => t("shop.courier.comment", { note }) },
+        });
+      }
       const copied = await copyText(text);
       setCourier({ copied, text });
       setNote(copied ? { key: "shop.act.courier.done" } : { key: "shop.act.courier.manual", bad: true });
@@ -222,7 +339,13 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
           </button>
         )}
         {canRefundShopOrder(order, canManage && canRefund) && (
-          <button type="button" className="btn" onClick={() => setPanel(panel === "refund" ? null : "refund")} data-testid="shop-order-refund">
+          <button type="button" className="btn" onClick={() => {
+              setServerLeft(null);
+              setRefundFailure(null);
+              setPanel(panel === "refund" ? null : "refund");
+            }}
+            data-testid="shop-order-refund"
+          >
             {t("shop.act.refund")}
           </button>
         )}
@@ -230,6 +353,16 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
           <button type="button" className="btn" onClick={() => setCancelOpen(true)} data-testid="shop-order-cancel">
             {t("shop.act.cancel")}
           </button>
+        )}
+        {canResolveShopOrder(order.status, canManage && canRefund) && (
+          <>
+            <button type="button" className="btn btn-primary" onClick={() => setResolveOpen("fulfil")} data-testid="shop-order-resolve-fulfil">
+              {t("shop.act.resolve.fulfil")}
+            </button>
+            <button type="button" className="btn" onClick={() => setResolveOpen("refund_and_cancel")} data-testid="shop-order-resolve-refund">
+              {t("shop.act.resolve.refundCancel")}
+            </button>
+          </>
         )}
         {!noDelivery && (
           <button type="button" className="btn" onClick={() => void onCourier()} data-testid="shop-order-courier">
@@ -321,15 +454,43 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
               {t("shop.act.refund.next")}
             </button>
           </p>
+          {refundFailure !== null && (
+            <div data-testid="shop-refund-failure">
+              <ErrorNotice error={refundFailure.error} testId="shop-refund-error" />
+              <p className="notice notice-warn" role="status" data-testid="shop-refund-left-now">
+                {t("shop.act.refund.leftNow", { left: money(left) })}
+              </p>
+              {refundFailure.retrySafe && (
+                <p className="muted" data-testid="shop-refund-retry-safe">
+                  {t("shop.act.refund.retrySafe")}
+                </p>
+              )}
+            </div>
+          )}
         </form>
       )}
 
       {note !== null && (
-        <p className={note.bad === true ? "notice notice-bad" : "notice notice-ok"} role={note.bad === true ? "alert" : "status"} data-testid="shop-order-note">
+        <p ref={noteRef} tabIndex={-1} className={note.bad === true ? "notice notice-bad" : "notice notice-ok"} role={note.bad === true ? "alert" : "status"} data-testid="shop-order-note">
           {t(note.key, note.params)}
         </p>
       )}
       {failure !== null && <ErrorNotice error={failure} testId="shop-order-error" />}
+      {failure !== null && shortItems(failure).length > 0 && (
+        <div data-testid="shop-order-short" role="status">
+          <p>{t("shop.act.ship.shortIntro")}</p>
+          <ul className="facts">
+            {shortItems(failure).map((it) => {
+              const line = order.items.find((x) => x.variant_id === it.variant_id);
+              return (
+                <li key={it.variant_id}>
+                  {t("shop.act.ship.shortLine", { name: line === undefined ? it.variant_id : itemLabel(line), ordered: it.ordered, available: it.available })}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
       {courier !== null && !courier.copied && (
         <pre className="mono" tabIndex={0} data-testid="shop-courier-text">
           {courier.text}
@@ -344,6 +505,16 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
           subject={t("shop.order.title", { number: shopOrderNumber(order.number) })}
           onConfirm={onCancel}
           onCancel={() => setCancelOpen(false)}
+        />
+      )}
+      {resolveOpen !== null && (
+        <ConfirmWordDialog
+          kind={resolveOpen === "fulfil" ? "shop_fulfil" : "refund"}
+          title={resolveOpen === "fulfil" ? t("shop.act.resolve.fulfil.title") : t("shop.act.resolve.refund.title")}
+          explain={resolveOpen === "fulfil" ? t("shop.act.resolve.fulfil.explain") : t("shop.act.resolve.refund.explain", { amount: money(left) })}
+          subject={t("shop.order.title", { number: shopOrderNumber(order.number) })}
+          onConfirm={onResolve}
+          onCancel={() => setResolveOpen(null)}
         />
       )}
       {wordOpen && (

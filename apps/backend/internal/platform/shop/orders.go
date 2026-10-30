@@ -193,6 +193,14 @@ func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote st
 			}
 		case StatusPaid:
 		case StatusManualReview:
+			if reviewReasonIs(o, ReviewPaymentUnconfirmed) {
+				// Parked because its PAYMENT waits for a human (an amount
+				// mismatch, a refund at the provider before arena confirmed
+				// it): the goods go out only once that payment is settled.
+				if err := requireSucceededPayment(ctx, q, o); err != nil {
+					return err
+				}
+			}
 			if err := q.LockShopOrderVariants(ctx, o.ID); err != nil {
 				return err
 			}
@@ -564,6 +572,24 @@ func (s *Service) syncRefundsTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, 
 		return out, nil
 	}
 	return out, nil
+}
+
+// requireSucceededPayment refuses with 409 shop.payment_unconfirmed unless the
+// order's payment intent succeeded.
+func requireSucceededPayment(ctx context.Context, q *gen.Queries, o gen.ShopOrderRow) error {
+	state := "missing"
+	if o.PaymentIntentID != nil {
+		pi, err := q.GetPaymentIntentByID(ctx, *o.PaymentIntentID)
+		if err != nil {
+			return err
+		}
+		state = pi.State
+	}
+	if state != "succeeded" {
+		return newErr(http.StatusConflict, "shop.payment_unconfirmed",
+			"the payment of this order is "+state+", not succeeded; settle the payment before shipping")
+	}
+	return nil
 }
 
 func sameUUID(a, b *uuid.UUID) bool {

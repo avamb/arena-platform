@@ -4818,3 +4818,40 @@ other = "💰 Оплачено: <b>{{.Amount}}</b>"
 
 ["salesnotify.shop.review_body"]
 other = "Оплата заказа {{.Number}} пришла, когда бронь уже закончилась, а товара не осталось. Проверьте заказ в ивент-центре."
+
+["salesnotify.shop.review_unconfirmed_amount"]
+other = "⏳ Платёж пока не подтверждён: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_unconfirmed_body"]
+other = "Платёж по заказу {{.Number}} не подтверждён платёжной системой, деньги могли не поступить. Не отправляйте и не выдавайте товар, пока платёж не подтвердится: когда это случится, заказ придёт как оплаченный. Подробности в ивент-центре."
+
+["shop.public.review_payment_unconfirmed"]
+other = "Мы проверяем ваш платёж и напишем вам."
+
+["shop.public.review_late_payment_no_stock"]
+other = "Оплата получена. Мы уточняем наличие товара и напишем вам."
+
+# --- salesnotify.shop.courier_*: the plain courier text of an order card ---
+["salesnotify.shop.courier_order"]
+other = "Заказ № {{.Number}}"
+
+["salesnotify.shop.courier_pickup"]
+other = "Самовывоз"
+
+["salesnotify.shop.courier_none"]
+other = "Без доставки (цифровой товар или услуга)"
+
+["salesnotify.shop.courier_item"]
+other = "{{.Name}} × {{.Qty}}"
+
+["salesnotify.shop.courier_total"]
+other = "Сумма: {{.Amount}}"
+
+["salesnotify.shop.courier_note"]
+other = "Комментарий покупателя: {{.Note}}"
+
+["salesnotify.shop.courier_map_google"]
+other = "Google Карты: {{.Url}}"
+
+["salesnotify.shop.courier_map_waze"]
+other = "Waze: {{.Url}}"
