@@ -75,8 +75,8 @@ origin есть в `CORS_ALLOWED_ORIGINS` или равен `PUBLIC_TICKETS_BASE
 | `VITE_API_BASE_URL` | build `shop-page` | origin API, шаг 2 |
 | `CORS_ALLOWED_ORIGINS` | `arena-api` | со всеми origin витрин, шаг 3 |
 | `SHOP_PUBLIC_BASE_URL` | `arena-worker` | origin витрины платформы, например `https://shop.arenasoldout.com`. Нужна письму «заказ получен» для ссылки на страницу заказа у организации БЕЗ своего `shop_domain`. У организации с доменом ссылка строится из `shop_domain`. Пусто: письмо без ссылки |
-| `SHOP_TURNSTILE_SITE_KEY` | build `shop-page` или API, по тому, где его читает код проверки (смотри `deploy/DOKPLOY.md`) | публичный ключ Cloudflare Turnstile на оформлении |
-| `SHOP_TURNSTILE_SECRET` | `arena-api` | секретный ключ Turnstile. Поведение при пустом значении смотри в `deploy/DOKPLOY.md` и конфиге: у онбординга пустой секрет допускается вне production, в production отвечает 503, у магазина будет так же |
+| `SHOP_TURNSTILE_SITE_KEY` | `arena-api` | публичный ключ Cloudflare Turnstile на оформлении. Витрина получает его из каталога (`settings.captcha_site_key`), в сборку `shop-page` он не входит |
+| `SHOP_TURNSTILE_SECRET` | `arena-api` | секретный ключ Turnstile. **Пустое значение выключает капчу в любом окружении, в том числе в production** (в отличие от онбординга, который в production отвечает 503): прод без секрета остаётся без защиты от бота. Секрет без site key отказывает каждому оформлению |
 | `SALES_TELEGRAM_BOT_TOKEN` | `arena-worker` | бот продаж, нужен для Telegram логиста (шаг 7) |
 
 Turnstile на оформлении ввела отдельная доработка модуля. Для **стенда** годятся тестовые ключи Cloudflare,
@@ -229,7 +229,11 @@ curl -sI https://$SHOP_HOST/no-such-page | head -1  # HTTP 404
 
 - [ ] `by-host` отвечает 200, CORS-заголовок есть, оформление не отвечает 400 `checkout.invalid_return_url`.
 - [ ] `sales_channel_id` задан, канал на AllPay, конфигурация `ok`.
-- [ ] Turnstile: на проде боевая пара, не тестовая.
+- [ ] Turnstile: на проде боевая пара, не тестовая. `GET .../shop/{slug}` в `settings` отдаёт `captcha_site_key`.
+- [ ] `TRUSTED_PROXY_COUNT` у `arena-api` соответствует цепочке Cloudflare -> Traefik (второй аудит, SB-03): иначе все покупатели получают
+      один адрес, и после трёх неоплаченных заказов магазин отвечает всем 409 `shop.too_many_pending`. Проверка: два оформления
+      с разных сетей (мобильная и домашняя) без оплаты, затем `select buyer_ip_hash, count(*) from shop_orders where status='pending_payment'
+      group by 1` показывает две разные строки, а не одну.
 - [ ] Группа логиста получила сообщение, письмо покупателя пришло со ссылкой на страницу заказа.
 - [ ] Возврат из ивент-центра дошёл до AllPay, письмо `shop_order_refunded` пришло.
 - [ ] robots, sitemap, noindex на `/cart` и `/checkout`, 404 на неизвестные адреса.
